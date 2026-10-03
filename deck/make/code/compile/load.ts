@@ -28,8 +28,8 @@ type ImportScan = {
   paths: string[]
   hasZone: boolean
   // per import path, whether it is a `bear` (a re-export) and the names its `find` lines ask for, with where each
-  // `find` line is
-  finds: { path: string; bear: boolean; names: string[]; spans: Span[] }[]
+  // `find` line is, and the name each is bound under here when the line aliases it (`find x, name y` -> `y`)
+  finds: { path: string; bear: boolean; names: string[]; spans: Span[]; aliases: (string | undefined)[] }[]
 }
 
 // What each module imports BY NAME, resolved to files: a `find`ed name -> every file a `load` / `bear` that finds it
@@ -156,6 +156,7 @@ function scanImports(tree: RootNode): ImportScan {
       // `find <name>` lines under the path, an alias (`find x, name y`) recorded by the name it imports
       const names: string[] = []
       const spans: Span[] = []
+      const aliases: (string | undefined)[] = []
 
       for (const child of group.nodes.slice(2)) {
         if (child.kind !== 'group' || headName(child) !== 'find') {
@@ -168,10 +169,17 @@ function scanImports(tree: RootNode): ImportScan {
         if (name !== undefined) {
           names.push(name)
           spans.push(spanOfWhole(child))
+
+          // `find x, name y`: the comma leaves `name y` a sibling of `x` under the `find`
+          const alias = child.nodes
+            .slice(2)
+            .find((n): n is GroupNode => n.kind === 'group' && headName(n) === 'name')
+          const aliasName = alias?.nodes[1]?.kind === 'group' ? headName(alias.nodes[1]) : undefined
+          aliases.push(aliasName)
         }
       }
 
-      finds.push({ path, bear: keyword === 'bear', names, spans })
+      finds.push({ path, bear: keyword === 'bear', names, spans, aliases })
     }
   }
 

@@ -43,15 +43,20 @@ overrides:
   # GHSA-5jgf-p345-68v8 and three siblings, SSRF and host confusion.
   # Nothing in the tree pulls fast-uri today so this floor is inert, but
   # ^3.1.4 admitted the vulnerable 3.1.4 and 3.1.5 the moment something
-  # did. The 3.x fix is 3.1.6.
-  fast-uri: ^3.1.6
+  # did. The 3.x fix was 3.1.6, raised to 3.1.8 for GHSA-hrr3-gc8f-f4qj
+  # (host case normalization through percent-encoded octets).
+  fast-uri: ^3.1.8
   linkify-it: ^5.0.2
   # GHSA-crvj-82cr-hjcx, GHSA-g6gw-c38x-mqfc, GHSA-gqvv-2mrq-wpjv: the
   # query parser reading past the URL fragment, unbounded dot-notation
   # nesting in parseBody(), and toSSG() still escaping its output
-  # directory. All three are fixed in 4.13.5.
-  hono: ^4.13.5
-  brace-expansion@1: ^1.1.18
-  brace-expansion@2: ^2.1.4
-  brace-expansion@3: ^5.0.7
-  brace-expansion@4: ^5.0.7
+  # directory. All three are fixed in 4.13.5. Raised to 4.13.7 for
+  # GHSA-hxh3-vqpv-xpqv, hono/jsx rendering plain strings unescaped.
+  hono: ^4.13.7
+  # GHSA-6j4f-fj2g-mc7p, GHSA-q2hr-2g5m-vwhr, GHSA-qhr7-859c-m2p7: three
+  # DoS advisories patched on every major line on 2026-09-14. The
+  # lockfile held 1.1.18 and 2.1.4, both inside the old floors.
+  brace-expansion@1: ^1.1.21
+  brace-expansion@2: ^2.1.7
+  brace-expansion@3: ^5.0.12
+  brace-expansion@4: ^5.0.12

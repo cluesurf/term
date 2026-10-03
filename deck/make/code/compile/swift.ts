@@ -33,6 +33,7 @@ import {
   gatedTasks,
   listFacts,
   ownedLocals,
+  namesIn,
 } from '@term/make/code/compile/backend'
 import type { Lend } from '@term/make/code/compile/backend'
 import {
@@ -2399,10 +2400,43 @@ export function emitSwift(
           const locals = new Map(
             armLocals(fields, b.binds ?? []).map(({ field, local }) => [field, local]),
           )
+          // a field the arm never reads binds as `_` (swiftc: "immutable value was never used"), and an arm that reads
+          // none is the bare case. A field is read by its local name, or as `subject/field`, which resolves to it
+          const named = namesIn(b.body)
+          const throughSubject = new Set<string>()
+          const collect = (value: unknown): void => {
+            if (typeof value !== 'object' || value === null) {
+              return
+            }
+
+            if (Array.isArray(value)) {
+              value.forEach(collect)
+
+              return
+            }
+
+            const n = value as { form?: string; name?: string; target?: { form?: string; name?: string } }
+
+            if (n.form === 'member' && n.target?.form === 'variable' && n.target.name === subjectVar && typeof n.name === 'string') {
+              throughSubject.add(n.name)
+            }
+
+            for (const [key, child] of Object.entries(n)) {
+              if (key !== 'type' && key !== 'span') {
+                collect(child)
+              }
+            }
+          }
+
+          if (subjectVar) {
+            collect(b.body)
+          }
+
+          const read = (field: string): boolean => named.has(locals.get(field) ?? field) || throughSubject.has(field)
           const pattern =
-            fields.length > 0
+            fields.length > 0 && fields.some(read)
               ? `case let .${camel(b.label)}(${fields
-                  .map(field => camel(locals.get(field) ?? field))
+                  .map(field => (read(field) ? camel(locals.get(field) ?? field) : '_'))
                   .join(', ')}):`
               : `case .${camel(b.label)}:`
 

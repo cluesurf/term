@@ -1,3 +1,6 @@
+load @term/base/code/list
+  find list
+
 # record parameters a task only reads, which Rust takes `&R` (backend.ts, `borrowedRecords`): matched, with its
 # record fields passed on borrowed, its number and text fields read out of the reference, and one task that keeps
 # its record by value because it hands the record back
@@ -6,7 +9,7 @@ form shape
   case box
     link width, like number
     link label, like text
-  case pair
+  case duo
     link left, like shape
     link right, like shape
 
@@ -22,7 +25,7 @@ task area
         call multiply
           read width
           read width
-    case pair
+    case duo
       send back
         call add
           call area
@@ -39,7 +42,7 @@ task labels
       send back, text <.>
     case box
       send back, read label
-    case pair
+    case duo
       host l
         call labels
           read left
@@ -47,6 +50,25 @@ task labels
         call labels
           read right
       send back, text <{{l}}{{r}}>
+
+# its walk binds an `s` of its own, which shadows the parameter: by name the two are one, so the parameter is not
+# borrowed (backend.ts, `rebinds`), and the walk's `s` is passed by value
+task area-of-each
+  take s, like shape
+  take more, like list, like shape
+  like number
+  save sum
+    call area
+      read s
+  walk list, read more
+    hook next
+      take site, name s
+      save sum
+        call add
+          read sum
+          call area
+            read s
+  send back, read sum
 
 form counter
   link count, like number
@@ -84,13 +106,13 @@ task compute
       bind width, code 2
       bind label, text <s>
   host big
-    make pair
+    make duo
       bind left
         make box
           bind width, code 3
           bind label, text <b>
       bind right
-        make pair
+        make duo
           bind left
             make dot
           bind right
@@ -122,4 +144,16 @@ task compute
   host b
     call bumped
       read c
-  send back, text <small={{a-small}} big={{a-big}} labels={{l-big}} widest={{a-w}} again={{again}} bumped={{b}}>
+  save shapes
+    make list
+  call push
+    bind list, read shapes
+    bind item, read small
+  call push
+    bind list, read shapes
+    bind item, read big
+  host each
+    call area-of-each
+      read small
+      read shapes
+  send back, text <small={{a-small}} big={{a-big}} labels={{l-big}} widest={{a-w}} again={{again}} bumped={{b}} each={{each}}>

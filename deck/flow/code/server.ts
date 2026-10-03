@@ -63,7 +63,10 @@ import type {
   SymbolKind,
 } from '@term/flow/code/symbols'
 import type { Resolver, Source } from '@term/make/code/compile/load'
-import { importPathsOf, makeParseMemo } from '@term/make/code/compile/load'
+import { declarationsOf, mentionAt, pathMentions, wordAt } from '@term/flow/code/paths'
+
+// a path on disk, as opposed to an in-memory name a test resolver hands back
+const isFilePath = (file: string): boolean => /^(?:[\\/]|[A-Za-z]:[\\/])/.test(file)
 import type { Program, Statement } from '@term/make/code/compile/node'
 import { showType } from '@term/make/code/compile/node'
 import {
@@ -822,7 +825,8 @@ export class LanguageServer {
           lean: readers.leanOf?.(file) ?? false,
         }
       },
-      resolverOf: root => this.options.resolve ?? projectResolver(root),
+      // through `resolveModule`, the one place a path becomes a file, from any file of the package
+      resolverOf: () => (path, from) => this.resolveModule(this.byFile.get(from) ?? this.fileDoc(from), path),
     })
   }
 
@@ -925,7 +929,9 @@ export class LanguageServer {
     let inner = doc.text
     let map: Mapping = IDENTITY
 
-    if (role !== 'view' && /^\s*test /m.test(doc.text)) {
+    // only a file read as code is rewritten: a view document, a data file and a mill definition each have their
+    // own reader, and a `test` head in one of those is that dialect's business
+    if (role !== 'view' && role !== 'host' && role !== 'mill' && /^\s*test /m.test(doc.text)) {
       const rewritten = preprocessTests(doc.text)
       inner = rewritten.text
       map = makeMapping(doc.text, inner, rewritten.origin)
@@ -1303,6 +1309,7 @@ export class LanguageServer {
               referencesProvider: true,
               renameProvider: { prepareProvider: true },
               documentSymbolProvider: true,
+              documentLinkProvider: { resolveProvider: false },
               workspaceSymbolProvider: true,
               documentHighlightProvider: true,
               foldingRangeProvider: true,
@@ -1476,17 +1483,57 @@ export class LanguageServer {
         const position = positionOf(params)
         const view = doc?.view
 
-        if (!doc || !view) {
+        if (!doc) {
           return [respond(message, null)]
         }
 
-        const named = symbolAt(view.index, view.map.inner(position))
+        // a path or a `find` first: their words are not references, and a path's last segment is often a word
+        // something else declares
+        const textual = this.textualDefinition(doc, position)
 
-        if (!named) {
-          return [respond(message, null)]
+        if (textual !== undefined) {
+          return [respond(message, textual)]
         }
 
-        return [respond(message, this.locate(doc, view, named) ?? null)]
+        // a name the compiled program refers to, through its scope and its imports
+        const named = view ? symbolAt(view.index, view.map.inner(position), true) : undefined
+        const located = view && named ? this.locate(doc, view, named) : undefined
+
+        // else the word itself: a type after `like`, a component, a rule in a mill definition, a name in a file
+        // that did not compile. Last, the reference whose expression holds the cursor (on `call` of `call f`).
+        const loose = view && !located ? symbolAt(view.index, view.map.inner(position)) : undefined
+
+        return [
+          respond(
+            message,
+            located ??
+              this.wordDefinition(doc, position) ??
+              (view && loose ? this.locate(doc, view, loose) : undefined) ??
+              null,
+          ),
+        ]
+      }
+
+      case 'textDocument/documentLink': {
+        // every path a document names, underlined, each opening the module the compiler would read. A path that
+        // resolves to nothing has no link.
+        const doc = this.documents.get(uriOf(params))
+
+        if (!doc) {
+          return [respond(message, [])]
+        }
+
+        const links: { range: LspRange; target: string; tooltip: string }[] = []
+
+        for (const mention of pathMentions(doc.file, doc.text)) {
+          const source = this.resolveModule(doc, mention.path)
+
+          if (source && isFilePath(source.file)) {
+            links.push({ range: toRange(mention.span), target: uriFor(source.file), tooltip: source.file })
+          }
+        }
+
+        return [respond(message, links)]
       }
 
       case 'textDocument/references': {
@@ -1980,36 +2027,128 @@ export class LanguageServer {
       : undefined
   }
 
-  // the module a document loads that defines a name at top level, with the name's position in it
-  private definer(
-    doc: Doc,
-    name: string,
-  ): { file: string; line: number; column: number } | undefined {
+  // a file that is not open, as the document `resolveModule` asks from
+  private fileDoc(file: string): Doc {
+    return {
+      uri: uriFor(file),
+      file,
+      path: isFilePath(file) ? file : undefined,
+      text: '',
+      version: 0,
+      revision: 0,
+      analyzed: -1,
+      stale: false,
+      closure: new Set(),
+      direct: new Map(),
+      resultId: 0,
+    }
+  }
+
+  // THE ONE PLACE A PATH BECOMES A FILE, for every editor feature: definition, document links, `find` targets,
+  // a manifest's `bear` and `link`. It asks the resolver the compiler is given for this document (the package's
+  // `projectResolver`, `{platform}` filled for node, with open buffers in place of their files), so a path the
+  // editor opens is the module the build reads. Nothing resolves anywhere else in the server: when the rules for a
+  // package path change (note/term/plan/manifest-mark-and-code-root.md), they change in the resolver and here.
+  // Undefined when the path names nothing, never a guess.
+  private resolveModule(doc: Doc, path: string): Source | undefined {
     const resolve = this.resolverFor({ ...doc, closure: new Set(), direct: new Map() }, this.readersFor(doc.file).root)
 
     if (!resolve) {
       return undefined
     }
 
+    const ask = (target: string): Source | undefined => {
+      try {
+        return resolve(target, doc.file)
+      } catch {
+        return undefined
+      }
+    }
+
+    // a bare package path (a manifest's `link @term/base`) names no module the resolver reads, which takes
+    // `@scope/name/<sub>` only. Its entry is its code root, the folder a manifest's `bear ./code` names. This is
+    // the rule note/term/plan/manifest-mark-and-code-root.md is about to settle, and it lives here and nowhere else.
+    return ask(path) ?? (/^@[^/]+\/[^/]+$/.test(path) ? ask(`${path}/code`) : undefined)
+  }
+
+  // the module a document loads that defines a name at top level, with the name's position in it
+  private definer(
+    doc: Doc,
+    name: string,
+  ): { file: string; line: number; column: number } | undefined {
     const written = writtenName(name)
 
-    for (const importPath of importPathsOf({ file: doc.file, text: doc.text }, makeParseMemo())) {
-      let source: Source | undefined
-
-      try {
-        source = resolve(importPath, doc.file)
-      } catch {
-        source = undefined
+    for (const mention of pathMentions(doc.file, doc.text)) {
+      if (mention.head === 'link') {
+        continue
       }
 
-      const def = source ? scanDefs(source.text).find(d => d.name === written) : undefined
+      const source = this.resolveModule(doc, mention.path)
+      const def = source ? declarationsOf(source.file, source.text).find(d => d.name === written) : undefined
 
       if (source && def) {
-        return { file: source.file, line: def.line, column: def.column }
+        return { file: source.file, line: def.span.start.line, column: def.span.start.column }
       }
     }
 
     return undefined
+  }
+
+  // Cmd+click on what is not a reference in the compiled program: a path, a `find`, a type after `like`, a rule in
+  // a mill definition. Undefined means this position names no file and no declaration; `null` means it names a
+  // path or a `find` that resolves to nothing, which answers null rather than falling through to the word under it.
+  private textualDefinition(
+    doc: Doc,
+    position: LspPosition,
+  ): { uri: string; range: LspRange } | null | undefined {
+    const mentions = pathMentions(doc.file, doc.text)
+    const at = mentionAt(mentions, position.line, position.character)
+    const top = { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } }
+
+    if (at && at.find === undefined) {
+      const source = this.resolveModule(doc, at.mention.path)
+
+      return source && isFilePath(source.file) ? { uri: uriFor(source.file), range: top } : null
+    }
+
+    if (at?.find) {
+      const source = this.resolveModule(doc, at.mention.path)
+      const def = source ? declarationsOf(source.file, source.text).find(d => d.name === at.find) : undefined
+
+      return source && def && isFilePath(source.file)
+        ? { uri: uriFor(source.file), range: toRange(def.span) }
+        : null
+    }
+
+    return undefined
+  }
+
+  // the word under the cursor, declared in this file or in a module it loads
+  private wordDefinition(doc: Doc, position: LspPosition): { uri: string; range: LspRange } | undefined {
+    const word = wordAt(doc.text, position.line, position.character)
+
+    // a keyword is the language's, not a declaration's, even where a module happens to declare the same word
+    if (!word || KEYWORDS.includes(word) || ['back', 'true', 'false', 'void'].includes(word)) {
+      return undefined
+    }
+
+    const own = declarationsOf(doc.file, doc.text).find(d => d.name === word)
+
+    if (own) {
+      return { uri: doc.uri, range: toRange(own.span) }
+    }
+
+    const found = this.definer(doc, word)
+
+    return found && isFilePath(found.file)
+      ? {
+          uri: uriFor(found.file),
+          range: {
+            start: { line: found.line, character: found.column },
+            end: { line: found.line, character: found.column + word.length },
+          },
+        }
+      : undefined
   }
 
   // the packages a workspace question searches: every open document's
@@ -2306,17 +2445,7 @@ export class LanguageServer {
     // export completion: `find <partial>` inside a `load` block offers that module's top-level definitions
     if (/^\s*find\s+[A-Za-z0-9-]*$/.test(line)) {
       const importPath = enclosingLoad(doc.text, position.line)
-      const resolve = importPath
-        ? this.resolverFor({ ...doc, closure: new Set(), direct: new Map() }, this.readersFor(doc.file).root)
-        : undefined
-
-      let source: Source | undefined
-
-      try {
-        source = importPath && resolve ? resolve(importPath, doc.file) : undefined
-      } catch {
-        source = undefined
-      }
+      const source = importPath ? this.resolveModule(doc, importPath) : undefined
 
       const items = (source ? scanDefs(source.text) : []).map(d => ({
         label: d.name,

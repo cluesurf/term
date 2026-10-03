@@ -28,7 +28,7 @@ export type Analysis = {
   tree: RootNode
   // what the file is: a program, a data file (the host dialect), or a view-role document. The last two carry no
   // lint findings of the code role's kind, and a document's canonical layout is the ordinary tree formatter's.
-  kind: 'code' | 'data' | 'view'
+  kind: 'code' | 'data' | 'view' | 'mill'
   program: Program | null
   diagnostics: Diagnostic[]
   // render the canonical formatting (from the tree, so it works even with type errors)
@@ -121,6 +121,22 @@ export function analyze(
       // the gate already ran, so there is nothing left to check separately. A document has no type checker of its
       // own: what it may say is decided by the grammar, the catalog and the caps, all of them inside `checkView`.
       check: () => (read.ok ? [] : read.diagnostics),
+    }
+  }
+
+  // a mill DEFINITION (the `mill` role): a grammar, not a program. The code lint rules are about programs and say
+  // nothing true about a `mine` rule, so there are none, and its layout is the ordinary tree formatter's. What a
+  // mill definition owes is checked by compile/mill-check.ts, which needs a resolver this entry does not have.
+  if (options?.role === 'mill') {
+    return {
+      tree,
+      kind: 'mill',
+      program: null,
+      diagnostics,
+      format: () => (diagnostics.length ? source.text : formatTree(tree)),
+      lint: () => [],
+      fix: () => source.text,
+      check: () => diagnostics,
     }
   }
 

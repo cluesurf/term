@@ -1806,7 +1806,8 @@ enum nativeView {
             #if canImport(AppKit)
             let app = NSApplication.shared
             if app.delegate == nil {
-                app.setActivationPolicy(.regular)
+                // a test window (TERM_WINDOW_AWAY) is an accessory: no Dock icon, and it never becomes the active app
+                app.setActivationPolicy(windowAway ? .accessory : .regular)
                 app.delegate = delegate
             }
             let window = NSWindow(
@@ -1826,7 +1827,11 @@ enum nativeView {
                 root.view.trailingAnchor.constraint(lessThanOrEqualTo: content.trailingAnchor, constant: -24),
             ])
             window.contentView = content
-            window.center()
+            if windowAway {
+                window.setFrameOrigin(awayOrigin())
+            } else {
+                window.center()
+            }
             self.window = window
             #endif
             #if canImport(UIKit)
@@ -1849,15 +1854,33 @@ enum nativeView {
         }
     }
 
-    // put the window on screen and in front
+    // put the window on screen and in front. A test window (TERM_WINDOW_AWAY) is ordered in without taking the keyboard
+    // or activating the app, so a run never steals focus from whoever is typing
     static func show() {
         onMain {
             #if canImport(AppKit)
-            window?.makeKeyAndOrderFront(nil)
-            NSApplication.shared.activate(ignoringOtherApps: true)
+            if windowAway {
+                window?.orderFrontRegardless()
+            } else {
+                window?.makeKeyAndOrderFront(nil)
+                NSApplication.shared.activate(ignoringOtherApps: true)
+            }
             #endif
         }
     }
+
+    #if canImport(AppKit)
+    // TERM_WINDOW_AWAY: the test harnesses set it, so a test app's window opens past the right edge of every screen and
+    // never takes focus. A window there is still laid out, drawn, clicked and snapshotted. Unset, nothing changes
+    static let windowAway = ProcessInfo.processInfo.environment["TERM_WINDOW_AWAY"] != nil
+
+    // just past the right edge of the rightmost screen, at its bottom
+    static func awayOrigin() -> NSPoint {
+        let right = NSScreen.screens.map { $0.frame.maxX }.max() ?? 0
+        let bottom = NSScreen.screens.map { $0.frame.minY }.min() ?? 0
+        return NSPoint(x: right + 200, y: bottom)
+    }
+    #endif
 
     // hand the process to the toolkit. Returns only when the app quits
     static func run() {

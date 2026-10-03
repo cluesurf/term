@@ -158,6 +158,15 @@ type Bridge = {
   selfType?: Type
   // the names already bound in the body being built, so a second `save` of one is an assignment
   declared: Set<string>
+  // every OTHER local name in scope that `declared` does not carry, because adding one there would turn a later
+  // `save` of it into an assignment: a closure's parameters, a walk's item and index, a `fork case` arm's
+  // `link` names, a handler's caught exception, a `host` constant in a body. Read with `declared` by `inScope`,
+  // and only to decide what a bare value word (`term`, `text`, `code`) means.
+  bound: Set<string>
+  // inside a task's or a closure's body, as opposed to the top level of the file
+  inBody?: boolean
+  // the file defines a task named `host` or imports one, so a `host` statement in a body may mean the call
+  hostTask?: boolean
   // the owning form's type parameters: every method of the form carries them as leading generics
   ownerParams?: string[]
   // `find X, name Y`: Y is a local synonym for X in this file, rewritten to X across the built program
@@ -215,6 +224,46 @@ function expressionFromNode(
   }
 
   return undefined
+}
+
+// Read nodes as STATEMENTS, through the grammar's own `flow` rule, one line at a time. For a body the grammar
+// matched as something else and so never descended into as statements: a bare `hold` under a `walk test`, whose
+// lines the walk rule captured as a value or a proof claim (`loopOf`).
+function flowFromNodes(bridge: Bridge, nodes: Node[]): Minted[] {
+  const out: Minted[] = []
+
+  for (const node of nodes) {
+    const mined =
+      node.kind === 'group'
+        ? runMine(bridge.grammar.mine, 'flow', { kind: 'root', nodes: [node] })
+        : { ok: false as const }
+
+    if (!mined.ok) {
+      bridge.diagnostics.push(
+        diagnose('unexpected-node', {
+          file: bridge.file,
+          span: spanOfWhole(node),
+          message: `the code grammar does not read this line as a statement, at \`${outlineOf(node)}\``,
+        }),
+      )
+      continue
+    }
+
+    for (const captures of mined.match.values()) {
+      for (const capture of captures) {
+        if (capture.kind !== 'match') {
+          out.push(capture as Minted)
+          continue
+        }
+
+        out.push(
+          ...runMint(bridge.grammar.mint, capture.rule, capture.match, capture.node),
+        )
+      }
+    }
+  }
+
+  return out
 }
 
 // A construct the reader REFUSES, with the reason. Distinct from `unhandled`, which says the bridge has not
@@ -292,10 +341,24 @@ function commaTrap(
 
 // An identifier with its `{...}` TEMPLATE PARAMETERS dropped. A `{name}` in a name is filled when a `tree`
 // expands, and one that survived expansion was never in a template, so the reader takes the name without it:
-// `convert-to-{name}-space` is `convert-to--space`. Only a name; a `read x/{key}` member is a different thing
-// and is built from the token's own interpolation part.
+// `convert-to-{name}-space` is `convert-to--space`.
+//
+// A WHOLE PATH SEGMENT in braces is not a template parameter, it is a member read BY VALUE, `names/{at}`, and it
+// is kept for `readPath` to index with. Stripped, a bare `back names/{at}` (the lean spelling of `read
+// names/{at}`) emitted `return names.`, which is not TypeScript (2026-10-02, test/compile/silent-defects.ts).
 function plainName(name: string): string {
-  return name.includes('{') ? name.replace(/\{[^}]*\}/g, '') : name
+  if (!name.includes('{')) {
+    return name
+  }
+
+  return name
+    .split('/')
+    .map((segment, index) =>
+      index > 0 && /^\{[^{}]+\}$/.test(segment)
+        ? segment
+        : segment.replace(/\{[^}]*\}/g, ''),
+    )
+    .join('/')
 }
 
 // A text literal, which is a STRING unless it carries `{{...}}`, and then it is a TEMPLATE: the chunks and the
@@ -638,6 +701,33 @@ function expressionOf(
       break
   }
 
+  // A VALUE WORD STANDING ALONE. `text`, `code` and `term` head a literal, and the grammar takes the head as one
+  // whether or not a literal follows it, so a bare `term` was the empty text and a bare `code` was zero. Where a
+  // parameter or a local of that name is in scope, that was the wrong reading with no message: `back term`, with
+  // `term` a parameter, compiled to `return ""` (2026-10-02, test/compile/silent-defects.ts). So the local wins,
+  // as a bare word means a variable everywhere else, and the same goes for every other value word the grammar
+  // reads as a construct with nothing after it (`read`, `loan`, `make`, `task`, `meet`). With no such local, in a
+  // body, the three literal words are refused rather than guessed at, naming both spellings.
+  const lone = loneValueWord(value)
+
+  if (lone !== undefined) {
+    if (inScope(bridge, lone)) {
+      return readPath(lone, span)
+    }
+
+    const literal = LITERAL_WORDS[lone]
+
+    // only in a body, where the locals are known. At the top level of a file there are none to mistake, and a bare
+    // word there keeps the reading it always had.
+    if (literal !== undefined && bridge.inBody) {
+      return refuse(
+        bridge,
+        value,
+        `a bare \`${lone}\` is not a value: no local named \`${lone}\` is in scope here. Write \`read ${lone}\` for a variable named \`${lone}\`, or ${literal}`,
+      )
+    }
+  }
+
   switch (value.form) {
     case 'seed-loan':
     case 'seed-read':
@@ -923,27 +1013,30 @@ function expressionOf(
         )
       }
 
-      // the `bind` SITE, which this rule gained with the other call modifiers. Outside lean a `bind` drops its
-      // name, exactly as `seed-bind-arg` always did here, so only the value is kept.
+      // the `bind` SITE, which this rule gained with the other call modifiers. A `bind` KEEPS ITS NAME here, as it
+      // does under `call`, so the checker places the value by the callee's declared parameters. Until 2026-10-02 it
+      // dropped the name outside lean (parity with the old reader), and `gap / bind height, 3 / bind width, 4`
+      // passed 3 as the width and 4 as the height: -1 where `call gap` gave 1, with no message.
       const loose = bindArguments(bridge, value, plainOrder)
 
       for (const seed of at(value, 'seed')) {
+        const index = seed.node
+          ? (plainOrder.get(seed.node) ?? loose.length)
+          : loose.length
+        const named =
+          seed.kind === 'form' && seed.form === 'seed-bind-arg'
+            ? bindArgLabel(seed)
+            : undefined
         const built = expressionOf(bridge, seed)
 
         if (built) {
-          loose.push({
-            at: seed.node
-              ? (plainOrder.get(seed.node) ?? loose.length)
-              : loose.length,
-            expr: built,
-            name: undefined,
-          })
+          loose.push({ at: index, expr: built, name: named })
         }
       }
 
-      const args = loose
-        .sort((a, b) => a.at - b.at)
-        .map(entry => entry.expr)
+      const sorted = loose.sort((a, b) => a.at - b.at)
+      const args = sorted.map(entry => entry.expr)
+      const looseNames = sorted.map(entry => entry.name)
 
       // the arithmetic, comparison and boolean builtins fold to an operator here as they do under `call`:
       // `and a, b` is `a && b`, not a call to something named `and`. Probed 2026-09-12 that it was not
@@ -959,6 +1052,7 @@ function expressionOf(
                 callee: readPath(plainName(callee), span),
                 args,
                 span,
+                ...(looseNames.some(Boolean) ? { names: looseNames } : {}),
                 ...(propagate ? { propagate: true } : {}),
                 ...(background ? { background: true } : {}),
               } as Expression)),
@@ -1092,11 +1186,16 @@ function closureOf(bridge: Bridge, value: Form): Expression | undefined {
     }
   })
   const result = typeOf(bridge, firstAt(value, 'like'))
+  // the parameters are in scope in the body, for `inScope` only: the body's `save`s still declare, as they did
+  const outer = bridge.bound
+  bridge.bound = new Set([...outer, ...params.map(p => p.name)])
+  const body = flowOf(bridge, bodySteps(value))
+  bridge.bound = outer
 
   return {
     form: 'closure',
     params,
-    body: flowOf(bridge, at(value, 'flow')),
+    body,
     ...(result ? { result } : {}),
     // a closure is async the same two ways a task is: `note async`, or a `wait true` on the definition
     ...(marked(value, 'async') || waitsTrue(value) ? { async: true } : {}),
@@ -1311,6 +1410,92 @@ function hasEmptyParens(node: Node): boolean {
   return open?.kind === 'open-paren' && open.next?.kind === 'close-paren'
 }
 
+// The forms a value word builds when it stands alone, by the word that heads each. A bare `meet` is the empty
+// conjunction, a bare `make` a record with no name, a bare `task` a closure with no body, a bare `read` the empty
+// path: each is a construct with nothing in it, and a local of that name is what a person writing the word meant.
+const VALUE_WORD_FORMS: Record<string, string> = {
+  'seed-text': 'text',
+  'seed-code': 'code',
+  'seed-term': 'term',
+  'seed-read': 'read',
+  'seed-loan': 'loan',
+  read: 'read',
+  make: 'make',
+  task: 'task',
+  'seed-meet': 'meet',
+}
+
+// The three that head a literal, and the literal to write instead.
+const LITERAL_WORDS: Record<string, string> = {
+  text: '`<>` for the empty text',
+  code: '`0` for zero',
+  term: '`term <word>` for a word as a value',
+}
+
+// The word, when this construct is its head word written alone: no literal, no name, no child.
+function loneValueWord(value: Form): string | undefined {
+  const word = VALUE_WORD_FORMS[value.form]
+  const node = value.node
+  const alone =
+    node?.kind === 'name' ||
+    (node?.kind === 'group' &&
+      node.nodes.length === 1 &&
+      node.nodes[0]?.kind === 'name')
+
+  return word !== undefined && alone && wordOf(node) === word && !hasEmptyParens(node!)
+    ? word
+    : undefined
+}
+
+// Is this word written with a parenthesis straight after it, `host(`. Read off the token stream, as
+// `hasEmptyParens` reads `f()`.
+function opensParen(node: Node | undefined): boolean {
+  const last = node?.kind === 'name' ? node.parts[node.parts.length - 1] : undefined
+
+  if (last?.kind !== 'chunk') {
+    return false
+  }
+
+  return (last.token as { next?: { kind: string } }).next?.kind === 'open-paren'
+}
+
+// Does the file define a task named `host`, or import one: `task host` at the top level, or `find host` (or a
+// `find x, name host`) under a `load`. Read off the parse tree before anything mints, because a `host` statement
+// in a body can sit above the definition it may be calling.
+function namesHostTask(tree: RootNode): boolean {
+  const named = (node: Node | undefined): boolean => wordOf(node) === 'host'
+
+  return tree.nodes.some(group => {
+    if (group.kind !== 'group') {
+      return false
+    }
+
+    const head = headWord(group)
+
+    if (head === 'task') {
+      return named(group.nodes[1])
+    }
+
+    if (head !== 'load') {
+      return false
+    }
+
+    return group.nodes.some(child => {
+      if (child.kind !== 'group' || headWord(child) !== 'find') {
+        return false
+      }
+
+      // `find x, name y` imports x under the local name y, so only the alias counts
+      const alias = child.nodes.find(
+        (part): part is GroupNode =>
+          part.kind === 'group' && headWord(part) === 'name',
+      )
+
+      return alias ? named(alias.nodes[1]) : named(child.nodes[1])
+    })
+  })
+}
+
 // ---- the lean surface ----
 
 // Does this construct take lean labels in this file: the file's role is marked lean AND the grammar rule that
@@ -1335,12 +1520,11 @@ type Written = { at: number; expr: Expression; name: string | undefined; lean?: 
 // does: `arrangeArguments` turns a positional variable that names an unfilled boolean parameter into that label
 // set to true. Position first, then the name, with the schema where the schema is.
 //
-// `seed-bind-arg` (`bind x, v` in an open call) drops its name today and keeps dropping it outside lean. Under
-// lean the name is kept, which is what makes `bind` the long-form escape inside a lean call.
 // The explicit `bind name, value` site, as a named argument. `callOf` has read it forever; `seed-call-open`
 // gained the site with the other call modifiers (lean-0030) and needs the same reading, or the argument is
-// captured there and never built. Under lean the name is kept, which is what makes `bind` the long-form
-// escape inside a lean call; outside it the name is dropped, as it always was.
+// captured there and never built. The name is KEPT in every file, lean or not, exactly as under `call`: a bare
+// head over `bind` lines is the same call as `call` over them. Outside lean it used to be dropped, so the values
+// went in written order whatever their names said (2026-10-02, test/compile/silent-defects.ts).
 function bindArguments(
   bridge: Bridge,
   value: Form,
@@ -1355,14 +1539,19 @@ function bindArguments(
       written.push({
         at: bind.node ? (order.get(bind.node) ?? written.length) : written.length,
         expr: built,
-        name: isLean(bridge, 'seed-call-open')
-          ? wordAt(bind, 'name')
-          : undefined,
+        name: wordAt(bind, 'name'),
       })
     }
   }
 
   return written
+}
+
+// The label of a `seed-bind-arg`. `mine seed-bind-arg` matches the name as a bare node, so it is read off the CST.
+function bindArgLabel(seed: Form): string | undefined {
+  return seed.node?.kind === 'group' && seed.node.nodes[1]?.kind === 'group'
+    ? wordOf(seed.node.nodes[1].nodes[0])
+    : undefined
 }
 
 function leanArguments(
@@ -1410,10 +1599,7 @@ function leanArguments(
 
     if (seed.kind === 'form' && seed.form === 'seed-bind-arg') {
       // the name is the first child; `mine seed-bind-arg` matches it as a bare node, so read it off the CST
-      const label =
-        seed.node?.kind === 'group' && seed.node.nodes[1]?.kind === 'group'
-          ? wordOf(seed.node.nodes[1].nodes[0])
-          : undefined
+      const label = bindArgLabel(seed)
       const built = expressionOf(bridge, firstAt(seed, 'seed'))
 
       if (built) {
@@ -1435,6 +1621,24 @@ function leanArguments(
 // A `hook` under a call is not a callback: the bridge reads none, so the whole thing used to be dropped with
 // no message. An anonymous `task` IS the callback spelling and keeps its parameters. lean-0015.
 function refuseHooks(bridge: Bridge, value: Form): void {
+  // A `wait` under a call is the await MARKER, `wait true` or `wait false`. With anything else after it (`wait
+  // f(x)`, an awaited call written as the next line of a stacked call) the call read it as a marker that is
+  // neither, and the awaited call was dropped with no message, the way it was under a task.
+  for (const wait of formsAt(value, 'wait')) {
+    const word = wordAt(wait, 'seed')
+
+    if (word !== 'true' && word !== 'false') {
+      bridge.diagnostics.push(
+        diagnose('unexpected-node', {
+          file: bridge.file,
+          span: spanOf(wait),
+          message: 'a `wait` under a call marks the call itself and takes `true` or `false`, so this would be dropped',
+          hint: 'await the other call first, `save x, wait f(y)`, and pass `x`',
+        }),
+      )
+    }
+  }
+
   for (const hook of formsAt(value, 'hook')) {
     bridge.diagnostics.push(
       diagnose('unexpected-node', {
@@ -1486,11 +1690,7 @@ function callOf(bridge: Bridge, value: Form): Expression | undefined {
     value.node.nodes.forEach((child, index) => order.set(child, index))
   }
 
-  const written: {
-    at: number
-    expr: Expression
-    name: string | undefined
-  }[] = []
+  const written: Written[] = []
 
   for (const bind of formsAt(value, 'bind')) {
     const built = expressionOf(bridge, firstAt(bind, 'seed'))
@@ -1719,7 +1919,9 @@ function flowOf(bridge: Bridge, values: Minted[]): Statement[] {
           ? {
               catch: {
                 name: wordAt(bound, 'name') ?? '',
-                body: scopedFlow(bridge, at(handler, 'flow')),
+                body: scopedFlow(bridge, at(handler, 'flow'), [
+                  wordAt(bound, 'name') ?? '',
+                ]),
                 span: spanOf(handler),
               },
             }
@@ -1748,13 +1950,26 @@ function flowOf(bridge: Bridge, values: Minted[]): Statement[] {
 
 // a nested body is its own scope: a `save x` in one arm of a fork must not turn the `save x` in the other arm
 // into an assignment to a name that was never bound on that path
-function scopedFlow(bridge: Bridge, values: Minted[]): Statement[] {
+function scopedFlow(
+  bridge: Bridge,
+  values: Minted[],
+  // names the body binds on entry: a walk's item, a case arm's `link` names, a handler's caught exception
+  binds: readonly string[] = [],
+): Statement[] {
   const enclosing = bridge.declared
+  const outer = bridge.bound
   bridge.declared = new Set(enclosing)
+  bridge.bound = new Set([...outer, ...binds])
   const body = flowOf(bridge, values)
   bridge.declared = enclosing
+  bridge.bound = outer
 
   return body
+}
+
+// Is this name a local in scope here: a parameter, a `save`, or any other binder the bridge has passed.
+function inScope(bridge: Bridge, name: string): boolean {
+  return bridge.declared.has(name) || bridge.bound.has(name)
 }
 
 function statementOf(
@@ -1857,6 +2072,28 @@ function statementOf(
     case 'seed-term':
     case 'seed-call-open':
     case 'seed-meet': {
+      const built = expressionOf(bridge, value)
+
+      return built ? { form: 'expression', expr: built, span } : undefined
+    }
+
+    // `wait f(x)` as a STATEMENT. Under a task it arrives as the task's own `wait` site (`bodySteps` puts it back
+    // in written order), and anywhere else as the value rule's prefix. Both await the call and keep it.
+    case 'wait': {
+      const awaited = expressionOf(bridge, firstAt(value, 'seed'))
+
+      if (!awaited) {
+        return refuse(bridge, value, '`wait` here has nothing to await: write `wait f(x)` with the call after it')
+      }
+
+      return {
+        form: 'expression',
+        expr: awaited.form === 'await' ? awaited : { form: 'await', expr: awaited, span },
+        span,
+      }
+    }
+
+    case 'seed-wait': {
       const built = expressionOf(bridge, value)
 
       return built ? { form: 'expression', expr: built, span } : undefined
@@ -2103,6 +2340,11 @@ function haltOf(bridge: Bridge, value: Form): Statement | undefined {
 // makes the mode optional: `walk one/stem` is `walk list, read one/stem`.
 const WALK_MODES = new Set(['list', 'size', 'test'])
 
+// The heads a `walk test` lets stand directly under it, besides its body: the arms and a contract, and `bind` /
+// `take`, which the walk rule matches for its other two modes. A `walk test` still ignores those two, as it did;
+// refusing them is a separate decision from this one.
+const WALK_TEST_PARTS = new Set(['hook', 'must', 'down', 'bind', 'take'])
+
 // `walk list, <seq>` iterates; `walk test` loops while a condition holds. Both arrive as one `walk` form
 // distinguished by its mode word, which is the only thing that tells them apart.
 // a contract's lines: every `must <claim>` (an invariant on a walk, a postcondition on a task), every `have <claim>`
@@ -2151,7 +2393,9 @@ function loopOf(
   // a bare `walk items` names a variable, which is what the value fallback would have built anyway
   const named: Expression | undefined =
     written !== undefined && !WALK_MODES.has(written)
-      ? { form: 'variable', name: plainName(written), span }
+      ? written.includes('{')
+        ? readPath(plainName(written), span)
+        : { form: 'variable', name: plainName(written), span }
       : undefined
 
   if (mode === 'list') {
@@ -2167,17 +2411,6 @@ function loopOf(
       : formsAt(value, 'take')
     const binder = takes[0]
     const counter = takes[1]
-    const body = next
-      ? scopedFlow(bridge, at(next, 'flow'))
-      : scopedFlow(bridge, at(value, 'flow'))
-
-    if (!iterable) {
-      return unhandled(bridge, value, 'a walk with no sequence')
-    }
-
-    if (!next && body.length === 0) {
-      return unhandled(bridge, value, 'a walk with no body')
-    }
 
     // `take site, name item` names it in its alias; written directly under the walk, `take one` names itself
     const item =
@@ -2191,6 +2424,18 @@ function loopOf(
         textOf(firstAt(counter, 'alias')) ??
         wordAt(counter, 'name'))
       : undefined
+    const turnBinds = index ? [item, index] : [item]
+    const body = next
+      ? scopedFlow(bridge, at(next, 'flow'), turnBinds)
+      : scopedFlow(bridge, at(value, 'flow'), turnBinds)
+
+    if (!iterable) {
+      return unhandled(bridge, value, 'a walk with no sequence')
+    }
+
+    if (!next && body.length === 0) {
+      return unhandled(bridge, value, 'a walk with no body')
+    }
 
     return {
       form: 'for-each',
@@ -2205,12 +2450,43 @@ function loopOf(
 
   if (mode === 'test') {
     const test = hooks.find(h => wordAt(h, 'name') === 'test')
-    const bodies = hooks.filter(h => {
+    const hooked = hooks.filter(h => {
       const name = wordAt(h, 'name')
 
       return name === 'step' || name === 'hold'
     })
-    const step = bodies[0]
+
+    // A BARE `hold` (or `step`) is the body, as `hold` is under a `fork`. The walk rule has no arm site for one,
+    // so it landed in the walk's sequence or statement site, which a `walk test` never reads: `walk test / hook
+    // test, true / hold / halt` compiled to `while (true) {}` and a contract over the loop "proved" with the body
+    // gone (2026-10-02, test/compile/silent-defects.ts). Read off the parse tree, every line under it through the
+    // grammar's own statement rule. ANY OTHER line directly under the walk is refused: it is in no part of the
+    // loop, and it used to be dropped the same way.
+    const bare: GroupNode[] = []
+
+    if (value.node?.kind === 'group') {
+      for (const child of value.node.nodes.slice(2)) {
+        if (child.kind !== 'group') {
+          continue
+        }
+
+        const head = headWord(child)
+
+        if (head === 'hold' || head === 'step') {
+          bare.push(child)
+        } else if (!WALK_TEST_PARTS.has(head ?? '')) {
+          refuse(
+            bridge,
+            { kind: 'word', value: head ?? '', node: child },
+            `this line is directly under a \`walk test\`, which reads only \`hook test\`, its body under \`hold\`, and \`must\` / \`down\`. Put it in the body, under \`hold\``,
+          )
+        }
+      }
+    }
+
+    const bodyCount = hooked.length + bare.length
+    const step = hooked[0]
+    const bareBody = step ? undefined : bare[0]
 
     // `walk test` with no `hook test` has no condition, and the mill writes `false`, so the loop never runs. That
     // used to compile in silence: `hash-djb2-xor` wrote its condition as `hook step` and its body as `hook hold`,
@@ -2227,13 +2503,13 @@ function loopOf(
       )
     }
 
-    if (bodies.length > 1) {
+    if (bodyCount > 1) {
       bridge.diagnostics.push(
         diagnose('unexpected-node', {
           file: bridge.file,
           span: spanOf(value),
           message:
-            'this `walk test` has two bodies (`hook step` and `hook hold`), and only the first would run. Keep one',
+            'this `walk test` has two bodies (`hook step`, `hook hold` or `hold`), and only the first would run. Keep one',
         }),
       )
     }
@@ -2247,7 +2523,11 @@ function loopOf(
     return {
       form: 'while',
       cond,
-      body: step ? scopedFlow(bridge, at(step, 'flow')) : [],
+      body: step
+        ? scopedFlow(bridge, at(step, 'flow'))
+        : bareBody
+          ? scopedFlow(bridge, flowFromNodes(bridge, bareBody.nodes.slice(1)))
+          : [],
       ...contract,
       span,
     }
@@ -2295,7 +2575,7 @@ function loopOf(
       form: 'while',
       cond: { form: 'binary', op: '<', left: counter, right: bound, span },
       body: [
-        ...scopedFlow(bridge, at(next, 'flow')),
+        ...scopedFlow(bridge, at(next, 'flow'), [item]),
         {
           form: 'assign',
           target: counter,
@@ -2340,17 +2620,16 @@ function matchOf(bridge: Bridge, value: Form): Statement | undefined {
 
   for (const arm of formsAt(value, 'arm')) {
     const label = wordAt(arm, 'name')
-    const body = scopedFlow(bridge, at(arm, 'flow'))
+    // a leading run of `link <name>` lines selects or renames the variant's fields
+    const binds = at(arm, 'link')
+      .map(link => wordAt(link, 'name') ?? textOf(link) ?? '')
+      .filter(Boolean)
+    const body = scopedFlow(bridge, at(arm, 'flow'), binds)
 
     if (label === undefined) {
       otherwise = body
       continue
     }
-
-    // a leading run of `link <name>` lines selects or renames the variant's fields
-    const binds = at(arm, 'link')
-      .map(link => wordAt(link, 'name') ?? textOf(link) ?? '')
-      .filter(Boolean)
 
     cases.push({
       label,
@@ -2369,13 +2648,50 @@ function matchOf(bridge: Bridge, value: Form): Statement | undefined {
 }
 
 // `host x, <value>` is a constant. A value-less `host` with a foreign `name <X>` is an ambient host global.
+//
+// A TASK MAY BE NAMED `host` (the site framework's `host(route, port)` is one), and the statement rule matches the
+// constant first. Read as a constant, `host(route, port)` declared `route` as a copy of `port` and the call was
+// gone: the enclosing task compiled to an empty body with no message (2026-10-02, test/compile/silent-defects.ts).
+// So three readings, in order:
+//   1. `host(` with the parenthesis straight after the word is a CALL, as `f(a, b)` is everywhere else. Nothing
+//      in the tree writes a constant that way.
+//   2. In a body, a constant whose name is already a local cannot be a constant (it would rebind a parameter or a
+//      `save`), so it is refused, naming the call spelling.
+//   3. In a body, in a file that defines or imports a task named `host`, the stacked or comma spelling reads both
+//      ways, so it is refused, naming both spellings.
 function constantOf(bridge: Bridge, value: Form): Statement | undefined {
   const span = spanOf(value)
   const name = wordAt(value, 'name')
 
+  if (value.node?.kind === 'group' && opensParen(value.node.nodes[0])) {
+    const call = expressionFromNode(bridge, value.node, span)
+
+    return call
+      ? { form: 'expression', expr: call, span }
+      : refuse(bridge, value, '`host(...)` is a call to a task named `host`, and its arguments could not be read')
+  }
+
   if (name === undefined) {
     return unhandled(bridge, value, 'a host with no name')
   }
+
+  if (bridge.inBody && inScope(bridge, name)) {
+    return refuse(
+      bridge,
+      value,
+      `\`host ${name}\` declares a constant named \`${name}\`, and \`${name}\` is already bound here. To call a task named \`host\`, write \`host(${name}, ...)\` or \`call host\` over its arguments. To change \`${name}\`, write \`save ${name}\``,
+    )
+  }
+
+  if (bridge.inBody && bridge.hostTask) {
+    return refuse(
+      bridge,
+      value,
+      `this file has a task named \`host\`, so \`host ${name}\` reads both as a constant and as a call. Write \`host(${name}, ...)\` or \`call host\` for the call, or \`save ${name}\` for a local`,
+    )
+  }
+
+  bridge.bound.add(name)
 
   const seed = firstAt(value, 'seed')
   const type = typeOf(bridge, firstAt(value, 'like'))
@@ -2631,10 +2947,14 @@ function functionOf(bridge: Bridge, value: Form): Statement | undefined {
     (freed ? typeOf(bridge, firstAt(freed, 'like')) : undefined)
   // a function body is its own scope: a `save` inside it declares, whatever the enclosing body has bound
   const enclosing = bridge.declared
+  const outer = bridge.bound
+  const enclosingBody = bridge.inBody
   bridge.declared = new Set(params.map(p => p.name))
+  bridge.bound = new Set()
+  bridge.inBody = true
   // `task read-synchronously, name <read-file>` annotates the task with the host name it maps to. The comma
   // leaves it where a body statement would sit, and it is not one: the mill emits an empty body here.
-  const written = at(value, 'flow').filter(
+  const written = bodySteps(value).filter(
     step =>
       !(
         isForm(step) &&
@@ -2673,7 +2993,11 @@ function functionOf(bridge: Bridge, value: Form): Statement | undefined {
 
   const steps = written.slice(at_)
   const body = flowOf(bridge, steps)
+  // the contract is read with the parameters in scope, which is where its claims are stated
+  const contract = contractOf(bridge, value)
   bridge.declared = enclosing
+  bridge.bound = outer
+  bridge.inBody = enclosingBody
 
   const generics = [
     ...(bridge.ownerParams ?? []).map(p => ({ name: p })),
@@ -2701,7 +3025,7 @@ function functionOf(bridge: Bridge, value: Form): Statement | undefined {
     // the bound on what this task may raise, from the leading `halt <form>` lines
     ...(raises.length > 0 ? { raises } : {}),
     // `have` / `must` / `down`: the task's contract, which only the checker reads
-    ...contractOf(bridge, value),
+    ...contract,
     // `wait true` on a DEFINITION marks it async, the same as `note async`. The two are not alternatives in
     // the reader, they are two spellings of one fact, and a task that says only `wait true` is async too.
     ...(marked(value, 'async') || waitsTrue(value) ? { async: true } : {}),
@@ -3058,6 +3382,41 @@ function waitsTrue(value: Form): boolean {
   )
 }
 
+// A task's or a closure's statements in written order, with every `wait <call>` line among them.
+//
+// The `task` rule matches `wait` at its OWN site, for the `wait true` marker on a definition, and that site takes
+// any value. So `wait append(target, line)` written as a statement in a body landed there instead of in the flow,
+// was read as a marker that is not `true`, and the call vanished from the output with no message (2026-10-02,
+// test/compile/silent-defects.ts). A `wait` whose value is not the literal `true` or `false` is an awaited
+// statement, and it goes back where it was written: each one's position among the task's own children is the
+// order, the way `callOf` orders a call's arguments.
+function bodySteps(value: Form): Minted[] {
+  const flow = at(value, 'flow')
+  const awaited = formsAt(value, 'wait').filter(wait => {
+    const word = wordAt(wait, 'seed')
+
+    return word !== 'true' && word !== 'false'
+  })
+
+  if (awaited.length === 0) {
+    return flow
+  }
+
+  const order = new Map<Node, number>()
+
+  if (value.node?.kind === 'group') {
+    value.node.nodes.forEach((child, index) => order.set(child, index))
+  }
+
+  return [...flow, ...awaited]
+    .map((step, index) => ({
+      step,
+      at: step.node ? (order.get(step.node) ?? index) : index,
+    }))
+    .sort((a, b) => a.at - b.at)
+    .map(entry => entry.step)
+}
+
 function headWordOf(value: Minted | undefined): string | undefined {
   return value?.kind === 'form'
     ? (wordAt(value, 'name') ?? wordAt(value, 'path'))
@@ -3267,10 +3626,20 @@ function viewElementOf(
     }
 
     const { value: built, multi } = viewHandlerOf(bridge, attribute)
-    // an attribute whose value is a CALL, or a whole statement body, is an event handler
+    // an attribute whose value is a CALL, or a whole statement body, is an event handler. A call in EITHER
+    // spelling: `call f` and the bare `f(a, b)` (or `f` over its arguments, or `f()`) are one call, and until
+    // 2026-10-02 only the first was a handler, so the bare one bound the call's RESULT as an attribute with no
+    // message (`bindAttribute(view, "click", ...)`, test/compile/silent-defects.ts). A builtin folds to an
+    // operator in both spellings and stays a value in the bare one, since `add(a, b)` is arithmetic, not a call.
     const first = at(attribute, 'seed')[0]
+    const bareCall =
+      (first?.kind === 'form' &&
+        (first.form === 'seed-call-open' || first.form === 'seed-wait') &&
+        (built?.form === 'call' ||
+          (built?.form === 'await' && built.expr.form === 'call'))) ||
+      (first?.kind === 'word' && built?.form === 'call')
     const event =
-      multi || (first?.kind === 'form' && first.form === 'call')
+      multi || (first?.kind === 'form' && first.form === 'call') || bareCall
 
     attributes.push({
       name: label,
@@ -4285,6 +4654,8 @@ export function millByGrammar(
     lean,
     diagnostics: [],
     declared: new Set(),
+    bound: new Set(),
+    hostTask: namesHostTask(tree),
     aliases: new Map(),
     grammar,
     twins: [],
@@ -4320,6 +4691,7 @@ export function millByGrammar(
       // EACH TOP-LEVEL STATEMENT GETS A FRESH SCOPE. The reader lowers one at a time with an empty one, so a
       // second `save a` at the top level is a fresh binding rather than an assignment to the first.
       bridge.declared = new Set()
+      bridge.bound = new Set()
       program.push(...topLevelOf(bridge, value))
     }
   }

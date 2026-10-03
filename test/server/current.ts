@@ -114,6 +114,64 @@ const term = process.cwd()
   ok('lean: the same text read longhand is an error (the flag reaches the compile)', errors(published(outLong, 'file:///virtual/named.tree')).length > 0, JSON.stringify(published(outLong, 'file:///virtual/named.tree')))
 }
 
+// ---- roles: a mill definition is read as one, never as code ----
+{
+  // @term/mill's role.tree names `role mill` for code/**: these files DEFINE the fork dialect, and were milled as
+  // code ("the name "mill" is not defined", over a thousand errors across the grammar files they load)
+  const server = new LanguageServer()
+  const fork = join(term, 'deck/mill/code/code/fork')
+
+  for (const name of ['base', 'mine', 'mint']) {
+    const file = join(fork, `${name}.tree`)
+    const uri = pathToFileURL(file).href
+    const out = await open(server, uri, readFileSync(file, 'utf8'))
+    const found = published(out, uri) ?? []
+    ok(`roles: fork/${name}.tree, a mill definition, has no diagnostics`, found.length === 0, found.slice(0, 3).map(d => d.message).join(' | '))
+  }
+
+  // the control: the same file with no role, which is what the server had before deck/mill/role.tree, is read as
+  // code and fails, so the clean result above is the role at work
+  const asCode = new LanguageServer({ roleOf: () => null, leanOf: () => false })
+  const forkMine = pathToFileURL(join(fork, 'mine.tree')).href
+  const outCode = await open(asCode, forkMine, readFileSync(join(fork, 'mine.tree'), 'utf8'))
+  const codeErrors = errors(published(outCode, forkMine))
+  ok(
+    'roles: read as code instead, fork/mine.tree fails (the defect the role closes)',
+    codeErrors.length > 0 && codeErrors.some(d => /is not defined/.test(d.message)),
+    JSON.stringify(codeErrors.slice(0, 2)),
+  )
+
+  // the same file with a `find` of a rule its target does not declare: the real problem, on the line it is on,
+  // as the mill gate words it, and nothing a code reading would have said
+  const mine = join(fork, 'mine.tree')
+  const mineUri = pathToFileURL(mine).href
+  const broken = readFileSync(mine, 'utf8').replace('  find link\n', '  find link\n  find no-such-rule\n')
+  const out = await open(server, mineUri, broken, 2)
+  const found = published(out, mineUri) ?? []
+  const line = broken.split('\n').findIndex(l => l.includes('no-such-rule'))
+  ok(
+    'roles: a broken mill definition reports its real error, on its line',
+    found.length === 1 && found[0]!.range.start.line === line && found[0]!.message.includes('no-such-rule'),
+    JSON.stringify(found),
+  )
+  ok('roles: and no code-reading error with it', !found.some(d => /is not defined/.test(d.message)))
+
+  const unloadable = readFileSync(mine, 'utf8').replace(
+    'load @term/mill/code/code/seed/mine',
+    'load @term/mill/code/code/no-such-dialect/mine',
+  )
+  const outLoad = await open(server, mineUri, unloadable, 3)
+  const loadFound = published(outLoad, mineUri) ?? []
+  ok(
+    'roles: a load of a grammar file that does not exist is reported on the load',
+    loadFound.some(d => d.message.includes('no-such-dialect') && d.range.start.line === unloadable.split('\n').findIndex(l => l.includes('no-such-dialect'))),
+    JSON.stringify(loadFound),
+  )
+
+  const unparsed = await open(server, mineUri, 'mine fork\n  mine term, term <fork\n', 4)
+  ok('roles: a mill definition that does not parse reports the parse error', (published(unparsed, mineUri) ?? []).length > 0)
+}
+
 // ---- scope: mark private, binding by import ----
 {
   const modules: Record<string, string> = {

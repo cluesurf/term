@@ -144,7 +144,7 @@ const LEND = readFileSync(join(import.meta.dirname, 'meaning-native/lend.tree'),
 // record parameters only read (`&R` on Rust): matched, fields passed on borrowed, number and text fields read out,
 // beside a task that hands its record back and so keeps it by value
 const BORROW = readFileSync(join(import.meta.dirname, 'meaning-native/borrow.tree'), 'utf8')
-const BORROW_WANT = 'small=4 big=25 labels=b.c widest=25 again=25 bumped=6'
+const BORROW_WANT = 'small=4 big=25 labels=b.c widest=25 again=25 bumped=6 each=33'
 const LEND_WANT ='after=4 self-read=2 shared=9 sum=117 fresh=14 owned=100,2,10101,6'
 
 const baseTree = join(process.cwd(), 'deck', 'base')

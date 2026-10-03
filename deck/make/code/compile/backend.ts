@@ -716,6 +716,12 @@ export function lendableParams(fn: Extract<Statement, { form: 'function' }>, tas
   }
 
   const name = fn.params[candidates[0]!]!.name
+
+  // by name, so a parameter the body binds again is refused rather than confused with its shadow
+  if (rebinds(fn.body).has(name)) {
+    return lent
+  }
+
   const locals = new Set(fn.params.map(p => p.name))
   letNames(fn.body, locals)
   let refused = false
@@ -893,9 +899,12 @@ export function ownedLocals(
 
   collect(fn.body)
 
-  // a name declared twice (two branches, a shadow) is refused: the analysis is by name
+  // a name declared twice (two branches, a shadow), or bound again any other way (a walk's item, a closure's
+  // parameter, an arm's field), is refused: the analysis is by name
+  const bound = rebinds(fn.body, new Set(), undefined, false)
+
   for (const name of [...candidates.keys()]) {
-    if (declared.get(name) !== 1 || fn.params.some(p => p.name === name)) {
+    if (declared.get(name) !== 1 || fn.params.some(p => p.name === name) || bound.has(name)) {
       candidates.delete(name)
     }
   }
@@ -1299,6 +1308,73 @@ export function gatedTasks(program: Statement[], refuse: Set<string>): Extract<S
   )
 }
 
+// every name a body binds: a `let`, a walk's item and index, a closure's parameters, and the fields or `link` names an
+// arm of a `fork case` binds. An analysis that goes by name refuses a parameter whose name is in here, since a read of
+// the shadow would otherwise count as a read of the parameter
+export function rebinds(
+  body: unknown,
+  into: Set<string> = new Set(),
+  // each variant's field names, for an arm that binds them without `link` lines; without it only `link` names count
+  fields?: Map<string, Map<string, unknown>>,
+  // whether a `let` counts (an analysis that admits one declaration of its own name counts lets itself)
+  lets = true,
+): Set<string> {
+  if (typeof body !== 'object' || body === null) {
+    return into
+  }
+
+  if (Array.isArray(body)) {
+    body.forEach(b => rebinds(b, into, fields, lets))
+
+    return into
+  }
+
+  const node = body as Record<string, unknown> & { form?: string }
+
+  switch (node.form) {
+    case 'let':
+      if (lets) {
+        into.add(node.name as string)
+      }
+
+      break
+    case 'for-each':
+      into.add(node.item as string)
+
+      if (typeof node.index === 'string') {
+        into.add(node.index)
+      }
+
+      break
+    case 'closure':
+      for (const p of node.params as { name: string }[]) {
+        into.add(p.name)
+      }
+
+      break
+    case 'match':
+      for (const arm of node.cases as { label: string; binds?: string[] }[]) {
+        const names = arm.binds?.length ? arm.binds : [...(fields?.get(arm.label)?.keys() ?? [])]
+
+        for (const b of names) {
+          into.add(b)
+        }
+      }
+
+      break
+    default:
+      break
+  }
+
+  for (const [key, child] of Object.entries(node)) {
+    if (key !== 'type' && key !== 'span') {
+      rebinds(child, into, fields, lets)
+    }
+  }
+
+  return into
+}
+
 // F1 for RECORDS: the record parameters a gated task only READS, taken as `&R` on Rust where they arrive by value and
 // are destructured (a recursive field through `Rc::unwrap_or_clone`) at every node. A record is a value here: every
 // clone is a copy and nothing writes inside a shared subtree, so a borrow can never be seen through a second name,
@@ -1340,6 +1416,12 @@ export function borrowedRecords(program: Statement[], gated: Extract<Statement, 
 
   // does this task read the borrowed name `name` only in the allowed ways, given the current candidates
   const conforms = (fn: Extract<Statement, { form: 'function' }>, start: string): boolean => {
+    // the analysis goes by name, so a parameter something in the body binds again (a walk's `item` inside a task that
+    // takes an `item`) is refused rather than confused with its shadow
+    if (rebinds(fn.body, new Set(), variantTypes).has(start)) {
+      return false
+    }
+
     let ok = true
     // the borrowed names in scope: the parameter, then each record field an arm binds from it
     const borrowed = new Set([start])

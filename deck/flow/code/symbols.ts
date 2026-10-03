@@ -146,11 +146,10 @@ export function buildIndex(program: Program, text?: string): SymbolIndex {
   // `find shout, name yell`: the mill binds every `yell` to `shout`, so a reference named `shout` is WRITTEN `yell`
   const aliases = new Map<string, string>()
 
-  if (text && lines) {
+  if (text) {
     for (const entry of importFindsOf({ file: '<index>', text }, makeParseMemo(4))) {
       entry.names.forEach((name, i) => {
-        const line = entry.spans[i] ? lines[entry.spans[i]!.start.line] : undefined
-        const alias = line ? /^\s*find\s+[A-Za-z][A-Za-z0-9-]*\s*,\s*name\s+([A-Za-z][A-Za-z0-9-]*)/.exec(line)?.[1] : undefined
+        const alias = entry.aliases[i]
 
         if (alias) {
           aliases.set(name, alias)

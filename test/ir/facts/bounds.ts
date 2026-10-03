@@ -1,0 +1,173 @@
+// The counted-loop bounds fact (ir/facts/bounds.ts), held both ways: the loops it must guard, and for every rule a loop
+// it must NOT, because a wrong guard runs a copy of the loop with no bounds checks. And the TypeScript it drives: the
+// guarded copy beside the checked one.
+// Run: npx tsx test/ir/facts/bounds.ts
+
+import { compile } from '@term/make/code/compile/compile'
+import { boundedLoops } from '@term/make/code/ir/facts/bounds'
+import type { LoopGuard } from '@term/make/code/ir/facts/bounds'
+import { emitTypeScript } from '@term/make/code/compile/typescript'
+import type { Program, Statement } from '@term/make/code/compile/node'
+
+let pass = 0
+let fail = 0
+
+function ok(name: string, holds: boolean, detail = ''): void {
+  if (holds) {
+    pass++
+    console.log(`ok    ${name}`)
+  } else {
+    fail++
+    console.log(`FAIL  ${name}${detail ? `\n        ${detail}` : ''}`)
+  }
+}
+
+// every guard the fact gives the program's loops
+function guards(text: string): { found: LoopGuard[]; program: Program } {
+  const built = compile({ file: 'main.tree', text }, { optimize: false })
+
+  if (!built.ok) {
+    throw new Error(built.diagnostics.map(d => d.message).join(' | '))
+  }
+
+  const facts = boundedLoops(built.program)
+  const found: LoopGuard[] = []
+  const visit = (value: unknown): void => {
+    if (typeof value !== 'object' || value === null) {
+      return
+    }
+
+    if (Array.isArray(value)) {
+      value.forEach(visit)
+
+      return
+    }
+
+    const node = value as { form?: string }
+
+    if (node.form === 'while' && facts.has(node as Statement)) {
+      found.push(facts.get(node as Statement)!)
+    }
+
+    for (const [key, child] of Object.entries(node)) {
+      if (key !== 'type' && key !== 'span') {
+        visit(child)
+      }
+    }
+  }
+
+  visit(built.program)
+
+  return { found, program: built.program }
+}
+
+const show = (g: LoopGuard[]): string =>
+  JSON.stringify(g.map(x => x.checks.map(c => `${c.list}:${c.base ?? ''}${c.offset >= 0 ? '+' : ''}${c.offset}:${c.side}`)))
+
+// 1. the in-place reversal: `low` up, `high` down, a swap through both
+const flip = guards(`task flip
+  take xs, like list, like number
+  take k, like number
+  save low, code 0
+  save high, read k
+  walk test
+    hook test
+      call is-below
+        read low
+        read high
+    hook hold
+      host t, read xs/{low}
+      save xs/{low}, read xs/{high}
+      save xs/{high}, read t
+      save low
+        call add
+          read low
+          code 1
+      save high
+        call subtract
+          read high
+          code 1
+`)
+ok('a reversal under low < high is guarded', flip.found.length === 1, show(flip.found))
+ok(
+  'its guard asks low >= 0 and high < xs.length, nothing more',
+  show(flip.found) === JSON.stringify([['xs:low+0:low', 'xs:high+0:high', 'xs:low+1:low', 'xs:high+0:high'].filter((v, i, a) => a.indexOf(v) === i)]) ||
+    (flip.found[0]?.checks.some(c => c.side === 'low' && c.base === 'low' && c.offset === 0) === true &&
+      flip.found[0]?.checks.some(c => c.side === 'high' && c.base === 'high' && c.offset === 0) === true &&
+      flip.found[0]?.checks.every(c => c.list === 'xs') === true),
+  show(flip.found),
+)
+
+const ts = emitTypeScript(flip.program)
+ok('TypeScript writes the guarded copy with no checks beside the checked one', /if \(low >= 0 && high < xs\.length/.test(ts) && /xs\[low\]!/.test(ts) && /__termReadPast/.test(ts), ts.split('\n').filter(l => /if \(|xs\[/.test(l)).join(' | '))
+
+// 2. a copy loop over `i < n` with an alias `after = i + 1`
+const copy = guards(`task shift
+  take xs, like list, like number
+  take n, like number
+  save i, code 0
+  walk test
+    hook test
+      call is-below
+        read i
+        read n
+    hook hold
+      host after
+        call add
+          read i
+          code 1
+      save xs/{i}, read xs/{after}
+      save i
+        call add
+          read i
+          code 1
+`)
+ok('a shift through `after = i + 1` under i < n is guarded', copy.found.length === 1, show(copy.found))
+ok(
+  'its highest index is n, the alias read at i + 1 = n - 1 + 1',
+  copy.found[0]?.checks.some(c => c.side === 'high' && c.base === 'n' && c.offset === 0) === true,
+  show(copy.found),
+)
+
+const loop = (body: string, cond = 'is-below'): string => `task each
+  take xs, like list, like number
+  take ys, like list, like number
+  take n, like number
+  take j, like number
+  save i, code 0
+  walk test
+    hook test
+      call ${cond}
+        read i
+        read n
+    hook hold
+${body}
+`
+const step = `      save i
+        call add
+          read i
+          code 1`
+
+// 3-8. what must NOT be guarded
+ok('an index that is not the counter is NOT guarded', guards(loop(`      save xs/{j}, code 1\n${step}`)).found.length === 0)
+ok('i <= n is NOT guarded', guards(loop(`      save xs/{i}, code 1\n${step}`, 'is-maximum')).found.length === 0)
+ok(
+  'a counter written twice is NOT guarded',
+  guards(loop(`      save xs/{i}, code 1\n      save i\n        call add\n          read i\n          code 2\n${step}`)).found.length === 0,
+)
+ok('a read AFTER the step is NOT guarded', guards(loop(`${step}\n      save xs/{i}, code 1`)).found.length === 0)
+ok('a list the loop rebinds is NOT guarded', guards(loop(`      save xs/{i}, code 1\n      save xs, read ys\n${step}`)).found.length === 0)
+ok(
+  'a loop that calls a task is NOT guarded (the call could change the length)',
+  guards(`task helper
+  take xs, like list, like number
+  like number
+  send back, code 0
+${loop(`      save xs/{i}, code 1\n      host z\n        call helper\n          read xs\n${step}`).replace('task each', 'task each')}`).found.length === 0,
+)
+
+console.log(`\nbounds: ${pass} pass, ${fail} fail`)
+
+if (fail > 0) {
+  process.exit(1)
+}

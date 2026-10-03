@@ -1,0 +1,15 @@
+# Which reader reads the files of @term/mill (call/code/role-of.ts reads this file: a manifest `role` line, else
+# base/role.tree, else role.tree here).
+#
+# Every `.tree` under code/ DEFINES a dialect: `code/<dialect>/base.tree` names it (`mill fork` / `bind mine, load
+# ./mine`), and its `mine.tree` and `mint.tree` hold the rules the toolchain reads with readMineGrammar and
+# readMintGrammar (deck/make/code/compile/mill-load.ts). None of them is a program. Without this file every one was
+# milled as Term code, so each `mine` rule read as a call to an undefined task and the editor showed over a
+# thousand errors on one open grammar file.
+#
+# The `mill` role is read by deck/make/code/compile/mill-check.ts: the file parses, every `load` resolves, every
+# `find` names something its target declares, and every `mint <x>, like <form>` names a form a load brings in.
+# test/compile/mill-grammar.ts holds all 344 files to the same function.
+
+role mill
+  take @/code/**/*.tree

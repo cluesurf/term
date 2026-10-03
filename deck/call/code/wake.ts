@@ -43,7 +43,7 @@ load @term/base/code/console
 
 task boot
   note async
-  call log, text <hello from term>
+  log <hello from term>
 `
 
 const README = (project: string): string => `# ${project}

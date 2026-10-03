@@ -13,6 +13,7 @@ import {
 import type { Template } from '@term/make/code/compile/template'
 import { mill } from '@term/make/code/compile/mill'
 import { checkView, lowerView } from '@term/make/code/compile/view'
+import { checkMillDefinition } from '@term/make/code/compile/mill-check'
 import { resolve } from '@term/make/code/check/resolve'
 import { check } from '@term/make/code/check/infer'
 import { resolveAsync } from '@term/make/code/check/async-resolve'
@@ -259,6 +260,17 @@ export function compile(
   if (role === 'host' || (!role && isDataFile(source))) {
     // the lean surface for data: only ever under the mark, since the content rule does not know it
     return compileData(source, role === 'host' && (options?.leanOf?.(source.file) ?? false))
+  }
+
+  // a mill DEFINITION (the `mill` role, deck/mill/role.tree): a dialect's `mine` and `mint` rules, which the
+  // toolchain reads as a grammar and nothing runs. Held to what such a file owes (compile/mill-check.ts) and never
+  // milled as code, which read every rule as a call to an undefined task and compiled every grammar file it loads.
+  if (role === 'mill') {
+    const checked = checkMillDefinition(source, options?.resolve)
+
+    return checked.diagnostics.length > 0
+      ? { ok: false, diagnostics: checked.diagnostics }
+      : { ok: true, program: [], typescript: '', warnings: [] }
   }
 
   // collect the entry plus every module it loads (so the stdlib supplies the form definitions), dependencies

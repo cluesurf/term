@@ -11,6 +11,7 @@ import { join, relative } from 'node:path'
 import { parse } from '@term/make/code/parser/tree'
 import type { GroupNode, Node } from '@term/make/code/parser/tree'
 import { parse, renderHead } from '@term/make/code/parser/tree'
+import { checkMillDefinition, millDeclared } from '@term/make/code/compile/mill-check'
 
 let pass = 0
 let fail = 0
@@ -154,63 +155,41 @@ const problems: Problem[] = []
 const files = walk(MILL)
 let parsed = 0
 
+// THE CHECKS ARE compile/mill-check.ts, the `mill` role's reader, which the compiler and the language server call
+// for a file whose role is `mill` (deck/mill/role.tree). This gate supplies the resolver and holds every file to
+// it, so a grammar file the gate passes is one the editor shows clean, and the other way round.
+const resolveSource = (target: string, from: string): { file: string; text: string } | undefined => {
+  const found = resolveLoad(target, from)
+
+  return found ? { file: found, text: readFileSync(found, 'utf8') } : undefined
+}
+
 for (const file of files) {
   const text = readFileSync(file, 'utf8')
-  const tree = parse({ file, text })
+  const checked = checkMillDefinition({ file, text }, resolveSource)
 
-  if (!tree.ok) {
-    problems.push({ file, what: `does not parse: ${tree.diagnostics[0]?.message ?? ''}` })
+  if (!checked.parsed) {
+    problems.push({ file, what: `does not parse: ${checked.diagnostics[0]?.message ?? ''}` })
     continue
   }
 
   parsed++
 
-  // the forms the file's loads bring in, for `like` checks
-  const known = new Set<string>()
-
-  for (const group of tree.tree.nodes) {
-    if (headOf(group) !== 'load') {
-      continue
-    }
-
-    const target = wordAt(group, 1)
-    const found = resolveLoad(target, file)
-
-    if (!found) {
-      problems.push({ file, what: `loads "${target}", which does not exist` })
-      continue
-    }
-
-    const names = declared(found)
-
-    for (const child of group.nodes.slice(2)) {
-      if (child.kind === 'group' && headOf(child) === 'find') {
-        const name = wordAt(child, 1)
-
-        if (!names.has(name)) {
-          problems.push({ file, what: `finds "${name}" in "${target}", which declares no such thing` })
-        } else {
-          known.add(name)
-        }
-      }
-    }
-  }
-
-  for (const group of tree.tree.nodes) {
-    if (headOf(group) !== 'mint') {
-      continue
-    }
-
-    const like = group.nodes.find(n => n.kind === 'group' && headOf(n) === 'like') as GroupNode | undefined
-    // a mint NAMED `like` (the type-annotation head's own mint) reads as an empty like-group here; only a like
-    // clause with an argument names the built form
-    const likeName = like ? wordAt(like, 1) : ''
-
-    if (likeName && !known.has(likeName)) {
-      problems.push({ file, what: `mints "like ${likeName}", which no load of this file brings in` })
-    }
+  for (const problem of checked.problems) {
+    problems.push({ file, what: problem.what })
   }
 }
+
+// the shared checker and the declared-name reader agree on what a file declares
+ok(
+  'the mill checker reads the declared names this gate reads',
+  files.every(file => {
+    const mine = millDeclared({ file, text: readFileSync(file, 'utf8') })
+    const gate = declared(file)
+
+    return mine.size === gate.size && [...gate].every(name => mine.has(name))
+  }),
+)
 
 ok(`every grammar file parses (${parsed} of ${files.length})`, parsed === files.length)
 

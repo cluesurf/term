@@ -21,7 +21,7 @@
 
 import type { GroupNode, Node, RootNode } from '@term/make/code/parser/tree'
 import { walkGroups } from '@term/make/code/parser/stream'
-import { headWord, textOf, wordOf } from './mill-run'
+import { headWord, spanOfWhole, textOf, wordOf } from './mill-run'
 
 // ---- reading the mine grammar into rule objects ----
 
@@ -484,17 +484,29 @@ function readFeedMineRule(group: GroupNode): FeedMineRule | undefined {
 
     // `mine char, text <">` or `mine char, code 0x0020`: one character, given either way. The two spellings are the
     // same rule, because a grammar writes a printable delimiter as itself and a control character as its code.
+    //
+    // `mine char, <.>` and `mine char, 46` are the same two again, with the head left off, the way `bind base, <0>`
+    // leaves it off a range bound. The bare literal is a sibling NODE, not a group, so a reader that looked only at
+    // groups found nothing, dropped the rule, and the reader it generated stopped requiring the character: `12.4`
+    // no longer needed its dot, with no message (2026-10-02, test/compile/silent-defects.ts). A `char` that still
+    // names no character is refused by `feedMineFaults`.
     case 'char': {
       const textGroup = rawChildren().find(n => headWord(n) === 'text')
       const codeGroup = rawChildren().find(n => headWord(n) === 'code')
-      const writtenNode = textGroup?.nodes[1]
+      const bareText = siblingsOf(group).find(n => n.kind === 'text')
+      const bareCode = siblingsOf(group).find(
+        n => n.kind === 'integer' || n.kind === 'radix',
+      )
+      const writtenNode = textGroup?.nodes[1] ?? bareText
       const written = writtenNode ? textOf(writtenNode) : undefined
       const literal =
-        written !== undefined
+        written !== undefined && written !== ''
           ? written.codePointAt(0)
           : codeGroup
             ? codeValueOf(codeGroup)
-            : undefined
+            : bareCode && (bareCode.kind === 'integer' || bareCode.kind === 'radix')
+              ? Number(bareCode.value)
+              : undefined
 
       return literal === undefined
         ? undefined
@@ -550,8 +562,10 @@ function readFeedMineRule(group: GroupNode): FeedMineRule | undefined {
         return { kind: 'char', literal: inlineCode, send: nestedSend(group) }
       }
 
+      // `mine text, <true>`, with the head left off the literal, is the same rule, as it is for `mine char`
       const textGroup = rawChildren().find(n => headWord(n) === 'text')
-      const literalNode = textGroup?.nodes[1]
+      const literalNode =
+        textGroup?.nodes[1] ?? siblingsOf(group).find(n => n.kind === 'text')
       const literal = literalNode ? textOf(literalNode) : undefined
 
       return literal === undefined || literal.length === 0
@@ -799,6 +813,45 @@ export function feedMineDrops(tree: RootNode): string[] {
     if (siblingsOf(group).some(n => n.kind === 'group')) {
       out.push(name)
     }
+  }
+
+  return out
+}
+
+// The LEAF rules that read to nothing, anywhere in the grammar, each as a message naming the line.
+//
+// A `mine char` or `mine text` with no literal the reader can find is dropped, and the generated reader then reads
+// on WITHOUT the check: the rule's position just stops requiring its character. Unlike a dropped top-level rule
+// (`feedMineDrops`), this is wrong output rather than missing output, so the build refuses it. The literal is
+// written `<.>`, `text <.>`, `code 46` or `46` (`mine text` takes the first two, or `mine text 13`).
+export function feedMineFaults(tree: RootNode): string[] {
+  const out: string[] = []
+
+  const walk = (node: Node): void => {
+    if (node.kind !== 'group') {
+      return
+    }
+
+    if (headWord(node) === 'mine') {
+      const kind = wordOf(node.nodes[1])
+
+      if ((kind === 'char' || kind === 'text') && readFeedMineRule(node) === undefined) {
+        const at = ` at line ${spanOfWhole(node).start.line + 1}`
+
+        out.push(
+          `\`mine ${kind}\`${at} names no ${kind === 'char' ? 'character' : 'text'}, so the reader would stop checking it. ` +
+            `Write the literal after it: \`mine ${kind}, <.>\`, \`mine ${kind}, text <.>\`${kind === 'char' ? ' or `mine char, code 46`' : ''}`,
+        )
+      }
+    }
+
+    for (const child of node.nodes) {
+      walk(child)
+    }
+  }
+
+  for (const node of tree.nodes) {
+    walk(node)
   }
 
   return out

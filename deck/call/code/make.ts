@@ -26,6 +26,7 @@ import { projectRoleOf, projectLeanOf } from '@term/call/code/role-of'
 import { parse } from '@term/make/code/parser/tree'
 import {
   compileFeedMine,
+  feedMineFaults,
   feedMineLoads,
   feedMineSubstrate,
   readFeedMineGrammar,
@@ -94,10 +95,13 @@ const FEED_CURSOR = '@term/feed/code/base'
 // The grammar comes back with it, because reading a mine.tree twice is reading it twice. `undefined` means this is
 // not a grammar and the ordinary code path should have it: a 0-byte `mine.tree` placeholder, or a file that
 // happens to be called that and is not one.
+//
+// `faults` are the leaf rules that read to nothing (`feedMineFaults`), which the build refuses: a reader generated
+// without one stops checking that position, which is wrong output rather than missing output.
 function feedGrammarOf(
   file: string,
   text: string,
-): ReturnType<typeof readFeedMineGrammar> | undefined {
+): { grammar: ReturnType<typeof readFeedMineGrammar>; faults: string[] } | undefined {
   if (path.basename(file) !== 'mine.tree') {
     return undefined
   }
@@ -110,7 +114,9 @@ function feedGrammarOf(
 
   const grammar = readFeedMineGrammar(parsed.tree)
 
-  return grammar.size > 0 ? grammar : undefined
+  return grammar.size > 0
+    ? { grammar, faults: feedMineFaults(parsed.tree) }
+    : undefined
 }
 
 export function findTreeFiles(
@@ -592,8 +598,19 @@ export function compileProject(
     // `text`, `range` and `span` can only read a text one, and across @term/feed's readable grammars six are
     // byte-only, eight text-only, and none use both. A grammar with no leaf to infer from is REPORTED rather than
     // guessed at: guessing would emit a reader that compiles and reads the wrong cursor.
-    const grammar = feedGrammarOf(file, source)
+    const read = feedGrammarOf(file, source)
+    const grammar = read?.grammar
     let text = source
+
+    if (read && read.faults.length > 0) {
+      failed++
+
+      for (const fault of read.faults) {
+        errors.push(`${path.relative(root, file)}: ${fault}`)
+      }
+
+      continue
+    }
 
     if (grammar) {
       const substrate = feedMineSubstrate(grammar)
@@ -656,6 +673,12 @@ export function compileProject(
 
     obligations.total += result.obligations?.total ?? 0
     obligations.proven += result.obligations?.proven ?? 0
+
+    // a mill definition (the `mill` role) is checked, not built: it has no output, and an empty module per grammar
+    // file under host/ would be 344 files nothing imports (compile/mill-check.ts)
+    if (roleOf(file) === 'mill') {
+      continue
+    }
 
     // a look stylesheet emits CSS, not TypeScript: write it to a sibling `.css` under host/
     const isCss = typeof result.css === 'string'

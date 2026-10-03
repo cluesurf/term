@@ -128,7 +128,8 @@ export class Workspace {
     let compiled = text
     let map: Mapping = IDENTITY
 
-    if (readers.role !== 'view' && /^\s*test /m.test(text)) {
+    // only a file read as code is rewritten: a view document, a data file and a mill definition have their own reader
+    if (!['view', 'host', 'mill'].includes(readers.role ?? '') && /^\s*test /m.test(text)) {
       const rewritten = preprocessTests(text)
       compiled = rewritten.text
       map = makeMapping(text, compiled, rewritten.origin)
@@ -255,7 +256,7 @@ export class Workspace {
             finds.push(token)
           }
 
-          if (/,\s*name\s+[A-Za-z]/.test(lines[line.start.line]?.slice(token?.end.column ?? 0) ?? '')) {
+          if (entry.aliases[i]) {
             aliased = true
           }
         }

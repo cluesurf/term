@@ -216,10 +216,23 @@ enum cask {
     private static func app() -> NSApplication {
         let app = NSApplication.shared
         if app.delegate == nil {
-            app.setActivationPolicy(.regular)
+            // a test window (TERM_WINDOW_AWAY) is an accessory: no Dock icon, and it never becomes the active app
+            app.setActivationPolicy(windowAway ? .accessory : .regular)
             app.delegate = delegate
         }
         return app
+    }
+
+    // TERM_WINDOW_AWAY: the test harnesses set it, so a test app's window opens past the right edge of every screen and
+    // never takes focus from whoever is typing. A window there is still loaded, drawn and snapshotted. Unset, nothing
+    // changes
+    static let windowAway = ProcessInfo.processInfo.environment["TERM_WINDOW_AWAY"] != nil
+
+    // just past the right edge of the rightmost screen, at its bottom
+    private static func awayOrigin() -> NSPoint {
+        let right = NSScreen.screens.map { $0.frame.maxX }.max() ?? 0
+        let bottom = NSScreen.screens.map { $0.frame.minY }.min() ?? 0
+        return NSPoint(x: right + 200, y: bottom)
     }
     #endif
 
@@ -242,7 +255,11 @@ enum cask {
         window.title = title
         handle.webview.autoresizingMask = [.width, .height]
         window.contentView = handle.webview
-        window.center()
+        if windowAway {
+            window.setFrameOrigin(awayOrigin())
+        } else {
+            window.center()
+        }
         // the handle owns the window; without this AppKit releases it when the last reference goes
         window.isReleasedWhenClosed = false
         // NOT on screen yet. A test that only talks over the bridge never shows anything; `show` puts the window
@@ -357,8 +374,13 @@ enum cask {
     static func activate(_ handle: CaskWindow) {
         #if canImport(AppKit)
         DispatchQueue.main.async {
-            handle.window?.makeKeyAndOrderFront(nil)
-            NSApplication.shared.activate(ignoringOtherApps: true)
+            // a test window never takes the keyboard or activates the app (windowAway)
+            if windowAway {
+                handle.window?.orderFrontRegardless()
+            } else {
+                handle.window?.makeKeyAndOrderFront(nil)
+                NSApplication.shared.activate(ignoringOtherApps: true)
+            }
         }
         #endif
     }

@@ -28,6 +28,9 @@ import {
   simulator,
 } from '@term/call/code/cask'
 
+// the macOS app opens its window past the right edge of the screens and never takes focus (native-view.swift windowAway)
+process.env.TERM_WINDOW_AWAY ??= '1'
+
 let pass = 0
 let fail = 0
 

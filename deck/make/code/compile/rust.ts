@@ -2910,8 +2910,46 @@ export function emitRust(
             return type?.kind === 'named' && plainRecords.has(type.name)
           }
           const armBorrowed = borrowedSubject ? locals.filter(({ field }) => recordField(field)).map(({ local }) => local) : []
-          // only a field the arm reads: copying or cloning one nobody reads is work for nothing
+          // only a field the arm reads: copying or cloning one nobody reads is work for nothing. An arm that only hands
+          // one such field back returns the copy or clone itself (`*width`, `label.clone()`), never a `let` it then
+          // returns (clippy: let_and_return)
           const read = borrowedSubject ? namesIn(b.body) : new Set<string>()
+          const lone = b.body.length === 1 && b.body[0]!.form === 'return' ? b.body[0]!.value : undefined
+          // only where a `return` is written plain: not in a raising task or a guard (an `Ok(..)`), not in a closure, and
+          // not where the task answers the boxed dynamic
+          const handedBack =
+            borrowedSubject &&
+            lone?.form === 'variable' &&
+            !currentRaising &&
+            guardDepth === 0 &&
+            closureDepth === 0 &&
+            currentResult?.kind !== 'unknown'
+              ? locals.find(({ field, local }) => local === lone.name && !recordField(field))
+              : undefined
+
+          if (handedBack) {
+            const out = copyType(fieldTypes?.get(handedBack.field)) ? `*${snake(handedBack.local)}` : `${snake(handedBack.local)}.clone()`
+
+            if (subjectVar) {
+              if (previous === undefined) {
+                narrowing.delete(subjectVar)
+              } else {
+                narrowing.set(subjectVar, previous)
+              }
+            }
+
+            const handedPattern = locals.length > 0
+              ? ` { ${[
+                  ...locals.map(({ field, local }) =>
+                    local === handedBack.local ? (field === local ? snake(field) : `${snake(field)}: ${snake(local)}`) : `${snake(field)}: _`,
+                  ),
+                  ...(locals.length < fields.length ? ['..'] : []),
+                ].join(', ')} }`
+              : ''
+
+            return `${pad(d + 1)}${pascal(owner)}::${pascal(b.label)}${handedPattern} => {\n${pad(d + 2)}return ${out};\n${pad(d + 1)}}`
+          }
+
           const derefs = borrowedSubject
             ? locals
                 .filter(({ field, local }) => !recordField(field) && read.has(local))

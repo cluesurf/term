@@ -92,6 +92,32 @@ EDGES['a list read at -1'] = `${oneItem}
 EDGES['a list write one past the end'] = `${oneItem}
   save xs/{past}, code 9
   send back, read xs/0`
+// a counted loop that reads one slot past the end: the loop is guarded (ir/facts/bounds.ts) and the guard is false here,
+// so the checked copy runs and stops where it always did. `past` is 1 and the list has one item, so `i < past + 1`
+// reaches i = 1
+EDGES['a counted loop reading one past the end'] = `${oneItem}
+  save total, code 0
+  save i, code 0
+  save upto
+    call add
+      read past
+      code 1
+  walk test
+    hook test
+      call is-below
+        read i
+        read upto
+    hook hold
+      save total
+        call add
+          read total
+          read xs/{i}
+      save i
+        call add
+          read i
+          code 1
+  send back, read total`
+
 // the swap of two slots is one native call on Swift, Rust and Kotlin (backend.ts, swapAt): either index outside the
 // list still stops, as the three statements it replaces stop
 const zero = `

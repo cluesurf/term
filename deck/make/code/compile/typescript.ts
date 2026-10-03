@@ -29,6 +29,8 @@ import {
 import type { Bind } from '@term/make/code/compile/bind'
 import { armLocals } from '@term/make/code/check/arm'
 import { provenIncrements } from '@term/make/code/ir/facts/range'
+import { boundedLoops } from '@term/make/code/ir/facts/bounds'
+import type { LoopGuard } from '@term/make/code/ir/facts/bounds'
 
 const guardStart = (text: string): string =>
   /^[([`]/.test(text) ? `;${text}` : text
@@ -1153,8 +1155,12 @@ function makeEmitter(
   env = 'node',
   // the `+` nodes proven not to overflow (ir/facts/range.ts): written without `__termInt`
   provenSteps: WeakSet<Expression> = new WeakSet(),
+  // the counted loops whose list indexes a guard before the loop can prove in bounds (ir/facts/bounds.ts)
+  loopGuards: WeakMap<Statement, LoopGuard> = new WeakMap(),
 ) {
   const pad = (depth: number) => '  '.repeat(depth)
+  // the lists whose slots the loop copy being emitted reads and writes unchecked: its guard holds (loopGuards)
+  let uncheckedLists = new Set<string>()
 
   let assignedNames = new Set<string>()
 
@@ -1177,6 +1183,11 @@ function makeEmitter(
   const readAt = (list: Expression, index: Expression): string => {
     const xs = expression(list)
     const i = expression(index)
+
+    // inside the guarded copy of a counted loop the index is proven in bounds (ir/facts/bounds.ts)
+    if (list.form === 'variable' && uncheckedLists.has(list.name)) {
+      return `${xs}[${i}]!`
+    }
 
     return plainOperand(list) && plainOperand(index)
       ? `(${i} >= 0 && ${i} < ${xs}.length ? ${xs}[${i}]! : __termReadPast(${xs}, ${i}))`
@@ -1929,6 +1940,11 @@ function makeEmitter(
           if (node.op === '=') {
             const index: Expression = node.target.index ?? { form: 'integer', value: Number(node.target.name), span: node.span }
 
+            // inside the guarded copy of a counted loop the slot is proven in bounds (ir/facts/bounds.ts)
+            if (node.target.target.form === 'variable' && uncheckedLists.has(node.target.target.name)) {
+              return `${list}[${at}] = ${expression(node.value)}`
+            }
+
             if (plainOperand(node.target.target) && plainOperand(index) && effectFree(node.value)) {
               return `${at} >= 0 && ${at} < ${list}.length ? (${list}[${at}] = ${expression(node.value)}) : __termWritePast(${list}, ${at})`
             }
@@ -1966,11 +1982,38 @@ function makeEmitter(
         return node.value.form === 'string' || node.value.form === 'template'
           ? `throw new Error(${expression(node.value)})`
           : `throw ${expression(node.value)}`
-      case 'while':
-        return `while (${expression(node.cond)}) ${block(
-          node.body,
-          depth,
-        )}`
+      case 'while': {
+        // a counted loop whose list indexes a guard proves in bounds (ir/facts/bounds.ts) is written twice: the guard
+        // true runs it with no bounds checks, the guard false runs the original, so a run that could reach outside a
+        // list takes the checked copy and stops where it always did
+        const guard = loopGuards.get(node)
+
+        if (!guard) {
+          return `while (${expression(node.cond)}) ${block(node.body, depth)}`
+        }
+
+        // each name written the way the emitter writes that variable everywhere else
+        const name = (id: string): string => expression({ form: 'variable', name: id, span: node.span } as Expression)
+        const test = guard.checks
+          .map(c => {
+            const value =
+              c.base === undefined
+                ? String(c.offset)
+                : c.offset === 0
+                  ? name(c.base)
+                  : `${name(c.base)} ${c.offset < 0 ? '-' : '+'} ${Math.abs(c.offset)}`
+
+            return c.side === 'low' ? `${value} >= 0` : `${value} < ${name(c.list)}.length`
+          })
+          .join(' && ')
+        const outer = uncheckedLists
+        uncheckedLists = new Set([...outer, ...guard.checks.map(c => c.list)])
+        const fast = `while (${expression(node.cond)}) ${block(node.body, depth + 1)}`
+        uncheckedLists = outer
+        const slow = `while (${expression(node.cond)}) ${block(node.body, depth + 1)}`
+
+        return `if (${test}) {\n${pad(depth + 1)}${fast}\n${pad(depth)}} else {\n${pad(depth + 1)}${slow}\n${pad(depth)}}`
+      }
       case 'guard': {
         // `note unsafe` / `halt take`: a try with its catch. The caught value is bound as written; a guard with no
         // handler swallows what it catches, which the checker warns about.
@@ -2447,6 +2490,7 @@ export function emitTypeScript(
     binds,
     env,
     provenIncrements(program),
+    boundedLoops(program),
   )
 
   // native module bindings (`dock load`) become host imports at the top. A `<global:X>` binding refers to a host

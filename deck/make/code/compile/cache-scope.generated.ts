@@ -77,6 +77,7 @@ export const CACHE_SCOPE: Record<string, string[]> = {
     'deck/make/code/compile/load.ts',
     'deck/make/code/compile/look-css.ts',
     'deck/make/code/compile/look-table.ts',
+    'deck/make/code/compile/mill-check.ts',
     'deck/make/code/compile/mill-grammar.generated.ts',
     'deck/make/code/compile/mill-run.ts',
     'deck/make/code/compile/mill.ts',

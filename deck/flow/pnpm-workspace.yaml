@@ -13,16 +13,26 @@ overrides:
   js-yaml: ^4.3.2
   # GHSA-5jgf-p345-68v8 and three siblings, SSRF and host confusion.
   # ^3.1.4 admitted the vulnerable 3.1.5 the lockfile was holding. The
-  # 3.x fix is 3.1.6.
-  fast-uri: ^3.1.6
+  # 3.x fix was 3.1.6, raised to 3.1.8 for GHSA-hrr3-gc8f-f4qj (host case
+  # normalization through percent-encoded octets), which 3.1.7 carries.
+  fast-uri: ^3.1.8
   # GHSA-4mjr-xmp4-gh2g and GHSA-x5fp-wj9c-mxmx, a denial of service
   # through isBuffer and an array-limit bypass. Pulled in by @vscode/vsce.
   # Both are fixed in 6.16.0.
   qs: ^6.16.0
   linkify-it: ^5.0.2
-  undici: ^7.29.0
-  brace-expansion@1: ^1.1.18
-  brace-expansion@2: ^2.1.4
-  brace-expansion@3: ^5.0.7
-  brace-expansion@4: ^5.0.7
-  brace-expansion@5: ^5.0.9
+  # GHSA-253c-mchw-3w2r, two quadratic paths under `linkify: true`.
+  # Pulled in by @vscode/vsce. The 14.x fix is 14.3.1.
+  markdown-it: ^14.3.1
+  # Ten advisories published 2026-09-04 (cookie disclosure, TLS bypass in
+  # BalancedPool, response splitting, several DoS). The lockfile held
+  # 7.29.0, and the 7.x fix is 7.29.1.
+  undici: ^7.29.1
+  # GHSA-6j4f-fj2g-mc7p, GHSA-q2hr-2g5m-vwhr, GHSA-qhr7-859c-m2p7: three
+  # DoS advisories patched on every major line on 2026-09-14. The
+  # lockfile held 2.1.4 and 5.0.9, both inside the old floors.
+  brace-expansion@1: ^1.1.21
+  brace-expansion@2: ^2.1.7
+  brace-expansion@3: ^5.0.12
+  brace-expansion@4: ^5.0.12
+  brace-expansion@5: ^5.0.12

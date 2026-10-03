@@ -35,5 +35,8 @@ overrides:
   minimatch@3: ^3.1.3
   lodash: ^4.18.0
   ws: ^8.21.0
-  brace-expansion@1: ^1.1.18
-  brace-expansion@2: ^2.1.4
+  # GHSA-6j4f-fj2g-mc7p, GHSA-q2hr-2g5m-vwhr, GHSA-qhr7-859c-m2p7: three
+  # DoS advisories patched on every major line on 2026-09-14. The
+  # lockfile held 1.1.18 and 2.1.4, both inside the old floors.
+  brace-expansion@1: ^1.1.21
+  brace-expansion@2: ^2.1.7

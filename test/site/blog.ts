@@ -153,13 +153,14 @@ async function main(): Promise<void> {
   fs.writeFileSync(file, code)
   await import(file)
 
-  // the mounted page: <div><input><textarea><button>Add post</button><div posts/></div>
+  // the mounted page, in the view vocabulary's words (view-vocabulary-0004): a `stack` (a flex div) holding the two
+  // fields, the button and a `stack` of posts: <div><input><input><button>Add post</button><div posts/></div>
   const root = body.children[0]
   ok('mounts a root element', root?.tagName === 'div')
 
   const [titleInput, bodyInput, addButton, posts] = root?.children ?? []
   ok('renders a title input', titleInput?.tagName === 'input')
-  ok('renders a body textarea', bodyInput?.tagName === 'textarea')
+  ok('renders a body input', bodyInput?.tagName === 'input')
   ok(
     'renders an Add button',
     addButton?.tagName === 'button' && textOf(addButton) === 'Add post',
@@ -179,11 +180,15 @@ async function main(): Promise<void> {
   await settled()
   ok('one post after adding', posts.children.length === 1)
 
-  const post1 = posts.children[0]
+  // a post is a `stack` component; `render-each` keeps it in one item node (a `seed-fragment`) so it can remove it
+  // later, and the stack's `text`s are an h2 (level 2) and a span
+  const card = (item: any): any => (item?.tagName === 'seed-fragment' ? item.children?.[0] : item)
+  const post1 = card(posts.children[0])
   ok(
     'post renders heading + body',
     post1?.children?.[0]?.tagName === 'h2' &&
-      post1?.children?.[1]?.tagName === 'p',
+      post1?.children?.[1]?.tagName === 'span',
+    JSON.stringify(post1?.children?.map((c: any) => c.tagName)),
   )
   ok(
     'post heading is the title',
@@ -209,12 +214,12 @@ async function main(): Promise<void> {
   ok('two posts after adding again', posts.children.length === 2)
   ok(
     'first post unchanged',
-    textOf(posts.children[0].children[0]) === 'First Post',
+    textOf(card(posts.children[0]).children[0]) === 'First Post',
   )
   ok(
     'second post rendered',
-    textOf(posts.children[1].children[0]) === 'Second Post' &&
-      textOf(posts.children[1].children[1]) === 'More text',
+    textOf(card(posts.children[1]).children[0]) === 'Second Post' &&
+      textOf(card(posts.children[1]).children[1]) === 'More text',
   )
 
   // emit runnable artifacts

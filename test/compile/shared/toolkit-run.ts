@@ -20,6 +20,10 @@ import {
   simulator,
 } from '@term/call/code/cask'
 
+// a macOS test app opens its window past the right edge of the screens and never takes focus (native-view.swift
+// windowAway), run from the gate or by hand alike
+process.env.TERM_WINDOW_AWAY ??= '1'
+
 export type Leg = 'macos' | 'ios' | 'android'
 
 export type ToolkitRun = {
