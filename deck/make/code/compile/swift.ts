@@ -24,7 +24,17 @@ import {
   isText,
 } from '@term/make/code/compile/backend'
 import type { CollectionOp, FormKind, FormSpec } from '@term/make/code/compile/backend'
-import { escapingParams, formSpec, hasValuedReturn, refuseAny, specForms } from '@term/make/code/compile/backend'
+import {
+  escapingParams,
+  formSpec,
+  hasValuedReturn,
+  refuseAny,
+  specForms,
+  gatedTasks,
+  listFacts,
+  ownedLocals,
+} from '@term/make/code/compile/backend'
+import type { Lend } from '@term/make/code/compile/backend'
 import {
   collectBinds,
   renderBind,
@@ -1308,6 +1318,25 @@ export function emitSwift(
   )
   const tryWord = (): string => (currentThrows || guardDepth > 0 ? 'try' : 'try!')
 
+  // F1 (note/term/codegen/shared.md), the same facts Rust reads: a list parameter a task takes lent is a plain `[T]`
+  // (read) or `inout [T]` (written) where every list is otherwise a `SeedList` class, a list local the task owns is a
+  // plain `var [T]`, and a task answering a fresh list answers `[T]`. Swift's arrays are values with copy-on-write, so
+  // a read-only `[T]` copies nothing, and an `inout` argument's write access begins only after every other argument is
+  // evaluated, so `flip(&perm.data, perm.data[0])` reads before it lends
+  const gated = gatedTasks(program, maskMethods)
+  const { lend: lendParams, fresh: freshLists } = listFacts(program, gated)
+  // the plain-array names of the function being emitted: its lent parameters, and its owned locals as 'write'
+  let plainNames = new Map<string, Lend>()
+  // its owned locals, with whether anything writes them (`var` against `let`)
+  let ownedNames = new Map<string, boolean>()
+  // set while an owned local's init is emitted, so a fresh task's `[T]` is taken as it is
+  let rawFresh = false
+  // whether the function being emitted answers a fresh list
+  let emittingFresh = false
+  // a list's storage: the plain array itself, or the SeedList's `.data`
+  const view = (target: Expression, bind: Bindings): string =>
+    target.form === 'variable' && plainNames.has(target.name) ? expr(target, bind) : `${expr(target, bind)}.data`
+
   const subSelf = (
     t: Type | undefined,
     target: string,
@@ -1538,6 +1567,23 @@ export function emitSwift(
         // whether this call sits directly under `wait true`, read before the arguments render their own calls
         const awaited = awaiting
         awaiting = false
+        // read once and cleared, so the call's own arguments never take a fresh array raw
+        const raw = rawFresh
+        rawFresh = false
+
+        // a push onto, or the size of, an owned list local is the array's own (F1)
+        if (
+          node.callee.form === 'variable' &&
+          (node.callee.name === 'list_push' || node.callee.name === 'list_size') &&
+          node.args[0]?.form === 'variable' &&
+          ownedNames.has(node.args[0].name)
+        ) {
+          const list = expr(node.args[0], bind)
+
+          return node.callee.name === 'list_size'
+            ? `${list}.count`
+            : `({ () -> Int in ${list}.append(${expr(node.args[1]!, bind)}); return ${list}.count })()`
+        }
 
         // `call fill / <data> / like <form>` and `call melt / <value> / like <form>`: a function per form, generated
         // from the form's fields at the end of the module (see swiftFormWalk below)
@@ -1602,7 +1648,31 @@ export function emitSwift(
 
         // a trailing `need false` parameter left out at the call site still exists in the native signature:
         // fill it with its type's empty value (the unit tuple for an unknown)
-        const renderedArgs = node.args.map(a => expr(a, bind))
+        // a list the callee takes lent (F1): `&` the storage for one it writes, the storage itself for one it reads
+        const lending =
+          node.callee.form === 'variable' && !boundNames.has(node.callee.name) ? lendParams.get(node.callee.name) : undefined
+        const renderedArgs = node.args.map((a, i) => {
+          const how = lending?.get(i)
+
+          if (!how) {
+            return expr(a, bind)
+          }
+
+          // a fresh task's array read straight from the call, with no SeedList around it to unwrap again
+          if (how === 'read' && a.form === 'call' && a.callee.form === 'variable' && freshLists.has(a.callee.name)) {
+            rawFresh = true
+            const made = expr(a, bind)
+            rawFresh = false
+
+            return made
+          }
+
+          return `${how === 'write' ? '&' : ''}${view(a, bind)}`
+        })
+        // a fresh task answers a plain array: into a SeedList here, unless an owned local takes it as it is
+        const fresh =
+          !raw && node.callee.form === 'variable' && !boundNames.has(node.callee.name) && freshLists.has(node.callee.name)
+        const wrap = (call: string): string => (fresh ? `SeedList(${call})` : call)
         const declaredParams =
           node.callee.form === 'variable'
             ? functionParams.get(node.callee.name)
@@ -1643,10 +1713,10 @@ export function emitSwift(
           node.callee.form === 'variable' &&
           throwingFns.has(node.callee.name)
         ) {
-          return `(${tryWord()} ${callee}(${renderedArgs.join(', ')}))`
+          return wrap(`(${tryWord()} ${callee}(${renderedArgs.join(', ')}))`)
         }
 
-        return `${callee}(${renderedArgs.join(', ')})`
+        return wrap(`${callee}(${renderedArgs.join(', ')})`)
       }
 
       case 'array': {
@@ -1781,7 +1851,7 @@ export function emitSwift(
       case 'member': {
         // a DYNAMIC segment (`read table/{key}`) subscripts the wrapper's storage
         if (node.index) {
-          return `${expr(node.target, bind)}.data[${expr(node.index, bind)}]`
+          return `${view(node.target, bind)}[${expr(node.index, bind)}]`
         }
 
         // `map.size` / `array.length` read the count (a map goes through its wrapper's `data`; an array is plain)
@@ -1789,7 +1859,7 @@ export function emitSwift(
 
         if (read) {
           // both a map and an array (SeedMap / SeedList) read their length through the wrapper's `.data`
-          return `${expr(read.target, bind)}.data.count`
+          return `${view(read.target, bind)}.count`
         }
 
         const textLength = stringRead(node)
@@ -1800,7 +1870,7 @@ export function emitSwift(
 
         // a LITERAL index segment (`read parts/0`) on an array target subscripts the SeedList's storage
         if (/^\d+$/.test(node.name) && node.target.type?.kind === 'array') {
-          return `${expr(node.target, bind)}.data[${node.name}]`
+          return `${view(node.target, bind)}[${node.name}]`
         }
 
         // a matched variant's field reads the bound local; otherwise a normal field access
@@ -2025,6 +2095,21 @@ export function emitSwift(
       case 'let': {
         boundNames.add(node.name)
 
+        // an owned list local is a plain array (F1): made empty, or taken as it is from a fresh task
+        if (ownedNames.has(node.name) && node.type?.kind === 'array') {
+          const keyword = ownedNames.get(node.name) ? 'var' : 'let'
+
+          if (node.init.form === 'call') {
+            rawFresh = true
+            const made = expr(node.init, bind)
+            rawFresh = false
+
+            return `${keyword} ${vname(node.name)} = ${made}`
+          }
+
+          return `${keyword} ${vname(node.name)}: [${swiftType(node.type.element)}] = []`
+        }
+
         // a valueless typed module slot (`host current, like context`, filled later by a `save`): an
         // implicitly-unwrapped optional, so reads carry the declared class type
         if (node.init.form === 'unit' && node.type?.kind === 'named' && node.type.name) {
@@ -2091,6 +2176,17 @@ export function emitSwift(
               bind,
             )}`
       case 'expression': {
+        // a push onto an owned list whose new length nothing reads is the array's `append`
+        if (
+          node.expr.form === 'call' &&
+          node.expr.callee.form === 'variable' &&
+          node.expr.callee.name === 'list_push' &&
+          node.expr.args[0]?.form === 'variable' &&
+          ownedNames.has(node.expr.args[0].name)
+        ) {
+          return `${expr(node.expr.args[0], bind)}.append(${expr(node.expr.args[1]!, bind)})`
+        }
+
         const rendered = expr(node.expr, bind)
 
         // a VALUED call in statement position discards explicitly, or swiftc warns (and the gates treat
@@ -2108,6 +2204,11 @@ export function emitSwift(
       case 'return':
         if (!node.value) {
           return currentResult?.kind === 'unknown' ? 'return ()' : 'return'
+        }
+
+        // an owned list local leaves whole: the array itself from a fresh task, otherwise into a SeedList
+        if (node.value.form === 'variable' && ownedNames.has(node.value.name)) {
+          return emittingFresh ? `return ${expr(node.value, bind)}` : `return SeedList(${expr(node.value, bind)})`
         }
 
         // a list-returning function that returns a native dock call directly wraps the shim's plain Array
@@ -2199,10 +2300,10 @@ export function emitSwift(
           boundNames.add(node.index)
         }
 
-        // a list is a SeedList; iterate its backing `.data` Array
+        // a list is a SeedList; iterate its backing `.data` Array (or the plain array, F1)
         const iterable =
           node.iterable.type?.kind === 'array'
-            ? `${expr(node.iterable, bind)}.data`
+            ? view(node.iterable, bind)
             : expr(node.iterable, bind)
 
         // a walk that names its INDEX enumerates, lazily: the offset is an `Int`, which is what a Term number is here.
@@ -2364,12 +2465,28 @@ export function emitSwift(
         // non-escaping, so Swift can keep the closure's context on the stack and inline the call. Every one was
         // `@escaping` until 2026-10-02 (note/term/codegen/ios.md, S3)
         const escaping = escapingParams(node)
+        // F1: a list parameter taken lent is a plain array, `inout` where the task writes it
+        const lend = lendParams.get(node.name)
         const params = node.params
-          .map(
-            p =>
-              `_ ${vname(p.name)}: ${p.type?.kind === 'function' && escaping.has(p.name) ? '@escaping ' : ''}${swiftType(p.type)}`,
-          )
+          .map((p, i) => {
+            const how = lend?.get(i)
+
+            if (how && p.type?.kind === 'array') {
+              return `_ ${vname(p.name)}: ${how === 'write' ? 'inout ' : ''}[${swiftType(p.type.element)}]`
+            }
+
+            return `_ ${vname(p.name)}: ${p.type?.kind === 'function' && escaping.has(p.name) ? '@escaping ' : ''}${swiftType(p.type)}`
+          })
           .join(', ')
+        const previousPlain = plainNames
+        const previousOwned = ownedNames
+        const previousFresh = emittingFresh
+        ownedNames = node.async ? new Map() : ownedLocals(node, freshLists, lendParams)
+        emittingFresh = freshLists.has(node.name)
+        plainNames = new Map([
+          ...node.params.flatMap((p, i) => (lend?.has(i) ? [[p.name, lend.get(i)!] as const] : [])),
+          ...[...ownedNames.keys()].map(name => [name, 'write'] as const),
+        ])
 
         const asyncMark = node.async ? ' async' : ''
         const throwsMark = throwingFns.has(node.name) || bodyThrows(node.body) ? ' throws' : ''
@@ -2443,13 +2560,17 @@ export function emitSwift(
 
         currentAssigned = previousAssigned
         fnReturnsArray = previousReturnsArray
+        plainNames = previousPlain
+        ownedNames = previousOwned
+        const fresh = emittingFresh
+        emittingFresh = previousFresh
 
+        // a task answering a fresh list answers the plain array
+        const resultType = fresh && result?.kind === 'array' ? `[${swiftType(result.element)}]` : swiftType(result)
 
         return `func ${camel(
           node.name,
-        )}${generics}(${params})${asyncMark}${throwsMark} -> ${swiftType(
-          result,
-        )} {\n${bodyText}\n${pad(d)}}`
+        )}${generics}(${params})${asyncMark}${throwsMark} -> ${resultType} {\n${bodyText}\n${pad(d)}}`
       }
 
       case 'record-type': {

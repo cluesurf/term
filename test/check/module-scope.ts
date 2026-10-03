@@ -125,12 +125,11 @@ const POINT_C = `load @app/b\n  find point\n\ntask place\n  like text\n  save p\
 }
 
 {
-  // main imports `point` from BOTH: refused, naming both files (a type has no arity to tell two forms apart)
-  const main = `load @app/a\n  find point\n\nload @app/b\n  find point\n\ntask run\n  take p, like point\n  like number\n  send back, code 1\n`
+  // main imports `point` from BOTH: it gets the one the flat program let win among them, the one merged last (b's),
+  // as the generated bind package relies on, until the strict step (module-scope-0006) refuses it
+  const main = `load @app/a\n  find point\n\nload @app/b\n  find point\n\ntask run\n  like text\n  save p\n    make point\n      bind lat, text <n>\n      bind long, text <w>\n  send back, read p/lat\n`
   const result = build({ '@app/a': POINT_A, '@app/b': POINT_B }, main)
-  const message = said(result)
-  ok('a form imported from two files that define it is refused', !result.ok && /form "point"/.test(message), message)
-  ok('the refusal names both files', message.includes('a.tree') && message.includes('b.tree'), message)
+  ok('a form imported from two definers is the one merged last, as the flat program had it', result.ok, said(result))
 }
 
 {
@@ -193,6 +192,15 @@ const TOTAL_TASK = `task total\n  take n, like number\n  like number\n  send bac
   const g = `${TOTAL_TASK}\ntask other\n  like number\n  send back\n    call sum\n      code 1\n`
   const result = build({ '@app/f': FORM_POINT, '@app/g': g }, main)
   ok('a method call on a value is its form\'s method, not a same-named task of another module', result.ok && !/98/.test(result.typescript), said(result))
+}
+
+{
+  // a record matched under its OWN name binds its fields in the arm, and a field named like a task of the file is the
+  // field there: `case mark / link start / read start` beside a top-level `task start`
+  // (deck/base/code/native/node/clock/measurement.tree)
+  const main = `form mark\n  link start, like number\n\ntask start\n  like mark\n  send back\n    make mark\n      bind start, code 3\n\ntask since\n  take m, like mark\n  like number\n  fork case, read m\n    case mark\n      link start\n      send back\n        call subtract\n          code 10\n          read start\n`
+  const result = build({}, main)
+  ok('a field bound by a record\'s own arm is the field, not a same-named task', result.ok, said(result))
 }
 
 console.log(`\nmodule-scope: ${pass} pass, ${fail} fail`)

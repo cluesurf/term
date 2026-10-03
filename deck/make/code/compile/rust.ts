@@ -30,7 +30,15 @@ import {
   hasValuedReturn,
   swapAt,
   escapingParams,
+  ownedLocals,
+  writesTo,
+  namesIn,
+  letNames,
+  gatedTasks,
+  listFacts,
+  borrowedRecords,
 } from '@term/make/code/compile/backend'
+import type { Lend } from '@term/make/code/compile/backend'
 import type { CollectionOp } from '@term/make/code/compile/backend'
 import { armLocals } from '@term/make/code/check/arm'
 import { raiseSets } from '@term/make/code/check/effects'
@@ -636,6 +644,9 @@ export function emitRust(
   // F1: the list locals the function being emitted owns outright, plain `Vec<T>`s (`ownedLocals`), each with whether
   // anything writes it. They are in `lentNames` too, as 'write', since their slots and walks are written the same way
   let ownedNames = new Map<string, boolean>()
+  // F1 for records: the names in scope that are a REFERENCE to a record (`&R`, or `&Rc<R>` for an arm's recursive
+  // field): the borrowed parameters of the function being emitted, and the record fields a borrowed match binds
+  let borrowedNames = new Set<string>()
   // set while the init of an owned local is emitted: a call to a fresh task there takes its `Vec` as it is, where
   // every other call to one wraps it into the shared cell
   let rawFresh = false
@@ -764,87 +775,33 @@ export function emitRust(
   // escape (`escapingParams`), so a recursive task never instantiates itself at an ever-deeper closure type. At the
   // call site a closure literal is passed bare and any other function value as `&*f`, a `&dyn Fn` being an `Fn`
   const implFnParams = new Map<string, Set<number>>()
-  // F1: the list parameters each task takes lent (`lendableParams`), under the same gate
-  const lendParams = new Map<string, Map<number, Lend>>()
-  const tasks = new Set(program.flatMap(n => (n.form === 'function' ? [n.name] : [])))
-  // the tasks the gate admits, and of them the ones that answer a fresh list as a plain `Vec` (`freshTasks`)
-  const gated: Extract<Statement, { form: 'function' }>[] = []
-  let freshLists = new Set<string>()
-  {
-    const defined = new Map<string, number>()
-    const asValue = new Set<string>()
-    const seen = new Set<object>()
-    const walk = (value: unknown): void => {
-      if (typeof value !== 'object' || value === null || seen.has(value)) {
-        return
-      }
+  // the tasks whose signature this backend may change (`gatedTasks`), and F1's facts about their lists (`listFacts`):
+  // which list parameter each takes lent, and which answer a fresh list as a plain `Vec`
+  const gated = gatedTasks(program, maskMethods)
+  const { lend: lendParams, fresh: freshLists } = listFacts(program, gated)
+  // F1 for records: the record parameters each task only reads, taken `&R` (`borrowedRecords`)
+  const borrowParams = borrowedRecords(program, gated)
+  // each variant's field types, for what a borrowed match binds: a record field stays a reference, a `Copy` one is
+  // copied out, anything else cloned out
+  const variantTypes = new Map(
+    program.flatMap(n =>
+      n.form === 'record-type' ? n.variants.map(v => [v.name, new Map(v.fields.map(f => [f.name, f.type]))] as const) : [],
+    ),
+  )
+  // the records a borrow may reach into (every form but a `mark shared` handle), as `borrowedRecords` counts them
+  const plainRecords = new Set(program.flatMap(n => (n.form === 'record-type' && !n.shared ? [n.name] : [])))
 
-      seen.add(value)
+  for (const n of gated) {
+    const escapes = escapingParams(n)
+    const local = new Set(
+      n.params.flatMap((p, i) =>
+        p.type?.kind === 'function' && !p.type.effects?.includes('async') && !escapes.has(p.name) ? [i] : [],
+      ),
+    )
 
-      if (Array.isArray(value)) {
-        value.forEach(walk)
-
-        return
-      }
-
-      const node = value as { form?: string; name?: string; callee?: { form?: string }; binding?: { kind?: string } }
-
-      // a parameter or local of the same name is not the task (the stdlib's `fold` takes a `total`)
-      if (node.form === 'variable' && typeof node.name === 'string' && node.binding?.kind !== 'local' && node.binding?.kind !== 'parameter') {
-        asValue.add(node.name)
-      }
-
-      for (const [key, child] of Object.entries(node)) {
-        // the callee of a call is the one use of a task's name that is not a value
-        if (key === 'type' || key === 'span' || (node.form === 'call' && key === 'callee' && node.callee?.form === 'variable')) {
-          continue
-        }
-
-        walk(child)
-      }
+    if (local.size) {
+      implFnParams.set(n.name, local)
     }
-
-    for (const n of program) {
-      if (n.form === 'function') {
-        defined.set(n.name, (defined.get(n.name) ?? 0) + 1)
-      }
-    }
-
-    walk(program)
-
-    for (const n of program) {
-      if (
-        n.form !== 'function' ||
-        n.async ||
-        n.body.length === 0 ||
-        (n as { method?: unknown }).method ||
-        maskMethods.has(n.name) ||
-        defined.get(n.name) !== 1 ||
-        asValue.has(n.name)
-      ) {
-        continue
-      }
-
-      gated.push(n)
-      const lend = lendableParams(n, tasks)
-
-      if (lend.size) {
-        lendParams.set(n.name, lend)
-      }
-
-      const escapes = escapingParams(n)
-      const local = new Set(
-        n.params.flatMap((p, i) =>
-          p.type?.kind === 'function' && !p.type.effects?.includes('async') && !escapes.has(p.name) ? [i] : [],
-        ),
-      )
-
-      if (local.size) {
-        implFnParams.set(n.name, local)
-      }
-    }
-
-    freshLists = freshTasks(gated, lendParams)
   }
 
   // the `impl Fn` spelling of a function type, for a parameter in `implFnParams`
@@ -1535,7 +1492,8 @@ export function emitRust(
           node.right.type?.kind === 'number' &&
           !provenSteps.has(node)
         ) {
-          return `i64::${checked}(${expr(node.left)}, ${expr(node.right)}).expect("excess: a number past i64")`
+          // each operand is an argument here, so its grouping parentheses are redundant (rustc: unused_parens)
+          return `i64::${checked}(${bare(expr(node.left))}, ${bare(expr(node.right))}).expect("excess: a number past i64")`
         }
 
         return `(${expr(node.left)} ${OP[node.op]} ${expr(node.right)})`
@@ -1627,6 +1585,8 @@ export function emitRust(
             : undefined
         const lending =
           node.callee.form === 'variable' && !localNames.has(node.callee.name) ? lendParams.get(node.callee.name) : undefined
+        // the lent arguments that are a fresh task's `Vec`, taken raw
+        const rawLent = new Set<number>()
         const argList = node.args.map((a, i) => {
           // a closure passed where a task is declared answers what that task declares: the checker can leave the
           // closure's own result unknown, and boxing a `View` into an `Rc<dyn Any>` then misses an `Fn() -> View`
@@ -1663,6 +1623,12 @@ export function emitRust(
               : rendered
           })()
 
+          // a record the callee only reads is borrowed (borrowedRecords): a name that is already a reference passes as
+          // it is (`&Rc<R>` derefs to `&R`), anything else is lent as `&`, never cloned first
+          if (node.callee.form === 'variable' && !localNames.has(node.callee.name) && borrowParams.get(node.callee.name)?.has(i)) {
+            return a.form === 'variable' && borrowedNames.has(a.name) ? vname(a.name) : `&${expr(a)}`
+          }
+
           // a parameter the callee only calls is `impl Fn` (implFnParams)
           if (node.callee.form === 'variable' && !localNames.has(node.callee.name) && implFnParams.get(node.callee.name)?.has(i)) {
             return implFnArg(a, rendered)
@@ -1672,6 +1638,16 @@ export function emitRust(
           const lentAs = lending?.get(i)
 
           if (lentAs) {
+            // a fresh task's `Vec` is lent straight from the call, with no cell around it to borrow through
+            if (a.form === 'call' && a.callee.form === 'variable' && freshLists.has(a.callee.name)) {
+              rawLent.add(i)
+              rawFresh = true
+              const made = expr(a)
+              rawFresh = false
+
+              return made
+            }
+
             return expr(a)
           }
 
@@ -1699,21 +1675,46 @@ export function emitRust(
         // would panic). A plain variable or a literal does nothing when evaluated, so it is passed as it stands
         const hoisted: string[] = []
 
+        // an owned Vec, or a fresh task's taken raw, is lent as itself, with no cell to borrow through
+        const plainAt = (i: number): boolean => {
+          const a = node.args[i]
+
+          return (a?.form === 'variable' && ownedNames.has(a.name)) || rawLent.has(i)
+        }
+        // the hoisting guards a borrow an argument could collide with: a cell's, or a plain Vec another argument reads
+        // (`bump(&mut zs, zs[1])` is E0502: two-phase borrows do not cover an explicit `&mut` argument). A call that
+        // lends only plain Vecs nothing else reads borrows nothing an argument could reach
+        const plainLent = new Set(
+          [...(lending?.keys() ?? [])].flatMap(i => {
+            const a = node.args[i]
+
+            return plainAt(i) && a?.form === 'variable' ? [a.name] : []
+          }),
+        )
+        const throughCell =
+          lending !== undefined &&
+          ([...lending.keys()].some(i => !plainAt(i)) ||
+            node.args.some((a, i) => !lending.has(i) && [...namesIn(a)].some(n => plainLent.has(n))))
+
         if (lending) {
           node.args.forEach((a, i) => {
             const simple =
-              (a.form === 'variable' && !cellVars.has(a.name)) || a.form === 'integer' || a.form === 'float' || a.form === 'boolean'
-
-            if (!simple) {
-              hoisted.push(`let __lend_${i} = ${argList[i]};`)
-              argList[i] = `__lend_${i}`
-            }
+              !throughCell ||
+              (a.form === 'variable' && !cellVars.has(a.name)) ||
+              a.form === 'integer' ||
+              a.form === 'float' ||
+              a.form === 'boolean'
 
             const lentAs = lending.get(i)
 
+            if (!simple) {
+              // a raw `Vec` lent for writing is borrowed `&mut`, so its local is `mut`
+              hoisted.push(`let ${rawLent.has(i) && lentAs === 'write' ? 'mut ' : ''}__lend_${i} = ${argList[i]};`)
+              argList[i] = `__lend_${i}`
+            }
+
             if (lentAs) {
-              // an owned Vec is lent as itself; anything else through its cell
-              const plain = a.form === 'variable' && ownedNames.has(a.name)
+              const plain = plainAt(i)
 
               argList[i] = plain
                 ? `${lentAs === 'write' ? '&mut ' : '&'}${argList[i]}`
@@ -2336,6 +2337,45 @@ export function emitRust(
     const lines: string[] = []
 
     for (let at = 0; at < body.length; at++) {
+      // an owned list made empty and pushed straight onto is the `vec![..]` of those items (clippy:
+      // vec_init_then_push), `mut` only when something after still writes it
+      const start = body[at]!
+
+      if (
+        start.form === 'let' &&
+        ownedNames.has(start.name) &&
+        start.init.form !== 'call' &&
+        start.type?.kind === 'array'
+      ) {
+        const items: Expression[] = []
+        let next = at + 1
+
+        for (; next < body.length; next++) {
+          const s = body[next]!
+          const pushed =
+            s.form === 'expression' &&
+            s.expr.form === 'call' &&
+            s.expr.callee.form === 'variable' &&
+            s.expr.callee.name === 'list_push' &&
+            s.expr.args[0]?.form === 'variable' &&
+            s.expr.args[0].name === start.name &&
+            !namesIn(s.expr.args[1]).has(start.name)
+
+          if (!pushed) {
+            break
+          }
+
+          items.push((s as { expr: { args: Expression[] } }).expr.args[1]!)
+        }
+
+        if (items.length) {
+          const later = writesTo(body.slice(next), start.name, lendParams)
+          lines.push(`${pad(d)}let ${later ? 'mut ' : ''}${vname(start.name)}: Vec<${rustType(start.type.element)}> = vec![${items.map(i => bare(owned(i))).join(', ')}];`)
+          at = next - 1
+          continue
+        }
+      }
+
       // the three-statement swap of two slots is `slice::swap`, under one `borrow_mut` where it took four borrows
       const swap = swapAt(body, at)
 
@@ -2643,12 +2683,6 @@ export function emitRust(
       case 'while': {
         const budget = budgetCheck(node, d + 1)
 
-        // the item and index are locals, so a top-level task or dock alias of the same name does not capture a read
-        localNames.add(node.item)
-
-        if (node.index) {
-          localNames.add(node.index)
-        }
         // `while true` emits `loop`, which rustc knows diverges: a function ending in the loop then needs no
         // unreachable trailing value (E0308)
         if (node.cond.form === 'boolean' && node.cond.value === true) {
@@ -2694,6 +2728,12 @@ export function emitRust(
 
         const budget = budgetCheck(node, d + 1)
 
+        // the item and index are locals, so a top-level task or dock alias of the same name does not capture a read
+        localNames.add(node.item)
+
+        if (node.index) {
+          localNames.add(node.index)
+        }
 
         // a list is walked by position, each element cloned out under a borrow that ends before the body runs: no copy
         // of the whole Vec, and the body may still push to the list it walks. The length is read every turn, so an
@@ -2703,18 +2743,19 @@ export function emitRust(
           const index = node.index ? `let ${vname(node.index)} = __at as i64; ` : ''
           // a `Copy` element is read out by value, anything else is cloned out of the borrow
           const element = node.iterable.type.kind === 'array' && copyType(node.iterable.type.element) ? '*value' : 'value.clone()'
-          const lentAs = node.iterable.form === 'variable' ? lentNames.get(node.iterable.name) : undefined
+          const walkedName = node.iterable.form === 'variable' ? node.iterable.name : undefined
+          const lentAs = walkedName !== undefined ? lentNames.get(walkedName) : undefined
 
           // a list lent for reading cannot change under the walk: an iterator, as Rust writes it
-          if (lentAs === 'read') {
-            const each = node.index ? `(__at, value) in ${vname(node.iterable.name)}.iter().enumerate()` : `value in ${vname(node.iterable.name)}.iter()`
+          if (lentAs === 'read' && walkedName !== undefined) {
+            const each = node.index ? `(__at, value) in ${vname(walkedName)}.iter().enumerate()` : `value in ${vname(walkedName)}.iter()`
 
             return `for ${each} {\n${pad(d + 1)}let ${vname(node.item)} = ${element}; ${index}\n${budget}${block(node.body, d + 1)}\n${pad(d)}}`
           }
 
           // a list lent for writing is walked by position on the Vec itself, so the body may still write it
-          if (lentAs === 'write') {
-            return `{ let mut __at: usize = 0; loop { let ${vname(node.item)} = match ${vname(node.iterable.name)}.get(__at) { Some(value) => ${element}, None => break }; ${index}__at += 1;\n${budget}${block(
+          if (lentAs === 'write' && walkedName !== undefined) {
+            return `{ let mut __at: usize = 0; loop { let ${vname(node.item)} = match ${vname(walkedName)}.get(__at) { Some(value) => ${element}, None => break }; ${index}__at += 1;\n${budget}${block(
               node.body,
               d + 1,
             )}\n${pad(d)}} }`
@@ -2826,7 +2867,9 @@ export function emitRust(
             ? node.subject.name
             : undefined
         const moved = subjectVar !== undefined && moveArgs.has(subjectVar) && !cellVars.has(subjectVar)
-        const subject = moved ? expr(node.subject) : `${expr(node.subject)}.clone()`
+        // a borrowed record is matched as it is: the arms bind its fields by reference (borrowedRecords)
+        const borrowedSubject = subjectVar !== undefined && borrowedNames.has(subjectVar)
+        const subject = moved || borrowedSubject ? expr(node.subject) : `${expr(node.subject)}.clone()`
 
         const arms = node.cases.map(b => {
           const subjectType = node.subject.type
@@ -2857,7 +2900,33 @@ export function emitRust(
             narrowing.set(subjectVar, b.label)
           }
 
+          // under a borrowed subject each field arrives as a reference: a record field stays one (a borrowed name in the
+          // arm), a `Copy` field is copied out and anything else cloned out, so the arm's body reads it as it always did
+          const fieldTypes = variantTypes.get(b.label)
+          // the same test `borrowedRecords` makes: a field whose type is a record (not a `mark shared` handle)
+          const recordField = (field: string): boolean => {
+            const type = fieldTypes?.get(field)
+
+            return type?.kind === 'named' && plainRecords.has(type.name)
+          }
+          const armBorrowed = borrowedSubject ? locals.filter(({ field }) => recordField(field)).map(({ local }) => local) : []
+          // only a field the arm reads: copying or cloning one nobody reads is work for nothing
+          const read = borrowedSubject ? namesIn(b.body) : new Set<string>()
+          const derefs = borrowedSubject
+            ? locals
+                .filter(({ field, local }) => !recordField(field) && read.has(local))
+                .map(({ field, local }) =>
+                  copyType(fieldTypes?.get(field)) ? `${pad(d + 2)}let ${snake(local)} = *${snake(local)};` : `${pad(d + 2)}let ${snake(local)} = ${snake(local)}.clone();`,
+                )
+            : []
+          const outerBorrowed = borrowedNames
+
+          if (armBorrowed.length) {
+            borrowedNames = new Set([...borrowedNames, ...armBorrowed])
+          }
+
           const body = block(b.body, d + 2)
+          borrowedNames = outerBorrowed
 
           if (subjectVar) {
             if (previous === undefined) {
@@ -2872,7 +2941,7 @@ export function emitRust(
           // it is for a tree built and consumed once, and clones only a shared one: it was always `(*x).clone()`, a
           // clone per node per walk (binary-trees)
           const unwraps = locals
-            .filter(({ field }) => recursiveFields.has(`${b.label}/${field}`))
+            .filter(({ field }) => !borrowedSubject && recursiveFields.has(`${b.label}/${field}`))
             .map(
               ({ local }) =>
                 `${pad(d + 2)}let ${snake(local)} = std::rc::Rc::unwrap_or_clone(${snake(local)});`,
@@ -2880,7 +2949,7 @@ export function emitRust(
 
           return `${pad(d + 1)}${pascal(owner)}::${pascal(
             b.label,
-          )}${pattern} => {\n${[...unwraps, body].join('\n')}\n${pad(d + 1)}}`
+          )}${pattern} => {\n${[...unwraps, ...derefs, body].join('\n')}\n${pad(d + 1)}}`
         })
 
         if (node.otherwise) {
@@ -3081,8 +3150,14 @@ export function emitRust(
         const generics = decls.length ? `<${decls.join(', ')}>` : ''
         const local = implFnParams.get(node.name)
         const lend = lendParams.get(node.name)
+        const borrow = borrowParams.get(node.name)
         const params = node.params
           .map((p, i) => {
+            // a record the task only reads is borrowed (borrowedRecords)
+            if (borrow?.has(i)) {
+              return `${vname(p.name)}: &${rustType(p.type)}`
+            }
+
             const how = lend?.get(i)
 
             if (how && p.type?.kind === 'array') {
@@ -3098,6 +3173,8 @@ export function emitRust(
         const previousLent = lentNames
         const previousOwned = ownedNames
         const previousFresh = emittingFresh
+        const previousBorrowed = borrowedNames
+        borrowedNames = new Set(node.params.flatMap((p, i) => (borrow?.has(i) ? [p.name] : [])))
         ownedNames = node.async ? new Map() : ownedLocals(node, freshLists, lendParams)
         emittingFresh = freshLists.has(node.name)
         lentNames = new Map([
@@ -3313,6 +3390,7 @@ export function emitRust(
         lentNames = previousLent
         ownedNames = previousOwned
         emittingFresh = previousFresh
+        borrowedNames = previousBorrowed
         moveArgs = previousMoveArgs
         cellVars = previousCellVars
         assignedVars = previousAssigned
@@ -3944,483 +4022,6 @@ function mutatedCaptures(body: Statement[]): Set<string> {
 // every variable name READ or written anywhere in a body (used to decide which Rc<RefCell> handles a closure captures)
 // every name a body binds with `let`, at any depth (loop variables and match arms bind through their own forms
 // and read through the same emitter paths, so a module constant of those names is shadowed the same way)
-// F1, the first and narrowest slice (note/term/codegen/shared.md): the list PARAMETERS a task may take LENT, as
-// `&mut [T]` ('write') or `&[T]` ('read'), where every list is otherwise an `Rc<RefCell<Vec<T>>>` borrowed again at
-// each element. The caller lends once for the whole call. A wrong answer here does not merely slow a program down: a
-// second name reaching the same list while it is lent panics on its `RefCell`. So it is refused unless nothing else
-// in the task CAN reach a list:
-//   - every mention of the parameter is a slot read or write (`xs/{i}`, `xs/0`), its length, or the list a walk walks.
-//     Never reassigned, passed, stored, returned or captured
-//   - every other parameter is a scalar (a number, a float, a flag, a text), so no second name can alias it
-//   - the task makes no call to another task, calls no function value, builds no closure, and reads no collection
-//     from outside itself; a native call takes scalar arguments only
-// `gate` is the same filter `impl Fn` uses: a top-level synchronous task, defined once, never used as a value.
-export type Lend = 'read' | 'write'
-
-const SCALAR_NAMES = new Set(['text', 'boolean', 'number', 'integer', 'decimal'])
-
-function scalarType(type: Type | undefined): boolean {
-  return (
-    type !== undefined &&
-    (type.kind === 'number' ||
-      type.kind === 'float' ||
-      type.kind === 'boolean' ||
-      type.kind === 'string' ||
-      (type.kind === 'named' && SCALAR_NAMES.has(type.name) && !type.args?.length))
-  )
-}
-
-export function lendableParams(fn: Extract<Statement, { form: 'function' }>, tasks: Set<string>): Map<number, Lend> {
-  const lent = new Map<number, Lend>()
-  const candidates = fn.params.flatMap((p, i) => (p.type?.kind === 'array' ? [i] : []))
-
-  if (candidates.length !== 1 || !fn.params.every((p, i) => i === candidates[0] || scalarType(p.type))) {
-    return lent
-  }
-
-  const name = fn.params[candidates[0]!]!.name
-  const locals = new Set(fn.params.map(p => p.name))
-  letNames(fn.body, locals)
-  let refused = false
-  let written = false
-  type Loose = Record<string, unknown> & { form?: string }
-
-  const slotOf = (node: Loose): boolean =>
-    node.form === 'member' &&
-    (node.index !== undefined || /^\d+$/.test(node.name as string)) &&
-    (node.target as Loose).form === 'variable' &&
-    (node.target as Loose).name === name
-
-  const visit = (value: unknown): void => {
-    if (refused || typeof value !== 'object' || value === null) {
-      return
-    }
-
-    if (Array.isArray(value)) {
-      value.forEach(visit)
-
-      return
-    }
-
-    const node = value as Loose
-
-    switch (node.form) {
-      case 'closure':
-      case 'await':
-        refused = true
-
-        return
-      case 'variable': {
-        const id = node.name as string
-
-        // the parameter itself, anywhere but the places handled below; or a collection from outside the task
-        if (id === name || (!locals.has(id) && !scalarType(node.type as Type | undefined) && !tasks.has(id))) {
-          refused = true
-        }
-
-        return
-      }
-      case 'call': {
-        const callee = node.callee as Loose
-
-        // another task, a function value, or a method-shaped operation on a collection: any could reach the list
-        if (callee.form !== 'variable' || tasks.has(callee.name as string) || locals.has(callee.name as string)) {
-          refused = true
-
-          return
-        }
-
-        if (!(node.args as Loose[]).every(a => scalarType(a.type as Type | undefined))) {
-          refused = true
-
-          return
-        }
-
-        visit(node.args)
-
-        return
-      }
-      case 'member':
-        if (slotOf(node)) {
-          visit(node.index)
-
-          return
-        }
-
-        {
-          const read = collectionRead(node as Expression)
-
-          if (read && read.target.form === 'variable' && read.target.name === name) {
-            return
-          }
-        }
-
-        visit(node.target)
-        visit(node.index)
-
-        return
-      case 'assign': {
-        const target = node.target as Loose
-
-        if (slotOf(target)) {
-          written = true
-          visit(target.index)
-          visit(node.value)
-
-          return
-        }
-
-        visit(node.target)
-        visit(node.value)
-
-        return
-      }
-      case 'for-each': {
-        const iterable = node.iterable as Loose
-
-        if (!(iterable.form === 'variable' && iterable.name === name)) {
-          visit(iterable)
-        }
-
-        visit(node.body)
-
-        return
-      }
-      default:
-        for (const [key, child] of Object.entries(node)) {
-          if (key !== 'type' && key !== 'span') {
-            visit(child)
-          }
-        }
-    }
-  }
-
-  visit(fn.body)
-
-  if (!refused) {
-    lent.set(candidates[0]!, written ? 'write' : 'read')
-  }
-
-  return lent
-}
-
-// F1, the second slice: the list LOCALS a task owns outright, held as a plain `Vec<T>`. A local is owned when it is
-// made fresh (`make list`, an empty literal, or a call to a task that answers a fresh list, `fresh`), never rebound,
-// and every mention is one that cannot let a second name reach it:
-//   - a slot read or write, its length (`list_size`), a walk over it, a `list_push` onto it
-//   - an argument a callee takes lent (`lendParams`): the borrow ends with the call
-//   - `send back` of it, the list leaving whole (wrapped into the shared cell then, or handed on as the `Vec` itself
-//     when this task is `fresh`)
-// Never inside a closure, never passed, stored or aliased otherwise. Answers each owned name and whether anything
-// writes it (for `let mut`).
-export function ownedLocals(
-  fn: Extract<Statement, { form: 'function' }>,
-  fresh: Set<string>,
-  lend: Map<string, Map<number, Lend>>,
-): Map<string, boolean> {
-  type Loose = Record<string, unknown> & { form?: string }
-  const made = (init: Loose): boolean =>
-    (init.form === 'array' && (init.items as unknown[]).length === 0) ||
-    (init.form === 'record' && init.name === 'list' && (init.fields as unknown[]).length === 0) ||
-    (init.form === 'call' && (init.callee as Loose).form === 'variable' && fresh.has((init.callee as Loose).name as string))
-  const candidates = new Map<string, boolean>()
-  const declared = new Map<string, number>()
-
-  const collect = (value: unknown): void => {
-    if (typeof value !== 'object' || value === null) {
-      return
-    }
-
-    if (Array.isArray(value)) {
-      value.forEach(collect)
-
-      return
-    }
-
-    const node = value as Loose
-
-    if (node.form === 'let') {
-      declared.set(node.name as string, (declared.get(node.name as string) ?? 0) + 1)
-
-      if ((node.type as Type | undefined)?.kind === 'array' && made(node.init as Loose)) {
-        candidates.set(node.name as string, false)
-      }
-    }
-
-    for (const [key, child] of Object.entries(node)) {
-      if (key !== 'type' && key !== 'span') {
-        collect(child)
-      }
-    }
-  }
-
-  collect(fn.body)
-
-  // a name declared twice (two branches, a shadow) is refused: the analysis is by name
-  for (const name of [...candidates.keys()]) {
-    if (declared.get(name) !== 1 || fn.params.some(p => p.name === name)) {
-      candidates.delete(name)
-    }
-  }
-
-  // refusals and writes are kept apart, so a write seen after a refusal cannot admit the name again
-  const refused = new Set<string>()
-  const written = new Set<string>()
-  const refuse = (name: string): void => {
-    refused.add(name)
-  }
-  const owned = (node: Loose | undefined): string | undefined =>
-    node?.form === 'variable' && candidates.has(node.name as string) ? (node.name as string) : undefined
-  const slotOf = (node: Loose): string | undefined =>
-    node.form === 'member' && (node.index !== undefined || /^\d+$/.test(node.name as string)) ? owned(node.target as Loose) : undefined
-
-  const visit = (value: unknown, inClosure: boolean): void => {
-    if (typeof value !== 'object' || value === null) {
-      return
-    }
-
-    if (Array.isArray(value)) {
-      value.forEach(v => visit(v, inClosure))
-
-      return
-    }
-
-    const node = value as Loose
-
-    switch (node.form) {
-      case 'closure':
-        visit(node.body, true)
-
-        return
-      case 'variable': {
-        const name = owned(node)
-
-        if (name) {
-          refuse(name)
-        }
-
-        return
-      }
-      case 'let':
-        // the declaration of an owned local: its init is fresh by construction, so only the init's own arguments.
-        // Any other `let` is visited whole, so `let y = xs` refuses `xs`
-        if (candidates.has(node.name as string)) {
-          visit((node.init as Loose).form === 'call' ? (node.init as Loose).args : undefined, inClosure)
-        } else {
-          visit(node.init, inClosure)
-        }
-
-        return
-      case 'member': {
-        const name = slotOf(node)
-
-        if (name && !inClosure) {
-          visit(node.index, inClosure)
-
-          return
-        }
-
-        const read = collectionRead(node as Expression)
-        const counted = read ? owned(read.target as Loose) : undefined
-
-        if (counted && !inClosure) {
-          return
-        }
-
-        visit(node.target, inClosure)
-        visit(node.index, inClosure)
-
-        return
-      }
-      case 'assign': {
-        const name = slotOf(node.target as Loose)
-
-        if (name && !inClosure) {
-          written.add(name)
-          visit((node.target as Loose).index, inClosure)
-          visit(node.value, inClosure)
-
-          return
-        }
-
-        visit(node.target, inClosure)
-        visit(node.value, inClosure)
-
-        return
-      }
-      case 'for-each': {
-        const name = owned(node.iterable as Loose)
-
-        if (!name || inClosure) {
-          visit(node.iterable, inClosure)
-        }
-
-        visit(node.body, inClosure)
-
-        return
-      }
-      case 'return': {
-        const name = owned(node.value as Loose)
-
-        if (!name || inClosure) {
-          visit(node.value, inClosure)
-        }
-
-        return
-      }
-      case 'call': {
-        const callee = node.callee as Loose
-        const args = node.args as Loose[]
-        const first = owned(args[0])
-
-        // a push onto, or the size of, an owned list
-        if (!inClosure && first && callee.form === 'variable' && (callee.name === 'list_push' || callee.name === 'list_size')) {
-          if (callee.name === 'list_push') {
-            written.add(first)
-          }
-
-          visit(args.slice(1), inClosure)
-
-          return
-        }
-
-        // an argument the callee takes lent
-        const lent = callee.form === 'variable' ? lend.get(callee.name as string) : undefined
-
-        args.forEach((a, i) => {
-          const name = owned(a)
-          const how = lent?.get(i)
-
-          if (name && how && !inClosure) {
-            if (how === 'write') {
-              written.add(name)
-            }
-          } else {
-            visit(a, inClosure)
-          }
-        })
-
-        visit(callee, inClosure)
-
-        return
-      }
-      default:
-        for (const [key, child] of Object.entries(node)) {
-          if (key !== 'type' && key !== 'span') {
-            visit(child, inClosure)
-          }
-        }
-    }
-  }
-
-  // refusing one name can only refuse, never admit, so one pass sees every disqualifying mention
-  visit(fn.body, false)
-
-  return new Map([...candidates.keys()].filter(name => !refused.has(name)).map(name => [name, written.has(name)]))
-}
-
-// The tasks that answer a FRESH list, returned as a plain `Vec<T>`: every `send back` hands back a list the task owns
-// (`ownedLocals`). A fixpoint, since a local made by a call to a fresh task is itself owned. Begins from every task the
-// gate admits whose result is a list, and drops one each round until none drops
-export function freshTasks(candidates: Extract<Statement, { form: 'function' }>[], lend: Map<string, Map<number, Lend>>): Set<string> {
-  const fresh = new Set(candidates.filter(fn => fn.result?.kind === 'array').map(fn => fn.name))
-  let changed = true
-
-  const returns = (body: unknown, into: Expression[]): void => {
-    if (typeof body !== 'object' || body === null) {
-      return
-    }
-
-    if (Array.isArray(body)) {
-      body.forEach(b => returns(b, into))
-
-      return
-    }
-
-    const node = body as Record<string, unknown> & { form?: string }
-
-    // a closure's own `send back` answers the closure, not the task
-    if (node.form === 'closure') {
-      return
-    }
-
-    if (node.form === 'return') {
-      into.push(node.value as Expression)
-    }
-
-    for (const [key, child] of Object.entries(node)) {
-      if (key !== 'type' && key !== 'span') {
-        returns(child, into)
-      }
-    }
-  }
-
-  while (changed) {
-    changed = false
-
-    for (const fn of candidates) {
-      if (!fresh.has(fn.name)) {
-        continue
-      }
-
-      const owned = ownedLocals(fn, fresh, lend)
-      const values: Expression[] = []
-      returns(fn.body, values)
-
-      if (values.length === 0 || !values.every(v => v?.form === 'variable' && owned.has(v.name))) {
-        fresh.delete(fn.name)
-        changed = true
-      }
-    }
-  }
-
-  return fresh
-}
-
-function letNames(body: Statement[], into: Set<string>): void {
-  for (const s of body) {
-    switch (s.form) {
-      case 'let':
-        into.add(s.name)
-        break
-      case 'if':
-        s.branches.forEach(b => letNames(b.body, into))
-
-        if (s.otherwise) {
-          letNames(s.otherwise, into)
-        }
-
-        break
-      case 'while':
-      case 'for-each':
-        if (s.form === 'for-each') {
-          into.add(s.item)
-        }
-
-        letNames(s.body, into)
-        break
-      case 'match':
-        s.cases.forEach(c => letNames(c.body, into))
-
-        if (s.otherwise) {
-          letNames(s.otherwise, into)
-        }
-
-        break
-      case 'guard':
-        letNames(s.body, into)
-
-        if (s.catch) {
-          letNames(s.catch.body, into)
-        }
-
-        break
-      default:
-        break
-    }
-  }
-}
-
 function usedNames(body: Statement[], into: Set<string>): void {
   const exprNames = (e: Expression): void => {
     switch (e.form) {

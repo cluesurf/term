@@ -94,6 +94,10 @@ export function analyze(
     // the role a project's `role.tree` gives this file. A `view` document is read by its own reader, not by the
     // code mill, so without this the editor underlines every `view` line as an undefined name.
     role?: string | null
+    // `mark lean` on the file's role rule (projectLeanOf in call/code/role-of.ts). Without it a lean file mills as
+    // longhand, so every bare head reads as an unknown name and the lint rules run over a program that is not the
+    // one the build compiles.
+    lean?: boolean
     catalog?: ViewCatalog
   },
 ): Analysis {
@@ -126,7 +130,12 @@ export function analyze(
     return analyzeData(source, tree)
   }
 
-  const built = mill(expandTemplates(tree), source.file)
+  const built = mill(
+    expandTemplates(tree),
+    source.file,
+    options?.role ?? undefined,
+    options?.lean ?? false,
+  )
   const program = built.ok ? built.program : null
   const all = [...diagnostics, ...(built.ok ? [] : built.diagnostics)]
   const suppress = suppressions(tree)

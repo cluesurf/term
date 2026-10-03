@@ -1,0 +1,125 @@
+# record parameters a task only reads, which Rust takes `&R` (backend.ts, `borrowedRecords`): matched, with its
+# record fields passed on borrowed, its number and text fields read out of the reference, and one task that keeps
+# its record by value because it hands the record back
+form shape
+  case dot
+  case box
+    link width, like number
+    link label, like text
+  case pair
+    link left, like shape
+    link right, like shape
+
+# matches, recurses into the record fields, reads the number field: borrowed
+task area
+  take s, like shape
+  like number
+  fork case, read s
+    case dot
+      send back, code 0
+    case box
+      send back
+        call multiply
+          read width
+          read width
+    case pair
+      send back
+        call add
+          call area
+            read left
+          call area
+            read right
+
+# reads the text field, cloned out of the reference
+task labels
+  take s, like shape
+  like text
+  fork case, read s
+    case dot
+      send back, text <.>
+    case box
+      send back, read label
+    case pair
+      host l
+        call labels
+          read left
+      host r
+        call labels
+          read right
+      send back, text <{{l}}{{r}}>
+
+form counter
+  link count, like number
+
+# writes a field of its record, so it keeps it by value (E0594 behind a `&`)
+task bumped
+  take t, like counter
+  like number
+  save t/count
+    call add
+      read t/count
+      code 1
+  send back, read t/count
+
+# hands the record back, so it keeps it by value
+task widest
+  take a, like shape
+  take b, like shape
+  like shape
+  fork test
+    hook test
+      call is-above
+        call area
+          read a
+        call area
+          read b
+    hook hold
+      send back, read a
+  send back, read b
+
+task compute
+  like text
+  host small
+    make box
+      bind width, code 2
+      bind label, text <s>
+  host big
+    make pair
+      bind left
+        make box
+          bind width, code 3
+          bind label, text <b>
+      bind right
+        make pair
+          bind left
+            make dot
+          bind right
+            make box
+              bind width, code 4
+              bind label, text <c>
+  host a-small
+    call area
+      read small
+  host a-big
+    call area
+      read big
+  host l-big
+    call labels
+      read big
+  host w
+    call widest
+      read small
+      read big
+  host a-w
+    call area
+      read w
+  host again
+    call area
+      read big
+  host c
+    make counter
+      bind count, code 5
+  host b
+    call bumped
+      read c
+  send back, text <small={{a-small}} big={{a-big}} labels={{l-big}} widest={{a-w}} again={{again}} bumped={{b}}>

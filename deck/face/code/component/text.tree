@@ -1,0 +1,87 @@
+
+# Text: the vocabulary's word for a run of text (note/term/view/11-vocabulary.md). `level` 1 to 6 makes it a heading
+# (h1 to h6), `link` makes it a link (an `a` with that href), and neither leaves it a span. A prop left out is its empty
+# value (level 0, link empty), so `view text / bind content, text <Hi>` is the plain run.
+#
+# Every target draws it: the DOM its elements, the platform toolkits a label (a heading level is an accessibility hint
+# there, and a link a run that takes focus). Rich runs inside one text are left out: that is two texts in a row stack.
+
+load @term/site/code/view/render
+  find make-element
+  find make-text
+  find write-attribute
+load @term/site/code/dom/dom
+  find view
+  find append
+load @term/base/code/boolean
+  find not
+
+# the element a text is: a link's `a`, a heading's `h<level>`, else a span
+task text-tag
+  take level, like number
+  take link, like text
+  like text
+  fork test
+    hook test
+      call not
+        call is-equal
+          read link
+          text <>
+    hook hold
+      send back, text <a>
+    hook test
+      call is-above
+        read level
+        code 0
+    hook hold
+      send back, text <h{{level}}>
+    hook miss
+      send back, text <span>
+
+# the work of the view below, in a task: in a `view` body a bare `call` renders as a text child
+task mount-text
+  take host, like view
+  take content, like text
+  take level, like number
+  take link, like text
+  like view
+  save node
+    call make-element
+      call text-tag
+        read level
+        read link
+  call write-attribute
+    read node
+    text <data-slot>
+    text <text>
+  fork test
+    hook test
+      call not
+        call is-equal
+          read link
+          text <>
+    hook hold
+      call write-attribute
+        read node
+        text <href>
+        read link
+  call append
+    read node
+    call make-text
+      read content
+  call append
+    read host
+    read node
+  send back, read node
+
+view text
+  take host, like view
+  take content, like text
+  take level, like number
+  take link, like text
+  save mounted
+    call mount-text
+      read host
+      read content
+      read level
+      read link

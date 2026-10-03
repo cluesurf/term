@@ -4,15 +4,17 @@
 
 export type Message = {
   jsonrpc: '2.0'
-  id?: number | string
+  id?: number | string | null
   method?: string
   params?: unknown
   result?: unknown
-  error?: { code: number; message: string }
+  error?: { code: number; message: string; data?: unknown }
 }
 
-const byteLength = (text: string): number =>
-  new TextEncoder().encode(text).length
+const encoder = new TextEncoder()
+const decoder = new TextDecoder('utf-8')
+
+const byteLength = (text: string): number => encoder.encode(text).length
 
 // frame a message for the wire
 export function encode(message: Message): string {
@@ -21,24 +23,50 @@ export function encode(message: Message): string {
   return `Content-Length: ${byteLength(body)}\r\n\r\n${body}`
 }
 
-// accumulate raw chunks and surface complete messages as they arrive. The header's Content-Length is in bytes; this
-// reader assumes the body is ASCII JSON (true for LSP traffic), so byte length equals string length.
-export class MessageReader {
-  private buffer = ''
+// the header/body separator, as bytes
+const SEPARATOR = [13, 10, 13, 10]
 
-  append(chunk: string): Message[] {
-    this.buffer += chunk
+function indexOfSeparator(bytes: Uint8Array, from: number): number {
+  for (let i = from; i + 3 < bytes.length; i++) {
+    if (
+      bytes[i] === SEPARATOR[0] &&
+      bytes[i + 1] === SEPARATOR[1] &&
+      bytes[i + 2] === SEPARATOR[2] &&
+      bytes[i + 3] === SEPARATOR[3]
+    ) {
+      return i
+    }
+  }
+
+  return -1
+}
+
+// Accumulate raw chunks and surface complete messages as they arrive.
+//
+// THE BUFFER IS BYTES. The header's Content-Length counts the body in UTF-8 bytes, and a Term document holds Greek,
+// CJK and emoji, so a body is routinely longer in bytes than in UTF-16 characters. This reader used to keep a string
+// and slice `length` characters, which on any non-ASCII body read past its end into the next message's header and
+// lost that message. A string chunk is still accepted (the tests frame with `encode`) and is encoded first.
+export class MessageReader {
+  private buffer: Uint8Array = new Uint8Array(0)
+
+  append(chunk: string | Uint8Array): Message[] {
+    const incoming = typeof chunk === 'string' ? encoder.encode(chunk) : chunk
+    const joined = new Uint8Array(this.buffer.length + incoming.length)
+    joined.set(this.buffer, 0)
+    joined.set(incoming, this.buffer.length)
+    this.buffer = joined
 
     const out: Message[] = []
 
     for (;;) {
-      const headerEnd = this.buffer.indexOf('\r\n\r\n')
+      const headerEnd = indexOfSeparator(this.buffer, 0)
 
       if (headerEnd < 0) {
         break
       }
 
-      const header = this.buffer.slice(0, headerEnd)
+      const header = decoder.decode(this.buffer.subarray(0, headerEnd))
       const match = /Content-Length:\s*(\d+)/i.exec(header)
 
       if (!match) {
@@ -54,11 +82,19 @@ export class MessageReader {
         break
       } // body not fully arrived yet
 
-      const body = this.buffer.slice(bodyStart, bodyStart + length)
+      const body = decoder.decode(
+        this.buffer.subarray(bodyStart, bodyStart + length),
+      )
+
       this.buffer = this.buffer.slice(bodyStart + length)
 
       try {
-        out.push(JSON.parse(body) as Message)
+        const parsed = JSON.parse(body) as unknown
+
+        // a body that is JSON but not an object (a number, a string, null) is not a message
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          out.push(parsed as Message)
+        }
       } catch {
         // ignore an unparseable body and keep reading
       }

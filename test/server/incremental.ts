@@ -61,7 +61,7 @@ async function main(): Promise<void> {
         text,
       })
 
-      const codes = (ds: { code: number }[]) =>
+      const codes = (ds: { code: number | string }[]) =>
         ds
           .map(d => d.code)
           .sort()

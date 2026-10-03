@@ -88,7 +88,7 @@ const badDiags = (
 
 expect(
   'didOpen: an undefined name publishes one error diagnostic',
-  badDiags.length >= 1 && badDiags[0].severity === 1,
+  badDiags.length >= 1 && badDiags[0]?.severity === 1,
   true,
 )
 
@@ -173,13 +173,13 @@ await navServer.dispatch({
 
 // locate the `helper` reference at the call site (its span drives the position-based queries)
 const navIndex = buildIndex(
-  analyze({ file: 'nav.tree', text: NAV }).program,
+  analyze({ file: 'nav.tree', text: NAV }).program ?? [],
 )
 
 const callRef = navIndex.references.find(r => r.name === 'helper')!
 const callPos = {
   line: callRef.span.start.line,
-  character: callRef.span.start.character ?? callRef.span.start.column,
+  character: callRef.span.start.column,
 }
 
 const at = {
@@ -228,11 +228,18 @@ const rename = await navServer.dispatch({
   },
 })
 
-const renameEdits = (
-  rename[0]!.result as {
-    changes: Record<string, { newText: string }[]>
-  }
-).changes['nav.tree']
+const renameEdits =
+  (
+    rename[0]!.result as {
+      changes: Record<
+        string,
+        {
+          newText: string
+          range: { start: { line: number; character: number }; end: { line: number; character: number } }
+        }[]
+      >
+    } | null
+  )?.changes['nav.tree'] ?? []
 
 expect(
   'rename: edits every occurrence to the new name',
@@ -240,6 +247,25 @@ expect(
     renameEdits.every(e => e.newText === 'assist'),
   true,
 )
+
+// each edit covers the NAME and nothing else: replacing the edited text must leave the program intact, with
+// `helper` renamed in both places. The edits used to cover the whole `task helper` statement and the whole call.
+const renamed = (() => {
+  const lines = NAV.split('\n')
+
+  for (const edit of [...renameEdits].sort((a, b) => b.range.start.line - a.range.start.line || b.range.start.character - a.range.start.character)) {
+    if (edit.range.start.line !== edit.range.end.line) {
+      return '<a multi-line edit>'
+    }
+
+    const line = lines[edit.range.start.line]!
+    lines[edit.range.start.line] = line.slice(0, edit.range.start.character) + edit.newText + line.slice(edit.range.end.character)
+  }
+
+  return lines.join('\n')
+})()
+
+expect('rename: edits name spans only (the program survives)', renamed, NAV.replaceAll('helper', 'assist'))
 
 const syms = await navServer.dispatch({
   jsonrpc: '2.0',

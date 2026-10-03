@@ -15,16 +15,15 @@
 //   a method          the form a method belongs to
 //   a mask instance   the mask, and the form it is worn on
 //
-// A reference whose imports reach more than one of them is refused, naming the files: unlike a call, a type has no
-// arity to tell two forms apart by. A reference that reaches NONE (unimported) gets what the flat program gave it, the
-// definition merged last, so nothing that builds today stops building: the generated `bind` package names forms it
-// never imports thousands of times (`pnpm term:scope-census`). The strict step (module-scope-0006) refuses those. A
-// type parameter of the enclosing definition shadows a form of the same name. Runs before `extendForms`, which reads a
-// form's base by name.
+// A reference whose imports reach exactly one of them is that one. One that reaches NONE (unimported), or SEVERAL (an
+// import whose `bear` chain re-exports two forms of the name), gets what the flat program gave it: the definition merged
+// last, among those it reaches when it reaches any. So nothing that builds today stops building: the generated `bind`
+// package names forms it never imports thousands of times, and imports `function` through a chain that reaches three
+// (`pnpm term:scope-census`). The strict step (module-scope-0006) refuses both. A type parameter of the enclosing
+// definition shadows a form of the same name. Runs before `extendForms`, which reads a form's base by name.
 
 import type { Program, Statement } from '@term/make/code/compile/node'
 import type { ImportScope } from '@term/make/code/compile/load'
-import { diagnose } from '@term/make/code/parser/diagnostic'
 import type { Diagnostic, Span } from '@term/make/code/parser/diagnostic'
 
 type Defining = Extract<Statement, { form: 'record-type' | 'mask' }>
@@ -70,14 +69,19 @@ export function bindFormsByImport(program: Program, scope: ImportScope | undefin
 
   const groups = new Map<string, Group>()
 
-  // the file each name was defined in LAST, in program order
+  // the file each name was defined in LAST, in program order, and each file's place in that order
   const lastFile = new Map<string, string>()
+  const order = new Map<string, number>()
 
-  for (const statement of program) {
+  program.forEach((statement, index) => {
+    if (statement.span.file) {
+      order.set(statement.span.file, index)
+    }
+
     if ((statement.form === 'record-type' || statement.form === 'mask') && statement.span.file) {
       lastFile.set(statement.name, statement.span.file)
     }
-  }
+  })
 
   for (const [name, byFile] of byName) {
     if (byFile.size > 1) {
@@ -97,12 +101,11 @@ export function bindFormsByImport(program: Program, scope: ImportScope | undefin
     }),
   )
 
+  // nothing is refused yet (see the header): the strict step fills this
   const diagnostics: Diagnostic[] = []
-  const told = new Set<string>()
-  const short = (file: string) => file.split('/').slice(-3).join('/')
 
-  // the name a reference to `group` in `file` binds to, or undefined (refused) when its imports cannot tell
-  const bind = (group: Group, file: string | undefined, span: Span): string | undefined => {
+  // the name a reference to `group` in `file` binds to
+  const bind = (group: Group, file: string | undefined, _span: Span): string | undefined => {
     if (file && group.byFile.has(file)) {
       return group.renamed.get(file)
     }
@@ -124,26 +127,10 @@ export function bindFormsByImport(program: Program, scope: ImportScope | undefin
       return group.renamed.get(group.last)
     }
 
-    const key = `${file}\u0000${group.name}`
+    // several reached: the one of them merged last, which is the one the flat program let win among them
+    const latest = hits.reduce((a, b) => ((order.get(b) ?? -1) > (order.get(a) ?? -1) ? b : a))
 
-    if (!told.has(key)) {
-      told.add(key)
-      const here = file ? short(file) : 'this file'
-      diagnostics.push(
-        diagnose('duplicate-definition', {
-          file,
-          span,
-          message: `${here} imports the form "${group.name}" from more than one file that defines it (${hits.map(short).join(', ')}), so the reference cannot tell which it means`,
-          markers: [
-            { span },
-            ...hits.flatMap(f => group.byFile.get(f)!.map(d => ({ span: d.span, label: `a "${group.name}" here` }))),
-          ],
-          hint: `add \`find ${group.name}\` under the \`load\` of the one ${here} means. A form belongs to the module that defines it`,
-        }),
-      )
-    }
-
-    return undefined
+    return group.renamed.get(latest)
   }
 
   for (const statement of program) {

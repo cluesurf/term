@@ -149,6 +149,11 @@ async function backdating(): Promise<void> {
 async function run(): Promise<void> {
   main()
   await backdating()
+
+  // a failure must fail the run: `pnpm term:test` reads the exit code, and this suite used to exit 0 regardless
+  if (fail > 0) {
+    process.exit(1)
+  }
 }
 
 void run()

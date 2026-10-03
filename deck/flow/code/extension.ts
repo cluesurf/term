@@ -1,9 +1,10 @@
 // The VS Code client for the Term language server. It launches the bundled server (code/main.ts, built to
 // make/server.js beside this extension) as a child `node` process and speaks LSP to it over stdio. Syntax highlighting is
 // provided separately by the TextMate grammar in text/tree.json; this client adds the semantic features the server
-// implements: diagnostics, hover, go-to-definition, references, rename, and document symbols.
+// implements (the list is the server's `initialize` capabilities, code/server.ts).
 
 import * as path from 'node:path'
+import { workspace } from 'vscode'
 import type { ExtensionContext } from 'vscode'
 import {
   LanguageClient,
@@ -31,7 +32,16 @@ export function activate(context: ExtensionContext): void {
   }
 
   const clientOptions: LanguageClientOptions = {
-    documentSelector: [{ scheme: 'file', language: 'tree' }],
+    // an unsaved buffer is analyzed as well as a file: it compiles against the stdlib alone
+    documentSelector: [
+      { scheme: 'file', language: 'tree' },
+      { scheme: 'untitled', language: 'tree' },
+    ],
+    synchronize: {
+      // a `.tree` file created, changed or deleted outside the editor: the server re-reads the packages and
+      // re-analyzes every open file that imported it. `role.tree` and `deck.tree` are `.tree` files too.
+      fileEvents: workspace.createFileSystemWatcher('**/*.tree'),
+    },
   }
 
   // the id is the prefix of the client's settings (`term.trace.server`). It was `seed` until the extension was

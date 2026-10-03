@@ -1,0 +1,37 @@
+
+# Image: the vocabulary's word for a picture (note/term/view/11-vocabulary.md). `source` is a URL, a path or a `data:`
+# URI. `text` is what it shows, for a reader that cannot see it, and is required: a cell grid draws only that. `fit` is
+# `contain` (the default) or `cover`.
+#
+# Drawn as an `img` on the DOM, and as NSImageView, UIImageView or ImageView by the platform toolkits, which decode the
+# picture themselves and read `text` out as its accessibility label (test/compile/toolkit-words.ts).
+
+load @term/site/code/dom/dom
+  find view
+
+# the fit as a style declaration: contain unless the caller asked for cover
+task fit-style
+  take fit, like text
+  like text
+  fork test
+    hook test
+      call is-equal
+        read fit
+        text <cover>
+    hook hold
+      send back, text <object-fit: cover>
+    hook miss
+      send back, text <object-fit: contain>
+
+view image
+  take host, like view
+  take source, like text
+  take text, like text
+  take fit, like text
+  view img
+    bind data-slot, text <image>
+    bind src, read source
+    bind alt, read text
+    bind style
+      call fit-style
+        read fit

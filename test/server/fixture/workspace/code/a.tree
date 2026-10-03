@@ -1,0 +1,5 @@
+# defines `shout`, which b.tree imports by name and d.tree imports under another name
+task shout
+  take m, like text
+  like text
+  send back, read m

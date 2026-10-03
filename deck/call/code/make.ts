@@ -33,7 +33,9 @@ import {
 import { withNativeEnv } from '@term/make/code/compile/native'
 import type { NativeEnv } from '@term/make/code/compile/native'
 import type { Resolver, Source } from '@term/make/code/compile/load'
-import { stdlibResolver, linkResolver, siblingResolver } from '@term/call/code/walk'
+// from the compiler, where they live, not through call/code/walk.ts's re-export: walk.ts imports esbuild (for the
+// REPL), and the language server imports `projectResolver` from here into a bundle that ships no node_modules
+import { stdlibResolver, linkResolver, siblingResolver } from '@term/make/code/resolve'
 import { renderDiagnostic } from '@term/call/code/report'
 import { FACE_NATIVE_PATH, contractFindings } from '@term/call/code/face-contract'
 import type { ContractFinding } from '@term/call/code/face-contract'

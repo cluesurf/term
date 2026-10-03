@@ -1,4 +1,10 @@
 
+note draft
+
+# SHELVED 2026-10-02: replaced by ./divider.tree, the vocabulary's `divider` (note/term/view/11-vocabulary.md), which is
+# an `hr` every target draws and turns vertical inside a row by itself. Nothing placed this one. Delete it once that is
+# settled.
+#
 # Separator — headless, ported from shadcn (separator.tsx). A divider line. `orientation` is a data attribute
 # (horizontal / vertical) for theming. role=separator for a11y. No children.
 

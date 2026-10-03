@@ -137,15 +137,19 @@
     "terms": {
       "patterns": [
         {
-          "match": "(/)?([a-z][a-z0-9]*(?:-+[a-z0-9]+)*-*)",
+          "match": "(@|\\.\\.?/|/)?([a-z][a-z0-9]*(?:-+[a-z0-9]+)*-*)",
           "captures": {
             "1": {
-              "name": "variable.other.tree"
+              "name": "string.quoted.single.tree"
             },
             "2": {
               "name": "string.quoted.single.tree"
             }
           }
+        },
+        {
+          "name": "string.quoted.single.tree",
+          "match": "/(?=\\{)"
         }
       ]
     },

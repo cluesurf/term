@@ -110,6 +110,15 @@ export function importPathsOf(source: Source, parsed: ParseMemo): string[] {
   return tree.ok ? scanImports(tree.tree).paths : []
 }
 
+// the `load` / `bear` blocks a module declares, each with the names its `find` lines ask for and where each `find`
+// line is. The same scan the dependency walk reads, so the language server's workspace references (which ask "does
+// this file import that name from that module") cannot disagree with the build about what a file imports.
+export function importFindsOf(source: Source, parsed: ParseMemo): ImportScan['finds'] {
+  const tree = parsed(source)
+
+  return tree.ok ? scanImports(tree.tree).finds : []
+}
+
 function scanImports(tree: RootNode): ImportScan {
   const paths: string[] = []
   const finds: ImportScan['finds'] = []

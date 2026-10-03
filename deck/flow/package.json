@@ -1,8 +1,8 @@
 {
   "name": "term-code",
   "displayName": "Term",
-  "icon": "view/tree.png",
-  "description": "Term language support: .tree syntax highlighting plus the Term language server (diagnostics, hover, completion, go-to-definition, go-to-implementation, find references, rename, code actions and quick fixes, document symbols, signature help, code lens, inlay hints, semantic tokens).",
+  "icon": "view/term.png",
+  "description": "Syntax highlighting and the language server for Term .tree files",
   "version": "0.5.0",
   "license": "MIT",
   "publisher": "cluesurf",
@@ -15,15 +15,20 @@
     "vscode": "^1.84.0"
   },
   "categories": ["Programming Languages"],
-  "activationEvents": ["onLanguage:tree", "workspaceContains:**/*.tree"],
+  "activationEvents": [
+    "onLanguage:tree",
+    "workspaceContains:**/*.tree"
+  ],
   "main": "./make/extension.js",
   "scripts": {
     "build": "node build.mjs",
     "dock": "vsce login cluesurf",
-    "make": "vsce package",
-    "host": "vsce publish",
+    "make": "vsce package --no-dependencies --out make/term-code.vsix",
+    "bind": "code --install-extension make/term-code.vsix --force",
+    "toss": "code --uninstall-extension cluesurf.term-code",
+    "host": "vsce publish --no-dependencies",
     "vscode:prepublish": "node build.mjs",
-    "view": "convert -background none -resize 1024x view/tree.svg view/tree.png"
+    "view": "resvg --width 1024 view/term.svg view/term.png"
   },
   "contributes": {
     "iconThemes": [
@@ -38,7 +43,11 @@
         "id": "tree",
         "aliases": ["Term", "Tree", "TreeCode", "tree"],
         "extensions": [".tree"],
-        "configuration": "./text/bind.json"
+        "configuration": "./text/bind.json",
+        "icon": {
+          "light": "./view/term.png",
+          "dark": "./view/term.png"
+        }
       },
       {
         "id": "tree-markdown-injection"

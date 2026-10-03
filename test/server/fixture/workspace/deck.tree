@@ -1,0 +1,4 @@
+deck @test/flow-workspace
+  head <A package for the language server's workspace tests>
+  code <0.0.0>
+  lock mit

@@ -56,8 +56,44 @@ task bump-twice
     read xs
     read by
 
+# builds, writes and returns its own list: a fresh task, answering a plain `Vec`
+task squares
+  take n, like number
+  like list, like number
+  save out
+    make list
+  walk size
+    bind base, code 0
+    bind head, read n
+    hook next
+      take site, name i
+      call push
+        bind list, read out
+        bind item
+          call multiply
+            read i
+            read i
+  save out/0, code 100
+  send back, read out
+
 task compute
   like text
+  host zs
+    call squares
+      code 4
+  call bump
+    read zs
+    code 1
+  host owned-total
+    call total
+      read zs
+  host z1, read zs/1
+  host z0, read zs/0
+  # an argument reading the owned list it lends: read before the lend, or Rust refuses the borrow (E0502)
+  call bump
+    read zs
+    read zs/1
+  host z2, read zs/2
   host xs
     call counting
       code 5
@@ -81,4 +117,4 @@ task compute
     call total
       call counting
         code 4
-  send back, text <after={{after}} self-read={{self-read}} shared={{shared}} sum={{sum}} fresh={{fresh}}>
+  send back, text <after={{after}} self-read={{self-read}} shared={{shared}} sum={{sum}} fresh={{fresh}} owned={{z0}},{{z1}},{{owned-total}},{{z2}}>

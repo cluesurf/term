@@ -1,0 +1,9 @@
+load ./a
+  find shout
+
+task loud
+  take m, like text
+  like text
+  send back
+    call shout
+      read m

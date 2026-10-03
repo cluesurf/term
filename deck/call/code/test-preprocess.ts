@@ -41,14 +41,21 @@ function parseName(rest: string): { slug: string; label: string } {
 
 // split a block body into its top-level statement groups: each starts at the body's base indent and includes the
 // deeper lines under it (and trailing blank lines stay with the preceding group)
-function statements(body: string[], base: number): string[][] {
-  const groups: string[][] = []
+// Each group is the source LINE NUMBERS it holds, so the caller can say where every output line came from.
+function statements(
+  lines: string[],
+  body: number[],
+  base: number,
+): number[][] {
+  const groups: number[][] = []
 
-  for (const line of body) {
+  for (const at of body) {
+    const line = lines[at]!
+
     if (!blank(line) && indentOf(line) === base) {
-      groups.push([line])
+      groups.push([at])
     } else if (groups.length > 0) {
-      groups[groups.length - 1]!.push(line)
+      groups[groups.length - 1]!.push(at)
     }
   }
 
@@ -85,12 +92,26 @@ function guard(group: string[]): string[] {
   ]
 }
 
-export type Preprocessed = { text: string; labels: Map<string, string> }
+// `origin[n]` is the source line that output line `n` came from, so a diagnostic on the rewritten text can be put
+// back on the line the author wrote. A line that passes through keeps its text, so its columns hold as well. The
+// language server reads it: without it, every diagnostic in a test file landed on whatever line the expansion had
+// pushed it to.
+export type Preprocessed = {
+  text: string
+  labels: Map<string, string>
+  origin: number[]
+}
 
 export function preprocessTests(source: string): Preprocessed {
   const lines = source.split('\n')
   const out: string[] = []
+  const origin: number[] = []
   const labels = new Map<string, string>()
+
+  const emit = (text: string, from: number): void => {
+    out.push(text)
+    origin.push(from)
+  }
 
   let i = 0
 
@@ -99,41 +120,62 @@ export function preprocessTests(source: string): Preprocessed {
     const header = /^test (.+)$/.exec(line)
 
     if (!header || indentOf(line) !== 0) {
-      out.push(line)
+      emit(line, i)
       i++
       continue
     }
 
+    const at = i
     const { slug, label } = parseName(header[1]!)
     labels.set(slug, label)
     // gather the block body: the following lines that are blank or indented
     i++
 
-    const body: string[] = []
+    const body: number[] = []
 
     while (
       i < lines.length &&
       (blank(lines[i]!) || indentOf(lines[i]!) >= 2)
     ) {
-      body.push(lines[i]!)
+      body.push(i)
       i++
     }
 
     // emit the task: setup statements pass through, assertions become guards, then `send back, true`
-    out.push(`task ${slug}`, '  note async', '  like boolean')
+    emit(`task ${slug}`, at)
+    emit('  note async', at)
+    emit('  like boolean', at)
 
-    for (const group of statements(body, 2)) {
-      const head = group[0]!.trim().split(/[\s,]/)[0]!
+    for (const group of statements(lines, body, 2)) {
+      const head = lines[group[0]!]!.trim().split(/[\s,]/)[0]!
 
       if (head === ASSERTION) {
-        out.push(...guard(group))
+        const written = guard(group.map(n => lines[n]!))
+        // two lines of `fork test` / `hook test`, the condition, then three of the failing branch. The condition
+        // is the inline expression (one line, from the `want` line) or the lines under the `want`, one for one.
+        const inline = /^want(?:\s+(?:hold|miss))?\s*,/.test(
+          lines[group[0]!]!.trim(),
+        )
+        const conditionFrom = inline ? [group[0]!] : group.slice(1)
+
+        const from = [
+          group[0]!,
+          group[0]!,
+          ...conditionFrom,
+          group[0]!,
+          group[0]!,
+          group[0]!,
+        ]
+
+        written.forEach((text, n) => emit(text, from[n] ?? group[0]!))
       } else {
-        out.push(...group)
+        group.forEach(n => emit(lines[n]!, n))
       }
     }
 
-    out.push('  send back', '    true')
+    emit('  send back', at)
+    emit('    true', at)
   }
 
-  return { text: out.join('\n'), labels }
+  return { text: out.join('\n'), labels, origin }
 }

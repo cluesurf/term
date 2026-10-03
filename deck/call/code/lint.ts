@@ -5,6 +5,7 @@ import { render } from '@term/make/code/parser/diagnostic'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import type { Finding, TextEdit } from '@term/make/code/lint/rule'
 import { collectTreeFiles } from '@term/call/code/files'
+import { projectLeanOf, projectRoleOf } from '@term/call/code/role-of'
 import {
   logGood,
   logFail,
@@ -83,6 +84,15 @@ export async function callLint(input: {
 
   logStep(input.fix ? 'Linting and fixing...' : 'Linting...')
 
+  // the role and `mark lean` each file's role rule gives it, as the build reads them. Without these a lean file is
+  // milled as longhand and linted as a program the build never compiles.
+  const roleOf = projectRoleOf(input.root)
+  const leanOf = projectLeanOf(input.root)
+  const readersOf = (file: string) => ({
+    role: roleOf(file),
+    lean: leanOf(file),
+  })
+
   let totalFindings = 0
   let totalErrors = 0
   let totalFixed = 0
@@ -90,7 +100,8 @@ export async function callLint(input: {
   for (const file of files) {
     const text = await fs.readFile(file, 'utf-8')
     const relative = path.relative(input.root, file)
-    const findings = analyze({ file: relative, text }).lint()
+    const readers = readersOf(path.resolve(input.root, file))
+    const findings = analyze({ file: relative, text }, readers).lint()
 
     if (findings.length === 0) {
       continue
@@ -110,10 +121,13 @@ export async function callLint(input: {
       }
 
       // re-lint to report what the fixes did not resolve
-      const remaining = analyze({
-        file: relative,
-        text: fixedText,
-      }).lint()
+      const remaining = analyze(
+        {
+          file: relative,
+          text: fixedText,
+        },
+        readers,
+      ).lint()
 
       const lines = fixedText.split('\n')
 

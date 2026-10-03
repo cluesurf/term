@@ -1,0 +1,82 @@
+
+# Stack: the vocabulary's word for children in a row or a column, and where the layout model lives
+# (note/term/view/11-vocabulary.md, "The layout model"). Its props are that model and nothing else:
+#
+#   direction  `row` or `column`. Left out, a column, as block children fall one under another
+#   gap        points between the children. Left out, 0
+#   align      across the direction: `start`, `center`, `end`, `stretch`. Left out, stretch (CSS's default)
+#   justify    along the direction: `start`, `center`, `end`, `between`. Left out, start
+#   padding    points inside the edge, on every side. Left out, 0
+#
+# Drawn as a flex `div` on the DOM, and by the platform toolkits' own stacks (NSStackView, UIStackView, LinearLayout),
+# which read the same style words. Overlap is left out: that is what `dialog` is for.
+
+load @term/site/code/dom/dom
+  find view
+
+# one style declaration, or nothing when the prop was left out
+task style-part
+  take property, like text
+  take value, like text
+  like text
+  fork test
+    hook test
+      call is-equal
+        read value
+        text <>
+    hook hold
+      send back, text <>
+    hook miss
+      send back, text <{{property}}: {{value}}; >
+
+# the layout model as the style words every host reads
+task stack-style
+  take direction, like text
+  take gap, like number
+  take align, like text
+  take justify, like text
+  take padding, like number
+  like text
+  save flow, text <column>
+  fork test
+    hook test
+      call is-equal
+        read direction
+        text <row>
+    hook hold
+      save flow, text <row>
+  save spread, read justify
+  fork test
+    hook test
+      call is-equal
+        read justify
+        text <between>
+    hook hold
+      save spread, text <space-between>
+  save aligned
+    call style-part
+      text <align-items>
+      read align
+  save justified
+    call style-part
+      text <justify-content>
+      read spread
+  send back, text <display: flex; flex-direction: {{flow}}; gap: {{gap}}px; padding: {{padding}}px; {{aligned}}{{justified}}>
+
+view stack
+  take host, like view
+  take direction, like text
+  take gap, like number
+  take align, like text
+  take justify, like text
+  take padding, like number
+  view div
+    bind data-slot, text <stack>
+    bind style
+      call stack-style
+        read direction
+        read gap
+        read align
+        read justify
+        read padding
+    slot

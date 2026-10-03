@@ -342,6 +342,16 @@ function bindByImport(program: Program, scope: ImportScope | undefined, entry?: 
     program.flatMap(s => (s.form === 'let' || s.form === 'bind' ? [s.name] : s.form === 'native' ? [s.alias] : [])),
   )
 
+  // every field name of every form and variant. Inside a `fork case` arm the variant's fields are locals by their own
+  // names, which no binding in the tree records, so a variable named like a field may be one: `read start` in the clock's
+  // `case mark / link start` arm is the field, not the file's own task `start` (native/node/clock/measurement.tree). A
+  // value reference with a field's name is left as written, as every value reference was before
+  const fields = new Set(
+    program.flatMap(s =>
+      s.form === 'record-type' ? [...s.fields.map(f => f.name), ...s.variants.flatMap(v => v.fields.map(f => f.name))] : [],
+    ),
+  )
+
   for (const top of program) {
     const file = top.span.file
     // the names a local binds inside this statement, which shadow every definition of the group (boundIn)
@@ -350,7 +360,11 @@ function bindByImport(program: Program, scope: ImportScope | undefined, entry?: 
     eachReference(top, (variable, arity) => {
       const group = groups.get(variable.name)
 
-      if (!group || local.has(variable.name) || (arity === undefined && values.has(variable.name))) {
+      if (
+        !group ||
+        local.has(variable.name) ||
+        (arity === undefined && (values.has(variable.name) || fields.has(variable.name)))
+      ) {
         return
       }
 

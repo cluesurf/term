@@ -33,7 +33,32 @@ import { RENDER } from '@term/make/code/compile/render-names'
 // page imports the render runtime, and component names resolve to their lowered
 // functions.
 
-type Component = { params: string[]; slotted: boolean }
+type Component = { params: string[]; types: (Type | undefined)[]; slotted: boolean }
+
+// the value a placement passes for a prop it leaves out: the prop type's own empty (``, 0, false), so a component's
+// optional props (the vocabulary's `level` and `link` on `text`) type on every backend, where a bare unit is only
+// accepted by TypeScript. Anything else, or an untyped prop, gets the unit as before
+function emptyFor(type: Type | undefined, span: Span): Expression {
+  const name = type?.kind === 'named' ? type.name : type?.kind
+
+  switch (name) {
+    case 'text':
+    case 'string':
+      return { form: 'string', value: '', span }
+    case 'number':
+    case 'integer':
+    case 'natural':
+    case 'size':
+      return { form: 'integer', value: 0, span }
+    case 'decimal':
+    case 'float':
+      return { form: 'float', value: 0, span }
+    case 'boolean':
+      return { form: 'boolean', value: false, span }
+    default:
+      return { form: 'unit', span }
+  }
+}
 
 // Standard HTML/SVG tags that are ALWAYS rendered as elements, never treated as
 // component calls even if a same-named zone exists. Kebab zone names have no
@@ -174,6 +199,7 @@ function collectComponents(program: Program): Map<string, Component> {
     if (node.form === 'view' && !HTML_TAGS.has(node.name)) {
       components.set(node.name, {
         params: node.params.slice(1).map(p => p.name),
+        types: node.params.slice(1).map(p => p.type),
         slotted: hasSlot(node.body),
       })
     }
@@ -329,17 +355,28 @@ function lowerZone(
     const comp = components.get(node.name)!
     const args: Expression[] = [variable(parent)]
 
-    for (const name of comp.params) {
+    comp.params.forEach((name, i) => {
       const prop = node.props.find(p => p.name === name)
-      args.push(prop ? prop.value : { form: 'unit', span })
-    }
+      args.push(prop ? prop.value : emptyFor(comp.types[i], span))
+    })
 
+    // the children build STRAIGHT INTO the parent the outlet hands them (`(into) => { ... }`), as a route's page builds
+    // into its layout's: never under a `seed-fragment` wrapper, which sat between a layout component (the vocabulary's
+    // `stack`) and its children, so a flex row laid out one fragment instead of its children
     if (comp.slotted) {
-      args.push(
-        node.children.length
-          ? thunk(node.children)
-          : { form: 'unit', span },
-      )
+      if (node.children.length) {
+        const into = fresh()
+        const inner: Statement[] = []
+
+        for (const child of node.children) {
+          attach(child, into, inner)
+        }
+
+        args.push({ form: 'closure', params: [{ name: into }], body: inner, span })
+      } else {
+        // no children: a closure that builds nothing, never a unit, so the parameter keeps its one type everywhere
+        args.push({ form: 'closure', params: [{ name: fresh() }], body: [], span })
+      }
     }
 
     return call(node.name, args)
@@ -493,51 +530,19 @@ function lowerZone(
         ),
       )
     } else if (node.form === 'slot') {
-      // the slot outlet renders the caller's children into `parent`. The thunk is called WITH the parent: a content
-      // thunk (`() => view`, the common case) ignores the arg and returns a node, which is appended; a layout's page
-      // thunk (`(parent) => page(parent)`) builds straight into the parent and returns nothing, so nothing is appended
-      // (no wrapper element). This is what lets a route's `layout` wrap its page with no extra DOM node.
-      //   if (children) { const __slot = children(parent); if (__slot) append(parent, __slot) }
-      out.push({
-        form: 'if',
-        branches: [
-          {
-            cond: variable('children'),
-            body: [
-              {
-                form: 'let',
-                name: '__slot',
-                init: {
-                  form: 'call',
-                  callee: variable('children'),
-                  args: [variable(parent)],
-                  span,
-                },
-                mutable: false,
-                span,
-              },
-              {
-                form: 'if',
-                branches: [
-                  {
-                    cond: variable('__slot'),
-                    body: [
-                      exprStatement(
-                        call('append', [
-                          variable(parent),
-                          variable('__slot'),
-                        ]),
-                      ),
-                    ],
-                  },
-                ],
-                span,
-              },
-            ],
-          },
-        ],
-        span,
-      })
+      // the slot outlet renders the caller's children into `parent`. Every children thunk builds straight into the parent
+      // it is handed and returns nothing: a component's children (componentCall) and a route layout's page
+      // (route-lower.ts) alike, and a placement with none passes one that builds nothing. So no wrapper element ever
+      // sits between a component and its children, and the call needs no test of whether there are any.
+      //   children(parent)
+      out.push(
+        exprStatement({
+          form: 'call',
+          callee: variable('children'),
+          args: [variable(parent)],
+          span,
+        }),
+      )
     } else if (
       node.form === 'element' &&
       components.has(node.name) &&
@@ -588,7 +593,12 @@ function lowerZone(
   const params = zone.params.map(p => ({ name: p.name, type: p.type }))
 
   if (slotted) {
-    params.push({ name: 'children', type: undefined })
+    // a task that builds into the view it is handed: typed, so a native backend (whose closures are typed) emits a real
+    // function type, where an untyped parameter was `Void` on Swift (view-vocabulary-0004, the first native slot)
+    params.push({
+      name: 'children',
+      type: { kind: 'function', params: [{ kind: 'named', name: 'view' }], result: { kind: 'unit' } },
+    })
   }
 
   return {

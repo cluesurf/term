@@ -38,6 +38,12 @@ const server = {
   outfile: path.join(here, 'make', 'server.js'),
   format: 'cjs',
   tsconfig: path.join(termRoot, 'tsconfig.json'),
+  // esbuild reaches the graph through one DYNAMIC import, call/code/make.ts `callMake` loading build-parallel.ts for
+  // `term make --parallel`, which the server never calls (it imports only `projectResolver` and `findTreeFiles` from
+  // that module). Bundled, esbuild's own `require.resolve("esbuild")` warns and would fail with no node_modules in
+  // the .vsix; external, the `require` sits inside that import's lazy initializer and is never run.
+  // test/server/wire.ts starts make/server.js itself and asks it to initialize.
+  external: ['esbuild'],
 }
 
 if (watch) {

@@ -788,6 +788,9 @@ enum nativeView {
                 bound.isActive = true
                 return
             }
+        // a scroll IS the platform's scroll view: the overflow the web needs to say is what this view already does
+        case ("overflow", _) where node.kind == .scroll, ("overflow-y", _) where node.kind == .scroll:
+            return
         case ("object-fit", _) where node.kind == .image && (value == "contain" || value == "cover"):
             // drawn again with the fit now in `styles`, which is where `draw(picture:)` reads it
             draw(picture: node)

@@ -1,4 +1,10 @@
 
+note draft
+
+# SHELVED 2026-10-02: replaced by ./scroll.tree, the vocabulary's `scroll` (note/term/view/11-vocabulary.md), which is
+# the platform's own scroll view on every toolkit. A custom scrollbar is left out of the vocabulary. Nothing placed this
+# one. Delete it once that is settled.
+#
 # Scroll area — headless. A scrollable viewport (theme the custom scrollbar in CSS). Parts: scroll-area, scroll-area-
 # viewport, scroll-area-scrollbar, scroll-area-thumb.
 load @term/site/code/view/render

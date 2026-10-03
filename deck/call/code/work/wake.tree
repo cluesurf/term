@@ -65,7 +65,7 @@ load @term/base/code/console
 
 task boot
   note async
-  call log, text <hello from term>
+  log <hello from term>
 >
 
 task readme-text

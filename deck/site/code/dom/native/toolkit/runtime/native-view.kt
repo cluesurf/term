@@ -467,6 +467,8 @@ object nativeView {
                     else -> false
                 }
             }
+            // a scroll IS the platform's ScrollView: the overflow the web needs to say is what this view already does
+            (property == "overflow" || property == "overflow-y") && node.kind == TermNode.Kind.SCROLL -> true
             property == "object-fit" && node.kind == TermNode.Kind.IMAGE && (value == "contain" || value == "cover") -> {
                 val image = node.view as android.widget.ImageView
                 // a cover fills the frame, so the view keeps its own bounds rather than the picture's

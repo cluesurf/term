@@ -16,8 +16,8 @@ The extension's identifier is `cluesurf.term-code`, and its client id is `term`,
 | highlighting inside fenced `tree` blocks in markdown | `text/mark.json` |
 | the marketplace icon | `view/tree.png`, drawn from `view/tree.svg` by `pnpm view` |
 | the `Tree` file icon theme, opt-in | `view/view.json` |
-| the client | `code/extension.ts`, bundled to `host/extension.js` |
-| the server | `deck/flow/code/main.ts`, bundled to `host/server.js` |
+| the client | `code/extension.ts`, bundled to `make/extension.js` |
+| the server | `code/main.ts`, bundled to `make/server.js` |
 
 The grammar names no keywords. Every head is colored by position, so a retired word (`wave`, `bust`, `send kink`, `mark async`) is not singled out. The coloring by meaning comes from the server's semantic tokens.
 
@@ -28,7 +28,7 @@ The grammar names no keywords. Every head is colored by position, so a retired w
 # pnpm-workspace.yaml, and without the flag pnpm installs that workspace instead
 # of this extension's own dependencies.
 pnpm install --ignore-workspace   # vscode-languageclient, esbuild, @vscode/vsce, types
-pnpm build                        # bundles host/extension.js + host/server.js
+pnpm build                        # bundles make/extension.js + make/server.js
 ```
 
 Then open this folder in VS Code and press `F5` (Run Term Extension). A second "Extension Development Host" window opens with the extension loaded. Open any `.tree` file to see highlighting and live diagnostics.
@@ -39,10 +39,36 @@ Then open this folder in VS Code and press `F5` (Run Term Extension). A second "
 
 ```bash
 pnpm dock         # vsce login cluesurf   (one-time auth)
-pnpm make         # vsce package          -> term-code-<version>.vsix
+pnpm make         # vsce package          -> make/term-code.vsix
+pnpm bind         # install make/term-code.vsix into VS Code
+pnpm toss         # uninstall it
 pnpm host         # vsce publish
 ```
 
-Install the `.vsix` locally with VS Code's "Extensions: Install from VSIX…" command, or `code --install-extension term-code-<version>.vsix`.
+## Install locally
+
+After a change to the client, the server or the grammar:
+
+```bash
+pnpm make
+pnpm bind
+```
+
+Then run "Developer: Reload Window".
+
+After a change to an icon or to `package.json`, uninstall first. VS Code keeps the extension it scanned, icon paths and all, until it restarts, so a reinstall at the same version is not reread by a reload:
+
+```bash
+pnpm toss
+```
+
+Then run "Developer: Reload Window", then:
+
+```bash
+pnpm make
+pnpm bind
+```
+
+And reload again.
 
 Anyone with `cluesurf.tree-code` installed should uninstall it. Both register the `tree` language and the same grammar scope, so keeping both loads the grammar twice.

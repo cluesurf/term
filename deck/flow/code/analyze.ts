@@ -24,9 +24,14 @@ export type LspRange = { start: LspPosition; end: LspPosition }
 export type LspDiagnostic = {
   range: LspRange
   severity: number
-  code: number
+  // the compiler's permanent numeric code, or a lint rule's `L003`
+  code: number | string
   source: string
   message: string
+  // the place in ANOTHER file a diagnostic is about (an error inside an imported module)
+  relatedInformation?: { location: { uri: string; range: LspRange }; message: string }[]
+  // a lint finding's fix, carried so a code action can apply it without re-linting
+  data?: unknown
 }
 
 const SEVERITY: Record<Severity, number> = {
@@ -46,7 +51,7 @@ export function toLspDiagnostic(d: Diagnostic): LspDiagnostic {
     range: toRange(d.span),
     severity: SEVERITY[d.severity],
     code: d.code,
-    source: 'seed',
+    source: 'term',
     message: d.hint ? `${d.message} (${d.hint})` : d.message,
   }
 }
@@ -178,6 +183,11 @@ function walkStatement(
     case 'function':
       node.body.forEach(s => walkStatement(s, visit))
       break
+    // `note unsafe` and its handler: ordinary code, which hover used to skip
+    case 'guard':
+      node.body.forEach(s => walkStatement(s, visit))
+      node.catch?.body.forEach(s => walkStatement(s, visit))
+      break
     default:
       break
   }
@@ -213,12 +223,40 @@ function walkExpression(
       break
     case 'record':
       node.fields.forEach(f => walkExpression(f.value, visit))
+      node.positional?.forEach(p => walkExpression(p, visit))
       break
     case 'member':
       walkExpression(node.target, visit)
+
+      if (node.index) {
+        walkExpression(node.index, visit)
+      }
+
       break
     case 'await':
       walkExpression(node.expr, visit)
+      break
+    case 'template':
+      for (const part of node.parts) {
+        if (typeof part !== 'string') {
+          walkExpression(part, visit)
+        }
+      }
+
+      break
+    case 'closure':
+      node.body.forEach(s => walkStatement(s, visit))
+      break
+    case 'conditional':
+      for (const branch of node.branches) {
+        walkExpression(branch.cond, visit)
+        walkExpression(branch.value, visit)
+      }
+
+      if (node.otherwise) {
+        walkExpression(node.otherwise, visit)
+      }
+
       break
     default:
       break

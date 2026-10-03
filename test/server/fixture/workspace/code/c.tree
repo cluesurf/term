@@ -1,0 +1,5 @@
+# a `shout` of its own, imported from nowhere: a rename of a.tree's must not touch it
+task shout
+  take m, like number
+  like number
+  send back, read m

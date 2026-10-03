@@ -1,0 +1,9 @@
+load ./a
+  find shout, name yell
+
+task quiet
+  take m, like text
+  like text
+  send back
+    call yell
+      read m

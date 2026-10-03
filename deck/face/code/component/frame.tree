@@ -1,0 +1,65 @@
+
+# Frame: the vocabulary's word for a fixed size around one child (note/term/view/11-vocabulary.md). Each bound is in
+# points, and one left out (0) is not set, so the child keeps its own size on that axis:
+#
+#   width, height                          a fixed size
+#   min-width, max-width, min-height,      bounds the child's own size stays within
+#   max-height
+#
+# Drawn as a `div` with those style words on the DOM, and as constraints or layout params by the toolkits
+# (test/compile/toolkit-words.ts holds min-width and max-width on AppKit, UIKit and Android views). Aspect ratio is
+# left out: a cell grid's cells cannot hold one.
+
+load @term/site/code/dom/dom
+  find view
+
+# one bound as a style declaration, or nothing when it was left out (0)
+task bound-part
+  take property, like text
+  take value, like number
+  like text
+  fork test
+    hook test
+      call is-above
+        read value
+        code 0
+    hook hold
+      send back, text <{{property}}: {{value}}px; >
+    hook miss
+      send back, text <>
+
+task frame-style
+  take width, like number
+  take height, like number
+  take min-width, like number
+  take max-width, like number
+  take min-height, like number
+  take max-height, like number
+  like text
+  save a, call bound-part(text <width>, read width)
+  save b, call bound-part(text <height>, read height)
+  save c, call bound-part(text <min-width>, read min-width)
+  save d, call bound-part(text <max-width>, read max-width)
+  save e, call bound-part(text <min-height>, read min-height)
+  save f, call bound-part(text <max-height>, read max-height)
+  send back, text <{{a}}{{b}}{{c}}{{d}}{{e}}{{f}}>
+
+view frame
+  take host, like view
+  take width, like number
+  take height, like number
+  take min-width, like number
+  take max-width, like number
+  take min-height, like number
+  take max-height, like number
+  view div
+    bind data-slot, text <frame>
+    bind style
+      call frame-style
+        read width
+        read height
+        read min-width
+        read max-width
+        read min-height
+        read max-height
+    slot

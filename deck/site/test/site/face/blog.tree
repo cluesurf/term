@@ -1,9 +1,13 @@
-# A minimal blog as a view component: a title input, a body textarea, an "Add post" button, and a reactive list of
-# posts. State is a signal holding the list, started from `initial`. Clicking Add reads the inputs (by ref), makes a
-# post with a fresh id, hands it to `on-add` (the store: the database inside a cask, or nothing for the in-memory
-# demo), appends it, and clears the inputs; writing the signal re-renders the list. Everything goes through the
-# platform-agnostic dom + reactive runtime, so the same component runs in a browser, in a cask, or against the
-# in-memory tree.
+# A minimal blog as a view component: a title field, a body field, an "Add post" button, and a reactive list of posts.
+# State is a signal holding the list, started from `initial`. Clicking Add reads the fields (by ref), makes a post with
+# a fresh id, hands it to `on-add` (the store: the database inside a cask, or nothing for the in-memory demo), appends
+# it, and clears the fields; writing the signal re-renders the list. Everything goes through the platform-agnostic dom
+# + reactive runtime, so the same component runs in a browser, in a cask, against the in-memory tree, or on the
+# platform toolkits with no WebView (test/compile/blog-native.ts).
+#
+# Written in the view vocabulary's words only (note/term/view/11-vocabulary.md, view-vocabulary-0004): `stack` lays
+# it out, `text` draws a post's title (a level 2 heading) and body, a field is the `input` element and the button the
+# `button` element (the tags those two words draw on every target), and the list is a `walk`.
 
 load ../back/post
   find post
@@ -12,6 +16,12 @@ load @term/site/code/dom/dom
   find view
   find get-value
   find set-value
+
+load @term/face/code/component/stack
+  find stack
+
+load @term/face/code/component/text
+  find text
 
 load @term/site/code/view/reactive
   find signal
@@ -79,10 +89,11 @@ view blog
     call make-signal
       read initial
 
-  view div
+  view stack
+    bind gap, code 8
     view input
       name title-input
-    view textarea
+    view input
       name body-input
     view button
       seed click
@@ -92,15 +103,14 @@ view blog
           read posts
           read on-add
       text <Add post>
-    view div
-      name post-list
+    view stack
+      bind gap, code 4
       walk list, call read-signal(read posts)
         hook next
           take site, name item
-          view div
-            view h2
-              read
-                read item/title
-            view p
-              read
-                read item/body
+          view stack
+            view text
+              bind content, read item/title
+              bind level, code 2
+            view text
+              bind content, read item/body

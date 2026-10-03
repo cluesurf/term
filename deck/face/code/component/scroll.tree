@@ -1,0 +1,20 @@
+
+# Scroll: the vocabulary's word for a frame whose content may be larger than it (note/term/view/11-vocabulary.md).
+# Vertical only for now: both axes at once, paging and the scroll position as a signal are left out. Give it a height
+# (inside a `frame`, or a stack that bounds it), or it grows to its content and never scrolls.
+#
+# A `scroll` element (`node`, since the component carries the same name): the platform toolkits draw their own scroll
+# view around a vertical stack (NSScrollView, UIScrollView, ScrollView, test/compile/toolkit-words.ts), and a browser,
+# which knows no such tag, draws it as a block with `overflow: auto`, which is the same thing.
+#
+# It replaces ./scroll-area.tree (the shadcn port: a viewport and a custom scrollbar), shelved with `note draft`.
+
+load @term/site/code/dom/dom
+  find view
+
+view scroll
+  take host, like view
+  node scroll
+    bind data-slot, text <scroll>
+    bind style, text <display: block; overflow-y: auto>
+    slot

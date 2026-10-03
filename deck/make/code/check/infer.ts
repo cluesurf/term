@@ -1670,12 +1670,19 @@ export function check(
           // the arm's fields are locals of its body (`case group` / `link kids` binds `kids`, a leading `link <name>`
           // renaming in order), typed as the variant declares them with the subject's type arguments substituted, so
           // a bare `read kids` is a typed receiver and a method call on it dispatches to its form
-          const fields = variantFields.get(branch.label)
+          // a variantless record is matched under its OWN name (`case mark / link start`), and its fields bind in that
+          // arm as a variant's do, as the resolver already binds them. Without this the checker gave the arm no locals,
+          // so `read start` fell through to a same-named task when one existed (native/node/clock/measurement.tree,
+          // found once module-scope stopped renaming that task apart) and was silently `unknown` when none did
+          const fields =
+            variantFields.get(branch.label) ??
+            (subjectType.kind === 'named' && subjectType.name === branch.label ? records.get(branch.label) : undefined)
           const inner = new Map(env)
 
           if (fields) {
+            // the type parameters of the variant's enum, or of the record matched under its own name
             const params =
-              formGenerics.get(variantEnum.get(branch.label) ?? '') ?? []
+              formGenerics.get(variantEnum.get(branch.label) ?? branch.label) ?? []
             const argMap = new Map<string, Type>()
 
             if (subjectType.kind === 'named' && subjectType.args) {
