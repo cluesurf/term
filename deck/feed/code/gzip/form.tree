@@ -1,6 +1,9 @@
 # The parsed shape of a gzip file (RFC 1952). Real, compiling Term — form.tree isn't part of the checked-spec/
 # note-draft split (01-grammar.md), it's the actual output type ./code.tree reads into and writes from.
 
+load @term/base/maybe
+  find maybe
+
 form gzip-file
   link method, like number
   link flags, like number

@@ -26,7 +26,13 @@ function compiles(source: string): boolean {
 }
 
 // the dead branch: its condition `2 a == 3` has no integer solution, so the hold `a == 999` inside it is vacuous.
-const deadBranch = (rhs: number) => `task branch
+// `nat` is declared: it was named and never defined, which built while an unknown type name was read as a hole
+const deadBranch = (rhs: number) => `form nat
+  case zero
+  case succ
+    link prior, like nat
+
+task branch
   take a, like integer
   like nat
   fork test

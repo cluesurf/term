@@ -1,0 +1,127 @@
+load @term/base/list
+  find list
+  find push
+
+# a list reached through a path, `bs/{k}/xs/{i}`, under a counted loop (ir/facts/bounds.ts): guarded once before the
+# loop, the guard true running a copy with no checks. A loop that leaves early by `halt` makes a short list safe, so
+# the guard false runs the checked copy to the same answer. The first bump has eight slots and runs the fast copy, the
+# next two have three and run the checked one. And every value is `(old * 31 + i) % 1000`, which the interval fact
+# (ir/facts/interval.ts) proves needs no overflow check
+
+form bag
+  link id, like number
+  link xs, like list, like number
+
+task bump
+  take bs, like list, like bag
+  take k, like number
+  take stop, like number
+  save i, code 0
+  walk test
+    hook test
+      call is-below
+        read i
+        code 8
+    hook hold
+      fork test
+        hook test
+          call is-equal
+            read i
+            read stop
+        hook hold
+          halt
+      host old, read bs/{k}/xs/{i}
+      save bs/{k}/xs/{i}
+        call modulo
+          call add
+            call multiply
+              read old
+              code 31
+            read i
+          code 1000
+      save i
+        call add
+          read i
+          code 1
+
+task total
+  take xs, like list, like number
+  like number
+  save sum, code 0
+  walk list, read xs
+    hook next
+      take site, name x
+      save sum
+        call add
+          read sum
+          read x
+  send back, read sum
+
+task make-bag
+  take id, like number
+  take size, like number
+  take first, like number
+  take step, like number
+  like bag
+  save xs
+    make list
+  walk size
+    bind base, code 0
+    bind head, read size
+    hook next
+      take site, name j
+      call push
+        bind list, read xs
+        bind item
+          call add
+            read first
+            call multiply
+              read j
+              read step
+  send back
+    make bag
+      bind id, read id
+      bind xs, read xs
+
+task compute
+  like text
+  save bs
+    make list
+  call push
+    bind list, read bs
+    bind item
+      call make-bag
+        code 0
+        code 8
+        code 1
+        code 1
+  call push
+    bind list, read bs
+    bind item
+      call make-bag
+        code 1
+        code 3
+        code 10
+        code 10
+  call bump
+    read bs
+    code 0
+    code 8
+  host full
+    call total
+      read bs/0/xs
+  call bump
+    read bs
+    code 1
+    code 3
+  host short
+    call total
+      read bs/1/xs
+  call bump
+    read bs
+    code 1
+    code 2
+  host again
+    call total
+      read bs/1/xs
+  send back, text <{full}:{short}:{again}>

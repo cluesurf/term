@@ -35,7 +35,36 @@ const BLOG_GOLDEN = join(import.meta.dirname, '../../../../../../note/term/proje
 
 // an app run in a terminal: its program, the terminal's size, the keys typed once its screen is up (ctrl-c follows),
 // the screen it must leave, and the backends it runs on
-type App = { name: string; program: string; columns: number; rows: number; keys: string[]; want: string[]; backends: Backend[] }
+// `transcript`: for a line-mode app (native-accessibility-0005), the lines its output must hold in this order, checked
+// in place of a replayed screen
+type App = {
+  name: string
+  program: string
+  columns: number
+  rows: number
+  keys: string[]
+  want: string[]
+  backends: Backend[]
+  transcript?: string[]
+  // the size a 0x1d among the keys resizes the terminal to, `columns`x`rows`
+  resize?: string
+  // how the app is stopped: ctrl-c typed (the default), or SIGTERM sent to it, and the status it must end with
+  stop?: { key: string; status: number }
+  // judge the screen as it stood before the stop was sent, rather than as the app left it: the paint that follows a
+  // stop would otherwise hide a paint that should have come earlier
+  settled?: boolean
+  // run the program under job control, as a shell would, so a stop it sends itself really stops it (see PTY). An empty
+  // key among the keys types nothing and only waits its turn
+  jobs?: boolean
+  // text the output must hold, in this order
+  heard?: string[]
+}
+
+// ctrl-c, and the status a program it stops ends with
+const CTRL_C = { key: '\u0003', status: 0 }
+
+// a byte the relay never types: it sends SIGTERM to the program instead, as `kill` would
+const TERM_KEY = '\u001c'
 
 const NOTES_PROGRAM = `load @term/site/code/view/reactive
   find make-signal
@@ -195,7 +224,92 @@ task run
   send back, text <>
 `
 
+// the note app again, in line mode: the same view, owned by `run-terminal-lines`
+const LINES_PROGRAM = NOTES_PROGRAM.replace('  find run-terminal\n', '  find run-terminal-lines\n').replace(
+  '  call run-terminal\n    read root\n',
+  '  call run-terminal-lines\n    read root\n',
+)
+
 const APPS: App[] = [
+  {
+    // the window narrowed to 10 columns while the app runs, then tab: the app clears and paints again at the new size.
+    // The focused field takes 3 cells and the gap 1, so the button's `[ add ]` has 6 left and wraps there
+    name: 'resize',
+    program: NOTES_PROGRAM,
+    columns: 30,
+    rows: 6,
+    keys: ['\u001d', '\t'],
+    resize: '10x6',
+    want: ['>█< [ add', '    ]', '', '', '', ''],
+    backends: ['typescript', 'rust'],
+  },
+  {
+    // the window narrowed and NO key after it: the resize itself wakes the waiting read and the app repaints before
+    // ctrl-c is sent. The field takes 7 cells and the gap 1, so `[ add ]` has 2 left: `[`, then `add` broken at the
+    // edge as `ad` and `d`, then `]`
+    name: 'resize-now',
+    program: NOTES_PROGRAM,
+    columns: 30,
+    rows: 6,
+    keys: ['\u001d'],
+    resize: '10x6',
+    want: ['[note ] [', '        ad', '        d', '        ]', '', ''],
+    backends: ['typescript', 'rust'],
+    settled: true,
+  },
+  {
+    // tab, `h`, then SIGTERM rather than ctrl-c: the app stops as ctrl-c stops it, raw mode off and the cursor shown,
+    // and ends with 143, which is 128 plus SIGTERM's 15, as a process the signal had killed would
+    name: 'sigterm',
+    program: NOTES_PROGRAM,
+    columns: 30,
+    rows: 6,
+    keys: ['\t', 'h'],
+    want: ['>h█< [ add ]', '', '', '', '', ''],
+    backends: ['typescript', 'rust'],
+    stop: { key: TERM_KEY, status: 143 },
+  },
+  {
+    // tab, `h`, ctrl-z: the app gives the terminal back (the cursor shown) and stops itself; the shell says [stopped],
+    // then resumes it; the app takes raw mode again and redraws, and `i`, typed after, arrives as a key rather than
+    // waiting in a line for enter. The field holds `hi`, and ctrl-c still ends it with status 0, so raw mode was
+    // really taken back (without it ctrl-c is SIGINT, not a byte)
+    name: 'suspend',
+    program: NOTES_PROGRAM,
+    columns: 30,
+    rows: 6,
+    keys: ['\t', 'h', '\u001a', '', '', '', 'i'],
+    want: ['>hi█< [ add ]', '', '', '', '', ''],
+    backends: ['typescript', 'rust'],
+    jobs: true,
+    heard: [`${ESC}[?25h`, '[stopped]', `${ESC}[?25l${ESC}[2J`],
+  },
+  {
+    // the same keys as the note app below. Each round writes the rows that changed as plain lines and, when focus
+    // moves or what it holds changes, what has it in the contract's words. Enter leaves focus on the button, unsaid
+    name: 'lines',
+    program: LINES_PROGRAM,
+    columns: 30,
+    rows: 6,
+    keys: ['\t', 'h', 'i', '\t', '\r'],
+    want: [],
+    backends: ['typescript', 'rust'],
+    transcript: [
+      '[note ] [ add ]',
+      '>█< [ add ]',
+      'focus: field note: ',
+      '>h█< [ add ]',
+      'focus: field note: h',
+      '>hi█< [ add ]',
+      'focus: field note: hi',
+      // tab: the field, unfocused, still holds `hi`, and the button has focus
+      '[hi ] > add <',
+      'focus: button add',
+      // enter: the note added and the field cleared, focus where it was and so unsaid
+      '[note ] > add <',
+      'hi',
+    ],
+  },
   {
     // tab to the field, type `hi`, tab to the button, enter: the note is added, the field cleared, the button focused
     name: 'notes',
@@ -284,11 +398,36 @@ function replay(output: string, { rows: ROWS, columns: COLUMNS }: { rows: number
 // sized before it starts, and the parent relays bytes both ways until the child's side closes, then exits with the
 // child's status
 const PTY = `
-import fcntl, os, pty, select, struct, sys, termios
+import fcntl, os, pty, select, signal, struct, sys, termios, time
 columns, rows, command = int(sys.argv[1]), int(sys.argv[2]), sys.argv[3:]
 pid, master = pty.fork()
 if pid == 0:
     fcntl.ioctl(0, termios.TIOCSWINSZ, struct.pack('HHHH', rows, columns, 0, 0))
+    if os.environ.get('TERM_JOBS'):
+        # job control, as a shell does it. The pty's session leader is this process, and a session leader's own group
+        # is orphaned, where the kernel discards a stop (SIGTSTP). So the program runs in a group of its own, in the
+        # foreground, and this process waits on it: on a stop it takes the terminal back, says [stopped], and after a
+        # moment hands the terminal over again and resumes the group, as \`fg\` does
+        ready, go = os.pipe()
+        job = os.fork()
+        if job == 0:
+            os.setpgid(0, 0)
+            os.read(ready, 1)
+            os.execvp(command[0], command)
+        os.setpgid(job, job)
+        signal.signal(signal.SIGTTOU, signal.SIG_IGN)
+        os.tcsetpgrp(0, job)
+        os.write(go, b'.')
+        while True:
+            _, status = os.waitpid(job, os.WUNTRACED)
+            if os.WIFSTOPPED(status):
+                os.tcsetpgrp(0, os.getpgrp())
+                os.write(1, b'[stopped]\\r\\n')
+                time.sleep(0.3)
+                os.tcsetpgrp(0, job)
+                os.kill(-job, signal.SIGCONT)
+                continue
+            os._exit(os.WEXITSTATUS(status) if os.WIFEXITED(status) else 128 + os.WTERMSIG(status))
     os.execvp(command[0], command)
 reading = True
 while True:
@@ -304,17 +443,34 @@ while True:
     if reading and 0 in ready:
         data = os.read(0, 1024)
         if data:
-            os.write(master, data)
+            # 0x1d resizes the terminal to TERM_RESIZE (columns x rows) and tells the program, as a window drag does;
+            # it is not typed
+            if b'\\x1d' in data and os.environ.get('TERM_RESIZE'):
+                wide, tall = (int(n) for n in os.environ['TERM_RESIZE'].split('x'))
+                fcntl.ioctl(master, termios.TIOCSWINSZ, struct.pack('HHHH', tall, wide, 0, 0))
+                os.kill(pid, signal.SIGWINCH)
+                data = data.replace(b'\\x1d', b'')
+            # 0x1c sends SIGTERM, as \`kill\` would; it is not typed
+            if b'\\x1c' in data:
+                os.kill(pid, signal.SIGTERM)
+                data = data.replace(b'\\x1c', b'')
+            if data:
+                os.write(master, data)
         else:
             reading = False
 _, status = os.waitpid(pid, 0)
 sys.exit(os.WEXITSTATUS(status) if os.WIFEXITED(status) else 1)
 `
 
-// run `command` in a pseudo-terminal of the app's size, type its keys once the screen is up, then ctrl-c
-function inTerminal(command: string[], app: App): Promise<{ status: number | null; output: string }> {
-  const child = spawn('python3', ['-c', PTY, String(app.columns), String(app.rows), ...command], { stdio: ['pipe', 'pipe', 'pipe'] })
+// run `command` in a pseudo-terminal of the app's size, type its keys once the screen is up, then stop it. `before` is
+// the output that had come back when the stop was sent
+function inTerminal(command: string[], app: App): Promise<{ status: number | null; output: string; before: string }> {
+  const child = spawn('python3', ['-c', PTY, String(app.columns), String(app.rows), ...command], {
+    stdio: ['pipe', 'pipe', 'pipe'],
+    env: { ...process.env, TERM_RESIZE: app.resize ?? '', TERM_JOBS: app.jobs ? '1' : '' },
+  })
   let output = ''
+  let before = ''
   let typing = false
 
   return new Promise(done => {
@@ -324,16 +480,28 @@ function inTerminal(command: string[], app: App): Promise<{ status: number | nul
       output += String(chunk)
 
       // the first screen is up once the app has cleared it: type then, a key at a time, and stop with ctrl-c
-      if (!typing && output.includes(`${ESC}[2J`)) {
+      // a line-mode app clears nothing, so its first line is the cue
+      if (!typing && (output.includes(`${ESC}[2J`) || (app.transcript !== undefined && output.includes('\n')))) {
         typing = true
-        const keys = [...app.keys, '\u0003']
-        keys.forEach((key, i) => setTimeout(() => child.stdin.write(key), 300 + i * 200))
+        const stop = (app.stop ?? CTRL_C).key
+        const keys = [...app.keys, stop]
+        keys.forEach((key, i) =>
+          setTimeout(() => {
+            if (key === stop) {
+              before = output
+            }
+
+            if (key !== '') {
+              child.stdin.write(key)
+            }
+          }, 300 + i * 200),
+        )
       }
     })
 
     child.on('close', status => {
       clearTimeout(timer)
-      done({ status, output })
+      done({ status, output, before })
     })
   })
 }
@@ -365,10 +533,57 @@ for (const app of APPS) {
     }
 
     const ran = await inTerminal(built.command, app)
-    const screen = replay(ran.output, app)
-    ok(`${label}: it ends on ctrl-c with status 0`, ran.status === 0, `status ${ran.status}: ${JSON.stringify(ran.output.slice(-300))}`)
-    ok(`${label}: it hides the cursor while it runs and shows it again when it leaves`, ran.output.includes(`${ESC}[?25l`) && ran.output.includes(`${ESC}[?25h`))
-    ok(`${label}: the keys typed into the terminal leave the screen worked out by hand`, JSON.stringify(screen) === JSON.stringify(app.want), JSON.stringify(screen))
+    const stop = app.stop ?? CTRL_C
+    const stopName = stop === CTRL_C ? 'ctrl-c' : 'SIGTERM'
+    ok(`${label}: it ends on ${stopName} with status ${stop.status}`, ran.status === stop.status, `status ${ran.status}: ${JSON.stringify(ran.output.slice(-300))}`)
+
+    if (app.transcript) {
+      // line mode: plain lines only, no control sequence a reader would have to skip, and the expected lines in order
+      const lines = ran.output.split(/\r?\n/).map(line => line.replace(/\r/g, ''))
+      ok(`${label}: no control sequences, only lines`, !ran.output.includes(ESC), JSON.stringify(ran.output.slice(0, 200)))
+      let at = 0
+      const missing = app.transcript.find(want => {
+        const found = lines.indexOf(want, at)
+
+        if (found < 0) {
+          return true
+        }
+
+        at = found + 1
+
+        return false
+      })
+      ok(`${label}: every change and every focus move is a line, in order`, missing === undefined, `missing ${JSON.stringify(missing)} in ${JSON.stringify(lines)}`)
+      continue
+    }
+
+    if (app.heard) {
+      let at = 0
+      const missing = app.heard.find(want => {
+        const found = ran.output.indexOf(want, at)
+
+        if (found < 0) {
+          return true
+        }
+
+        at = found + want.length
+
+        return false
+      })
+      ok(`${label}: the output holds what it must, in order`, missing === undefined, `missing ${JSON.stringify(missing)}`)
+    }
+
+    const screen = replay(app.settled ? ran.before : ran.output, app)
+    // shown again AFTER the stop: the cursor is the visible half of giving the terminal back
+    const shownAgain = ran.output.slice(ran.before.length).includes(`${ESC}[?25h`)
+    ok(`${label}: it hides the cursor while it runs and shows it again when it leaves`, ran.output.includes(`${ESC}[?25l`) && shownAgain)
+    const judged = app.settled ? ran.before : ran.output
+    const lastClear = judged.lastIndexOf(`${ESC}[2J`)
+    ok(
+      `${label}: the keys typed into the terminal leave the screen worked out by hand`,
+      JSON.stringify(screen) === JSON.stringify(app.want),
+      `${JSON.stringify(screen)} from ${JSON.stringify(judged.slice(Math.max(0, lastClear)).slice(0, 400))}`,
+    )
   }
 }
 

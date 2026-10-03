@@ -1,0 +1,219 @@
+load @term/base/list
+  find list
+  find push
+  find size
+  find reverse
+
+# a plain record's list field (compile/backend.ts, `ownedFields`), read through its path: a record that owns its list
+# holds the plain one on Rust. Read by slot, by size and by a walk, the record passed borrowed. Beside it three forms
+# that must NOT own, each its own form since the decision is per field: a list pushed onto after the record took it
+# (the record sees the push), a list written through the path (the write is seen), and a list handed whole to a
+# generic task. Every answer must be the value one
+
+form bag
+  link name, like text
+  link items, like list, like number
+
+form late-bag
+  link items, like list, like number
+
+form slot-bag
+  link items, like list, like number
+
+form whole-bag
+  link items, like list, like number
+
+# written through the path, only ever in one place (slot-private): owned and written in place
+form pack
+  link items, like list, like number
+
+# written through the path, and copied whole to a second name first: the copy must see the write
+form copied-bag
+  link items, like list, like number
+
+task make-items
+  take n, like number
+  like list, like number
+  save out
+    make list
+  walk size
+    bind base, code 0
+    bind head, read n
+    hook next
+      take site, name i
+      call push
+        bind list, read out
+        bind item, read i
+  send back, read out
+
+task packed
+  like number
+  save packs
+    make list
+  walk size
+    bind base, code 0
+    bind head, code 3
+    hook next
+      take site, name k
+      call push
+        bind list, read packs
+        bind item
+          make pack
+            bind items
+              call make-items
+                code 4
+  walk size
+    bind base, code 0
+    bind head, code 3
+    hook next
+      take site, name k
+      save packs/{k}/items/{k}
+        call add
+          read packs/{k}/items/{k}
+          code 10
+  save total, code 0
+  walk size
+    bind base, code 0
+    bind head, code 3
+    hook next
+      take site, name k
+      walk size
+        bind base, code 0
+        bind head, code 4
+        hook next
+          take site, name i
+          save total
+            call add
+              read total
+              read packs/{k}/items/{i}
+  send back, read total
+
+task copied
+  like number
+  save bags
+    make list
+  call push
+    bind list, read bags
+    bind item
+      make copied-bag
+        bind items
+          call make-items
+            code 3
+  host kept, read bags/0
+  save bags/0/items/1, code 9
+  send back, read kept/items/1
+
+task make-bag
+  take n, like number
+  like bag
+  save items
+    make list
+  walk size
+    bind base, code 1
+    bind head
+      call add
+        read n
+        code 1
+    hook next
+      take site, name i
+      call push
+        bind list, read items
+        bind item
+          call multiply
+            read i
+            read i
+  send back
+    make bag
+      bind name, text <b>
+      bind items, read items
+
+# the first item, the size and the sum, read through the path
+task weigh
+  take b, like bag
+  like number
+  save total
+    call add
+      read b/items/0
+      call size
+        read b/items
+  walk list, read b/items
+    hook next
+      take site, name v
+      save total
+        call add
+          read total
+          read v
+  send back, read total
+
+task late
+  like number
+  save items
+    make list
+  call push
+    bind list, read items
+    bind item, code 1
+  host b
+    make late-bag
+      bind items, read items
+  call push
+    bind list, read items
+    bind item, code 2
+  send back
+    call size
+      read b/items
+
+task written
+  like number
+  save items
+    make list
+  call push
+    bind list, read items
+    bind item, code 4
+  host b
+    make slot-bag
+      bind items, read items
+  save b/items/0, code 7
+  send back, read b/items/0
+
+task whole
+  like number
+  save items
+    make list
+  call push
+    bind list, read items
+    bind item, code 3
+  call push
+    bind list, read items
+    bind item, code 8
+  host b
+    make whole-bag
+      bind items, read items
+  host back
+    call reverse
+      read b/items
+  send back, read back/0
+
+task compute
+  like text
+  save bags
+    make list
+  walk size
+    bind base, code 1
+    bind head, code 5
+    hook next
+      take site, name n
+      call push
+        bind list, read bags
+        bind item
+          call make-bag
+            read n
+  save total, code 0
+  walk list, read bags
+    hook next
+      take site, name b
+      save total
+        call add
+          read total
+          call weigh
+            read b
+  send back, text <{total}:{late()}:{written()}:{whole()}:{packed()}:{copied()}>

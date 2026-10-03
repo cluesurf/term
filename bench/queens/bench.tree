@@ -1,0 +1,9 @@
+host program, <queens>
+host entry, <queens>
+host source, <Are We Fast Yet's Queens (Marr, Daloze and Mössenböck, DLS 2016), the same structure: eight queens placed by backtracking over lists of free rows and diagonals; run n times, a checksum of each placement added where AWFY checks that each run succeeds>
+host check, 10
+host expect, <1260>
+host size, 100000
+host runs, 5
+host semantics, <four small lists of flags and numbers written by index through a recursive task, made fresh each run; integer output>
+host idiom, <ours, 2026-10-03: AWFY's own shape in each language, the board one object holding its arrays (fixed arrays on Rust, BooleanArray and IntArray on Kotlin)>

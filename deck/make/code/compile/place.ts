@@ -171,6 +171,9 @@ export function privateForms(
   fresh: Set<string>,
   // told each refusal, with the task it is in and the rule's line, for a test or a probe to say why
   explain?: (form: string, where: string) => void,
+  // the places a record reuse needs (`recordReuse`): nodes judged as allowed where they stand, and the CARRIER forms,
+  // whose field of a candidate form does not make that form nested
+  allow?: { nodes: WeakSet<object>; carriers: Set<string> },
 ): Set<string> {
   const fns = new Map(program.flatMap(n => (n.form === 'function' ? [[n.name, n] as const] : [])))
   const candidates = new Set<string>()
@@ -203,7 +206,7 @@ export function privateForms(
 
   // a form's own fields, and every other form's: a field of the form makes it nested in a record
   for (const n of program) {
-    if (n.form === 'record-type') {
+    if (n.form === 'record-type' && !allow?.carriers.has(n.name)) {
       for (const f of [...n.fields, ...n.variants.flatMap(v => v.fields)]) {
         const seen = new Set<string>()
         mentions(f.type, seen)
@@ -379,6 +382,10 @@ export function privateForms(
     const judge = (form: string, node: Loose, parent: Loose, key: string): void => {
       const fresh = made(node)
 
+      if (allow?.nodes.has(node)) {
+        return
+      }
+
       switch (parent.form) {
         case 'member':
           // a field read; a subscript on a record is not one
@@ -468,6 +475,324 @@ export function privateForms(
   }
 
   return new Set([...candidates].filter(name => !refused.has(name)))
+}
+
+// RECORD REUSE (Perceus's in-place update, for the backends whose records are objects: TypeScript and Kotlin). AWFY's
+// Bounce writes every ball back through a task that answers a new one:
+//
+//   host moved, call move-ball(balls/{k})
+//   save balls/{k}, read moved/ball
+//
+// and on Kotlin each new ball stored into the list was the cost, 614 ms against 198 with the ball changed in place
+// (the hand version 151, `tmp/kotlin-bounce-ab.ts`). The object read from the slot dies at the call: the slot is
+// written with the result at once, and nothing else holds it. So the task may build its result in that object.
+//
+// An ELIGIBLE task takes one record of a plain form F (the others scalars), reads it only by field, and every return is
+// a `make F`, or a `make G` of a CARRIER form whose one field of type F is a `make F` and whose other fields are
+// scalars. A REUSE SITE passes `xs/{i}` there and writes `xs/{i}` with the result at once: in the same statement
+// (`save xs/{i}, call t(xs/{i})`), or in the next one from the carrier's field, the carrier read afterwards only for
+// its other fields. And F, and the carrier, must still be slot-private (`privateForms`) with those places allowed, so
+// no second name for the object exists anywhere. A site calls the task's reusing copy (`<task>-reuse`), which computes
+// every field of the result first, then assigns them on the object it was given and answers it
+export type Reuse = {
+  // each reusing task: the parameter position, its form, and the record nodes of its returns the copy builds in place.
+  // With a carrier of two fields, `keep` is the other one (a scalar) and `carriers` its returned records: the copy
+  // answers that field alone, since the record it built is already back in the caller's slot
+  tasks: Map<string, { param: number; form: string; builds: WeakSet<object>; keep?: { field: string; type: Type }; carriers?: WeakSet<object> }>
+  // with a kept field: each carrier `let` at a site, to the field it now holds alone, and each write-back, which the
+  // copy has already made
+  locals: WeakMap<object, string>
+  writeBacks: WeakSet<object>
+  // each call made at a reuse site
+  sites: WeakSet<object>
+  // the forms some copy assigns in place (Kotlin declares their fields `var`)
+  forms: Set<string>
+}
+
+export function recordReuse(program: Program): Reuse {
+  const maskMethods = new Set(program.flatMap(n => (n.form === 'mask' ? n.methods : [])))
+  const { lend, fresh } = listFacts(program, gatedTasks(program, maskMethods))
+  const fns = new Map(program.flatMap(n => (n.form === 'function' ? [[n.name, n] as const] : [])))
+  const plain = new Map(
+    program.flatMap(n =>
+      n.form === 'record-type' && !n.params.length && !n.variants.length && n.fields.length && !n.shared && !n.alias ? [[n.name, n] as const] : [],
+    ),
+  )
+  const scalar = (t: Type | undefined): boolean => ['number', 'float', 'boolean', 'string'].includes(t?.kind ?? '')
+  const isForm = (t: Type | undefined): string | undefined => (t?.kind === 'named' && plain.has(t.name) && !(t.args ?? []).length ? t.name : undefined)
+
+  // 0. the forms a second name can hold a value of, anywhere: a `let` given anything but a `make` (a slot read, a call
+  // that may answer one), a walk's item over a list of it, a closure's parameter. `privateForms` admits a local read
+  // from a slot, which a place write then checks; a reuse changes the object under every such name, so none may exist
+  const aliased = new Set<string>()
+  const scan = (value: unknown): void => {
+    if (typeof value !== 'object' || value === null) return
+    if (Array.isArray(value)) return value.forEach(scan)
+
+    const node = value as Loose
+
+    if (node.form === 'let') {
+      const form = isForm((node.type ?? (node.init as Loose).type) as Type | undefined)
+
+      if (form && (node.init as Loose).form !== 'record') aliased.add(form)
+    }
+
+    if (node.form === 'for-each') {
+      const iterable = (node.iterable as Loose).type as Type | undefined
+      const form = iterable?.kind === 'array' ? isForm(iterable.element) : undefined
+
+      if (form) aliased.add(form)
+    }
+
+    if (node.form === 'closure') {
+      for (const p of node.params as { type?: Type }[]) {
+        const form = isForm(p.type)
+
+        if (form) aliased.add(form)
+      }
+    }
+
+    Object.entries(node).forEach(([k, child]) => k !== 'type' && k !== 'span' && scan(child))
+  }
+
+  scan(program)
+
+  // 1. the eligible tasks
+  const eligible = new Map<string, { param: number; form: string; carrier?: { form: string; field: string }; builds: Loose[]; returns: Loose[] }>()
+
+  for (const fn of fns.values()) {
+    if (fn.async || fn.generics?.length) {
+      continue
+    }
+
+    const records = fn.params.flatMap((p, i) => (isForm(p.type) ? [i] : []))
+
+    if (records.length !== 1 || !fn.params.every((p, i) => i === records[0] || scalar(p.type))) {
+      continue
+    }
+
+    const param = records[0]!
+    const form = isForm(fn.params[param]!.type)!
+
+    if (aliased.has(form)) {
+      continue
+    }
+    const name = fn.params[param]!.name
+    let ok = true
+    const returns: Loose[] = []
+    const walk = (value: unknown, parent: Loose | undefined, key: string): void => {
+      if (!ok || typeof value !== 'object' || value === null) return
+      if (Array.isArray(value)) return value.forEach(v => walk(v, parent, key))
+
+      const node = value as Loose
+
+      if (node.form === 'closure' || node.form === 'await') {
+        ok = false
+
+        return
+      }
+
+      // the parameter read only by field, and never rebound
+      if (node.form === 'variable' && node.name === name && !(parent?.form === 'member' && key === 'target' && parent.index === undefined)) {
+        ok = false
+      }
+
+      if ((node.form === 'let' && node.name === name) || (node.form === 'assign' && (node.target as Loose).form === 'variable' && (node.target as Loose).name === name)) {
+        ok = false
+      }
+
+      if (node.form === 'return') {
+        returns.push((node.value as Loose | undefined) ?? {})
+      }
+
+      for (const [k, child] of Object.entries(node)) {
+        if (k !== 'type' && k !== 'span') walk(child, node, k)
+      }
+    }
+
+    walk(fn.body, undefined, 'body')
+
+    if (!ok || !returns.length) {
+      continue
+    }
+
+    // every return a `make F`, or every one a `make G` of one carrier with one field a `make F`
+    const direct = returns.every(r => r.form === 'record' && r.name === form)
+    const carrierOf = (r: Loose): { form: string; field: string; build: Loose } | undefined => {
+      const g = r.form === 'record' ? plain.get(r.name as string) : undefined
+
+      if (!g || g.name === form) return undefined
+
+      const fields = g.fields.filter(f => isForm(f.type) === form)
+
+      if (fields.length !== 1 || !g.fields.every(f => f === fields[0] || scalar(f.type))) return undefined
+
+      const value = (r.fields as { name: string; value: Loose }[]).find(f => f.name === fields[0]!.name)?.value
+
+      return value?.form === 'record' && value.name === form ? { form: g.name, field: fields[0]!.name, build: value } : undefined
+    }
+    const carried = direct ? [] : returns.map(carrierOf)
+    // a build names every field: one left to its default would keep the old object's value in place of the default
+    const whole = (r: Loose | undefined): boolean => (r?.fields as unknown[] | undefined)?.length === plain.get(form)!.fields.length
+
+    if (direct ? !returns.every(whole) : !carried.every(c => c && whole(c.build))) {
+      continue
+    }
+
+    if (direct) {
+      eligible.set(fn.name, { param, form, builds: returns, returns })
+    } else if (carried.every(c => c && c.form === carried[0]!.form && c.field === carried[0]!.field)) {
+      eligible.set(fn.name, { param, form, carrier: { form: carried[0]!.form, field: carried[0]!.field }, builds: carried.map(c => c!.build), returns })
+    }
+  }
+
+  // 2. the sites: `xs/{i}` passed at the parameter and written with the result at once
+  const sameSlot = (a: Loose | undefined, b: Loose | undefined): boolean => {
+    const x = slotRead(fns, a)
+    const y = slotRead(fns, b)
+
+    return (
+      a?.form === 'member' &&
+      b?.form === 'member' &&
+      x !== undefined &&
+      y !== undefined &&
+      x.list === y.list &&
+      x.index !== undefined &&
+      JSON.stringify(x.index) === JSON.stringify(y.index)
+    )
+  }
+  const candidates: { call: Loose; task: string; arg: Loose; carried?: Loose; local?: string; let?: Loose; write?: Loose; fn: Fn }[] = []
+
+  for (const fn of fns.values()) {
+    const lists = (value: unknown): void => {
+      if (typeof value !== 'object' || value === null) return
+
+      if (Array.isArray(value)) {
+        const block = value as Loose[]
+
+        block.forEach((s, k) => {
+          // `save xs/{i}, call t(.., xs/{i}, ..)`
+          if (s?.form === 'assign' && s.op === '=' && (s.value as Loose)?.form === 'call') {
+            const call = s.value as Loose
+            const task = (call.callee as Loose).form === 'variable' ? eligible.get((call.callee as Loose).name as string) : undefined
+            const arg = task ? (call.args as Loose[])[task.param] : undefined
+
+            if (task && !task.carrier && sameSlot(arg, s.target as Loose)) {
+              candidates.push({ call, task: (call.callee as Loose).name as string, arg: arg!, fn })
+            }
+          }
+
+          // `host m, call t(.., xs/{i}, ..)` and then `save xs/{i}, read m/<the carried field>`
+          const next = block[k + 1]
+
+          if (s?.form === 'let' && (s.init as Loose)?.form === 'call' && next?.form === 'assign' && next.op === '=') {
+            const call = s.init as Loose
+            const task = (call.callee as Loose).form === 'variable' ? eligible.get((call.callee as Loose).name as string) : undefined
+            const arg = task ? (call.args as Loose[])[task.param] : undefined
+            const value = next.value as Loose
+
+            if (
+              task?.carrier &&
+              sameSlot(arg, next.target as Loose) &&
+              value.form === 'member' &&
+              value.index === undefined &&
+              value.name === task.carrier.field &&
+              (value.target as Loose).form === 'variable' &&
+              (value.target as Loose).name === s.name
+            ) {
+              candidates.push({ call, task: (call.callee as Loose).name as string, arg: arg!, carried: value, local: s.name as string, let: s, write: next, fn })
+            }
+          }
+        })
+      }
+
+      Object.entries(value as object).forEach(([k, child]) => k !== 'type' && k !== 'span' && lists(child))
+    }
+
+    lists(fn.body)
+  }
+
+  // the carrier local read afterwards only for its other fields, and never rebound or passed
+  const sites = candidates.filter(c => {
+    if (!c.local) return true
+
+    let ok = true
+    let lets = 0
+    const field = eligible.get(c.task)!.carrier!.field
+    const check = (value: unknown, parent: Loose | undefined, key: string): void => {
+      if (!ok || typeof value !== 'object' || value === null) return
+      if (Array.isArray(value)) return value.forEach(v => check(v, parent, key))
+
+      const node = value as Loose
+
+      if (node.form === 'let' && node.name === c.local) lets++
+      if (node.form === 'assign' && (node.target as Loose).form === 'variable' && (node.target as Loose).name === c.local) ok = false
+
+      if (node.form === 'variable' && node.name === c.local) {
+        const read = parent?.form === 'member' && key === 'target' && parent.index === undefined
+
+        if (!read || (parent!.name === field && parent !== c.carried)) ok = false
+      }
+
+      for (const [k, child] of Object.entries(node)) {
+        if (k !== 'type' && k !== 'span') check(child, node, k)
+      }
+    }
+
+    check(c.fn.body, undefined, 'body')
+
+    return ok && lets === 1
+  })
+
+  // 3. still slot-private with those places allowed
+  const nodes = new WeakSet<object>()
+  const carriers = new Set<string>()
+
+  for (const site of sites) {
+    const task = eligible.get(site.task)!
+
+    nodes.add(site.arg)
+
+    if (site.carried) nodes.add(site.carried)
+
+    if (task.carrier) carriers.add(task.carrier.form)
+
+    for (const build of task.builds) nodes.add(build)
+  }
+
+  const kept = privateForms(program, lend, fresh, undefined, { nodes, carriers })
+  const out: Reuse = { tasks: new Map(), sites: new WeakSet(), forms: new Set(), locals: new WeakMap(), writeBacks: new WeakSet() }
+
+  for (const site of sites) {
+    const task = eligible.get(site.task)!
+
+    if (!kept.has(task.form) || (task.carrier && !kept.has(task.carrier.form))) {
+      continue
+    }
+
+    out.sites.add(site.call)
+    out.forms.add(task.form)
+
+    // a carrier of two fields: the copy answers the other one alone
+    const carrier = task.carrier ? plain.get(task.carrier.form) : undefined
+    const other = carrier && carrier.fields.length === 2 ? carrier.fields.find(f => f.name !== task.carrier!.field) : undefined
+
+    if (!out.tasks.has(site.task)) {
+      out.tasks.set(site.task, {
+        param: task.param,
+        form: task.form,
+        builds: new WeakSet(task.builds),
+        ...(other ? { keep: { field: other.name, type: other.type as Type }, carriers: new WeakSet(task.returns) } : {}),
+      })
+    }
+
+    if (other && site.let && site.write) {
+      out.locals.set(site.let, other.name)
+      out.writeBacks.add(site.write)
+    }
+  }
+
+  return out
 }
 
 // a slot local read through its slot: the list and the index it was read at

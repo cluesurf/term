@@ -1,0 +1,55 @@
+
+# The device's traits on node (native-dom-0012): a server has no screen, no pointer and no person, so every trait reads
+# its default, the same phone the memory host starts as (../memory/device): compact, touch, light, motion allowed, text
+# at its standard size. A server-rendered page is drawn again on the client, which reads the real traits. Nothing on
+# a server changes a trait, so a watcher is never called. Conforms to ../device.
+#
+# Until 2026-10-03 node had no device of its own and reached the abstract module's signatures, so `read-trait`
+# emitted the backend's stub. A call that can only reach a stub is refused now (check/bodiless.ts).
+
+task read-trait
+  take name, like text
+  like text
+  fork test
+    hook test
+      call is-equal
+        read name
+        text <idiom>
+    hook hold
+      send back, text <phone>
+    hook test
+      call is-equal
+        read name
+        text <width-class>
+    hook hold
+      send back, text <compact>
+    hook test
+      call is-equal
+        read name
+        text <pointer>
+    hook hold
+      send back, text <touch>
+    hook test
+      call is-equal
+        read name
+        text <color-scheme>
+    hook hold
+      send back, text <light>
+    hook test
+      call is-equal
+        read name
+        text <text-scale>
+    hook hold
+      send back, text <1>
+    hook miss
+      send back, text <no>
+
+task watch-traits
+  take handler
+    like task
+      take name, like text
+      take value, like text
+  like task
+  send back
+    task drop
+      send back

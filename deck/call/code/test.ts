@@ -8,6 +8,7 @@ import {
 } from '@term/make/code/tint'
 import { runCommand, projectResolver } from '@term/call/code/make'
 import { runTestFile } from '@term/call/code/test-run'
+import { declaresDraft } from '@term/call/code/draft'
 import { projectRoleOf, projectLeanOf } from '@term/call/code/role-of'
 
 export async function callTest(input: {
@@ -103,8 +104,8 @@ async function findTestFiles(input: {
       } else if (entry.name.endsWith('.tree')) {
         const text = await fs.readFile(full, 'utf-8')
 
-        // likewise for a single shelved file, `mark draft` or the old `note draft`
-        if (/^(mark|note) draft\s*$/m.test(text.slice(0, 2000))) {
+        // likewise for a single shelved file, the answer the build walk gives (call/code/draft.ts)
+        if (declaresDraft(text)) {
           continue
         }
 

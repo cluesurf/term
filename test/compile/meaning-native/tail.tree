@@ -1,0 +1,85 @@
+# tasks that are loops (compile/backend.ts, `tailTasks`): every self call a tail call. A sum counted down from 100,000,
+# deeper than a JavaScript stack holds unless the recursion is a loop; Euclid's greatest common divisor; and a tail call
+# whose arguments read each other's parameters, which must all be computed before any is rebound
+
+task sum-down
+  take n, like number
+  take acc, like number
+  like number
+  fork test
+    hook test
+      call is-equal
+        read n
+        code 0
+    hook hold
+      send back, read acc
+  send back
+    call sum-down
+      call subtract
+        read n
+        code 1
+      call add
+        read acc
+        read n
+
+task gcd
+  take a, like number
+  take b, like number
+  like number
+  fork test
+    hook test
+      call is-equal
+        read b
+        code 0
+    hook hold
+      send back, read a
+  send back
+    call gcd
+      read b
+      call modulo
+        read a
+        read b
+
+task crossed
+  take a, like number
+  take b, like number
+  take k, like number
+  like number
+  fork test
+    hook test
+      call is-equal
+        read k
+        code 0
+    hook hold
+      send back
+        call add
+          call multiply
+            read a
+            code 1000
+          read b
+  send back
+    call crossed
+      read b
+      call add
+        read a
+        code 1
+      call subtract
+        read k
+        code 1
+
+task compute
+  like text
+  host s
+    call sum-down
+      code 100000
+      code 0
+  host g
+    call gcd
+      code 1071
+      code 462
+  host c
+    call crossed
+      code 1
+      code 2
+      code 5
+  send back, text <{s}:{g}:{c}>

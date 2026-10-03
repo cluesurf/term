@@ -1,0 +1,24 @@
+
+# The signals a program that owns the terminal answers, for any other target (the browser, a worker): nothing is
+# watched and nothing arrives. Node and Rust answer them in ./{node,rust}/signal, and Swift and Kotlin say none in
+# their own.
+
+# start answering the signals. False: there are none here
+task watch-signals
+  like boolean
+  send back, false
+
+# the signal that arrived since the last ask: none
+task take-signal
+  like number
+  send back, code 0
+
+# once the terminal is given back: nothing stopped the program but itself
+task leave-after-signal
+  like boolean
+  send back, true
+
+# stop the program the way ctrl-z in a shell stops it: not here. False, and the program carries on
+task suspend-self
+  like boolean
+  send back, false

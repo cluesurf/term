@@ -23,6 +23,9 @@ load @term/bind/browser/dom/node
 load @term/bind/browser/dom/child-node
   find child-node
 
+load @term/bind/browser/dom/keyboard-event
+  find keyboard-event
+
 load @term/base/maybe
   find maybe
 
@@ -183,6 +186,31 @@ task listen-document
       call page/remove-event-listener
         read event
         read listener
+        make none
+
+# every key pressed, as KeyboardEvent.key names it: a document `keydown` whose listener hands `handler` the event's
+# `key`. Returns the remover
+task listen-key
+  take handler
+    like task
+      take key, like text
+  like task
+  save listener
+    task on-key
+      take event, like keyboard-event
+      call handler
+        read event/key
+  host held, like any
+    read listener
+  call page/add-event-listener
+    text <keydown>
+    read held
+    make none
+  send back
+    task drop
+      call page/remove-event-listener
+        text <keydown>
+        read held
         make none
 
 # anchor a floating panel to a reference via floating-ui (offset + optional flip/shift), applying position:fixed left/top

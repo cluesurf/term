@@ -1,0 +1,9 @@
+host program, <particle>
+host entry, <particle>
+host source, <ours, the shape of every simulation with a struct of arrays in it: 100 particles a run, each a record of an id and a list of 8 coordinates, every coordinate rewritten in place through the record's path for 50 steps, then all added>
+host check, 3
+host expect, <1155000>
+host size, 3000
+host runs, 5
+host semantics, <a list of records each holding a list, the inner list read and written by position through the path ps/{k}/xs/{i}; integer output>
+host idiom, <ours, 2026-10-03: a Vec of structs of Vecs on Rust, an array of structs of arrays on Swift, a list of classes of LongArrays on Kotlin, an array of objects of arrays on TypeScript>

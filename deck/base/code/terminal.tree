@@ -167,6 +167,8 @@ bind read-input
   case rust
     text <\{ use std::io::Read; let mut bytes = [0u8; 256]; let count = std::io::stdin().read(&mut bytes).unwrap_or(0); String::from_utf8_lossy(&bytes[..count]).to_string() \}>
 
+# The signals such a program answers (a resize, SIGTERM, SIGHUP) are ./native/{platform}/signal.
+
 # write text to the terminal and flush it, so a screen appears whole and at once. True when it was written
 bind write-output
   take value, like text

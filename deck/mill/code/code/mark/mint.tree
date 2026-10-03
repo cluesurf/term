@@ -1,6 +1,8 @@
 mint mark
   case kind
     site kind
+  case identity
+    site identity
   case bind, mint mark-bind
     site bind
   case name, mint mark-name
@@ -8,6 +10,7 @@ mint mark
   hook make
     make mark
       bind kind, read kind
+      bind identity, read identity
       bind bind, read bind
       bind name, read name
 

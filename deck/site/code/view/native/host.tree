@@ -1,8 +1,12 @@
-
-# The app host: boot the routed app, env-abstracted. The SAME `route(host, path)` dispatcher drives both sides; only
-# this `host` differs per environment (the native-env mechanism picks browser vs node). The browser mounts the matched
-# page on the document body and re-renders on navigation; the server starts an HTTP server that renders each request
-# through `route` and responds with HTML (SSR). This is the one client/server seam -- the app author writes neither.
+# The app host: boot the routed app, env-abstracted. The SAME `route(host, path)` dispatcher drives every side; only
+# this `host` differs per environment (the native-env mechanism picks it). The browser mounts the matched page on the
+# document body and re-renders on navigation; the server starts an HTTP server that renders each request through
+# `route` and responds with HTML (SSR); macOS, iOS and Android mount it on a window (./toolkit/host); a Rust binary
+# runs it in the terminal (./rust/host). This is the one client/server seam -- the app author writes neither.
+#
+# THIS FILE is the answer for a target with no screen of its own, a plain Swift or Kotlin program: it mounts nothing,
+# as the page contract's fallback keeps no history (../../dom/native/page.tree). It was a signature with no body, which
+# every routed program reached through its `boot` and which a call may no longer reach (a stub, not a host).
 
 load ../../dom/view
   find view
@@ -13,3 +17,4 @@ task host
       take host, like view
       take path, like text
   take port, like number
+  save nothing, code 0

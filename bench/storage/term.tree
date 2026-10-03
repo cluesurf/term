@@ -1,0 +1,145 @@
+load @term/base/list
+  find list
+  find push
+  find size
+
+# Storage, from Are We Fast Yet (Marr, Daloze and Mössenböck, DLS 2016): a tree of lists seven levels deep, each inner
+# list holding four subtrees and each leaf a list of 1 to 10 slots, its length from AWFY's generator. 5461 lists per
+# run, made and dropped, which is what it measures. AWFY's structure kept: one generator per run, seeded 74755, and a
+# count of the lists built. AWFY's leaf is an empty array of that length, ours a list of zeros; and AWFY answers only
+# the count, where each run here also reads every leaf's length back, so no build can be found unused and elided.
+# Run `n` times and both added, so the output is one integer
+
+form storage
+  case leaf
+    link items, like list, like number
+  case node
+    link kids, like list, like storage
+
+# AWFY's generator, its seed in slot 0 of `state`
+task next-random
+  take state, like list, like number
+  like number
+  host seed
+    call modulo
+      call add
+        call multiply
+          read state/0
+          code 1309
+        code 13849
+      code 65536
+  save state/0, read seed
+  send back, read seed
+
+# `size` zeros
+task zeros
+  take size, like number
+  like list, like number
+  save out
+    make list
+  walk size
+    bind base, code 0
+    bind head, read size
+    hook next
+      take site, name i
+      call push
+        bind list, read out
+        bind item, code 0
+  send back, read out
+
+# a tree `depth` levels deep, counting each list made in slot 1 of `state`
+task build
+  take depth, like number
+  take state, like list, like number
+  like storage
+  save state/1
+    call add
+      read state/1
+      code 1
+  fork test
+    hook test
+      call is-equal
+        read depth
+        code 1
+    hook hold
+      host length
+        call add
+          call modulo
+            call next-random
+              read state
+            code 10
+          code 1
+      send back
+        make leaf
+          bind items
+            call zeros
+              read length
+  save kids
+    make list
+  walk size
+    bind base, code 0
+    bind head, code 4
+    hook next
+      take site, name k
+      call push
+        bind list, read kids
+        bind item
+          call build
+            call subtract
+              read depth
+              code 1
+            read state
+  send back
+    make node
+      bind kids, read kids
+
+# the lengths of every leaf, added
+task leaves
+  take tree, like storage
+  like number
+  fork case, read tree
+    case leaf
+      send back
+        call size
+          read items
+    case node
+      save total, code 0
+      walk list, read kids
+        hook next
+          take site, name kid
+          save total
+            call add
+              read total
+              call leaves
+                read kid
+      send back, read total
+
+task storage
+  take n, like number
+  like number
+  save total, code 0
+  walk size
+    bind base, code 0
+    bind head, read n
+    hook next
+      take site, name round
+      save state
+        make list
+      call push
+        bind list, read state
+        bind item, code 74755
+      call push
+        bind list, read state
+        bind item, code 0
+      host tree
+        call build
+          code 7
+          read state
+      save total
+        call add
+          call add
+            read total
+            read state/1
+          call leaves
+            read tree
+  send back, read total

@@ -25,7 +25,8 @@ function fnOf(
   src: string,
   name: string,
 ): { body: unknown; params: unknown } {
-  const r = compile({ file: 't.tree', text: src })
+  // unoptimized: the lowering is what is tested, and the simplifier would inline the small tasks whose calls it lowers
+  const r = compile({ file: 't.tree', text: src }, { optimize: false })
 
   if (!r.ok) {
     throw new Error('compile failed: ' + JSON.stringify(r.diagnostics))

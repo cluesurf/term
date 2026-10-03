@@ -1,0 +1,174 @@
+load @term/base/hash
+  find hash
+load @term/base/float
+  find to-decimal
+load @term/base/text
+  find char-count
+  find substring
+
+# k-nucleotide, the Benchmarks Game program, single-threaded: the counts of every 1-mer and 2-mer in a DNA sequence,
+# and of five given sequences of length 3 to 18, each counted by building the table of every k-mer of that length. The
+# game reads the sequence from fasta's output on stdin; this builds the same kind of sequence with fasta's generator
+# and Homo sapiens table, so the program needs no input file. The output is integers that read the same on every
+# backend: for k of 1 and 2 the number of distinct k-mers and the largest count, then the five counts
+
+# `n` letters drawn by fasta's linear congruential generator, by cumulative probability
+task sequence
+  take n, like number
+  like text
+  save seed, code 42
+  save dna, text <>
+  walk size
+    bind base, code 0
+    bind head, read n
+    hook next
+      take site, name i
+      save seed
+        call modulo
+          call add
+            call multiply
+              read seed
+              code 3877
+            code 29573
+          code 139968
+      host r
+        call divide
+          call to-decimal
+            read seed
+          code 139968.0
+      fork test
+        hook test
+          call is-below
+            read r
+            code 0.3029549426680
+        hook hold
+          save dna, text <{dna}a>
+        hook test
+          call is-below
+            read r
+            code 0.5009432431601
+        hook hold
+          save dna, text <{dna}c>
+        hook test
+          call is-below
+            read r
+            code 0.6984905497992
+        hook hold
+          save dna, text <{dna}g>
+        hook miss
+          save dna, text <{dna}t>
+  send back, read dna
+
+# how many times each k-mer of `dna` occurs
+task frequencies
+  take dna, like text
+  take k, like number
+  like hash
+    like text
+    like number
+  save counts
+    make hash
+  host last
+    call subtract
+      call char-count
+        read dna
+      read k
+  walk size
+    bind base, code 0
+    bind head
+      call add
+        read last
+        code 1
+    hook next
+      take site, name i
+      host key
+        call substring
+          read dna
+          read i
+          call add
+            read i
+            read k
+      call set
+        read counts
+        read key
+        call add
+          call get-or-default
+            read counts
+            read key
+            code 0
+          code 1
+  send back, read counts
+
+# the number of distinct k-mers and the largest count, as `distinct:largest`
+task summary
+  take dna, like text
+  take k, like number
+  like text
+  host counts
+    call frequencies
+      read dna
+      read k
+  save largest, code 0
+  walk list
+    call values
+      read counts
+    hook next
+      take site, name count
+      fork test
+        hook test
+          call is-above
+            read count
+            read largest
+        hook hold
+          save largest, read count
+  send back, text <{size(counts)}:{largest}>
+
+# how many times `part` occurs in `dna`, read from the table of every k-mer of its length
+task occurrences
+  take dna, like text
+  take part, like text
+  like number
+  send back
+    call get-or-default
+      call frequencies
+        read dna
+        call char-count
+          read part
+      read part
+      code 0
+
+task k-nucleotide
+  take n, like number
+  like text
+  host dna
+    call sequence
+      read n
+  host one
+    call summary
+      read dna
+      code 1
+  host two
+    call summary
+      read dna
+      code 2
+  host c3
+    call occurrences
+      read dna
+      text <ggt>
+  host c4
+    call occurrences
+      read dna
+      text <ggta>
+  host c6
+    call occurrences
+      read dna
+      text <ggtatt>
+  host c12
+    call occurrences
+      read dna
+      text <ggtattttaatt>
+  host c18
+    call occurrences
+      read dna
+      text <ggtattttaatttatagt>
+  send back, text <{one} {two} {c3} {c4} {c6} {c12} {c18}>

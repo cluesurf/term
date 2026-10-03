@@ -1,3 +1,7 @@
+mark draft
+
+# shelved 2026-10-03 with ../connection, whose `connection` form it returns: a signature with no body and no load
+# of the form. Nothing loads it.
 
 task open
   take file, like text

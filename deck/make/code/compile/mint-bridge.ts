@@ -2405,6 +2405,14 @@ const WALK_MODES = new Set(['list', 'size', 'test'])
 // refusing them is a separate decision from this one.
 const WALK_TEST_PARTS = new Set(['hook', 'must', 'down', 'bind', 'take'])
 
+// the marks a task takes, each read by something: `async`, `private` and `roam` here, `open` on a claim, `unsafe` as a
+// guard, `draft` by the build walk, `deprecated` by check/deprecated.ts, `stable` and `unstable` by the reference
+// tools (`term:base-marks`), `exact` reserved for opt-in overflow proofs (note/term/gaps/plan.md)
+const TASK_MARKS = new Set(['async', 'private', 'roam', 'open', 'unsafe', 'draft', 'deprecated', 'stable', 'unstable', 'exact'])
+
+// the width aliases of `number` whose range a literal argument is held to (check/literals.ts)
+const WIDTH_WORDS = new Set(['u8', 'u16', 'u32', 'u64', 'i8', 'i16', 'i32', 'i64'])
+
 // the arms a `fork test` reads, by the word after `hook` (`conditionOf`)
 const FORK_TEST_ARMS = new Set(['test', 'hold', 'step', 'miss', 'else', 'fall'])
 
@@ -3000,11 +3008,15 @@ function paramOf(
   const optional = need === 'false' || Boolean(fallback)
   // `like natural-number` refines the number to the naturals
   const refine = wordAt(like, 'name') === 'natural-number'
+  // `like u8` and the other width aliases are a `number`; the width is kept so a literal outside it is refused
+  const word = like ? (textOf(like) ?? wordAt(like, 'name')) : undefined
+  const width = word !== undefined && WIDTH_WORDS.has(word) ? word : undefined
 
   return {
     name,
     ...(type ? { type } : {}),
     ...(refine ? { refine: 'natural' as const } : {}),
+    ...(width ? { width } : {}),
     ...(optional ? { optional: true } : {}),
     ...(fallback ? { fallback } : {}),
   }
@@ -3110,11 +3122,29 @@ function functionOf(bridge: Bridge, value: Form): Statement | undefined {
 
   refuseNestedTasks(bridge, value)
 
+  // every `mark` word on a task is one something reads. A word outside the list was accepted and read by nothing, so a
+  // misspelled `mark deprecatd` meant nothing and said so nowhere (guides: language/notes, 2026-10-03)
+  for (const mark of formsAt(value, 'mark')) {
+    const kind = wordAt(mark, 'kind')
+
+    if (kind !== undefined && !TASK_MARKS.has(kind)) {
+      bridge.diagnostics.push(
+        diagnose('unexpected-node', {
+          file: bridge.file,
+          span: spanOf(mark),
+          message: `\`mark ${kind}\` is not a mark a task takes. The marks are ${[...TASK_MARKS].join(', ')}`,
+        }),
+      )
+    }
+  }
+
   return {
     form: 'function',
     name,
     params,
     body,
+    // `mark deprecated`: a call to it from another file warns (check/deprecated.ts)
+    ...(marked(value, 'deprecated') ? { deprecated: true } : {}),
     ...(result ? { result } : {}),
     generics,
     // the bound on what this task may raise, from the leading `halt <form>` lines

@@ -1,0 +1,82 @@
+load @term/base/list
+  find list
+  find push
+
+# text built by appending (backend.ts, `textAppend`, `textBuilders`): `push_str` on Rust, `+=` on Swift, a
+# StringBuilder on Kotlin, where each append copied the whole text. Each task below answers the same on every backend
+
+# a plain build, and a read of the text in the middle of the loop
+task build
+  take n, like number
+  like text
+  save s, text <>
+  save seen, text <>
+  walk size
+    bind base, code 0
+    bind head, read n
+    hook next
+      take site, name i
+      save s, text <{s}{i}>
+      fork test
+        hook test
+          call is-equal
+            read i
+            code 2
+        hook hold
+          save seen, text <{s}>
+  send back, text <{s}|{seen}>
+
+# an append that reads the text twice, and a plain reassignment after appends (no builder then)
+task doubled
+  like text
+  save s, text <a>
+  save s, text <{s}{s}>
+  save s, text <{s}{s}>
+  save t, text <x>
+  save t, text <{t}y>
+  save t, text <z>
+  save t, text <{t}w>
+  send back, text <{s}|{t}>
+
+# a text built a line at a time: appended to, reset to the empty text between lines (a StringBuilder's `setLength(0)`
+# on Kotlin), and read whole at each line's end
+task lines
+  like text
+  save line, text <>
+  save out, text <>
+  walk size
+    bind base, code 0
+    bind head, code 5
+    hook next
+      take site, name i
+      save line, text <{line}{i}>
+      fork test
+        hook test
+          call is-equal
+            read i
+            code 2
+        hook hold
+          save out, text <{out}{line}|>
+          save line, text <>
+  send back, text <{out}{line}>
+
+# a parameter appended to
+task tagged
+  take label, like text
+  like text
+  save label, text <{label}!>
+  send back, read label
+
+task compute
+  like text
+  host built
+    call build
+      code 5
+  host twice
+    call doubled
+  host mark
+    call tagged
+      text <hi>
+  host each
+    call lines
+  send back, text <{built} {twice} {mark} {each}>

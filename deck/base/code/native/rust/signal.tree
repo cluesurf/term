@@ -1,0 +1,35 @@
+
+# The signals a program that owns the terminal answers, on Rust (terminal-target-0006). A resize (SIGWINCH, 28)
+# repaints at once rather than on the next key, and SIGTERM (15) or SIGHUP (1) end the program the way ctrl-c does,
+# the terminal given back, rather than leaving it raw. A signal interrupts the blocking read (`read-input` in
+# ../../terminal), which answers empty text, and `take-signal` says which one came. The work is in
+# ./runtime/signals.rs, with no crate.
+
+dock load
+  load <global:signals>, name signals
+
+# start answering the signals. True when they are watched
+task watch-signals
+  like boolean
+  send back
+    call signals/watch
+
+# the signal that arrived since the last ask, 0 for none
+task take-signal
+  like number
+  send back
+    call signals/take
+
+# once the terminal is given back: a program a signal ended exits with 128 plus the signal's number, as a process the
+# signal had killed would
+task leave-after-signal
+  like boolean
+  send back
+    call signals/leave
+
+# stop the program the way ctrl-z in a shell stops it, and come back when the shell resumes it (`fg`). The caller
+# gives the terminal back first and takes it again after. True when it was stopped and has resumed
+task suspend-self
+  like boolean
+  send back
+    call signals/suspend

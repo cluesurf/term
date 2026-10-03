@@ -1,0 +1,9 @@
+host program, <fasta>
+host entry, <fasta>
+host source, <the Computer Language Benchmarks Game program, single-threaded, the same generator and tables; it hashes the characters the game prints rather than printing them>
+host check, 1000
+host expect, <10168 600384079>
+host size, 250000
+host runs, 5
+host semantics, <integers (the generator and the hash, both under a modulus) and decimals (the cumulative probabilities), the same operations in the same order on every backend; the answer is the character count and the hash, two integers>
+host idiom, <ours, 2026-10-03: each language's natural strings and loops, each line built by appending a character and then hashed>

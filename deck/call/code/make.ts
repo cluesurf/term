@@ -44,6 +44,7 @@ import {
 } from '@term/make/code/resolve'
 import { packageRest } from '@term/make/code/deck/resolve'
 import { renderDiagnostic } from '@term/call/code/report'
+import { declaresDraft } from '@term/call/code/draft'
 import { FACE_NATIVE_PATH, contractFindings } from '@term/call/code/face-contract'
 import type { ContractFinding } from '@term/call/code/face-contract'
 import {
@@ -70,12 +71,10 @@ const NATIVE_PLATFORMS = [
   'kotlin',
 ]
 
-// does this file declare itself unfinished? `mark draft` on its own line, anywhere in the leading block before the
-// first definition. `note draft` is the old spelling and still shelves. Read cheaply: only the head of the file is
-// inspected.
+// does this file declare itself unfinished? A top-level `mark draft` line anywhere in it (call/code/draft.ts)
 function isDraftTree(file: string): boolean {
   try {
-    return /^(mark|note) draft\s*$/m.test(readFileSync(file, 'utf8').slice(0, 2000))
+    return declaresDraft(readFileSync(file, 'utf8'))
   } catch {
     return false
   }

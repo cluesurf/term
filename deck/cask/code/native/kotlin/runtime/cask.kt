@@ -266,7 +266,7 @@ object cask {
                     activity.assets.open(name).use { input ->
                         FileOutputStream(File(target, name)).use { output -> input.copyTo(output) }
                     }
-                } catch (_: Exception) {
+                } catch (_: kotlin.Exception) {
                     // a directory rather than a file, or a system asset; not ours to copy
                 }
             }
@@ -288,7 +288,7 @@ object cask {
     private fun runningApplication(): android.content.Context? =
         try {
             Class.forName("android.app.ActivityThread").getMethod("currentApplication").invoke(null) as? android.content.Context
-        } catch (_: Exception) {
+        } catch (_: kotlin.Exception) {
             null
         }
 }

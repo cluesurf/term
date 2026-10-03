@@ -1,8 +1,11 @@
 
 # The cask as node sees it: nothing. A cask is a native window on a phone or a desktop, and node has neither, so every
-# task is signature-only and emits the backend's stub. This file exists so `@term/cask/code/cask` resolves when a
-# package is built for node, which is what `term make` and the build-all gate do, and so the contract has one
-# spelling on every env. The real implementations are ../swift (macOS, iOS) and ../webview (the page).
+# task raises `failure` with the reason. This file exists so `@term/cask/code/cask` resolves when a package is built
+# for node, which is what `term make` and the build-all gate do, and so the contract has one spelling on every env. The
+# real implementations are ../swift (macOS, iOS) and ../webview (the page).
+#
+# Until 2026-10-03 every task here was signature-only and emitted the backend's stub, which returned nothing in silence.
+# A call to a task with no body anywhere in the build is refused now (check/bodiless.ts), so each says why instead.
 
 dock type
   load <any>, name window
@@ -12,21 +15,25 @@ task open-window
   take width, like number
   take height, like number
   like window
+  halt <A cask has no window on node>
 
 task load-bundle
   take self, like window
   take path, like text
   like void
+  halt <A cask has no window on node>
 
 task load-url
   take self, like window
   take url, like text
   like void
+  halt <A cask has no window on node>
 
 task eval
   take self, like window
   take script, like text
   like void
+  halt <A cask has no window on node>
 
 task on-message
   take self, like window
@@ -36,12 +43,14 @@ task on-message
       take message, like text
       like text
   like void
+  halt <A cask has no window on node>
 
 task emit
   take self, like window
   take name, like text
   take text, like text
   like void
+  halt <A cask has no window on node>
 
 task listen
   take name, like text
@@ -50,6 +59,7 @@ task listen
       take text, like text
       like void
   like void
+  halt <A cask has no window on node>
 
 task on-ready
   take self, like window
@@ -57,6 +67,7 @@ task on-ready
     like task
       like void
   like void
+  halt <A cask has no window on node>
 
 # runs when the window closes. A node cask has no window, so nothing ever closes one (native-dom-0030)
 task on-close
@@ -65,10 +76,12 @@ task on-close
     like task
       like void
   like void
+  halt <A cask has no window on node>
 
 task close
   take self, like window
   like void
+  halt <A cask has no window on node>
 
 task snapshot
   take self, like window
@@ -77,35 +90,43 @@ task snapshot
     like task
       like void
   like void
+  halt <A cask has no window on node>
 
 task show
   take self, like window
   like void
+  halt <A cask has no window on node>
 
 task activate
   take self, like window
   like void
+  halt <A cask has no window on node>
 
 task run
   like void
+  halt <A cask has no window on node>
 
 task quit
   mark async
   like void
+  halt <A cask has no window on node>
 
 task exit
   mark async
   take status, like number
   like void
+  halt <A cask has no window on node>
 
 task bundle-path
   mark async
   like text
+  halt <A cask has no bundle on node>
 
 task data-path
   mark async
   take name, like text
   like text
+  halt <A cask has no data directory on node>
 
 # over-the-air page updates (native-dom-0016): the real ones are ../swift and ../kotlin
 
@@ -114,6 +135,7 @@ task update-launch-path
   take page, like text
   take data, like text
   like text
+  halt <A cask has no page updates on node>
 
 task update-check
   take resources, like text
@@ -125,7 +147,9 @@ task update-check
       take status, like text
       like void
   like void
+  halt <A cask has no page updates on node>
 
 task update-ready
   take data, like text
   like void
+  halt <A cask has no page updates on node>

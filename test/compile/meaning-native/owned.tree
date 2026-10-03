@@ -1,0 +1,156 @@
+load @term/base/list
+  find list
+  find push
+  find size
+
+# lists held in a variant (compile/backend.ts, `ownedFields`): a node that owns its list holds the plain one on Rust,
+# where every list was shared. Built three ways (a fresh task's answer, an owned local handed in as the node is
+# answered, an empty list), read by size, by slot and by a walk handing each child on borrowed. Beside it a variant
+# that must NOT own: its list is pushed onto after the node took it, which only the shared list shows, and a field read
+# by a path off a node. Every answer must be the value one
+
+form bag
+  case empty
+  case leaf
+    link items, like list, like number
+  case node
+    link kids, like list, like bag
+
+form box
+  case held
+    link items, like list, like number
+
+# `size` copies of `value`
+task repeat
+  take size, like number
+  take value, like number
+  like list, like number
+  save out
+    make list
+  walk size
+    bind base, code 0
+    bind head, read size
+    hook next
+      take site, name i
+      call push
+        bind list, read out
+        bind item
+          call add
+            read value
+            read i
+  send back, read out
+
+task grow
+  take depth, like number
+  like bag
+  fork test
+    hook test
+      call is-equal
+        read depth
+        code 0
+    hook hold
+      send back
+        make leaf
+          bind items
+            call repeat
+              code 2
+              code 7
+  save kids
+    make list
+  walk size
+    bind base, code 0
+    bind head, read depth
+    hook next
+      take site, name k
+      call push
+        bind list, read kids
+        bind item
+          call grow
+            call subtract
+              read depth
+              code 1
+  fork test
+    hook test
+      call is-equal
+        read depth
+        code 2
+    hook hold
+      call push
+        bind list, read kids
+        bind item
+          make empty
+  send back
+    make node
+      bind kids, read kids
+
+# every leaf's first item and length, and every node's width, added
+task weigh
+  take b, like bag
+  like number
+  fork case, read b
+    case empty
+      send back, code 1000
+    case leaf
+      fork test
+        hook test
+          call is-equal
+            call size
+              read items
+            code 0
+        hook hold
+          send back, code 0
+      send back
+        call add
+          read items/0
+          call size
+            read items
+    case node
+      save total
+        call size
+          read kids
+      walk list, read kids
+        hook next
+          take site, name kid
+          save total
+            call add
+              read total
+              call weigh
+                read kid
+      send back, read total
+
+# a box whose list is pushed onto after the box was made: the box sees the push
+task late
+  like number
+  save items
+    make list
+  call push
+    bind list, read items
+    bind item, code 4
+  host b
+    make held
+      bind items, read items
+  call push
+    bind list, read items
+    bind item, code 5
+  fork case, read b
+    case held
+      send back
+        call size
+          read items
+
+task compute
+  like text
+  host tree
+    call grow
+      code 4
+  host leaf
+    make leaf
+      bind items
+        call repeat
+          code 3
+          code 1
+  host none
+    make leaf
+      bind items
+        make list
+  send back, text <{weigh(tree)}:{weigh(leaf)}:{weigh(none)}:{late()}>

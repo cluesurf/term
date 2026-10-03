@@ -9,7 +9,7 @@
 //
 // Release builds on both sides, with the same flags: rustc opt-level 3 with one codegen unit and panic=abort, swiftc
 // -O -wmo with exclusivity unchecked (cask's release build), esbuild to node20 (minified) on the pinned node, kotlinc to
-// a jar on the pinned JVM. A process is timed
+// a jar targeting JVM 21 with no null assertions, on the pinned JVM. A process is timed
 // from spawn to exit, so startup is in both columns alike.
 
 import { execFileSync, spawnSync } from 'node:child_process'
@@ -47,6 +47,9 @@ const have = (tool: string): boolean => spawnSync('which', [tool]).status === 0
 const RUST_FLAGS = ['-A', 'warnings', '-C', 'opt-level=3', '-C', 'codegen-units=1', '-C', 'panic=abort']
 // the release build cask ships (cask.ts), on both sides
 const SWIFT_FLAGS = ['-O', '-wmo', '-enforce-exclusivity=unchecked']
+// a release Kotlin build, on both sides: bytecode for the JVM it runs on (kotlinc's default target is 1.8), and none of
+// the null assertions the Android release build also leaves out (cask.ts)
+const KOTLIN_FLAGS = ['-nowarn', '-jvm-target', '21', '-Xno-param-assertions', '-Xno-call-assertions', '-Xno-receiver-assertions']
 
 const base = join(TERM, 'deck/base')
 // the stdlib, by the package path rule every resolver calls (`stdlibResolver` in deck/make/code/resolve.ts)
@@ -99,7 +102,9 @@ function spec(dir: string): Spec {
 function buildTerm(s: Spec, target: Target, out: string): Built {
   const file = join(s.dir, 'term.tree')
   const env = target === 'typescript' ? 'node' : target
-  const built = compile({ file, text: readFileSync(file, 'utf8') }, { resolve: withNativeEnv(env, stdlib), env })
+  // built as the program it is, with its entry the one root, as the hand versions are: a task nothing reaches is
+  // dropped, where a library build kept it public and a caller it cannot see weakened every fact it feeds
+  const built = compile({ file, text: readFileSync(file, 'utf8') }, { resolve: withNativeEnv(env, stdlib), env, entryPoints: [s.entry] })
 
   if (!built.ok) {
     throw new Error(built.diagnostics.map(d => d.message).join(' | '))
@@ -109,27 +114,34 @@ function buildTerm(s: Spec, target: Target, out: string): Built {
 
   if (target === 'typescript') {
     writeFileSync(join(out, 'term.ts'), `${prelude}\n${built.typescript}\nconsole.log(${camel(s.entry)}(Number(process.argv[2])))\n`)
-    buildSync({ entryPoints: [join(out, 'term.ts')], outfile: join(out, 'term.mjs'), bundle: true, minify: true, platform: 'node', target: 'node20', format: 'esm', logLevel: 'error' })
+    buildSync({ entryPoints: [join(out, 'term.ts')], outfile: join(out, 'term.mjs'), bundle: true, minify: true, sourcemap: 'external', platform: 'node', target: 'node20', format: 'esm', logLevel: 'error' })
 
     return { run: n => ['node', join(out, 'term.mjs'), String(n)] }
   }
 
   if (target === 'rust') {
-    writeFileSync(join(out, 'term.rs'), `${prelude}\n${emitRust(built.program)}\nfn main() { let n: i64 = std::env::args().nth(1).unwrap().parse().unwrap(); println!("{}", ${snake(s.entry)}(n)); }\n`)
+    // an entry that may raise answers a Result: a raise stops the program, as it does on every other backend
+    const rust = emitRust(built.program)
+    const raises = new RegExp(`fn ${snake(s.entry)}\\([^)]*\\) -> std::result::Result<`).test(rust)
+    const answer = raises ? `match ${snake(s.entry)}(n) { Ok(v) => v, Err(e) => panic!("{}", e.note) }` : `${snake(s.entry)}(n)`
+    writeFileSync(join(out, 'term.rs'), `${prelude}\n${rust}\nfn main() { let n: i64 = std::env::args().nth(1).unwrap().parse().unwrap(); println!("{}", ${answer}); }\n`)
     execFileSync('rustc', [...RUST_FLAGS, join(out, 'term.rs'), '-o', join(out, 'term-rs')], { stdio: ['ignore', 'pipe', 'pipe'] })
 
     return { run: n => [join(out, 'term-rs'), String(n)] }
   }
 
   if (target === 'swift') {
-    writeFileSync(join(out, 'term.swift'), `${prelude}\n${emitSwift(built.program)}\nprint(${camel(s.entry)}(Int(CommandLine.arguments[1])!))\n`)
+    // an entry that may raise throws: `try!` stops the program on a raise, as every other backend does
+    const swift = emitSwift(built.program)
+    const throws = new RegExp(`func ${camel(s.entry)}\\([^)]*\\)[^{]*throws`).test(swift)
+    writeFileSync(join(out, 'term.swift'), `${prelude}\n${swift}\nprint(${throws ? 'try! ' : ''}${camel(s.entry)}(Int(CommandLine.arguments[1])!))\n`)
     execFileSync('swiftc', [...SWIFT_FLAGS, '-o', join(out, 'term-swift'), join(out, 'term.swift')], { stdio: ['ignore', 'pipe', 'pipe'] })
 
     return { run: n => [join(out, 'term-swift'), String(n)] }
   }
 
   writeFileSync(join(out, 'term.kt'), hoistKotlinImports(`${prelude}\n${emitKotlin(built.program)}\nfun main(args: Array<String>) { println(${camel(s.entry)}(args[0].toLong())) }\n`))
-  execFileSync('kotlinc', [join(out, 'term.kt'), '-nowarn', '-include-runtime', '-d', join(out, 'term.jar')], { stdio: ['ignore', 'pipe', 'pipe'] })
+  execFileSync('kotlinc', [join(out, 'term.kt'), ...KOTLIN_FLAGS, '-include-runtime', '-d', join(out, 'term.jar')], { stdio: ['ignore', 'pipe', 'pipe'] })
 
   return { run: n => ['java', '-jar', join(out, 'term.jar'), String(n)] }
 }
@@ -144,7 +156,7 @@ function buildIdiom(s: Spec, target: Target, out: string): Built | undefined {
   }
 
   if (target === 'typescript') {
-    buildSync({ entryPoints: [file], outfile: join(out, 'idiom.mjs'), bundle: true, minify: true, platform: 'node', target: 'node20', format: 'esm', logLevel: 'error' })
+    buildSync({ entryPoints: [file], outfile: join(out, 'idiom.mjs'), bundle: true, minify: true, sourcemap: 'external', platform: 'node', target: 'node20', format: 'esm', logLevel: 'error' })
 
     return { run: n => ['node', join(out, 'idiom.mjs'), String(n)] }
   }
@@ -161,7 +173,7 @@ function buildIdiom(s: Spec, target: Target, out: string): Built | undefined {
     return { run: n => [join(out, 'idiom-swift'), String(n)] }
   }
 
-  execFileSync('kotlinc', [file, '-nowarn', '-include-runtime', '-d', join(out, 'idiom.jar')], { stdio: ['ignore', 'pipe', 'pipe'] })
+  execFileSync('kotlinc', [file, ...KOTLIN_FLAGS, '-include-runtime', '-d', join(out, 'idiom.jar')], { stdio: ['ignore', 'pipe', 'pipe'] })
 
   return { run: n => ['java', '-jar', join(out, 'idiom.jar'), String(n)] }
 }

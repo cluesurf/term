@@ -1,0 +1,84 @@
+load @term/base/list
+  find list
+  find push
+
+# node reuse must not fire where a node has a second owner (compile/kotlin.ts, `kotlinReuse`): a pile's top is kept
+# under a second name, the pile popped (its node taken from the slot) and a new disk pushed, then the kept name read.
+# Reusing the popped node for the push would rebuild the node the kept name still holds, and the kept size and depth
+# would change. Every answer must be the value one
+
+form stack
+  case empty
+  case disk
+    link size, like number
+    link below, like stack
+
+task push-disk
+  take piles, like list, like stack
+  take size, like number
+  take pile, like number
+  host top, read piles/{pile}
+  save piles/{pile}
+    make disk
+      bind size, read size
+      bind below, read top
+
+task pop-disk
+  take piles, like list, like stack
+  take pile, like number
+  like number
+  host top, read piles/{pile}
+  fork case, read top
+    case empty
+      send back, code 0
+    case disk
+      save piles/{pile}, read below
+      send back, read size
+
+task depth
+  take s, like stack
+  like number
+  fork case, read s
+    case empty
+      send back, code 0
+    case disk
+      send back
+        call add
+          code 1
+          call depth
+            read below
+
+task compute
+  like text
+  save piles
+    make list
+  call push
+    bind list, read piles
+    bind item
+      make empty
+  call push
+    bind list, read piles
+    bind item
+      make empty
+  call push-disk
+    read piles
+    code 5
+    code 0
+  call push-disk
+    read piles
+    code 3
+    code 0
+  host kept, read piles/0
+  host popped
+    call pop-disk
+      read piles
+      code 0
+  call push-disk
+    read piles
+    code 9
+    code 1
+  fork case, read kept
+    case empty
+      send back, text <empty>
+    case disk
+      send back, text <{size}:{depth(kept)}:{popped}:{depth(piles/1)}>

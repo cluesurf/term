@@ -200,6 +200,15 @@ abstract class TermViewActivity : Activity() {
         for (body in nativeView.configurationChanged.toList()) body()
     }
 
+    // every key a hardware keyboard sends reaches the window's `listen-key` listeners under its web name, then goes on to
+    // whatever has focus (swiftui-target-0003)
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (event.action == android.view.KeyEvent.ACTION_DOWN) {
+            nativeView.deliverKey(nativeView.keyName(event))
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
     // the system back (the back gesture, the back key): the app's navigation takes it first, and only a back it refuses,
     // at the first place, leaves the app, as Android's own does (native-navigation-0007)
     @Deprecated("the platform's back, kept for every API level the app runs on")
@@ -250,14 +259,76 @@ object nativeView {
         context().onBackPressed()
     }
 
+    // ---- keys (swiftui-target-0003): every key pressed, named as KeyboardEvent.key names it, from the Activity's
+    // dispatch, to each listener ----
+
+    private val keyListeners = mutableListOf<Pair<Long, (String) -> Unit>>()
+    private var nextKeyListener = 0L
+
+    // the web's names for the keys that are not characters, by key code
+    private val KEY_NAMES = mapOf(
+        android.view.KeyEvent.KEYCODE_ESCAPE to "Escape",
+        android.view.KeyEvent.KEYCODE_ENTER to "Enter",
+        android.view.KeyEvent.KEYCODE_NUMPAD_ENTER to "Enter",
+        android.view.KeyEvent.KEYCODE_TAB to "Tab",
+        android.view.KeyEvent.KEYCODE_DEL to "Backspace",
+        android.view.KeyEvent.KEYCODE_DPAD_LEFT to "ArrowLeft",
+        android.view.KeyEvent.KEYCODE_DPAD_RIGHT to "ArrowRight",
+        android.view.KeyEvent.KEYCODE_DPAD_DOWN to "ArrowDown",
+        android.view.KeyEvent.KEYCODE_DPAD_UP to "ArrowUp",
+    )
+
+    fun listenKey(handler: (String) -> Unit): Long {
+        nextKeyListener += 1
+        keyListeners.add(nextKeyListener to handler)
+        return nextKeyListener
+    }
+
+    fun dropKey(number: Long) {
+        keyListeners.removeAll { it.first == number }
+    }
+
+    fun keyName(event: android.view.KeyEvent): String =
+        KEY_NAMES[event.keyCode] ?: event.unicodeChar.takeIf { it != 0 }?.let { String(Character.toChars(it)) } ?: ""
+
+    fun deliverKey(name: String) {
+        if (name.isEmpty()) return
+        for ((_, run) in keyListeners.toList()) run(name)
+    }
+
+    // for tests: a key pressed, as a KeyEvent through the Activity's own dispatch, the route a keyboard takes
+    fun typeKey(name: String) {
+        val code = KEY_NAMES.entries.firstOrNull { it.value == name }?.key
+            ?: android.view.KeyCharacterMap.load(android.view.KeyCharacterMap.VIRTUAL_KEYBOARD).getEvents(name.toCharArray())?.firstOrNull()?.keyCode
+            ?: return
+        context().dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, code))
+    }
+
     private fun context(): Activity = activity ?: error("nativeView: no Activity yet. A program runs inside TermActivity.program()")
 
     // the handle Term holds is `Any`, so every entry point takes `Any` and reads the node out of it
     private fun node(handle: Any): TermNode = handle as? TermNode ?: error("nativeView: not a node: $handle")
 
+    // every node made, held weakly, so a test can count the ones still alive (reactive-bridge-0005)
+    private val made = mutableListOf<java.lang.ref.WeakReference<TermNode>>()
+
     private fun make(tag: String, text: String): TermNode {
         nextKey += 1
-        return TermNode(nextKey, tag, text, context())
+        val node = TermNode(nextKey, tag, text, context())
+        made.add(java.lang.ref.WeakReference(node))
+        return node
+    }
+
+    // for tests: how many nodes are alive. The JVM frees on its own schedule, so it is asked to collect first, twice,
+    // with a pause for the collector between
+    fun liveNodes(): Long {
+        repeat(2) {
+            Runtime.getRuntime().gc()
+            System.runFinalization()
+            Thread.sleep(50)
+        }
+        made.removeAll { it.get() == null }
+        return made.size.toLong()
     }
 
     fun createElement(tag: String): Any = make(tag, "")
@@ -537,7 +608,7 @@ object nativeView {
             Thread {
                 val bitmap = try {
                     java.net.URL(source).openStream().use { android.graphics.BitmapFactory.decodeStream(it) }
-                } catch (_: Exception) {
+                } catch (_: kotlin.Exception) {
                     null
                 }
                 viewMain.post { setPicture(node, bitmap) }

@@ -1,0 +1,101 @@
+load @term/base/list
+  find list
+  find push
+  find size
+
+# Particle, ours: a list written through the record that holds it, the shape of every simulation with a struct of
+# arrays in it. 100 particles a run, each a record of an id and a list of 8 coordinates, every coordinate rewritten in
+# place through its path (`save ps/{k}/xs/{i}, ...`) for 50 steps, then all added. Run `n` times and added, so the
+# output is one integer
+
+form particle
+  link id, like number
+  link xs, like list, like number
+
+task make-particle
+  take k, like number
+  like particle
+  save xs
+    make list
+  walk size
+    bind base, code 0
+    bind head, code 8
+    hook next
+      take site, name i
+      call push
+        bind list, read xs
+        bind item
+          call modulo
+            call add
+              call multiply
+                read k
+                code 7
+              read i
+            code 1000
+  send back
+    make particle
+      bind id, read k
+      bind xs, read xs
+
+task particle
+  take n, like number
+  like number
+  save total, code 0
+  walk size
+    bind base, code 0
+    bind head, read n
+    hook next
+      take site, name round
+      save ps
+        make list
+      walk size
+        bind base, code 0
+        bind head, code 100
+        hook next
+          take site, name k
+          call push
+            bind list, read ps
+            bind item
+              call make-particle
+                read k
+      walk size
+        bind base, code 0
+        bind head, code 50
+        hook next
+          take site, name step
+          walk size
+            bind base, code 0
+            bind head, code 100
+            hook next
+              take site, name k
+              walk size
+                bind base, code 0
+                bind head, code 8
+                hook next
+                  take site, name i
+                  host old, read ps/{k}/xs/{i}
+                  save ps/{k}/xs/{i}
+                    call modulo
+                      call add
+                        call multiply
+                          read old
+                          code 31
+                        call add
+                          read i
+                          read step
+                      code 1000
+      walk size
+        bind base, code 0
+        bind head, code 100
+        hook next
+          take site, name k
+          walk size
+            bind base, code 0
+            bind head, code 8
+            hook next
+              take site, name i
+              save total
+                call add
+                  read total
+                  read ps/{k}/xs/{i}
+  send back, read total

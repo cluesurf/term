@@ -10,14 +10,23 @@ import type {
   Type,
   ViewNode,
 } from '@term/make/code/compile/node'
-import type { RecordCopies } from '@term/make/code/compile/backend'
+import type { Fill, RecordCopies, TextCursors } from '@term/make/code/compile/backend'
 import {
   recordCopies,
+  redeclaredLets,
+  mapUpdate,
+  fillTasks,
+  fillCall,
+  lentLists,
+  tailTasks,
+  textCursors,
   exhausted,
   mapCollect,
   stringCall,
   stringRead,
   isText,
+  gatedTasks,
+  listFacts,
 } from '@term/make/code/compile/backend'
 import { lowerRoutes } from '@term/make/code/compile/route-lower'
 import { RENDER } from '@term/make/code/compile/render-names'
@@ -30,10 +39,12 @@ import {
 } from '@term/make/code/compile/bind'
 import type { Bind } from '@term/make/code/compile/bind'
 import { armLocals } from '@term/make/code/check/arm'
-import { provenIncrements } from '@term/make/code/ir/facts/range'
-import { boundedLoops } from '@term/make/code/ir/facts/bounds'
+import { provenArithmetic, type Proven } from '@term/make/code/compile/proven'
+import { boundedLoops, listKey } from '@term/make/code/ir/facts/bounds'
 import type { LoopGuard } from '@term/make/code/ir/facts/bounds'
-import { recordPlaces } from '@term/make/code/compile/place'
+import { recordPlaces, recordReuse } from '@term/make/code/compile/place'
+import type { Reuse } from '@term/make/code/compile/place'
+import { asciiTexts } from '@term/make/code/ir/facts/text'
 import type { PlaceWrite } from '@term/make/code/compile/place'
 
 const guardStart = (text: string): string =>
@@ -695,6 +706,61 @@ const __termText = {
     const c = __termText.charAt(s, i)
     return c === '' ? -1 : c.codePointAt(0)!
   },
+  // a code point read through a cursor, [code-point index, unit offset] of the last read, stepped forward or back
+  // from, or restarted at the start when that is nearer. A text with no surrogates is read by unit
+  // the unit offset of code point i, the end past the last, for a text with surrogates
+  cursorTo(s: string, i: number, c: number[]): number {
+    let k = c[0]!
+    let u = c[1]!
+    if (i < k) {
+      if (i <= k - i) {
+        k = 0
+        u = 0
+      } else {
+        while (k > i) {
+          u--
+          const x = s.charCodeAt(u)
+          if (u > 0 && x >= 56320 && x <= 57343 && s.charCodeAt(u - 1) >= 55296 && s.charCodeAt(u - 1) <= 56319) u--
+          k--
+        }
+      }
+    }
+    while (k < i && u < s.length) {
+      u += s.codePointAt(u)! > 65535 ? 2 : 1
+      k++
+    }
+    c[0] = k
+    c[1] = u
+    return u
+  },
+  cursorAt(s: string, i: number, c: number[]): number {
+    if (!(i >= 0)) return -1
+    if (!__termSurrogate.test(s)) return i < s.length ? s.charCodeAt(i) : -1
+    const u = __termText.cursorTo(s, i, c)
+    return c[0] === i && u < s.length ? s.codePointAt(u)! : -1
+  },
+  // the code points from a to e, both clamped and swapped when reversed: JavaScript's own substring on a text with no
+  // surrogates, the cursor moved to the start and the end counted on from it otherwise
+  cursorSlice(s: string, a: number, e: number, c: number[]): string {
+    if (!__termSurrogate.test(s)) return s.substring(a, e)
+    const x = Math.max(Math.min(a, e), 0)
+    const y = Math.max(Math.max(a, e), 0)
+    const from = __termText.cursorTo(s, x, c)
+    let to = from
+    let k = c[0]!
+    while (k < y && to < s.length) {
+      to += s.codePointAt(to)! > 65535 ? 2 : 1
+      k++
+    }
+    return s.slice(from, to)
+  },
+  cursorCodeAt(s: string, i: number, c: number[]): number {
+    return __termText.cursorAt(s, i, c)
+  },
+  cursorCharAt(s: string, i: number, c: number[]): string {
+    const x = __termText.cursorAt(s, i, c)
+    return x < 0 ? '' : String.fromCodePoint(x)
+  },
   indexOf(s: string, n: string, from: number = 0): number {
     const size = __termText.length(s)
     const f = Math.min(Math.max(from, 0), size)
@@ -1157,19 +1223,36 @@ function collectAssigned(
   }
 }
 
+// the integer operations proven inside the safe integers (compile/proven.ts). The interval fact reads F1's list facts,
+// which this backend keys no representation by, so they are computed here for that alone
+function tsProven(program: Statement[]): Proven {
+  const masks = new Set(program.flatMap(n => (n.form === 'mask' ? n.methods : [])))
+  const { lend, fresh } = listFacts(program, gatedTasks(program, masks))
+
+  return provenArithmetic(program, lend, fresh)
+}
+
 function makeEmitter(
   variants: Set<string>,
   hmr = false,
   binds = new Map<string, Bind>(),
   env = 'node',
-  // the `+` nodes proven not to overflow (ir/facts/range.ts): written without `__termInt`
-  provenSteps: WeakSet<Expression> = new WeakSet(),
+  // the `+`, `-` and `*` nodes proven not to overflow (compile/proven.ts): written without `__termInt`
+  provenSteps: Proven = new WeakSet<Expression>(),
   // the counted loops whose list indexes a guard before the loop can prove in bounds (ir/facts/bounds.ts)
   loopGuards: WeakMap<Statement, LoopGuard> = new WeakMap(),
   // the slot writes of a record that assign the changed fields of the object already there (compile/place.ts)
   places: Map<Statement, PlaceWrite> = new Map(),
   // where a record is copied so a write through one name cannot reach another (backend.ts, `recordCopies`)
   copies: RecordCopies = { params: new Map(), lets: new Map(), plain: new Set() },
+  // the text expressions proven ASCII, read with JavaScript's own string reads (ir/facts/text.ts)
+  asciiNodes: WeakSet<object> = new WeakSet(),
+  // the tasks that only fill a list, made in one allocation at each call (backend.ts, `fillTasks`)
+  fills: Map<string, Fill> = new Map(),
+  // the records built in the object their task was given (compile/place.ts, `recordReuse`)
+  reuse: Reuse = { tasks: new Map(), sites: new WeakSet(), forms: new Set(), locals: new WeakMap(), writeBacks: new WeakSet() },
+  // the tasks whose every self call is a tail call, each to those returns (backend.ts, `tailTasks`)
+  tailCalls: Map<string, WeakSet<object>> = new Map(),
 ) {
   const pad = (depth: number) => '  '.repeat(depth)
   // a record's copy: one level, a spread. A nested write rebuilds its path rather than writing the nested record, so a
@@ -1179,10 +1262,27 @@ function makeEmitter(
   const plainRecords = copies.plain
   // the lists whose slots the loop copy being emitted reads and writes unchecked: its guard holds (loopGuards)
   let uncheckedLists = new Set<string>()
+  // the lists reached through a path that the loop copy being emitted read once before it, each by its key, and the
+  // count for their locals' names
+  let hoisted = new Map<string, string>()
+  let pathCount = 0
   // the calls in that copy that may call their task's unchecked copy (`LoopGuard.fast`), the tasks some such call
   // reached (each emitted once more, unchecked, behind the program), and whether the body being emitted is one
   let fastCalls = new Set<object>()
   const fastTasks = new Set<string>()
+  // the texts the task being emitted reads through a cursor (backend.ts, `textCursors`)
+  let cursors: TextCursors = { names: [], reads: new Map() }
+  // the tasks a reuse site calls, emitted again as `<task>Reuse`; while one is emitted, its record parameter and the
+  // builds it makes in that object; and the build a `return` has already assigned, read as the parameter
+  const reuseTasks = new Set<string>()
+  let reusing: { param: string; builds: WeakSet<object>; keep?: string; carriers?: WeakSet<object> } | undefined
+  // the carrier locals of the task being emitted that hold their kept field alone, to that field's name
+  let carrierLocals = new Map<string, string>()
+  let reused: object | undefined
+  let reuseCount = 0
+  // the tasks that are loops (backend.ts, `tailTasks`), and while one is emitted, its parameters and tail returns
+  let tailing: { params: string[]; types: string[]; returns: WeakSet<object> } | undefined
+  let redeclared = new WeakSet<Statement>()
   let uncheckedInts = false
 
   let assignedNames = new Set<string>()
@@ -1207,13 +1307,17 @@ function makeEmitter(
     const xs = expression(list)
     const i = expression(index)
 
-    // inside the guarded copy of a counted loop the index is proven in bounds (ir/facts/bounds.ts)
-    if (list.form === 'variable' && uncheckedLists.has(list.name)) {
+    // inside the guarded copy of a counted loop the index is proven in bounds (ir/facts/bounds.ts), a list reached
+    // through a path by its key
+    if (uncheckedLists.size && uncheckedLists.has(listKey(list) ?? '')) {
       return `${xs}[${i}]!`
     }
 
+    // a literal index that is not negative needs only the upper check
+    const low = index.form === 'integer' && Number(index.value) >= 0 ? '' : `${i} >= 0 && `
+
     return plainOperand(list) && plainOperand(index)
-      ? `(${i} >= 0 && ${i} < ${xs}.length ? ${xs}[${i}]! : __termReadPast(${xs}, ${i}))`
+      ? `(${low}${i} < ${xs}.length ? ${xs}[${i}]! : __termReadPast(${xs}, ${i}))`
       : `__termAt(${xs}, ${i})`
   }
 
@@ -1245,6 +1349,35 @@ function makeEmitter(
         return toCamel(node.name)
 
       case 'call': {
+        // a call at a reuse site: the task's copy that builds its result in the object it is given
+        if (reuse.sites.has(node) && node.callee.form === 'variable') {
+          reuseTasks.add(node.callee.name)
+
+          return expression({ ...node, callee: { ...node.callee, name: `${node.callee.name}-reuse` } } as Expression, parentPrecedence)
+        }
+
+        // a call to a task that only fills a list is the array made at its size and filled (backend.ts, `fillTasks`),
+        // packed by V8 where pushing grew it. A size below zero is no list, as the walk was no turns
+        const fill = node.type?.kind === 'array' ? fillCall(node, fills) : undefined
+
+        if (fill && node.type?.kind === 'array') {
+          const size = fill.size.form === 'integer' ? `${Math.max(Number(fill.size.value), 0)}` : `Math.max(${expression(fill.size)}, 0)`
+
+          return `new Array<${tsType(node.type.element)}>(${size}).fill(${expression(fill.item)})`
+        }
+
+        // the stdlib's `list_push` and `list_size` are the array's own `push` (which answers the new length, as
+        // `list_push` does) and `length`. Called through the stdlib's one function, every list in the program met at
+        // one call site that V8 saw megamorphic: Graph's numbers and its lists of lists, 205 ms to 139
+        // (`tmp/ts-graph-ab.ts`)
+        if (node.callee.form === 'variable' && node.callee.name === 'list_push' && node.args.length === 2 && node.args[0]!.type?.kind === 'array') {
+          return `${expression(node.args[0]!, 100)}.push(${expression(node.args[1]!)})`
+        }
+
+        if (node.callee.form === 'variable' && node.callee.name === 'list_size' && node.args.length === 1 && node.args[0]!.type?.kind === 'array') {
+          return `${expression(node.args[0]!, 100)}.length`
+        }
+
         // a call inside a guarded loop copy whose guard bounds its arguments (`integerBounds`): the task's copy with no
         // overflow checks, `aValueFast`
         if (fastCalls.has(node) && node.callee.form === 'variable') {
@@ -1312,6 +1445,52 @@ function makeEmitter(
         // a text method follows the code-point meaning (`__termText`), never JavaScript's UTF-16 one
         const textOp = stringCall(node.callee)
 
+        // a substring of an ASCII text: JavaScript's `substring` clamps both ends to the text and swaps them when
+        // reversed, which is the Term meaning (note/term/stdlib/semantics.md), counted in units that are code points here
+        if (textOp && asciiNodes.has(textOp.target) && (textOp.op === 'substring' || textOp.op === 'slice')) {
+          return `${expression(textOp.target, 100)}.substring(${node.args.map(arg => expression(arg)).join(', ')})`
+        }
+
+        // a search of an ASCII text answers a unit index, which is the code-point index: JavaScript's own `indexOf`
+        // clamps its start to the text and finds an empty needle at it, the Term meaning, and a needle that is not
+        // ASCII is found nowhere either way
+        if (textOp && asciiNodes.has(textOp.target) && (textOp.op === 'indexOf' || textOp.op === 'lastIndexOf')) {
+          return `${expression(textOp.target, 100)}.${textOp.op}(${node.args.map(arg => expression(arg)).join(', ')})`
+        }
+
+        // an ASCII text (ir/facts/text.ts): a code point is one UTF-16 unit, so JavaScript's own reads mean the same,
+        // with the same answers past either end, the empty text and -1
+        if (textOp && asciiNodes.has(textOp.target) && ['charAt', 'at', 'charCodeAt'].includes(textOp.op)) {
+          const target = expression(textOp.target, 100)
+          const at = expression(node.args[0]!)
+          // the index is read three times in a code read, so only when reading it twice costs and changes nothing
+          const plain = /^[\w.]+$/.test(at) && /^[\w.]+$/.test(target)
+
+          if (textOp.op !== 'charCodeAt') {
+            return `(${target}[${at}] ?? "")`
+          }
+
+          if (plain) {
+            return `(${at} >= 0 && ${at} < ${target}.length ? ${target}.charCodeAt(${at}) : -1)`
+          }
+        }
+
+        // a read through the text's cursor (backend.ts, `textCursors`) steps from the last read, which matters only
+        // for a text with surrogates: one without is read by unit anyway
+        const cursor = cursors.reads.get(node)
+
+        if (textOp && cursor !== undefined && (textOp.op === 'substring' || textOp.op === 'slice')) {
+          tsTextUsed = true
+
+          return `__termText.cursorSlice(${expression(textOp.target)}, ${expression(node.args[0]!)}, ${node.args[1] ? expression(node.args[1]) : 'Infinity'}, __cursor${toPascal(cursor)})`
+        }
+
+        if (textOp && cursor !== undefined) {
+          tsTextUsed = true
+
+          return `__termText.${textOp.op === 'charCodeAt' ? 'cursorCodeAt' : 'cursorCharAt'}(${expression(textOp.target)}, ${expression(node.args[0]!)}, __cursor${toPascal(cursor)})`
+        }
+
         if (textOp) {
           tsTextUsed = true
 
@@ -1352,6 +1531,12 @@ function makeEmitter(
           binds.has(node.callee.name)
         ) {
           const bind = binds.get(node.callee.name)!
+
+          // the code-point count of an ASCII text (ir/facts/text.ts) is its length, where `Array.from` built an array
+          if (node.callee.name === 'code-point-count' && node.args[0] && asciiNodes.has(node.args[0])) {
+            return `${expression(node.args[0], 100)}.length`
+          }
+
           // each argument as an operand, grouped when compound: a template that is the argument alone (`to-decimal`'s
           // `$value`) stands where the call stood, so `1 / to-decimal(a + b)` must keep `(a + b)`
           const args = node.args.map(arg => expression(arg, 100))
@@ -1434,10 +1619,11 @@ function makeEmitter(
             : ''
 
         // the annotation belongs on the BINDING, and an expression has none to put it on, so an empty list
-        // in expression position is cast instead: both say the same thing to the checker.
+        // in expression position is cast instead: both say the same thing to the checker. Parenthesized, since a
+        // member read of it (`count-binds([])` inlined to `binds.length`) bound `.length` to the type: `[] as T[].length`
         return ann === ''
           ? `[${node.items.map(item => expression(item)).join(', ')}]`
-          : `[] as ${tsType(node.type!.kind === 'array' ? node.type.element : node.type!)}[]`
+          : `([] as ${tsType(node.type!.kind === 'array' ? node.type.element : node.type!)}[])`
       }
       case 'map': {
         // an EMPTY map spells its checked key/value (`new Map<T, boolean>()`), so a construction flowing into a
@@ -1463,6 +1649,11 @@ function makeEmitter(
       }
 
       case 'record': {
+        // the build this `return` has assigned on the object the task was given (`recordReuse`)
+        if (reusing && reused === node) {
+          return toCamel(reusing.param)
+        }
+
         const fields = node.fields.map(
           f => `${toMember(f.name)}: ${expression(f.value)}`,
         )
@@ -1520,6 +1711,15 @@ function makeEmitter(
       }
 
       case 'member':
+        // a list reached through a path that this loop copy read once before it
+        if (hoisted.size > 0 && node.index === undefined && node.type?.kind === 'array') {
+          const local = hoisted.get(listKey(node) ?? '')
+
+          if (local) {
+            return local
+          }
+        }
+
         // a DYNAMIC segment (`read table/{key}`) subscripts rather than dot-accesses. On a list it is the checked
         // read, which stops past the end as every other backend does
         if (node.index) {
@@ -1550,6 +1750,11 @@ function makeEmitter(
           }
 
           return `${expression(node.target)}[${node.name}]`
+        }
+
+        // the kept field of a carrier that holds it alone
+        if (node.target.form === 'variable' && carrierLocals.get(node.target.name) === node.name) {
+          return toCamel(node.target.name)
         }
 
         return `${expression(node.target)}.${node.nick ?? toMember(node.name)}`
@@ -1624,8 +1829,9 @@ function makeEmitter(
         // Rust, Swift and Kotlin. JavaScript's `/` is the float quotient. note/term/proof-by-default/numbers.md
         // (and a division by zero, `Infinity` or `NaN` here, is refused by the same check below)
         if (node.op === '/' && integerDivision(node)) {
-          // in a task's unchecked copy the interval fact proved the quotient finite and safe
-          if (uncheckedInts) {
+          // in a task's unchecked copy the interval fact proved the quotient finite and safe, and elsewhere
+          // compile/proven.ts proved its divisor nonzero
+          if (uncheckedInts || provenSteps.has(node)) {
             return `Math.trunc(${text})`
           }
 
@@ -1953,6 +2159,21 @@ function makeEmitter(
             : `const ${alias} = ${node.foreign}`
         }
 
+        // a second declaration of a name the same statement list declared already is an assignment to it (backend.ts,
+        // `redeclaredLets`): two counted walks over `i` in one task
+        if (redeclared.has(node)) {
+          return `${toCamel(node.name)} = ${expression(node.init)}`
+        }
+
+        // a carrier at a reuse site holds its kept field alone (compile/place.ts, `recordReuse`)
+        const kept = reuse.locals.get(node)
+
+        if (kept !== undefined) {
+          carrierLocals.set(node.name, kept)
+
+          return `const ${toCamel(node.name)} = ${expression(node.init)}`
+        }
+
         const keyword = assignedNames.has(node.name) ? 'let' : 'const'
 
         // A DECLARED TYPE IS SPELLED ON THE BINDING. An object literal with no contextual type is inferred
@@ -1973,6 +2194,11 @@ function makeEmitter(
       }
 
       case 'assign': {
+        // the write-back of a reuse site: the reusing copy built the record in the object this slot holds already
+        if (reuse.writeBacks.has(node)) {
+          return '// the slot holds the record its task built in place'
+        }
+
         // a record written back to the slot it was read from, its changed fields assigned on the object already there
         // (compile/place.ts): `b.vx = b.vx - dx * m` where the write would have allocated a new record. The read of
         // the slot already checked the index
@@ -2005,7 +2231,7 @@ function makeEmitter(
             const index: Expression = node.target.index ?? { form: 'integer', value: Number(node.target.name), span: node.span }
 
             // inside the guarded copy of a counted loop the slot is proven in bounds (ir/facts/bounds.ts)
-            if (node.target.target.form === 'variable' && uncheckedLists.has(node.target.target.name)) {
+            if (uncheckedLists.size && uncheckedLists.has(listKey(node.target.target) ?? '')) {
               return `${list}[${at}] = ${expression(node.value)}`
             }
 
@@ -2057,12 +2283,59 @@ function makeEmitter(
           : `${target} ${node.op} ${expression(node.value)}`
       }
 
-      case 'expression':
+      case 'expression': {
+        // a map entry updated from its own value (backend.ts, `mapUpdate`): JavaScript's Map has no one-probe update,
+        // so it is the read and the write the hand version writes, with no `Maybe` made per read
+        const update = mapUpdate(node)
+
+        if (update && update.map.type?.kind === 'map' && (update.map.type.value.kind === 'number' || update.map.type.value.kind === 'float')) {
+          const map = expression(update.map, 100)
+          const key = expression(update.key)
+          const sum = `(${map}.get(${key}) ?? ${expression(update.fallback)}) + ${expression(update.step)}`
+          const checked = update.map.type.value.kind === 'number' && !uncheckedInts
+
+          tsIntUsed ||= checked
+
+          return `${map}.set(${key}, ${checked ? `__termInt(${sum})` : sum})`
+        }
+
         return expression(node.expr)
-      case 'return':
+      }
+      case 'return': {
+        // a tail call of a task that is a loop: the arguments computed first, then the parameters rebound
+        if (tailing?.returns.has(node) && node.value?.form === 'call') {
+          const k = reuseCount++
+          // typed as the parameter, so a record literal keeps its tag (`form: "node"`, not `string`)
+          const temps = node.value.args.map((a, i) => `const __tail${k}_${i}: ${tailing!.types[i]} = ${expression(a)}`)
+          const sets = tailing.params.map((name, i) => `${toCamel(name)} = __tail${k}_${i}`)
+
+          return [...temps, ...sets, 'continue'].join(`\n${pad(depth)}`)
+        }
+
+        // in a reusing copy, the build in the returned value is made in the object the task was given: every field
+        // computed first, since each may read that object's old fields, then assigned on it (`recordReuse`)
+        const build = reusing && node.value ? findBuild(node.value, reusing.builds) : undefined
+
+        if (build && reusing) {
+          const k = reuseCount++
+          const temps = build.fields.map((f, i) => `const __reuse${k}_${i} = ${expression(f.value)}`)
+          const sets = build.fields.map((f, i) => `${toCamel(reusing!.param)}.${toMember(f.name)} = __reuse${k}_${i}`)
+          reused = build
+          // the kept field of a carrier alone, the record already being in the caller's slot
+          const kept =
+            reusing.keep && reusing.carriers?.has(node.value!) && node.value!.form === 'record'
+              ? node.value!.fields.find(f => f.name === reusing!.keep)?.value
+              : undefined
+          const back = `return ${expression(kept ?? node.value!)}`
+          reused = undefined
+
+          return [...temps, ...sets, back].join(`\n${pad(depth)}`)
+        }
+
         return node.value
           ? `return ${expression(node.value)}`
           : 'return'
+      }
       case 'throw':
         // a raised exception (`halt <form>`) is thrown as the runtime class, a thrown text becomes an Error, and any
         // other value is thrown as-is. An INTERPOLATED text is a text too: `halt <cycle: {{x}}>` was a `template`
@@ -2101,6 +2374,17 @@ function makeEmitter(
                   ? name(c.base)
                   : `${name(c.base)} ${c.offset < 0 ? '-' : '+'} ${Math.abs(c.offset)}`
 
+            // a list reached through a path reads its length through it. Its own slots read unchecked: their checks
+            // come earlier in this `&&` (bounds.ts bounds a path's prefix first), so the read runs only once they hold
+            if (c.side === 'high' && c.path) {
+              const before = uncheckedLists
+              uncheckedLists = new Set([...before, ...guard.checks.map(g => g.list)])
+              const length = `${expression(c.path as Expression, 20)}.length`
+              uncheckedLists = before
+
+              return `${value} < ${length}`
+            }
+
             return c.side === 'low' ? `${value} >= 0` : `${value} < ${name(c.list)}.length`
           })
           .concat((guard.limits ?? []).map(l => (l.low ? `${name(l.name)} >= 0` : `${name(l.name)} <= ${l.high}`)))
@@ -2108,11 +2392,31 @@ function makeEmitter(
           .join(' && ')
         const outer = uncheckedLists
         const outerCalls = fastCalls
+        const outerHoisted = hoisted
         uncheckedLists = new Set([...outer, ...guard.checks.map(c => c.list)])
         fastCalls = new Set([...outerCalls, ...(guard.fast ?? [])])
-        const fast = `while (${expression(node.cond)}) ${block(node.body, depth + 1)}`
+        // each list reached through a path is read ONCE before the copy, which the guard makes safe and the loop cannot
+        // change (bounds.ts: its root and indexes are not written in it, nor a field, nor a record's slot), and the body
+        // indexes the local. A record here is a reference, so the local is the record's own list
+        const reads: string[] = []
+        const paths = new Map<string, Expression>()
+
+        for (const c of guard.checks) {
+          if (c.path && !paths.has(c.list)) {
+            paths.set(c.list, c.path as Expression)
+          }
+        }
+
+        for (const [key, path] of paths) {
+          const local = `__path${pathCount++}`
+          reads.push(`const ${local} = ${expression(path)}`)
+          hoisted = new Map([...hoisted, [key, local]])
+        }
+
+        const fast = [...reads, `while (${expression(node.cond)}) ${block(node.body, depth + 1)}`].join(`\n${pad(depth + 1)}`)
         uncheckedLists = outer
         fastCalls = outerCalls
+        hoisted = outerHoisted
         const slow = `while (${expression(node.cond)}) ${block(node.body, depth + 1)}`
 
         return `if (${test}) {\n${pad(depth + 1)}${fast}\n${pad(depth)}} else {\n${pad(depth + 1)}${slow}\n${pad(depth)}}`
@@ -2297,9 +2601,13 @@ function makeEmitter(
           // The checker sets `closed` when the arms cover every variant and there is no `otherwise`, and
           // without it a task whose arms all return reads to TypeScript as one that can fall out of the
           // bottom: 43 such functions in one grammar, each an error under `strict` (2026-09-12).
-          const last = node.closed && !node.otherwise && i === node.cases.length - 1 && i > 0
+          const last = node.closed && !node.otherwise && i === node.cases.length - 1
 
-          out += last
+          // the only arm of an exhaustive match runs unconditionally: a form of one case has one shape, so its fields
+          // read as they are, and an `if` with no `else` read to TypeScript as a task that can fall out of the bottom
+          out += last && i === 0
+            ? body
+            : last
             ? ` else ${body}`
             : `${i ? ' else ' : ''}if (${subject}.${tagFor(branch.label, node.subject.type)} === ${JSON.stringify(
                 branch.label,
@@ -2404,6 +2712,12 @@ function makeEmitter(
         const previous = assignedNames
         assignedNames = new Set<string>()
         collectAssigned(node.body, assignedNames)
+        const previousCursors = cursors
+        cursors = textCursors(node, asciiNodes)
+        const previousCarriers = carrierLocals
+        carrierLocals = new Map()
+        const previousRedeclared = redeclared
+        redeclared = redeclaredLets(node)
 
         // a `need false` parameter with no `fall` is optional in the emitted signature, so a caller that leaves
         // it off (the checker allows it) still typechecks. A required param AFTER an optional one forces the
@@ -2438,15 +2752,27 @@ function makeEmitter(
         const keyword = node.async ? 'async function' : 'function'
         // a signature-only stub (a public module whose impl arrives from the platform module in a fuller
         // closure) still typechecks: its body is the not-implemented throw, matching the native backends
+        // a task whose every self call is a tail call is a loop, its tail calls rebinding the parameters (backend.ts,
+        // `tailTasks`): JavaScript has no tail-call elimination, so each was a call per step
+        const previousTails = tailing
+        const tails = tailCalls.get(node.name)
+        tailing = tails ? { params: node.params.map(p => p.name), types: node.params.map(p => tsType(p.type)), returns: tails } : undefined
+        const declared = cursors.names.map(name => `${'  '.repeat(depth + 1)}const __cursor${toPascal(name)}: number[] = [0, 0]\n`).join('')
         const body =
           node.body.length === 0 && node.result && node.result.kind !== 'unit'
             ? `{\n${'  '.repeat(depth + 1)}throw new Error(${JSON.stringify(`stub: ${node.name}`)})\n${'  '.repeat(depth)}}`
-            : block(node.body, depth)
+            : tails
+              ? `{\n${declared}${'  '.repeat(depth + 1)}while (true) ${block(node.body, depth + 1)}\n${'  '.repeat(depth)}}`
+              : block(node.body, depth).replace(/^\{\n/, `{\n${declared}`)
+        tailing = previousTails
         const out = `${keyword} ${toCamel(
           node.name,
         )}${generics}(${params}): ${returnType} ${body}`
 
         assignedNames = previous
+        cursors = previousCursors
+        carrierLocals = previousCarriers
+        redeclared = previousRedeclared
 
         return out
       }
@@ -2487,6 +2813,17 @@ function makeEmitter(
     }
   }
 
+  // a task's copy that builds its result in the record it is given, for a reuse site (`recordReuse`)
+  const reusingCopy = (fn: Extract<Statement, { form: 'function' }>): string => {
+    const task = reuse.tasks.get(fn.name)!
+    reusing = { param: fn.params[task.param]!.name, builds: task.builds, keep: task.keep?.field, carriers: task.carriers }
+    // with a kept field, the copy answers that field alone
+    const text = statement({ ...fn, name: `${fn.name}-reuse`, ...(task.keep ? { result: task.keep.type } : {}) }, 0)
+    reusing = undefined
+
+    return text
+  }
+
   // a task's body emitted with no overflow checks, for its unchecked copy
   const unchecked = (fn: Statement): string => {
     uncheckedInts = true
@@ -2496,7 +2833,22 @@ function makeEmitter(
     return text
   }
 
-  return { statement, expression, unchecked, fastTasks }
+  return { statement, expression, unchecked, fastTasks, reusingCopy, reuseTasks }
+}
+
+// the build of a reusing task inside a returned value: the value itself, or a field of the carrier it is
+function findBuild(value: Expression, builds: WeakSet<object>): Extract<Expression, { form: 'record' }> | undefined {
+  if (value.form !== 'record') {
+    return undefined
+  }
+
+  if (builds.has(value)) {
+    return value
+  }
+
+  const field = value.fields.find(f => builds.has(f.value))
+
+  return field ? (field.value as Extract<Expression, { form: 'record' }>) : undefined
 }
 
 export function emitTypeScript(
@@ -2601,10 +2953,14 @@ export function emitTypeScript(
     options?.hmr ?? false,
     binds,
     env,
-    provenIncrements(program),
-    boundedLoops(program),
+    tsProven(program),
+    boundedLoops(program, lentLists(program)),
     recordPlaces(program).writes,
     recordCopies(program),
+    asciiTexts(program),
+    fillTasks(program),
+    recordReuse(program),
+    tailTasks(program),
   )
 
   // native module bindings (`dock load`) become host imports at the top. A `<global:X>` binding refers to a host
@@ -2738,6 +3094,15 @@ export function emitTypeScript(
 
     if (fn) {
       lines.push(`export ${emitter.unchecked({ ...fn, name: `${name}-fast` })}`)
+    }
+  }
+
+  // each task a reuse site calls, once more building its result in the object it was given (compile/place.ts)
+  for (const name of emitter.reuseTasks) {
+    const fn = emittable.find((n): n is Extract<Statement, { form: 'function' }> => n.form === 'function' && n.name === name)
+
+    if (fn) {
+      lines.push(`export ${emitter.reusingCopy(fn)}`)
     }
   }
 

@@ -1,0 +1,9 @@
+host program, <list>
+host entry, <list-runs>
+host source, <Are We Fast Yet's List (Marr, Daloze and Mössenböck, DLS 2016), the same structure: three linked lists of 15, 10 and 6 and the Takeuchi-style tail over them, length 10 per run; run n times and added>
+host check, 2
+host expect, <20>
+host size, 3000
+host runs, 5
+host semantics, <a recursive variant form built by recursion, matched and walked, the same lists handed to three recursive calls; integer output>
+host idiom, <ours, 2026-10-03: AWFY's own shape in each language, a node whose next may be null (shared by Rc on Rust, as the AWFY Rust port does where C++ shares)>

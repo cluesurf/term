@@ -1,0 +1,63 @@
+load @term/base/list
+  find list
+  find push
+
+# a walk whose body pushes onto the list it walks: the walk sees each pushed item, since the length is read every
+# turn (TypeScript's `for...of`, Rust's walk by position). A list of numbers and a list of texts, so both the primitive
+# list and the boxed one are walked. Every answer must be the value one
+
+task grow-numbers
+  like number
+  save xs
+    make list
+  call push
+    bind list, read xs
+    bind item, code 1
+  save total, code 0
+  walk list, read xs
+    hook next
+      take site, name x
+      save total
+        call add
+          read total
+          read x
+      fork test
+        hook test
+          call is-below
+            read x
+            code 5
+        hook hold
+          call push
+            bind list, read xs
+            bind item
+              call add
+                read x
+                code 1
+  send back, read total
+
+task grow-texts
+  like text
+  save xs
+    make list
+  call push
+    bind list, read xs
+    bind item, text <a>
+  save seen, text <>
+  walk list, read xs
+    hook next
+      take site, name x
+      save seen, text <{seen}{x}>
+      fork test
+        hook test
+          call is-equal
+            read x
+            text <a>
+        hook hold
+          call push
+            bind list, read xs
+            bind item, text <b>
+  send back, read seen
+
+task compute
+  like text
+  send back, text <{grow-numbers()}:{grow-texts()}>

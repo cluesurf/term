@@ -292,6 +292,56 @@ task listen-document
     task drop
       save skip, code 0
 
+# the window's key listeners, each with the number its remover finds it by. ONE record, shared, as the window is one
+form memory-key-listener
+  link number, like number
+  link handle
+    like task
+      take key, like text
+
+form memory-keys
+  mark shared
+  link next, like number
+  link listeners
+    like list
+      like memory-key-listener
+
+host window-keys
+  make memory-keys
+    bind next, code 0
+    bind listeners
+      make list
+
+# every key `fire-key` delivers, to `handler`, until the remover runs
+task listen-key
+  take handler
+    like task
+      take key, like text
+  like task
+  save window-keys/next
+    call add
+      read window-keys/next
+      code 1
+  save number, read window-keys/next
+  call push
+    bind list, read window-keys/listeners
+    bind item
+      make memory-key-listener
+        bind number, read number
+        bind handle, read handler
+  send back
+    task drop
+      save window-keys/listeners
+        call filter
+          read window-keys/listeners
+          task keep
+            take entry, like memory-key-listener
+            like boolean
+            send back
+              call is-unequal
+                read entry/number
+                read number
+
 task anchor
   take reference, like view
   take panel, like view
@@ -567,6 +617,15 @@ task fire
             read event
         hook hold
           call heard/handle
+
+# a key pressed, named as KeyboardEvent.key names it, delivered to every listener in the order they listened
+task fire-key
+  take key, like text
+  walk list, read window-keys/listeners
+    hook next
+      take site, name listener
+      call listener/handle
+        read key
 
 # the child at `index`, counting from 0
 task child-at

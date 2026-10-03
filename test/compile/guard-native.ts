@@ -4,6 +4,7 @@
 // unguarded raise ends the program with a non-zero exit and the exception's form and note on stderr. GN_ONLY=swift
 // (or kotlin, rust) runs one backend. Run: npx tsx test/compile/guard-native.ts
 
+import { runDir } from './run-dir'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -188,7 +189,7 @@ function frontEnd(env: Env): Program {
   return simplify(program, new Set(['lookup', 'unguarded', 'describe', 'checked']))
 }
 
-const dir = mkdtempSync(join(tmpdir(), 'term-guard-native-'))
+const dir = runDir('term-guard-native-')
 const only = process.env.GN_ONLY ?? ''
 
 // the answers every backend must give: the happy path, the caught raise with its fields, the uncaught raise

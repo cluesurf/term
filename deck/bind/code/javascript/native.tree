@@ -1,4 +1,10 @@
 
+# `native-void`, `native-any`, `native-array`, `native-never` and `native-unknown` are imported by 300 bindings and
+# declared nowhere, so each `like` of one is a hole, which is what a host's `any` has to be: declared here as forms
+# they became rigid types, and a caller handing a `text` to an `any` parameter was refused. Their `find`s are counted
+# as warnings with the rest of @term/bind's host types (`HOST_DESCRIPTIONS` in compile/compile.ts) until the language
+# has a declared gradual alias to give them.
+
 form native-boolean
 
 form native-string

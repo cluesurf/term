@@ -1,0 +1,9 @@
+host program, <mandelbrot>
+host entry, <mandelbrot>
+host source, <the Computer Language Benchmarks Game program, single-threaded, the same iteration; it counts the points in the set where the game writes a bitmap>
+host check, 200
+host expect, <15899>
+host size, 4000
+host runs, 5
+host semantics, <decimals (IEEE doubles), the same operations in the same order on every backend; the answer is a count of points, an integer, so no float is ever printed>
+host idiom, <ours, 2026-10-03: each language's natural loops over doubles, the iteration written inline>

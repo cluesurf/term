@@ -1,6 +1,7 @@
 
 # Server stub for the graphics API: rendering is a no-op off the browser, so headless and server-side builds resolve
 # the abstract graphics module to these no-ops. Each handle wraps a trivial marker. Conforms to ../../native/graphics.
+# A no-op says so with a bare `send back`: a task with no body anywhere cannot be called (check/bodiless.ts).
 
 load ../../surface
   find surface
@@ -22,6 +23,7 @@ task size
   take pane, like surface
   take width, like u32
   take height, like u32
+  send back
 
 task clear
   take pane, like surface
@@ -29,6 +31,7 @@ task clear
   take green, like number
   take blue, like number
   take alpha, like number
+  send back
 
 task make-shader
   take pane, like surface
@@ -65,3 +68,4 @@ task draw
   take verts, like gpu-buffer
   take kind, like primitive-kind
   take count, like u32
+  send back

@@ -1,0 +1,9 @@
+host program, <bounce>
+host entry, <bounce>
+host source, <Are We Fast Yet's Bounce (Marr, Daloze and Mössenböck, DLS 2016), the same structure and generator: 100 balls moved 50 times in a 500 by 500 box, the bounces counted, 1331 per run; run n times and added>
+host check, 2
+host expect, <2662>
+host size, 20000
+host runs, 5
+host semantics, <a list of records, each read, moved and written back by index, its fields changed through a task that answers a new record; integer output>
+host idiom, <ours, 2026-10-03: AWFY's own shape in each language, balls as objects or structs whose fields change in place>

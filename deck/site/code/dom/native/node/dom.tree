@@ -212,6 +212,7 @@ task listen-event
   take handler
     like task
       take event, like any
+  send back
 
 # no document on the server — global listeners are a browser-only concern. Returns a no-op remover so callers can
 # register cleanup uniformly across platforms.
@@ -220,6 +221,16 @@ task listen-document
   take handler
     like task
       take event
+  like task
+  send back
+    task drop
+      save skip, code 0
+
+# no keyboard on the server: nothing is pressed, and the remover does nothing
+task listen-key
+  take handler
+    like task
+      take key, like text
   like task
   send back
     task drop
@@ -260,6 +271,7 @@ task observe-size
   take handler
     like task
       take width
+  send back
 
 task measure-width
   take node, like view
@@ -279,6 +291,7 @@ task watch-font
   take handler
     like task
       take status, like text
+  send back
 
 # no timers driving the SSR gate: the server render is thrown away + re-rendered on the client, which installs the
 # real deadline. no-op (never calls the handler).
@@ -287,6 +300,7 @@ task watch-deadline
   take threshold, like number
   take handler
     like task
+  send back
 
 # the server draws no glyphs; the page's own @font-face, or the client's register, is what loads a face. accepted.
 task register-font

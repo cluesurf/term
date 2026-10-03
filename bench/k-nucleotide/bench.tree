@@ -1,0 +1,9 @@
+host program, <k-nucleotide>
+host entry, <k-nucleotide>
+host source, <the Computer Language Benchmarks Game program, single-threaded, the same counts; it builds the sequence with fasta's generator and Homo sapiens table rather than reading fasta's output on stdin, and prints integers rather than the game's percentages>
+host check, 1000
+host expect, <4:326 16:104 18 5 1 0 0>
+host size, 250000
+host runs, 5
+host semantics, <a map from a text key to a count, built once per k-mer length, seven times; the keys are substrings of one sequence; integer output>
+host idiom, <ours, 2026-10-03: each language's standard map keyed by its natural substring (a slice on Rust, a Substring on Swift, a String on Kotlin and TypeScript)>

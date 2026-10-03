@@ -8,9 +8,11 @@
 # A LENGTH IS A POINT, and a cell is 8 points wide and 16 tall: a width, a gap in a row or a horizontal padding divides
 # by 8, a height, a gap in a column or a vertical padding by 16, each rounded to whole cells.
 #
-# THE GRID IS TEXT. Each row is a list of cells, a space where nothing is drawn. A wide character (East Asian wide or
-# full width) takes two cells, the second holding empty text, which rendering skips; a combining mark takes none and
-# joins the character before it. How many cells a code point takes is ./width, generated from string-width.
+# THE GRID IS TEXT. Each row is a list of cells, a space where nothing is drawn. What goes in a cell is a GRAPHEME
+# CLUSTER, never a lone code point: a letter with its combining marks, a family of emoji joined by zero-width joiners,
+# a flag's two regional-indicator letters, a Hangul syllable spelled in jamo (`to-clusters`). A wide cluster (East
+# Asian wide or full width, an emoji, a flag) takes two cells, the second holding empty text, which rendering skips.
+# How many cells a code point takes alone is ./width, generated from string-width; `cluster-width` joins them.
 #
 #   measure    the cells a node wants, given the width it may have
 #   place      a node and everything under it painted into a rectangle of the grid
@@ -20,7 +22,7 @@ load @term/base/list
   find list
 load @term/base/text/unicode
   find to-runes
-  find rune-to-text
+  find from-runes
 load @term/base/math
   find round-down
 load @term/base/text/string
@@ -166,6 +168,216 @@ task is-between
         read value
         read high
 
+# whether a code point is a regional indicator, one of the two letters a flag is spelled with
+task is-regional
+  take rune, like number
+  like boolean
+  send back
+    call is-between
+      read rune
+      code 127462
+      code 127487
+
+# whether `rune` goes on the grapheme cluster whose last code point is `before`, `regional` counting the regional
+# indicators the cluster holds. It does when it takes no cells (a combining mark, a variation selector, a zero-width
+# joiner), when it follows a joiner (the next person of a family), when it is a skin tone, when it is the second letter
+# of a flag, and when it is a Hangul vowel or final jamo continuing a syllable
+task joins-cluster
+  take before, like number
+  take rune, like number
+  take regional, like number
+  like boolean
+  fork test
+    hook test
+      call is-equal
+        call cell-width
+          read rune
+        code 0
+    hook hold
+      send back, true
+  fork test
+    hook test
+      call is-equal
+        read before
+        code 8205
+    hook hold
+      send back, true
+  # a skin tone, which takes 2 cells standing alone and none on the emoji it colors
+  fork test
+    hook test
+      call is-between
+        read rune
+        code 127995
+        code 127999
+    hook hold
+      send back, true
+  fork test
+    hook test
+      meet and
+        call is-regional
+          read rune
+        call is-equal
+          read regional
+          code 1
+    hook hold
+      send back, true
+  # a vowel jamo after a leading consonant or a vowel, a final one after a vowel, a final, or a composed syllable
+  fork test
+    hook test
+      meet and
+        call is-between
+          read rune
+          code 4448
+          code 4519
+        call is-between
+          read before
+          code 4352
+          code 4519
+    hook hold
+      send back, true
+  fork test
+    hook test
+      meet and
+        call is-between
+          read rune
+          code 4520
+          code 4607
+        meet or
+          call is-between
+            read before
+            code 4448
+            code 4607
+          call is-between
+            read before
+            code 44032
+            code 55203
+    hook hold
+      send back, true
+  send back, false
+
+# a run of code points cut into grapheme clusters, the units a terminal draws: each one goes in one cell, or two
+task to-clusters
+  take runes
+    like list
+      like number
+  like list
+    like list
+      like number
+  save clusters
+    make list
+  save cluster
+    make list
+  save before, code 0
+  save regional, code 0
+  walk list, read runes
+    hook next
+      take site, name rune
+      fork test
+        hook test
+          meet and
+            call is-above
+              read cluster/length
+              code 0
+            call joins-cluster
+              read before
+              read rune
+              read regional
+        hook miss
+          fork test
+            hook test
+              call is-above
+                read cluster/length
+                code 0
+            hook hold
+              call clusters/push
+                read cluster
+          save cluster
+            make list
+          save regional, code 0
+      call cluster/push
+        read rune
+      fork test
+        hook test
+          call is-regional
+            read rune
+        hook hold
+          save regional
+            call add
+              read regional
+              code 1
+      save before, read rune
+  fork test
+    hook test
+      call is-above
+        read cluster/length
+        code 0
+    hook hold
+      call clusters/push
+        read cluster
+  send back, read clusters
+
+# the cells one grapheme cluster takes: its first code point's, except a flag's two letters, which take 2 together,
+# and a character asked to draw as an emoji (U+FE0F after it), which takes 2 where it alone takes 1. A family joined by
+# zero-width joiners is its first person's 2, and a Hangul syllable written in jamo its leading consonant's 2
+task cluster-width
+  take cluster
+    like list
+      like number
+  like number
+  fork test
+    hook test
+      call is-equal
+        read cluster/length
+        code 0
+    hook hold
+      send back, code 0
+  save first, read cluster/0
+  save wide
+    call cell-width
+      read first
+  fork test
+    hook test
+      meet and
+        call is-regional
+          read first
+        call is-above
+          read cluster/length
+          code 1
+    hook hold
+      send back, code 2
+  fork test
+    hook test
+      call is-equal
+        read wide
+        code 1
+    hook hold
+      walk list, read cluster
+        hook next
+          take site, name rune
+          fork test
+            hook test
+              call is-equal
+                read rune
+                code 65039
+            hook hold
+              save wide, code 2
+  send back, read wide
+
+# whether a cluster is one plain space, the place a line may break
+task is-space
+  take cluster
+    like list
+      like number
+  like boolean
+  send back
+    meet and
+      call is-equal
+        read cluster/length
+        code 1
+      call is-equal
+        read cluster/0
+        code 32
+
 # the cells a run of runes takes on one line
 task runes-width
   take runes
@@ -173,14 +385,14 @@ task runes-width
       like number
   like number
   save total, code 0
-  walk list, read runes
+  walk list, call to-clusters(read runes)
     hook next
-      take site, name rune
+      take site, name cluster
       save total
         call add
           read total
-          call cell-width
-            read rune
+          call cluster-width
+            read cluster
   send back, read total
 
 # the lines a text wraps to in `width` cells: words kept whole where they fit, a word wider than the line broken at the
@@ -207,20 +419,30 @@ task wrap
   save word
     make list
   save word-width, code 0
-  save runes
-    call to-runes
-      read value
+  # a word is broken between clusters, never inside one, so a flag or a joined family is never split over two lines
+  save clusters
+    call to-clusters
+      call to-runes
+        read value
   # a space ends a word; one more space, standing for the end of the text, flushes the last word
-  call runes/push
+  save last
+    make list
+  call last/push
     code 32
-  walk list, read runes
+  call clusters/push
+    read last
+  walk list, read clusters
     hook next
-      take site, name rune
+      take site, name cluster
+      save wide
+        call cluster-width
+          read cluster
       fork test
         hook test
-          call is-unequal
-            read rune
-            code 32
+          call is-equal
+            call is-space
+              read cluster
+            false
         hook hold
           # a word wider than the whole line is broken: what fits is flushed as its own line first
           fork test
@@ -228,8 +450,7 @@ task wrap
               call is-above
                 call add
                   read word-width
-                  call cell-width
-                    read rune
+                  read wide
                 read room
             hook hold
               fork test
@@ -248,13 +469,15 @@ task wrap
               save word
                 make list
               save word-width, code 0
-          call word/push
-            read rune
+          walk list, read cluster
+            hook next
+              take site, name rune
+              call word/push
+                read rune
           save word-width
             call add
               read word-width
-              call cell-width
-                read rune
+              read wide
         hook miss
           fork test
             hook test
@@ -689,12 +912,17 @@ task measure-stack
             read node/direction
             text <row>
         hook hold
+          # the room left: the children before this one and the gap after each of them
           save size
             call measure
               read child
               call subtract
-                read inner
-                read along
+                call subtract
+                  read inner
+                  read along
+                call multiply
+                  read gap
+                  read count
           save along
             call add
               read along
@@ -850,28 +1078,6 @@ task put-cell
       save row, read grid/{y}
       save row/{x}, read value
 
-# a combining mark joined to the character in the cell before it
-task join-mark
-  take grid
-    like list
-      like list
-        like text
-  take x, like number
-  take y, like number
-  take mark, like text
-  fork test
-    hook test
-      call in-grid
-        read grid
-        read x
-        read y
-    hook hold
-      save row, read grid/{y}
-      save row/{x}
-        call concat
-          read row/{x}
-          read mark
-
 # a divider's line: down `length` cells from (x, y) in a row, across in a column
 task paint-line
   take grid
@@ -934,78 +1140,57 @@ task paint-text
             read height
         hook hold
           save column, code 0
-          walk list, read line
+          # a whole cluster in one cell, a mark or a joined family included. A cluster taking no cells can only open
+          # the text (a mark with nothing before it), and is left out
+          walk list, call to-clusters(read line)
             hook next
-              take site, name rune
+              take site, name cluster
               save wide
-                call cell-width
-                  read rune
+                call cluster-width
+                  read cluster
               fork test
                 hook test
                   meet and
-                    call is-equal
+                    call is-above
                       read wide
                       code 0
-                    call is-above
-                      read column
-                      code 0
-                hook hold
-                  call join-mark
-                    read grid
-                    call subtract
+                    call is-maximum
                       call add
-                        read x
                         read column
-                      code 1
+                        read wide
+                      read width
+                hook hold
+                  call put-cell
+                    read grid
+                    call add
+                      read x
+                      read column
                     call add
                       read y
                       read row
-                    call rune-to-text
-                      read rune
-                hook miss
+                    call from-runes
+                      read cluster
                   fork test
                     hook test
-                      meet and
-                        call is-above
-                          read wide
-                          code 0
-                        call is-maximum
-                          call add
-                            read column
-                            read wide
-                          read width
+                      call is-equal
+                        read wide
+                        code 2
                     hook hold
                       call put-cell
                         read grid
                         call add
-                          read x
-                          read column
+                          call add
+                            read x
+                            read column
+                          code 1
                         call add
                           read y
                           read row
-                        call rune-to-text
-                          read rune
-                      fork test
-                        hook test
-                          call is-equal
-                            read wide
-                            code 2
-                        hook hold
-                          call put-cell
-                            read grid
-                            call add
-                              call add
-                                read x
-                                read column
-                              code 1
-                            call add
-                              read y
-                              read row
-                            text <>
-                      save column
-                        call add
-                          read column
-                          read wide
+                        text <>
+                  save column
+                    call add
+                      read column
+                      read wide
       save row
         call add
           read row
@@ -1233,6 +1418,7 @@ task place-stack
   walk list, read node/children
     hook next
       take site, name child
+      # in a row, the room left: the children before this one and the gap after each of them
       save size
         fork test
           hook test
@@ -1241,8 +1427,12 @@ task place-stack
             call measure
               read child
               call subtract
-                read inner-width
-                read used
+                call subtract
+                  read inner-width
+                  read used
+                call multiply
+                  read gap
+                  read sizes/length
           hook miss
             call measure
               read child

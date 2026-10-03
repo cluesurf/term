@@ -48,15 +48,18 @@ task use
 `)
 ok('a call with a pure argument is replaced by the value', !/twice\(/.test(inlined) && /n \* 2/.test(inlined), inlined)
 
-// 2. an impure argument (a call) keeps the call, so the argument is evaluated once and in order
+// 2. an impure argument (a call that stays a call: `bump` is two statements, so it is not inlined itself) keeps the
+// call, so the argument is evaluated once and in order. A small `bump` would inline first to `n + 1`, which has no
+// effect and is read once by `twice`, and then `twice` inlines too, which is correct
 const impure = emit(`${helper}
 task bump
   take n, like number
   like number
-  send back
+  save m
     call add
       read n
       code 1
+  send back, read m
 
 task use
   take n, like number
@@ -127,6 +130,48 @@ task use
       wait true
 `)
 ok('an async task is NOT inlined', /later\(/.test(awaited), awaited)
+
+// 6. a trailing `need false` number left out is the 0 every backend passes, written in, so the call inlines
+const shifted = `task shift
+  take x, like number
+  take
+    by
+    like number
+    need false
+  like number
+  send back
+    call add
+      read x
+      read by
+`
+const omitted = emit(`${shifted}
+task use
+  take n, like number
+  like number
+  send back
+    call shift
+      read n
+`)
+ok('a left-out optional number inlines as 0', !/shift\(/.test(omitted) && /n \+ 0|\(n\)|return n\b/.test(omitted), omitted)
+
+// 7. a left-out optional that is not a number stays a call: its absent value is the host's, and not one literal
+const flagged = emit(`task pick
+  take x, like number
+  take
+    flip
+    like boolean
+    need false
+  like number
+  send back, read x
+
+task use
+  take n, like number
+  like number
+  send back
+    call pick
+      read n
+`)
+ok('a left-out optional boolean is NOT inlined', /pick\(/.test(flagged), flagged)
 
 console.log(`\ninline-small: ${pass} pass, ${fail} fail`)
 

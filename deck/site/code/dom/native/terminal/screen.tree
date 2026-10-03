@@ -8,6 +8,11 @@ load @term/base/terminal
   find terminal-rows
   find read-input
   find write-output
+  find set-raw
+
+load @term/base/native/{platform}/signal
+  find take-signal
+  find suspend-self
 
 load ../../view
   find view
@@ -20,6 +25,9 @@ load ./input
 
 load ./keys
   find decode-keys
+
+load ./speak
+  find describe-focus
 
 load @term/base/list
   find list
@@ -41,6 +49,10 @@ form terminal-screen
       like text
   link width, like number
   link height, like number
+  # line mode (native-accessibility-0005): every change written as plain lines a screen reader can follow, instead of
+  # rows placed by the cursor, and the last focus line said, so it is said again only when focus moves
+  link plain, like boolean
+  link spoken, like text
 
 task make-lines
   like list
@@ -90,6 +102,14 @@ task control
         text <[>
       read rest
 
+# the end of a line in raw mode, where a line feed alone moves down without going back to the first column
+task line-break
+  like text
+  send back
+    call concat
+      call rune-to-text, code 13
+      call rune-to-text, code 10
+
 # the terminal's size, or 80 by 24 when it reports none
 task screen-width
   like number
@@ -123,12 +143,46 @@ task make-screen
       bind lines, call make-lines
       bind width, call screen-width
       bind height, call screen-height
+      bind plain, false
+      bind spoken, text <>
+
+# a terminal resized since the last paint: the new size taken, and what it shows forgotten, so the paint writes every
+# row again at the new size. A full-screen app clears first; line mode writes on below what it wrote
+task refit-screen
+  take shown, like terminal-screen
+  save width, call screen-width
+  save height, call screen-height
+  fork test
+    hook test
+      meet and
+        call is-equal
+          read width
+          read shown/width
+        call is-equal
+          read height
+          read shown/height
+    hook hold
+      send back
+  save shown/width, read width
+  save shown/height, read height
+  save shown/lines, call make-lines
+  fork test
+    hook test
+      call is-equal
+        read shown/plain
+        false
+    hook hold
+      call write-output
+        call control
+          text <2J>
 
 # paint the tree under `root` and write the rows that differ from what the terminal shows, each placed at its row and
-# cleared to its end
+# cleared to its end. The size is asked again first, so a terminal resized while the app runs is painted at its new size
 task show-screen
   take shown, like terminal-screen
   take root, like view
+  call refit-screen
+    read shown
   save lines
     call split-lines
       call paint-screen
@@ -169,6 +223,24 @@ task show-screen
             read shown/lines/length
       fork test
         hook test
+          meet and
+            read changed
+            read shown/plain
+        hook hold
+          # line mode: the row as a line of its own, an empty row left unsaid
+          fork test
+            hook test
+              call is-unequal
+                read line
+                text <>
+            hook hold
+              save out
+                call concat
+                  call concat
+                    read out
+                    read line
+                  call line-break
+        hook test
           read changed
         hook hold
           save at
@@ -189,23 +261,122 @@ task show-screen
         call add
           read row
           code 1
+  # line mode: what has focus, said when it moves
+  fork test
+    hook test
+      read shown/plain
+    hook hold
+      save said
+        call describe-focus
+          read root
+      fork test
+        hook test
+          meet and
+            call is-unequal
+              read said
+              read shown/spoken
+            call is-unequal
+              read said
+              text <>
+        hook hold
+          save out
+            call concat
+              call concat
+                read out
+                text <focus: {said}>
+              call line-break
+      save shown/spoken, read said
   call write-output
     read out
   save shown/lines, read lines
 
+# what a signal means to the rounds: a resize keeps them going, and the next paint takes the new size; SIGTERM or SIGHUP
+# stops them, so the terminal is given back as ctrl-c gives it back
+task keeps-running
+  take noticed, like number
+  like boolean
+  send back
+    call is-equal
+      read noticed
+      code 28
+
 # one read from the terminal, its keys pressed on the tree under `root`. False when the program should stop: ctrl-c,
-# or the end of input
+# a signal that ends it, or the end of input. A signal that came while the round was painting is answered before the
+# read, so a resize repaints now rather than after the next key
 task take-input
   take root, like view
+  take shown, like terminal-screen
   like boolean
-  save input, call read-input
+  save noticed, call take-signal
+  fork test
+    hook test
+      call is-above
+        read noticed
+        code 0
+    hook hold
+      send back
+        call keeps-running
+          read noticed
+  send back
+    call press-input
+      read root
+      read shown
+      call read-input
+
+# ctrl-z: the terminal given back as leaving gives it back (the cursor shown under the screen, raw mode off), the
+# program stopped until the shell resumes it, then the terminal taken again and every row written anew, because the
+# shell has drawn over the screen meanwhile. Where nothing can stop the program (`suspend-self` false), it carries on
+task pause-terminal
+  take shown, like terminal-screen
+  fork test
+    hook test
+      call is-equal
+        read shown/plain
+        false
+    hook hold
+      call write-output
+        call concat
+          call concat
+            call control
+              text <?25h>
+            call control
+              text <{shown/height};1H>
+          call line-break
+  call set-raw
+    false
+  call suspend-self
+  call set-raw
+    true
+  fork test
+    hook test
+      call is-equal
+        read shown/plain
+        false
+    hook hold
+      call write-output
+        call concat
+          call control
+            text <?25l>
+          call control
+            text <2J>
+  save shown/lines, call make-lines
+
+# what one read brought, its keys pressed on the tree under `root`. Empty text is a read a signal woke, or the end of
+# input (no signal); false when the program should stop. Ctrl-z suspends the program to the shell (`pause-terminal`)
+task press-input
+  take root, like view
+  take shown, like terminal-screen
+  take input, like text
+  like boolean
   fork test
     hook test
       call is-equal
         read input
         text <>
     hook hold
-      send back, false
+      send back
+        call keeps-running
+          call take-signal
   save running, true
   walk list, call decode-keys(call to-runes(read input))
     hook next
@@ -217,6 +388,15 @@ task take-input
             text <ctrl-c>
         hook hold
           save running, false
+        hook test
+          meet and
+            read running
+            call is-equal
+              read key
+              text <ctrl-z>
+        hook hold
+          call pause-terminal
+            read shown
         hook test
           read running
         hook hold

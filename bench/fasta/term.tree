@@ -1,0 +1,294 @@
+load @term/base/list
+  find list
+  find push
+load @term/base/float
+  find to-decimal
+load @term/base/text
+  find char-at
+  find char-code-at
+
+# fasta, the Benchmarks Game program, single-threaded: three sections of a DNA sequence, the ALU sequence repeated
+# for 2n characters, then 3n and 5n characters drawn from the IUB and Homo sapiens tables by cumulative probability with
+# the game's linear congruential generator, each written as lines of 60. The game prints the lines; this folds every
+# character it would print, the newlines too, into a hash, and prints the count and the hash, so the output is two
+# integers that read the same on every backend. Each line is built by appending characters, as the game builds its
+# lines, then hashed
+form state
+  link seed, like number
+  link hash, like number
+  link count, like number
+
+# a line folded into the hash, then its newline
+task fold
+  take now, like state
+  take line, like text
+  take width, like number
+  like state
+  save hash, read now/hash
+  walk size
+    bind base, code 0
+    bind head, read width
+    hook next
+      take site, name i
+      save hash
+        call modulo
+          call add
+            call multiply
+              read hash
+              code 31
+            call char-code-at
+              read line
+              read i
+          code 1000000007
+  save hash
+    call modulo
+      call add
+        call multiply
+          read hash
+          code 31
+        code 10
+      code 1000000007
+  send back
+    make state
+      bind seed, read now/seed
+      bind hash, read hash
+      bind count
+        call add
+          read now/count
+          call add
+            read width
+            code 1
+
+# `total` characters of `alu`, repeated from its start
+task repeated
+  take now, like state
+  take alu, like text
+  take size, like number
+  take total, like number
+  like state
+  save at, read now
+  save line, text <>
+  save width, code 0
+  walk size
+    bind base, code 0
+    bind head, read total
+    hook next
+      take site, name i
+      save line
+        text <{line}{char-at(alu, modulo(i, size))}>
+      save width
+        call add
+          read width
+          code 1
+      fork test
+        hook test
+          call is-equal
+            read width
+            code 60
+        hook hold
+          save at
+            call fold
+              read at
+              read line
+              read width
+          save line, text <>
+          save width, code 0
+  fork test
+    hook test
+      call is-above
+        read width
+        code 0
+    hook hold
+      save at
+        call fold
+          read at
+          read line
+          read width
+  send back, read at
+
+# `total` characters drawn from `letters` by the cumulative probabilities `cumulative`
+task random
+  take now, like state
+  take letters, like text
+  take cumulative, like list, like decimal
+  take kinds, like number
+  take total, like number
+  like state
+  save seed, read now/seed
+  save at, read now
+  save line, text <>
+  save width, code 0
+  walk size
+    bind base, code 0
+    bind head, read total
+    hook next
+      take site, name i
+      save seed
+        call modulo
+          call add
+            call multiply
+              read seed
+              code 3877
+            code 29573
+          code 139968
+      host r
+        call divide
+          call to-decimal
+            read seed
+          code 139968.0
+      save pick, code 0
+      walk test
+        hook test
+          call is-below
+            read pick
+            call subtract
+              read kinds
+              code 1
+        hook hold
+          fork test
+            hook test
+              call is-below
+                read r
+                read cumulative/{pick}
+            hook hold
+              halt
+          save pick
+            call add
+              read pick
+              code 1
+      save line
+        text <{line}{char-at(letters, pick)}>
+      save width
+        call add
+          read width
+          code 1
+      fork test
+        hook test
+          call is-equal
+            read width
+            code 60
+        hook hold
+          save at
+            call fold
+              make state
+                bind seed, read seed
+                bind hash, read at/hash
+                bind count, read at/count
+              read line
+              read width
+          save line, text <>
+          save width, code 0
+  fork test
+    hook test
+      call is-above
+        read width
+        code 0
+    hook hold
+      save at
+        call fold
+          make state
+            bind seed, read seed
+            bind hash, read at/hash
+            bind count, read at/count
+          read line
+          read width
+  send back
+    make state
+      bind seed, read seed
+      bind hash, read at/hash
+      bind count, read at/count
+
+# running sums of the probabilities, in place
+task accumulate
+  take probabilities, like list, like decimal
+  take kinds, like number
+  save sum, code 0.0
+  walk size
+    bind base, code 0
+    bind head, read kinds
+    hook next
+      take site, name k
+      save sum
+        call add
+          read sum
+          read probabilities/{k}
+      save probabilities/{k}, read sum
+
+task fasta
+  take n, like number
+  like text
+  host alu, text <GGCCGGGCGCGGTGGCTCACGCCTGTAATCCCAGCACTTTGGGAGGCCGAGGCGGGCGGATCACCTGAGGTCAGGAGTTCGAGACCAGCCTGGCCAACATGGTGAAACCCCGTCTCTACTAAAAATACAAAAATTAGCCGGGCGTGGTGGCGCGCGCCTGTAATCCCAGCTACTCGGGAGGCTGAGGCAGGAGAATCGCTTGAACCCGGGAGGCGGAGGTTGCAGTGAGCCGAGATCGCGCCACTGCACTCCAGCCTGGGCGACAGAGCGAGACTCCGTCTCAAAAA>
+  save iub
+    make list
+  call push
+    read iub
+    code 0.27
+  call push
+    read iub
+    code 0.12
+  call push
+    read iub
+    code 0.12
+  call push
+    read iub
+    code 0.27
+  walk size
+    bind base, code 0
+    bind head, code 11
+    hook next
+      take site, name k
+      call push
+        read iub
+        code 0.02
+  call accumulate
+    read iub
+    code 15
+  save homo
+    make list
+  call push
+    read homo
+    code 0.3029549426680
+  call push
+    read homo
+    code 0.1979883004921
+  call push
+    read homo
+    code 0.1975473066391
+  call push
+    read homo
+    code 0.3015094502008
+  call accumulate
+    read homo
+    code 4
+  save at
+    make state
+      bind seed, code 42
+      bind hash, code 0
+      bind count, code 0
+  save at
+    call repeated
+      read at
+      read alu
+      code 287
+      call multiply
+        read n
+        code 2
+  save at
+    call random
+      read at
+      text <acgtBDHKMNRSVWY>
+      read iub
+      code 15
+      call multiply
+        read n
+        code 3
+  save at
+    call random
+      read at
+      text <acgt>
+      read homo
+      code 4
+      call multiply
+        read n
+        code 5
+  send back, text <{at/count} {at/hash}>

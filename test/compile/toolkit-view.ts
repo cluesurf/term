@@ -9,6 +9,7 @@
 // note/term/project/native-dom/ are made. TOOLKIT_ONLY=macos (or ios, android) runs one platform.
 // Run: npx tsx test/compile/toolkit-view.ts
 
+import { runDir } from './run-dir'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -45,7 +46,7 @@ function ok(name: string, cond: boolean, info = ''): void {
 }
 
 const ROOT = process.cwd()
-const dir = mkdtempSync(join(tmpdir(), 'term-toolkit-view-'))
+const dir = runDir('term-toolkit-view-')
 
 // native-dom-0008: face's own theme, compiled to the style table the app hands its host, light scheme
 const THEME = join(ROOT, 'deck/face/code/style/theme.tree')

@@ -32,6 +32,7 @@ import { findProjectRoot } from '@term/call/code/boot'
 import { projectDeckOf } from '@term/call/code/deck-of'
 import { projectLeanOf, projectRoleOf } from '@term/call/code/role-of'
 import { renderDiagnostic } from '@term/call/code/report'
+import { checkBindTargets } from '@term/make/code/check/binds'
 
 // the per-target emit is make/code/compile/emit-target.ts, shared with the browser worker (make/code/browser/)
 export { EMIT_TARGETS, isEmitTarget }
@@ -82,6 +83,19 @@ export function emitProgram(input: {
     return {
       ok: false,
       errors: [`${input.file} is not a program (data or a stylesheet), so it has no ${env} source`],
+    }
+  }
+
+  // every bind the emitted program calls has a case for this backend. Without one the emitter wrote an undefined name,
+  // `SEED_UNSUPPORTED_BIND_...`, and the toolchain was the first to fail (check/binds.ts)
+  const unbound = checkBindTargets(result.program, file, env).errors
+
+  if (unbound.length > 0) {
+    return {
+      ok: false,
+      errors: unbound.map(diagnostic =>
+        renderDiagnostic(diagnostic, diagnostic.file === file ? text : undefined),
+      ),
     }
   }
 

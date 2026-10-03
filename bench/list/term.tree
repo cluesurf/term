@@ -1,0 +1,126 @@
+# List, from Are We Fast Yet (Marr, Daloze and Mössenböck, DLS 2016): three linked lists of lengths 15, 10 and 6, and
+# the Takeuchi-style recursion `tail` over them that walks the lists to compare their lengths, answering a list of
+# length 10. AWFY's structure kept: `make-chain`, `is-shorter`, `tail`, `size`. A list is a recursive variant form here,
+# where AWFY's is a node whose `next` may be null. Run `n` times and the lengths added, so the output is one integer
+
+form chain
+  case end
+  case link
+    link value, like number
+    link next, like chain
+
+task make-chain
+  take size, like number
+  like chain
+  fork test
+    hook test
+      call is-equal
+        read size
+        code 0
+    hook hold
+      send back
+        make end
+  send back
+    make link
+      bind value, read size
+      bind next
+        call make-chain
+          call subtract
+            read size
+            code 1
+
+task size
+  take c, like chain
+  like number
+  fork case, read c
+    case end
+      send back, code 0
+    case link
+      send back
+        call add
+          code 1
+          call size
+            read next
+
+# is `x` shorter than `y`? Both walked together until one ends
+task is-shorter
+  take x, like chain
+  take y, like chain
+  like boolean
+  fork case, read y
+    case end
+      send back, false
+    case link
+      link y-value
+      link y-next
+      fork case, read x
+        case end
+          send back, true
+        case link
+          link x-value
+          link x-next
+          send back
+            call is-shorter
+              read x-next
+              read y-next
+
+task rest
+  take c, like chain
+  like chain
+  fork case, read c
+    case end
+      send back, read c
+    case link
+      send back, read next
+
+task tail
+  take x, like chain
+  take y, like chain
+  take z, like chain
+  like chain
+  fork test
+    hook test
+      call is-shorter
+        read y
+        read x
+    hook hold
+      send back
+        call tail
+          call tail
+            call rest
+              read x
+            read y
+            read z
+          call tail
+            call rest
+              read y
+            read z
+            read x
+          call tail
+            call rest
+              read z
+            read x
+            read y
+  send back, read z
+
+task list-runs
+  take n, like number
+  like number
+  save total, code 0
+  walk size
+    bind base, code 0
+    bind head, read n
+    hook next
+      take site, name round
+      save total
+        call add
+          read total
+          call size
+            call tail
+              call make-chain
+                code 15
+              call make-chain
+                code 10
+              call make-chain
+                code 6
+  send back, read total

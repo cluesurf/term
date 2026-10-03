@@ -3,6 +3,7 @@
 // suite RUNS the emitted TypeScript, and reads the native emitters' operator, which is the integer one by type.
 // Run: npx tsx test/compile/number.ts. See note/term/proof-by-default/numbers.md.
 
+import { transformSync } from 'esbuild'
 import { compile } from '@term/make/code/compile/compile'
 import { emitRust } from '@term/make/code/compile/rust'
 import { emitSwift } from '@term/make/code/compile/swift'
@@ -66,8 +67,9 @@ if (!result.ok) {
 }
 
 // the emitted module, run: `export` dropped and the three tasks handed back
+// the types stripped by esbuild: a regex over the text missed the prelude's `: never` return
 const run = new Function(
-  `${result.typescript.replace(/^export /gm, '').replace(/: (number|float)\b/g, '')}\nreturn { quotient, remainder, grow, ratio }`,
+  `${transformSync(result.typescript.replace(/^export /gm, ''), { loader: 'ts' }).code}\nreturn { quotient, remainder, grow, ratio }`,
 )() as {
   quotient: (a: number, b: number) => number
   remainder: (a: number, b: number) => number

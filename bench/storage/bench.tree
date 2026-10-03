@@ -1,0 +1,9 @@
+host program, <storage>
+host entry, <storage>
+host source, <Are We Fast Yet's Storage (Marr, Daloze and Mössenböck, DLS 2016), the same structure: a tree of lists seven levels deep, four subtrees to a node and each leaf 1 to 10 slots long from AWFY's generator, 5461 lists per run; ours also reads every leaf's length back, so no build can be elided>
+host check, 3
+host expect, <83643>
+host size, 3000
+host runs, 5
+host semantics, <a recursive variant holding a list of itself, built by recursion and dropped each run, a generator's state in a list lent through it; integer output>
+host idiom, <ours, 2026-10-03: AWFY's shape in each language, an enum of Vecs on Rust, an indirect enum of arrays on Swift, a sealed class of arrays on Kotlin, nested arrays on TypeScript>

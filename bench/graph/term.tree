@@ -1,0 +1,173 @@
+load @term/base/list
+  find list
+  find push
+  find size
+
+# Graph, ours: a breadth-first search over adjacency lists, the shape of every graph program. A square grid `side`
+# cells wide, each cell's list holding the cells beside it (up, left, right, down, in that order), built fresh each
+# run and searched from the corner; the run answers the sum of every cell's distance. Run `n` times and added, so the
+# output is one integer. It measures a list of lists: built by pushes, read a list at a time and walked
+
+# the neighbors of every cell of a `side` by `side` grid
+task neighbors
+  take side, like number
+  like list, like list, like number
+  save cells
+    make list
+  walk size
+    bind base, code 0
+    bind head
+      call multiply
+        read side
+        read side
+    hook next
+      take site, name at
+      host row
+        call divide
+          read at
+          read side
+      host column
+        call modulo
+          read at
+          read side
+      save near
+        make list
+      fork test
+        hook test
+          call is-above
+            read row
+            code 0
+        hook hold
+          call push
+            bind list, read near
+            bind item
+              call subtract
+                read at
+                read side
+      fork test
+        hook test
+          call is-above
+            read column
+            code 0
+        hook hold
+          call push
+            bind list, read near
+            bind item
+              call subtract
+                read at
+                code 1
+      fork test
+        hook test
+          call is-below
+            read column
+            call subtract
+              read side
+              code 1
+        hook hold
+          call push
+            bind list, read near
+            bind item
+              call add
+                read at
+                code 1
+      fork test
+        hook test
+          call is-below
+            read row
+            call subtract
+              read side
+              code 1
+        hook hold
+          call push
+            bind list, read near
+            bind item
+              call add
+                read at
+                read side
+      call push
+        bind list, read cells
+        bind item, read near
+  send back, read cells
+
+# the sum of every cell's distance from cell 0
+task search
+  take cells, like list, like list, like number
+  like number
+  host count
+    call size
+      read cells
+  save distance
+    make list
+  walk size
+    bind base, code 0
+    bind head, read count
+    hook next
+      take site, name i
+      call push
+        bind list, read distance
+        bind item, code -1
+  save queue
+    make list
+  call push
+    bind list, read queue
+    bind item, code 0
+  save distance/0, code 0
+  save head, code 0
+  save total, code 0
+  walk test
+    hook test
+      call is-below
+        read head
+        call size
+          read queue
+    hook hold
+      host at
+        read queue/{head}
+      save head
+        call add
+          read head
+          code 1
+      host here
+        read distance/{at}
+      save total
+        call add
+          read total
+          read here
+      host near
+        read cells/{at}
+      walk list, read near
+        hook next
+          take site, name next
+          fork test
+            hook test
+              call is-equal
+                read distance/{next}
+                code -1
+            hook hold
+              save distance/{next}
+                call add
+                  read here
+                  code 1
+              call push
+                bind list, read queue
+                bind item, read next
+  send back, read total
+
+task graph
+  take n, like number
+  like number
+  save total, code 0
+  walk size
+    bind base, code 0
+    bind head, read n
+    hook next
+      take site, name round
+      host cells
+        call neighbors
+          code 40
+      save total
+        call add
+          read total
+          call search
+            read cells
+  send back, read total

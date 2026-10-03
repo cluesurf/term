@@ -1,11 +1,16 @@
 
-# The terminal's rounds on node (terminal-target-0006): read, press, then yield to the event loop before repainting.
-# A key's handler may start work that finishes later (the blog's store is asynchronous, and its post is appended when
-# that resolves): reading blocks the thread, so without the yield that work would wait for the next key and the screen
-# would always be one keypress behind.
+# The terminal's rounds on node (terminal-target-0006): wait for input, press, then yield to the event loop before
+# repainting. The wait is `wait-input`, which leaves the event loop free, so a resize or a SIGTERM is heard while the
+# program waits rather than after the next key. A key's handler may start work that finishes later (the blog's store
+# is asynchronous, and its post is appended when that resolves), and the yield lets it land before the repaint, so
+# the screen is never one keypress behind.
 
 load @term/base/clock
   find sleep
+
+load @term/base/native/node/signal
+  find wait-input
+  find take-signal
 
 load ../../../view
   find view
@@ -13,7 +18,8 @@ load ../../../view
 load ../screen
   find terminal-screen
   find show-screen
-  find take-input
+  find keeps-running
+  find press-input
 
 task drive
   mark async
@@ -24,9 +30,23 @@ task drive
     hook test
       read running
     hook step
-      save running
-        call take-input
-          read root
+      # a signal that came while the round was painting is answered before waiting again
+      save noticed, call take-signal
+      fork test
+        hook test
+          call is-above
+            read noticed
+            code 0
+        hook hold
+          save running
+            call keeps-running
+              read noticed
+        hook miss
+          save running
+            call press-input
+              read root
+              read shown
+              call wait-input
       call sleep
         code 0
       call show-screen

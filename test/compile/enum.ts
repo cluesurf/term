@@ -119,7 +119,9 @@ async function main(): Promise<void> {
   })
   ok(
     'a literal index reads through the checked list read',
-    indexed.ok && indexed.typescript.includes('return __termAt(items, 0)'),
+    // the shared `__termAt`, or the same check written in place for a plain list and index
+    indexed.ok && /return (__termAt\(items, 0\)|\(0 < items\.length \? items\[0\]! : __termReadPast\(items, 0\)\))/.test(indexed.typescript),
+    indexed.ok ? indexed.typescript.slice(indexed.typescript.indexOf('function first')) : '',
   )
 
   // a `link` past the variant's last field binds nothing, so it is refused rather than silently ignored

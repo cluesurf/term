@@ -45,6 +45,8 @@ hook make
   task make-deck
   hook face
     take name
+    take verbose
+      like boolean
     task make-face
 
 hook load
@@ -56,6 +58,27 @@ hook lock
   take code
     wait rise
   task make-deck
+
+task pair
+  take first, like text
+  take second, like text
+  send back
+    code 0
+
+hook pair
+  take second
+  take first
+  task pair
+
+task repeat
+  take times, like number
+  send back
+    code 0
+
+hook repeat
+  take times
+    like number
+  task repeat
 `
 
 function main(): void {
@@ -74,6 +97,8 @@ function main(): void {
     'load',
     'lock',
     'make',
+    'pair',
+    'repeat',
   ])
 
   // top-level command + flag
@@ -131,6 +156,27 @@ function main(): void {
   // unknown command
   const f = dispatch(routes, ['nope'])
   expect('unknown command rejected', f.ok, false)
+
+  // a flag no take names is refused, not ignored (guides: applications/command-line)
+  const typo = dispatch(routes, ['make', '--typo', 'x'])
+  expect('unknown flag rejected', typo.ok, false)
+  expect('and named', !typo.ok && typo.error.includes('--typo'), true)
+
+  // a word no take is left to hold is refused
+  const extra = dispatch(routes, ['load', 'one', 'two'])
+  expect('leftover argument rejected', extra.ok, false)
+
+  // a `like number` take refuses a value that is not a whole number
+  const notNumber = dispatch(routes, ['repeat', '--times', 'x'])
+  expect('non-number rejected', notNumber.ok, false)
+  const half = dispatch(routes, ['repeat', '--times', '1.5'])
+  expect('fraction rejected for a whole number', half.ok, false)
+  const three = dispatch(routes, ['repeat', '--times', '3'])
+  expect('whole number accepted', three.ok && three.args.times, 3)
+
+  // the task's parameters are filled by name, whatever order the hook lists its takes in
+  const pairCall = routes.find(route => route.path === 'pair')?.calls[0]
+  expect('a bound call carries its task parameters', pairCall?.params, ['first', 'second'])
 
   console.log(`\nhook: ${pass} pass, ${fail} fail`)
 

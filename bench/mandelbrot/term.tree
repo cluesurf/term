@@ -1,0 +1,111 @@
+load @term/base/float
+  find to-decimal
+
+# mandelbrot, the Benchmarks Game program, single-threaded: the n by n square of the complex plane from -1.5 - i to
+# 0.5 + i, each point iterated z = z^2 + c up to 50 times while |z|^2 <= 4, and the points that never escape are in the
+# set. The game writes them as a bitmap; this counts them, an integer that reads the same on every backend, so the
+# work is the same and the output portable. Written the obvious way: two counted walks and an inner loop that halts
+# when the point escapes
+task inside
+  take cr, like decimal
+  take ci, like decimal
+  like boolean
+  save zr, code 0.0
+  save zi, code 0.0
+  save tr, code 0.0
+  save ti, code 0.0
+  save turn, code 0
+  walk test
+    hook test
+      call is-below
+        read turn
+        code 50
+    hook hold
+      fork test
+        hook test
+          call is-above
+            call add
+              read tr
+              read ti
+            code 4.0
+        hook hold
+          halt
+      save zi
+        call add
+          call multiply
+            call multiply
+              code 2.0
+              read zr
+            read zi
+          read ci
+      save zr
+        call add
+          call subtract
+            read tr
+            read ti
+          read cr
+      save tr
+        call multiply
+          read zr
+          read zr
+      save ti
+        call multiply
+          read zi
+          read zi
+      save turn
+        call add
+          read turn
+          code 1
+  send back
+    call is-maximum
+      call add
+        read tr
+        read ti
+      code 4.0
+
+task mandelbrot
+  take n, like number
+  like text
+  host size
+    call to-decimal
+      read n
+  save count, code 0
+  walk size
+    bind base, code 0
+    bind head, read n
+    hook next
+      take site, name y
+      host ci
+        call subtract
+          call divide
+            call multiply
+              code 2.0
+              call to-decimal
+                read y
+            read size
+          code 1.0
+      walk size
+        bind base, code 0
+        bind head, read n
+        hook next
+          take site, name x
+          host cr
+            call subtract
+              call divide
+                call multiply
+                  code 2.0
+                  call to-decimal
+                    read x
+                read size
+              code 1.5
+          fork test
+            hook test
+              call inside
+                read cr
+                read ci
+            hook hold
+              save count
+                call add
+                  read count
+                  code 1
+  send back, text <{count}>

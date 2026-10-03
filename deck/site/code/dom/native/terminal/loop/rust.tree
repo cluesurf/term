@@ -25,6 +25,7 @@ task drive
       save running
         call take-input
           read root
+          read shown
       call run-pending
       call show-screen
         read shown

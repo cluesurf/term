@@ -10,27 +10,25 @@ load @term/site/view/reactive
   find on-cleanup
 load @term/site/dom/dom
   find listen-document
-load @term/bind/browser/dom/keyboard-event
-  find keyboard-event
+  find listen-key
 load ./disclosure
   find close-disclosure
 
-# arm Escape + outside-click dismissal for a disclosure controller. Each document listener returns a remover, which is
+# arm Escape + outside-click dismissal for a disclosure controller. Each listener returns a remover, which is
 # registered for cleanup on the surrounding scope, so when the overlay's owner is disposed (the panel unmounts) the
-# global handlers detach. No leak.
+# global handlers detach. No leak. Escape comes through `listen-key`, which every host implements (a hardware keyboard
+# on the platform toolkits, the terminal's own keys); it read the browser's KeyboardEvent until 2026-10-03, so no
+# overlay closed on Escape anywhere but a browser (swiftui-target-0003)
 task arm-dismiss
   take control, like signal
   save drop-key
-    call listen-document
-      text <keydown>
+    call listen-key
       task on-key
-        take event
-        host key-event, like keyboard-event
-          read event
+        take key, like text
         fork test
           hook test
             call is-equal
-              read key-event/key
+              read key
               text <Escape>
           hook hold
             call close-disclosure

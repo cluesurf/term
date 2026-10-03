@@ -6,7 +6,8 @@
 # for a `view` child, so an API route (`hook /users` with `task get` and
 # `task post`, no view) was built as a CLI command and its methods were
 # collected into the wrong shape. A file that DECLARES which it holds cannot be
-# guessed wrong.
+# guessed wrong. (An API route is a `route` record now, not a `hook`: a page route's `task get` built nothing and is
+# refused, so code/test/site/server.tree is ordinary code.)
 #
 #   role site    every `hook` here is a URL route
 #   role call    every `hook` here is a CLI command
@@ -20,7 +21,6 @@ load @term/code
 
 role site
   take @/code/test/site/route.tree
-  take @/code/test/site/server.tree
 
 role call
   take @/code/test/site/console.tree
@@ -28,5 +28,4 @@ role call
 role code
   take @/code/**/*.tree
     miss @/code/test/site/route.tree
-    miss @/code/test/site/server.tree
     miss @/code/test/site/console.tree

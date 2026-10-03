@@ -1,0 +1,100 @@
+load @term/base/hash
+  find hash
+load @term/base/text
+  find char-at
+  find char-count
+
+# a map entry updated from its own value (backend.ts, `mapUpdate`): one probe on Rust, Swift and Kotlin, the read and
+# write on TypeScript. A fallback that is not 0 and a step that is a name, so neither can be mistaken for a count from
+# nothing, and a map of decimals; the keys walked after, so insertion order is held through the updates
+task counted
+  take s, like text
+  take step, like number
+  like text
+  save m
+    make hash
+  walk size
+    bind base, code 0
+    bind head
+      call char-count
+        read s
+    hook next
+      take site, name i
+      host key
+        call char-at
+          read s
+          read i
+      call set
+        read m
+        read key
+        call add
+          call get-or-default
+            read m
+            read key
+            code 10
+          read step
+  save out, text <>
+  walk list
+    call keys
+      read m
+    hook next
+      take site, name k
+      host v
+        call get-or-default
+          read m
+          read k
+          code 0
+      save out, text <{out}{k}={v},>
+  send back, read out
+
+task weighed
+  take s, like text
+  like text
+  save m
+    make hash
+  walk size
+    bind base, code 0
+    bind head
+      call char-count
+        read s
+    hook next
+      take site, name i
+      host key
+        call char-at
+          read s
+          read i
+      call set
+        read m
+        read key
+        call add
+          call get-or-default
+            read m
+            read key
+            code 0.25
+          code 0.5
+  host a
+    call get-or-default
+      read m
+      text <a>
+      code 0.0
+  host b
+    call get-or-default
+      read m
+      text <b>
+      code 0.0
+  send back, text <{a}:{b}>
+
+task compute
+  like text
+  host one
+    call counted
+      text <abracadabra>
+      code 2
+  host two
+    call counted
+      text <aéa😀é>
+      code 3
+  host three
+    call weighed
+      text <abracadabra>
+  send back, text <{one} {two} {three}>

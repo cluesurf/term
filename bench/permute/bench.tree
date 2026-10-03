@@ -1,0 +1,9 @@
+host program, <permute>
+host entry, <permute-runs>
+host source, <Are We Fast Yet's Permute (Marr, Daloze and Mössenböck, DLS 2016), the same calls and swaps: every permutation of six items, 8660 calls per run, each call answering its count where AWFY adds to a field; run n times and added>
+host check, 2
+host expect, <17320>
+host size, 20000
+host runs, 5
+host semantics, <a recursive task swapping two slots of a small list it is lent, before and after each recursive call; integer output>
+host idiom, <ours, 2026-10-03: AWFY's own shape in each language, an object or struct holding the counter and the items>

@@ -1,3 +1,8 @@
+mark draft
+
+# shelved 2026-10-03: a sketch of a database connection, with no loads and types the language does not have (`string`,
+# `int`, `result-set`). An unknown type name is refused now (check/type-names.ts), so it stays out of the build until
+# it is written against @term/base. Nothing loads it.
 
 form connection
   task close, like void

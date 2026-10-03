@@ -1,10 +1,10 @@
-# kotlin channel implementation. Forwards to the linked channel runtime shim (java.util.concurrent BlockingQueue). Declares the opaque handle
-# type a channel holds (the queue). A message crosses as `unknown`, so one shim serves every
-# message type, and the public `channel` form types it on the way out. Internal: reached only through the public
-# channel API.
+# kotlin channel implementation. Forwards to the linked channel runtime shim (a buffer and a queue of suspended
+# receivers). Declares the opaque handle type a channel holds (the TermChannel). A message crosses as `unknown`, so one
+# shim serves every message type, and the public `channel` form types it on the way out. Internal: reached only through
+# the public channel API.
 
 dock type
-  load <java.util.concurrent.BlockingQueue<Any>>, name channel-handle
+  load <TermChannel>, name channel-handle
 
 dock load
   load <global:channel>, name channel

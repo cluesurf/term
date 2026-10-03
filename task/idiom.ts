@@ -4,7 +4,8 @@
 // their compilers' own warnings and errors. The findings are counted by kind, and the total is the gate: it may only
 // fall. swiftlint, ktlint and detekt join when they are installed on the machine that runs this.
 //
-//   pnpm term:idiom            report
+//   pnpm term:idiom            report, and fail when any target's count rose above task/idiom-baseline.json
+//   pnpm term:idiom --commit   write the counts as the new baseline (after a fall, or a reviewed new fixture)
 //   pnpm term:idiom --max 0    fail when the total is above the number
 
 import { spawnSync } from 'node:child_process'
@@ -61,6 +62,9 @@ for (const { name, file } of programs) {
   console.log(`  ${name.padEnd(28)} ${String(count).padStart(4)} clippy findings${ran.status !== 0 && !/warning/.test(ran.stderr) ? '  (did not compile)' : ''}`)
 }
 
+// each target's count, held against the committed baseline at the end
+const counted: Record<string, number> = { rust: total }
+
 console.log(`\nrust: ${total} clippy findings over ${programs.length} programs`)
 
 for (const [lint, count] of [...lints].sort((a, b) => b[1] - a[1])) {
@@ -94,6 +98,7 @@ for (const path of tsFiles) {
 
 console.log(`\ntypescript: ${tsErrors} tsc --strict errors over ${tsFiles.length} programs`)
 total += tsErrors
+counted.typescript = tsErrors
 
 // Swift and Kotlin: no linter is installed here (swiftlint, ktlint and detekt join when one is), so the compilers'
 // own warnings stand in. They are idiom findings all the same: a `var` never mutated, a value never read, a cast that
@@ -146,7 +151,8 @@ if (which('swiftc')) {
     text += ran.stderr
   }
 
-  total += warned('swift', text, swiftFiles)
+  counted.swift = warned('swift', text, swiftFiles)
+  total += counted.swift
 }
 
 if (which('kotlinc')) {
@@ -167,12 +173,39 @@ if (which('kotlinc')) {
   }
 
   const ran = spawnSync('kotlinc', [...kotlinFiles, '-d', join(out, 'kotlin-out')], { encoding: 'utf8' })
-  total += warned('kotlin', ran.stderr, kotlinFiles)
+  counted.kotlin = warned('kotlin', ran.stderr, kotlinFiles)
+  total += counted.kotlin
 }
 
 const max = process.argv.indexOf('--max')
 
 if (max >= 0 && total > Number(process.argv[max + 1])) {
   console.log(`\nabove the gate of ${process.argv[max + 1]}`)
+  process.exit(1)
+}
+
+// THE HOLD: each target's count against the one committed in idiom-baseline.json beside this file. A count above its
+// baseline fails, naming the target; one below it is reported, and `--commit` writes the new counts so the lower one
+// becomes the gate. A target whose tool is missing on this machine is not compared. Writes only on --commit
+const baselineFile = join(import.meta.dirname, 'idiom-baseline.json')
+const baseline: Record<string, number> = existsSync(baselineFile) ? JSON.parse(readFileSync(baselineFile, 'utf8')) : {}
+const rose = Object.entries(counted).filter(([target, count]) => baseline[target] !== undefined && count > baseline[target]!)
+const fell = Object.entries(counted).filter(([target, count]) => baseline[target] !== undefined && count < baseline[target]!)
+
+console.log('')
+
+for (const [target, count] of Object.entries(counted)) {
+  console.log(`  ${target.padEnd(11)} ${String(count).padStart(4)}  baseline ${baseline[target] ?? 'none'}`)
+}
+
+if (process.argv.includes('--commit')) {
+  writeFileSync(baselineFile, `${JSON.stringify({ ...baseline, ...counted }, null, 2)}\n`)
+  console.log(`\nwrote ${baselineFile}`)
+} else if (fell.length) {
+  console.log(`\nfell on ${fell.map(([t]) => t).join(', ')}: run with --commit to hold the lower count`)
+}
+
+if (rose.length) {
+  console.log(`\nROSE on ${rose.map(([t, c]) => `${t} (${baseline[t]} to ${c})`).join(', ')}: the count may only fall`)
   process.exit(1)
 }

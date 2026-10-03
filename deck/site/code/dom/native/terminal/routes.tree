@@ -1,0 +1,68 @@
+
+# A routed app in the terminal (native-navigation-0005): the same `route(host, path)` dispatcher the browser, the server
+# and the toolkit hosts drive (compile/route-lower.ts), drawn from the navigation contract (../../../view/navigation)
+# onto a root the terminal paints. The toolkit host is the model (../../../view/native/toolkit/host.tree): one effect
+# reads the current path and redraws the route untracked, so a signal a page reads keeps its own effects.
+#
+# A terminal has no back button and no address bar. The navigation contract's stack is the whole history, and a key
+# goes back: `back` names it as KeyboardEvent.key does, Escape for most apps. A page that uses Escape itself (a dialog
+# closing) can name another.
+#
+#   mount-routes   the root, the first draw, the redraw on every move, and the back key. Hand the root to
+#                  `run-terminal` (./app) to own a real terminal, or paint it (./paint) to read it
+
+load ../../view
+  find view
+
+load ../memory/dom
+  find create-element
+  find clear
+  find listen-key
+
+load ../../../view/reactive
+  find make-effect
+  find untrack
+
+load ../../../view/navigation
+  find start-navigation
+  find current-path
+  find navigate-back
+
+task mount-routes
+  take route
+    like task
+      take host, like view
+      take path, like text
+  take back, like text
+  like view
+  save root
+    call create-element
+      text <main>
+  call start-navigation
+  call make-effect
+    task render
+      save path
+        call current-path
+      save drawn
+        call untrack
+          task draw
+            like number
+            call clear
+              read root
+            call route
+              read root
+              read path
+            send back, code 0
+  save drop
+    call listen-key
+      task went-back
+        take key, like text
+        fork test
+          hook test
+            call is-equal
+              read key
+              read back
+          hook hold
+            save moved
+              call navigate-back
+  send back, read root

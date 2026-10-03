@@ -12,7 +12,8 @@
 // Run: npx tsx test/compile/meaning-native.ts
 
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { runDir } from './run-dir'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { nativeFlags } from './native-flags'
@@ -21,6 +22,7 @@ import { stdlibResolver } from '@term/make/code/resolve'
 import { mill } from '@term/make/code/compile/mill'
 import { resolve as resolveNames } from '@term/make/code/check/resolve'
 import { check } from '@term/make/code/check/infer'
+import { bindFormsByImport } from '@term/make/code/check/scope'
 import { simplify } from '@term/make/code/ir/simplify'
 import { collectModules } from '@term/make/code/compile/load'
 import type { Source } from '@term/make/code/compile/load'
@@ -166,6 +168,63 @@ const PLACE_WANT = 'p0=107,10 p1=5,35 p2=3,73 old=6 pin=1'
 const RECORDS = readFileSync(join(import.meta.dirname, 'meaning-native/records.tree'), 'utf8')
 const RECORDS_WANT = 'inside=6 twice=6 caller=5 alias=7 deep=99 outer=5 list=4 kept=3'
 
+// text built by appending, in place on the native backends: a plain build, a read mid-loop, an append reading the text
+// twice, a plain reassignment after appends, and a parameter appended to
+const APPEND = readFileSync(join(import.meta.dirname, 'meaning-native/append.tree'), 'utf8')
+const APPEND_WANT = '01234|012 aaaa|zw hi! 012|34'
+
+// the reads of an ASCII text, by byte or unit, at every edge, beside the same reads of a text that is not ASCII
+const ASCII = readFileSync(join(import.meta.dirname, 'meaning-native/ascii.tree'), 'utf8')
+const ASCII_WANT = '6:abcdef:bcd::-1:98:3:-1:0:6:5:-1 6:aéçdef:éçd::-1:233:3:-1:0:6:5:1'
+// reads by position through a text cursor (backend.ts, `textCursors`): forward with a look each way, backward, past
+// the end, on a text of every code point width, beside the same reads counted from a text the task reassigns
+// a map entry updated from its own value (backend.ts, `mapUpdate`): a fallback that is not 0, a step held in a name, a
+// map of decimals, and the insertion order after the updates
+const UPDATE = readFileSync(join(import.meta.dirname, 'meaning-native/update.tree'), 'utf8')
+const UPDATE_WANT = 'a=20,b=14,r=14,c=12,d=12, a=16,é=16,😀=13, 2.75:1.25'
+// record reuse (compile/place.ts, `recordReuse`): a slot written with the result of a task given that slot, directly
+// and through a carrier written back at once, each result built in the object given on TypeScript and Kotlin
+const REUSE = readFileSync(join(import.meta.dirname, 'meaning-native/reuse.tree'), 'utf8')
+const REUSE_WANT = '2:-36,-4;-34,-3;-5,-1'
+// tasks that are loops (compile/backend.ts, `tailTasks`): a recursion deeper than a JavaScript stack, and a tail call
+// whose arguments read each other's parameters
+const TAIL = readFileSync(join(import.meta.dirname, 'meaning-native/tail.tree'), 'utf8')
+const TAIL_WANT = '5000050000:21:4004'
+// a list slot read, matched and written back, taken at its last read on Rust (compile/rust.ts, `slotTakes`), and a
+// recursive form's boxes reused across tasks (`reusable`); each refusal raised and caught, the piles read after
+const SLOT = readFileSync(join(import.meta.dirname, 'meaning-native/slot.tree'), 'utf8')
+const SLOT_WANT = '31:refused:empty:put:got0:.|.|12345.'
+// lists held in a variant, owned by the node where nothing else can see them (compile/backend.ts, `ownedFields`), and
+// a list pushed onto after its node took it, which must stay shared
+const OWNED = readFileSync(join(import.meta.dirname, 'meaning-native/owned.tree'), 'utf8')
+const OWNED_WANT = '12292:4:0:2'
+// lists of lists that own their inner lists (compile/backend.ts, `ownedElements`), and three that must stay shared
+const NESTED = readFileSync(join(import.meta.dirname, 'meaning-native/nested.tree'), 'utf8')
+const NESTED_WANT = '35:3:z:3'
+// a walk that pushes onto the list it walks, which sees each pushed item, on a list of numbers and one of texts
+const GROW = readFileSync(join(import.meta.dirname, 'meaning-native/grow.tree'), 'utf8')
+const GROW_WANT = '15:ab'
+// a plain record's list field read through its path, owned where nothing else can see it, and three that must not be
+const RECORD_LIST = readFileSync(join(import.meta.dirname, 'meaning-native/record-list.tree'), 'utf8')
+const RECORD_LIST_WANT = '64:2:7:8:48:9'
+// node reuse where a node has a second owner must not fire: a pile's top kept under a name across a pop and a push
+const KEPT = readFileSync(join(import.meta.dirname, 'meaning-native/kept.tree'), 'utf8')
+const KEPT_WANT = '3:2:3:1'
+// a list reached through a path, guarded once before its loop: the fast copy on a full list, the checked one on a
+// short list a `halt` keeps in range, the same answers either way
+const PATH_GUARD = readFileSync(join(import.meta.dirname, 'meaning-native/path-guard.tree'), 'utf8')
+const PATH_GUARD_WANT = '1144:1863:1794'
+// a variant's own list of numbers held as a primitive array on Kotlin: filled, pushed, sized, indexed, walked, and two
+// built apart equal by their contents; and one handed to a task, which stays a list
+const VARIANT_ARRAY = readFileSync(join(import.meta.dirname, 'meaning-native/variant-array.tree'), 'utf8')
+const VARIANT_ARRAY_WANT = '3:1404:1:same:0:106:same:3009'
+// a variant case named like a stdlib form, `pair`: the stdlib's zip builds its form, this file builds its case
+const CASE_NAME = readFileSync(join(import.meta.dirname, 'meaning-native/case-name.tree'), 'utf8')
+const CASE_NAME_WANT = '73:11:9'
+const CURSOR = readFileSync(join(import.meta.dirname, 'meaning-native/cursor.tree'), 'utf8')
+const CURSOR_WANT =
+  '6:757073106:çb😀€éa::-1:aé/aé€.é€/é€😀.€😀/€😀b.😀b/😀bç.bç/bç.ç/ç. 5:214865557:nialp::-1:pl/pla.la/lai.ai/ain.in/in.n/n. 6:757073106'
+
 const baseTree = join(process.cwd(), 'deck', 'base')
 const STDLIB_PREFIX = /^@term\/base\//
 
@@ -187,7 +246,8 @@ const readRuntime = (path: string): string | undefined => {
 }
 
 function frontEnd(text: string, env: 'rust' | 'swift' | 'kotlin' | 'node'): Program {
-  const sources = collectModules({ file: 'main.tree', text }, withNativeEnv(env, stdlib)).sources
+  const collected = collectModules({ file: 'main.tree', text }, withNativeEnv(env, stdlib))
+  const sources = collected.sources
   const program: Program = []
   const roots = new Set<string>()
 
@@ -212,17 +272,28 @@ function frontEnd(text: string, env: 'rust' | 'swift' | 'kotlin' | 'node'): Prog
       }
     }
 
+    // each node knows its file, and forms are bound by what each file imports, as compileProgram does
+    // (check/scope.ts): a form and a case of one name, or a form two files define, each built where it is meant
+    for (const node of built.program) {
+      node.span.file = unit.file
+    }
+
     program.push(...built.program)
   }
 
+  bindFormsByImport(program, collected.scope, 'main.tree')
   resolveNames(program, 'main.tree')
   check(program, 'main.tree')
 
   return simplify(program, roots)
 }
 
-const dir = mkdtempSync(join(tmpdir(), 'meaning-native-'))
+// the run's own directory, removed when the run ends (run-dir.ts): every run left one behind, 14 GB of them by
+// 2026-10-03, and the disk filled
+const dir = runDir('meaning-native-')
 const only = process.env.MN_ONLY ?? ''
+// MN_CASE=slot runs that one fixture on every backend asked for
+const onlyCase = process.env.MN_CASE ?? ''
 
 // the first lines of a build's errors, never its warnings
 function errors(error: unknown): string {
@@ -235,6 +306,10 @@ function errors(error: unknown): string {
 
 function run(backend: string, label: string, text: string, want: string): void {
   const name = `${backend}: ${label}`
+
+  if (onlyCase && label !== onlyCase) {
+    return
+  }
 
   try {
     if (backend === 'typescript') {
@@ -251,13 +326,18 @@ function run(backend: string, label: string, text: string, want: string): void {
     if (backend === 'rust') {
       const program = frontEnd(text, 'rust')
       const file = join(dir, `${label}.rs`)
-      writeFileSync(file, `${nativePrelude(program, 'rust', readRuntime)}\n${emitRust(program)}\nfn main() { print!("{}", compute()); }\n`)
+      const emitted = emitRust(program)
+      // an entry that may raise answers a `Result`, and a raise that escapes it is the program's failure
+      const answer = /fn compute\(\) -> std::result::Result</.test(emitted) ? 'match compute() { Ok(v) => v, Err(e) => panic!("{}", e.note) }' : 'compute()'
+      writeFileSync(file, `${nativePrelude(program, 'rust', readRuntime)}\n${emitted}\nfn main() { print!("{}", ${answer}); }\n`)
       execFileSync('rustc', ['-A', 'warnings', '-O', file, '-o', join(dir, `${label}-rs`)], { stdio: ['ignore', 'pipe', 'pipe'] })
       exe = [join(dir, `${label}-rs`)]
     } else if (backend === 'swift') {
       const program = frontEnd(text, 'swift')
       const file = join(dir, `${label}.swift`)
-      writeFileSync(file, `${nativePrelude(program, 'swift', readRuntime)}\n${emitSwift(program)}\nprint(compute(), terminator: "")\n`)
+      const emitted = emitSwift(program)
+      const answer = /func compute\(\) throws/.test(emitted) ? 'try! compute()' : 'compute()'
+      writeFileSync(file, `${nativePrelude(program, 'swift', readRuntime)}\n${emitted}\nprint(${answer}, terminator: "")\n`)
       execFileSync('swiftc', [...nativeFlags('swift'), '-o', join(dir, `${label}-swift`), file], { stdio: ['ignore', 'pipe', 'pipe'] })
       exe = [join(dir, `${label}-swift`)]
     } else {
@@ -307,6 +387,21 @@ for (const backend of ['typescript', 'rust', 'swift', 'kotlin']) {
   run(backend, 'alias', ALIAS, ALIAS_WANT)
   run(backend, 'place', PLACE, PLACE_WANT)
   run(backend, 'records', RECORDS, RECORDS_WANT)
+  run(backend, 'append', APPEND, APPEND_WANT)
+  run(backend, 'ascii', ASCII, ASCII_WANT)
+  run(backend, 'cursor', CURSOR, CURSOR_WANT)
+  run(backend, 'update', UPDATE, UPDATE_WANT)
+  run(backend, 'reuse', REUSE, REUSE_WANT)
+  run(backend, 'tail', TAIL, TAIL_WANT)
+  run(backend, 'slot', SLOT, SLOT_WANT)
+  run(backend, 'owned', OWNED, OWNED_WANT)
+  run(backend, 'nested', NESTED, NESTED_WANT)
+  run(backend, 'grow', GROW, GROW_WANT)
+  run(backend, 'record-list', RECORD_LIST, RECORD_LIST_WANT)
+  run(backend, 'kept', KEPT, KEPT_WANT)
+  run(backend, 'path-guard', PATH_GUARD, PATH_GUARD_WANT)
+  run(backend, 'variant-array', VARIANT_ARRAY, VARIANT_ARRAY_WANT)
+  run(backend, 'case-name', CASE_NAME, CASE_NAME_WANT)
 }
 
 console.log(`\nmeaning-native: ${pass} pass, ${fail} fail, ${skip} skipped`)

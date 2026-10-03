@@ -34,6 +34,13 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
+// clusters a code point at a time gets wrong: a man, a woman and a girl joined by zero-width joiners; the flag of Japan
+// in two regional-indicator letters; 각 spelled as its three jamo; a heart asked to draw as an emoji (U+FE0F)
+const FAMILY = '\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}'
+const FLAG = '\u{1F1EF}\u{1F1F5}'
+const JAMO = '\u{1100}\u{1161}\u{11A8}'
+const HEART = '\u{2764}\u{FE0F}'
+
 // each case: what it holds, the Term expression building its tree, the grid's size, and the grid by hand
 type Case = { name: string; tree: string; width: number; height: number; want: string }
 
@@ -169,15 +176,80 @@ const CASES: Case[] = [
     height: 1,
     want: 'a    b',
   },
+  {
+    // 7 cells, `ab` takes 2 and the gap 2, so `cd ef` has 3 left and wraps there. Offered the room without the gap (5)
+    // it stayed one line and was clipped at the edge
+    name: 'a child of a row is measured in the room left after the children and the gaps before it',
+    tree: 'stack(<row>, 16, <stretch>, <start>, 0, two(text-node(<ab>), text-node(<cd ef>)))',
+    width: 7,
+    height: 2,
+    want: 'ab  cd\n    ef',
+  },
+  {
+    // `add` is wider than the 2 cell line: `[` is flushed, `ad` is what fits, and `d` starts the next line, which `]`
+    // cannot join (1 + a space + 1 is 3)
+    name: 'a word wider than a 2 cell line is broken at the edge and its rest starts the next line',
+    tree: 'stack(<column>, 0, <stretch>, <start>, 0, one(frame-node(16, text-node(<[ add ]>))))',
+    width: 2,
+    height: 4,
+    want: '[\nad\nd\n]',
+  },
+  {
+    // the family is one cluster of 2 cells, so `ab` fits after it in 4. Counted per code point it was 6 cells
+    name: 'a family joined by zero-width joiners takes 2 cells, as one cluster',
+    tree: `stack(<row>, 0, <stretch>, <start>, 0, one(text-node(<${FAMILY}ab>)))`,
+    width: 4,
+    height: 1,
+    want: `${FAMILY}ab`,
+  },
+  {
+    // the word is two flags, 4 cells, in a line of 3: broken between the flags, never between a flag's two letters
+    name: 'a word wider than its line breaks between flags, never inside one',
+    tree: `stack(<column>, 0, <stretch>, <start>, 0, one(text-node(<${FLAG}${FLAG} x>)))`,
+    width: 3,
+    height: 3,
+    want: `${FLAG}\n${FLAG}\nx`,
+  },
+  {
+    // the jamo are one syllable of 2 cells, so `x` fits in the third. Counted per code point they were 4
+    name: 'a Hangul syllable spelled in jamo takes 2 cells',
+    tree: `stack(<row>, 0, <stretch>, <start>, 0, one(text-node(<${JAMO}x>)))`,
+    width: 3,
+    height: 1,
+    want: `${JAMO}x`,
+  },
+  {
+    // the heart drawn as an emoji is 2 cells, so the 3 cell text ends against the edge of 4 with one cell before it
+    name: 'a character asked to draw as an emoji takes 2 cells',
+    tree: `stack(<row>, 0, <stretch>, <end>, 0, one(text-node(<${HEART}x>)))`,
+    width: 4,
+    height: 1,
+    want: ` ${HEART}x`,
+  },
 ]
+
+// whole texts measured by the grid beside string-width, which measures by grapheme cluster
+const CLUSTER_SAMPLES = [FAMILY, FLAG, JAMO, '\u{AC00}\u{11A8}', '\u{1100}\u{1161}', HEART, 'e\u{301}', `${FLAG}${FLAG}`, `a${FAMILY}b`, '#\u{FE0F}\u{20E3}', '\u{1F44D}\u{1F3FD}', '日本']
 
 // the tree builders the cases call, and one line per case into the output
 const PROGRAM = `load @term/site/code/view/cells/grid
   find cell-node
   find lay-out
+  find runes-width
 
 load @term/base/code/list
   find list
+
+load @term/base/text/unicode
+  find to-runes
+
+task cluster-cells
+  take value, like text
+  like number
+  send back
+    call runes-width
+      call to-runes
+        read value
 
 task blank
   like cell-node
@@ -379,19 +451,26 @@ if (result.ok) {
     '  const ours = cellWidth(rune)',
     '  if (ours !== theirs) { count++; if (disagree.length < 8) disagree.push([rune, ours, theirs]) }',
     '}',
+    `const clusters = ${JSON.stringify(CLUSTER_SAMPLES)}.map(text => [text, clusterCells(text), stringWidth(text)])`,
   ].join('\n')
-  writeFileSync(file, `${nativePrelude(result.program, 'node', readRuntime, result.typescript)}\n${result.typescript}\n${witness}\nconsole.log(JSON.stringify({ grids: [${calls}], count, disagree }))\n`)
+  writeFileSync(file, `${nativePrelude(result.program, 'node', readRuntime, result.typescript)}\n${result.typescript}\n${witness}\nconsole.log(JSON.stringify({ grids: [${calls}], count, disagree, clusters }))\n`)
   const ran = spawnSync('npx', ['tsx', file], { encoding: 'utf8' })
   ok('it runs', ran.status === 0, ran.stderr.slice(0, 600))
 
   if (ran.status === 0) {
-    const { grids, count, disagree } = JSON.parse(ran.stdout.trim().split('\n').pop()!) as {
+    const { grids, count, disagree, clusters } = JSON.parse(ran.stdout.trim().split('\n').pop()!) as {
       grids: string[]
       count: number
       disagree: [number, number, number][]
+      clusters: [string, number, number][]
     }
     const shown = disagree.map(([rune, ours, theirs]) => `U+${rune.toString(16).toUpperCase()} ${ours} not ${theirs}`)
     ok('cell-width agrees with string-width on all 1,114,112 code points', count === 0, `${count} disagree: ${shown.join(', ')}`)
+
+    for (const [text, ours, theirs] of clusters) {
+      const spelled = [...text].map(rune => `U+${rune.codePointAt(0)!.toString(16).toUpperCase()}`).join(' ')
+      ok(`${spelled} takes ${theirs} cells, as string-width measures the cluster`, ours === theirs, `got ${ours}`)
+    }
 
     for (const [i, one] of CASES.entries()) {
       ok(one.name, grids[i] === one.want, `got ${JSON.stringify(grids[i])}, want ${JSON.stringify(one.want)}`)

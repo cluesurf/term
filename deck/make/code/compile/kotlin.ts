@@ -7,7 +7,9 @@
 
 import { armLocals } from '@term/make/code/check/arm'
 import { provenIncrements } from '@term/make/code/ir/facts/range'
-import { boundedLoops } from '@term/make/code/ir/facts/bounds'
+import { provenArithmetic, type Proven } from '@term/make/code/compile/proven'
+import { boundedLoops, listKey } from '@term/make/code/ir/facts/bounds'
+import { asciiTexts } from '@term/make/code/ir/facts/text'
 import type {
   Expression,
   Program,
@@ -22,10 +24,13 @@ import {
   stringCall,
   stringRead,
   isText,
+  textValued,
 } from '@term/make/code/compile/backend'
 import type { CollectionOp, FormKind, FormSpec } from '@term/make/code/compile/backend'
-import { recordCopies } from '@term/make/code/compile/backend'
-import { recordPlaces } from '@term/make/code/compile/place'
+import { asciiCharAppend, assignsName, emptyText, fillCall, fillTasks, lastReads, listGenerator, mapUpdate, namesIn, ownedFields, slotTakes, tailTasks, recordCopies, redeclaredLets, textAppend, textBuilders, textCursors } from '@term/make/code/compile/backend'
+import { rustBoxing } from '@term/make/code/compile/rust'
+import type { TextCursors } from '@term/make/code/compile/backend'
+import { privateForms, recordPlaces, recordReuse } from '@term/make/code/compile/place'
 import {
   escapingParams,
   formSpec,
@@ -140,6 +145,64 @@ export const KOTLIN_TEXT = `object TermText {
         val u = unit(s, i)
         return if (u < 0 || u >= s.length) -1L else s.codePointAt(u).toLong()
     }
+    // an ASCII text (ir/facts/text.ts): a code point is one UTF-16 unit, read by its index
+    fun asciiCodeAt(s: CharSequence, i: Long): Long = if (i >= 0 && i < s.length) s[i.toInt()].code.toLong() else -1L
+    fun asciiCharAt(s: CharSequence, i: Long): String = if (i >= 0 && i < s.length) s[i.toInt()].toString() else ""
+    fun asciiAppend(out: StringBuilder, s: CharSequence, i: Long) { if (i >= 0 && i < s.length) out.append(s[i.toInt()]) }
+    // both ends clamped to the text and swapped when reversed (the Term meaning), as unit indexes
+    fun asciiSubstring(s: String, a: Long, e: Long = s.length.toLong()): String {
+        val n = s.length.toLong()
+        val x = a.coerceIn(0L, n)
+        val y = e.coerceIn(0L, n)
+        return if (x <= y) s.substring(x.toInt(), y.toInt()) else s.substring(y.toInt(), x.toInt())
+    }
+    // a code point read through a cursor (backend.ts, textCursors): [code-point index, unit offset] of the last read,
+    // stepped forward or back from, or restarted at the start when that is nearer. A read past the end leaves it there
+    // the UTF-16 offset of code point i, the end past the last
+    fun cursorTo(s: String, i: Long, c: LongArray): Int {
+        var k = c[0]
+        var u = c[1].toInt()
+        if (i < k) {
+            if (i <= k - i) {
+                k = 0L
+                u = 0
+            } else {
+                while (k > i) {
+                    u--
+                    if (u > 0 && Character.isLowSurrogate(s[u]) && Character.isHighSurrogate(s[u - 1])) u--
+                    k--
+                }
+            }
+        }
+        while (k < i && u < s.length) {
+            u += Character.charCount(s.codePointAt(u))
+            k++
+        }
+        c[0] = k
+        c[1] = u.toLong()
+        return u
+    }
+    fun cursorAt(s: String, i: Long, c: LongArray): Int {
+        if (i < 0) return -1
+        val u = cursorTo(s, i, c)
+        return if (c[0] == i && u < s.length) s.codePointAt(u) else -1
+    }
+    // the code points from a to e through the cursor, both clamped and swapped when reversed: the cursor moves to the
+    // start, and the end is counted on from it
+    fun cursorSlice(s: String, a: Long, e: Long, c: LongArray): String {
+        val x = maxOf(minOf(a, e), 0L)
+        val y = maxOf(maxOf(a, e), 0L)
+        val from = cursorTo(s, x, c)
+        var to = from
+        var k = c[0]
+        while (k < y && to < s.length) {
+            to += Character.charCount(s.codePointAt(to))
+            k++
+        }
+        return s.substring(from, to)
+    }
+    fun cursorCodeAt(s: String, i: Long, c: LongArray): Long = cursorAt(s, i, c).toLong()
+    fun cursorCharAt(s: String, i: Long, c: LongArray): String { val x = cursorAt(s, i, c); return if (x < 0) "" else String(Character.toChars(x)) }
     fun indexOf(s: String, n: String, from: Long = 0L): Long {
         val u = if (from <= 0L) 0 else unit(s, from).let { if (it < 0) s.length else it }
         val r = s.indexOf(n, u)
@@ -152,7 +215,19 @@ export const KOTLIN_TEXT = `object TermText {
         return if (r < 0) -1L else s.codePointCount(0, r).toLong()
     }
     fun split(s: String, d: String): MutableList<String> {
-        if (d.isNotEmpty()) return s.split(d).toMutableList()
+        // the pieces straight into the one list returned, where split(d).toMutableList() built it twice
+        if (d.isNotEmpty()) {
+            val out = ArrayList<String>()
+            var start = 0
+            while (true) {
+                val at = s.indexOf(d, start)
+                if (at < 0) break
+                out.add(s.substring(start, at))
+                start = at + d.length
+            }
+            out.add(s.substring(start))
+            return out
+        }
         val out = ArrayList<String>(s.length)
         var u = 0
         while (u < s.length) { val w = Character.charCount(s.codePointAt(u)); out.add(s.substring(u, u + w)); u += w }
@@ -285,6 +360,22 @@ export const KOTLIN_LONGS = `class TermLongs(capacity: Int) : AbstractMutableLis
         data[index] = element
         return old
     }
+    // the same reads and writes, not through the generic List signature, which boxes on the JVM: what a record's own
+    // list field typed TermLongs is read and written with (kotlin.ts, fieldLists)
+    fun getLong(index: Int): Long {
+        if (index < 0 || index >= count) outside(index)
+        return data[index]
+    }
+    fun setLong(index: Int, element: Long) {
+        if (index < 0 || index >= count) outside(index)
+        data[index] = element
+    }
+    // a push past the generic List signature, which boxes: what \`termPushLong\` calls
+    fun addLong(element: Long) {
+        room(count + 1)
+        data[count++] = element
+        modCount++
+    }
     override fun add(element: Long): Boolean {
         room(count + 1)
         data[count++] = element
@@ -329,8 +420,32 @@ fun mutableLongListOf(vararg items: Long): MutableList<Long> {
     return list
 }
 
+// a push onto a list of \`Long\`, the value passed unboxed: a TermLongs takes it straight into its storage, any other
+// list through the generic add. Answers the new size, as \`list_push\` does
+fun termPushLong(xs: MutableList<Long>, x: Long): Long {
+    if (xs is TermLongs) {
+        xs.addLong(x)
+        return xs.count.toLong()
+    }
+    xs.add(x)
+    return xs.size.toLong()
+}
+
 // a fixed list (backend.ts, fixedLists) taken from a fresh task's result: one copy of the storage
 fun termLongArray(xs: MutableList<Long>): LongArray = if (xs is TermLongs) xs.data.copyOf(xs.count) else xs.toLongArray()
+
+// a list a record owns (kotlin.ts, fieldLists), as the TermLongs its field is typed: the list itself when it is one,
+// else a copy, which is safe since nothing else holds a list the record owns
+fun termLongs(xs: MutableList<Long>): TermLongs = if (xs is TermLongs) xs else (mutableLongListOf(xs) as TermLongs)
+
+// a list of n copies of x (backend.ts, fillTasks): one allocation, already zero, written only for another value
+fun termLongsFilled(n: Long, x: Long): MutableList<Long> {
+    val size = Math.toIntExact(maxOf(n, 0L))
+    val list = TermLongs(maxOf(size, 10))
+    if (x != 0L) list.data.fill(x, 0, size)
+    list.count = size
+    return list
+}
 
 fun mutableLongListOf(from: Collection<Long>): MutableList<Long> {
     val list = TermLongs(maxOf(from.size, 10))
@@ -416,16 +531,34 @@ export function emitKotlin(
 ): string {
   // the prelude helpers this program calls, recorded where each call is written (KOTLIN_HELPERS)
   const needs = new Set<KotlinHelper>()
-  // the `+` nodes proven not to overflow (ir/facts/range.ts): written as a plain `+`
-  const provenSteps = provenIncrements(program)
+  // the `+`, `-` and `*` nodes proven not to overflow (compile/proven.ts): written as the plain operator. The counted
+  // steps here, joined below by the interval fact once the list facts it reads are known
+  let provenSteps: Proven = provenIncrements(program)
   // the counted loops whose calls to a bounded task may run its unchecked copy (ir/facts/bounds.ts), the calls in the
   // copy being emitted, the tasks some such call reached, and whether the body being emitted is an unchecked copy
+  // no lend facts: a fast copy of a task that takes a list is emitted under its own name, which this backend's list
+  // facts (the lent, fixed and borrowed parameters, all keyed by task) do not reach, so only tasks that take no list
+  // run unchecked here. TypeScript keys no list representation by task and passes them
   const loopGuards = boundedLoops(program)
   // where a record is copied so a write through one name cannot reach another (backend.ts, `recordCopies`)
   const copies = recordCopies(program)
+  // the text expressions proven ASCII, read by index (ir/facts/text.ts)
+  const asciiNodes = asciiTexts(program)
   let fastCalls = new Set<object>()
   const fastTasks = new Set<string>()
   let uncheckedInts = false
+  // the lists the loop copy being emitted indexes with `toInt()`: its guard proved every index inside them, keyed by
+  // `listKey` (a variable's name, or a path's key)
+  let intLists = new Set<string>()
+  // the lists reached through a path that the loop copy being emitted read once before it, each by its key, and the
+  // count for their locals' names
+  let hoisted = new Map<string, string>()
+  let pathCount = 0
+  // the text locals of the task being emitted that are built only by appending: StringBuilders (`textBuilders`)
+  let builders = new Set<string>()
+  // the texts this task reads through a cursor (backend.ts, `textCursors`)
+  let cursors: TextCursors = { names: [], reads: new Map() }
+  let redeclared = new WeakSet<Statement>()
   // the field names some assignment in the program writes (`save p/x, ...`): every other field is a `val`
   const assignedFields = fieldsAssigned(program)
   // the slot writes of a record that assign the changed fields of the object already there (compile/place.ts): no
@@ -434,6 +567,23 @@ export function emitKotlin(
 
   for (const place of places.values()) {
     place.fields.forEach(f => assignedFields.add(f.name))
+  }
+
+  // a record built in the object its task was given, where the caller's slot is written with it at once
+  // (compile/place.ts, `recordReuse`): the sites call the task's reusing copy, and that form's fields are `var`
+  const reuse = recordReuse(program)
+  // the tasks whose every self call is a tail call (backend.ts, `tailTasks`)
+  const tailCalls = tailTasks(program)
+  const reuseTasks = new Set<string>()
+  // set while a reusing copy is emitted: its record parameter, and the builds it makes in that object
+  let reusing: { param: string; builds: WeakSet<object>; keep?: string; carriers?: WeakSet<object> } | undefined
+  // the carrier locals of the task being emitted that hold their kept field alone, to that field's name
+  let carrierLocals = new Map<string, string>()
+
+  for (const n of program) {
+    if (n.form === 'record-type' && reuse.forms.has(n.name)) {
+      n.fields.forEach(f => assignedFields.add(f.name))
+    }
   }
 
   // the names the function being emitted reassigns, for `var` against `val`; undefined at module level
@@ -693,21 +843,374 @@ export function emitKotlin(
   // F1, the fixed-length slice (backend.ts, `fixedLists`): an integer list a task owns outright and never grows, or a
   // lent parameter every caller fills with one, is a plain `LongArray`, where every other list is a `MutableList<Long>`
   // reached through the interface. `xs[i]`, `xs.size` and a walk read the same on both
-  // the primitive array a fixed list of this element is: `LongArray` for an integer, `DoubleArray` for a decimal
-  const arrayKind = (t: Type | undefined): 'Long' | 'Double' | undefined =>
+  // the primitive array a fixed list of this element is: `LongArray` for an integer, `DoubleArray` for a decimal,
+  // `BooleanArray` for a flag (AWFY's Sieve: a `MutableList<Boolean>` read each flag through the interface and unboxed it)
+  type ArrayKind = 'Long' | 'Double' | 'Boolean'
+  // what a variant's array field holds: a primitive array, or `Object`, an `Array<T>` (`variantArrays`)
+  type HeldKind = ArrayKind | 'Object'
+  const arrayKind = (t: Type | undefined): ArrayKind | undefined =>
     t?.kind === 'number' || (t?.kind === 'named' && (t.name === 'number' || t.name === 'integer'))
       ? 'Long'
       : t?.kind === 'float' || (t?.kind === 'named' && t.name === 'decimal')
         ? 'Double'
-        : undefined
+        : t?.kind === 'boolean'
+          ? 'Boolean'
+          : undefined
   const listGates = gatedTasks(program, maskMethods)
   const { lend: lendParams, fresh: freshLists } = listFacts(program, listGates)
-  const fixed = fixedLists(program, lendParams, freshLists, t => arrayKind(t) !== undefined)
+  provenSteps = provenArithmetic(program, lendParams, freshLists)
+  // what a fixed list of this element is held as: its primitive array, or an `Array<T>` for any element whose type names
+  // no type variable (an `Array<T>` of a type parameter cannot be made without reifying it). A fixed list is an owned
+  // local or a lent parameter, mentioned only for its size, a slot, a walk or a lent argument (`ownedLocals`), so it is
+  // never compared or printed, where an array would differ from the list by comparing by reference
+  const concrete = (t: Type | undefined): boolean => {
+    if (!t || t.kind === 'variable') return false
+    // every type a type nests: an element, a key and a value, type arguments, a function's parameters and result
+    const loose = t as unknown as { element?: Type; key?: Type; value?: Type; args?: Type[]; params?: Type[]; result?: Type }
+    const nested = [loose.element, loose.key, loose.value, loose.result, ...(loose.args ?? []), ...(loose.params ?? [])].filter((x): x is Type => x !== undefined)
+
+    return nested.every(concrete)
+  }
+  const fixedKind = (t: Type | undefined): HeldKind | undefined => arrayKind(t) ?? (concrete(t) ? 'Object' : undefined)
+  // a generated list starts full (`listGenerator`), since this backend makes it in one construction
+  const fixed = fixedLists(program, lendParams, freshLists, t => fixedKind(t) !== undefined, true)
   // the primitive-array names of the function being emitted, its fixed locals and parameters, each with its kind
-  let arrayNames = new Map<string, 'Long' | 'Double'>()
+  let arrayNames = new Map<string, HeldKind>()
+  // the walks by position written so far, for their locals' names (`__walked0`, `__at0`)
+  let walkCount = 0
+  // the variants whose nodes are reused (`kotlinReuse`), and the match subjects of the task being emitted that were taken
+  // from a list slot at their last read (backend.ts, `slotTakes`): a node so taken, of such a variant, is dead once its
+  // arm has read its fields and written its slot back
+  const reuseVariants = kotlinReuse(program)
+  // the plain records' lists of `Long` the record owns (backend.ts, `ownedFields`), each typed `TermLongs` and read and
+  // written through `getLong` and `setLong`: through the List interface every read and write of one boxed, Particle 391
+  // ms to 307 (`tmp/kotlin-particle-ab.ts`). A form whose values cross into native code keeps the interface
+  const ownedAll = ownedFields(program, freshLists, lendParams, privateForms(program, lendParams, freshLists))
+  const fieldLists = new Set(
+    [...ownedAll].filter(key => {
+      const [formName, fieldName] = key.split('/') as [string, string]
+      const form = program.find(n => n.form === 'record-type' && n.name === formName)
+      const field = form?.form === 'record-type' && form.variants.length === 0 && !form.shared ? form.fields.find(f => f.name === fieldName) : undefined
+
+      // a `number` element is the Long Kotlin holds as TermLongs (`kotlinType` is not defined yet here)
+      return field?.type.kind === 'array' && field.type.element.kind === 'number'
+    }),
+  )
+  // a variant's own list of a primitive element that is only ever read, held as the primitive array it is (`LongArray`,
+  // `DoubleArray`, `BooleanArray`), keyed `variant/field` with its kind: a leaf one object lighter, Storage 305 ms to
+  // 261 (`tmp/kotlin-storage-ab3.ts`). The variant owns it (`ownedFields`), so nothing else can see whether it is
+  // copied, and every local an arm binds it to is only sized, indexed or walked, so its size never changes. Decided for
+  // the program, since the field has one type: a local that does anything else, or whose name the task also binds
+  // another way (the array names are kept per task, by name), leaves the field a list. The arm locals become array
+  // names of their tasks (`armArrays`), read through the fixed-list paths that already exist
+  // `Object` is a list of anything else, held as an `Array<T>`: taken only where every construction makes the array
+  // directly (checked below, once `generatorAt` exists), so no copy is ever added
+  const variantArrays = new Map<string, HeldKind>()
+  const armArrays = new Map<string, Map<string, HeldKind>>()
+  // the arms that bound each key, so a key dropped later takes its arm locals with it
+  const armsOf = new Map<string, { fn: string; local: string }[]>()
+  // each variant's fields with their types, for an `Array<T>` field's element
+  const variantFieldTypes = new Map<string, { name: string; type: Type }[]>()
+  {
+    const variantsOf = new Map<string, { fields: { name: string; type: Type }[]; generic: boolean }>()
+
+    for (const n of program) {
+      if (n.form === 'record-type') {
+        for (const v of n.variants) {
+          variantsOf.set(v.name, { fields: v.fields, generic: n.params.length > 0 })
+          variantFieldTypes.set(v.name, v.fields)
+        }
+      }
+    }
+
+    for (const key of ownedAll) {
+      const [variant, field] = key.split('/') as [string, string]
+      const shape = variantsOf.get(variant)
+      const type = shape?.fields.find(f => f.name === field)?.type
+      // a primitive element is its primitive array; anything concrete else an `Array<T>`, pending its constructions
+      const kind = !shape?.generic && type?.kind === 'array' ? (arrayKind(type.element) ?? (type.element.kind === 'variable' ? undefined : 'Object')) : undefined
+
+      if (kind) {
+        variantArrays.set(key, kind)
+      }
+    }
+
+    // whether every mention of `local` in an arm's body only sizes, indexes or walks it, outside any closure
+    const onlyArrayUses = (body: unknown, local: string): boolean => {
+      let ok = true
+      const visit = (value: unknown, parent: Record<string, unknown> | undefined, key: string): void => {
+        if (!ok || typeof value !== 'object' || value === null) {
+          return
+        }
+
+        if (Array.isArray(value)) {
+          value.forEach(v => visit(v, parent, key))
+
+          return
+        }
+
+        const node = value as Record<string, unknown> & { form?: string; name?: string }
+
+        if (node.form === 'variable' && node.name === local) {
+          const sized = parent?.form === 'call' && key === 'args' && (parent.callee as { name?: string }).name === 'list_size' && (parent.args as unknown[])[0] === node
+          // a slot by an index, or a literal one (`items/1`, a numeric name)
+          const indexed = parent?.form === 'member' && key === 'target' && (parent.index !== undefined || /^\d+$/.test(parent.name as string))
+          const counted = parent?.form === 'member' && key === 'target' && collectionRead(parent as unknown as Expression) !== undefined
+          const walked = parent?.form === 'for-each' && key === 'iterable'
+
+          if (!sized && !indexed && !counted && !walked) {
+            ok = false
+          }
+
+          return
+        }
+
+        // a closure that reads it could hand it anywhere, later
+        if (node.form === 'closure') {
+          const reads = (inner: unknown): boolean => {
+            if (typeof inner !== 'object' || inner === null) return false
+            if (Array.isArray(inner)) return inner.some(reads)
+            const n = inner as Record<string, unknown> & { form?: string; name?: string }
+            if (n.form === 'variable' && n.name === local) return true
+            return Object.entries(n).some(([k, child]) => k !== 'type' && k !== 'span' && reads(child))
+          }
+
+          if (reads(node.body)) {
+            ok = false
+          }
+
+          return
+        }
+
+        for (const [k, child] of Object.entries(node)) {
+          if (k !== 'type' && k !== 'span') {
+            visit(child, node, k)
+          }
+        }
+      }
+
+      visit(body, undefined, '')
+
+      return ok
+    }
+
+    // every name a task binds other than as an arm's field: its parameters, `let`s, walk items, closure parameters
+    const otherNames = (fn: Extract<Statement, { form: 'function' }>): Set<string> => {
+      const names = new Set(fn.params.map(p => p.name))
+      const visit = (value: unknown): void => {
+        if (typeof value !== 'object' || value === null) return
+        if (Array.isArray(value)) return value.forEach(visit)
+        const node = value as Record<string, unknown> & { form?: string; name?: string }
+        if (node.form === 'let') names.add(node.name as string)
+        if (node.form === 'for-each') {
+          names.add(node.item as string)
+          if (typeof node.index === 'string') names.add(node.index)
+        }
+        if (node.form === 'closure') for (const p of (node.params as { name: string }[]) ?? []) names.add(p.name)
+        for (const [k, child] of Object.entries(node)) if (k !== 'type' && k !== 'span') visit(child)
+      }
+      visit(fn.body)
+
+      return names
+    }
+
+    // each arm binding such a field, checked; one failure leaves the field a list everywhere
+    const arms: { fn: string; local: string; key: string; others: Set<string>; armNames: Map<string, string> }[] = []
+
+    for (const fn of program) {
+      if (fn.form !== 'function') {
+        continue
+      }
+
+      const others = otherNames(fn)
+      // every arm local of the task by name, with the field key it is bound to (a local bound to two keys refuses)
+      const armNames = new Map<string, string>()
+      const visit = (value: unknown): void => {
+        if (typeof value !== 'object' || value === null) return
+        if (Array.isArray(value)) return value.forEach(visit)
+        const node = value as Record<string, unknown> & { form?: string }
+
+        if (node.form === 'match') {
+          for (const c of node.cases as { label: string; binds?: string[]; body: Statement[] }[]) {
+            const shape = variantsOf.get(c.label)
+
+            for (const { field, local } of shape ? armLocals(shape.fields.map(f => f.name), c.binds ?? []) : []) {
+              const key = `${c.label}/${field}`
+              const before = armNames.get(local)
+
+              armNames.set(local, before === undefined || before === key ? key : '')
+
+              if (variantArrays.has(key)) {
+                if (!onlyArrayUses(c.body, local)) {
+                  variantArrays.delete(key)
+                }
+
+                arms.push({ fn: fn.name, local, key, others, armNames })
+              }
+            }
+          }
+        }
+
+        for (const [k, child] of Object.entries(node)) if (k !== 'type' && k !== 'span') visit(child)
+      }
+
+      visit(fn.body)
+    }
+
+    for (const arm of arms) {
+      if (arm.others.has(arm.local) || arm.armNames.get(arm.local) !== arm.key) {
+        variantArrays.delete(arm.key)
+      }
+    }
+
+    for (const arm of arms) {
+      const kind = variantArrays.get(arm.key)
+
+      if (kind) {
+        armArrays.set(arm.fn, new Map([...(armArrays.get(arm.fn) ?? []), [arm.local, kind]]))
+        armsOf.set(arm.key, [...(armsOf.get(arm.key) ?? []), { fn: arm.fn, local: arm.local }])
+      }
+    }
+  }
+  // a path `r/field` to a list of `Long` the record owns
+  const ownedPath = (target: Expression): boolean =>
+    target.form === 'member' &&
+    target.index === undefined &&
+    target.target.type?.kind === 'named' &&
+    fieldLists.has(`${target.target.type.name}/${target.name}`)
+  let takenSubjects = new WeakMap<object, unknown>()
+  // the field-less case of a form, which `slotTakes` asks for
+  const emptyCaseOf = (type: Type | undefined): { form: string; empty: string } | undefined => {
+    const form = type?.kind === 'named' ? program.find(n => n.form === 'record-type' && n.name === type.name) : undefined
+    const empty = form?.form === 'record-type' ? form.variants.find(v => v.fields.length === 0) : undefined
+
+    return form && empty ? { form: form.name, empty: empty.name } : undefined
+  }
   // a fixed list of this kind taken from a fresh task's result: one copy of the storage
-  const toArray = (kind: 'Long' | 'Double', list: string): string =>
-    kind === 'Long' ? need('longs', `termLongArray(${list})`) : `(${list}).toDoubleArray()`
+  const toArray = (kind: HeldKind, list: string): string =>
+    kind === 'Long' ? need('longs', `termLongArray(${list})`) : kind === 'Object' ? `(${list}).toTypedArray()` : `(${list}).to${kind}Array()`
+  // the tasks that only fill a list (backend.ts, `fillTasks`), and the one-allocation form of a call to one: the
+  // primitive array itself where a fixed list takes it, where the list was built boxed and then copied. Only for an
+  // item that is a literal or a name, since the initializer runs once per element
+  const fills = fillTasks(program)
+  const filled = (node: Expression, kind?: HeldKind): string | undefined => {
+    const fill = node.form === 'call' && node.callee.form === 'variable' && !localNames.has(node.callee.name) ? fillCall(node, fills) : undefined
+
+    if (!fill || !['variable', 'integer', 'float', 'boolean', 'string'].includes(fill.item.form)) {
+      return undefined
+    }
+
+    const size = fill.size.form === 'integer' ? `${Math.max(Number(fill.size.value), 0)}` : `Math.toIntExact(maxOf(${expr(fill.size)}, 0L))`
+    // a primitive array starts at its kind's zero, so a fill with that zero is the array alone, with no initializer
+    const zero =
+      (fill.item.form === 'integer' && Number(fill.item.value) === 0) ||
+      (fill.item.form === 'float' && Number(fill.item.value) === 0 && !Object.is(Number(fill.item.value), -0)) ||
+      (fill.item.form === 'boolean' && fill.item.value === false)
+
+    // an `Array<T>` has no zero of its own: every slot runs the initializer
+    if (kind === 'Object') {
+      return `Array(${size}) { ${expr(fill.item)} }`
+    }
+
+    if (kind && zero) {
+      return `${kind}Array(${size})`
+    }
+
+    return kind ? `${kind}Array(${size}) { ${expr(fill.item)} }` : `MutableList(${size}) { ${expr(fill.item)} }`
+  }
+
+  // A list GENERATED by a counted loop (backend.ts, `listGenerator`) is written as one sized construction:
+  // `MutableList(n) { e }`, which runs `e` for each index in the same order and makes the list at its size, where it grew
+  // from capacity 10 (Storage's kids 271 ms to 258, `tmp/kotlin-storage-ab4.ts`); a fixed list's own array where the list
+  // is fixed (`fixedLists`); and an `Array<T>` where its one use is a variant's array field (`arrayGenerators`). A list of
+  // `Long` that is not fixed keeps its `TermLongs`
+  const generatorAt = listGenerator
+  // the generators whose list is written as an `Array<T>`, since its one use is a variant's array field (`variantArrays`)
+  const arrayGenerators = new WeakSet<object>()
+
+  // an `Object` array field is kept only where every construction makes the array directly: an empty list, a fill, or a
+  // generator's list that nothing but its push and this construction mentions. Anything else leaves it a list, with its
+  // arm locals, so no copy is ever added
+  {
+    const constructions = new Map<string, { fn: Extract<Statement, { form: 'function' }>; value: Expression }[]>()
+
+    for (const fn of program) {
+      if (fn.form !== 'function') continue
+      const visit = (value: unknown): void => {
+        if (typeof value !== 'object' || value === null) return
+        if (Array.isArray(value)) return value.forEach(visit)
+        const node = value as { form?: string; name?: string; fields?: { name: string; value: Expression }[] }
+        if (node.form === 'record') {
+          for (const f of node.fields ?? []) {
+            const key = `${node.name}/${f.name}`
+            if (variantArrays.get(key) === 'Object') constructions.set(key, [...(constructions.get(key) ?? []), { fn, value: f.value }])
+          }
+        }
+        for (const [k, child] of Object.entries(node)) if (k !== 'type' && k !== 'span') visit(child)
+      }
+      visit(fn.body)
+    }
+
+    // the generator that makes `name` in `fn`, if any, found in whichever statement list declares it
+    const generatorOf = (fn: Extract<Statement, { form: 'function' }>, name: string): Statement | undefined => {
+      let found: Statement | undefined
+      const visit = (value: unknown): void => {
+        if (found || typeof value !== 'object' || value === null) return
+        if (Array.isArray(value)) {
+          value.forEach((s, at) => {
+            const node = s as { form?: string; name?: string }
+            if (!found && node?.form === 'let' && node.name === name && generatorAt(value as Statement[], at, fn)?.list === name) found = s as Statement
+          })
+          value.forEach(visit)
+          return
+        }
+        for (const [k, child] of Object.entries(value)) if (k !== 'type' && k !== 'span') visit(child)
+      }
+      visit(fn.body)
+      return found
+    }
+    const mentions = (fn: Extract<Statement, { form: 'function' }>, name: string): number => {
+      let count = 0
+      const visit = (value: unknown): void => {
+        if (typeof value !== 'object' || value === null) return
+        if (Array.isArray(value)) return value.forEach(visit)
+        const node = value as { form?: string; name?: string }
+        if (node.form === 'variable' && node.name === name) count++
+        for (const [k, child] of Object.entries(node)) if (k !== 'type' && k !== 'span') visit(child)
+      }
+      visit(fn.body)
+      return count
+    }
+
+    for (const [key, kind] of [...variantArrays]) {
+      if (kind !== 'Object') continue
+      const made: Statement[] = []
+      const direct = (constructions.get(key) ?? []).every(({ fn, value }) => {
+        if ((value.form === 'array' && value.items.length === 0) || (value.form === 'record' && value.name === 'list' && value.fields.length === 0)) return true
+        if (value.form === 'call' && value.callee.form === 'variable' && fillCall(value, fills)) return true
+        if (value.form !== 'variable') return false
+        const generator = generatorOf(fn, value.name)
+        // the push and this construction, and nothing else
+        if (!generator || mentions(fn, value.name) !== 2) return false
+        made.push(generator)
+        return true
+      })
+
+      if (!direct) {
+        variantArrays.delete(key)
+
+        for (const { fn, local } of armsOf.get(key) ?? []) {
+          armArrays.get(fn)?.delete(local)
+        }
+
+        continue
+      }
+
+      made.forEach(m => arrayGenerators.add(m))
+    }
+  }
+  // the task being emitted, which a generator is checked against
+  let currentFn: Extract<Statement, { form: 'function' }> | undefined
 
   type Instance = Extract<Statement, { form: 'instance' }>
   const conformances = new Map<string, Instance[]>()
@@ -1014,6 +1517,12 @@ export function emitKotlin(
         // a `$` would open a Kotlin string template
         return JSON.stringify(node.value).replace(/\$/g, '\\$')
       case 'template':
+        // one text value alone is that value, where the interpolation built a copy of it. Not a bare name, which
+        // costs nothing to copy and would make `save t, text <{t}>` the self-assignment swiftc refuses
+        if (node.parts.length === 1 && typeof node.parts[0] !== 'string' && node.parts[0]!.form !== 'variable' && textValued(node.parts[0]!)) {
+          return expr(node.parts[0]!)
+        }
+
         // `"a${x}b"`: chunks escaped as a Kotlin string with `$` escaped, expressions interpolated
         // a float interpolates as `termNumber` lays it out, the same text as every other backend
         return `"${node.parts
@@ -1032,6 +1541,11 @@ export function emitKotlin(
       case 'variable':
         if (functionParams.has(node.name) && !localNames.has(node.name)) {
           return `::${camel(node.name)}`
+        }
+
+        // a text built by appending is a StringBuilder: read as its text
+        if (builders.has(node.name)) {
+          return `${camel(node.name)}.toString()`
         }
 
         return camel(node.name)
@@ -1057,7 +1571,8 @@ export function emitKotlin(
         // `Long.MIN_VALUE / -1` wraps to MIN_VALUE on the JVM; termDivide stops on it as every backend does. In a
         // task's unchecked copy the interval fact proved the divisor nonzero and every value inside the bound
         if (node.op === '/' && node.left.type?.kind === 'number' && node.right.type?.kind === 'number') {
-          if (uncheckedInts) {
+          // the interval fact proved the divisor nonzero and the dividend known, which rules out `MIN / -1` too
+          if (uncheckedInts || provenSteps.has(node)) {
             return `(${longOf(node.left)} / ${longOf(node.right)})`
           }
 
@@ -1078,6 +1593,25 @@ export function emitKotlin(
       }
 
       case 'call': {
+        // a call at a reuse site: the task's copy that builds its result in the object it is given
+        if (reuse.sites.has(node) && node.callee.form === 'variable') {
+          reuseTasks.add(node.callee.name)
+
+          return expr({ ...node, callee: { ...node.callee, name: `${node.callee.name}-reuse` } } as Expression)
+        }
+
+        // a call to a task that only fills a list (`fillTasks`) is the one allocation, where the list was grown one push
+        // at a time: AWFY's Storage, a list of 1 to 10 zeros per leaf, 349 ms to 301 (`tmp/kotlin-storage-ab.ts`)
+        if (node.callee.form === 'variable' && !localNames.has(node.callee.name) && node.type?.kind === 'array') {
+          const fill = fillCall(node, fills)
+
+          if (fill && ['variable', 'integer', 'float', 'boolean', 'string'].includes(fill.item.form)) {
+            return longList(node.type)
+              ? need('longs', `termLongsFilled(${expr(fill.size)}, ${expr(fill.item)})`)
+              : filled(node)!
+          }
+        }
+
         // a call the guarded loop copy may make unchecked (`LoopGuard.fast`): the task's copy with no overflow checks
         if (fastCalls.has(node) && node.callee.form === 'variable') {
           fastTasks.add(node.callee.name)
@@ -1113,10 +1647,27 @@ export function emitKotlin(
         ) {
           const bind = binds.get(node.callee.name)!
 
+          // the code-point count of an ASCII text (ir/facts/text.ts) is its length, where `codePointCount` walked it
+          if (node.callee.name === 'code-point-count' && node.args[0] && asciiNodes.has(node.args[0])) {
+            return `${expr(node.args[0])}.length.toLong()`
+          }
+
           return (
             renderBind(bind, 'kotlin', node.args.map(expr)) ??
             bindGap(bind.name)
           )
+        }
+
+        // a push onto a list of `Long` passes the value unboxed (`termPushLong`): through the generic `list_push` each
+        // value was boxed for `add` (`tmp/kotlin-polygon-ab2.ts`)
+        if (
+          node.callee.form === 'variable' &&
+          node.callee.name === 'list_push' &&
+          node.args.length === 2 &&
+          !(node.args[0]!.form === 'variable' && arrayNames.has(node.args[0]!.name)) &&
+          longList(node.args[0]!.type)
+        ) {
+          return need('longs', `termPushLong(${expr(node.args[0]!)}, ${longOf(node.args[1]!)})`)
         }
 
         // the size of a fixed list (a LongArray) is its own; the stdlib's generic `list_size` takes a MutableList
@@ -1140,6 +1691,48 @@ export function emitKotlin(
         const text = stringCall(node.callee)
 
         if (text) {
+          // an ASCII text (ir/facts/text.ts) is read by index: a code point is one UTF-16 unit, where
+          // `offsetByCodePoints` walked from the start
+          // a read through the text's cursor (backend.ts, `textCursors`) steps from the last read
+          const cursor = cursors.reads.get(node)
+
+          if (cursor !== undefined && (text.op === 'substring' || text.op === 'slice')) {
+            const to = node.args[1] ? expr(node.args[1]) : 'Long.MAX_VALUE'
+
+            return need('text', `TermText.cursorSlice(${expr(text.target)}, ${expr(node.args[0]!)}, ${to}, __cursor${pascal(cursor)})`)
+          }
+
+          if (cursor !== undefined) {
+            const read = text.op === 'charCodeAt' ? 'cursorCodeAt' : 'cursorCharAt'
+
+            return need('text', `TermText.${read}(${expr(text.target)}, ${expr(node.args[0]!)}, __cursor${pascal(cursor)})`)
+          }
+
+          if (asciiNodes.has(text.target) && ['charAt', 'at', 'charCodeAt'].includes(text.op)) {
+            const read = text.op === 'charCodeAt' ? 'asciiCodeAt' : 'asciiCharAt'
+
+            return need('text', `TermText.${read}(${expr(text.target)}, ${expr(node.args[0]!)})`)
+          }
+
+          if (asciiNodes.has(text.target) && (text.op === 'substring' || text.op === 'slice')) {
+            return need('text', `TermText.asciiSubstring(${[text.target, ...node.args].map(a => expr(a)).join(', ')})`)
+          }
+
+          // a search of an ASCII text answers a unit index, which is the code-point index
+          if (asciiNodes.has(text.target) && text.op === 'indexOf') {
+            const from = node.args[1] ? expr(node.args[1]) : '0L'
+
+            if (from === '0L') {
+              return `${expr(text.target)}.indexOf(${expr(node.args[0]!)}).toLong()`
+            }
+
+            return `${expr(text.target)}.let { h -> h.indexOf(${expr(node.args[0]!)}, (${from}).coerceIn(0L, h.length.toLong()).toInt()).toLong() }`
+          }
+
+          if (asciiNodes.has(text.target) && text.op === 'lastIndexOf') {
+            return `${expr(text.target)}.lastIndexOf(${expr(node.args[0]!)}).toLong()`
+          }
+
           return stringExpr(text.op, expr(text.target), node.args.map(a => expr(a)))
         }
 
@@ -1166,13 +1759,13 @@ export function emitKotlin(
         const recordWrites =
           node.callee.form === 'variable' && !localNames.has(node.callee.name) ? copies.params.get(node.callee.name) : undefined
         const rendered = node.args.map((a, i) => {
-          const kind = fixedAt?.has(i) ? arrayKind(a.type?.kind === 'array' ? a.type.element : undefined) : undefined
+          const kind = fixedAt?.has(i) ? fixedKind(a.type?.kind === 'array' ? a.type.element : undefined) : undefined
 
           if (recordWrites?.has(i) && a.form !== 'record') {
             return `${expr(a)}.copy()`
           }
 
-          return kind && !(a.form === 'variable' && arrayNames.has(a.name)) ? toArray(kind, expr(a)) : expr(a)
+          return kind && !(a.form === 'variable' && arrayNames.has(a.name)) ? (filled(a, kind) ?? toArray(kind, expr(a))) : expr(a)
         })
         const declaredParams =
           node.callee.form === 'variable'
@@ -1252,6 +1845,21 @@ export function emitKotlin(
       }
 
       case 'record': {
+        // a build the reusing copy makes in the object it was given: every field computed first, since each may read
+        // that object's old fields, then assigned on it
+        // a carrier whose kept field is answered alone: its build made in place, then that field
+        const build =
+          reusing?.keep && reusing.carriers?.has(node) ? node.fields.find(f => reusing!.builds.has(f.value))?.value : reusing?.builds.has(node) ? node : undefined
+
+        if (reusing && build?.form === 'record') {
+          const temps = build.fields.map((f, i) => `val __reuse${i} = ${expr(f.value)}`)
+          const sets = build.fields.map((f, i) => `${camel(reusing!.param)}.${camel(f.name)} = __reuse${i}`)
+          const kept = build === node ? undefined : node.fields.find(f => f.name === reusing!.keep)?.value
+          const answer = kept ? expr(kept) : camel(reusing.param)
+
+          return `run { ${[...temps, ...sets, answer].join('; ')} }`
+        }
+
         // `make hash` / `make list` with no binds are the native collections, not record constructions; the
         // checked type pins the element parameters where kotlin cannot infer them (a generic function body)
         if (node.name === 'hash' && node.fields.length === 0) {
@@ -1284,6 +1892,36 @@ export function emitKotlin(
         // an empty `make list` / `make hash` field value spells the DECLARED element type, since the
         // checker's gradual unify leaves it free and kotlin cannot infer it from a named argument
         const fieldValue = (name: string, value: Expression): string => {
+          // a variant's own list held as a primitive array (`variantArrays`): a fill is the array itself, an empty list
+          // an empty one, and anything else (a fresh list nothing else holds) its one copy
+          const array = variantArrays.get(`${node.name}/${name}`)
+
+          if (array) {
+            const empty = (value.form === 'array' && value.items.length === 0) || (value.form === 'record' && value.name === 'list' && value.fields.length === 0)
+
+            // an `Array<T>` is made directly by every construction (checked with `variantArrays`): empty, a fill, or a
+            // generator's own array
+            if (array === 'Object') {
+              const declared = variantFieldTypes.get(node.name)?.find(f => f.name === name)?.type
+              const element = declared?.kind === 'array' ? kotlinType(declared.element) : 'Any?'
+              const fill = value.form === 'call' && value.callee.form === 'variable' ? fillCall(value, fills) : undefined
+
+              if (empty) {
+                return `emptyArray<${element}>()`
+              }
+
+              if (fill) {
+                const size = fill.size.form === 'integer' ? `${Math.max(Number(fill.size.value), 0)}` : `Math.toIntExact(maxOf(${expr(fill.size)}, 0L))`
+
+                return `Array<${element}>(${size}) { ${expr(fill.item)} }`
+              }
+
+              return expr(value)
+            }
+
+            return empty ? `${array}Array(0)` : (filled(value, array) ?? toArray(array, expr(value)))
+          }
+
           // only for a non-generic form: a generic form's declared element is its own type parameter, which
           // the construction instantiates (spelling the letter literally would not resolve)
           if ((genericArity.get(node.name) ?? 0) > 0) {
@@ -1293,6 +1931,11 @@ export function emitKotlin(
           const declaredType = recordFields
             .get(node.name)
             ?.find(f => f.name === name)?.type
+
+          // a list of `Long` the record owns, as its field is typed (`fieldLists`)
+          if (fieldLists.has(`${node.name}/${name}`)) {
+            return need('longs', `termLongs(${expr(value)})`)
+          }
 
           if (
             ((value.form === 'record' &&
@@ -1323,10 +1966,13 @@ export function emitKotlin(
         }
 
         const cls = classFor(node.name, node.type)
+        // a node of a reused variant is built in the spare a pop kept, when there is one (`reuseVariants`)
+        const reusedVariant = cls ? reuseVariants.get(node.name) : undefined
+        const builder = reusedVariant && node.fields.length === reusedVariant.fields.length ? `termReuse${cls}` : cls
 
         if (cls) {
           return node.fields.length > 0
-            ? `${cls}(${node.fields
+            ? `${builder}(${node.fields
                 .map(f => `${camel(f.name)} = ${fieldValue(f.name, f.value)}`)
                 .join(', ')})`
             : cls
@@ -1337,7 +1983,10 @@ export function emitKotlin(
 
         if (declared) {
           const given = new Set(node.fields.map(f => f.name))
-          const missing = declared.filter(f => !given.has(f.name)).map(f => `${camel(f.name)} = ${emptyOf(f.type)}`)
+          // a list of `Long` the record owns left out is a new `TermLongs` (`fieldLists`)
+          const missing = declared
+            .filter(f => !given.has(f.name))
+            .map(f => `${camel(f.name)} = ${fieldLists.has(`${node.name}/${f.name}`) ? need('longs', 'TermLongs(10)') : emptyOf(f.type)}`)
           const all = [...node.fields.map(f => `${camel(f.name)} = ${fieldValue(f.name, f.value)}`), ...missing]
 
           if (missing.length > 0) {
@@ -1374,6 +2023,20 @@ export function emitKotlin(
       }
 
       case 'member': {
+        // the kept field of a carrier that holds it alone (compile/place.ts, `recordReuse`)
+        if (node.target.form === 'variable' && node.index === undefined && carrierLocals.get(node.target.name) === node.name) {
+          return camel(node.target.name)
+        }
+
+        // a list reached through a path that this loop copy read once before it
+        if (hoisted.size > 0 && node.index === undefined && node.type?.kind === 'array') {
+          const local = hoisted.get(listKey(node) ?? '')
+
+          if (local) {
+            return local
+          }
+        }
+
         // `map.size` / `array.length` lower to the platform's count property (as a Long, the seed number type)
         const read = collectionRead(node)
 
@@ -1391,10 +2054,23 @@ export function emitKotlin(
           // a list subscript takes Int, and seed numbers are Long: an ARRAY target's index narrows; a map key
           // passes through as it is. toIntExact stops on an index past Int, where `toInt()` wrapped it to a
           // different, valid-looking slot
+          // inside a guarded loop copy (ir/facts/bounds.ts) the index is proven inside the list, so inside Int, and
+          // narrows plainly: fannkuch-redux at n = 11, 2,157 ms to 2,033 (`tmp/kotlin-toint-ab.ts`)
+          const inside = intLists.size > 0 && intLists.has(listKey(node.target) ?? '')
+          const index = expr(node.index)
           const narrowed =
             node.target.type?.kind === 'array'
-              ? `Math.toIntExact(${expr(node.index)})`
-              : expr(node.index)
+              ? inside
+                ? `${/^\w+$/.test(index) ? index : `(${index})`}.toInt()`
+                : `Math.toIntExact(${index})`
+              : index
+
+          // a list of `Long` a record owns is read past the generic List signature (`fieldLists`), and inside a
+          // guarded copy straight from its storage: the guard proved the index below the list's own count, which is
+          // stricter than the storage's capacity (`tmp/kotlin-particle-ab2.ts`)
+          if (ownedPath(node.target)) {
+            return inside ? `${expr(node.target)}.data[${narrowed}]` : `${expr(node.target)}.getLong(${narrowed})`
+          }
 
           return `${expr(node.target)}[${narrowed}]`
         }
@@ -1627,10 +2303,111 @@ export function emitKotlin(
         continue
       }
 
+      // a list generated by a counted loop, made at its size in one construction (`generatorAt`), as an `Array<T>`
+      // where its one use is a variant's array field (`arrayGenerators`)
+      const found = generatorAt(body, at, currentFn)
+      // a fixed list (`fixedLists`) is made as its own array; a list of `Long` that is not fixed keeps its `TermLongs`
+      const fixedAs = found ? arrayNames.get(found.list) : undefined
+      const generator = found && (fixedAs || !longList(found.type)) ? found : undefined
+
+      if (generator) {
+        const size =
+          generator.bound.form === 'integer'
+            ? `${Math.max(Number(generator.bound.value) - generator.base, 0)}`
+            : `Math.toIntExact(maxOf(${expr(generator.bound)}${generator.base === 0 ? '' : ` - ${generator.base}L`}, 0L))`
+        const counter = camel(generator.counter)
+        const binds = namesIn(generator.item).has(generator.counter)
+        localNames.add(generator.list)
+        const item = expr(generator.item)
+        const element = kotlinType((generator.type as Extract<Type, { kind: 'array' }>).element)
+        const at0 = generator.base === 0 ? '__g.toLong()' : `__g.toLong() + ${generator.base}L`
+        const lambda = binds ? `{ __g -> val ${counter} = ${at0}; ${item} }` : `{ ${item} }`
+        const made =
+          fixedAs && fixedAs !== 'Object'
+            ? `${fixedAs}Array(${size}) ${lambda}`
+            : fixedAs === 'Object' || arrayGenerators.has(body[at]!)
+              ? `Array<${element}>(${size}) ${lambda}`
+              : `MutableList<${element}>(${size}) ${lambda}`
+
+        lines.push(`${pad(d)}val ${camel(generator.list)} = ${made}`)
+        at += 2
+        continue
+      }
+
+      // a list made empty and then filled by a counted loop is made at the size the loop fills it to (`reserveAt`)
+      const reserve = reserveAt(body, at)
+
+      if (reserve) {
+        localNames.add(reserve.list)
+        lines.push(`${pad(d)}val ${camel(reserve.list)}: MutableList<${reserve.element}> = ${reserve.made}`)
+        continue
+      }
+
       lines.push(`${pad(d)}${stmt(body[at]!, d)}`)
     }
 
     return lines.join('\n')
+  }
+
+  // A list made empty and then filled by a counted loop later in the same block, `while (i < n)` with `i` from a literal
+  // and k pushes onto it among the loop's own statements, is made with room for k * (n - base): Polygon's corners grew
+  // from 10 to 30 through three copies, 103 ms to 78 at that size (`tmp/kotlin-polygon-ab2.ts`). A capacity is a hint
+  // and nothing reads it, so the estimate need only be safe to compute where the list is made: `n` a literal, a
+  // parameter or a name this block declared before the list, clamped to [0, 2^20] since the loop may stop early. Only for
+  // a list never assigned whole (it is a `val` of the interface type), outside every other `let` rule
+  const reserveAt = (body: Statement[], at: number): { list: string; element: string; made: string } | undefined => {
+    const made = body[at]
+    const fn = currentFn
+
+    if (!fn || made?.form !== 'let' || made.type?.kind !== 'array' || made.type.element.kind === 'variable') {
+      return undefined
+    }
+
+    const empty =
+      (made.init.form === 'array' && made.init.items.length === 0) || (made.init.form === 'record' && made.init.name === 'list' && made.init.fields.length === 0)
+
+    if (!empty || redeclared.has(made) || arrayNames.has(made.name) || builders.has(made.name) || reuse.locals.has(made) || assignsName(fn.body, made.name)) {
+      return undefined
+    }
+
+    const loopAt = body.findIndex((s, i) => i > at && s.form === 'while')
+    const loop = body[loopAt]
+
+    if (loop?.form !== 'while' || loop.cond.form !== 'binary' || loop.cond.op !== '<' || loop.cond.left.form !== 'variable') {
+      return undefined
+    }
+
+    const counter = loop.cond.left.name
+    const start = body.slice(at + 1, loopAt).find((s): s is Extract<Statement, { form: 'let' }> => s.form === 'let' && s.name === counter)
+    const bound = loop.cond.right
+    const declaredBefore = (name: string): boolean =>
+      fn.params.some(p => p.name === name) || body.slice(0, at).some(s => s.form === 'let' && s.name === name)
+    const pushes = loop.body.filter(
+      s =>
+        s.form === 'expression' &&
+        s.expr.form === 'call' &&
+        s.expr.callee.form === 'variable' &&
+        s.expr.callee.name === 'list_push' &&
+        s.expr.args[0]?.form === 'variable' &&
+        s.expr.args[0].name === made.name,
+    ).length
+
+    if (!start || start.init.form !== 'integer' || pushes === 0 || !(bound.form === 'integer' || (bound.form === 'variable' && declaredBefore(bound.name)))) {
+      return undefined
+    }
+
+    const base = Number(start.init.value)
+    const turns =
+      bound.form === 'integer'
+        ? `${Math.min(Math.max(Number(bound.value) - base, 0), 1 << 20) * pushes}`
+        : `Math.toIntExact(minOf(maxOf(${camel(bound.name)}${base === 0 ? '' : ` - ${base}L`}, 0L), ${1 << 20}L))${pushes === 1 ? '' : ` * ${pushes}`}`
+    const element = kotlinType(made.type.element)
+
+    return {
+      list: made.name,
+      element,
+      made: longList(made.type) ? need('longs', `TermLongs(${turns})`) : `ArrayList<${element}>(${turns})`,
+    }
   }
 
   const stmt = (node: Statement, d: number): string => {
@@ -1638,9 +2415,31 @@ export function emitKotlin(
       case 'let': {
         localNames.add(node.name)
 
+        // a second declaration of a name the same statement list declared already is an assignment to it (backend.ts,
+        // `redeclaredLets`): two counted walks over `i` in one task
+        if (redeclared.has(node)) {
+          return `${camel(node.name)} = ${expr(node.init)}`
+        }
+
+        // a carrier at a reuse site holds its kept field alone (compile/place.ts, `recordReuse`)
+        const kept = reuse.locals.get(node)
+
+        if (kept !== undefined) {
+          carrierLocals.set(node.name, kept)
+
+          return `val ${camel(node.name)} = ${expr(node.init)}`
+        }
+
+        // a text built only by appending (`textBuilders`) is a StringBuilder, its init read before it becomes one
+        if (builders.has(node.name)) {
+          return `val ${camel(node.name)} = StringBuilder(${expr(node.init)})`
+        }
+
         // a fixed list local (fixedLists) is a `LongArray`, taken once from the fresh task that made it
         if (arrayNames.has(node.name) && node.init.form === 'call') {
-          return `val ${camel(node.name)} = ${toArray(arrayNames.get(node.name)!, expr(node.init))}`
+          // a fixed local is its primitive array or an `Array<T>`, taken once from the fresh task's list
+          const kind = arrayNames.get(node.name)!
+          return `val ${camel(node.name)} = ${filled(node.init, kind) ?? toArray(kind, expr(node.init))}`
         }
 
         // a lambda binding is annotated with its full function type: Kotlin cannot infer a lambda's parameter types
@@ -1693,6 +2492,42 @@ export function emitKotlin(
         )}${ann} = ${init}`
       }
       case 'assign': {
+        // the write-back of a reuse site: the reusing copy built the record in the object this slot holds already
+        if (reuse.writeBacks.has(node)) {
+          return '// the slot holds the record its task built in place'
+        }
+
+        // an append to a text built only by appending is the StringBuilder's own, in place (`textBuilders`)
+        const append = textAppend(node)
+
+        if (append && builders.has(append.name)) {
+          // one character of an ASCII text is appended as the Char, with no one-character String made for it
+          const char = asciiCharAppend(append.rest, asciiNodes)
+
+          if (char) {
+            return need('text', `TermText.asciiAppend(${camel(append.name)}, ${expr(char.text)}, ${expr(char.index)})`)
+          }
+
+          return `${camel(append.name)}.append(${expr(append.rest)})`
+        }
+
+        // a builder reset to the empty text keeps its storage
+        if (node.target.form === 'variable' && builders.has(node.target.name) && emptyText(node.value)) {
+          return `${camel(node.target.name)}.setLength(0)`
+        }
+
+        // a slot of a list of `Long` a record owns, written past the generic List signature (`fieldLists`)
+        if (node.op === '=' && node.target.form === 'member' && node.target.index && ownedPath(node.target.target)) {
+          // inside a guarded copy, straight into its storage, the index proven below the list's count
+          if (intLists.size > 0 && intLists.has(listKey(node.target.target) ?? '')) {
+            const at = expr(node.target.index)
+
+            return `${expr(node.target.target)}.data[${/^\w+$/.test(at) ? at : `(${at})`}.toInt()] = ${expr(node.value)}`
+          }
+
+          return `${expr(node.target.target)}.setLong(Math.toIntExact(${expr(node.target.index)}), ${expr(node.value)})`
+        }
+
         const place = places.get(node)
 
         if (place) {
@@ -1741,8 +2576,20 @@ export function emitKotlin(
           ? `${expr(node.target)} = ${expr(node.value)}`
           : `${expr(node.target)} ${node.op} ${expr(node.value)}`
       }
-      case 'expression':
+      case 'expression': {
+        // a map entry updated from its own value is one probe through `compute` (backend.ts, `mapUpdate`), the sum
+        // still stopping past Long
+        const update = mapUpdate(node)
+
+        if (update && update.map.type?.kind === 'map' && (update.map.type.value.kind === 'number' || update.map.type.value.kind === 'float')) {
+          const old = `(__v ?: ${expr(update.fallback)})`
+          const sum = update.map.type.value.kind === 'number' ? `Math.addExact(${old}, ${expr(update.step)})` : `${old} + ${expr(update.step)}`
+
+          return `${expr(update.map)}.compute(${expr(update.key)}) { _, __v -> ${sum} }`
+        }
+
         return expr(node.expr)
+      }
       case 'return': {
         if (!node.value) {
           return currentResult?.kind === 'unknown' ? 'return Unit' : 'return'
@@ -1792,12 +2639,53 @@ export function emitKotlin(
         const guard = loopGuards.get(node)
         const loop = (): string => `while (${expr(node.cond)}) {\n${block(node.body, d + 2)}\n${pad(d + 1)}}`
 
-        if (guard?.fast?.length && guard.limits?.length) {
-          const test = guard.limits.map(l => (l.low ? `${camel(l.name)} >= 0L` : `${camel(l.name)} <= ${l.high}L`)).join(' && ')
+        // the list checks too: in the copy a guarded list's index narrows with `toInt()`, not `toIntExact`
+        if (guard && (guard.fast?.length || guard.checks.length)) {
+          const name = (id: string): string => camel(id)
+          const outerLists = intLists
+          // a list reached through a path reads its size through it, its own slots narrowed plainly: their checks come
+          // earlier in this `&&` (bounds.ts bounds a path's prefix first)
+          intLists = new Set([...outerLists, ...guard.checks.map(c => c.list)])
+          const checks = guard.checks.map(c => {
+            const value =
+              c.base === undefined
+                ? `${c.offset}L`
+                : c.offset === 0
+                  ? name(c.base)
+                  : `(${name(c.base)} ${c.offset < 0 ? '-' : '+'} ${Math.abs(c.offset)}L)`
+
+            return c.side === 'low' ? `${value} >= 0L` : `${value} < ${c.path ? expr(c.path as Expression) : name(c.list)}.size`
+          })
+          intLists = outerLists
+          const limits = (guard.limits ?? []).map(l => (l.low ? `${name(l.name)} >= 0L` : `${name(l.name)} <= ${l.high}L`))
+          const test = [...checks, ...limits].filter((t, i, all) => all.indexOf(t) === i).join(' && ')
           const outer = fastCalls
-          fastCalls = new Set([...outer, ...guard.fast])
-          const fast = loop()
+          const outerHoisted = hoisted
+          fastCalls = new Set([...outer, ...(guard.fast ?? [])])
+          intLists = new Set([...outerLists, ...guard.checks.map(c => c.list)])
+          // each list reached through a path is read ONCE before the copy, which the guard makes safe and the loop
+          // cannot change (bounds.ts: its root and indexes are not written in it, nor a field, nor a record's slot), and
+          // the body indexes the local: Particle 308 ms to 187, the record read out of the list twice a turn
+          // (`tmp/kotlin-particle-ab2.ts`). A record here is a reference, so the local is the record's own list
+          const reads: string[] = []
+          const paths = new Map<string, Expression>()
+
+          for (const c of guard.checks) {
+            if (c.path && !paths.has(c.list)) {
+              paths.set(c.list, c.path as Expression)
+            }
+          }
+
+          for (const [key, path] of paths) {
+            const local = `__path${pathCount++}`
+            reads.push(`val ${local} = ${expr(path)}`)
+            hoisted = new Map([...hoisted, [key, local]])
+          }
+
+          const fast = [...reads, loop()].join(`\n${pad(d + 1)}`)
           fastCalls = outer
+          intLists = outerLists
+          hoisted = outerHoisted
 
           return `if (${test}) {\n${pad(d + 1)}${fast}\n${pad(d)}} else {\n${pad(d + 1)}${loop()}\n${pad(d)}}`
         }
@@ -1835,6 +2723,35 @@ export function emitKotlin(
 
         if (node.index) {
           localNames.add(node.index)
+        }
+
+        // a walk by POSITION, the length read every turn, where the body may push onto the list it walks: the walk
+        // then sees each pushed item, which is the Term meaning (TypeScript's `for...of`, Rust's walk by position),
+        // where Kotlin's iterator threw ConcurrentModificationException (meaning-native `grow`). A list of `Long` is
+        // walked by position always, reading the `TermLongs` storage where the list is one: its iterator boxed every
+        // element, Graph 215 ms to 203 (`tmp/kotlin-graph-ab.ts`). Any other walk keeps `for (x in xs)`
+        if (node.iterable.type?.kind === 'array' && !(node.iterable.form === 'variable' && arrayNames.has(node.iterable.name))) {
+          const grows = node.iterable.form === 'variable' && namesIn(node.body).has(node.iterable.name)
+          const longs = longList(node.iterable.type)
+
+          if (grows || longs) {
+            const n = walkCount++
+            const walked = `__walked${n}`
+            const at = `__at${n}`
+            const read = longs ? `if (${walked}Longs != null) ${walked}Longs.data[${at}] else ${walked}[${at}]` : `${walked}[${at}]`
+            const index = node.index ? `\n${pad(d + 1)}val ${camel(node.index)} = ${at}.toLong()` : ''
+
+            return [
+              `val ${walked} = ${expr(node.iterable)}`,
+              ...(longs ? [`${pad(d)}${need('longs', `val ${walked}Longs = ${walked} as? TermLongs`)}`] : []),
+              `${pad(d)}var ${at} = 0`,
+              `${pad(d)}while (${at} < ${walked}.size) {`,
+              `${pad(d + 1)}val ${camel(node.item)} = ${read}${index}`,
+              `${pad(d + 1)}${at}++`,
+              block(node.body, d + 1),
+              `${pad(d)}}`,
+            ].join('\n')
+          }
         }
 
         // a walk that names its INDEX uses withIndex; `toLong` because that is what a Term number is. lean-0017
@@ -1918,9 +2835,27 @@ export function emitKotlin(
           }
 
           const cls = classFor(b.label, node.subject.type) ?? pascal(b.label)
+          // a node taken from its slot, of a reused variant (`reuseVariants`): once the arm's first statement has
+          // written the slot back (`slotTakes` makes it the first), nothing holds the node, so its links are cleared
+          // and it is kept as the variant's spare for the next construction
+          const reused =
+            stable && takenSubjects.has(node.subject) && node.subject.type?.kind === 'named' && b.body.length > 0
+              ? reuseVariants.get(b.label)
+              : undefined
+          const spare =
+            reused && reused.form === (node.subject.type as { name: string }).name
+              ? [
+                  ...reused.recursive.map(
+                    f => `${pad(d + 2)}${subject}.${camel(f)} = ${classFor(reused.empty, node.subject.type) ?? pascal(reused.empty)}`,
+                  ),
+                  `${pad(d + 2)}termSpare${cls} = ${subject}`,
+                ]
+              : []
           // the arm's fields (renamed or not, see check/arm.ts) become locals read off the smart-cast subject, the
           // ones the body reads
-          const bodyText = block(b.body, d + 2)
+          const bodyText = spare.length
+            ? [block(b.body.slice(0, 1), d + 2), ...spare, block(b.body.slice(1), d + 2)].filter(Boolean).join('\n')
+            : block(b.body, d + 2)
           const locals = armLocals(variantFieldNames.get(b.label) ?? [], b.binds ?? [])
             .filter(({ local }) => new RegExp(`\\b${camel(local).replace(/[^\w$]/g, '\\$&')}\\b`).test(bodyText))
             .map(({ field, local }) => `${pad(d + 2)}val ${camel(local)} = ${subject}.${camel(field)}`)
@@ -1969,6 +2904,7 @@ export function emitKotlin(
 
       case 'function': {
         const generics = genericClause(node)
+        currentFn = node
         scopeGenerics = new Set(node.generics.map(g => g.name.toUpperCase()))
         localNames.clear()
         node.params.forEach(p => localNames.add(p.name))
@@ -1984,7 +2920,10 @@ export function emitKotlin(
           for (const [key, child] of Object.entries(s)) if (key !== 'type' && key !== 'span') collectLets(child)
         }
         collectLets(node.body)
-        const elementKind = (t: Type | undefined) => arrayKind(t?.kind === 'array' ? t.element : undefined)
+        const elementKind = (t: Type | undefined): HeldKind | undefined => fixedKind(t?.kind === 'array' ? t.element : undefined)
+        // a fixed list's Kotlin type: its primitive array, or `Array<T>`
+        const arrayType = (t: Type | undefined, kind: HeldKind): string =>
+          kind === 'Object' && t?.kind === 'array' ? `Array<${kotlinType(t.element)}>` : `${kind}Array`
         arrayNames = new Map([
           ...node.params.flatMap((p, i) => {
             const kind = fixedAt?.has(i) ? elementKind(p.type) : undefined
@@ -1996,12 +2935,14 @@ export function emitKotlin(
 
             return kind ? [[name, kind] as const] : []
           }),
+          // the arm locals bound to a variant's primitive array field (`variantArrays`)
+          ...(armArrays.get(node.name) ?? []),
         ])
         const params = node.params
           .map((p, i) => {
             const kind = fixedAt?.has(i) ? elementKind(p.type) : undefined
 
-            return `${camel(p.name)}: ${kind ? `${kind}Array` : kotlinType(p.type)}`
+            return `${camel(p.name)}: ${kind ? arrayType(p.type, kind) : kotlinType(p.type)}`
           })
           .join(', ')
 
@@ -2013,6 +2954,17 @@ export function emitKotlin(
         // and a local nothing reassigns is a `val` (see the `let` case)
         const outerAssigned = fnAssigned
         fnAssigned = mutated
+        // the text locals only ever built by appending, held as StringBuilders (backend.ts, `textBuilders`)
+        const outerBuilders = builders
+        builders = textBuilders(node)
+        const outerCursors = cursors
+        cursors = textCursors(node, asciiNodes)
+        const outerCarriers = carrierLocals
+        carrierLocals = new Map()
+        const outerRedeclared = redeclared
+        redeclared = redeclaredLets(node)
+        const outerTaken = takenSubjects
+        takenSubjects = reuseVariants.size ? slotTakes(node.body, () => true, lastReads(node.body), emptyCaseOf, new Set()).takes : new WeakMap()
 
         const shadows = node.params
           .filter(p => mutated.has(p.name))
@@ -2047,14 +2999,28 @@ export function emitKotlin(
         const bodyText =
           node.body.length === 0
             ? `${pad(d + 1)}TODO(${JSON.stringify(`stub: ${node.name}`)})`
-            : [...shadows, block(node.body, d + 1), unreachable]
+            : [
+                ...shadows,
+                ...cursors.names.map(name => `${pad(d + 1)}val __cursor${pascal(name)} = LongArray(2)`),
+                block(node.body, d + 1),
+                unreachable,
+              ]
                 .filter(Boolean)
                 .join('\n')
 
         fnAssigned = outerAssigned
         arrayNames = outerArrays
+        builders = outerBuilders
+        cursors = outerCursors
+        carrierLocals = outerCarriers
+        redeclared = outerRedeclared
+        takenSubjects = outerTaken
 
-        return `${inlineTasks.has(node.name) ? 'inline ' : ''}${suspend}fun ${generics}${camel(
+        // a task whose every self call is a tail call is `tailrec`: Kotlin's compiler makes it the loop it is (backend.ts,
+        // `tailTasks`), where the JVM ran a call per step
+        const tailrec = tailCalls.has(node.name) && !inlineTasks.has(node.name) ? 'tailrec ' : ''
+
+        return `${inlineTasks.has(node.name) ? 'inline ' : ''}${tailrec}${suspend}fun ${generics}${camel(
           node.name,
         )}(${params}): ${kotlinType(result)} {\n${bodyText}\n${pad(
           d,
@@ -2094,13 +3060,32 @@ export function emitKotlin(
               : ''
 
             if (v.fields.length > 0) {
+              // a reused variant's fields are written when its spare is rebuilt (`reuseVariants`)
+              const held = reuseVariants.has(v.name) ? '@JvmField var' : 'val'
+              const arrayOf = (f: { name: string }): HeldKind | undefined => variantArrays.get(`${v.name}/${f.name}`)
+              const typeOf = (f: { name: string; type: Type }): string => {
+                const kind = arrayOf(f)
+
+                return kind === 'Object' && f.type.kind === 'array' ? `Array<${kotlinType(f.type.element)}>` : kind ? `${kind}Array` : kotlinType(f.type)
+              }
               const fields = v.fields
-                .map(f => `val ${camel(f.name)}: ${kotlinType(f.type)}`)
+                .map(f => `${held} ${camel(f.name)}: ${typeOf(f)}`)
                 .join(', ')
+              // a primitive array field (`variantArrays`) compares, hashes and prints by its contents, as the list it
+              // stands for does: a data class would compare the arrays by reference
+              const body = v.fields.some(arrayOf)
+                ? ` {\n${pad(1)}override fun equals(other: Any?): Boolean = other is ${cls} && ${v.fields
+                    .map(f => (arrayOf(f) ? `${camel(f.name)}.contentEquals(other.${camel(f.name)})` : `${camel(f.name)} == other.${camel(f.name)}`))
+                    .join(' && ')}\n${pad(1)}override fun hashCode(): Int = ${v.fields
+                    .map(f => (arrayOf(f) ? `${camel(f.name)}.contentHashCode()` : `${camel(f.name)}.hashCode()`))
+                    .reduce((sum, h) => `31 * (${sum}) + ${h}`)}\n${pad(1)}override fun toString(): String = "${cls}(${v.fields
+                    .map(f => `${camel(f.name)}=\${${arrayOf(f) ? `${camel(f.name)}.contentToString()` : camel(f.name)}}`)
+                    .join(', ')})"\n}`
+                : ''
 
               return `data class ${cls}${genericDecl}(${fields}) : ${pascal(
                 node.name,
-              )}${superArgs}()`
+              )}${superArgs}()${body}`
             }
 
             const objectSuper = node.params.length
@@ -2118,8 +3103,15 @@ export function emitKotlin(
         // a field nothing in the program reassigns is a `val`: the class says what the program does, and a form used
         // as a map key cannot have its hash changed under the map. Every field was a `var` until 2026-10-02
         // (note/term/codegen/android.md, K4)
+        // a list of `Long` the record owns is typed the `TermLongs` it is (`fieldLists`), read and written past the
+        // generic List signature
         const fields = node.fields
-          .map(f => `${assignedFields.has(f.name) ? 'var' : 'val'} ${camel(f.name)}: ${kotlinType(f.type)}`)
+          .map(
+            f =>
+              `${assignedFields.has(f.name) ? 'var' : 'val'} ${camel(f.name)}: ${
+                fieldLists.has(`${node.name}/${f.name}`) ? need('longs', 'TermLongs') : kotlinType(f.type)
+              }`,
+          )
           .join(', ')
 
         const generics = node.params.length
@@ -2356,6 +3348,26 @@ export function emitKotlin(
     ...kotlinFormWalk(fillSpecs, meltSpecs),
   ]
 
+  // each reused variant's spare and the construction that rebuilds it (`reuseVariants`): the fields are computed by the
+  // caller as arguments, so the spare is written only once all of them are in hand
+  for (const [label, reused] of reuseVariants) {
+    const form = program.find(n => n.form === 'record-type' && n.name === reused.form)
+    const variant = form?.form === 'record-type' ? form.variants.find(v => v.name === label) : undefined
+    const cls = classFor(label, { kind: 'named', name: reused.form } as Type) ?? `${pascal(reused.form)}${pascal(label)}`
+
+    if (!variant) {
+      continue
+    }
+
+    const params = variant.fields.map(f => `${camel(f.name)}: ${kotlinType(f.type)}`).join(', ')
+    const sets = variant.fields.map(f => `held.${camel(f.name)} = ${camel(f.name)}`).join('; ')
+    const args = variant.fields.map(f => camel(f.name)).join(', ')
+
+    body.push(
+      `@JvmField var termSpare${cls}: ${cls}? = null\n\nfun termReuse${cls}(${params}): ${cls} {\n    val held = termSpare${cls} ?: return ${cls}(${args})\n    termSpare${cls} = null\n    ${sets}\n    return held\n}`,
+    )
+  }
+
   // each task a guarded loop calls unchecked, once more with no overflow checks (`aValueFast`), behind the bound the
   // guard proved its arguments inside (ir/facts/bounds.ts, `integerBounds`)
   for (const name of fastTasks) {
@@ -2365,6 +3377,19 @@ export function emitKotlin(
       uncheckedInts = true
       body.push(stmt({ ...fn, name: `${name}-fast` }, 0))
       uncheckedInts = false
+    }
+  }
+
+  // each task a reuse site calls, once more building its result in the object it was given (`recordReuse`)
+  for (const name of reuseTasks) {
+    const fn = program.find((n): n is Extract<Statement, { form: 'function' }> => n.form === 'function' && n.name === name)
+    const task = reuse.tasks.get(name)
+
+    if (fn && task) {
+      reusing = { param: fn.params[task.param]!.name, builds: task.builds, keep: task.keep?.field, carriers: task.carriers }
+      // with a kept field, the copy answers that field alone
+      body.push(stmt({ ...fn, name: `${name}-reuse`, ...(task.keep ? { result: task.keep.type } : {}) }, 0))
+      reusing = undefined
     }
   }
 
@@ -2546,6 +3571,58 @@ function fieldsAssigned(program: Program): Set<string> {
 }
 
 // does a type mention a given generic parameter name?
+// REUSE OF A NODE (note/term/codegen/readme.md, Kotlin Towers): the variants whose node a pop may keep as a spare and the
+// next construction rebuild in place, where it made a new object per push (Towers 204 ms to 161, measured by hand,
+// `tmp/kotlin-towers-reuse-ab.ts`). Sound only where every node has one owner, and the fact that says so is Rust's: a
+// recursive form no Rust emission ever clones (`rustBoxing`) is one whose values are never duplicated, since Rust copies
+// exactly where a value is wanted twice. A variant of such a form that holds the form itself takes part, with the form's
+// field-less case to clear the spare's links; the program must run nothing concurrently (no native module, no async
+// task), since one spare per variant is shared by the whole program. Answers each variant with its form and empty case
+export type KotlinReuse = Map<string, { form: string; empty: string; fields: string[]; recursive: string[] }>
+
+function kotlinReuse(program: Program): KotlinReuse {
+  const out: KotlinReuse = new Map()
+  const recursive = program.some(
+    n => n.form === 'record-type' && n.variants.some(v => v.fields.some(f => f.type.kind === 'named' && f.type.name === n.name)),
+  )
+
+  if (!recursive || program.some(n => n.form === 'native' || (n.form === 'function' && n.async))) {
+    return out
+  }
+
+  let boxed: string[]
+
+  try {
+    boxed = rustBoxing(program).boxed
+  } catch {
+    return out
+  }
+
+  for (const name of boxed) {
+    const form = program.find(n => n.form === 'record-type' && n.name === name)
+
+    if (form?.form !== 'record-type' || form.params.length > 0) {
+      continue
+    }
+
+    const empty = form.variants.find(v => v.fields.length === 0)
+
+    if (!empty) {
+      continue
+    }
+
+    for (const v of form.variants) {
+      const links = v.fields.filter(f => f.type.kind === 'named' && f.type.name === name).map(f => f.name)
+
+      if (links.length) {
+        out.set(v.name, { form: name, empty: empty.name, fields: v.fields.map(f => f.name), recursive: links })
+      }
+    }
+  }
+
+  return out
+}
+
 function mentions(type: Type | undefined, name: string): boolean {
   switch (type?.kind) {
     case 'named':
@@ -2629,7 +3706,7 @@ function kotlinFormWalk(fills: Map<string, FormSpec>, melts: Map<string, FormSpe
       case 'data':
         return value
       case 'list':
-        return `DataArray(list = (${value}).map { x -> ${meltOf(kind.item, 'x')} }.toMutableList())`
+        return `DataArray(list = (${value}).mapTo(ArrayList()) { x -> ${meltOf(kind.item, 'x')} })`
       case 'form':
         return `__melt${pascal(kind.spec.form)}(${value})`
       default:
@@ -2700,7 +3777,7 @@ fun __termFlag(value: Data?, path: String, optional: Boolean): Boolean = when (v
 }
 fun __termData(value: Data?, path: String, optional: Boolean): Data = value ?: (if (optional) DataBlank else __termMismatch(path, "is missing"))
 fun <T> __termList(value: Data?, path: String, optional: Boolean, item: (Data, String) -> T): MutableList<T> = when (value) {
-    is DataArray -> value.list.mapIndexed { i, d -> item(d, __termPath(path, i.toString())) }.toMutableList()
+    is DataArray -> value.list.mapIndexedTo(ArrayList()) { i, d -> item(d, __termPath(path, i.toString())) }
     null, is DataBlank -> if (optional) mutableListOf() else __termMismatch(path, "is missing")
     else -> __termMismatch(path, "is " + __termKind(value) + " where a list belongs")
 }`

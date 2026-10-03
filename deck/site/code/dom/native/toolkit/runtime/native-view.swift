@@ -197,7 +197,16 @@ final class TermNode {
         inner ?? view as? TermStack
     }
 
+    // how many nodes exist right now: counted here and in `deinit`, so a test can see a disposed branch's views freed
+    // (reactive-bridge-0005). A node lives while anything holds it: its parent, a handler, an effect
+    static var live = 0
+
+    deinit {
+        TermNode.live -= 1
+    }
+
     init(key: Int, tag: String, text: String) {
+        TermNode.live += 1
         self.key = key
         self.tag = tag
         self.text = text
@@ -549,6 +558,19 @@ final class TermAppDelegate: NSObject, NSApplicationDelegate {
 #endif
 
 #if canImport(UIKit)
+// the window's root controller: a hardware keyboard's presses reach it through the responder chain when nothing focused
+// takes them, and each becomes a key for the window's `listen-key` listeners (swiftui-target-0003)
+final class TermRootController: UIViewController {
+    override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        for press in presses {
+            if let key = press.key {
+                nativeView.deliverKey(nativeView.keyName(key))
+            }
+        }
+        super.pressesBegan(presses, with: event)
+    }
+}
+
 // iOS builds a window only once UIApplicationMain runs, so the root is made early and installed here
 final class TermViewAppDelegate: NSObject, UIApplicationDelegate {
     static var pendingRoot: TermNode?
@@ -561,7 +583,7 @@ final class TermViewAppDelegate: NSObject, UIApplicationDelegate {
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         let window = UIWindow(frame: UIScreen.main.bounds)
-        let controller = UIViewController()
+        let controller = TermRootController()
         controller.view.backgroundColor = .systemBackground
         controller.title = TermViewAppDelegate.pendingTitle
         if let root = TermViewAppDelegate.pendingRoot {
@@ -2460,6 +2482,99 @@ enum nativeView {
                 backAction?.fire()
             }
             #endif
+        }
+    }
+
+    // ---- keys (swiftui-target-0003): every key pressed in the window, named as KeyboardEvent.key names it ----
+    //
+    // macOS: a local key-down monitor, installed with the first listener. iOS: the root controller's `pressesBegan`,
+    // which a hardware keyboard reaches through the responder chain. Both hand each listener the key's web name
+
+    private static var keyListeners: [(number: Int, run: (String) -> Void)] = []
+    private static var nextKeyListener = 0
+    #if canImport(AppKit)
+    private static var keyMonitor: Any?
+    #endif
+
+    static func listenKey(_ handler: @escaping (String) -> Void) -> Int {
+        onMain {
+            nextKeyListener += 1
+            keyListeners.append((number: nextKeyListener, run: handler))
+            #if canImport(AppKit)
+            if keyMonitor == nil {
+                keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                    deliverKey(keyName(event))
+                    return event
+                }
+            }
+            #endif
+            return nextKeyListener
+        }
+    }
+
+    static func dropKey(_ number: Int) {
+        onMain {
+            keyListeners.removeAll { $0.number == number }
+        }
+    }
+
+    static func deliverKey(_ name: String) {
+        guard !name.isEmpty else { return }
+        for listener in keyListeners {
+            listener.run(name)
+        }
+    }
+
+    // the web's names for the keys that are not characters, by the platform's key code
+    #if canImport(AppKit)
+    private static let KEY_NAMES: [UInt16: String] = [
+        53: "Escape", 36: "Enter", 76: "Enter", 48: "Tab", 51: "Backspace",
+        123: "ArrowLeft", 124: "ArrowRight", 125: "ArrowDown", 126: "ArrowUp",
+    ]
+
+    static func keyName(_ event: NSEvent) -> String {
+        KEY_NAMES[event.keyCode] ?? event.charactersIgnoringModifiers ?? ""
+    }
+    #endif
+    #if canImport(UIKit)
+    static func keyName(_ key: UIKey) -> String {
+        switch key.keyCode {
+        case .keyboardEscape: return "Escape"
+        case .keyboardReturnOrEnter, .keypadEnter: return "Enter"
+        case .keyboardTab: return "Tab"
+        case .keyboardDeleteOrBackspace: return "Backspace"
+        case .keyboardLeftArrow: return "ArrowLeft"
+        case .keyboardRightArrow: return "ArrowRight"
+        case .keyboardDownArrow: return "ArrowDown"
+        case .keyboardUpArrow: return "ArrowUp"
+        default: return key.charactersIgnoringModifiers
+        }
+    }
+    #endif
+
+    // for tests: a key pressed. macOS: a key-down event posted to the app's queue, which the monitor sees as it would a
+    // person's. iOS: the name delivered as the root controller would deliver it, since a test cannot make a UIPress
+    static func typeKey(_ name: String) {
+        onMain {
+            #if canImport(AppKit)
+            let code = KEY_NAMES.first { $0.value == name }?.key ?? 0
+            let characters = KEY_NAMES.values.contains(name) ? "" : name
+            guard let event = NSEvent.keyEvent(
+                with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+                windowNumber: window?.windowNumber ?? 0, context: nil, characters: characters,
+                charactersIgnoringModifiers: characters, isARepeat: false, keyCode: code
+            ) else { return }
+            NSApplication.shared.postEvent(event, atStart: false)
+            #else
+            deliverKey(name)
+            #endif
+        }
+    }
+
+    // for tests: how many nodes are alive (reactive-bridge-0005). Swift frees a node the moment nothing holds it
+    static func liveNodes() -> Int {
+        onMain {
+            TermNode.live
         }
     }
 

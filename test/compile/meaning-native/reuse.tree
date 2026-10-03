@@ -1,0 +1,107 @@
+load @term/base/list
+  find list
+  find push
+
+# record reuse (compile/place.ts, `recordReuse`): a slot written with the result of a task given that slot, directly
+# (`move`) and through a carrier written back at once (`stride`, its flag read after). TypeScript and Kotlin build each
+# result in the object they are given; Rust and Swift hold records as values. Every answer must be the value one
+
+form dot
+  link x, like number
+  link v, like number
+
+form step
+  link dot, like dot
+  link hit, like boolean
+
+task move
+  take d, like dot
+  like dot
+  send back
+    make dot
+      bind x
+        call add
+          read d/x
+          read d/v
+      bind v, read d/v
+
+task stride
+  take d, like dot
+  like step
+  host x
+    call add
+      read d/x
+      read d/v
+  fork test
+    hook test
+      call is-above
+        read x
+        code 10
+    hook hold
+      send back
+        make step
+          bind dot
+            make dot
+              bind x, code 0
+              bind v
+                call subtract
+                  code 0
+                  read d/v
+          bind hit, true
+  send back
+    make step
+      bind dot
+        make dot
+          bind x, read x
+          bind v, read d/v
+      bind hit, false
+
+task compute
+  like text
+  save dots
+    make list
+  call push
+    bind list, read dots
+    bind item
+      make dot
+        bind x, code 1
+        bind v, code 4
+  call push
+    bind list, read dots
+    bind item
+      make dot
+        bind x, code 2
+        bind v, code -3
+  call push
+    bind list, read dots
+    bind item
+      make dot
+        bind x, code 5
+        bind v, code 1
+  save hits, code 0
+  walk size
+    bind base, code 0
+    bind head, code 6
+    hook next
+      take site, name round
+      walk size
+        bind base, code 0
+        bind head, code 3
+        hook next
+          take site, name k
+          host s
+            call stride
+              read dots/{k}
+          save dots/{k}, read s/dot
+          fork test
+            hook test
+              read s/hit
+            hook hold
+              save hits
+                call add
+                  read hits
+                  code 1
+          save dots/{k}
+            call move
+              read dots/{k}
+  send back, text <{hits}:{dots/0/x},{dots/0/v};{dots/1/x},{dots/1/v};{dots/2/x},{dots/2/v}>

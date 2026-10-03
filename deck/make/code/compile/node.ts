@@ -339,6 +339,9 @@ export type Statement =
         fallback?: Expression
         // `slot <name>` instead of `take <name>`: positional only, refused as a named argument
         positional?: boolean
+        // `like u8` and the other width aliases: the parameter is a `number`, and a literal argument outside the width
+        // is refused (check/literals.ts). Wider checking needs range types
+        width?: string
       }[]
       body: Statement[]
       result?: Type
@@ -348,6 +351,11 @@ export type Statement =
       // file is refused as `private-name` (check/private.ts). Also lets dead-code detection flag an unreferenced
       // private function as truly dead (a public one might be called from outside this compilation).
       private?: boolean
+      // set by compileProgram on a function OUTSIDE the compiled unit's public surface (its `roots`): nothing outside
+      // the program can call it, so every call it receives is in the program. Absent means it may be called from
+      // outside, which is the safe reading. The interval fact reads a parameter of one as the hull of its arguments
+      // (ir/facts/interval.ts)
+      internal?: boolean
       // where the old spelling, `note private`, was written: still honored, and warned about (`note-private`)
       privateNote?: Span
       // separate compilation: a signature-only declaration standing in for a function another unit defines. Its body
@@ -376,6 +384,8 @@ export type Statement =
       // `note roam`: the task is MEANT to run forever (a server, an event loop). Its walks owe no termination, it is
       // never a function (so no proof or claim may use it), and the trust ledger lists it. proof-by-default-0035
       roam?: boolean
+      // `mark deprecated`: a call to the task from another file is warned about (check/deprecated.ts)
+      deprecated?: boolean
       method?: { form: string; name: string }
       // `halt <form>` lines with no children on the signature: the exceptions the task declares it can raise. Absent
       // means inferred. Present means checked: the inferred raise set must be a subset (03-exception.md, bounding).
@@ -601,6 +611,9 @@ export type DockArgument = { name: string; value: Expression }
 export type DockCall = {
   name: string
   args: DockArgument[]
+  // the bound task's parameter names, in its own order, so a command passes each take to the parameter of its name.
+  // Filled by `commandRoutes` from the program (call/code/hook-dispatch.ts)
+  params?: string[]
   span: Span
 }
 export type DockTake = {

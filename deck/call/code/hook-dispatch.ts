@@ -15,14 +15,31 @@ import type { DockRoute } from '@term/make/code/compile/node'
 // resolves task names exactly as the emitter wrote them
 export { toCamel } from '@term/make/code/compile/typescript'
 
-// the CLI command routes of a program: every top-level `hook` (lowered to a dock statement)
+// the CLI command routes of a program: every top-level `hook` (lowered to a dock statement). Each bound call carries
+// its task's parameter names, so a command hands each take to the parameter of the same name: they went in take
+// order, so a hook that listed `second` before `first` gave `first` the second value, and `pair --first a --second b`
+// printed `first=b second=a` (guides: applications/command-line, 2026-10-03)
 export function commandRoutes(program: Program): DockRoute[] {
+  const params = new Map<string, string[]>()
+
+  for (const s of program) {
+    if (s.form === 'function') {
+      params.set(s.name, s.params.map(p => p.name))
+    }
+  }
+
+  const named = (route: DockRoute): DockRoute => ({
+    ...route,
+    calls: route.calls.map(call => (params.has(call.name) ? { ...call, params: params.get(call.name) } : call)),
+    children: route.children.map(named),
+  })
+
   return program
     .filter(
       (s): s is Extract<Statement, { form: 'dock' }> =>
         s.form === 'dock',
     )
-    .map(s => s.route)
+    .map(s => named(s.route))
 }
 
 export type ArgValue = string | boolean | number | string[]
@@ -136,8 +153,11 @@ export function dispatch(
       } else {
         const key = isShort ? (shortToName.get(body) ?? body) : body
         const value = argv[i + 1]
+        // a boolean flag stands alone, and takes the next word only when it is `true` or `false`: `-l ada` is the
+        // flag and then the positional `ada`
+        const flag = current.takes.find(take => take.name === key)?.type?.kind === 'boolean'
 
-        if (value !== undefined && !value.startsWith('-')) {
+        if (value !== undefined && !value.startsWith('-') && (!flag || value === 'true' || value === 'false')) {
           args[key] = value
           i += 2
         } else {
@@ -153,6 +173,22 @@ export function dispatch(
       // here, so stop reading its flags as ours
       if (variadic && !raw) {
         raw = true
+      }
+    }
+  }
+
+  // A FLAG NO TAKE NAMES IS AN ERROR. `greet ada --typo` printed `hello, ada` and exited 0, so a misspelled option was
+  // the option left out, in silence (guides: applications/command-line, 2026-10-03)
+  const known = new Set(current.takes.map(take => take.name))
+
+  for (const key of Object.keys(args)) {
+    if (!known.has(key)) {
+      return {
+        ok: false,
+        command,
+        error: `unknown flag "${key.length === 1 ? `-${key}` : `--${key}`}"${
+          known.size > 0 ? `. The flags are ${[...known].map(name => `--${name}`).join(', ')}` : ''
+        }`,
       }
     }
   }
@@ -188,6 +224,15 @@ export function dispatch(
     }
   }
 
+  // a positional no take was left to hold is an error too, rather than a word dropped
+  if (posCursor < positionals.length) {
+    return {
+      ok: false,
+      command,
+      error: `unexpected argument "${positionals[posCursor]}"`,
+    }
+  }
+
   // coerce by declared type, validate choices, then apply defaults
   for (const take of current.takes) {
     let value = args[take.name]
@@ -202,14 +247,30 @@ export function dispatch(
         }
       }
 
-      // type coercion
+      // type coercion, which refuses a value that is not the type. `--times x` for a `like number` take reached the
+      // task as the text `x`, and `--loud yes` as false (guides: applications/command-line, 2026-10-03)
       if (take.type?.kind === 'number' || take.type?.kind === 'float') {
         const n = Number(value)
+        const whole = take.type.kind === 'number'
 
-        if (!Number.isNaN(n)) {
-          args[take.name] = n
+        if (value.trim() === '' || Number.isNaN(n) || (whole && !Number.isInteger(n))) {
+          return {
+            ok: false,
+            command,
+            error: `--${take.name} takes ${whole ? 'a whole number' : 'a number'}, not "${value}"`,
+          }
         }
+
+        args[take.name] = n
       } else if (take.type?.kind === 'boolean') {
+        if (value !== 'true' && value !== 'false') {
+          return {
+            ok: false,
+            command,
+            error: `--${take.name} is true or false, not "${value}"`,
+          }
+        }
+
         args[take.name] = value === 'true'
       }
 
@@ -438,10 +499,14 @@ export async function runCommandLine(input: RunInput): Promise<number> {
     return 2
   }
 
-  // arguments go to the task in take order, the contract the route
-  // declares. Absent optionals become their natural zero: false for a
-  // boolean, [] for a variadic, "" for everything else.
-  const ordered = hit.route.takes.map(take => {
+  // arguments go to the task BY NAME: each parameter takes the take of its own name, and one no take names takes the
+  // take at its position. A route compiled before the names were recorded falls back to take order. Absent optionals
+  // become their natural zero: false for a boolean, [] for a variadic, "" for everything else.
+  const params = hit.route.calls[0]?.params
+  const takes = params
+    ? params.map((param, index) => hit.route.takes.find(take => take.name === param) ?? hit.route.takes[index])
+    : hit.route.takes
+  const ordered = takes.filter((take): take is NonNullable<typeof take> => take !== undefined).map(take => {
     const value = hit.args[take.name]
 
     if (value !== undefined) {

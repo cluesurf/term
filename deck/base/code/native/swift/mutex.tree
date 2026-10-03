@@ -1,7 +1,8 @@
-# swift mutex implementation. Forwards to the linked mutex runtime shim (NSLock). Internal: reached only through the public mutex API.
+# swift mutex implementation. Forwards to the linked mutex runtime shim (a SeedMutex, whose waiters suspend rather
+# than block a thread). Internal: reached only through the public mutex API.
 
 dock type
-  load <NSLock>, name mutex-handle
+  load <SeedMutex>, name mutex-handle
 
 dock load
   load <global:mutex>, name mutex

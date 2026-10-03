@@ -1093,8 +1093,13 @@ ${have}  save low
   )
 
   // ---- a record's number field ----
+  //
+  // These forms are `mark shared`: the facts below are about one object reached through two names, and a write in a
+  // callee reaching the caller. A plain form is a value since D1, where `zero` writing its own copy is refused as a
+  // lost write (check/lost-writes.ts) and a callee's promise is about its copy alone
 
   const counter = (between: string): string => `form counter
+  mark shared
   link count, like number
 
 task zero
@@ -1117,6 +1122,7 @@ ${between}  hold
   expect('a field is a fact while nothing writes it', counter(''), proven)
 
   const pair = (between: string): string => `form pair
+  mark shared
   link count, like number
   link size, like number
   link items, like list, like number
@@ -1156,6 +1162,7 @@ ${between}  hold
   expect(
     'a call statement is owed its callee`s promise about its argument',
     `form pair
+  mark shared
   link count, like number
 
 task fill

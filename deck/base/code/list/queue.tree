@@ -20,7 +20,10 @@ form queue
   link items
     like list
       like t
-  link front, like number
+  # zero unless given: a field left out of a `make` is refused unless it has a `fall`
+  link front
+    like number
+    fall 0
 
   task enqueue
     take self

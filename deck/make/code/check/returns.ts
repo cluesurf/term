@@ -15,9 +15,11 @@ import { diagnose } from '@term/make/code/parser/diagnostic'
 
 type Task = Extract<Statement, { form: 'function' }>
 
-// a result type that is a value: anything but the unit
+// a result type that is a value: anything but the unit. The result AS WRITTEN (`declared`, recorded before the checker
+// runs): this pass runs after it, and the checker fills an unwritten result from what the paths send back, so a task
+// with no `like` whose early exits send a call's value back (zone's `toss`) read as promising one
 function promisesValue(task: Task): boolean {
-  const result = task.result
+  const result = task.declared ? task.declared.result : task.result
 
   return (
     result !== undefined &&

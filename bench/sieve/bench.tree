@@ -1,0 +1,9 @@
+host program, <sieve>
+host entry, <sieve>
+host source, <Are We Fast Yet's Sieve (Marr, Daloze and Mössenböck, DLS 2016), the same structure: 5000 flags made full and the multiples of each prime cleared; the benchmark run n times and the 669 primes of each run added>
+host check, 3
+host expect, <2007>
+host size, 3000
+host runs, 5
+host semantics, <a list of flags written by index in two counted loops, made fresh for every run; integer output>
+host idiom, <ours, 2026-10-03: each language's own boolean array (Vec<bool>, [Bool], BooleanArray, boolean[]) and its natural loops>

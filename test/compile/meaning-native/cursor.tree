@@ -1,0 +1,134 @@
+load @term/base/text
+  find char-at
+  find char-code-at
+  find char-count
+  find substring
+
+# reads by position through a text cursor (backend.ts, `textCursors`): a text that is not ASCII, read forward with a
+# look behind and a look ahead, then backward, then once past its end. `walked` is the cursor's shape (a parameter
+# never written, read in a loop). `rewritten` reads the same way from a text it reassigns, so it takes no cursor and
+# gives the same answers by counting. Every code point width is in the text: one, two, three and four UTF-8 bytes, and
+# a surrogate pair in UTF-16
+task walked
+  take s, like text
+  like text
+  host n
+    call char-count
+      read s
+  save total, code 0
+  walk size
+    bind base, code 0
+    bind head, read n
+    hook next
+      take site, name i
+      save total
+        call modulo
+          call add
+            call multiply
+              read total
+              code 31
+            call add
+              call char-code-at
+                read s
+                read i
+              call add
+                call char-code-at
+                  read s
+                  call subtract
+                    read i
+                    code 1
+                call add
+                  call char-code-at
+                    read s
+                    call add
+                      read i
+                      code 1
+                  code 3
+          code 1000000007
+  host last
+    call subtract
+      read n
+      code 1
+  save back, text <>
+  walk size
+    bind base, code 0
+    bind head, read n
+    hook next
+      take site, name i
+      save back
+        text <{back}{char-at(s, subtract(last, i))}>
+  host two, code 2
+  host three, code 3
+  save pieces, text <>
+  walk size
+    bind base, code 0
+    bind head, read n
+    hook next
+      take site, name i
+      save pieces
+        text <{pieces}{substring(s, i, add(i, two))}/{substring(s, add(i, three), i)}.>
+  host past
+    call char-at
+      read s
+      call add
+        read n
+        code 5
+  host before
+    call char-code-at
+      read s
+      code -1
+  send back, text <{n}:{total}:{back}:{past}:{before}:{pieces}>
+
+task rewritten
+  take s, like text
+  like text
+  save t, read s
+  save t, text <{t}>
+  host n
+    call char-count
+      read t
+  save total, code 0
+  walk size
+    bind base, code 0
+    bind head, read n
+    hook next
+      take site, name i
+      save t, text <{t}>
+      save total
+        call modulo
+          call add
+            call multiply
+              read total
+              code 31
+            call add
+              call char-code-at
+                read t
+                read i
+              call add
+                call char-code-at
+                  read t
+                  call subtract
+                    read i
+                    code 1
+                call add
+                  call char-code-at
+                    read t
+                    call add
+                      read i
+                      code 1
+                  code 3
+          code 1000000007
+  send back, text <{n}:{total}>
+
+task compute
+  like text
+  host a
+    call walked
+      text <aé€😀bç>
+  host b
+    call walked
+      text <plain>
+  host c
+    call rewritten
+      text <aé€😀bç>
+  send back, text <{a} {b} {c}>

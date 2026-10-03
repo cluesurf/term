@@ -25,8 +25,17 @@ const SRC = `task main
 
 task used
   like number
-  send back
-    code 1
+  save x, code 0
+  walk size
+    bind base, code 0
+    bind head, code 3
+    hook next
+      take site, name i
+      save x
+        call add
+          read x
+          read i
+  send back, read x
 
 task dead
   like number

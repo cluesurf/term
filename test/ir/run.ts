@@ -187,7 +187,8 @@ task compute
   send back
     read z
 `,
-    'work(z)',
+    // the binding itself, which is what must survive: `work` is small enough to inline, so its call reads as its body
+    'const x',
   )
 
   // boolean identities
@@ -228,7 +229,7 @@ task compute
     '!',
   )
   expectContains(
-    'negated comparison !(a == b) -> a != b',
+    'negated comparison !(a == b) -> a !== b',
     `task f
   take a, like number
   take b, like number
@@ -239,7 +240,7 @@ task compute
         read a
         read b
 `,
-    'a != b',
+    'a !== b',
   )
 
   // copy propagation: a binding that aliases a stable variable is replaced by that variable, then dropped

@@ -2,19 +2,26 @@
 # A program that owns the terminal (terminal-target-0006). The app builds its tree under a root, the way a page mounts
 # under its body, and hands the root to `run-terminal`, which:
 #
-#   1. turns raw mode on, hides the cursor and clears the screen
+#   1. starts answering signals, turns raw mode on, hides the cursor and clears the screen
 #   2. paints the tree at the terminal's size
-#   3. reads what the terminal sends, decodes it into keys, and presses each on the tree (./screen `take-input`)
+#   3. reads what the terminal sends, decodes it into keys, and presses each on the tree (./screen `press-input`)
 #   4. repaints, writing only the rows that changed, each one placed by row and cleared to its end
-#   5. stops on ctrl-c or when input ends, shows the cursor again, puts it under the screen, and turns raw mode off
+#   5. stops on ctrl-c, on SIGTERM or SIGHUP, or when input ends, shows the cursor again, puts it under the screen,
+#      turns raw mode off, and, when a signal stopped it, exits with 128 plus the signal's number
 #
-# Steps 3 and 4 repeat in ./loop/{platform}, the one part that differs: on node the loop yields to the event loop
-# after each round, so work a key started asynchronously (a store, a fetch) lands before the repaint; on Rust it does
-# not, because nothing there runs later. A terminal that reports no size is taken as 80 by 24.
+# A resize wakes step 3 and goes straight to step 4, which paints at the new size. Steps 3 and 4 repeat in
+# ./loop/{platform}, the one part that differs: on node the loop waits without holding the event loop and yields to it
+# after each round, so work a key started asynchronously (a store, a fetch) lands before the repaint; on Rust the read
+# blocks, a signal interrupts it, and the queue of ticked work is drained. A terminal that reports no size is taken as
+# 80 by 24.
 
 load @term/base/terminal
   find set-raw
   find write-output
+
+load @term/base/native/{platform}/signal
+  find watch-signals
+  find leave-after-signal
 
 load ../../view
   find view
@@ -33,6 +40,7 @@ load @term/base/text/string
 # own the terminal until ctrl-c or the end of input, drawing the tree under `root` and pressing every key on it
 task run-terminal
   take root, like view
+  call watch-signals
   call set-raw
     true
   call write-output
@@ -58,3 +66,24 @@ task run-terminal
       text <\n>
   call set-raw
     false
+  call leave-after-signal
+
+# the same app for a screen reader (native-accessibility-0005): no screen cleared, no cursor hidden, no rows placed by
+# position. The screen is written once as plain lines, then each changed row as a line of its own and, each time focus
+# moves, a line saying what has it (`focus: button add`), so a reader following the output in order hears every change
+task run-terminal-lines
+  take root, like view
+  call watch-signals
+  call set-raw
+    true
+  save shown, call make-screen
+  save shown/plain, true
+  call show-screen
+    read shown
+    read root
+  call drive
+    read root
+    read shown
+  call set-raw
+    false
+  call leave-after-signal

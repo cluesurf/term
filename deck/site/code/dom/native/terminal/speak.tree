@@ -1,0 +1,140 @@
+
+# What has focus, said in words a screen reader speaks (native-accessibility-0005): the control's role, its name and its
+# value or state, in the accessibility contract's columns (note/term/view/11-vocabulary.md, "Accessibility"):
+#
+#   button   `button <label>`              field    `field <placeholder>: <value>`
+#   toggle   `switch <label> on|off`       range    `slider <label> <value>`
+#   choice   `choice <label>: <chosen>`    link     `link <text>`
+#
+# The terminal's line mode (./screen) writes one such line each time focus moves.
+
+load ../memory/dom
+  find element-of
+  find get-attribute
+
+load ../../view
+  find view
+
+load ./paint
+  find text-of
+
+load ./input
+  find find-focused
+
+load @term/base/list
+  find get
+
+load @term/base/text/string
+  find concat
+
+# a control, named as the contract names it
+task describe
+  take node, like view
+  like text
+  save element
+    call element-of
+      read node
+  save tag, read element/tag
+  save label
+    call get-attribute
+      read node
+      text <aria-label>
+  fork test
+    hook test
+      meet and
+        call is-equal
+          read tag
+          text <button>
+        call is-equal
+          call get-attribute
+            read node
+            text <role>
+          text <switch>
+    hook hold
+      save state, text <off>
+      fork test
+        hook test
+          call is-equal
+            call get-attribute
+              read node
+              text <aria-checked>
+            text <true>
+        hook hold
+          save state, text <on>
+      send back, text <switch {label} {state}>
+    hook test
+      call is-equal
+        read tag
+        text <button>
+    hook hold
+      save words
+        call text-of
+          read node
+      send back, text <button {words}>
+    hook test
+      meet and
+        call is-equal
+          read tag
+          text <input>
+        call is-equal
+          call get-attribute
+            read node
+            text <type>
+          text <range>
+    hook hold
+      save value, read element/value
+      send back, text <slider {label} {value}>
+    hook test
+      meet or
+        call is-equal
+          read tag
+          text <input>
+        call is-equal
+          read tag
+          text <textarea>
+    hook hold
+      save placeholder
+        call get-attribute
+          read node
+          text <placeholder>
+      save value, read element/value
+      send back, text <field {placeholder}: {value}>
+    hook test
+      call is-equal
+        read tag
+        text <select>
+    hook hold
+      save chosen, read element/value
+      send back, text <choice {label}: {chosen}>
+    hook test
+      call is-equal
+        read tag
+        text <a>
+    hook hold
+      save words
+        call text-of
+          read node
+      send back, text <link {words}>
+  send back
+    call text-of
+      read node
+
+# what has focus under `root`, described, or empty text when nothing has
+task describe-focus
+  take root, like view
+  like text
+  save focused
+    call find-focused
+      read root
+  fork test
+    hook test
+      call is-equal
+        read focused/length
+        code 0
+    hook hold
+      send back, text <>
+  send back
+    call describe
+      call get
+        read focused
+        code 0

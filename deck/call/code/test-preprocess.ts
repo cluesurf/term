@@ -102,11 +102,35 @@ export type Preprocessed = {
   origin: number[]
 }
 
+// The names a test's task must not take: what the file defines (`task`, `form`, `rule`, `bind`, `host`) and what it
+// finds. A test named `trim` beside `find trim` became `task trim` and replaced the import, so the call inside it
+// reached the test itself ("trim" takes 0 arguments), and `test <name>` beside `rule <name>` filled the claim with a
+// boolean task that proved nothing (guides: tests/writing, proofs/claims, 2026-10-03)
+function takenNames(lines: string[]): Set<string> {
+  const taken = new Set<string>()
+
+  for (const line of lines) {
+    const defined = /^(?:task|form|rule|bind|host)\s+([^\s,]+)/.exec(line)
+    const found = /^\s+find\s+([^\s,]+)(?:.*,\s*name\s+([^\s,]+))?/.exec(line)
+
+    if (defined) {
+      taken.add(defined[1]!)
+    }
+
+    if (found) {
+      taken.add(found[2] ?? found[1]!)
+    }
+  }
+
+  return taken
+}
+
 export function preprocessTests(source: string): Preprocessed {
   const lines = source.split('\n')
   const out: string[] = []
   const origin: number[] = []
   const labels = new Map<string, string>()
+  const taken = takenNames(lines)
 
   const emit = (text: string, from: number): void => {
     out.push(text)
@@ -126,7 +150,10 @@ export function preprocessTests(source: string): Preprocessed {
     }
 
     const at = i
-    const { slug, label } = parseName(header[1]!)
+    const parsed = parseName(header[1]!)
+    const label = parsed.label
+    // a test whose name the file already uses for something else gets a task name of its own
+    const slug = taken.has(parsed.slug) ? `${parsed.slug}-test` : parsed.slug
     labels.set(slug, label)
     // gather the block body: the following lines that are blank or indented
     i++

@@ -1,0 +1,220 @@
+load @term/base/list
+  find list
+  find push
+
+# Bounce, from Are We Fast Yet (Marr, Daloze and Mössenböck, DLS 2016): 100 balls in a 500 by 500 box, each moved 50
+# times and turned back at every wall it crosses, counting the bounces. AWFY's structure kept: its generator (its
+# `& 65535` written `% 65536`, the same for the never-negative seed), each ball a record in a list, `bounce` changing
+# one ball's fields (`move-ball`). AWFY's answer is 1331 per run; this runs it `n` times and adds them
+
+form ball
+  link x, like number
+  link y, like number
+  link dx, like number
+  link dy, like number
+
+form random
+  link seed, like number
+
+form drawn
+  link value, like number
+  link next, like random
+
+task draw
+  take now, like random
+  like drawn
+  host seed
+    call modulo
+      call add
+        call multiply
+          read now/seed
+          code 1309
+        code 13849
+      code 65536
+  send back
+    make drawn
+      bind value, read seed
+      bind next
+        make random
+          bind seed, read seed
+
+task size
+  take v, like number
+  like number
+  fork test
+    hook test
+      call is-below
+        read v
+        code 0
+    hook hold
+      send back
+        call subtract
+          code 0
+          read v
+  send back, read v
+
+# a ball moved once, and whether it crossed a wall
+form moved
+  link ball, like ball
+  link bounced, like boolean
+
+task move-ball
+  take b, like ball
+  like moved
+  save x
+    call add
+      read b/x
+      read b/dx
+  save y
+    call add
+      read b/y
+      read b/dy
+  save dx, read b/dx
+  save dy, read b/dy
+  save bounced, false
+  fork test
+    hook test
+      call is-above
+        read x
+        code 500
+    hook hold
+      save x, code 500
+      save dx
+        call subtract
+          code 0
+          call size
+            read dx
+      save bounced, true
+  fork test
+    hook test
+      call is-below
+        read x
+        code 0
+    hook hold
+      save x, code 0
+      save dx
+        call size
+          read dx
+      save bounced, true
+  fork test
+    hook test
+      call is-above
+        read y
+        code 500
+    hook hold
+      save y, code 500
+      save dy
+        call subtract
+          code 0
+          call size
+            read dy
+      save bounced, true
+  fork test
+    hook test
+      call is-below
+        read y
+        code 0
+    hook hold
+      save y, code 0
+      save dy
+        call size
+          read dy
+      save bounced, true
+  send back
+    make moved
+      bind ball
+        make ball
+          bind x, read x
+          bind y, read y
+          bind dx, read dx
+          bind dy, read dy
+      bind bounced, read bounced
+
+task run
+  like number
+  save rng
+    make random
+      bind seed, code 74755
+  save balls
+    make list
+  walk size
+    bind base, code 0
+    bind head, code 100
+    hook next
+      take site, name i
+      host a
+        call draw
+          read rng
+      host b
+        call draw
+          read a/next
+      host c
+        call draw
+          read b/next
+      host d
+        call draw
+          read c/next
+      save rng, read d/next
+      call push
+        bind list, read balls
+        bind item
+          make ball
+            bind x
+              call modulo
+                read a/value
+                code 500
+            bind y
+              call modulo
+                read b/value
+                code 500
+            bind dx
+              call subtract
+                call modulo
+                  read c/value
+                  code 300
+                code 150
+            bind dy
+              call subtract
+                call modulo
+                  read d/value
+                  code 300
+                code 150
+  save bounces, code 0
+  walk size
+    bind base, code 0
+    bind head, code 50
+    hook next
+      take site, name round
+      walk size
+        bind base, code 0
+        bind head, code 100
+        hook next
+          take site, name k
+          host moved
+            call move-ball
+              read balls/{k}
+          save balls/{k}, read moved/ball
+          fork test
+            hook test
+              read moved/bounced
+            hook hold
+              save bounces
+                call add
+                  read bounces
+                  code 1
+  send back, read bounces
+
+task bounce
+  take n, like number
+  like number
+  save total, code 0
+  walk size
+    bind base, code 0
+    bind head, read n
+    hook next
+      take site, name i
+      save total
+        call add
+          read total
+          call run
+  send back, read total

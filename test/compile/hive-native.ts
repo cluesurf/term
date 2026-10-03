@@ -5,6 +5,7 @@
 // entry name. Built and run on the real toolchains. HV_ONLY=rust (or swift, kotlin) runs one backend.
 // Run: npx tsx test/compile/hive-native.ts
 
+import { runDir } from './run-dir'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -176,7 +177,7 @@ function frontEnd(env: Env): Program {
   return simplify(program, new Set(['check-hive', 'hive-size-of', 'hive-wake', 'hive-tell', 'hive-roll']))
 }
 
-const dir = mkdtempSync(join(tmpdir(), 'term-hive-native-'))
+const dir = runDir('term-hive-native-')
 const only = process.env.HV_ONLY ?? ''
 
 // one deck woken; the static entry before the raise; the raise appended with the exception's form as its name

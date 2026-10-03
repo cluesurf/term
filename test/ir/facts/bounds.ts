@@ -7,6 +7,8 @@ import { compile } from '@term/make/code/compile/compile'
 import { boundedLoops, integerBounds } from '@term/make/code/ir/facts/bounds'
 import type { LoopGuard } from '@term/make/code/ir/facts/bounds'
 import { emitTypeScript } from '@term/make/code/compile/typescript'
+import { lentLists } from '@term/make/code/compile/backend'
+import { stdlibResolver } from '@term/make/code/resolve'
 import type { Program, Statement } from '@term/make/code/compile/node'
 
 let pass = 0
@@ -149,7 +151,16 @@ const step = `      save i
           code 1`
 
 // 3-8. what must NOT be guarded
-ok('an index that is not the counter is NOT guarded', guards(loop(`      save xs/{j}, code 1\n${step}`)).found.length === 0)
+// an index the loop never writes is read once by the guard, which holds on every turn
+const still = guards(loop(`      save xs/{j}, code 1\n${step}`))
+ok(
+  'an index the loop never writes is guarded by its own value',
+  still.found.length === 1 && still.found[0]!.checks.some(c => c.list === 'xs' && c.base === 'j' && c.side === 'high' && c.offset === 0),
+  show(still.found),
+)
+// `m` starts at 0, which the guard would read, and is moved to `j` during a turn: the next turn writes past the check
+const moving = loop(`      save xs/{m}, code 1\n      save m, read j\n${step}`).replace('  save i, code 0', '  save m, code 0\n  save i, code 0')
+ok('an index the loop writes is NOT guarded', guards(moving).found.length === 0, moving)
 ok('i <= n is NOT guarded', guards(loop(`      save xs/{i}, code 1\n${step}`, 'is-maximum')).found.length === 0)
 ok(
   'a counter written twice is NOT guarded',
@@ -313,6 +324,199 @@ ok(
   JSON.stringify(counted[0]?.limits),
 )
 ok('an argument of any other shape (i + 1) keeps the call checked', !caller('          call add\n            read i\n            code 1\n          read k')[0]?.fast)
+
+// 13. a task that takes a list LENT and writes its slots by bounded indexes (AWFY's Queens' `mark`): a counted loop
+// calling it runs its unchecked copy, the list needing no bound. One that pushes onto the list it is passed can change
+// the length, so the loop is not guarded at all
+const lentGuards = (task: string): LoopGuard[] => {
+  const text = `${task}
+
+task place
+  take xs, like list, like boolean
+  take n, like number
+  take c, like number
+  save r, code 0
+  walk test
+    hook test
+      call is-below
+        read r
+        read n
+    hook hold
+      call mark
+        read xs
+        read r
+        read c
+      save r
+        call add
+          read r
+          code 1
+`
+  const built = compile({ file: 'main.tree', text }, { optimize: false, resolve: stdlibResolver()! })
+
+  if (!built.ok) {
+    throw new Error(built.diagnostics.map(d => d.message).join(' | '))
+  }
+
+  const facts = boundedLoops(built.program, lentLists(built.program))
+  const found: LoopGuard[] = []
+  const visit = (value: unknown): void => {
+    if (typeof value !== 'object' || value === null) return
+    if (Array.isArray(value)) return value.forEach(visit)
+    if ((value as { form?: string }).form === 'while' && facts.has(value as Statement)) found.push(facts.get(value as Statement)!)
+
+    for (const [key, child] of Object.entries(value)) {
+      if (key !== 'type' && key !== 'span') visit(child)
+    }
+  }
+
+  visit(built.program)
+
+  return found
+}
+
+const writes = lentGuards(`task mark
+  take xs, like list, like boolean
+  take r, like number
+  take c, like number
+  host at
+    call add
+      read c
+      read r
+  save xs/{at}, false`)
+ok('a call writing a lent list by a bounded index runs unchecked, the list needing no bound', writes[0]?.fast?.length === 1, show(writes))
+
+const grows = lentGuards(`load @term/base/list
+  find push
+
+task mark
+  take xs, like list, like boolean
+  take r, like number
+  take c, like number
+  call push
+    bind list, read xs
+    bind item, false`)
+ok('a call that pushes onto the list it is passed leaves the loop unguarded', grows.length === 0, show(grows))
+
+// a list reached through a path the loop holds still: `bs/{k}/xs/{i}` under a walk over `i`, `k` never written
+const bagTask = (inner: string, before = ''): string => `form bag
+  link id, like number
+  link xs, like list, like number
+
+task touch
+  take bs, like list, like bag
+  take k, like number
+${before}
+  save i, code 0
+  walk test
+    hook test
+      call is-below
+        read i
+        code 8
+    hook hold
+${inner}
+      save i
+        call add
+          read i
+          code 1`
+
+const rewrite = `      host old, read bs/{k}/xs/{i}
+      save bs/{k}/xs/{i}
+        call add
+          read old
+          code 1`
+
+const path = guards(bagTask(rewrite))
+const pathChecks = path.found[0]?.checks ?? []
+const firstPath = pathChecks.findIndex(c => c.path)
+ok(
+  'a list reached through a path is guarded, its prefix slot bounded first',
+  path.found.length === 1 &&
+    pathChecks.some(c => c.list === 'bs/{k}/xs' && c.path !== undefined && c.side === 'high' && c.offset === 7) &&
+    pathChecks.some(c => c.list === 'bs' && c.base === 'k' && c.side === 'low') &&
+    pathChecks.some(c => c.list === 'bs' && c.base === 'k' && c.side === 'high') &&
+    firstPath > pathChecks.findIndex(c => c.list === 'bs' && c.side === 'high'),
+  show(path.found),
+)
+
+const fieldWritten = guards(bagTask(`${rewrite}
+      save bs/{k}/id, code 0`))
+ok('a field written in the loop leaves a path unguarded', fieldWritten.found.length === 0, show(fieldWritten.found))
+
+// a task taking the list of bags lent could put another bag in the slot the path goes through. Built with the lend
+// facts, so the call is one the guard would otherwise allow (`swap-bag` must take `bs` lent, or this proves nothing)
+const handed = (() => {
+  const text = bagTask(`${rewrite}
+      call swap-bag
+        read bs
+        read k`).replace(
+    'task touch',
+    `task swap-bag
+  take bs, like list, like bag
+  take k, like number
+  save bs/{k}
+    make bag
+      bind id, code 0
+      bind xs, read bs/0/xs
+
+task touch`,
+  )
+  const built = compile({ file: 'main.tree', text }, { optimize: false })
+
+  if (!built.ok) {
+    throw new Error(built.diagnostics.map(d => d.message).join(' | '))
+  }
+
+  const lent = lentLists(built.program)
+  const facts = boundedLoops(built.program, lent)
+  const found: LoopGuard[] = []
+  const visit = (value: unknown): void => {
+    if (typeof value !== 'object' || value === null) return
+    if (Array.isArray(value)) return value.forEach(visit)
+    if ((value as { form?: string }).form === 'while' && facts.has(value as Statement)) found.push(facts.get(value as Statement)!)
+
+    for (const [key, child] of Object.entries(value)) {
+      if (key !== 'type' && key !== 'span') visit(child)
+    }
+  }
+
+  visit(built.program)
+
+  return { found, lent: lent.get('swap-bag')?.has(0) === true }
+})()
+ok('the call takes the list lent, so only the path rule can refuse it', handed.lent)
+ok('a call passed the list a path goes through leaves the path unguarded', handed.found.every(g => !g.checks.some(c => c.path)), show(handed.found))
+
+const byCounter = guards(bagTask(`      host old, read bs/{i}/xs/0`))
+ok('a path through a slot at the counter is a different list every turn: unguarded', byCounter.found.length === 0, show(byCounter.found))
+
+const moved = guards(
+  bagTask(
+    `      host old, read bs/{j}/xs/{i}
+      save j, code 0`,
+    `  save j, read k`,
+  ),
+)
+ok('a path through a slot at a name the loop writes is unguarded', moved.found.length === 0, show(moved.found))
+
+// the TypeScript it drives: the guard reads the path's length once its prefix is checked, and the fast copy indexes
+// through the path with no checks
+const pathTs = (() => {
+  const built = compile({ file: 'main.tree', text: bagTask(rewrite) }, { optimize: false })
+
+  if (!built.ok) {
+    throw new Error(built.diagnostics.map(d => d.message).join(' | '))
+  }
+
+  return emitTypeScript(built.program)
+})()
+// and the fast copy reads the path ONCE, after the guard, then indexes the local (a record is a reference here)
+ok(
+  'the TypeScript guard reads the path after its prefix, and the fast copy reads it once and indexes it unchecked',
+  /if \(k >= 0 && k < bs\.length && i >= 0 && 7 < bs\[k\]!\.xs\.length\) \{\n\s*const __path0 = bs\[k\]!\.xs\n\s*while/.test(pathTs) &&
+    pathTs.includes('const old: number = __path0[i]!') &&
+    pathTs.includes('__path0[i] = '),
+  pathTs,
+)
 
 console.log(`\nbounds: ${pass} pass, ${fail} fail`)
 

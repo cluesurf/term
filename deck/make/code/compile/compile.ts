@@ -34,6 +34,16 @@ import { checkTells } from '@term/make/code/check/tell'
 import { checkRaiseBounds } from '@term/make/code/check/effects'
 import { checkMissingBacks } from '@term/make/code/check/returns'
 import { checkTypeNames } from '@term/make/code/check/type-names'
+import { checkLiterals } from '@term/make/code/check/literals'
+import { checkConstants } from '@term/make/code/check/constants'
+import { checkBindTargets } from '@term/make/code/check/binds'
+import { checkBodilessCalls } from '@term/make/code/check/bodiless'
+import { checkFinds } from '@term/make/code/check/finds'
+import { checkDuplicateTasks } from '@term/make/code/check/duplicates'
+import { warnDeprecated } from '@term/make/code/check/deprecated'
+import { checkLostWrites } from '@term/make/code/check/lost-writes'
+import { checkRouteMethods } from '@term/make/code/check/routes'
+import { copyForViews, checkLoweredViews } from '@term/make/code/check/views'
 import { checkSupervision } from '@term/make/code/check/supervise'
 import { buildRoll } from '@term/make/code/compile/roll'
 import type { Roll } from '@term/make/code/compile/roll'
@@ -102,6 +112,14 @@ import type {
 import { checkTwins } from '@term/make/code/check/twin'
 import { applyTwins, exposeTwins, guardTask, twinTask } from '@term/make/code/ir/twin'
 import type { TwinChoices } from '@term/make/code/ir/twin'
+
+// The packages that DESCRIBE a host's API rather than implement anything: @term/bind, 3,091 files transcribed from
+// TypeScript's lib.d.ts, Node's typings and Rust's documentation. Their types are the host's (`or`, `index`, `maybe`
+// as an optional marker, `path-like`), which Term has no forms for, and 1,635 of the files name one. In these files an
+// unknown type name (check/type-names.ts) and a `find` the module lacks (check/finds.ts) are WARNINGS, so the count
+// shows on every build and a later pass can declare them; everywhere else both refuse the build. Named here, once,
+// rather than guessed from content, and never extended to a package that implements anything
+const HOST_DESCRIPTIONS = new Set(['@term/bind'])
 
 // The render-runtime helpers that `lowerZones` (compile/view-lower.ts)
 // synthesizes calls to when it lowers a `zone` component. Because that
@@ -585,6 +603,13 @@ export function compileProgram(
   // could be shaken out first. Lowered here, every backend receives a checked dispatcher, and the route runtime it
   // calls arrives through compile/load.ts's injection. The two functions are the app's entry: nothing in the program
   // calls them, the platform does, so they are roots
+  // a page route's `task get` was counted and emitted nothing, so it is refused first (check/routes.ts)
+  const routeMethods = checkRouteMethods(program, file)
+
+  if (routeMethods.length) {
+    return { ok: false, diagnostics: routeMethods }
+  }
+
   const routed = lowerRoutes(program, env ?? 'node')
 
   if (routed !== program) {
@@ -604,9 +629,35 @@ export function compileProgram(
   // every type a task or form of this file names is one the program has, read before seeding turns an unknown name
   // into a hole (check/type-names.ts)
   const typeNameDiagnostics = checkTypeNames(program, file)
+  const describesHost = HOST_DESCRIPTIONS.has(deckOf?.(file)?.name ?? '')
 
-  if (typeNameDiagnostics.length) {
+  if (typeNameDiagnostics.length && !describesHost) {
     return { ok: false, diagnostics: typeNameDiagnostics }
+  }
+
+  // every number literal is one the backends can hold, and one past 2^53 says what TypeScript reads (check/literals.ts)
+  const literals = checkLiterals(program, file)
+
+  if (literals.errors.length) {
+    return { ok: false, diagnostics: literals.errors }
+  }
+
+  // a `host` inside a task is written once (check/constants.ts)
+  const constantDiagnostics = checkConstants(program, file)
+
+  if (constantDiagnostics.length) {
+    return { ok: false, diagnostics: constantDiagnostics }
+  }
+
+  // a shared bind says which backends it leaves out (check/binds.ts). Whether a called bind has a case for the backend
+  // being emitted is asked of the program actually emitted, after dead code is gone (call/code/emit.ts)
+  const bindChecks = checkBindTargets(program, file, undefined)
+
+  // a call reaches a task something in the build defines, not only a declaration (check/bodiless.ts)
+  const bodilessCalls = checkBodilessCalls(program, file)
+
+  if (bodilessCalls.length) {
+    return { ok: false, diagnostics: bodilessCalls }
   }
 
   // arity overloading: rename same-name / different-arity functions (and their calls) to unique `name__<arity>` names,
@@ -618,6 +669,20 @@ export function compileProgram(
 
   if (privateFinds.length) {
     return { ok: false, diagnostics: privateFinds }
+  }
+
+  // every `find` names something the module it loads defines, before overloads rename anything (check/finds.ts)
+  const staleFinds = checkFinds(program, file, scope)
+
+  if (staleFinds.length && !describesHost) {
+    return { ok: false, diagnostics: staleFinds }
+  }
+
+  // one file defines a task once per parameter list (check/duplicates.ts)
+  const duplicateTasks = checkDuplicateTasks(program, file)
+
+  if (duplicateTasks.length) {
+    return { ok: false, diagnostics: duplicateTasks }
   }
 
   const ambiguities = disambiguateOverloads(program, scope, file)
@@ -717,6 +782,10 @@ export function compileProgram(
     }
   }
 
+  // the components' lowered code is checked too, from a copy taken before the main check annotates the program
+  // (check/views.ts)
+  const viewCopy = copyForViews(program, file)
+
   // formal type checking: the surface pass (gradual bidirectional inference) annotates the AST with types
   const checkDiagnostics = check(program, file, merged)
   // the checker's warnings (an unknown type name) ride with the build's other warnings; only its errors stop it
@@ -725,6 +794,12 @@ export function compileProgram(
 
   if (checkErrors.length) {
     return { ok: false, diagnostics: checkErrors }
+  }
+
+  const viewErrors = viewCopy ? checkLoweredViews(viewCopy, file, merged) : []
+
+  if (viewErrors.length) {
+    return { ok: false, diagnostics: viewErrors }
   }
 
   // async resolution: infer which functions are async from the call graph and await async calls by default, so callers
@@ -875,6 +950,11 @@ export function compileProgram(
     ...warnPrivateNotes(program, file),
     ...totality.warnings,
     ...holdWarnings,
+    ...literals.warnings,
+    ...bindChecks.warnings,
+    ...warnDeprecated(program, file),
+    // a host description's undeclared types and imports, counted rather than refused (HOST_DESCRIPTIONS)
+    ...(describesHost ? [...typeNameDiagnostics, ...staleFinds].map(d => ({ ...d, severity: 'warning' as const })) : []),
   ]
 
   // the app's `tell` decisions: each must name an exception the program can raise, with props it declares
@@ -889,6 +969,13 @@ export function compileProgram(
 
   if (boundDiagnostics.length) {
     return { ok: false, diagnostics: boundDiagnostics }
+  }
+
+  // a write through a record parameter reaches somebody (check/lost-writes.ts)
+  const lostWrites = checkLostWrites(program, file)
+
+  if (lostWrites.length) {
+    return { ok: false, diagnostics: lostWrites }
   }
 
   // every path through a task that promises a value sends one back (check/returns.ts)
@@ -915,6 +1002,16 @@ export function compileProgram(
   const wake = program.some(s => s.form === 'function' && s.name === 'hive-wake')
     ? wakeGroups(buildRoll(program, file, { deckOf }))
     : undefined
+
+  // every function outside the public surface is marked `internal`: every call it receives is in this program. Only
+  // when the roots are known, so a compile that names none leaves every function callable from outside
+  if (roots) {
+    for (const node of program) {
+      if (node.form === 'function' && !roots.has(node.name)) {
+        node.internal = true
+      }
+    }
+  }
 
   // trait-instance dictionary passing: thread a trait's instance through every trait-bounded generic call so generic
   // trait-method dispatch resolves to concrete code. This is the JavaScript-family lowering (records of functions); the

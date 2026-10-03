@@ -1,8 +1,13 @@
 
 mine mark
   mine term, term mark
-    mine term
-      site kind
+    mine any
+      mine term
+        site kind
+      # `mark <uuid>`: a record's durable identity. Written as text it matched nothing here, so the form it stood
+      # under failed to match and was dropped whole, every name in it then undefined (guides: language/notes)
+      mine text
+        site identity
     mine list
       mine any
         mine form, like mark-bind

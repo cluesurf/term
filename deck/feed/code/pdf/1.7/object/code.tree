@@ -26,8 +26,6 @@ load @term/base/list
 load @term/base/text
   find char-at
   find char-code-at
-
-load @term/base/text/string
   find pad-left
 
 load @term/base/rune

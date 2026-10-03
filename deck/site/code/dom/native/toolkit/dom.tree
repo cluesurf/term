@@ -133,6 +133,34 @@ task listen-document
     task drop
       save skip, code 0
 
+# every key pressed in the window, as KeyboardEvent.key names it: an AppKit key-down monitor, the root controller's
+# hardware key presses on UIKit, the Activity's key dispatch on Android (swiftui-target-0003). Returns the remover
+task listen-key
+  take handler
+    like task
+      take key, like text
+  like task
+  save number
+    call native-view/listen-key
+      read handler
+  send back
+    task drop
+      call native-view/drop-key
+        read number
+
+# for tests: how many nodes the host holds alive (reactive-bridge-0005), so a disposed branch can be seen freed
+task live-nodes
+  like number
+  send back
+    call native-view/live-nodes
+
+# for tests: a key pressed, through the platform's own route where a test can make one (a key event on macOS and
+# Android) and the root controller's press handling on iOS, where a test cannot synthesize a press
+task type-key
+  take key, like text
+  call native-view/type-key
+    read key
+
 task anchor
   take reference, like view
   take panel, like view

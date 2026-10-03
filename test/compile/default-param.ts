@@ -47,8 +47,9 @@ ok('a list default is in the signature', /function countBinds\(binds: string\[\]
 ok('a number default is in the signature', /function scale\(n: number, by: number = 2\)/.test(ts), ts.split('\n').find(l => l.includes('function scale(')) ?? '')
 ok(
   'a Term call site still passes the default itself, so its output is unchanged',
-  // (`scale(3)` is folded to 6 by the optimizer, so only the call that survives is checked)
-  /countBinds\(\[\]( as string\[\])?\)/.test(ts),
+  // (`scale(3)` is folded to 6 by the optimizer; `count-binds` is small enough to inline, so the default reaches it
+  // either as the argument or as the inlined read of it)
+  /countBinds\(\[\]( as string\[\])?\)|\(\[\] as string\[\]\)\.length/.test(ts),
   ts.slice(ts.indexOf('function use')),
 )
 

@@ -41,8 +41,11 @@ load ./write
   find pack
 
 # the state of a reader: the anchors declared so far, what the stream is (`<hash>` of `h(` entries or `<list>` of
-# `m(` items, `<>` until the first data line), and how many data lines it has taken
+# `m(` items, `<>` until the first data line), and how many data lines it has taken. One object: `feed` writes
+# `hold` and `count` and returns the line's data, so a copy (every plain form since D1) forgot what the stream was
+# between lines, and a mixed stream was accepted
 form stream-reader
+  mark shared
   link trees
     like list
       like data-tree

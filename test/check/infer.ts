@@ -308,10 +308,11 @@ task use-two
 `,
   )
 
-  // same name AND same arity is not an overload: it is last-wins (template-generated constants rely on this), so it
-  // compiles rather than erroring -- overloading only distinguishes different arities
-  expectOk(
-    'same-name same-arity is last-wins (not an overload)',
+  // same name AND same parameters in ONE file is not an overload, and it is refused rather than letting the last win in
+  // silence (check/duplicates.ts, note/term/gaps/plan.md phase 1). Overloading distinguishes arity or a written
+  // parameter type, and a second file's definition (a native shim) is the overload binder's business
+  expectError(
+    'same-name same-parameters in one file is refused (not an overload, not last-wins)',
     `task render
   take n, like number
   like text
@@ -324,6 +325,7 @@ task render
   send back
     text <b>
 `,
+    'duplicate-definition',
   )
 
   // NESTED NAMED TASK: the language has none (a task is top-level, a local function is a closure in value

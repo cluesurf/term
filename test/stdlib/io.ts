@@ -163,7 +163,8 @@ task say
 `
 
 const ENVIRONMENT = `load @term/base/code/environment
-  find environment
+  find directory
+  find variable
 
 task cwd
   like text

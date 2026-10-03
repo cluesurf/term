@@ -22,6 +22,7 @@ load ../memory/dom
   find get-value
   find set-value
   find get-attribute
+  find fire-key
 
 load ./paint
   find length-of
@@ -375,10 +376,94 @@ task is-character
       read runes/length
       code 1
 
-# one key, pressed with focus where it is. `root` is the screen's root, where focus moves among the controls
+# a terminal key's name as the web's KeyboardEvent.key spells it, for `listen-key`: `escape` is `Escape`, `up` is
+# `ArrowUp`, a character is itself. Empty for ctrl-c, which ends the program rather than reaching it
+task web-key
+  take key, like text
+  like text
+  fork test
+    hook test
+      call is-equal
+        read key
+        text <escape>
+    hook hold
+      send back, text <Escape>
+    hook test
+      call is-equal
+        read key
+        text <enter>
+    hook hold
+      send back, text <Enter>
+    hook test
+      meet or
+        call is-equal
+          read key
+          text <tab>
+        call is-equal
+          read key
+          text <shift-tab>
+    hook hold
+      send back, text <Tab>
+    hook test
+      call is-equal
+        read key
+        text <backspace>
+    hook hold
+      send back, text <Backspace>
+    hook test
+      call is-equal
+        read key
+        text <space>
+    hook hold
+      send back, text < >
+    hook test
+      call is-equal
+        read key
+        text <up>
+    hook hold
+      send back, text <ArrowUp>
+    hook test
+      call is-equal
+        read key
+        text <down>
+    hook hold
+      send back, text <ArrowDown>
+    hook test
+      call is-equal
+        read key
+        text <left>
+    hook hold
+      send back, text <ArrowLeft>
+    hook test
+      call is-equal
+        read key
+        text <right>
+    hook hold
+      send back, text <ArrowRight>
+    hook test
+      call is-equal
+        read key
+        text <ctrl-c>
+    hook hold
+      send back, text <>
+  send back, read key
+
+# one key, pressed with focus where it is. `root` is the screen's root, where focus moves among the controls. The key
+# reaches the window's `listen-key` listeners first, under its web name, as a browser's document hears a keydown
 task press-key
   take root, like view
   take key, like text
+  save named
+    call web-key
+      read key
+  fork test
+    hook test
+      call is-unequal
+        read named
+        text <>
+    hook hold
+      call fire-key
+        read named
   fork test
     hook test
       call is-equal

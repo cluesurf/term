@@ -1,0 +1,70 @@
+load @term/base/list
+  find list
+  find push
+  find zip
+
+# a variant case named like a stdlib form (check/scope.ts, `separateCaseNames`): this file's `case pair` and the
+# stdlib's `pair` form, whose zip builds its own. Each construction must build the one it means, on every backend
+
+form shape
+  case leaf
+    link size, like number
+  case pair
+    link left, like number
+    link right, like number
+
+task measure
+  take s, like shape
+  like number
+  fork case, read s
+    case pair
+      send back
+        call add
+          read left
+          read right
+    case leaf
+      send back, read size
+
+task two
+  take x, like number
+  take y, like number
+  like list, like number
+  save out
+    make list
+  call push
+    bind list, read out
+    bind item, read x
+  call push
+    bind list, read out
+    bind item, read y
+  send back, read out
+
+task compute
+  like text
+  host a
+    call two
+      code 1
+      code 2
+  host b
+    call two
+      code 30
+      code 40
+  host zipped, call zip(read(a), read(b))
+  save total, code 0
+  walk list, read zipped
+    hook next
+      take site, name z
+      save total
+        call add
+          read total
+          call add
+            read z/first
+            read z/second
+  host mine
+    make pair
+      bind left, code 5
+      bind right, code 6
+  host other
+    make leaf
+      bind size, code 9
+  send back, text <{total}:{measure(mine)}:{measure(other)}>

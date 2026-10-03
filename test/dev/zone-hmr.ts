@@ -29,7 +29,8 @@ function ok(name: string, cond: boolean, info = ''): void {
 
 const resolve = projectResolver(process.cwd(), 'node')
 
-// a zone reading a signal, with a static label so v1 and v2 are visibly different
+// a zone reading a signal, with a static label so v1 and v2 are visibly different. The signal holds text: a text node
+// takes text, and a number read into one is refused since the lowered component is checked (check/views.ts)
 const app = (
   label: string,
 ): string => `load @cluesurf/site/code/view/render
@@ -47,7 +48,7 @@ view counter
   take host, like view
   save count
     call make-signal
-      code 0
+      text <0>
   view div
     text <${label}>
     read

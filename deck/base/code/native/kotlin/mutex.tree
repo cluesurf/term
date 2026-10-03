@@ -1,7 +1,8 @@
-# kotlin mutex implementation. Forwards to the linked mutex runtime shim (ReentrantLock). Internal: reached only through the public mutex API.
+# kotlin mutex implementation. Forwards to the linked mutex runtime shim (a TermMutex, whose waiters suspend rather
+# than block a thread). Internal: reached only through the public mutex API.
 
 dock type
-  load <java.util.concurrent.locks.ReentrantLock>, name mutex-handle
+  load <TermMutex>, name mutex-handle
 
 dock load
   load <global:mutex>, name mutex

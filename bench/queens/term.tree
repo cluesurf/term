@@ -1,0 +1,201 @@
+load @term/base/list
+  find list
+
+# Queens, from Are We Fast Yet (Marr, Daloze and Mössenböck, DLS 2016): eight queens placed by backtracking over
+# four lists of flags (free rows, free rising and falling diagonals) and the row each queen stands on. AWFY's structure
+# kept: `place` recursive over the columns, each square tested and then set and cleared through the three flag lists.
+# AWFY runs it ten times per benchmark and requires every run to succeed; this runs it `n` times and adds a checksum of
+# each placement, the sum of (row + 1) times its queen's column, 0 for a run that fails, so the output is one integer
+# that says where every queen stood
+
+task flags
+  take size, like number
+  like list, like boolean
+  save out
+    make list
+  walk size
+    bind base, code 0
+    bind head, read size
+    hook next
+      take site, name i
+      call push
+        bind list, read out
+        bind item, true
+  send back, read out
+
+task numbers
+  take size, like number
+  take value, like number
+  like list, like number
+  save out
+    make list
+  walk size
+    bind base, code 0
+    bind head, read size
+    hook next
+      take site, name i
+      call push
+        bind list, read out
+        bind item, read value
+  send back, read out
+
+# is the square at row `r`, column `c` free on every line through it?
+task is-free
+  take rows, like list, like boolean
+  take maxs, like list, like boolean
+  take mins, like list, like boolean
+  take r, like number
+  take c, like number
+  like boolean
+  host rising
+    call add
+      read c
+      read r
+  host falling
+    call add
+      call subtract
+        read c
+        read r
+      code 7
+  send back
+    meet and
+      read rows/{r}
+      read maxs/{rising}
+      read mins/{falling}
+
+# mark the square at row `r`, column `c` taken or free on every line through it
+task mark
+  take rows, like list, like boolean
+  take maxs, like list, like boolean
+  take mins, like list, like boolean
+  take r, like number
+  take c, like number
+  take free, like boolean
+  host rising
+    call add
+      read c
+      read r
+  host falling
+    call add
+      call subtract
+        read c
+        read r
+      code 7
+  save rows/{r}, read free
+  save maxs/{rising}, read free
+  save mins/{falling}, read free
+
+# place a queen in column `c` and every column after it, or answer that it cannot be done
+task place
+  take rows, like list, like boolean
+  take maxs, like list, like boolean
+  take mins, like list, like boolean
+  take queens, like list, like number
+  take c, like number
+  like boolean
+  walk size
+    bind base, code 0
+    bind head, code 8
+    hook next
+      take site, name r
+      fork test
+        hook test
+          call is-free
+            read rows
+            read maxs
+            read mins
+            read r
+            read c
+        hook hold
+          save queens/{r}, read c
+          call mark
+            read rows
+            read maxs
+            read mins
+            read r
+            read c
+            false
+          fork test
+            hook test
+              call is-equal
+                read c
+                code 7
+            hook hold
+              send back, true
+          fork test
+            hook test
+              call place
+                read rows
+                read maxs
+                read mins
+                read queens
+                call add
+                  read c
+                  code 1
+            hook hold
+              send back, true
+          call mark
+            read rows
+            read maxs
+            read mins
+            read r
+            read c
+            true
+  send back, false
+
+task solve
+  like number
+  host rows
+    call flags
+      code 8
+  host maxs
+    call flags
+      code 16
+  host mins
+    call flags
+      code 16
+  host queens
+    call numbers
+      code 8
+      code -1
+  host placed
+    call place
+      read rows
+      read maxs
+      read mins
+      read queens
+      code 0
+  save sum, code 0
+  fork test
+    hook test
+      read placed
+    hook hold
+      walk size
+        bind base, code 0
+        bind head, code 8
+        hook next
+          take site, name r
+          save sum
+            call add
+              read sum
+              call multiply
+                call add
+                  read r
+                  code 1
+                read queens/{r}
+  send back, read sum
+
+task queens
+  take n, like number
+  like number
+  save total, code 0
+  walk size
+    bind base, code 0
+    bind head, read n
+    hook next
+      take site, name round
+      save total
+        call add
+          read total
+          call solve
+  send back, read total

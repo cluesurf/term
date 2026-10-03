@@ -13,8 +13,14 @@ import type { Program, Statement, Type, Span } from '@term/make/code/compile/nod
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
 
-// the names the seeder reads specially, and the language's own
-const GIVEN = new Set(['list', 'hash', 'unknown', 'type', 'void', 'unit', 'dynamic', 'bytes', 'task'])
+// the names the seeder reads specially, and the language's own: the same list as `PRIMITIVE_TYPE_NAMES` in
+// check/infer.ts, whose warning this refusal hardens. A type argument (`like hash, like text, like number`) stays a
+// `named` type where a parameter's own `like text` is already the primitive, so the primitives must be here too
+const GIVEN = new Set([
+  'u8', 'u16', 'u32', 'u64', 'u128', 'i8', 'i16', 'i32', 'i64', 'i128', 'integer', 'number', 'decimal', 'float', 'f32', 'f64',
+  'dynamic', 'json', 'bytes', 'buffer', 'text', 'boolean', 'void', 'unknown', 'any', 'unit', 'list', 'hash', 'task',
+  'string', 'natural', 'self', 'type', 'size',
+])
 
 function namedIn(type: Type | undefined, out: string[]): void {
   if (!type) {
@@ -60,6 +66,15 @@ export function checkTypeNames(program: Program, file: string): Diagnostic[] {
     if (s.form === 'record-type') {
       for (const variant of s.variants) {
         known.add(variant.name)
+      }
+    }
+
+    // a task to `type` is a type family, and `like pos / head / read s` names it (test/check/container.ts)
+    if (s.form === 'function') {
+      const result = s.declared?.result ?? s.result
+
+      if (result?.kind === 'named' && result.name === 'type') {
+        known.add(s.name)
       }
     }
 

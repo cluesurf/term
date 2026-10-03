@@ -8,8 +8,10 @@
 import { armLocals } from '@term/make/code/check/arm'
 import { raiseSets } from '@term/make/code/check/effects'
 import { provenIncrements } from '@term/make/code/ir/facts/range'
+import { provenArithmetic, type Proven } from '@term/make/code/compile/proven'
 import { boundedLoops } from '@term/make/code/ir/facts/bounds'
-import { valuePlaces } from '@term/make/code/compile/place'
+import { asciiTexts } from '@term/make/code/ir/facts/text'
+import { privateForms, valuePlaces } from '@term/make/code/compile/place'
 import type { SlotLocal } from '@term/make/code/compile/place'
 import type {
   Expression,
@@ -26,10 +28,20 @@ import {
   stringCall,
   stringRead,
   isText,
+  textValued,
+  textAppend,
+  emptyText,
 } from '@term/make/code/compile/backend'
 import type { CollectionOp, FormKind, FormSpec } from '@term/make/code/compile/backend'
 import {
+  asciiCharAppend,
   escapingParams,
+  mapUpdate,
+  swapAt,
+  fillTasks,
+  fillCall,
+  redeclaredLets,
+  textCursors,
   formSpec,
   hasValuedReturn,
   refuseAny,
@@ -37,9 +49,11 @@ import {
   gatedTasks,
   listFacts,
   ownedLocals,
+  ownedElements,
+  ownedFields,
   namesIn,
 } from '@term/make/code/compile/backend'
-import type { Lend } from '@term/make/code/compile/backend'
+import type { Lend, TextCursors } from '@term/make/code/compile/backend'
 import {
   collectBinds,
   renderBind,
@@ -109,6 +123,12 @@ const SWIFT_KEYWORDS = new Set([
   'some',
 ])
 
+// whether an emitted operand holds a `try` that no parenthesis of its own closes over, so an operator beside it needs
+// the `try` in front of the whole expression
+function openTry(text: string): boolean {
+  return /(^|[^(])\btry /.test(text)
+}
+
 function escape(identifier: string): string {
   return SWIFT_KEYWORDS.has(identifier)
     ? `\`${identifier}\``
@@ -168,6 +188,98 @@ export const SWIFT_TEXT = `enum TermText {
         guard let x = at(s, i), x < s.unicodeScalars.endIndex else { return -1 }
         return Int(s.unicodeScalars[x].value)
     }
+    // an ASCII text (ir/facts/text.ts): a code point is one UTF-8 byte, read in place by its offset
+    // one byte through the UTF-8 view, whose offset is constant time on a native text: a withUTF8 per read, which
+    // must copy the text into a local to call, measured 3% slower on fasta (2026-10-03)
+    static func asciiByte(_ s: String, _ i: Int) -> UInt8? {
+        let u = s.utf8
+        return i >= 0 && i < u.count ? u[u.index(u.startIndex, offsetBy: i)] : nil
+    }
+    static func asciiCodeAt(_ s: String, _ i: Int) -> Int { asciiByte(s, i).map { Int($0) } ?? -1 }
+    static func asciiCharAt(_ s: String, _ i: Int) -> String { asciiByte(s, i).map { String(Unicode.Scalar($0)) } ?? "" }
+    // appended as the scalar, with no one-character String made for it
+    static func asciiAppend(_ out: inout String, _ s: String, _ i: Int) {
+        if let c = asciiByte(s, i) { out.unicodeScalars.append(Unicode.Scalar(c)) }
+    }
+    // both ends clamped to the text and swapped when reversed (the Term meaning), as byte offsets
+    static func asciiSubstring(_ s: String, _ a: Int, _ e: Int? = nil) -> String {
+        var s = s
+        return s.withUTF8 { b in
+            let n = b.count
+            var x = min(max(a, 0), n)
+            var y = min(max(e ?? n, 0), n)
+            if x > y { swap(&x, &y) }
+            return String(decoding: b[x..<y], as: UTF8.self)
+        }
+    }
+    // a search of an ASCII text answers its UTF-8 offset, which is the code-point index: no scalar count back from it
+    static func asciiIndexOf(_ s: String, _ n: String, _ from: Int = 0) -> Int {
+        let h = s.utf8
+        guard let found = find(s, n, h.index(h.startIndex, offsetBy: min(max(from, 0), h.count))) else { return -1 }
+        return h.distance(from: h.startIndex, to: found)
+    }
+    static func asciiLastIndexOf(_ s: String, _ n: String) -> Int {
+        let h = s.utf8
+        var last: String.Index? = nil
+        var from = h.startIndex
+        while let found = find(s, n, from) {
+            last = found
+            if found == h.endIndex { break }
+            from = h.index(after: found)
+        }
+        return last.map { h.distance(from: h.startIndex, to: $0) } ?? -1
+    }
+    // a scalar read through a cursor (backend.ts, textCursors): the scalar index and UTF-8 offset of the last read,
+    // stepped forward or back from, or restarted at the start when that is nearer. A read past the end leaves it there
+    // the UTF-8 offset of scalar i, the end past the last
+    static func cursorTo(_ s: String, _ i: Int, _ c: inout (Int, Int)) -> Int {
+        let u = s.utf8
+        let n = u.count
+        var (k, b) = c
+        let byte = { (o: Int) -> UInt8 in u[u.index(u.startIndex, offsetBy: o)] }
+        if i < k {
+            if i <= k - i {
+                (k, b) = (0, 0)
+            } else {
+                while k > i {
+                    b -= 1
+                    while byte(b) & 0xC0 == 0x80 { b -= 1 }
+                    k -= 1
+                }
+            }
+        }
+        while k < i && b < n {
+            let x = byte(b)
+            b += x < 0x80 ? 1 : x < 0xE0 ? 2 : x < 0xF0 ? 3 : 4
+            k += 1
+        }
+        c = (k, b)
+        return b
+    }
+    static func cursorAt(_ s: String, _ i: Int, _ c: inout (Int, Int)) -> Unicode.Scalar? {
+        if i < 0 { return nil }
+        let b = cursorTo(s, i, &c)
+        let u = s.utf8
+        return c.0 == i && b < u.count ? s.unicodeScalars[u.index(u.startIndex, offsetBy: b)] : nil
+    }
+    // the scalars from a to e through the cursor, both clamped and swapped when reversed: the cursor moves to the start,
+    // and the end is counted on from it
+    static func cursorSlice(_ s: String, _ a: Int, _ e: Int, _ c: inout (Int, Int)) -> String {
+        let (x, y) = a <= e ? (max(a, 0), max(e, 0)) : (max(e, 0), max(a, 0))
+        let u = s.utf8
+        let n = u.count
+        let from = cursorTo(s, x, &c)
+        var to = from
+        var k = c.0
+        while k < y && to < n {
+            let b = u[u.index(u.startIndex, offsetBy: to)]
+            to += b < 0x80 ? 1 : b < 0xE0 ? 2 : b < 0xF0 ? 3 : 4
+            k += 1
+        }
+        return String(s[u.index(u.startIndex, offsetBy: from)..<u.index(u.startIndex, offsetBy: to)])
+    }
+    static func cursorCodeAt(_ s: String, _ i: Int, _ c: inout (Int, Int)) -> Int { cursorAt(s, i, &c).map { Int($0.value) } ?? -1 }
+    static func cursorCharAt(_ s: String, _ i: Int, _ c: inout (Int, Int)) -> String { cursorAt(s, i, &c).map { String($0) } ?? "" }
     static func indexOf(_ s: String, _ n: String, _ from: Int = 0) -> Int {
         guard let found = find(s, n, clamped(s, from)) else { return -1 }
         return scalarsTo(s, found)
@@ -371,9 +483,20 @@ const SWIFT_HELPERS = {
     '        get { if let i = slot[key] { return vs[i] }; return nil }',
     '        set {',
     '            guard let value = newValue else { removeValue(forKey: key); return }',
-    '            if let i = slot[key] { vs[i] = value } else { slot[key] = ks.count; ks.append(key); vs.append(value); live.append(true) }',
+    '            vs[place(key, value)] = value',
     '        }',
     '    }',
+    '    // the entry of a key, made with fallback when it is absent: the dictionary hashes the key once, through its',
+    '    // default subscript modified in place, where a read and then a write hashed it twice',
+    '    mutating func place(_ key: K, _ fallback: V) -> Int {',
+    '        let n = ks.count',
+    '        var fresh = false',
+    '        let i = { (at: inout Int) -> Int in if at < 0 { at = n; fresh = true }; return at }(&slot[key, default: -1])',
+    '        if fresh { ks.append(key); vs.append(fallback); live.append(true) }',
+    '        return i',
+    '    }',
+    '    // a value changed from itself in one probe (backend.ts, mapUpdate)',
+    '    mutating func update(_ key: K, _ fallback: V, _ change: (V) -> V) { let i = place(key, fallback); vs[i] = change(vs[i]) }',
     '    @discardableResult mutating func removeValue(forKey key: K) -> V? {',
     '        guard let i = slot.removeValue(forKey: key) else { return nil }',
     '        let out = vs[i]',
@@ -761,11 +884,19 @@ export function emitSwift(
   options?: { wake?: WakeGroup[] },
 ): string {
   const pad = (d: number) => '  '.repeat(d)
-  // the `+` nodes proven not to overflow (ir/facts/range.ts): written as the wrapping `&+`
-  const provenSteps = provenIncrements(program)
+  // the `+`, `-` and `*` nodes proven not to overflow (compile/proven.ts): written as the wrapping `&+`, `&-`, `&*`.
+  // The counted steps here, joined below by the interval fact once the list facts it reads are known
+  let provenSteps: Proven = provenIncrements(program)
   // the counted loops whose calls to a bounded task may run its wrapping copy (ir/facts/bounds.ts), the calls in the
   // copy being emitted, the tasks some such call reached, and whether the body being emitted is such a copy
+  // no lend facts: a fast copy of a task that takes a list is emitted under its own name, which this backend's list
+  // facts (the lent, fixed and borrowed parameters, all keyed by task) do not reach, so only tasks that take no list
+  // run unchecked here. TypeScript keys no list representation by task and passes them
   const loopGuards = boundedLoops(program)
+  // the text expressions proven ASCII, read in place by byte offset (ir/facts/text.ts)
+  const asciiNodes = asciiTexts(program)
+  // the tasks that only fill a list (backend.ts, `fillTasks`)
+  const fills = fillTasks(program)
   let fastCalls = new Set<object>()
   const fastTasks = new Set<string>()
   let uncheckedInts = false
@@ -863,6 +994,14 @@ export function emitSwift(
       .map(n => [n.name, n.params?.length ?? 0]),
   )
 
+  // the element types E whose lists of lists own their inner lists (backend.ts, `ownedElements`), decided once the list
+  // facts are known: an inner list of one is a plain `[E]`, where every list is otherwise a `SeedList`
+  let innerKeys = new Set<string>()
+  // how the element of a list type is held: an inner list a list of lists owns is the plain array
+  const swiftElement = (list: Extract<Type, { kind: 'array' }>): string =>
+    list.element.kind === 'array' && innerKeys.has(swiftType(list.element.element))
+      ? `[${swiftType(list.element.element)}]`
+      : swiftType(list.element)
   const swiftType = (type: Type | undefined): string => {
     switch (type?.kind) {
       case 'boolean':
@@ -877,7 +1016,7 @@ export function emitSwift(
         // every binding. A bare Swift Array is a value type and would not carry the mutation across a copy.
         needs.add('list')
 
-        return `SeedList<${swiftType(type.element)}>`
+        return `SeedList<${swiftElement(type)}>`
       case 'map':
         // a reference class wrapping a Dictionary, so a map mutated through one binding (a `set.insert`) is seen
         // through every binding. A bare Swift Dictionary is a value type and would not carry the mutation across a copy.
@@ -1338,21 +1477,49 @@ export function emitSwift(
   // evaluated, so `flip(&perm.data, perm.data[0])` reads before it lends
   const gated = gatedTasks(program, maskMethods)
   const { lend: lendParams, fresh: freshLists } = listFacts(program, gated)
+  provenSteps = provenArithmetic(program, lendParams, freshLists)
+  // the lists of lists that own their inner lists, each inner list a plain `[E]` (backend.ts, `ownedElements`): Graph's
+  // adjacency lists, 432 ms to 336 against the hand version's 318 (`tmp/swift-graph-ab.ts`)
+  const elementLists = ownedElements(program, freshLists, lendParams, t => swiftType(t))
+  innerKeys = elementLists.keys
+  // the plain records' list fields the record owns (backend.ts, `ownedFields`), a plain `[T]` where every list field
+  // was a `SeedList`: read and written in place through the path (Particle, 720 ms to 328 measured by hand,
+  // `tmp/swift-particle-ab.ts`). Struct fields only: a variant's are bound by its arm, which this does not read yet
+  const structForms = new Set(program.flatMap(n => (n.form === 'record-type' && n.variants.length === 0 && !n.shared ? [n.name] : [])))
+  const fieldLists = new Set(
+    [...ownedFields(program, freshLists, lendParams, privateForms(program, lendParams, freshLists))].filter(key => structForms.has(key.split('/')[0]!)),
+  )
+  // a path `r/field` to a list field the record owns
+  const ownedPath = (target: Expression): boolean =>
+    target.form === 'member' &&
+    target.index === undefined &&
+    target.target.type?.kind === 'named' &&
+    fieldLists.has(`${target.target.type.name}/${target.name}`)
+  const ownsInner = (at: WeakMap<object, string>, node: object): boolean => {
+    const key = at.get(node)
+
+    return key !== undefined && elementLists.keys.has(key)
+  }
   // the plain-array names of the function being emitted: its lent parameters, and its owned locals as 'write'
   let plainNames = new Map<string, Lend>()
+  // the walks by position written so far, for their counters' names (`__at0`)
+  let walkCount = 0
   // its owned locals, with whether anything writes them (`var` against `let`)
   let ownedNames = new Map<string, boolean>()
   // F4 on Swift (compile/place.ts, `valuePlaces`): the record writes narrowed to their changed fields, the slot locals
   // read through their slot, and the slot locals of the function being emitted, by name
   const { writes: placed, locals: slotLocals } = valuePlaces(program)
   let slotNames = new Map<string, SlotLocal>()
+  // the texts this task reads through a cursor (backend.ts, `textCursors`)
+  let cursors: TextCursors = { names: [], reads: new Map() }
+  let redeclared = new WeakSet<Statement>()
   // set while an owned local's init is emitted, so a fresh task's `[T]` is taken as it is
   let rawFresh = false
   // whether the function being emitted answers a fresh list
   let emittingFresh = false
   // a list's storage: the plain array itself, or the SeedList's `.data`
   const view = (target: Expression, bind: Bindings): string =>
-    target.form === 'variable' && plainNames.has(target.name) ? expr(target, bind) : `${expr(target, bind)}.data`
+    (target.form === 'variable' && plainNames.has(target.name)) || ownedPath(target) ? expr(target, bind) : `${expr(target, bind)}.data`
 
   const subSelf = (
     t: Type | undefined,
@@ -1454,7 +1621,27 @@ export function emitSwift(
   // within a matched branch, a subject variable's fields are bound to locals; `subject/field` reads that local
   type Bindings = Map<string, Set<string>>
 
+  // the inner lists put into a list of lists that owns them (`ownedElements`), rendering now
+  const innerRendering = new WeakSet<object>()
   const expr = (node: Expression, bind: Bindings): string => {
+    // an inner list put into a list of lists that owns it is the plain array: an owned local as it is, a fresh task's
+    // answer taken as it is, an empty list `[]`
+    if (ownsInner(elementLists.items, node) && !innerRendering.has(node)) {
+      if (node.form === 'call') {
+        innerRendering.add(node)
+        rawFresh = true
+        const made = expr(node, bind)
+        rawFresh = false
+        innerRendering.delete(node)
+
+        return made
+      }
+
+      if (node.form !== 'variable') {
+        return '[]'
+      }
+    }
+
     switch (node.form) {
       case 'integer':
         return String(node.value)
@@ -1469,6 +1656,12 @@ export function emitSwift(
       case 'string':
         return JSON.stringify(node.value)
       case 'template':
+        // one text value alone is that value, where the interpolation built a copy of it. Not a bare name, which
+        // costs nothing to copy and would make `save t, text <{t}>` the self-assignment swiftc refuses
+        if (node.parts.length === 1 && typeof node.parts[0] !== 'string' && node.parts[0]!.form !== 'variable' && textValued(node.parts[0]!)) {
+          return expr(node.parts[0]!, bind)
+        }
+
         // `"a\\(x)b"`: chunks escaped as a Swift string, expressions interpolated
         // a float interpolates as `termNumber` lays it out, the same text as every other backend
         return `"${node.parts
@@ -1511,7 +1704,7 @@ export function emitSwift(
           return `${node.op}(${operand})`
         }
 
-        return operand.includes('try ') ? `(try ${node.op}${operand})` : `${node.op}${operand}`
+        return openTry(operand) ? `(try ${node.op}${operand})` : `${node.op}${operand}`
       }
       case 'binary': {
         if (
@@ -1552,8 +1745,13 @@ export function emitSwift(
 
         const left = operand(node.left)
         const right = operand(node.right)
-        // `a == (try f())` is refused by Swift ("operator can throw"): the `try` goes in front of the operator
-        const mark = left.includes('try ') || right.includes('try ') ? 'try ' : ''
+        // a `try` to the right of an operator with no parenthesis of its own is refused by Swift ("'try' cannot appear
+        // to the right of a non-assignment operator"): the `try` goes in front of the operator. A call writes its own
+        // `(try f())`, which Swift takes as it is, and a second `try` over it warns that it covers nothing. Except under
+        // `&&`, `||` and `??`, whose right side is an autoclosure: a `try` inside one is refused ("call can throw, but it
+        // is executed in a non-throwing autoclosure"), so the `try` covers the whole expression there
+        const autoclosed = node.op === '&&' || node.op === '||' || node.op === '??'
+        const mark = (autoclosed ? left.includes('try ') || right.includes('try ') : openTry(left) || openTry(right)) ? 'try ' : ''
 
         // a `note shared` form is a class, a reference by design, so `is-equal` on two of them is identity, as it is on
         // TypeScript and Kotlin (note/term/optimize/meaning.md, question 4)
@@ -1579,8 +1777,8 @@ export function emitSwift(
 
         // a counted step the range fact proved cannot overflow (ir/facts/range.ts) is the wrapping `&+`, which carries
         // no trap: n-body's eight steps, 213 ms to 202 (`tmp/swift-step-ab.ts`, 2026-10-03)
-        if (node.op === '+' && provenSteps.has(node)) {
-          return `(${mark}${left} &+ ${right})`
+        if ((node.op === '+' || node.op === '-' || node.op === '*') && node.left.type?.kind === 'number' && node.right.type?.kind === 'number' && provenSteps.has(node)) {
+          return `(${mark}${left} &${OP[node.op]} ${right})`
         }
 
         // in a task's unchecked copy (`integerBounds`) every integer `+`, `-` and `*` is proven inside the bound
@@ -1644,6 +1842,11 @@ export function emitSwift(
         ) {
           const found = binds.get(node.callee.name)!
 
+          // the code-point count of an ASCII text (ir/facts/text.ts) is its UTF-8 length, where the scalar view walked
+          if (node.callee.name === 'code-point-count' && node.args[0] && asciiNodes.has(node.args[0])) {
+            return `${expr(node.args[0], bind)}.utf8.count`
+          }
+
           return (
             renderBind(
               found,
@@ -1664,6 +1867,39 @@ export function emitSwift(
         const text = stringCall(node.callee)
 
         if (text) {
+          // an ASCII text (ir/facts/text.ts) is read in place by byte offset: a code point is one UTF-8 byte, where the
+          // scalar view walked from the start
+          // a read through the text's cursor (backend.ts, `textCursors`) steps from the last read
+          const cursor = cursors.reads.get(node)
+
+          if (cursor !== undefined && (text.op === 'substring' || text.op === 'slice')) {
+            const to = node.args[1] ? expr(node.args[1], bind) : 'Int.max'
+
+            return need('text', `TermText.cursorSlice(${expr(text.target, bind)}, ${expr(node.args[0]!, bind)}, ${to}, &__cursor${camelize(`-${cursor}`)})`)
+          }
+
+          if (cursor !== undefined) {
+            const read = text.op === 'charCodeAt' ? 'cursorCodeAt' : 'cursorCharAt'
+
+            return need('text', `TermText.${read}(${expr(text.target, bind)}, ${expr(node.args[0]!, bind)}, &__cursor${camelize(`-${cursor}`)})`)
+          }
+
+          if (asciiNodes.has(text.target) && ['charAt', 'at', 'charCodeAt'].includes(text.op)) {
+            const read = text.op === 'charCodeAt' ? 'asciiCodeAt' : 'asciiCharAt'
+
+            return need('text', `TermText.${read}(${expr(text.target, bind)}, ${expr(node.args[0]!, bind)})`)
+          }
+
+          if (asciiNodes.has(text.target) && (text.op === 'substring' || text.op === 'slice')) {
+            return need('text', `TermText.asciiSubstring(${[text.target, ...node.args].map(a => expr(a, bind)).join(', ')})`)
+          }
+
+          if (asciiNodes.has(text.target) && (text.op === 'indexOf' || text.op === 'lastIndexOf')) {
+            const helper = text.op === 'indexOf' ? 'asciiIndexOf' : 'asciiLastIndexOf'
+
+            return need('text', `TermText.${helper}(${[text.target, ...node.args].map(a => expr(a, bind)).join(', ')})`)
+          }
+
           return stringExpr(text.op, expr(text.target, bind), node.args.map(a => expr(a, bind)))
         }
 
@@ -1708,6 +1944,17 @@ export function emitSwift(
         const fresh =
           !raw && node.callee.form === 'variable' && !boundNames.has(node.callee.name) && freshLists.has(node.callee.name)
         const wrap = (call: string): string => (fresh ? `SeedList(${call})` : call)
+
+        // a call to a task that only fills a list is the array made at its size (backend.ts, `fillTasks`)
+        const fill =
+          node.callee.form === 'variable' && !boundNames.has(node.callee.name) && node.type?.kind === 'array' ? fillCall(node, fills) : undefined
+
+        if (fill && node.type?.kind === 'array') {
+          const count = fill.size.form === 'integer' ? `${Math.max(Number(fill.size.value), 0)}` : `max(${expr(fill.size, bind)}, 0)`
+          const made = `[${swiftElement(node.type)}](repeating: ${expr(fill.item, bind)}, count: ${count})`
+
+          return raw ? made : `SeedList(${made})`
+        }
         const declaredParams =
           node.callee.form === 'variable'
             ? functionParams.get(node.callee.name)
@@ -1760,7 +2007,7 @@ export function emitSwift(
         // are a `SeedList<Any>` there, where the checked `SeedList<String>` would not convert (native-dom-0014)
         const arg =
           node.items.length === 0 && node.type?.kind === 'array'
-            ? `<${swiftType(node.type.element)}>`
+            ? `<${swiftElement(node.type)}>`
             : ''
 
         return `SeedList${arg}([${node.items
@@ -1803,7 +2050,7 @@ export function emitSwift(
           const args =
             node.type?.kind === 'array' &&
             node.type.element.kind !== 'variable'
-              ? `<${swiftType(node.type.element)}>`
+              ? `<${swiftElement(node.type)}>`
               : ''
 
           return `SeedList${args}()`
@@ -1847,6 +2094,20 @@ export function emitSwift(
 
           const declaredType = declared?.find(f => f.name === name)?.type
 
+          // a list the record owns (`fieldLists`) is the plain array: an owned local as it is, a fresh task's answer
+          // taken as it is, an empty list `[]`
+          if (fieldLists.has(`${node.name}/${name}`)) {
+            if (value.form === 'call') {
+              rawFresh = true
+              const made = expr(value, bind)
+              rawFresh = false
+
+              return made
+            }
+
+            return value.form === 'variable' ? expr(value, bind) : '[]'
+          }
+
           if (
             ((value.form === 'record' &&
               value.fields.length === 0 &&
@@ -1854,7 +2115,7 @@ export function emitSwift(
               (value.form === 'array' && value.items.length === 0)) &&
             declaredType?.kind === 'array'
           ) {
-            return `SeedList<${swiftType(declaredType.element)}>([])`
+            return `SeedList<${swiftElement(declaredType)}>([])`
           }
 
           if (
@@ -1874,7 +2135,8 @@ export function emitSwift(
           const given = new Map(node.fields.map(f => [f.name, f.value]))
 
           return `${pascal(node.name)}(${declared
-            .map(f => `${camel(f.name)}: ${given.has(f.name) ? fieldValue(f.name, given.get(f.name)!) : emptyOf(f.type)}`)
+            // a list the record owns (`fieldLists`) left out is a new plain array, where its empty value was a `SeedList`
+            .map(f => `${camel(f.name)}: ${given.has(f.name) ? fieldValue(f.name, given.get(f.name)!) : fieldLists.has(`${node.name}/${f.name}`) ? '[]' : emptyOf(f.type)}`)
             .join(', ')})`
         }
 
@@ -2122,15 +2384,32 @@ export function emitSwift(
     body: Statement[],
     d: number,
     bind: Bindings,
-  ): string =>
-    // NOT `swapAt` for the three-statement swap (backend.ts, swapAt), as Rust and Kotlin write it: measured on
-    // fannkuch-redux, `perm.data.swapAt(low, high)` through the SeedList property ran at a median 1,329 ms against
-    // 865 ms for the three statements, 7 alternating rounds (tmp/swift-swap-ab.ts, 2026-10-02)
-    body
-      .map(s => stmt(s, d, bind))
-      .filter(Boolean)
-      .map(line => `${pad(d)}${line}`)
-      .join('\n')
+  ): string => {
+    // the three-statement swap (backend.ts, swapAt) is `swapAt` on a PLAIN array, a lent parameter or an owned local
+    // (`plainNames`): one uniqueness check where two element writes through an `inout` array paid two (AWFY's
+    // Permute, 328 ms to 191, the hand version 215, tmp/swift-permute-ab.ts). Never through a SeedList: there
+    // `perm.data.swapAt(low, high)` measured a median 1,329 ms against 865 for the three statements on
+    // fannkuch-redux, 7 alternating rounds (tmp/swift-swap-ab.ts, 2026-10-02)
+    const lines: string[] = []
+
+    for (let at = 0; at < body.length; at++) {
+      const swap = swapAt(body, at)
+
+      if (swap && swap.list.form === 'variable' && plainNames.has(swap.list.name)) {
+        lines.push(`${pad(d)}${vname(swap.list.name)}.swapAt(${expr(swap.first, bind)}, ${expr(swap.second, bind)})`)
+        at += 2
+        continue
+      }
+
+      const line = stmt(body[at]!, d, bind)
+
+      if (line) {
+        lines.push(`${pad(d)}${line}`)
+      }
+    }
+
+    return lines.join('\n')
+  }
 
   // a `switch` case with no statement in its body (Term's `fork case, ... / case none` with nothing under it, a
   // real and common shape: `maybe`'s `none` arm, an ignored variant) is a Swift compile error --
@@ -2144,6 +2423,17 @@ export function emitSwift(
     switch (node.form) {
       case 'let': {
         boundNames.add(node.name)
+
+        // an inner list read out of a list of lists that owns it (`ownedElements`) is a plain array, read as one
+        if (ownsInner(elementLists.lets, node)) {
+          plainNames.set(node.name, 'read')
+        }
+
+        // a second declaration of a name the same statement list declared already is an assignment to it (backend.ts,
+        // `redeclaredLets`): two counted walks over `i` in one task
+        if (redeclared.has(node)) {
+          return `${vname(node.name)} = ${expr(node.init, bind)}`
+        }
 
         // a record read from a slot and only ever read through it after (compile/place.ts, `valuePlaces`): no copy is
         // made, and each field is read off the slot itself
@@ -2167,7 +2457,7 @@ export function emitSwift(
             return `${keyword} ${vname(node.name)} = ${made}`
           }
 
-          return `${keyword} ${vname(node.name)}: [${swiftType(node.type.element)}] = []`
+          return `${keyword} ${vname(node.name)}: [${swiftElement(node.type)}] = []`
         }
 
         // a valueless typed module slot (`host current, like context`, filled later by a `save`): an
@@ -2229,6 +2519,27 @@ export function emitSwift(
       }
 
       case 'assign': {
+        // an append to a text variable is `s += ..`, which appends in place while the text is uniquely held, where
+        // `s = "\(s)ab"` built a new text with a copy of the old one every time (backend.ts, `textAppend`)
+        const append = textAppend(node)
+
+        if (append) {
+          // one character of an ASCII text is appended as the scalar, with no one-character String made for it
+          const char = asciiCharAppend(append.rest, asciiNodes)
+
+          if (char) {
+            return need('text', `TermText.asciiAppend(&${expr(node.target, bind)}, ${expr(char.text, bind)}, ${expr(char.index, bind)})`)
+          }
+
+          return `${expr(node.target, bind)} += ${expr(append.rest, bind)}`
+        }
+
+        // a text variable reset to the empty text keeps its storage for the next build (a copy-on-write value, so a
+        // copy another name holds is untouched)
+        if (node.op === '=' && node.target.form === 'variable' && node.target.type?.kind === 'string' && emptyText(node.value)) {
+          return `${expr(node.target, bind)}.removeAll(keepingCapacity: true)`
+        }
+
         // a record written back to the slot it was read from: only its changed fields
         const place = placed.get(node)
 
@@ -2253,6 +2564,14 @@ export function emitSwift(
             )}`
       }
       case 'expression': {
+        // a map entry updated from its own value is one probe through the ordered map's `update` (backend.ts,
+        // `mapUpdate`). `+` traps on overflow, the Term meaning
+        const update = mapUpdate(node)
+
+        if (update && update.map.type?.kind === 'map' && (update.map.type.value.kind === 'number' || update.map.type.value.kind === 'float')) {
+          return `${expr(update.map, bind)}.data.update(${expr(update.key, bind)}, ${expr(update.fallback, bind)}) { $0 + ${expr(update.step, bind)} }`
+        }
+
         // a push onto an owned list whose new length nothing reads is the array's `append`
         if (
           node.expr.form === 'call' &&
@@ -2385,8 +2704,13 @@ export function emitSwift(
           needs.add('exception')
         }
 
+        // the caught value is bound only where the handler reads it: an unread `let` is a warning
+        const binding =
+          node.catch && namesIn(node.catch.body).has(node.catch.name)
+            ? `${pad(d + 1)}let ${camel(node.catch.name)} = termException(error)\n`
+            : ''
         const handler = node.catch
-          ? `catch {\n${pad(d + 1)}let ${camel(node.catch.name)} = termException(error)\n${block(
+          ? `catch {\n${binding}${block(
               node.catch.body,
               d + 1,
               bind,
@@ -2403,11 +2727,29 @@ export function emitSwift(
           boundNames.add(node.index)
         }
 
+        // an inner list of a list of lists that owns it (`ownedElements`) is a plain array, read as one
+        if (ownsInner(elementLists.walks, node)) {
+          plainNames.set(node.item, 'read')
+        }
+
         // a list is a SeedList; iterate its backing `.data` Array (or the plain array, F1)
         const iterable =
           node.iterable.type?.kind === 'array'
             ? view(node.iterable, bind)
             : expr(node.iterable, bind)
+
+        // a walk by POSITION, the length read every turn, where the body may push onto the list it walks: the walk then
+        // sees each pushed item, the Term meaning (TypeScript's `for...of`, Rust's walk by position), where `for x in`
+        // walked a copy of the array taken at the start and missed them (meaning-native `grow`)
+        if (node.iterable.type?.kind === 'array' && node.iterable.form === 'variable' && namesIn(node.body).has(node.iterable.name)) {
+          const at = `__at${walkCount++}`
+          const label = openLoop()
+          const body = block(node.body, d + 1, bind)
+          loopLabels.pop()
+          const index = node.index ? ` let ${vname(node.index)} = ${at};` : ''
+
+          return `var ${at} = 0\n${pad(d)}${label}: while ${at} < ${iterable}.count {\n${pad(d + 1)}let ${vname(node.item)} = ${iterable}[${at}];${index} ${at} += 1\n${body}\n${pad(d)}}`
+        }
 
         // a walk that names its INDEX enumerates, lazily: the offset is an `Int`, which is what a Term number is here.
         // It mapped every pair into an array of `(Int64, T)` first, an allocation per walk and a second integer type.
@@ -2608,7 +2950,7 @@ export function emitSwift(
             const how = lend?.get(i)
 
             if (how && p.type?.kind === 'array') {
-              return `_ ${vname(p.name)}: ${how === 'write' ? 'inout ' : ''}[${swiftType(p.type.element)}]`
+              return `_ ${vname(p.name)}: ${how === 'write' ? 'inout ' : ''}[${swiftElement(p.type)}]`
             }
 
             return `_ ${vname(p.name)}: ${p.type?.kind === 'function' && escaping.has(p.name) ? '@escaping ' : ''}${swiftType(p.type)}`
@@ -2618,8 +2960,12 @@ export function emitSwift(
         const previousOwned = ownedNames
         const previousFresh = emittingFresh
         const previousSlots = slotNames
+        const previousCursors = cursors
+        const previousRedeclared = redeclared
         slotNames = new Map()
-        ownedNames = node.async ? new Map() : ownedLocals(node, freshLists, lendParams)
+        cursors = textCursors(node, asciiNodes)
+        redeclared = redeclaredLets(node)
+        ownedNames = node.async ? new Map() : ownedLocals(node, freshLists, lendParams, fieldLists, elementLists.moves)
         emittingFresh = freshLists.has(node.name)
         plainNames = new Map([
           ...node.params.flatMap((p, i) => (lend?.has(i) ? [[p.name, lend.get(i)!] as const] : [])),
@@ -2690,6 +3036,7 @@ export function emitSwift(
             ? `${pad(d + 1)}fatalError(${JSON.stringify(`stub: ${node.name}`)})`
             : [
                 ...shadows,
+                ...cursors.names.map(name => `${pad(d + 1)}var __cursor${camelize(`-${name}`)} = (0, 0)`),
                 block(node.body, d + 1, new Map()),
                 unreachable,
               ]
@@ -2701,11 +3048,13 @@ export function emitSwift(
         plainNames = previousPlain
         ownedNames = previousOwned
         slotNames = previousSlots
+        cursors = previousCursors
+        redeclared = previousRedeclared
         const fresh = emittingFresh
         emittingFresh = previousFresh
 
         // a task answering a fresh list answers the plain array
-        const resultType = fresh && result?.kind === 'array' ? `[${swiftType(result.element)}]` : swiftType(result)
+        const resultType = fresh && result?.kind === 'array' ? `[${swiftElement(result)}]` : swiftType(result)
 
         return `func ${camel(
           node.name,
@@ -2747,9 +3096,12 @@ export function emitSwift(
           )}\n${pad(d)}}`
         }
 
+        // a list the record owns is a plain array (`fieldLists`)
         const fields = node.fields.map(
           f =>
-            `${pad(d + 1)}var ${camel(f.name)}: ${swiftType(f.type)}`,
+            `${pad(d + 1)}var ${camel(f.name)}: ${
+              fieldLists.has(`${node.name}/${f.name}`) && f.type.kind === 'array' ? `[${swiftElement(f.type)}]` : swiftType(f.type)
+            }`,
         )
 
         // `note shared`: a reference type, so a write through one binding is seen through every other. A class gets

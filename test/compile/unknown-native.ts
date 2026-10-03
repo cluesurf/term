@@ -4,6 +4,7 @@
 // parameter and result, and downcasts it back natively; each backend builds on its real toolchain and runs.
 // UN_ONLY=rust (or swift, kotlin) runs one backend. Run: npx tsx test/compile/unknown-native.ts
 
+import { runDir } from './run-dir'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -105,7 +106,7 @@ function frontEnd(): Program {
   return simplify(program, new Set(['hold-user', 'carry']))
 }
 
-const dir = mkdtempSync(join(tmpdir(), 'term-unknown-native-'))
+const dir = runDir('term-unknown-native-')
 const only = process.env.UN_ONLY ?? ''
 const WANT = 'user alice'
 

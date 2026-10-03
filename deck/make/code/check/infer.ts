@@ -43,6 +43,17 @@ import {
   showType,
 } from '@term/make/code/compile/node'
 
+// `1st`, `2nd`, `3rd`, `4th`: a position named for a message
+function ordinal(n: number): string {
+  const tens = n % 100
+
+  if (tens >= 11 && tens <= 13) {
+    return `${n}th`
+  }
+
+  return `${n}${['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`
+}
+
 export function check(
   program: Program,
   file: string,
@@ -2299,6 +2310,41 @@ export function check(
             message: `"${callee}" is not a task or a form this file can see, so its properties (${dropped.join(', ')}) name nothing`,
           }),
         )
+      }
+
+      // THE LABELS STILL SAY WHAT ORDER THEY WERE WRITTEN IN. A receiver-dispatched call passes its arguments in
+      // written order, so `call push / bind item / bind list` handed the item over as the list, and nothing said so
+      // (guides: language/tasks, language/syntax/base, 2026-10-03). Where every form that has the method declares the
+      // label's parameter at ANOTHER position, the arguments are out of order, and that is refused. A label that
+      // names no parameter of any of them is documentation still (the stdlib writes `bind list` for `self`), and the
+      // receiver's own form name is accepted for `self`
+      const methodSignatures = [...methodTable.entries()]
+        .map(([owner, methods]) => ({ owner, signature: functions.get(methods.get(callee) ?? '') }))
+        .filter((entry): entry is { owner: string; signature: NonNullable<typeof entry.signature> } => !!entry.signature)
+
+      if (methodSignatures.length > 0) {
+        ;(node.names ?? []).forEach((label, i) => {
+          if (typeof label !== 'string') {
+            return
+          }
+
+          const fitsHere = methodSignatures.some(({ owner, signature: method }) => {
+            const declared = method.names[i]
+
+            return declared === label || (declared === 'self' && label === owner)
+          })
+          const elsewhere = methodSignatures.some(({ signature: method }) => method.names.includes(label))
+
+          if (!fitsHere && elsewhere) {
+            diagnostics.push(
+              diagnose('type-mismatch', {
+                file: currentFile,
+                span: node.args[i]?.span ?? node.span,
+                message: `"${label}" is not the ${ordinal(i + 1)} parameter of "${callee}", and a call on a receiver passes its arguments in the order written. Write them in the method's order: ${methodSignatures[0]!.signature.names.join(', ')}`,
+              }),
+            )
+          }
+        })
       }
 
       delete node.names

@@ -1,0 +1,221 @@
+load @term/base/list
+  find list
+  find push
+  find size
+
+# a variant's own list of numbers that is only read, held as a primitive array on Kotlin (kotlin.ts, `variantArrays`):
+# filled, built from a pushed local, sized, indexed and walked, and two built apart with the same items still equal,
+# since a record compares by its contents. And one whose arm local is handed to a task, which must stay a list
+
+form shape
+  case leaf
+    link items, like list, like number
+  case duo
+    link left, like number
+    link right, like number
+
+form bag
+  case full
+    link held, like list, like number
+  case none
+
+# a variant's own list of records, made by a loop that only pushes (kotlin.ts, `generatorAt`): an `Array<T>` on Kotlin
+form tree
+  case branch
+    link kids, like list, like shape
+  case bare
+
+task grow
+  take n, like number
+  like tree
+  save kids
+    make list
+  walk size
+    bind base, code 0
+    bind head, read n
+    hook next
+      take site, name k
+      call push
+        bind list, read kids
+        bind item, call counted(read(k))
+  send back
+    make branch
+      bind kids, read kids
+
+task weigh-tree
+  take t, like tree
+  like number
+  fork case, read t
+    case branch
+      save total, code 0
+      walk list, read kids
+        hook next
+          take site, name kid
+          save total
+            call add
+              read total
+              call weigh(read(kid))
+      send back
+        call add
+          read total
+          call size(read(kids))
+    case bare
+      send back, code 0
+
+# a generated list pushed onto afterwards, which must stay a list that grows
+task grown
+  take n, like number
+  like number
+  save xs
+    make list
+  walk size
+    bind base, code 0
+    bind head, read n
+    hook next
+      take site, name k
+      call push
+        bind list, read xs
+        bind item, call counted(read(k))
+  call push
+    bind list, read xs
+    bind item, call counted(code 5)
+  save total, code 0
+  walk list, read xs
+    hook next
+      take site, name s
+      save total
+        call add
+          read total
+          call weigh(read(s))
+  send back
+    call add
+      read total
+      call size(read(xs))
+
+task zeros
+  take n, like number
+  like list, like number
+  save out
+    make list
+  walk size
+    bind base, code 0
+    bind head, read n
+    hook next
+      take site, name i
+      call push
+        bind list, read out
+        bind item, code 0
+  send back, read out
+
+task counted
+  take k, like number
+  like shape
+  save xs
+    make list
+  walk size
+    bind base, code 0
+    bind head, read k
+    hook next
+      take site, name i
+      call push
+        bind list, read xs
+        bind item
+          call multiply
+            read i
+            read i
+  send back
+    make leaf
+      bind items, read xs
+
+task weigh
+  take s, like shape
+  like number
+  fork case, read s
+    case leaf
+      save total, code 0
+      walk list, read items
+        hook next
+          take site, name x
+          save total
+            call add
+              read total
+              read x
+      send back
+        call add
+          call multiply
+            read total
+            code 100
+          call size(read(items))
+    case duo
+      send back
+        call add
+          read left
+          read right
+
+task first
+  take s, like shape
+  like number
+  fork case, read s
+    case leaf
+      send back, read items/1
+    case duo
+      send back, read left
+
+task total-of
+  take xs, like list, like number
+  like number
+  save sum, code 0
+  walk list, read xs
+    hook next
+      take site, name x
+      save sum
+        call add
+          read sum
+          read x
+  send back, read sum
+
+task open
+  take b, like bag
+  like number
+  fork case, read b
+    case full
+      send back, call total-of(read(held))
+    case none
+      send back, code 0
+
+task compute
+  like text
+  host a
+    make leaf
+      bind items, call zeros(code 3)
+  host b
+    make leaf
+      bind items, call zeros(code 3)
+  host c, call counted(code 4)
+  host same
+    fork test
+      hook test
+        call is-equal
+          read a
+          read b
+      hook hold
+        text <same>
+      hook miss
+        text <apart>
+  host bag
+    make full
+      bind held, call zeros(code 2)
+  host t1, call grow(code 3)
+  host t2, call grow(code 3)
+  host trees
+    fork test
+      hook test
+        call is-equal
+          read t1
+          read t2
+      hook hold
+        text <same>
+      hook miss
+        text <apart>
+  host extra, call grown(code 2)
+  send back, text <{weigh(a)}:{weigh(c)}:{first(c)}:{same}:{open(bag)}:{weigh-tree(t1)}:{trees}:{extra}>

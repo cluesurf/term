@@ -1,0 +1,24 @@
+
+# The app host for a Rust binary (native-navigation-0005): the routed app in the terminal it runs in. The route table
+# mounts on a root the terminal paints (../../../dom/native/terminal/routes), Escape goes back, and the terminal is
+# owned until ctrl-c (../../../dom/native/terminal/app). `port` is the server's and means nothing here.
+
+load ../../../dom/view
+  find view
+
+load ../../../dom/native/terminal/routes
+  find mount-routes
+
+load ../../../dom/native/terminal/app
+  find run-terminal
+
+task host
+  take route
+    like task
+      take host, like view
+      take path, like text
+  take port, like number
+  call run-terminal
+    call mount-routes
+      read route
+      text <Escape>

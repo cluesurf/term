@@ -99,6 +99,25 @@ const ref: Record<string, (...a: never[]) => Value> = {
     return i < 0 ? s : s.slice(0, i) + b + s.slice(i + a.length)
   },
   replaceAll: (s: string, a: string, b: string) => s.split(a).join(b),
+  // a sequence of reads through ONE cursor (backend.ts, `textCursors`), each a code point or -1, joined by commas,
+  // and the same as a code point and a character: the cursor steps forward, back and from the start, so the order of
+  // the indexes is what is being tested
+  cursorWalk: (s: string, at: string) =>
+    at
+      .split(',')
+      .map(i => (ref.charCodeAt as (s: string, i: number) => number)(s, Number(i)))
+      .join(','),
+  // a sequence of substrings through one cursor, each a pair `a:e` (the cursor moves to the lower end), joined by bars
+  cursorSlices: (s: string, at: string) =>
+    at
+      .split(',')
+      .map(pair => (ref.substring as (s: string, a: number, b: number) => string)(s, Number(pair.split(':')[0]), Number(pair.split(':')[1])))
+      .join('|'),
+  cursorChars: (s: string, at: string) =>
+    at
+      .split(',')
+      .map(i => (ref.charAt as (s: string, i: number) => string)(s, Number(i)))
+      .join(','),
 }
 
 // ---- the inputs ----------------------------------------------------------------------------------------------------
@@ -153,6 +172,28 @@ for (const s of TEXTS) {
   for (const t of TEXTS) {
     add('compare', s, t)
   }
+
+  // forward past the end, backward from past it, and a scatter from a fixed generator over -2 to n + 2
+  const n = cps(s).length
+  const forward = Array.from({ length: n + 2 }, (_, i) => i)
+  let seed = 7 + n
+  const scatter = Array.from({ length: 40 }, () => {
+    seed = (seed * 1103515245 + 12345) % 2147483648
+    return (seed % (n + 5)) - 2
+  })
+
+  const pairs = Array.from({ length: 20 }, () => {
+    seed = (seed * 1103515245 + 12345) % 2147483648
+    const a = (seed % (n + 5)) - 2
+    seed = (seed * 1103515245 + 12345) % 2147483648
+    return `${a}:${(seed % (n + 5)) - 2}`
+  })
+  add('cursorSlices', s, pairs.join(','))
+
+  for (const order of [forward, [...forward].reverse(), scatter]) {
+    add('cursorWalk', s, order.join(','))
+    add('cursorChars', s, order.join(','))
+  }
 }
 
 const show = (v: Value): string => (Array.isArray(v) ? `[${v.join('|')}]` : String(v))
@@ -187,6 +228,17 @@ if (!only || only === 'typescript') {
   judge(
     'typescript',
     cases.map(c => {
+      if (c.op === 'cursorSlices') {
+        const cursor = [0, 0]
+        return (c.args[1] as string).split(',').map(pair => text.cursorSlice!(c.args[0], Number(pair.split(':')[0]), Number(pair.split(':')[1]), cursor)).join('|')
+      }
+
+      if (c.op === 'cursorWalk' || c.op === 'cursorChars') {
+        const cursor = [0, 0]
+        const read = c.op === 'cursorWalk' ? 'cursorCodeAt' : 'cursorCharAt'
+        return (c.args[1] as string).split(',').map(i => text[read]!(c.args[0], Number(i), cursor)).join(',')
+      }
+
       const v = text[c.op]!(...c.args)
       return show(c.op === 'compare' ? Math.sign(v as number) : v)
     }),
@@ -200,6 +252,16 @@ const swiftLiteral = (s: string): string => JSON.stringify(s).replace(/\\u([0-9a
 
 if ((!only || only === 'kotlin') && have('kotlinc') && have('java')) {
   const lines = cases.map(c => {
+    if (c.op === 'cursorSlices') {
+      const pairs = (c.args[1] as string).split(',').map(p => `${p.split(':')[0]}L to ${p.split(':')[1]}L`).join(', ')
+      return `    run { val c = LongArray(2); println(listOf(${pairs}).joinToString("|") { TermText.cursorSlice(${kotlinLiteral(c.args[0] as string)}, it.first, it.second, c) }) }`
+    }
+
+    if (c.op === 'cursorWalk' || c.op === 'cursorChars') {
+      const read = c.op === 'cursorWalk' ? 'cursorCodeAt' : 'cursorCharAt'
+      return `    run { val c = LongArray(2); println(listOf(${c.args[1]}).joinToString(",") { TermText.${read}(${kotlinLiteral(c.args[0] as string)}, it.toLong(), c).toString() }) }`
+    }
+
     const args = c.args.map(a => (typeof a === 'number' ? `${a}L` : kotlinLiteral(a as string))).join(', ')
     const call = `TermText.${c.op === 'split' ? 'split' : c.op}(${args})`
 
@@ -222,6 +284,16 @@ if ((!only || only === 'kotlin') && have('kotlinc') && have('java')) {
 
 if ((!only || only === 'swift') && have('swiftc')) {
   const lines = cases.map(c => {
+    if (c.op === 'cursorSlices') {
+      const pairs = (c.args[1] as string).split(',').map(p => `(${p.split(':')[0]}, ${p.split(':')[1]})`).join(', ')
+      return `    do { var c = (0, 0); let at: [(Int, Int)] = [${pairs}]; print(at.map { TermText.cursorSlice(${swiftLiteral(c.args[0] as string)}, $0.0, $0.1, &c) }.joined(separator: "|")) }`
+    }
+
+    if (c.op === 'cursorWalk' || c.op === 'cursorChars') {
+      const read = c.op === 'cursorWalk' ? 'cursorCodeAt' : 'cursorCharAt'
+      return `    do { var c = (0, 0); let at: [Int] = [${c.args[1]}]; print(at.map { String(describing: TermText.${read}(${swiftLiteral(c.args[0] as string)}, $0, &c)) }.joined(separator: ",")) }`
+    }
+
     const args = c.args.map(a => (typeof a === 'number' ? String(a) : swiftLiteral(a as string))).join(', ')
     const call = `TermText.${c.op}(${args})`
 

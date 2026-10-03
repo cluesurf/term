@@ -76,6 +76,16 @@ task listen-document
       take event
   like task
 
+# every key pressed anywhere in the window, named as the web's KeyboardEvent.key names it (`Escape`, `Enter`, `Tab`,
+# `Backspace`, `ArrowUp`, a character), each to `handler`. Returns the remover. The portable keyboard: face's Escape
+# dismissal reads it, and every host implements it (swiftui-target-0003), where a document `keydown` was the
+# browser's alone
+task listen-key
+  take handler
+    like task
+      take key, like text
+  like task
+
 task anchor
   take reference, like view
   take panel, like view

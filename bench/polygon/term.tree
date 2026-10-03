@@ -1,0 +1,162 @@
+load @term/base/list
+  find list
+  find push
+  find size
+
+# Polygon, ours: a record that holds a list, read through its path, the shape of every program with a struct of
+# arrays in it. 200 polygons a run, polygon k with 3 + k % 13 corners on a circle-free integer walk, each held as a
+# record of a name, a side count and a list of coordinates (x then y), built fresh and then measured: each polygon's
+# taxicab perimeter added. Run `n` times and added, so the output is one integer
+
+form polygon
+  link sides, like number
+  link points, like list, like number
+
+# polygon `k`: its corners stepping by a pattern drawn from k, coordinates kept small
+task make-polygon
+  take k, like number
+  like polygon
+  host sides
+    call add
+      code 3
+      call modulo
+        read k
+        code 13
+  save points
+    make list
+  save x
+    call modulo
+      read k
+      code 17
+  save y
+    call modulo
+      call multiply
+        read k
+        code 7
+      code 23
+  walk size
+    bind base, code 0
+    bind head, read sides
+    hook next
+      take site, name c
+      call push
+        bind list, read points
+        bind item, read x
+      call push
+        bind list, read points
+        bind item, read y
+      save x
+        call modulo
+          call add
+            read x
+            call add
+              read c
+              read k
+          code 50
+      save y
+        call modulo
+          call add
+            read y
+            call multiply
+              read c
+              code 3
+          code 50
+  send back
+    make polygon
+      bind sides, read sides
+      bind points, read points
+
+# the distance between two corners counted along the axes
+task step
+  take a, like number
+  take b, like number
+  like number
+  fork test
+    hook test
+      call is-above
+        read a
+        read b
+    hook hold
+      send back
+        call subtract
+          read a
+          read b
+  send back
+    call subtract
+      read b
+      read a
+
+# a polygon's taxicab perimeter, its corners read through `p/points` by position
+task perimeter
+  take p, like polygon
+  like number
+  save total, code 0
+  walk size
+    bind base, code 0
+    bind head, read p/sides
+    hook next
+      take site, name c
+      host next
+        call modulo
+          call add
+            read c
+            code 1
+          read p/sides
+      host ax
+        call multiply
+          read c
+          code 2
+      host bx
+        call multiply
+          read next
+          code 2
+      host ay
+        call add
+          read ax
+          code 1
+      host by
+        call add
+          read bx
+          code 1
+      save total
+        call add
+          read total
+          call add
+            call step
+              read p/points/{ax}
+              read p/points/{bx}
+            call step
+              read p/points/{ay}
+              read p/points/{by}
+  send back, read total
+
+task polygon
+  take n, like number
+  like number
+  save total, code 0
+  walk size
+    bind base, code 0
+    bind head, read n
+    hook next
+      take site, name round
+      save shapes
+        make list
+      walk size
+        bind base, code 0
+        bind head, code 200
+        hook next
+          take site, name k
+          call push
+            bind list, read shapes
+            bind item
+              call make-polygon
+                read k
+      walk list, read shapes
+        hook next
+          take site, name p
+          save total
+            call add
+              read total
+              call perimeter
+                read p
+  send back, read total

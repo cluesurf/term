@@ -4,6 +4,7 @@
 // toolchain is not installed is skipped, never failed. Run: npx tsx test/compile/host-native.ts
 // (HN_ONLY=rust|swift|kotlin runs one backend.)
 
+import { runDir } from './run-dir'
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -215,7 +216,7 @@ function oracle(text: string): string {
   return expanded.ok ? writeLong(expanded.data) : expanded.diagnostics.map(d => d.message).join(' | ')
 }
 
-const dir = mkdtempSync(join(tmpdir(), 'term-host-native-'))
+const dir = runDir('term-host-native-')
 const inputs = CASES.map(([, input]) => JSON.stringify(input))
 
 function compare(env: string, output: string): void {

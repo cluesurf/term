@@ -2,6 +2,9 @@
 # out of scope until a dialect distinguishes them). The version-1 and version-2 tails are `like maybe`: present
 # only when `version` says so. See note/term/feed/04-otf-case-study.md, "the versioned-tail case".
 
+load @term/base/maybe
+  find maybe
+
 form otf-os2-table
   link version, like number
   link x-avg-char-width, like number

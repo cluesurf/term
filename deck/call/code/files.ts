@@ -1,25 +1,16 @@
 import fs from 'fs/promises'
 import path from 'path'
+import { declaresDraft } from '@term/call/code/draft'
 
 // `link` is where `term link` puts a DEPENDENCY's source. Walking into it means formatting, linting and timing
 // another package's files, which is never what a command run in this project was asked to do: the three
 // `deck/zone/link/@term/base/...` entries in `term form deck --check` were @term/base's own files reported twice.
 const SKIP = new Set(['node_modules', 'host', 'tail', 'link', '.git'])
 
-// does this file declare itself unfinished? `mark draft` on its own line near the top (`note draft`, the old
-// spelling, still counts). Read cheaply, only the head of the file, exactly as the build walk reads it
-// (deck/call/code/make.ts).
+// does this file declare itself unfinished? The same answer the build walk gives (call/code/draft.ts)
 async function isDraft(file: string): Promise<boolean> {
   try {
-    const handle = await fs.open(file)
-
-    try {
-      const { buffer, bytesRead } = await handle.read(Buffer.alloc(2000), 0, 2000, 0)
-
-      return /^(mark|note) draft\s*$/m.test(buffer.subarray(0, bytesRead).toString('utf8'))
-    } finally {
-      await handle.close()
-    }
+    return declaresDraft(await fs.readFile(file, 'utf8'))
   } catch {
     return false
   }

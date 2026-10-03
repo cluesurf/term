@@ -56,7 +56,116 @@ function typeParameters(statement: Statement): Set<string> {
   return new Set()
 }
 
+// A FORM AND A VARIANT CASE OF ONE NAME. `make <name>` constructs either, and the flat program gave every such
+// construction to whichever it met: a user's `case pair` was built by the stdlib's zip in place of its own `pair` form,
+// and the user's own `make pair` was refused for missing the stdlib form's fields. So a form whose name is also some
+// form's case takes a name of its own (`<name>__form`), unless it is the entry file's, and the case keeps its name,
+// which reaches the output (a TypeScript tag, a printed record). Then each reference is bound: a named type, a raise, a
+// method and a mask instance can only mean the form; a construction means the case where its file defines that case's
+// form or imports it, the form where its file defines or imports the form, and otherwise whichever's fields the
+// construction names, the case where that does not decide
+function separateCaseNames(program: Program, scope: ImportScope | undefined, entry?: string): void {
+  type Owner = { file: string; form: string; fields: string[] }
+  const cases = new Map<string, Owner[]>()
+  const forms = new Map<string, Defining[]>()
+
+  for (const statement of program) {
+    if (statement.form === 'record-type' && statement.span.file) {
+      for (const v of statement.variants) {
+        cases.set(v.name, [...(cases.get(v.name) ?? []), { file: statement.span.file, form: statement.name, fields: v.fields.map(f => f.name) }])
+      }
+    }
+
+    if ((statement.form === 'record-type' || statement.form === 'mask') && statement.span.file) {
+      forms.set(statement.name, [...(forms.get(statement.name) ?? []), statement])
+    }
+  }
+
+  for (const [name, defining] of forms) {
+    const owners = cases.get(name)
+
+    if (!owners || defining.some(d => d.span.file === entry)) {
+      continue
+    }
+
+    const renamed = `${name}__form`
+    const formFiles = new Set(defining.map(d => d.span.file!))
+    const formFields = new Set(defining.flatMap(d => (d.form === 'record-type' ? d.fields.map(f => f.name) : [])))
+    const caseFiles = new Set(owners.map(o => o.file))
+    const caseForms = new Set(owners.map(o => o.form))
+
+    defining.forEach(d => (d.name = renamed))
+
+    // what a file reaches through its imports of `of`
+    const reaches = (file: string | undefined, of: string): Set<string> => {
+      const reach = new Set<string>()
+
+      for (const target of (file && scope?.get(file)?.finds.get(of)) || []) {
+        exportedBy(scope, target, reach)
+      }
+
+      return reach
+    }
+    // whether a construction in `file` naming `fields` means the form
+    const meansForm = (file: string | undefined, fields: string[]): boolean => {
+      if (file && caseFiles.has(file)) return false
+      if (file && formFiles.has(file)) return true
+      if ([...caseForms].some(form => [...reaches(file, form)].some(f => caseFiles.has(f)))) return false
+      if ([...reaches(file, name)].some(f => formFiles.has(f))) return true
+      const caseFit = owners.some(o => fields.every(f => o.fields.includes(f)))
+      const formFit = fields.every(f => formFields.has(f))
+
+      return formFit && !caseFit
+    }
+
+    for (const statement of program) {
+      const file = statement.span.file
+      const shadowed = typeParameters(statement)
+
+      if (shadowed.has(name)) {
+        continue
+      }
+
+      if (statement.form === 'function' && statement.method?.form === name) {
+        statement.method.form = renamed
+        statement.name = `${renamed}_${statement.method.name}`
+      }
+
+      if (statement.form === 'instance') {
+        if (statement.mask === name) statement.mask = renamed
+        if (statement.target === name) statement.target = renamed
+      }
+
+      const visit = (node: unknown): void => {
+        if (!node || typeof node !== 'object') return
+        if (Array.isArray(node)) return node.forEach(visit)
+        const record = node as Record<string, unknown>
+
+        if (record.kind === 'named' && record.name === name) {
+          record.name = renamed
+        }
+
+        if (record.form === 'record' && record.name === name && meansForm(file, ((record.fields as { name: string }[]) ?? []).map(f => f.name))) {
+          record.name = renamed
+        }
+
+        if (record.form === 'throw' && record.raise === name) {
+          record.raise = renamed
+        }
+
+        for (const [key, value] of Object.entries(record)) {
+          if (key !== 'span') visit(value)
+        }
+      }
+
+      visit(statement)
+    }
+  }
+}
+
 export function bindFormsByImport(program: Program, scope: ImportScope | undefined, entry?: string): Diagnostic[] {
+  separateCaseNames(program, scope, entry)
+
   const byName = new Map<string, Map<string, Defining[]>>()
 
   for (const statement of program) {

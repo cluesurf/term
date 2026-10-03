@@ -1,0 +1,150 @@
+load @term/base/list
+  find list
+  find push
+  find size
+  find reverse
+
+# lists of lists (compile/backend.ts, `ownedElements`): a list of lists whose every inner list goes in fresh and is only
+# read once taken out holds them as plain lists on Rust, where every list was shared. The decision is per element
+# type, program-wide, so each case that must NOT own has a type of its own: an inner list of texts pushed onto after it
+# went in (the outer list sees the push), one read out and then written (the write is seen through the outer list),
+# and a list of lists of flags handed to a generic stdlib task. Every answer must be the value one
+
+# rows of a triangle, row k holding 1 .. k
+task triangle
+  take rows, like number
+  like list, like list, like number
+  save out
+    make list
+  walk size
+    bind base, code 1
+    bind head
+      call add
+        read rows
+        code 1
+    hook next
+      take site, name k
+      save row
+        make list
+      walk size
+        bind base, code 1
+        bind head
+          call add
+            read k
+            code 1
+        hook next
+          take site, name v
+          call push
+            bind list, read row
+            bind item, read v
+      call push
+        bind list, read out
+        bind item, read row
+  send back, read out
+
+# every item of every row, added, each row read by slot and walked
+task weigh
+  take grid, like list, like list, like number
+  like number
+  save total, code 0
+  walk size
+    bind base, code 0
+    bind head
+      call size
+        read grid
+    hook next
+      take site, name r
+      host row
+        read grid/{r}
+      walk list, read row
+        hook next
+          take site, name v
+          save total
+            call add
+              read total
+              read v
+  send back, read total
+
+# an inner list pushed onto after it went in: the outer list sees 3 items
+task late
+  like number
+  save outer
+    make list
+  save row
+    make list
+  call push
+    bind list, read row
+    bind item, text <a>
+  call push
+    bind list, read outer
+    bind item, read row
+  call push
+    bind list, read row
+    bind item, text <b>
+  call push
+    bind list, read row
+    bind item, text <c>
+  host back
+    read outer/0
+  send back
+    call size
+      read back
+
+# an inner list read out and written: the outer list sees the write
+task written
+  like text
+  save outer
+    make list
+  save row
+    make list
+  call push
+    bind list, read row
+    bind item, text <e>
+  call push
+    bind list, read outer
+    bind item, read row
+  host taken
+    read outer/0
+  save taken/0, text <z>
+  host again
+    read outer/0
+  send back, read again/0
+
+# a list of lists handed to a generic stdlib task
+task flipped
+  like number
+  save grid
+    make list
+  walk size
+    bind base, code 1
+    bind head, code 4
+    hook next
+      take site, name k
+      save row
+        make list
+      walk size
+        bind base, code 0
+        bind head, read k
+        hook next
+          take site, name v
+          call push
+            bind list, read row
+            bind item, true
+      call push
+        bind list, read grid
+        bind item, read row
+  host back
+    call reverse
+      read grid
+  host first
+    read back/0
+  send back
+    call size
+      read first
+
+task compute
+  like text
+  host grid
+    call triangle
+      code 5
+  send back, text <{weigh(grid)}:{late()}:{written()}:{flipped()}>

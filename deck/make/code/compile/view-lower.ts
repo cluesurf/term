@@ -38,6 +38,9 @@ const HANDLER_RAISE = 'raised-in-handler'
 
 type Component = { params: string[]; types: (Type | undefined)[]; slotted: boolean }
 
+// the render runtime's node handle, the type every outlet hands to a children closure
+const VIEW: Type = { kind: 'named', name: 'view' }
+
 // the value a placement passes for a prop it leaves out: the prop type's own empty (``, 0, false), so a component's
 // optional props (the vocabulary's `level` and `link` on `text`) type on every backend, where a bare unit is only
 // accepted by TypeScript. Anything else, or an untyped prop, gets the unit as before
@@ -250,6 +253,23 @@ function lowerZone(
 
   const fresh = (): string => `view${counter++}`
 
+  // the element type of a walk over a prop declared `like list, like item`, given to the item: left untyped, the
+  // closure's parameter was never tied to render-each's element and emitted as `row: number` over `items: Item[]`
+  // (guides: applications/web/components, 2026-10-03). Any other iterable leaves the item to inference
+  const elementOf = (iterable: Expression): Type | undefined => {
+    if (iterable.form !== 'variable') {
+      return undefined
+    }
+
+    const type = zone.params.find(p => p.name === iterable.name)?.type
+
+    if (type?.kind === 'array') {
+      return type.element.kind === 'variable' ? undefined : type.element
+    }
+
+    return type?.kind === 'named' && type.name === 'list' && type.args?.length === 1 ? type.args[0] : undefined
+  }
+
   const variable = (name: string): Expression => ({
     form: 'variable',
     name,
@@ -366,6 +386,7 @@ function lowerZone(
     // the children build STRAIGHT INTO the parent the outlet hands them (`(into) => { ... }`), as a route's page builds
     // into its layout's: never under a `seed-fragment` wrapper, which sat between a layout component (the vocabulary's
     // `stack`) and its children, so a flex row laid out one fragment instead of its children
+    // the parameter is the view the outlet hands over, typed: untyped it defaulted to `number` on TypeScript
     if (comp.slotted) {
       if (node.children.length) {
         const into = fresh()
@@ -375,10 +396,10 @@ function lowerZone(
           attach(child, into, inner)
         }
 
-        args.push({ form: 'closure', params: [{ name: into }], body: inner, span })
+        args.push({ form: 'closure', params: [{ name: into, type: VIEW }], body: inner, span })
       } else {
         // no children: a closure that builds nothing, never a unit, so the parameter keeps its one type everywhere
-        args.push({ form: 'closure', params: [{ name: fresh() }], body: [], span })
+        args.push({ form: 'closure', params: [{ name: fresh(), type: VIEW }], body: [], span })
       }
     }
 
@@ -537,7 +558,8 @@ function lowerZone(
       )
     } else if (node.form === 'walk') {
       // render-each(parent, () => iterable, (item) => view)
-      const itemBody = fragmentThunk([{ name: node.item }], node.body)
+      const element = elementOf(node.iterable)
+      const itemBody = fragmentThunk([{ name: node.item, ...(element ? { type: element } : {}) }], node.body)
       out.push(
         exprStatement(
           call(RENDER.each, [
@@ -620,15 +642,19 @@ function lowerZone(
     // function type, where an untyped parameter was `Void` on Swift (view-vocabulary-0004, the first native slot)
     params.push({
       name: 'children',
-      type: { kind: 'function', params: [{ kind: 'named', name: 'view' }], result: { kind: 'unit' } },
+      type: { kind: 'function', params: [VIEW], result: { kind: 'unit' } },
     })
   }
 
+  // a component builds into its host and returns nothing, so it says so: without a result the checker left it a
+  // variable that defaulted to `number`, and TypeScript emitted `counter(host: View): number` over a body with no
+  // return (guides: applications/web/components, 2026-10-03)
   return {
     form: 'function',
     name: zone.name,
     params,
     body,
+    result: { kind: 'unit' },
     generics: [],
     span,
   }

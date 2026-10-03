@@ -26,8 +26,42 @@ import type { Program, Statement } from '../../compile/node'
 type Loose = { form?: string; [key: string]: unknown }
 
 // one bound the guard checks: `base + offset` (base a variable's name, or absent for a literal `offset`) compared with 0
-// (`low`) or with the list's length (`high`)
-export type BoundCheck = { list: string; base?: string; offset: number; side: 'low' | 'high' }
+// (`low`) or with the list's length (`high`). `list` is the list's name, or for a list reached through a path the
+// path's key (`listKey`, `ps/{k}/xs`), with `path` the node an emitter writes to read its length
+export type BoundCheck = { list: string; base?: string; offset: number; side: 'low' | 'high'; path?: object }
+
+// the key of a list a guard may name: a variable, or a path from one through fields and through slots at a literal
+// or a variable index (`ps/{k}/xs`). The same text for the same path wherever it is read, so an emitter asks it of
+// the list it is indexing; anything else has none
+export function listKey(node: unknown): string | undefined {
+  const e = node as Loose
+
+  if (e.form === 'variable') {
+    return e.name as string
+  }
+
+  if (e.form !== 'member') {
+    return undefined
+  }
+
+  const inner = listKey(e.target)
+
+  if (inner === undefined) {
+    return undefined
+  }
+
+  const index = e.index as Loose | undefined
+
+  if (index === undefined) {
+    return /^\d+$/.test(e.name as string) ? `${inner}/{${e.name as string}}` : `${inner}/${e.name as string}`
+  }
+
+  if (index.form === 'integer') {
+    return `${inner}/{${Number(index.value)}}`
+  }
+
+  return index.form === 'variable' ? `${inner}/{${index.name as string}}` : undefined
+}
 
 // a bound on a name the guard also reads, for the arguments of a call made unchecked: `name >= 0` (`low`) or
 // `name <= high`
@@ -36,12 +70,17 @@ export type Limit = { name: string; low?: true; high?: number }
 // `fast`: the call nodes in the body that may call the task's unchecked copy once the guard, `limits` included, holds
 export type LoopGuard = { checks: BoundCheck[]; fast?: object[]; limits?: Limit[] }
 
-export function boundedLoops(program: Program): WeakMap<Statement, LoopGuard> {
+export function boundedLoops(program: Program, lent: Map<string, Map<number, unknown>> = new Map()): WeakMap<Statement, LoopGuard> {
   const guards = new WeakMap<Statement, LoopGuard>()
   const closureWrites = namesWrittenInClosures(program)
   const pure = scalarTasks(program)
-  // a task may run unchecked only if it also reaches no list, so it is already a call the guard allows
-  const bounded = new Map([...integerBounds(program)].filter(([name]) => pure.has(name)))
+  // a task may run unchecked only where a call to it is one the guard allows: it reaches no list, or every list it takes
+  // it takes LENT (`lent`, F1's `listFacts`, which never lends a list a task pushes or pops), so it may write a list's
+  // slots but never its length. AWFY's Queens: `is-free` and `mark` read and write the board by `c + r`
+  const tasks = new Map(program.flatMap(n => (n.form === 'function' ? [[n.name, n] as const] : [])))
+  const lengthSafe = (name: string): boolean =>
+    pure.has(name) || (tasks.get(name)?.params.every((p, i) => p.type?.kind !== 'array' || lent.get(name)?.has(i) === true) ?? false)
+  const bounded = new Map([...integerBounds(program)].filter(([name]) => lengthSafe(name)))
   const seen = new Set<object>()
 
   const visit = (value: unknown): void => {
@@ -60,7 +99,7 @@ export function boundedLoops(program: Program): WeakMap<Statement, LoopGuard> {
     const node = value as Loose
 
     if (node.form === 'while') {
-      const guard = guardOf(node, closureWrites, pure, bounded)
+      const guard = guardOf(node, closureWrites, pure, bounded, lent)
 
       if (guard) {
         guards.set(node as unknown as Statement, guard)
@@ -84,6 +123,7 @@ function guardOf(
   closureWrites: Set<string>,
   pure: Set<string>,
   bounded: Map<string, number> = new Map(),
+  lent: Map<string, Map<number, unknown>> = new Map(),
 ): LoopGuard | undefined {
   const cond = loop.cond as Loose | undefined
   const body = loop.body as Loose[]
@@ -128,8 +168,17 @@ function guardOf(
       (((node.callee as Loose).form === 'variable' && pure.has((node.callee as Loose).name as string)) ||
         nativeCall(node.callee as Loose)) &&
       (node.args as Loose[]).every(a => scalar(a.type as { kind?: string; name?: string } | undefined))
+    // a call whose every list argument its callee takes lent: it may write those lists' slots, never their lengths, and
+    // it can reach no local of this loop (no closure is in it)
+    const takesLent =
+      node.form === 'call' &&
+      (node.callee as Loose).form === 'variable' &&
+      lent.has((node.callee as Loose).name as string) &&
+      (node.args as Loose[]).every(
+        (a, i) => scalar(a.type as { kind?: string; name?: string } | undefined) || lent.get((node.callee as Loose).name as string)!.has(i),
+      )
 
-    if ((node.form === 'call' && !reachesNoList) || node.form === 'closure' || node.form === 'await') {
+    if ((node.form === 'call' && !reachesNoList && !takesLent) || node.form === 'closure' || node.form === 'await') {
       opaque = true
 
       return
@@ -270,11 +319,24 @@ function guardOf(
   // every list index in the body, each turned into its two bounds, or the loop is refused
   const checks: BoundCheck[] = []
   let refused = false
-  const bound = (list: string, index: Loose): void => {
+  // a name the loop never writes and no closure writes: its value at the guard is its value on every turn
+  const invariant = (e: Loose): boolean =>
+    e.form === 'variable' && number(e) && (writes.get(e.name as string) ?? []).length === 0 && !closureWrites.has(e.name as string)
+  // `path` is the list's node when it is reached through a path, for an emitter to read its length
+  const bound = (list: string, index: Loose, path?: object): void => {
+    const at = path ? { path } : {}
+
     // literal: `xs/0`, or `xs/{3}`
     if (index.form === 'integer') {
-      const at = Number(index.value)
-      checks.push({ list, offset: at, side: 'low' }, { list, offset: at, side: 'high' })
+      const offset = Number(index.value)
+      checks.push({ list, offset, side: 'low', ...at }, { list, offset, side: 'high', ...at })
+
+      return
+    }
+
+    // a name the loop never writes (`ps/{k}` inside a walk over `i`): the guard reads it once, as every turn does
+    if (invariant(index) && index.name !== smallName && index.name !== bigName) {
+      checks.push({ list, base: index.name as string, offset: 0, side: 'low', ...at }, { list, base: index.name as string, offset: 0, side: 'high', ...at })
 
       return
     }
@@ -314,8 +376,85 @@ function guardOf(
     const lowOffset = base === 'small' ? offset : offset + 1
     const highOffset = base === 'small' ? offset - 1 : offset
 
-    checks.push({ list, base: lowBase, offset: lowOffset, side: 'low' })
-    checks.push(bigName ? { list, base: bigName, offset: highOffset, side: 'high' } : { list, offset: Number(big.value) + highOffset, side: 'high' })
+    checks.push({ list, base: lowBase, offset: lowOffset, side: 'low', ...at })
+    checks.push(bigName ? { list, base: bigName, offset: highOffset, side: 'high', ...at } : { list, offset: Number(big.value) + highOffset, side: 'high', ...at })
+  }
+
+  // the key of a list reached through a path whose every part the loop holds still: a root it never writes, fields,
+  // and slots at a literal or a name it never writes, each slot bounded in its own list FIRST, so the guard reads a
+  // prefix only once its index is known inside it. A slot at the counter is a different list every turn, which one
+  // guard cannot read: refused
+  const pathList = (node: Loose): string | undefined => {
+    if (node.form === 'variable') {
+      return (writes.get(node.name as string) ?? []).length === 0 && !closureWrites.has(node.name as string) ? (node.name as string) : undefined
+    }
+
+    if (node.form !== 'member') {
+      return undefined
+    }
+
+    const inner = pathList(node.target as Loose)
+    const index = node.index as Loose | undefined
+    const literal = index === undefined && /^\d+$/.test(node.name as string)
+
+    if (inner === undefined) {
+      return undefined
+    }
+
+    // a field
+    if (index === undefined && !literal) {
+      return `${inner}/${node.name as string}`
+    }
+
+    const at: Loose = literal ? { form: 'integer', value: Number(node.name) } : index!
+
+    if (at.form !== 'integer' && !(invariant(at) && at.name !== smallName && at.name !== bigName)) {
+      return undefined
+    }
+
+    const target = node.target as Loose
+
+    bound(inner, at, target.form === 'variable' ? undefined : target)
+
+    return listKey(node)
+  }
+
+  // whether a guarded list reached through a path could be a different list by a later turn: a field written (it may
+  // be the path's own field), or a slot written whose value is not a scalar (it may replace a record on the path)
+  let rebinds = false
+  const findRebinds = (value: unknown): void => {
+    if (typeof value !== 'object' || value === null) {
+      return
+    }
+
+    if (Array.isArray(value)) {
+      value.forEach(findRebinds)
+
+      return
+    }
+
+    const node = value as Loose
+
+    if (node.form === 'assign' && (node.target as Loose).form === 'member') {
+      const target = node.target as Loose
+      const slot = target.index !== undefined || /^\d+$/.test(target.name as string)
+
+      if (!slot || !scalar((target.type ?? (node.value as Loose).type) as { kind?: string; name?: string } | undefined)) {
+        rebinds = true
+      }
+    }
+
+    // a call the guard allowed for its lengths (a task taking its lists lent) may still write a slot of one, and a slot
+    // of a list of records holding a path's list would replace it: with a path guarded, a call is passed scalars only
+    if (node.form === 'call' && (node.args as Loose[]).some(a => !scalar(a.type as { kind?: string; name?: string } | undefined))) {
+      rebinds = true
+    }
+
+    for (const [key, child] of Object.entries(node)) {
+      if (key !== 'type' && key !== 'span') {
+        findRebinds(child)
+      }
+    }
   }
 
   const uses = (value: unknown, at: number): void => {
@@ -337,14 +476,36 @@ function guardOf(
       if (node.index !== undefined || literal) {
         const target = node.target as Loose
 
-        // a slot of a list the loop never rebinds, read or written before either side steps
-        if (target.form !== 'variable' || (writes.get(target.name as string) ?? []).length > 0 || at < 0 || at >= firstStep) {
+        if (at < 0 || at >= firstStep) {
           refused = true
 
           return
         }
 
-        bound(target.name as string, literal ? { form: 'integer', value: Number(node.name) } : (node.index as Loose))
+        // a slot of a list the loop never rebinds, read or written before either side steps
+        if (target.form === 'variable') {
+          if ((writes.get(target.name as string) ?? []).length > 0) {
+            refused = true
+
+            return
+          }
+
+          bound(target.name as string, literal ? { form: 'integer', value: Number(node.name) } : (node.index as Loose))
+          uses(node.index, at)
+
+          return
+        }
+
+        // a slot of a list reached through a path the loop holds still (`ps/{k}/xs/{i}`)
+        const key = pathList(target)
+
+        if (key === undefined) {
+          refused = true
+
+          return
+        }
+
+        bound(key, literal ? { form: 'integer', value: Number(node.name) } : (node.index as Loose), target)
         uses(node.index, at)
 
         return
@@ -362,6 +523,14 @@ function guardOf(
 
   if (refused) {
     return undefined
+  }
+
+  if (checks.some(c => c.path)) {
+    findRebinds(body)
+
+    if (rebinds) {
+      return undefined
+    }
   }
 
   // the calls to a task whose integer arithmetic is safe below a bound (`integerBounds`), with every argument bounded
@@ -391,8 +560,17 @@ function guardOf(
           return Number(arg.value) >= 0 && Number(arg.value) < limit
         }
 
+        if (arg.form === 'boolean' || arg.form === 'float') {
+          return true
+        }
+
         if (arg.form !== 'variable') {
           return false
+        }
+
+        // a list the task takes lent, or a flag or a decimal: no bound on it, read by the copy as by the original
+        if (['array', 'boolean', 'float'].includes((arg.type as { kind?: string } | undefined)?.kind ?? '')) {
+          return true
         }
 
         const name = arg.name as string
@@ -481,6 +659,44 @@ function scalar(type: { kind?: string; name?: string } | undefined): boolean {
   )
 }
 
+// The types that cannot hold a list: a scalar, or a record or variant form every field of which is list-free (a
+// recursive form is list-free unless a field says otherwise). A list, a map, a function, an unknown or a type variable
+// never is. A value of one reaches no list, so passing it to a task cannot hand that task a list another name holds:
+// fasta's `fold(state, line, width)` (a record of three numbers, a text, a number) cost `random` its lent list
+export function listFree(program: Program): (type: unknown) => boolean {
+  const forms = new Map(
+    program.flatMap(n =>
+      n.form === 'record-type' && !n.params.length ? [[n.name, [...n.fields, ...n.variants.flatMap(v => v.fields)].map(f => f.type)] as const] : [],
+    ),
+  )
+  const known = new Map<string, boolean>()
+
+  const free = (type: unknown): boolean => {
+    const t = type as { kind?: string; name?: string; args?: unknown[] } | undefined
+
+    if (scalar(t)) {
+      return true
+    }
+
+    if (t?.kind !== 'named' || (t.args?.length ?? 0) > 0 || !forms.has(t.name!)) {
+      return false
+    }
+
+    if (known.has(t.name!)) {
+      return known.get(t.name!)!
+    }
+
+    // assumed free while its own fields are checked, so a recursive form does not refuse itself
+    known.set(t.name!, true)
+    const answer = forms.get(t.name!)!.every(free)
+    known.set(t.name!, answer)
+
+    return answer
+  }
+
+  return free
+}
+
 // The tasks whose integer arithmetic cannot leave the safe integers while every argument is in [0, L): each answered
 // with the largest such L, a power of two up to 2^31. Interval arithmetic over a body of `let`s and one `send back`,
 // through `+`, `-`, `*`, integer `/` and `%` (by a divisor whose interval excludes 0) and the float operations, which
@@ -492,7 +708,14 @@ export function integerBounds(program: Program): Map<string, number> {
   const found = new Map<string, number>()
 
   for (const fn of program) {
-    if (fn.form !== 'function' || fn.async || !fn.params.length || !fn.params.every(p => p.type?.kind === 'number')) {
+    // every parameter a number, or a list (whose slots the body may read and write by a bounded index, AWFY's Queens),
+    // and at least one number to bound
+    if (
+      fn.form !== 'function' ||
+      fn.async ||
+      !fn.params.some(p => p.type?.kind === 'number') ||
+      !fn.params.every(p => ['number', 'array', 'boolean', 'float'].includes(p.type?.kind ?? ''))
+    ) {
       continue
     }
 
@@ -528,7 +751,13 @@ export function unsignedDivisions(program: Program): WeakSet<object> {
 // into `divisions` each division or remainder whose operands it proved non-negative
 function fits(fn: Extract<Statement, { form: 'function' }>, limit: number, divisions?: WeakSet<object>): boolean {
   type Range = { lo: number; hi: number } | 'float'
-  const env = new Map<string, Range>(fn.params.map(p => [p.name, { lo: 0, hi: limit - 1 }]))
+  const env = new Map<string, Range>(fn.params.flatMap(p => (p.type?.kind === 'number' ? [[p.name, { lo: 0, hi: limit - 1 }] as const] : [])))
+  const lists = new Set(fn.params.flatMap(p => (p.type?.kind === 'array' ? [p.name] : [])))
+  // a flag or a decimal parameter: read, never tracked, since nothing checks it
+  const untracked = new Set(fn.params.flatMap(p => (p.type?.kind === 'boolean' || p.type?.kind === 'float' ? [p.name] : [])))
+  // a slot of a list parameter, its index bounded like any operand; what it holds is not tracked, so integer arithmetic
+  // on it is refused
+  const slot = (e: Loose): boolean => e.form === 'member' && (e.target as Loose).form === 'variable' && lists.has((e.target as Loose).name as string)
   let ok = true
 
   const range = (e: Loose): Range => {
@@ -540,8 +769,13 @@ function fits(fn: Extract<Statement, { form: 'function' }>, limit: number, divis
       case 'integer':
         return { lo: e.value as number, hi: e.value as number }
       case 'float':
+      case 'boolean':
         return 'float'
       case 'variable': {
+        if (untracked.has(e.name as string)) {
+          return 'float'
+        }
+
         const known = env.get(e.name as string)
 
         if (known === undefined) {
@@ -633,6 +867,18 @@ function fits(fn: Extract<Statement, { form: 'function' }>, limit: number, divis
 
         return out
       }
+      case 'member':
+        if (slot(e)) {
+          if (e.index !== undefined) {
+            range(e.index as Loose)
+          }
+
+          return 'float'
+        }
+
+        ok = false
+
+        return 'float'
       case 'call': {
         // its arguments are bounded like any operand; a call answering a float (`to-decimal`) needs no range of its
         // own, and the callee keeps its own checks. One answering an integer is not followed
@@ -656,6 +902,9 @@ function fits(fn: Extract<Statement, { form: 'function' }>, limit: number, divis
       env.set(s.name as string, range(s.init as Loose))
     } else if (s.form === 'return' && s.value) {
       range(s.value as Loose)
+    } else if (s.form === 'assign' && s.op === '=' && slot(s.target as Loose)) {
+      range(s.target as Loose)
+      range(s.value as Loose)
     } else {
       return false
     }
@@ -672,16 +921,17 @@ export function nativeCall(callee: { form?: string; target?: unknown }): boolean
   return module?.form === 'variable' && (module.binding as { kind?: string } | undefined)?.kind === 'deferred'
 }
 
-// The tasks that cannot reach any list: every parameter a scalar, nothing in the body a closure, an await, a slot or
-// length of a list, or a variable from outside the task that holds anything but a scalar, and every call to another
-// such task (or a native binding) with scalar arguments. A fixpoint, since one such task may call another. A call to
-// one inside a counted loop cannot change a list's length, so it does not cost the loop its guard
-// (spectral-norm's `a-value`, called in the innermost loop)
+// The tasks that cannot reach any list: every parameter list-free (`listFree`: a scalar, or a record holding none),
+// nothing in the body a closure, an await, a slot or length of a list, or a variable from outside the task whose type
+// could hold one, and every call to another such task (or a native binding) with list-free arguments. A fixpoint, since
+// one such task may call another. A call to one inside a counted loop cannot change a list's length, so it does not
+// cost the loop its guard (spectral-norm's `a-value`), nor a task its lent lists (fasta's `fold`)
 export function scalarTasks(program: Program): Set<string> {
   type Fn = Extract<Statement, { form: 'function' }>
   const fns = program.filter((n): n is Fn => n.form === 'function')
   const tasks = new Set(fns.map(f => f.name))
-  const pure = new Set(fns.filter(f => f.body.length > 0 && !f.async && f.params.every(p => scalar(p.type as never))).map(f => f.name))
+  const free = listFree(program)
+  const pure = new Set(fns.filter(f => f.body.length > 0 && !f.async && f.params.every(p => free(p.type))).map(f => f.name))
   let changed = true
 
   const clean = (fn: Fn): boolean => {
@@ -710,7 +960,7 @@ export function scalarTasks(program: Program): Set<string> {
           locals.add(node.name as string)
           break
         case 'variable':
-          if (!locals.has(node.name as string) && !tasks.has(node.name as string) && !scalar(node.type as never)) {
+          if (!locals.has(node.name as string) && !tasks.has(node.name as string) && !free(node.type)) {
             ok = false
           }
 
@@ -727,14 +977,20 @@ export function scalarTasks(program: Program): Set<string> {
           const callee = node.callee as Loose
 
           const known = callee.form === 'variable' && (!tasks.has(callee.name as string) || pure.has(callee.name as string))
+          // a method of a text (`line.char-code-at(i)`, what the stdlib's text tasks inline to) reaches no list
+          const textMethod = callee.form === 'member' && ((callee.target as Loose).type as { kind?: string } | undefined)?.kind === 'string'
 
-          if (!known && !nativeCall(callee)) {
+          if (textMethod) {
+            visit(callee.target)
+          }
+
+          if (!known && !nativeCall(callee) && !textMethod) {
             ok = false
 
             return
           }
 
-          if (!(node.args as Loose[]).every(a => scalar(a.type as never))) {
+          if (!(node.args as Loose[]).every(a => free(a.type))) {
             ok = false
 
             return

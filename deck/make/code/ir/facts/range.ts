@@ -72,6 +72,24 @@ export function provenIncrements(program: Program): WeakSet<Expression> {
   const check = (loop: Loose): void => {
     const cond = loop.cond as Loose | undefined
 
+    // a counter against an integer LITERAL with a non-strict comparison, `i >= 0` / `0 <= i` stepping down or
+    // `i <= c` / `c >= i` stepping up: at the step the counter is at least (at most) the literal, so one step down (up)
+    // cannot leave the range while the literal is not the minimum (maximum). AWFY's Permute counts down to 0
+    if (cond?.form === 'binary' && (cond.op === '>=' || cond.op === '<=')) {
+      const left = cond.left as Loose
+      const right = cond.right as Loose
+      const literal = (e: Loose): boolean => e.form === 'integer' && Math.abs(Number(e.value)) < Number.MAX_SAFE_INTEGER
+
+      // the counter on the large side steps down, on the small side up
+      if (left.form === 'variable' && literal(right)) {
+        counted(loop, left, cond.op === '>=' ? -1 : 1)
+      } else if (right.form === 'variable' && literal(left)) {
+        counted(loop, right, cond.op === '<=' ? -1 : 1)
+      }
+
+      return
+    }
+
     if (cond?.form !== 'binary' || (cond.op !== '<' && cond.op !== '>')) {
       return
     }
@@ -201,7 +219,131 @@ export function provenIncrements(program: Program): WeakSet<Expression> {
 
   visit(program)
 
+  // `x - c`, a positive integer literal taken from a local proven NOT NEGATIVE, cannot leave the range: the result is
+  // at least `-c`, and below `x`, which is a number already. A local is not negative when every value it is given is:
+  // a literal at least 0, another such local, or a sum, product or `%` of such values (each of which was itself checked
+  // when it was made, so it is a number). Solved optimistically per task, so a counter's own step `i = i + 1` keeps it,
+  // and dropped by any write that is not. Parameters are never proven (a caller may pass anything), nor a name a
+  // closure writes or something binds another way (a walk's item, a closure's parameter, an arm's field).
+  // AWFY's Sieve reads `flags/{i - 1}` and clears `flags/{k - 1}`: each checked subtraction cost TypeScript 7%.
+  for (const fn of program) {
+    if (fn.form === 'function') {
+      notNegative(fn as unknown as Loose, closureWrites, proven)
+    }
+  }
+
   return proven
+}
+
+function notNegative(fn: Loose, closureWrites: Set<string>, proven: WeakSet<Expression>): void {
+  const writes = new Map<string, Loose[]>()
+  const excluded = new Set<string>((fn.params as { name: string }[]).map(p => p.name))
+  const subtractions: Loose[] = []
+  const seen = new Set<object>()
+  const isNumber = (e: Loose | undefined): boolean => (e?.type as { kind?: string } | undefined)?.kind === 'number'
+
+  const visit = (value: unknown): void => {
+    if (typeof value !== 'object' || value === null || seen.has(value)) {
+      return
+    }
+
+    seen.add(value)
+
+    if (Array.isArray(value)) {
+      value.forEach(visit)
+
+      return
+    }
+
+    const node = value as Loose
+
+    if (node.form === 'let') {
+      writes.set(node.name as string, [...(writes.get(node.name as string) ?? []), node.init as Loose])
+    }
+
+    if (node.form === 'assign' && (node.target as Loose).form === 'variable') {
+      const name = (node.target as Loose).name as string
+
+      // a compound write is not read here: only `x = <value>`
+      if (node.op !== '=') {
+        excluded.add(name)
+      }
+
+      writes.set(name, [...(writes.get(name) ?? []), node.value as Loose])
+    }
+
+    if (node.form === 'for-each') {
+      excluded.add(node.item as string)
+    }
+
+    if (node.form === 'closure') {
+      for (const p of node.params as { name: string }[]) {
+        excluded.add(p.name)
+      }
+    }
+
+    if (node.form === 'match') {
+      for (const c of node.cases as { binds?: string[] }[]) {
+        for (const b of c.binds ?? []) {
+          excluded.add(b)
+        }
+      }
+    }
+
+    if (
+      node.form === 'binary' &&
+      node.op === '-' &&
+      (node.left as Loose).form === 'variable' &&
+      (node.right as Loose).form === 'integer' &&
+      Number((node.right as Loose).value) > 0 &&
+      Number((node.right as Loose).value) <= 2 ** 52 &&
+      isNumber(node.left as Loose)
+    ) {
+      subtractions.push(node)
+    }
+
+    for (const [key, child] of Object.entries(node)) {
+      if (key !== 'type' && key !== 'span') {
+        visit(child)
+      }
+    }
+  }
+
+  visit(fn.body)
+
+  const holds = new Set([...writes.keys()].filter(name => !excluded.has(name) && !closureWrites.has(name)))
+  const positive = (e: Loose): boolean => {
+    switch (e.form) {
+      case 'integer':
+        return Number(e.value) >= 0
+      case 'variable':
+        return holds.has(e.name as string)
+      case 'binary':
+        return (
+          ((e.op === '+' || e.op === '*') && positive(e.left as Loose) && positive(e.right as Loose)) ||
+          (e.op === '%' && positive(e.left as Loose) && (e.right as Loose).form === 'integer' && Number((e.right as Loose).value) > 0)
+        )
+      default:
+        return false
+    }
+  }
+
+  for (let changed = true; changed; ) {
+    changed = false
+
+    for (const name of [...holds]) {
+      if (!writes.get(name)!.every(positive)) {
+        holds.delete(name)
+        changed = true
+      }
+    }
+  }
+
+  for (const node of subtractions) {
+    if (holds.has((node.left as Loose).name as string)) {
+      proven.add(node as unknown as Expression)
+    }
+  }
 }
 
 // every variable name an assignment inside some closure writes

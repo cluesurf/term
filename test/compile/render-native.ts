@@ -9,6 +9,7 @@
 // Rust joined on 2026-10-02 (native-dom-0020), once `mark shared` lowered there.
 // RN_ONLY=typescript (or swift, kotlin, rust) runs one backend. Run: npx tsx test/compile/render-native.ts
 
+import { runDir } from './run-dir'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -526,7 +527,7 @@ const CASES: Case[] = [
   { name: 'owned items', program: LIST_PROGRAM, want: LIST_WANT, portable: true },
 ]
 
-const dir = mkdtempSync(join(tmpdir(), 'term-render-native-'))
+const dir = runDir('term-render-native-')
 
 function build(env: NativeEnv, one: Case) {
   const entry = join(dir, `${one.name.replace(/ /g, '-')}.tree`)

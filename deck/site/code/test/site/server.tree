@@ -1,18 +1,79 @@
 
-# Server route in the route DSL. A small users API: list and create.
-# The matcher and handler binding are ours; HTTP transport delegates to native per backend.
+# Server routes. A small users API: list and create, over a list held in memory.
+#
+# A server route is a `route` record (a method, a path and a handler) handed to `route-server`, which builds the trie
+# that `handle-request` matches against. This file was written as `hook /users` with `task get` and `task post` under
+# it until 2026-10-03, which compiled, was counted in host/roll.json, and emitted nothing: a page route renders a view
+# and reads no method. That spelling is refused now (check/routes.ts), and this is the one that serves.
 
-hook /users
-  task get
-    take query
-      like hash
-    call list-users
-      bind page, read page
+load @term/site/http/http
+  find request
+  find response
+  find route
+  find server
+  find route-server
 
-  task post
-    take body
-      like hash
-    call make-user
-      bind name, read name
-    send json
-      read user
+load @term/base/list
+  find list
+  find push
+
+load @term/base/text/string
+  find to-text
+
+host users
+  make list
+  like list
+    like text
+
+# GET /users: how many users there are
+task list-users
+  take request, like request
+  take params
+    like hash
+      like text
+      like text
+  like response
+  send back
+    make response
+      bind status, code 200
+      bind body
+        call to-text
+          call users/count
+
+# POST /users: the request body is the new user's name
+task make-user
+  take request, like request
+  take params
+    like hash
+      like text
+      like text
+  like response
+  call push
+    bind list, read users
+    bind item, read request/body
+  send back
+    make response
+      bind status, code 201
+      bind body, read request/body
+
+task users-server
+  like server
+  save routes
+    make list
+  call push
+    bind list, read routes
+    bind item
+      make route
+        bind method, text <GET>
+        bind path, text </users>
+        bind handle, read list-users
+  call push
+    bind list, read routes
+    bind item
+      make route
+        bind method, text <POST>
+        bind path, text </users>
+        bind handle, read make-user
+  send back
+    call route-server
+      read routes

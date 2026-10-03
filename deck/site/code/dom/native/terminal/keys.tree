@@ -7,7 +7,8 @@
 #   9                tab          ESC [ A   up        ESC [ Z   shift-tab
 #   13, 10           enter        ESC [ B   down      ESC alone escape
 #   127, 8           backspace    ESC [ C   right     3         ctrl-c
-#   32               space        ESC [ D   left      other controls are dropped
+#   32               space        ESC [ D   left      26        ctrl-z
+#                                                     other controls are dropped
 #
 # An ESC `[` sequence this table does not name (a function key, a mouse report) is consumed whole, up to the letter or
 # `~` that ends it, and dropped, so its bytes never arrive as typed characters.
@@ -99,6 +100,12 @@ task single-of
         code 3
     hook hold
       send back, text <ctrl-c>
+    hook test
+      call is-equal
+        read rune
+        code 26
+    hook hold
+      send back, text <ctrl-z>
     hook test
       call is-below
         read rune

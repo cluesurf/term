@@ -1,0 +1,89 @@
+load @term/base/list
+  find list
+
+# Sieve, from Are We Fast Yet (Marr, Daloze and Mössenböck, DLS 2016): the primes up to 5000 by the sieve of
+# Eratosthenes over a list of flags, 669 of them, the benchmark run `n` times and the counts added, so the output is one
+# integer. AWFY's structure kept: the flags made full, each prime's multiples cleared from twice the prime on
+
+# `size` flags, every one set
+task filled
+  take size, like number
+  like list, like boolean
+  save out
+    make list
+  walk size
+    bind base, code 0
+    bind head, read size
+    hook next
+      take site, name i
+      call push
+        bind list, read out
+        bind item, true
+  send back, read out
+
+# how many primes there are up to `size`, clearing the multiples of each from `flags`
+task count-primes
+  take flags, like list, like boolean
+  take size, like number
+  like number
+  save primes, code 0
+  walk size
+    bind base, code 2
+    bind head
+      call add
+        read size
+        code 1
+    hook next
+      take site, name i
+      host at
+        call subtract
+          read i
+          code 1
+      fork test
+        hook test
+          read flags/{at}
+        hook hold
+          save primes
+            call add
+              read primes
+              code 1
+          save k
+            call add
+              read i
+              read i
+          walk test
+            hook test
+              call is-maximum
+                read k
+                read size
+            hook hold
+              host clear
+                call subtract
+                  read k
+                  code 1
+              save flags/{clear}, false
+              save k
+                call add
+                  read k
+                  read i
+  send back, read primes
+
+task sieve
+  take n, like number
+  like number
+  save total, code 0
+  walk size
+    bind base, code 0
+    bind head, read n
+    hook next
+      take site, name round
+      host flags
+        call filled
+          code 5000
+      save total
+        call add
+          read total
+          call count-primes
+            read flags
+            code 5000
+  send back, read total

@@ -108,7 +108,10 @@ let inlining = new Set<string>()
 // the small one-expression tasks inlined at ANY call whose arguments are pure, not only at a constant one (see
 // `smallBody`): the one-line stdlib wrappers (`list-size`, `boolean-and` over a native) that every backend otherwise
 // calls through. note/term/codegen/passes.md, P1
-let small = new Map<string, { params: { name: string }[]; value: Expression }>()
+let small = new Map<
+  string,
+  { params: { name: string; type?: Type; optional?: boolean; fallback?: Expression }[]; value: Expression }
+>()
 
 // the names the function being simplified binds (its parameters, lets, loop variables, closure parameters)
 let callerBound = new Set<string>()
@@ -1484,7 +1487,7 @@ function simplifyExpression(node: Expression): Expression {
 
     case 'call': {
       const callee = simplifyExpression(node.callee)
-      const args = node.args.map(simplifyExpression)
+      let args = node.args.map(simplifyExpression)
 
       // specialization: inline a specializable function when an argument is a known constant, then fold. Only when
       // every argument is pure (a constant or a bare variable), so no side-effecting argument is reordered or dropped
@@ -1524,10 +1527,65 @@ function simplifyExpression(node: Expression): Expression {
         // the caller, which would capture it
         const tiny = small.get(callee.name)
 
+        // a trailing `need false` number left out is the 0 every backend passes for it, written in, so the call inlines
+        // like any other: `index-of(s, <de>)` was a call where `index-of(s, <de>, 0)` reached the text's own search
+        const missing = tiny ? tiny.params.slice(args.length) : []
+
+        if (
+          missing.length &&
+          missing.every(p => p.optional && !p.fallback && p.type?.kind === 'number')
+        ) {
+          args = [
+            ...args,
+            ...missing.map(p => ({ form: 'integer', value: 0, span: node.span, type: p.type }) as Expression),
+          ]
+        }
+
+        // an argument computed with no effect (`modulo(i, size)`) is taken too when its parameter is read exactly once,
+        // so nothing is computed twice, and every other argument is a constant or a variable, so nothing else runs
+        // before it: fasta's `char-at(alu, modulo(i, size))` was a call per character it built
+        const readOnce = (name: string): boolean => {
+          let count = 0
+          const walk = (value: unknown): void => {
+            if (typeof value !== 'object' || value === null) {
+              return
+            }
+
+            if (Array.isArray(value)) {
+              value.forEach(walk)
+
+              return
+            }
+
+            const node = value as { form?: string; name?: string }
+
+            if (node.form === 'variable' && node.name === name) {
+              count++
+            }
+
+            for (const [key, child] of Object.entries(node)) {
+              if (key !== 'type' && key !== 'span') {
+                walk(child)
+              }
+            }
+          }
+
+          walk(tiny!.value)
+
+          return count === 1
+        }
+        const computed = tiny ? args.filter(a => !isPureArg(a)) : []
+        const takes =
+          tiny !== undefined &&
+          (computed.length === 0 ||
+            (computed.length === 1 &&
+              isPureExpr(computed[0]!) &&
+              readOnce(tiny.params[args.indexOf(computed[0]!)]!.name)))
+
         if (
           tiny &&
           tiny.params.length === args.length &&
-          args.every(isPureArg) &&
+          takes &&
           !inlining.has(callee.name)
         ) {
           const own = new Set(tiny.params.map(p => p.name))
@@ -1619,6 +1677,11 @@ function simplifyExpression(node: Expression): Expression {
 
       return { ...node, branches, otherwise }
     }
+
+    // a template's parts are expressions like any other: unvisited, a call inside one (`<{line}{char-at(alu, i)}>`) was
+    // never folded nor inlined, so fasta called the stdlib's one-line `char-at` wrapper once per character it built
+    case 'template':
+      return { ...node, parts: node.parts.map(part => (typeof part === 'string' ? part : simplifyExpression(part))) }
 
     default:
       return node

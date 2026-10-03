@@ -3,6 +3,7 @@
 // and computes correctly, not just code of the right shape. Each backend is gated on its toolchain being installed;
 // a missing toolchain is reported as skipped, never a failure. Run: npx tsx test/compile/roundtrip.ts
 
+import { runDir } from './run-dir'
 import { execFileSync, spawnSync, spawn } from 'node:child_process'
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { cpus, tmpdir } from 'node:os'
@@ -96,7 +97,7 @@ function have(tool: string): boolean {
   }
 }
 
-const dir = mkdtempSync(join(tmpdir(), 'seed-roundtrip-'))
+const dir = runDir('seed-roundtrip-')
 const baseTree = join(process.cwd(), 'deck', 'base')
 
 // the stdlib's own modules import each other as `@term/base/...` (the Term rename); older test programs still say
@@ -3605,13 +3606,13 @@ async function main(): Promise<void> {
     true,
   )
   runKotlinText(
-    'kotlin + channel: send + receive (BlockingQueue)',
+    'kotlin + channel: send + receive (suspended receivers)',
     frontEnd(CHANNEL_PROG, true, 'kotlin'),
     'true',
     true,
   )
   runSwiftText(
-    'swift + channel: send + receive (semaphore buffer)',
+    'swift + channel: send + receive (suspended receivers)',
     frontEnd(CHANNEL_PROG, true, 'swift'),
     'true',
     true,
@@ -3658,13 +3659,13 @@ async function main(): Promise<void> {
     true,
   )
   runKotlinText(
-    'kotlin + mutex: lock + unlock (ReentrantLock)',
+    'kotlin + mutex: lock + unlock (suspended waiters)',
     frontEnd(MUTEX_PROG, true, 'kotlin'),
     'true',
     true,
   )
   runSwiftText(
-    'swift + mutex: lock + unlock (NSLock)',
+    'swift + mutex: lock + unlock (suspended waiters)',
     frontEnd(MUTEX_PROG, true, 'swift'),
     'true',
     true,

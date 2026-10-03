@@ -1,0 +1,188 @@
+load @term/base/list
+  find list
+  find push
+
+# a list slot read, matched and written back (compile/rust.ts, `slotTakes`), and the boxes of a recursive form reused
+# across tasks (`reusable`): a pop's node box kept and the next push built in it. Towers' shape, moved by recursion.
+# Then each refusal raised and caught, and the piles read again: a take that ran before the raise would leave the
+# placeholder case in the slot, and the counts after would come out short. Every answer must be the value one
+
+form stack
+  case empty
+  case disk
+    link size, like number
+    link below, like stack
+
+task push-disk
+  take piles, like list, like stack
+  take size, like number
+  take pile, like number
+  host top, read piles/{pile}
+  fork case, read top
+    case disk
+      link on
+      fork test
+        hook test
+          call is-minimum
+            read size
+            read on
+        hook hold
+          halt <Cannot put a big disk onto a smaller one>
+    case empty
+  save piles/{pile}
+    make disk
+      bind size, read size
+      bind below, read top
+
+task pop-disk
+  take piles, like list, like stack
+  take pile, like number
+  like number
+  host top, read piles/{pile}
+  fork case, read top
+    case empty
+      halt <Attempting to remove a disk from an empty pile>
+    case disk
+      save piles/{pile}, read below
+      send back, read size
+
+task move-disks
+  take piles, like list, like stack
+  take disks, like number
+  take from, like number
+  take to, like number
+  like number
+  fork test
+    hook test
+      call is-equal
+        read disks
+        code 0
+    hook hold
+      send back, code 0
+  host other
+    call subtract
+      call subtract
+        code 3
+        read from
+      read to
+  host before
+    call move-disks
+      read piles
+      call subtract
+        read disks
+        code 1
+      read from
+      read other
+  call push-disk
+    read piles
+    call pop-disk
+      read piles
+      read from
+    read to
+  host after
+    call move-disks
+      read piles
+      call subtract
+        read disks
+        code 1
+      read other
+      read to
+  send back
+    call add
+      call add
+        read before
+        code 1
+      read after
+
+# the sizes on a pile from the top down, joined
+task show
+  take s, like stack
+  like text
+  fork case, read s
+    case empty
+      send back, text <.>
+    case disk
+      send back, text <{size}{show(below)}>
+
+task try-push
+  take piles, like list, like stack
+  take size, like number
+  take pile, like number
+  like text
+  mark unsafe
+    call push-disk
+      read piles
+      read size
+      read pile
+    send back, text <put>
+  halt take
+    take problem
+    send back, text <refused>
+
+task try-pop
+  take piles, like list, like stack
+  take pile, like number
+  like text
+  mark unsafe
+    host size
+      call pop-disk
+        read piles
+        read pile
+    send back, text <got{size}>
+  halt take
+    take problem
+    send back, text <empty>
+
+task compute
+  like text
+  save piles
+    make list
+  walk size
+    bind base, code 0
+    bind head, code 3
+    hook next
+      take site, name k
+      call push
+        bind list, read piles
+        bind item
+          make empty
+  save i, code 5
+  walk test
+    hook test
+      call is-above
+        read i
+        code 0
+    hook hold
+      call push-disk
+        read piles
+        read i
+        code 0
+      save i
+        call subtract
+          read i
+          code 1
+  host moves
+    call move-disks
+      read piles
+      code 5
+      code 0
+      code 2
+  host big
+    call try-push
+      read piles
+      code 9
+      code 2
+  host none
+    call try-pop
+      read piles
+      code 0
+  host small
+    call try-push
+      read piles
+      code 0
+      code 2
+  host top
+    call try-pop
+      read piles
+      code 2
+  send back, text <{moves}:{big}:{none}:{small}:{top}:{show(piles/0)}|{show(piles/1)}|{show(piles/2)}>

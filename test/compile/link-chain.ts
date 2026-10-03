@@ -154,8 +154,10 @@ rule one-flip-is-identity
 ok('single-link false claim is rejected', !proves(FALSE_SINGLE_LINK))
 
 // 6. REGRESSION: a constructor literally named `link` (`make link ...`) coexists with chaining, the head argument of
-// `make` is never mistaken for a chain pipe.
-const LINK_CONSTRUCTOR = `form chain
+// `make` is never mistaken for a chain pipe. With the prelude: `bit` was named and never declared here, which built
+// while an unknown type name was read as a hole
+const LINK_CONSTRUCTOR = `${PRELUDE}
+form chain
   case stop
   case link
     link head, like bit

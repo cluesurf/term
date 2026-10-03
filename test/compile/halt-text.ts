@@ -36,7 +36,13 @@ const out = compile({ file: '/gate/code/halt-text.tree', text })
 ok('it compiles', out.ok, out.ok ? '' : out.diagnostics.map(d => d.message).join(' | '))
 
 if (out.ok) {
-  ok('an interpolated halt throws an Error', /throw new Error\(`it broke at \$\{n\}`\)/.test(out.typescript), out.typescript.slice(out.typescript.indexOf('function interpolated')))
+  // the `failure` carrier since 2026-10-03 (note/term/gaps/plan.md phase 1): an Error named TermException with the
+  // exception's fields, so a handler reads `form` and `note` as it does from any raise
+  ok(
+    'an interpolated halt throws the failure carrier, an Error',
+    /new Error\(note\)/.test(out.typescript) && /name: "TermException"/.test(out.typescript) && /form: "failure"/.test(out.typescript) && /\(`it broke at \$\{n\}`\)/.test(out.typescript),
+    out.typescript.slice(out.typescript.indexOf('function interpolated')),
+  )
 
   const dir = mkdtempSync(join(tmpdir(), 'term-halt-text-'))
   const file = join(dir, 'halt-text.ts')

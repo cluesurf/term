@@ -1,0 +1,100 @@
+load @term/base/list
+  find list
+  find push
+
+# Permute, from Are We Fast Yet (Marr, Daloze and Mössenböck, DLS 2016): every permutation of six items made by swaps
+# in place and recursion, the calls counted, 8660 per run. AWFY's structure kept, `permute` and `swap`, except that its
+# counter is a field of the benchmark object and here each call answers the calls it made, Term having no global to
+# add to; the same calls and the same swaps. Run `n` times and the counts added, so the output is one integer
+
+task swap
+  take v, like list, like number
+  take i, like number
+  take j, like number
+  host t, read v/{i}
+  save v/{i}, read v/{j}
+  save v/{j}, read t
+
+task permute
+  take v, like list, like number
+  take n, like number
+  like number
+  save count, code 1
+  fork test
+    hook test
+      call is-equal
+        read n
+        code 0
+    hook hold
+      send back, read count
+  host n1
+    call subtract
+      read n
+      code 1
+  save count
+    call add
+      read count
+      call permute
+        read v
+        read n1
+  save i, read n1
+  walk test
+    hook test
+      call is-minimum
+        read i
+        code 0
+    hook hold
+      call swap
+        read v
+        read n1
+        read i
+      save count
+        call add
+          read count
+          call permute
+            read v
+            read n1
+      call swap
+        read v
+        read n1
+        read i
+      save i
+        call subtract
+          read i
+          code 1
+  send back, read count
+
+task filled
+  take size, like number
+  like list, like number
+  save out
+    make list
+  walk size
+    bind base, code 0
+    bind head, read size
+    hook next
+      take site, name k
+      call push
+        bind list, read out
+        bind item, code 0
+  send back, read out
+
+task permute-runs
+  take n, like number
+  like number
+  save total, code 0
+  walk size
+    bind base, code 0
+    bind head, read n
+    hook next
+      take site, name round
+      host v
+        call filled
+          code 6
+      save total
+        call add
+          read total
+          call permute
+            read v
+            code 6
+  send back, read total

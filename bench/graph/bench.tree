@@ -1,0 +1,9 @@
+host program, <graph>
+host entry, <graph>
+host source, <ours, the shape of every graph program: a 40 by 40 grid's adjacency lists built fresh each run, each cell's list its neighbors up, left, right and down, and searched breadth-first from the corner; the distances added, 62400 per run>
+host check, 3
+host expect, <187200>
+host size, 3000
+host runs, 5
+host semantics, <a list of lists built by pushes, then read a list at a time by index and walked, beside a flat list of distances written by index and a queue pushed while it is read; integer output>
+host idiom, <ours, 2026-10-03: a Vec of Vecs on Rust, an array of arrays on Swift, a list of IntArrays and an IntArray queue on Kotlin, nested arrays on TypeScript>

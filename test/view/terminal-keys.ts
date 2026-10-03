@@ -35,6 +35,7 @@ const CASES: { name: string; runes: number[]; want: string[] }[] = [
   { name: 'shift-tab is ESC [ Z', runes: [ESC, 91, 90], want: ['shift-tab'] },
   { name: 'ESC alone is escape', runes: [ESC], want: ['escape'] },
   { name: 'ctrl-c', runes: [3], want: ['ctrl-c'] },
+  { name: 'ctrl-z, which raw mode delivers as 26 rather than as a stop', runes: [26], want: ['ctrl-z'] },
   { name: 'other controls are dropped', runes: [1, 104, 2], want: ['h'] },
   // F5 is ESC [ 1 5 ~: consumed to the `~`, and the letter after it still arrives
   { name: 'a function key is consumed whole and dropped', runes: [ESC, 91, 49, 53, 126, 120], want: ['x'] },

@@ -1,0 +1,9 @@
+host program, <polygon>
+host entry, <polygon>
+host source, <ours, the shape of every program with a struct of arrays in it: 200 polygons a run, polygon k with 3 + k % 13 corners stepping by a pattern drawn from k, each a record of its side count and a list of its coordinates, built fresh and measured; the taxicab perimeters added>
+host check, 3
+host expect, <165570>
+host size, 3000
+host runs, 5
+host semantics, <a list of records each holding a list built by pushes, then each record's list read by position through its path; integer output>
+host idiom, <ours, 2026-10-03: a struct of a Vec on Rust, a struct of an array on Swift, a class of an IntArray on Kotlin, an object of an array on TypeScript>

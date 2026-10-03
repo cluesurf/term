@@ -11,6 +11,7 @@
 // each PNG goes; they are how the screenshots in note/term/project/native-dom/ are made. BLOG_ONLY=macos (or ios,
 // android) runs one platform. Run: npx tsx test/compile/blog-native.ts
 
+import { runDir } from './run-dir'
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -127,7 +128,7 @@ function judge(leg: Leg, toolkit: string, output: string, shot: string): void {
 runToolkits(
   {
     root: process.cwd(),
-    dir: mkdtempSync(join(tmpdir(), 'term-blog-native-')),
+    dir: runDir('term-blog-native-'),
     name: 'Blog',
     iosIdentifier: 'surf.term.blog-native-test',
     androidIdentifier: 'surf.term.blognative',

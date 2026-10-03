@@ -18,6 +18,7 @@ import type {
   Expression,
 } from '@term/make/code/compile/node'
 import type { Span } from '@term/make/code/parser/diagnostic'
+import { NUMBER, STRING } from '@term/make/code/compile/node'
 
 type RouteStatement = Extract<Statement, { form: 'dock' }>
 
@@ -92,7 +93,8 @@ export function lowerRoutes(program: Program, env = 'node'): Program {
         span,
       }))
 
-  // the types the dispatcher and the boot are checked at, so every backend emits them typed rather than inferred
+  // the types the dispatcher and the boot are checked at, so every backend emits them typed rather than inferred. Text
+  // and number are the primitive kinds; a `named` text was no type at all, and the checker now refuses it as unknown
   const named = (name: string) => ({ kind: 'named' as const, name })
 
   // one `if (path == "<path>") { [set-title;] component(host, ...props); return }` per route
@@ -210,7 +212,7 @@ export function lowerRoutes(program: Program, env = 'node'): Program {
     name: 'route',
     params: [
       { name: 'host', type: named('view') },
-      { name: 'path', type: named('text') },
+      { name: 'path', type: STRING },
     ],
     body: [{ form: 'if', branches, span }],
     generics: [],
@@ -228,8 +230,8 @@ export function lowerRoutes(program: Program, env = 'node'): Program {
     form: 'function',
     name: 'boot',
     params: [
-      { name: 'url', type: named('text') },
-      { name: 'port', type: named('number') },
+      { name: 'url', type: STRING },
+      { name: 'port', type: NUMBER },
     ],
     body: [
       {

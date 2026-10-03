@@ -1,0 +1,135 @@
+load @term/base/text
+  find char-at
+  find char-code-at
+  find char-count
+  find substring
+  find index-of
+  find last-index-of
+
+# text reads on an ASCII text (ir/facts/text.ts): a byte or unit read on every backend, with the Term meaning at every
+# edge (both ends of a substring clamped to the text and swapped when reversed; a read past either end the empty text
+# or -1, a search clamped to the text and an empty needle found at its start). `plain` is called only with ASCII, so its reads take the fast path; `wide` with a text that is NOT ASCII,
+# so its reads keep counting code points. The two bodies are the same
+task plain
+  take s, like text
+  like text
+  host n
+    call char-count
+      read s
+  host whole
+    call substring
+      read s
+      code -3
+      code 99
+  host back
+    call substring
+      read s
+      code 4
+      code 1
+  host past
+    call char-at
+      read s
+      code 99
+  host before
+    call char-code-at
+      read s
+      code -1
+  host second
+    call char-code-at
+      read s
+      code 1
+  host at
+    call index-of
+      read s
+      text <de>
+  host late
+    call index-of
+      read s
+      text <a>
+      code 1
+  host early
+    call index-of
+      read s
+      text <a>
+      code -5
+  host end
+    call index-of
+      read s
+      text <>
+      code 99
+  host last
+    call last-index-of
+      read s
+      text <f>
+  host foreign
+    call index-of
+      read s
+      text <é>
+  send back, text <{n}:{whole}:{back}:{past}:{before}:{second}:{at}:{late}:{early}:{end}:{last}:{foreign}>
+
+task wide
+  take s, like text
+  like text
+  host n
+    call char-count
+      read s
+  host whole
+    call substring
+      read s
+      code -3
+      code 99
+  host back
+    call substring
+      read s
+      code 4
+      code 1
+  host past
+    call char-at
+      read s
+      code 99
+  host before
+    call char-code-at
+      read s
+      code -1
+  host second
+    call char-code-at
+      read s
+      code 1
+  host at
+    call index-of
+      read s
+      text <de>
+  host late
+    call index-of
+      read s
+      text <a>
+      code 1
+  host early
+    call index-of
+      read s
+      text <a>
+      code -5
+  host end
+    call index-of
+      read s
+      text <>
+      code 99
+  host last
+    call last-index-of
+      read s
+      text <f>
+  host foreign
+    call index-of
+      read s
+      text <é>
+  send back, text <{n}:{whole}:{back}:{past}:{before}:{second}:{at}:{late}:{early}:{end}:{last}:{foreign}>
+
+task compute
+  like text
+  host a
+    call plain
+      text <abcdef>
+  host b
+    call wide
+      text <aéçdef>
+  send back, text <{a} {b}>

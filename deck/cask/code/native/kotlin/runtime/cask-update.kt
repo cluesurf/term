@@ -32,7 +32,7 @@ object caskUpdate {
     private fun asset(name: String): ByteArray? =
         try {
             cask.activity?.assets?.open(name)?.use { it.readBytes() }
-        } catch (_: Exception) {
+        } catch (_: kotlin.Exception) {
             null
         }
 
@@ -83,7 +83,7 @@ object caskUpdate {
         if (end < 0) return null
         return try {
             Base64.getDecoder().decode(header.substring(start + 6, end))
-        } catch (_: Exception) {
+        } catch (_: kotlin.Exception) {
             null
         }
     }
@@ -98,7 +98,7 @@ object caskUpdate {
                 update(manifest)
                 verify(sig)
             }
-        } catch (_: Exception) {
+        } catch (_: kotlin.Exception) {
             false
         }
     }
@@ -110,7 +110,7 @@ object caskUpdate {
     private fun fetch(url: String): ByteArray? =
         try {
             URL(url).openStream().use { it.readBytes() }
-        } catch (_: Exception) {
+        } catch (_: kotlin.Exception) {
             null
         }
 
@@ -134,7 +134,7 @@ object caskUpdate {
         if (!verified(manifest, header)) return "refused: the signature does not verify"
         val json = try {
             JSONObject(manifest.toString(Charsets.UTF_8))
-        } catch (_: Exception) {
+        } catch (_: kotlin.Exception) {
             return "refused: not a manifest"
         }
         val id = json.optString("id")

@@ -1,0 +1,9 @@
+host program, <towers>
+host entry, <towers>
+host source, <Are We Fast Yet's Towers (Marr, Daloze and Mössenböck, DLS 2016), the same structure: 14 disks built on one pile and the top 13 moved, 8191 moves per run; a pile a recursive variant where AWFY relinks disk objects; run n times and added>
+host check, 2
+host expect, <16382>
+host size, 3000
+host runs, 5
+host semantics, <a list of three recursive variant values, each push making a node and each pop matching one, written back by index through recursive tasks; integer output>
+host idiom, <ours, 2026-10-03: AWFY's own shape in each language, disk objects relinked across the piles (owned Box links on Rust)>

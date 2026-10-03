@@ -22,6 +22,15 @@ import {
 import {
   ARRAY_OP_BOUND,
   collectionCall,
+  textAppend,
+  textCursors,
+  textValued,
+  mapUpdate,
+  fillTasks,
+  fillCall,
+  fixedLists,
+  isText,
+  emptyText,
   collectionRead,
   stringCall,
   stringRead,
@@ -31,19 +40,30 @@ import {
   swapAt,
   escapingParams,
   ownedLocals,
+  ownedFields,
+  ownedElements,
   writesTo,
   namesIn,
+  rebinds,
+  assignsName,
+  slotTakes,
+  lastReads,
+  type SlotTake,
   letNames,
   gatedTasks,
   listFacts,
   borrowedRecords,
+  borrowedTexts,
 } from '@term/make/code/compile/backend'
-import type { Lend } from '@term/make/code/compile/backend'
+import type { Lend, TextCursors } from '@term/make/code/compile/backend'
 import type { CollectionOp } from '@term/make/code/compile/backend'
 import { armLocals } from '@term/make/code/check/arm'
+import { privateForms } from '@term/make/code/compile/place'
 import { raiseSets } from '@term/make/code/check/effects'
 import { provenIncrements } from '@term/make/code/ir/facts/range'
+import { provenArithmetic, type Proven } from '@term/make/code/compile/proven'
 import { boundedLoops, unsignedDivisions } from '@term/make/code/ir/facts/bounds'
+import { asciiTexts } from '@term/make/code/ir/facts/text'
 import { formSpec, refuseAny, specForms } from '@term/make/code/compile/backend'
 import type { FormKind, FormSpec } from '@term/make/code/compile/backend'
 
@@ -67,6 +87,15 @@ function vname(name: string): string {
   const snakeName = name.replace(/-/g, '_')
 
   return RUST_RESERVED.has(snakeName) ? `${snakeName}_` : snakeName
+}
+
+// a text that is a `&'static str` made owned, a literal or a module text constant (`moduleRead`): borrowed, it is the
+// part before `.to_string()`
+const STATIC_TEXT = /^("(?:[^"\\]|\\.)*"|MODULE_[A-Z0-9_]+)\.to_string\(\)$/
+
+// the cursor of a text read by position in a loop (backend.ts, `textCursors`)
+function cursorName(name: string): string {
+  return `__cursor_${vname(name)}`
 }
 
 // outer parens around an assigned or returned value are the binary case's grouping: rustc warns on
@@ -144,6 +173,21 @@ function borrowsAtTail(value: string): boolean {
 
   return /\.borrow(_mut)?\(\)|\.lock\(\)|\.with\(/.test(kept + value.slice(from))
 }
+
+// a text's characters escaped for a Rust literal: JSON's `\u0000` is not Rust's `\u{0}`, so neither is JSON.stringify
+const rustEscape = (text: string, quote: string): string =>
+  text
+    .replace(/\\/g, '\\\\')
+    .replace(new RegExp(quote, 'g'), `\\${quote}`)
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/\t/g, '\\t')
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f\u007f]/g, c => `\\u{${c.charCodeAt(0).toString(16)}}`)
+
+// a Rust string literal, and a char literal for a one-character text
+const rustString = (text: string): string => `"${rustEscape(text, '"')}"`
+const rustChar = (text: string): string => `'${rustEscape(text, "'")}'`
 
 // an index expression cast to `usize`, parenthesized only when it needs it. `as` binds tighter than every binary
 // operator and looser than a call or a field, so `i - 1` needs them and `i64::checked_sub(a, 1).expect(..)` does not,
@@ -224,6 +268,19 @@ let rustSharedForms = new Set<string>()
 const isSharedType = (type: Type | undefined): boolean =>
   type?.kind === 'named' && rustSharedForms.has(type.name)
 
+// the element types E whose lists of lists own their inner lists (backend.ts, `ownedElements`), set per pass: an inner
+// list of one is the plain `Vec<E>`, where every list is otherwise a shared cell
+let rustOwnedInner = new Set<string>()
+
+// how the element of a list type is held: an inner list a list of lists owns is the plain `Vec`
+function rustElement(list: Extract<Type, { kind: 'array' }>): string {
+  const element = list.element
+
+  return element.kind === 'array' && rustOwnedInner.has(rustType(element.element))
+    ? `Vec<${rustType(element.element)}>`
+    : rustType(element)
+}
+
 function rustType(type: Type | undefined): string {
   switch (type?.kind) {
     case 'boolean':
@@ -236,9 +293,7 @@ function rustType(type: Type | undefined): string {
     case 'array':
       // like the map: a shared, interior-mutable handle, so a list mutated in place (`push`) through one binding is
       // seen through every binding -- the JS reference semantics the stdlib list relies on.
-      return `std::rc::Rc<std::cell::RefCell<Vec<${rustType(
-        type.element,
-      )}>>>`
+      return `std::rc::Rc<std::cell::RefCell<Vec<${rustElement(type)}>>>`
     case 'map':
       // a shared, interior-mutable handle, so a map mutated through one binding (a `set.insert`) is seen through every
       // binding even after the owning struct is moved. `Rc` is `Clone`, so passing a map shares it, never moving it.
@@ -461,13 +516,24 @@ function emitRustPass(
   // the TermException carrier is emitted when a raise, a guard or a raising signature is written, recorded there
   // rather than found by searching the emitted text for its name
   let carries = false
-  // the `+` nodes proven not to overflow (ir/facts/range.ts): written without the checked call
-  const provenSteps = provenIncrements(program)
+  // the reusable forms whose boxes some arm opened, and those some construction built (`reusable`)
+  const reuseOpened = new Set<string>()
+  const reuseBuilt = new Set<string>()
+  // the `+`, `-` and `*` nodes proven not to overflow (compile/proven.ts): written without the checked call. The
+  // counted steps here, joined below by the interval fact once the list facts it reads are known
+  let provenSteps: Proven = provenIncrements(program)
   // the counted loops whose calls to a bounded task may run its unchecked copy (ir/facts/bounds.ts), the divisions that
   // copy does unsigned, the calls in the loop copy being emitted, the tasks some such call reached, and whether the
   // body being emitted is an unchecked copy
+  // no lend facts: a fast copy of a task that takes a list is emitted under its own name, which this backend's list
+  // facts (the lent, fixed and borrowed parameters, all keyed by task) do not reach, so only tasks that take no list
+  // run unchecked here. TypeScript keys no list representation by task and passes them
   const loopGuards = boundedLoops(program)
   const unsignedDivs = unsignedDivisions(program)
+  // the text expressions proven ASCII, read by byte (ir/facts/text.ts)
+  const asciiNodes = asciiTexts(program)
+  // the tasks that only fill a list (backend.ts, `fillTasks`)
+  const fills = fillTasks(program)
   let fastCalls = new Set<object>()
   const fastTasks = new Set<string>()
   let uncheckedInts = false
@@ -484,6 +550,8 @@ function emitRustPass(
   rustSharedForms = new Set(
     program.flatMap(n => (n.form === 'record-type' && n.shared && n.variants.length === 0 ? [n.name] : [])),
   )
+  // decided below, once the list facts are known (`elementLists`)
+  rustOwnedInner = new Set()
   // opaque handle types declared by `dock type` shims: seed name -> concrete rust type
   rustOpaqueTypes = new Map(
     program
@@ -736,6 +804,31 @@ function emitRustPass(
   // copy for `String`, a refcount bump for an `Rc` collection) in the common single-use case. It is conservative: when
   // in any doubt the value is still cloned, so the output always compiles. Recomputed per function body.
   let moveArgs = new Set<string>()
+  // the reads that are their name's last (`lastReads`), which move when `lastMove` finds the name held by value
+  let moveNodes = new WeakSet<object>()
+  // the locals that are a list slot until their last read, and those last reads, which take the slot (`slotTakes`)
+  let slotLets = new WeakMap<object, SlotTake & { kept: boolean }>()
+  let slotReads = new WeakMap<object, SlotTake>()
+  // the field-less case of a form, the placeholder a take leaves in a slot
+  const emptyCase = (type: Type | undefined): { form: string; empty: string } | undefined => {
+    const form = type?.kind === 'named' ? program.find(n => n.form === 'record-type' && n.name === type.name) : undefined
+    const empty = form?.form === 'record-type' ? form.variants.find(v => v.fields.length === 0) : undefined
+
+    return form && empty ? { form: form.name, empty: empty.name } : undefined
+  }
+  // REUSE OF A RECURSIVE FORM'S BOXES (Perceus' reuse, across tasks). A match arm that unboxes a recursive field
+  // (`*below`, `Rc::unwrap_or_clone(below)`) freed the box, and the next node built (`Box::new(top)`) asked the
+  // allocator for one the same size: Towers' pop and push, once per move. Here the unboxing keeps the box, its value
+  // replaced by the form's field-less case, and the next node of the form is built in it. A spare box per thread, and
+  // a short list of more behind it for a run of frees before a run of builds. Inlining pop into push would do this
+  // inside one task (Koka's reuse token); this does it across the call, where Term keeps them. A form takes part when
+  // it is not generic (a `thread_local` has one type) and has a field-less case; one the program never unboxes keeps
+  // `Box::new`, rewritten at the end, so a program that only builds and drops pays nothing
+  const reusable = (name: string): boolean => {
+    const form = program.find(n => n.form === 'record-type' && n.name === name)
+
+    return form?.form === 'record-type' && form.params.length === 0 && form.variants.some(v => v.fields.length === 0)
+  }
 
   // MUTABLE CAPTURES. A closure is a `Box<dyn Fn>`, which cannot mutate captured state, so a variable ASSIGNED inside
   // a closure body is boxed in `Rc<RefCell<T>>` instead: the declaration wraps the value, every read borrows and
@@ -752,6 +845,15 @@ function emitRustPass(
   // F1 for records: the names in scope that are a REFERENCE to a record (`&R`, or `&Rc<R>` for an arm's recursive
   // field): the borrowed parameters of the function being emitted, and the record fields a borrowed match binds
   let borrowedNames = new Set<string>()
+  // the texts this task reads through a cursor (backend.ts, `textCursors`)
+  let cursors: TextCursors = { names: [], reads: new Map() }
+  // the text locals of this task that are only ever a map key and are made from an ASCII substring: held as a `&str`
+  // into the text, where each was a String made per key (`sliceKeys`). `borrowSlice` is set while one's init renders
+  let sliceLets = new WeakSet<Statement>()
+  // the matches nested in tail position in the task being emitted, whose arms answer their values (function case)
+  let tailMatches = new WeakSet<object>()
+  let sliceNames = new Set<string>()
+  let borrowSlice = false
   // set while the init of an owned local is emitted: a call to a fresh task there takes its `Vec` as it is, where
   // every other call to one wraps it into the shared cell
   let rawFresh = false
@@ -759,10 +861,30 @@ function emitRustPass(
   // `Vec` itself
   let emittingFresh = false
   // a list's contents for reading or writing: the lent Vec itself, or a borrow of the shared cell
-  const view = (target: Expression, write: boolean): string =>
-    target.form === 'variable' && lentNames.has(target.name)
-      ? vname(target.name)
-      : `${expr(target)}.${write ? 'borrow_mut' : 'borrow'}()`
+  // set while a path written through renders (`ps[k].xs[i] = v`): a list slot in the middle of it is borrowed mutably
+  let writingPath = false
+  const view = (target: Expression, write: boolean): string => {
+    if (target.form === 'variable' && lentNames.has(target.name)) {
+      return vname(target.name)
+    }
+
+    if (ownedPath(target)) {
+      const outer = writingPath
+      writingPath = write
+      const path = memberPath(target)
+      writingPath = outer
+
+      return path
+    }
+
+    return `${expr(target)}.${write ? 'borrow_mut' : 'borrow'}()`
+  }
+  // a path `r/field` to a plain record's list field that the record owns (`ownedFields`): the `Vec` itself, only read
+  const ownedPath = (target: Expression): boolean =>
+    target.form === 'member' &&
+    target.index === undefined &&
+    target.target.type?.kind === 'named' &&
+    fieldLists.has(`${target.target.type.name}/${target.name}`)
   // the names the CURRENT function or closure body actually reassigns. A `let` only needs `mut` when something
   // later assigns to it: a list or map local is an `Rc<RefCell<...>>`, so `push` and `insert` mutate through the
   // cell and never touch the binding. Declaring every local `let mut` made rustc's unused_mut fire on all of
@@ -862,6 +984,103 @@ function emitRustPass(
   }
   // the element type of a list type, for a site that copies the list's contents
   const elementOf = (type: Type | undefined): Type | undefined => (type?.kind === 'array' ? type.element : undefined)
+  // whether every mention of `name` in a body is an argument at a position its task takes borrowed (`borrowParams`) or
+  // the target of a field read, outside any closure: then a reference serves for the value
+  const onlyBorrowed = (body: Statement[], name: string): boolean => {
+    if (rebinds(body).has(name)) {
+      return false
+    }
+
+    let fine = true
+    type Loose = Record<string, unknown> & { form?: string; name?: string }
+    const mine = (node: Loose | undefined): boolean => node?.form === 'variable' && node.name === name
+
+    const visit = (value: unknown): void => {
+      if (!fine || typeof value !== 'object' || value === null) {
+        return
+      }
+
+      if (Array.isArray(value)) {
+        value.forEach(visit)
+
+        return
+      }
+
+      const node = value as Loose
+
+      if (node.form === 'closure') {
+        if (namesIn(node.body).has(name)) {
+          fine = false
+        }
+
+        return
+      }
+
+      if (mine(node)) {
+        fine = false
+
+        return
+      }
+
+      if (node.form === 'member' && !node.index && mine(node.target as Loose)) {
+        return
+      }
+
+      if (node.form === 'call' && (node.callee as Loose).form === 'variable') {
+        const borrowed = borrowParams.get((node.callee as Loose).name as string)
+        const args = node.args as Loose[]
+
+        args.forEach((a, i) => {
+          if (!(mine(a) && borrowed?.has(i))) {
+            visit(a)
+          }
+        })
+
+        return
+      }
+
+      for (const [key, child] of Object.entries(node)) {
+        if (key !== 'type' && key !== 'span') {
+          visit(child)
+        }
+      }
+    }
+
+    visit(body)
+
+    return fine
+  }
+  // a read `lastReads` found to be its name's last, of a record or variant held BY VALUE here: not a cell, a borrowed
+  // reference, a lent or owned list, a text slice or a shared handle, and not inside a closure
+  const lastMove = (value: Expression): boolean =>
+    value.form === 'variable' &&
+    closureDepth === 0 &&
+    moveNodes.has(value) &&
+    value.type?.kind === 'named' &&
+    !copyType(value.type) &&
+    !isSharedType(value.type) &&
+    !cellVars.has(value.name) &&
+    !borrowedNames.has(value.name) &&
+    !lentNames.has(value.name) &&
+    !ownedNames.has(value.name) &&
+    !sliceNames.has(value.name)
+  // a list given to a field that owns it (`ownedFields`), as the plain `Vec`: an owned local moves in, a fresh task's
+  // answer is taken as it is, an empty list is a new one
+  const plainList = (value: Expression): string => {
+    if (value.form === 'variable' && ownedNames.has(value.name)) {
+      return vname(value.name)
+    }
+
+    if (value.form === 'call') {
+      rawFresh = true
+      const made = expr(value)
+      rawFresh = false
+
+      return made
+    }
+
+    return 'Vec::new()'
+  }
   const owned = (value: Expression): string => {
     const rendered = expr(value)
     // MOVE ON LAST USE, as a call argument does: a variable read exactly once in the function, and not in a loop or a
@@ -873,7 +1092,10 @@ function emitRustPass(
       !copyType(value.type) &&
       !rendered.endsWith('.clone()') &&
       !(value.form === 'variable' && cellVars.has(value.name)) &&
-      !(value.form === 'variable' && moveArgs.has(value.name) && closureDepth === 0)
+      !(value.form === 'variable' && moveArgs.has(value.name) && closureDepth === 0) &&
+      !lastMove(value) &&
+      !slotReads.has(value) &&
+      !ownsInner(elementLists.items, value)
 
     if (clones) {
       noteClone(value.type)
@@ -943,8 +1165,31 @@ function emitRustPass(
   // which list parameter each takes lent, and which answer a fresh list as a plain `Vec`
   const gated = gatedTasks(program, maskMethods)
   const { lend: lendParams, fresh: freshLists } = listFacts(program, gated)
+  provenSteps = provenArithmetic(program, lendParams, freshLists)
+  // the variant fields that own their lists, held as a plain `Vec` (backend.ts, `ownedFields`)
+  const fieldLists = ownedFields(program, freshLists, lendParams, privateForms(program, lendParams, freshLists))
+  // the lists of lists that own their inner lists, each inner list a plain `Vec` (backend.ts, `ownedElements`)
+  const elementLists = ownedElements(program, freshLists, lendParams, t => rustType(t))
+  rustOwnedInner = elementLists.keys
+  // whether a node `ownedElements` recorded belongs to a key still standing
+  const ownsInner = (at: WeakMap<object, string>, node: object): boolean => {
+    const key = at.get(node)
+
+    return key !== undefined && elementLists.keys.has(key)
+  }
+  // the owned list locals of each task that never grow, are never handed back and are only lent (backend.ts,
+  // `fixedLists`): one made by a fill of a literal size is a fixed array on the stack, `[x; N]`, where a `Vec` was a heap
+  // allocation per call (AWFY's Queens, four boards per run: 53.7 ms to 47.2, `tmp/rust-queens-ab.ts`). An element
+  // that is a plain scalar, so the array is `Copy`-filled; a size up to 4096, so it is a frame and not a stack overflow
+  const stackLists = fixedLists(program, lendParams, freshLists, t => t.kind === 'number' || t.kind === 'float' || t.kind === 'boolean').locals
+  let stackNames = new Set<string>()
   // F1 for records: the record parameters each task only reads, taken `&R` (`borrowedRecords`)
   const borrowParams = borrowedRecords(program, gated)
+
+  // and the text parameters a task only reads as text, taken `&str` (`borrowedTexts`): lent like a borrowed record
+  for (const [name, at] of borrowedTexts(program, gated)) {
+    borrowParams.set(name, new Set([...(borrowParams.get(name) ?? []), ...at]))
+  }
   // each variant's field types, for what a borrowed match binds: a record field stays a reference, a `Copy` one is
   // copied out, anything else cloned out
   const variantTypes = new Map(
@@ -998,8 +1243,11 @@ function emitRustPass(
       (init.form === 'map' && init.entries.length === 0) ||
       (init.form === 'record' && (init.name === 'list' || init.name === 'hash') && init.fields.length === 0)
     const known = init.type && init.type.kind !== 'variable' && init.type.kind !== 'unknown'
+    // an empty list literal renders its element already (`Vec::<T>::new()`), so the binding needs no type spelled a
+    // second time, which for a shared list of lists clippy reads as too complex (type_complexity)
+    const spelled = init.form === 'array' && init.type?.kind === 'array'
 
-    return empty && known ? `: ${rustType(init.type)}` : ''
+    return empty && known && !spelled ? `: ${rustType(init.type)}` : ''
   }
 
   // the empty value of a type: what a left-out field or argument holds
@@ -1207,15 +1455,20 @@ function emitRustPass(
           n.form === 'let' &&
           !moduleSlots.has(n.name) &&
           !assignedNames.has(n.name) &&
-          (n.init.form === 'integer' || n.init.form === 'float' || n.init.form === 'boolean'),
+          (n.init.form === 'integer' || n.init.form === 'float' || n.init.form === 'boolean' || n.init.form === 'string'),
       )
       .map(n => n.name),
+  )
+  const textConsts = new Set(
+    program.flatMap(n => (n.form === 'let' && scalarConsts.has(n.name) && n.init.form === 'string' ? [n.name] : [])),
   )
   // the read of a module binding, by its kind. A non-scalar one is cloned out of its thread-local, at a type this site
   // does not hold, so it counts as a generic clone (item 0029)
   const moduleRead = (name: string): string => {
+    // a text constant is a `&'static str`, made a String where one is wanted; a borrowed read takes the constant
+    // itself (`strOf`)
     if (scalarConsts.has(name)) {
-      return moduleConstName(name)
+      return textConsts.has(name) ? `${moduleConstName(name)}.to_string()` : moduleConstName(name)
     }
 
     cloneRecord.generic = true
@@ -1227,7 +1480,9 @@ function emitRustPass(
 
   const moduleLet = (node: Extract<Statement, { form: 'let' }>): string =>
     scalarConsts.has(node.name)
-      ? `const ${moduleConstName(node.name)}: ${rustType(node.init.type ?? node.type)} = ${expr(node.init)};`
+      ? node.init.form === 'string'
+        ? `const ${moduleConstName(node.name)}: &str = ${rustString(node.init.value)};`
+        : `const ${moduleConstName(node.name)}: ${rustType(node.init.type ?? node.type)} = ${expr(node.init)};`
       : moduleSlots.has(node.name)
       ? `thread_local! { static ${moduleConstName(node.name)}: std::cell::RefCell<Option<${rustType(node.type)}>> = std::cell::RefCell::new(None); }`
       : `thread_local! { static ${moduleConstName(node.name)}: ${
@@ -1541,7 +1796,29 @@ function emitRustPass(
         ? rootVariable(node.target)
         : undefined
 
+  // the inner lists put into a list of lists that owns them (`ownedElements`), rendering now: each is the plain `Vec`
+  const innerRendering = new WeakSet<object>()
   const expr = (node: Expression): string => {
+    // an inner list put into a list of lists that owns it: an owned local moves in, a fresh task's answer is taken as
+    // it is, an empty list is a new `Vec`
+    if (ownsInner(elementLists.items, node) && !innerRendering.has(node)) {
+      if (node.form === 'variable') {
+        return vname(node.name)
+      }
+
+      if (node.form === 'call') {
+        innerRendering.add(node)
+        rawFresh = true
+        const made = expr(node)
+        rawFresh = false
+        innerRendering.delete(node)
+
+        return made
+      }
+
+      return 'Vec::new()'
+    }
+
     switch (node.form) {
       case 'integer':
         return String(node.value)
@@ -1575,6 +1852,13 @@ function emitRustPass(
           .filter((part): part is Expression => typeof part !== 'string')
           .map(part => (part.type?.kind === 'float' ? `term_number(${expr(part)})` : expr(part)))
 
+        // a template that is one value alone is that value's text, `x.to_string()` (clippy: useless_format)
+        if (shape === '{}' && args.length === 1) {
+          const only = node.parts.find((part): part is Expression => typeof part !== 'string')!
+
+          return only.type?.kind === 'float' ? args[0]! : `${/^[\w.]+$/.test(args[0]!) ? args[0] : `(${bare(args[0]!)})`}.to_string()`
+        }
+
         return `format!(${[`"${shape}"`, ...args].join(', ')})`
       }
       case 'unit':
@@ -1583,7 +1867,14 @@ function emitRustPass(
         // null lives in the dynamic currency, which is `serde_json::Value` on rust
         return 'serde_json::Value::Null'
       case 'variable':
-      case 'hole':
+      case 'hole': {
+        // the last read of a local that is a list slot until then TAKES the slot (`slotTakes`)
+        const taken = slotReads.get(node)
+
+        if (taken) {
+          return `std::mem::replace(&mut ${vname(taken.list)}[${asUsize(expr(taken.index))}], ${pascal(taken.form)}::${pascal(taken.empty)})`
+        }
+      }
         // a top-level task read as a value (`read dispatch` handed to `on-message`) is a fn item, which is not the
         // `Rc<dyn Fn>` a task-typed slot holds: box it. An asynchronous one is wrapped in a closure that pins the
         // future, since the slot's type is `Fn(..) -> Pin<Box<dyn Future>>` and a fn item's is `-> impl Future`
@@ -1689,11 +1980,19 @@ function emitRustPass(
           return `((${operand(node.left)} ${node.op} ${operand(node.right)}) as i64)`
         }
 
+        // a text compared with a text literal for equality reads the literal as the `&str` it is, which a `String`
+        // compares with directly, where `"a".to_string()` made one per comparison (clippy: cmp_owned). Ordering has no
+        // such pairing, so `<` keeps both owned
+        const literalText = (side: Expression): string | undefined =>
+          (node.op === '==' || node.op === '!=') && side.form === 'string' && node.left.type?.kind === 'string' && node.right.type?.kind === 'string'
+            ? rustString(side.value)
+            : undefined
+
         // a left operand that is a block (a call hoisting its lent arguments) is parenthesized: once `bare` drops the
         // outer pair at a statement or a tail, a leading `{ .. }` would be read as a statement of its own
-        const left = expr(node.left)
+        const left = literalText(node.left) ?? expr(node.left)
 
-        return `(${left.startsWith('{') ? `(${left})` : left} ${OP[node.op]} ${expr(node.right)})`
+        return `(${left.startsWith('{') ? `(${left})` : left} ${OP[node.op]} ${literalText(node.right) ?? expr(node.right)})`
       }
 
       case 'call': {
@@ -1759,6 +2058,13 @@ function emitRustPass(
           binds.has(node.callee.name)
         ) {
           const bind = binds.get(node.callee.name)!
+
+          // the code-point count of an ASCII text (ir/facts/text.ts) is its byte length, where `chars().count()` walked
+          if (node.callee.name === 'code-point-count' && node.args[0] && asciiNodes.has(node.args[0])) {
+            // `len()` straight on the text, which counts bytes (clippy: needless_as_bytes)
+            return `(${bytesOf(node.args[0]).replace(/\.as_bytes\(\)$/, '')}.len() as i64)`
+          }
+
           // a template that is a formatting macro (`panic!("defect: {}", $reason)`) takes a text literal as the
           // literal itself: Display reads a `&str`, and `.to_string()` there is clippy's to_string_in_format_args
           const formats = /^(panic|format|print|println|eprintln|write|writeln)!\(/.test(bindTarget(bind, 'rust')?.expression ?? '')
@@ -1781,6 +2087,57 @@ function emitRustPass(
 
         if (text) {
           // the arguments OWNED, as every by-value argument is: `let n: String = part` moved a parameter read in a loop
+          // an ASCII text (ir/facts/text.ts) is read by byte: a code point is one, where `chars().nth(i)` walked
+          if (asciiNodes.has(text.target) && ['charAt', 'at', 'charCodeAt'].includes(text.op)) {
+            return asciiRead(text.op, text.target, node.args[0]!)
+          }
+
+          // a read through the text's cursor (backend.ts, `textCursors`) steps from the last read
+          const cursor = cursors.reads.get(node)
+
+          if (cursor !== undefined && (text.op === 'substring' || text.op === 'slice')) {
+            const to = node.args[1] ? bare(expr(node.args[1])) : 'i64::MAX'
+
+            return `term_cursor_slice(${strOf(text.target)}, ${bare(expr(node.args[0]!))}, ${to}, &mut ${cursorName(cursor)})`
+          }
+
+          if (cursor !== undefined) {
+            const read = `term_cursor(${strOf(text.target)}, ${bare(expr(node.args[0]!))}, &mut ${cursorName(cursor)})`
+
+            return text.op === 'charCodeAt' ? `${read}.map_or(-1, |c| c as i64)` : `${read}.map(String::from).unwrap_or_default()`
+          }
+
+          // a search of an ASCII text answers a byte offset, which is the code-point index: no count back from it. The
+          // start clamped to the text, an empty needle found at it, a needle that is not ASCII found nowhere
+          if (asciiNodes.has(text.target) && (text.op === 'indexOf' || text.op === 'lastIndexOf')) {
+            // the needle borrowed, a literal as itself: owning it cost a String per search
+            const needle = strOf(node.args[0]!)
+
+            if (text.op === 'lastIndexOf') {
+              return `{ let h: &str = ${strOf(text.target)}; let n: &str = ${needle}; h.rfind(n).map_or(-1, |b| b as i64) }`
+            }
+
+            const from = node.args[1] ? bare(expr(node.args[1])) : '0'
+
+            if (from === '0') {
+              return `{ let h: &str = ${strOf(text.target)}; h.find(${needle}).map_or(-1, |b| b as i64) }`
+            }
+
+            return `{ let h: &str = ${strOf(text.target)}; let n: &str = ${needle}; let x = (${from}).clamp(0, h.len() as i64) as usize; h[x..].find(n).map_or(-1, |b| (x + b) as i64) }`
+          }
+
+          // a substring of an ASCII text is a byte slice, with both ends clamped to the text and swapped when reversed
+          // (the Term meaning), where `chars().skip(x).take(y - x)` walked from the start
+          if (asciiNodes.has(text.target) && (text.op === 'substring' || text.op === 'slice')) {
+            const from = bare(expr(node.args[0]!))
+            const to = node.args[1] ? bare(expr(node.args[1])) : undefined
+
+            // borrowed for a local that is only ever a map key (`sliceLets`): no String is made for it
+            const slice = borrowSlice ? '&h[x as usize..y as usize]' : 'h[x as usize..y as usize].to_string()'
+
+            return `{ let h: &str = ${strOf(text.target)}; let n = h.len() as i64; let x = (${from}).clamp(0, n); let y = ${to === undefined ? 'n' : `(${to}).clamp(0, n)`}; let (x, y) = if x <= y { (x, y) } else { (y, x) }; ${slice} }`
+          }
+
           return stringExpr(text.op, expr(text.target), node.args.map(a => owned(a)))
         }
 
@@ -1815,6 +2172,11 @@ function emitRustPass(
           // it is (`&Rc<R>` derefs to `&R`), anything else is lent as `&`, never cloned first. Decided BEFORE the
           // owned rendering below, which would record a clone this argument never makes (item 0029)
           if (node.callee.form === 'variable' && !localNames.has(node.callee.name) && borrowParams.get(node.callee.name)?.has(i)) {
+            // a text literal lent to a `&str` is the literal itself (clippy: unnecessary_to_owned)
+            if (a.form === 'string') {
+              return rustString(a.value)
+            }
+
             return a.form === 'variable' && borrowedNames.has(a.name) ? vname(a.name) : `&${expr(a)}`
           }
 
@@ -1841,7 +2203,7 @@ function emitRustPass(
             if (
               a.form === 'variable' &&
               a.type &&
-              moveArgs.has(a.name)
+              (moveArgs.has(a.name) || lastMove(a) || ownsInner(elementLists.items, a))
             ) {
               return expr(a)
             }
@@ -1913,7 +2275,7 @@ function emitRustPass(
         const plainAt = (i: number): boolean => {
           const a = node.args[i]
 
-          return (a?.form === 'variable' && ownedNames.has(a.name)) || rawLent.has(i) || lentRef(i)
+          return (a?.form === 'variable' && ownedNames.has(a.name)) || rawLent.has(i) || lentRef(i) || (a !== undefined && ownedPath(a))
         }
         // the hoisting guards a borrow an argument could collide with: a cell's, or a plain Vec another argument reads
         // (`bump(&mut zs, zs[1])` is E0502: two-phase borrows do not cover an explicit `&mut` argument). A call that
@@ -1980,6 +2342,18 @@ function emitRustPass(
 
           return fresh ? `std::rc::Rc::new(std::cell::RefCell::new(${made}))` : made
         }
+
+        // a call to a task that only fills a list is the list made in one allocation (backend.ts, `fillTasks`), where
+        // pushing grew it. A size below zero is no list, as the walk was no turns
+        const fill = node.callee.form === 'variable' && !localNames.has(node.callee.name) ? fillCall(node, fills) : undefined
+
+        if (fill) {
+          const size = fill.size.form === 'integer' ? `${Math.max(Number(fill.size.value), 0)}` : `(${bare(expr(fill.size))}).max(0) as usize`
+          const made = `vec![${bare(owned(fill.item))}; ${size}]`
+
+          return raw ? made : `std::rc::Rc::new(std::cell::RefCell::new(${made}))`
+        }
+
         const args = argList.join(', ')
 
         // a generic trait-method call (`call measure / read x`, x a trait-bounded generic) lowers to a Rust method call
@@ -2013,7 +2387,11 @@ function emitRustPass(
           return lendWrap(`${expr(node.callee)}(${args})${suffix}`)
         }
 
-        return lendWrap(`${expr(node.callee)}(${args})`)
+        // a callee that is not a name (a closure the inliner put in place of a parameter: `apply(adder, 10)` is
+        // `adder(10)`) is grouped, or its block reads as a statement and `(10)` as a second one
+        const callee = expr(node.callee)
+
+        return lendWrap(`${node.callee.form === 'variable' ? callee : `(${callee})`}(${args})`)
       }
 
       case 'array':
@@ -2025,7 +2403,7 @@ function emitRustPass(
           node.type.element.kind !== 'variable' &&
           node.type.element.kind !== 'unknown'
         ) {
-          return `std::rc::Rc::new(std::cell::RefCell::new(Vec::<${rustType(node.type.element)}>::new()))`
+          return `std::rc::Rc::new(std::cell::RefCell::new(Vec::<${rustElement(node.type)}>::new()))`
         }
 
         return `std::rc::Rc::new(std::cell::RefCell::new(vec![${node.items
@@ -2057,9 +2435,16 @@ function emitRustPass(
 
         if (owner) {
           const fields = node.fields.map(f => {
-            const value = recursiveFields.has(`${node.name}/${f.name}`)
-              ? `${boxedForms.has(owner) ? 'Box' : 'std::rc::Rc'}::new(${owned(f.value)})`
-              : owned(f.value)
+            // a list the node owns (`ownedFields`) takes the plain `Vec`: an owned local moves in, a fresh task's answer
+            // is taken as it is, an empty list is a new one
+            // a node of a reusable form is built in a box an arm kept (`reusable`)
+            const value = fieldLists.has(`${node.name}/${f.name}`)
+              ? plainList(f.value)
+              : !recursiveFields.has(`${node.name}/${f.name}`)
+              ? owned(f.value)
+              : reusable(owner)
+                ? (reuseBuilt.add(owner), `term_box_${snake(owner)}(${owned(f.value)})`)
+                : `${boxedForms.has(owner) ? 'Box' : 'std::rc::Rc'}::new(${owned(f.value)})`
 
             // `head` for `head: head`, as Rust writes it (clippy: redundant_field_names)
             return value === snake(f.name) ? value : `${snake(f.name)}: ${value}`
@@ -2086,13 +2471,17 @@ function emitRustPass(
         const declared = new Map(
           (recordFields.get(node.name) ?? []).map(f => [f.name, f.type]),
         )
+        // a list the record owns (`ownedFields`) left out is a new plain `Vec`, where its empty value was the shared one
         const missing = (recordFields.get(node.name) ?? [])
           .filter(f => !given.has(f.name))
-          .map(f => `${snake(f.name)}: ${emptyOf(f.type)}`)
+          .map(f => `${snake(f.name)}: ${fieldLists.has(`${node.name}/${f.name}`) ? 'Vec::new()' : emptyOf(f.type)}`)
 
         const parts = [
           ...node.fields.map(f => {
-            const value = boxUnknown(declared.get(f.name), f.value, owned(f.value))
+            // a list the record owns (`ownedFields`) is the plain `Vec`
+            const value = fieldLists.has(`${node.name}/${f.name}`)
+              ? plainList(f.value)
+              : boxUnknown(declared.get(f.name), f.value, owned(f.value))
 
             return value === snake(f.name) ? value : `${snake(f.name)}: ${value}`
           }),
@@ -2354,7 +2743,7 @@ function emitRustPass(
     const arg = args.map(owned)
 
     // the operations that copy a collection's CONTENTS clone its element (or key and value) type (item 0029): a read
-    // out, a copy into a new list, the closure operations, and a map insert, whose TermMap clones the key it indexes
+    // out, a copy into a new list, the closure operations, and a map insert, whose TermMap asks `Clone` of its key
     const contents =
       op.kind === 'map'
         ? ['get', 'set', 'keys', 'values'].includes(op.op)
@@ -2546,6 +2935,17 @@ function emitRustPass(
         return `${memberPath(node.target)}.borrow().${snake(node.name)}`
       }
 
+      // a slot of a list in the middle of a path (`dots/0/x`, `dots/{k}/x`) is that list's own read, which indexes it
+      // (`expr`'s member case): `.0` would be a tuple field, which no Vec has (E0609)
+      // It is a PLACE here, a field read or written off it next, so it is the list's view indexed (`ps[k]`,
+      // `ps.borrow()[k]`) where it was the element cloned out (`(ps[k].clone()).xs`), a whole record copied to read
+      // one field of it (Particle, every coordinate read and written through `ps/{k}/xs/{i}`)
+      if ((node.index !== undefined || /^\d+$/.test(node.name)) && node.target.type?.kind === 'array') {
+        const index = node.index ? expr(node.index) : node.name
+
+        return `${view(node.target, writingPath)}[${asUsize(index)}]`
+      }
+
       return `${memberPath(node.target)}${separator}${snake(node.name)}`
     }
 
@@ -2558,14 +2958,97 @@ function emitRustPass(
     return expr(node)
   }
 
+  // the bytes of a text, borrowed: a literal as it is, anything else through `as_bytes`
+  const bytesOf = (target: Expression): string => {
+    const text = expr(target)
+    const literal = STATIC_TEXT.test(text)
+
+    return literal ? `${text.slice(0, -'.to_string()'.length)}.as_bytes()` : `${/^[\w.]+$/.test(text) ? text : `(${text})`}.as_bytes()`
+  }
+
+  // a text borrowed as a `&str`: a literal as it is, a borrowed parameter as it is, anything else through `&`
+  const strOf = (target: Expression): string => {
+    const text = expr(target)
+
+    if (STATIC_TEXT.test(text)) {
+      return text.slice(0, -'.to_string()'.length)
+    }
+
+    return target.form === 'variable' && (borrowedNames.has(target.name) || sliceNames.has(target.name))
+      ? text
+      : `&${/^[\w.]+$/.test(text) ? text : `(${text})`}`
+  }
+
+  // the text locals of a task that are only ever the key of a map update (`mapUpdate`) and are made from a substring
+  // of an ASCII text, by a single `let`: a `&str` into the text serves the borrowed lookup, so no String is made per key.
+  // A key that is new to the map is made owned inside `upsert_ref`
+  const sliceKeys = (fn: Extract<Statement, { form: 'function' }>): { lets: WeakSet<Statement>; names: Set<string> } => {
+    type Loose = Record<string, unknown> & { form?: string }
+    const keys = new Set<string>()
+    const updates = new Set<object>()
+    const reads = new Map<string, number>()
+    const lets = new Map<string, Loose[]>()
+
+    const find = (value: unknown): void => {
+      if (typeof value !== 'object' || value === null) return
+      if (Array.isArray(value)) return value.forEach(find)
+
+      const node = value as Loose
+      const update = mapUpdate(node as unknown as Statement)
+
+      if (update && update.key.form === 'variable' && isText(update.key.type)) {
+        keys.add(update.key.name)
+        updates.add(node)
+
+        return
+      }
+
+      if (node.form === 'variable') reads.set(node.name as string, (reads.get(node.name as string) ?? 0) + 1)
+      if (node.form === 'let') lets.set(node.name as string, [...(lets.get(node.name as string) ?? []), node])
+
+      for (const [key, child] of Object.entries(node)) {
+        if (key !== 'type' && key !== 'span') find(child)
+      }
+    }
+
+    find(fn.body)
+
+    const out = { lets: new WeakSet<Statement>(), names: new Set<string>() }
+
+    for (const name of keys) {
+      const made = lets.get(name)
+      const init = made?.length === 1 ? (made[0]!.init as Expression) : undefined
+      const text = init?.form === 'call' ? stringCall(init.callee) : undefined
+
+      if (text && (text.op === 'substring' || text.op === 'slice') && asciiNodes.has(text.target) && !reads.get(name) && !fn.params.some(p => p.name === name)) {
+        out.lets.add(made![0] as unknown as Statement)
+        out.names.add(name)
+      }
+    }
+
+    return out
+  }
+
+  // `char-at` and `char-code-at` of an ASCII text (ir/facts/text.ts): a byte read, with the same answer past either end
+  // as the code-point read, the empty text and -1
+  const asciiRead = (op: string, target: Expression, index: Expression): string => {
+    const at = expr(index)
+
+    return op === 'charCodeAt'
+      ? `{ let b = ${bytesOf(target)}; let i = ${bare(at)}; if i >= 0 && (i as usize) < b.len() { b[i as usize] as i64 } else { -1 } }`
+      : `{ let b = ${bytesOf(target)}; let i = ${bare(at)}; if i >= 0 && (i as usize) < b.len() { (b[i as usize] as char).to_string() } else { String::new() } }`
+  }
+
   // JavaScript's string methods over rust's String (see backend.ts, STRING_METHODS). Positions count chars; a read
   // past the end is empty (charAt) or 0 (charCodeAt), never a panic. Each borrows the receiver, so a local read here
   // is not moved away.
   const stringExpr = (op: string, target: string, a: string[]): string => {
     // a text LITERAL is borrowed as it is, not built into a String to be borrowed (clippy: unnecessary_to_owned)
-    const literal = /^"(?:[^"\\]|\\.)*"\.to_string\(\)$/.test(target)
+    const literal = STATIC_TEXT.test(target)
     const t = target
-    const borrow = literal ? target.slice(0, -'.to_string()'.length) : `&${target}`
+    // a borrowed text parameter is a `&str` already, used as it is (clippy: needless_borrow)
+    const lent = [...borrowedNames].some(name => vname(name) === target)
+    const borrow = literal ? target.slice(0, -'.to_string()'.length) : lent ? target : `&${target}`
     // a position clamped at zero: an integer literal is clamped here, at emit time (clippy: unnecessary_min_or_max)
     // (typed `i64`: a bare `1.min(n)` is an ambiguous numeric type, E0689)
     const atLeastZero = (x: string): string => (/^-?\d+$/.test(x) ? `${Math.max(Number(x), 0)}i64` : `(${x}).max(0)`)
@@ -2663,7 +3146,7 @@ function emitRustPass(
 
         if (items.length) {
           const later = writesTo(body.slice(next), start.name, lendParams)
-          lines.push(`${pad(d)}let ${later ? 'mut ' : ''}${vname(start.name)}: Vec<${rustType(start.type.element)}> = vec![${items.map(i => bare(owned(i))).join(', ')}];`)
+          lines.push(`${pad(d)}let ${later ? 'mut ' : ''}${vname(start.name)}: Vec<${rustElement(start.type)}> = vec![${items.map(i => bare(owned(i))).join(', ')}];`)
           at = next - 1
           continue
         }
@@ -2678,7 +3161,12 @@ function emitRustPass(
         continue
       }
 
-      lines.push(`${pad(d)}${stmt(body[at]!, d)}`)
+      // a statement that writes nothing (a slot alias read only once, `slotTakes`) leaves no line
+      const line = stmt(body[at]!, d)
+
+      if (line) {
+        lines.push(`${pad(d)}${line}`)
+      }
     }
 
     return lines.join('\n')
@@ -2687,9 +3175,54 @@ function emitRustPass(
   const stmt = (node: Statement, d: number): string => {
     switch (node.form) {
       case 'let': {
+        // a local that is a list slot until its last read (`slotTakes`): a reference to the slot where something reads
+        // it first, and nothing at all where the last read is the only one
+        const aliased = slotLets.get(node)
+
+        if (aliased) {
+          return aliased.kept ? `let ${vname(node.name)} = &${vname(aliased.list)}[${asUsize(expr(aliased.index))}];` : ''
+        }
+
+        // an inner list read out of a list of lists that owns it (`ownedElements`), only read after: borrowed from a
+        // plain list, and read in place. Out of a shared cell it is cloned, since a borrow held for the rest of the
+        // scope would refuse a later push onto the outer list
+        if (ownsInner(elementLists.lets, node) && node.init.form === 'member' && node.init.target.form === 'variable') {
+          const list = node.init.target.name
+          const index =
+            node.init.index ??
+            ({ form: 'integer', value: Number(node.init.name), span: node.init.span, type: { kind: 'number' } } as Expression)
+
+          lentNames.set(node.name, 'read')
+
+          if (lentNames.has(list)) {
+            return `let ${vname(node.name)} = &${vname(list)}[${asUsize(expr(index))}];`
+          }
+
+          ownedNames.set(node.name, false)
+          noteClone(node.type)
+
+          return `let ${vname(node.name)} = ${expr(node.init.target)}.borrow()[${asUsize(expr(index))}].clone();`
+        }
+
+        // a local only ever a map key, made from an ASCII substring, is a `&str` into the text (`sliceLets`)
+        if (sliceLets.has(node)) {
+          borrowSlice = true
+          const slice = expr(node.init)
+          borrowSlice = false
+
+          return `let ${vname(node.name)}: &str = ${slice};`
+        }
+
         // an owned list local is a plain `Vec` (ownedLocals): made empty, or taken as it is from a fresh task
         if (ownedNames.has(node.name) && node.type?.kind === 'array') {
           const mutable = ownedNames.get(node.name) ? 'mut ' : ''
+
+          // a fixed list of a literal size made by a fill is an array on the stack (`stackLists`)
+          const fill = stackNames.has(node.name) ? fillCall(node.init, fills) : undefined
+
+          if (fill && fill.size.form === 'integer' && Number(fill.size.value) >= 0 && Number(fill.size.value) <= 4096) {
+            return `let ${mutable}${vname(node.name)} = [${bare(expr(fill.item))}; ${Number(fill.size.value)}];`
+          }
 
           if (node.init.form === 'call') {
             rawFresh = true
@@ -2699,7 +3232,7 @@ function emitRustPass(
             return `let ${mutable}${vname(node.name)} = ${made};`
           }
 
-          return `let ${mutable}${vname(node.name)}: Vec<${rustType(node.type.element)}> = Vec::new();`
+          return `let ${mutable}${vname(node.name)}: Vec<${rustElement(node.type)}> = Vec::new();`
         }
 
         // the gradual boundary on a binding: `host record, like test-entry / read entry/base` re-types the
@@ -2827,6 +3360,65 @@ function emitRustPass(
           }
         }
 
+        // a text variable reset to the empty text keeps its storage, `s.clear()`: `s = "".to_string()` freed it, and a
+        // line built again after it grew from nothing, a reallocation at 8, 16, 32 and 64 bytes per line
+        if (
+          node.op === '=' &&
+          node.target.form === 'variable' &&
+          node.target.type?.kind === 'string' &&
+          emptyText(node.value) &&
+          !cellVars.has(node.target.name) &&
+          !borrowedNames.has(node.target.name)
+        ) {
+          return `${vname(node.target.name)}.clear();`
+        }
+
+        // an append to a text variable writes in place, `s.push_str(..)`, where `format!` copied the whole text every
+        // time (backend.ts, `textAppend`). Not a captured cell, whose text lives behind a RefCell
+        const append = textAppend(node)
+
+        if (append && !cellVars.has(append.name)) {
+          const rest = append.rest as Extract<Expression, { form: 'template' }>
+          const target = vname(append.name)
+          const [only] = rest.parts
+
+          // a literal: one character is `push` (clippy: single_char_add_str), more is `push_str`
+          if (rest.parts.every(p => typeof p === 'string')) {
+            const literal = (rest.parts as string[]).join('')
+
+            return [...literal].length === 1 ? `${target}.push(${rustChar(literal)});` : `${target}.push_str(${rustString(literal)});`
+          }
+
+          // one character of an ASCII text is pushed as the char, with no one-character String made for it
+          if (rest.parts.length === 1 && typeof only !== 'string' && only!.form === 'call' && only!.callee.form === 'member') {
+            const text = stringCall(only!.callee)
+
+            if (text && asciiNodes.has(text.target) && (text.op === 'charAt' || text.op === 'at')) {
+              return `{ let b = ${bytesOf(text.target)}; let i = ${bare(expr(only!.args[0]!))}; if i >= 0 && (i as usize) < b.len() { ${target}.push(b[i as usize] as char); } }`
+            }
+          }
+
+          // one character read through a cursor is pushed as the char
+          if (rest.parts.length === 1 && typeof only !== 'string' && only!.form === 'call' && only!.callee.form === 'member') {
+            const text = stringCall(only!.callee)
+            const cursor = cursors.reads.get(only!)
+
+            if (text && cursor !== undefined && text.op !== 'charCodeAt') {
+              return `if let Some(c) = term_cursor(${strOf(text.target)}, ${bare(expr(only!.args[0]!))}, &mut ${cursorName(cursor)}) { ${target}.push(c); }`
+            }
+          }
+
+          // one text value alone is pushed as itself, borrowed; the text itself (`<{s}{s}>`) is copied first, since
+          // it cannot be read while it is written
+          if (rest.parts.length === 1 && typeof only !== 'string' && textValued(only!)) {
+            const self = only!.form === 'variable' && only!.name === append.name
+
+            return `${target}.push_str(&${self ? `${target}.clone()` : bare(expr(only!))});`
+          }
+
+          return `${target}.push_str(&${expr(append.rest)});`
+        }
+
         const cellTarget = cellAssignTarget(node.target)
 
         if (cellTarget) {
@@ -2892,6 +3484,31 @@ function emitRustPass(
           if (op?.kind === 'array' && op.op === 'push' && op.target.form === 'variable' && ownedNames.has(op.target.name)) {
             return `${vname(op.target.name)}.push(${bare(owned(node.expr.args[0]!))});`
           }
+        }
+
+        // a map entry updated from its own value is one probe through `upsert`, the key moved in where its last use
+        // allows (backend.ts, `mapUpdate`): it hashed the key twice and cloned it for each
+        const update = mapUpdate(node)
+
+        if (
+          update &&
+          update.map.form === 'variable' &&
+          !cellVars.has(update.map.name) &&
+          (!moduleConsts.has(update.map.name) || localNames.has(update.map.name)) &&
+          update.map.type?.kind === 'map' &&
+          (update.map.type.value.kind === 'number' || update.map.type.value.kind === 'float')
+        ) {
+          const step = bare(expr(update.step))
+          // a decimal sum is `+=` (clippy: assign_op_pattern); an integer one stays checked
+          const write =
+            update.map.type.value.kind === 'number'
+              ? `*__value = i64::checked_add(*__value, ${step}).expect("excess: a number past i64");`
+              : `*__value += ${step};`
+
+          // a text key is looked up borrowed and made a String only when it is new
+          const upsert = isText(update.key.type) ? `upsert_ref(${strOf(update.key)}` : `upsert(${bare(owned(update.key))}`
+
+          return `{ let mut __map = ${vname(update.map.name)}.borrow_mut(); let __value = __map.${upsert}, ${bare(expr(update.fallback))}); ${write} }`
         }
 
         // a ticked call is queued by the call emission itself (`case 'call'`, `background`)
@@ -2988,11 +3605,11 @@ function emitRustPass(
         const carrier =
           node.value.form === 'string' || node.value.form === 'template'
             ? tell(
-                `TermException { host: String::new(), form: "failure".to_string(), note: ${expr(node.value)}, code: String::new(), time: 0, link: std::rc::Rc::new(()), base: std::rc::Rc::new(()) }`,
+                `TermException(Box::new(TermRaised { host: String::new(), form: "failure".to_string(), note: ${expr(node.value)}, code: String::new(), time: 0, link: std::rc::Rc::new(()), base: std::rc::Rc::new(()) }))`,
               )
             : node.value.form === 'record' && exceptionForms.has(node.value.name)
               ? tell(
-                  `{ let raised = ${expr(node.value)}; TermException { host: raised.host.clone(), form: raised.form.clone(), note: raised.note.clone(), code: raised.code.clone(), time: raised.time, link: std::rc::Rc::new(raised.link.clone()), base: std::rc::Rc::new(raised) } }`,
+                  `{ let raised = ${expr(node.value)}; TermException(Box::new(TermRaised { host: raised.host.clone(), form: raised.form.clone(), note: raised.note.clone(), code: raised.code.clone(), time: raised.time, link: std::rc::Rc::new(raised.link.clone()), base: std::rc::Rc::new(raised) })) }`,
                 )
               : `(${expr(node.value)}).clone()`
 
@@ -3042,8 +3659,9 @@ function emitRustPass(
         const body = block(node.body, d + 2)
         guardDepth--
         const returned = outerRaising ? 'return std::result::Result::Ok(value)' : 'return value'
+        // the caught value is bound only where the handler reads it (rustc: unused_variables)
         const handler = node.catch
-          ? `std::result::Result::Err(${vname(node.catch.name)}) => {\n${block(node.catch.body, d + 2)}\n${pad(d + 1)}}`
+          ? `std::result::Result::Err(${namesIn(node.catch.body).has(node.catch.name) ? vname(node.catch.name) : '_'}) => {\n${block(node.catch.body, d + 2)}\n${pad(d + 1)}}`
           : 'std::result::Result::Err(_) => {}'
 
         // inside an asynchronous body the guard is an async block awaited in place, since a closure cannot `.await`
@@ -3087,23 +3705,58 @@ function emitRustPass(
 
           const walkedName = node.iterable.form === 'variable' ? node.iterable.name : undefined
           const lentAs = walkedName !== undefined ? lentNames.get(walkedName) : undefined
+          // an inner list of a list of lists that owns it (`ownedElements`), only read in the walk: read in place, by
+          // reference off a lent list, cloned out of any other
+          const inner = ownsInner(elementLists.walks, node)
 
-          // a list lent for reading cannot change under the walk: an iterator, as Rust writes it
-          if (lentAs === 'read' && walkedName !== undefined) {
-            const each = node.index ? `(__at, value) in ${vname(walkedName)}.iter().enumerate()` : `value in ${vname(walkedName)}.iter()`
+          if (inner) {
+            lentNames.set(node.item, 'read')
 
-            return `for ${each} {\n${pad(d + 1)}let ${vname(node.item)} = ${element}; ${index}\n${budget}${block(node.body, d + 1)}\n${pad(d)}}`
+            if (lentAs !== 'read') {
+              ownedNames.set(node.item, false)
+            }
           }
+
+          // a list lent for reading cannot change under the walk: an iterator, as Rust writes it. Nor can a written list
+          // whose walk never mentions it (Polygon's `shapes`, built and then walked)
+          const untouched = walkedName !== undefined && lentAs === 'write' && !namesIn(node.body).has(walkedName)
+          // a record's own list read through its path (`ownedFields`) is only read, so walked the same way
+          const path = ownedPath(node.iterable)
+
+          if (((lentAs === 'read' || untouched) && walkedName !== undefined) || path) {
+            const source = walkedName !== undefined ? vname(walkedName) : memberPath(node.iterable)
+            const each = node.index ? `(__at, value) in ${source}.iter().enumerate()` : `value in ${source}.iter()`
+            // an item only handed to tasks that take it borrowed, or read for a field, is the element by reference:
+            // cloned out, a node holding its own lists (`ownedFields`) was copied whole per turn
+            const byRef = inner || (element !== '*value' && onlyBorrowed(node.body, node.item))
+            // a reference passes on as it is (`borrowedNames`), where `&kid` would borrow it twice (clippy: needless_borrow)
+            const outerBorrowed = borrowedNames
+
+            // (an inner list is read through `lentNames`, never as a borrowed record)
+            if (byRef && !inner) {
+              borrowedNames = new Set([...borrowedNames, node.item])
+            }
+
+            const walked = block(node.body, d + 1)
+            borrowedNames = outerBorrowed
+
+            return `for ${each} {\n${pad(d + 1)}let ${vname(node.item)} = ${byRef ? 'value' : element}; ${index}\n${budget}${walked}\n${pad(d)}}`
+          }
+
+          // the element at `__at` of a list's storage, copied or cloned out, each read its own statement so no borrow
+          // outlives it. The length is read every turn: `loop` over `get(..)` with a `break` was clippy's
+          // while_let_loop, and a `while let` would hold the borrow through a body that may push onto the list
+          const at = (storage: string): string => (element === '*value' ? `${storage}[__at]` : `${storage}[__at].clone()`)
 
           // a list lent for writing is walked by position on the Vec itself, so the body may still write it
           if (lentAs === 'write' && walkedName !== undefined) {
-            return `{ let mut __at: usize = 0; loop { let ${vname(node.item)} = match ${vname(walkedName)}.get(__at) { Some(value) => ${element}, None => break }; ${index}__at += 1;\n${budget}${block(
+            return `{ let mut __at: usize = 0; while __at < ${vname(walkedName)}.len() { let ${vname(node.item)} = ${at(vname(walkedName))}; ${index}__at += 1;\n${budget}${block(
               node.body,
               d + 1,
             )}\n${pad(d)}} }`
           }
 
-          return `{ let __walked = &(${expr(node.iterable)}); let mut __at: usize = 0; loop { let ${vname(node.item)} = match __walked.borrow().get(__at) { Some(value) => ${element}, None => break }; ${index}__at += 1;\n${budget}${block(
+          return `{ let __walked = &(${expr(node.iterable)}); let mut __at: usize = 0; while __at < __walked.borrow().len() { let ${vname(node.item)} = ${at('__walked.borrow()')}; ${index}__at += 1;\n${budget}${block(
             node.body,
             d + 1,
           )}\n${pad(d)}} }`
@@ -3213,13 +3866,26 @@ function emitRustPass(
           node.subject.form === 'variable'
             ? node.subject.name
             : undefined
-        const moved = subjectVar !== undefined && moveArgs.has(subjectVar) && !cellVars.has(subjectVar)
+        const moved =
+          subjectVar !== undefined && ((moveArgs.has(subjectVar) && !cellVars.has(subjectVar)) || lastMove(node.subject) || slotReads.has(node.subject))
         // a borrowed record is matched as it is: the arms bind its fields by reference (borrowedRecords)
         const borrowedSubject = subjectVar !== undefined && borrowedNames.has(subjectVar)
-        const subject = moved || borrowedSubject ? expr(node.subject) : `${expr(node.subject)}.clone()`
+        // a local read again after the match is matched BY REFERENCE where it was cloned whole: each arm copies or clones
+        // out only the fields it reads, and the bindings end there, so the arm may still use or move the whole subject.
+        // Not where an arm assigns the local (the borrow would be live across the write), nor a shared handle or a
+        // cell. Towers' `push-disk` read one number out of a pile's top node and cloned the node for it
+        const referenced =
+          !moved &&
+          !borrowedSubject &&
+          subjectVar !== undefined &&
+          !cellVars.has(subjectVar) &&
+          node.subject.type?.kind === 'named' &&
+          !isSharedType(node.subject.type) &&
+          !assignsName([node.cases, node.otherwise], subjectVar)
+        const subject = moved || borrowedSubject ? expr(node.subject) : referenced ? `&${expr(node.subject)}` : `${expr(node.subject)}.clone()`
 
         // a subject matched by clone copies the whole value (item 0029)
-        if (!moved && !borrowedSubject) {
+        if (!moved && !borrowedSubject && !referenced) {
           noteClone(node.subject.type)
         }
 
@@ -3234,11 +3900,16 @@ function emitRustPass(
           // `subject/field` read resolves to the bound local (restored after the arm so sibling arms are unaffected)
           // the arm's `link` lines select or rename the fields (see check/arm.ts); a field left out is `..`
           const locals = armLocals(fields, b.binds ?? [])
+          // the fields the arm reads. A `subject/field` read resolves to the bound local (`narrowing`) without naming it,
+          // so an arm that mentions the subject at all reads every field
+          const named = namesIn(b.body)
+          const reads = (local: string): boolean => named.has(local) || (subjectVar !== undefined && named.has(subjectVar))
+          // a field nobody reads is bound to `_`: nothing is moved, unwrapped, copied or cloned for it
           const pattern =
             fields.length > 0
               ? ` { ${[
                   ...locals.map(({ field, local }) =>
-                    field === local ? snake(field) : `${snake(field)}: ${snake(local)}`,
+                    !reads(local) ? `${snake(field)}: _` : field === local ? snake(field) : `${snake(field)}: ${snake(local)}`,
                   ),
                   ...(locals.length < fields.length ? ['..'] : []),
                 ].join(', ')} }`
@@ -3306,9 +3977,11 @@ function emitRustPass(
             return `${pad(d + 1)}${pascal(owner)}::${pascal(b.label)}${handedPattern} => {\n${pad(d + 2)}return ${out};\n${pad(d + 1)}}`
           }
 
+          // a list the node owns (`ownedFields`) is only read in the arm: read in place, never copied out
+          const ownsList = (field: string): boolean => fieldLists.has(`${b.label}/${field}`)
           const derefs = borrowedSubject
             ? locals
-                .filter(({ field, local }) => !recordField(field) && read.has(local))
+                .filter(({ field, local }) => !recordField(field) && !ownsList(field) && read.has(local))
                 .map(({ field, local }) => {
                   if (copyType(fieldTypes?.get(field))) {
                     return `${pad(d + 2)}let ${snake(local)} = *${snake(local)};`
@@ -3318,15 +3991,46 @@ function emitRustPass(
 
                   return `${pad(d + 2)}let ${snake(local)} = ${snake(local)}.clone();`
                 })
-            : []
+            : referenced
+              ? // under a referenced subject every field read is copied or cloned out, a recursive one through its
+                // `Rc` or `Box` to the plain value the body was written against
+                locals
+                  .filter(({ field, local }) => reads(local) && !ownsList(field))
+                  .map(({ field, local }) => {
+                    if (copyType(fieldTypes?.get(field))) {
+                      return `${pad(d + 2)}let ${snake(local)} = *${snake(local)};`
+                    }
+
+                    noteClone(fieldTypes?.get(field))
+
+                    return recursiveFields.has(`${b.label}/${field}`)
+                      ? `${pad(d + 2)}let ${snake(local)} = (**${snake(local)}).clone();`
+                      : `${pad(d + 2)}let ${snake(local)} = ${snake(local)}.clone();`
+                  })
+              : []
           const outerBorrowed = borrowedNames
 
           if (armBorrowed.length) {
             borrowedNames = new Set([...borrowedNames, ...armBorrowed])
           }
 
+          // its local is the list itself: a reference under a borrowed or referenced subject, the `Vec` otherwise
+          const outerLent = lentNames
+          const outerOwned = ownedNames
+          const lists = locals.filter(({ field }) => ownsList(field))
+
+          if (lists.length) {
+            lentNames = new Map([...lentNames, ...lists.map(({ local }) => [local, 'read'] as const)])
+
+            if (!borrowedSubject && !referenced) {
+              ownedNames = new Map([...ownedNames, ...lists.map(({ local }) => [local, false] as const)])
+            }
+          }
+
           const body = block(b.body, d + 2)
           borrowedNames = outerBorrowed
+          lentNames = outerLent
+          ownedNames = outerOwned
 
           if (subjectVar) {
             if (previous === undefined) {
@@ -3341,17 +4045,28 @@ function emitRustPass(
           // it is for a tree built and consumed once, and clones only a shared one: it was always `(*x).clone()`, a
           // clone per node per walk (binary-trees)
           const unwraps = locals
-            .filter(({ field }) => !borrowedSubject && recursiveFields.has(`${b.label}/${field}`))
+            .filter(({ field, local }) => !borrowedSubject && !referenced && reads(local) && recursiveFields.has(`${b.label}/${field}`))
             .map(({ local }) =>
-              // a `Box` child (item 0029) moves out; an `Rc` one moves when unique and clones when shared
-              boxedForms.has(owner)
-                ? `${pad(d + 2)}let ${snake(local)} = *${snake(local)};`
-                : `${pad(d + 2)}let ${snake(local)} = std::rc::Rc::unwrap_or_clone(${snake(local)});`,
+              // a reusable form's box is kept for the next node built (`reusable`); otherwise a `Box` child (item
+              // 0029) moves out, and an `Rc` one moves when unique and clones when shared
+              reusable(owner)
+                ? (reuseOpened.add(owner), `${pad(d + 2)}let ${snake(local)} = term_open_${snake(owner)}(${snake(local)});`)
+                : boxedForms.has(owner)
+                  ? `${pad(d + 2)}let ${snake(local)} = *${snake(local)};`
+                  : `${pad(d + 2)}let ${snake(local)} = std::rc::Rc::unwrap_or_clone(${snake(local)});`,
             )
 
-          return `${pad(d + 1)}${pascal(owner)}::${pascal(
-            b.label,
-          )}${pattern} => {\n${[...unwraps, ...derefs, body].join('\n')}\n${pad(d + 1)}}`
+          // an arm that only answers the field it unwrapped answers the unwrapping itself (clippy: let_and_return)
+          // the same for a field copied or cloned out of a referenced subject (`rest`'s `(**next).clone()`)
+          const only = unwraps.length + derefs.length === 1 ? /^\s*let (\w+) = (.+);$/.exec([...unwraps, ...derefs][0]!) : null
+          const answered = only && body.trim() === `return ${only[1]};` ? `${pad(d + 2)}return ${only[2]};` : undefined
+          // the arms of a match nested in tail position answer their values (clippy: needless_return), see `tailMatches`
+          const lines = answered ? [answered] : [...unwraps, ...derefs, body]
+          const text = lines.join('\n')
+          const last = tailMatches.has(node) ? new RegExp(`(^|\\n)${pad(d + 2)}return (.*);$`).exec(text) : null
+          const tailed = last && !borrowsAtTail(last[2]!) ? `${text.slice(0, last.index + last[1]!.length)}${pad(d + 2)}${last[2]}` : text
+
+          return `${pad(d + 1)}${pascal(owner)}::${pascal(b.label)}${pattern} => {\n${tailed}\n${pad(d + 1)}}`
         })
 
         if (node.otherwise) {
@@ -3555,15 +4270,15 @@ function emitRustPass(
         const borrow = borrowParams.get(node.name)
         const params = node.params
           .map((p, i) => {
-            // a record the task only reads is borrowed (borrowedRecords)
+            // a record the task only reads is borrowed (borrowedRecords), and a text it only reads as text is a `&str`
             if (borrow?.has(i)) {
-              return `${vname(p.name)}: &${rustType(p.type)}`
+              return `${vname(p.name)}: &${p.type?.kind === 'string' ? 'str' : rustType(p.type)}`
             }
 
             const how = lend?.get(i)
 
             if (how && p.type?.kind === 'array') {
-              const element = rustType(p.type.element)
+              const element = rustElement(p.type)
 
               // a slice either way: a lent list is read and written slot by slot, never grown (clippy: ptr_arg)
               return `${vname(p.name)}: ${how === 'write' ? `&mut [${element}]` : `&[${element}]`}`
@@ -3576,8 +4291,17 @@ function emitRustPass(
         const previousOwned = ownedNames
         const previousFresh = emittingFresh
         const previousBorrowed = borrowedNames
+        const previousCursors = cursors
+        cursors = textCursors(node, asciiNodes)
+        const previousSlices = sliceLets
+        const previousSliceNames = sliceNames
+        const slices = sliceKeys(node)
+        sliceLets = slices.lets
+        sliceNames = slices.names
         borrowedNames = new Set(node.params.flatMap((p, i) => (borrow?.has(i) ? [p.name] : [])))
-        ownedNames = node.async ? new Map() : ownedLocals(node, freshLists, lendParams)
+        ownedNames = node.async ? new Map() : ownedLocals(node, freshLists, lendParams, fieldLists, elementLists.moves)
+        const previousStack = stackNames
+        stackNames = node.async ? new Set() : (stackLists.get(node.name) ?? new Set())
         emittingFresh = freshLists.has(node.name)
         lentNames = new Map([
           ...node.params.flatMap((p, i) => (lend?.has(i) ? [[p.name, lend.get(i)!] as const] : [])),
@@ -3594,7 +4318,7 @@ function emitRustPass(
         // a task that answers a fresh list answers the `Vec` itself (freshLists)
         const plainResult =
           emittingFresh && declaredResult?.kind === 'array'
-            ? `Vec<${rustType(declaredResult.element)}>`
+            ? `Vec<${rustElement(declaredResult)}>`
             : declaredResult && declaredResult.kind !== 'unit'
               ? rustType(declaredResult)
               : ''
@@ -3644,7 +4368,18 @@ function emitRustPass(
         const previousReturnsArray = fnReturnsArray
         fnReturnsArray = node.result?.kind === 'array'
         const previousMoveArgs = moveArgs
+        const previousMoveNodes = moveNodes
         moveArgs = moveOnLastUse(node.body)
+        moveNodes = lastReads(node.body)
+        const previousSlotLets = slotLets
+        const previousSlotReads = slotReads
+        ;({ lets: slotLets, takes: slotReads } = slotTakes(
+          node.body,
+          name => lentNames.get(name) === 'write' || ownedNames.get(name) === true,
+          moveNodes,
+          emptyCase,
+          cellVars,
+        ))
         // a cell-boxed name is read through its handle on every use; it can never be moved at a use site
         cellVars.forEach(name => moveArgs.delete(name))
 
@@ -3777,14 +4512,41 @@ function emitRustPass(
 
           return value === '()' ? text.slice(0, Math.max(at - 1, 0)) : `${text.slice(0, at)}${pad(d + 1)}${value}`
         }
+        // the matches NESTED in tail position: the last statement of an arm of the final match, itself every arm ending
+        // in a `return` of a value (or such a match again), so each arm can answer its value and all keep one type. The
+        // final match's own arms are `tailed`'s
+        const previousTailMatches = tailMatches
+        tailMatches = new WeakSet()
+        const answers = (m: Extract<Statement, { form: 'match' }>): boolean =>
+          [...m.cases.map(c => c.body), ...(m.otherwise ? [m.otherwise] : [])].every(body => {
+            const end = body[body.length - 1]
+
+            return (end?.form === 'return' && end.value !== undefined) || (end?.form === 'match' && answers(end))
+          })
+        const markNested = (m: Extract<Statement, { form: 'match' }>): void => {
+          for (const body of [...m.cases.map(c => c.body), ...(m.otherwise ? [m.otherwise] : [])]) {
+            const end = body[body.length - 1]
+
+            if (end?.form === 'match' && answers(end)) {
+              tailMatches.add(end)
+              markNested(end)
+            }
+          }
+        }
+
+        if (last?.form === 'match' && !tail && node.result && node.result.kind !== 'unit') {
+          markNested(last)
+        }
+
         // a signature-only stub compiles: its body is the not-implemented panic
         const bodyText =
           node.body.length === 0
             ? `${pad(d + 1)}unimplemented!(${JSON.stringify(`stub: ${node.name}`)})`
-            : [...shadows, tailed(block(node.body, d + 1)), tail]
+            : [...shadows, ...cursors.names.map(name => `${pad(d + 1)}let mut ${cursorName(name)}: (usize, usize) = (0, 0);`), tailed(block(node.body, d + 1)), tail]
                 .filter(Boolean)
                 .join('\n')
 
+        tailMatches = previousTailMatches
         currentRaising = previousRaising
         currentAsync = previousAsync
         currentResult = previousResult
@@ -3793,7 +4555,14 @@ function emitRustPass(
         ownedNames = previousOwned
         emittingFresh = previousFresh
         borrowedNames = previousBorrowed
+        cursors = previousCursors
+        sliceLets = previousSlices
+        stackNames = previousStack
+        sliceNames = previousSliceNames
         moveArgs = previousMoveArgs
+        moveNodes = previousMoveNodes
+        slotLets = previousSlotLets
+        slotReads = previousSlotReads
         cellVars = previousCellVars
         assignedVars = previousAssigned
 
@@ -3835,7 +4604,10 @@ function emitRustPass(
                     ? boxedForms.has(node.name)
                       ? `Box<${rustType(f.type)}>`
                       : `std::rc::Rc<${rustType(f.type)}>`
-                    : rustType(f.type)
+                    : // a list the node owns is the plain `Vec` (`ownedFields`)
+                      fieldLists.has(`${v.name}/${f.name}`) && f.type.kind === 'array'
+                      ? `Vec<${rustElement(f.type)}>`
+                      : rustType(f.type)
                 }`,
             )
 
@@ -3849,8 +4621,12 @@ function emitRustPass(
           )}${generics} {\n${cases.join(',\n')}\n${pad(d)}}${written}`
         }
 
+        // a list the record owns is the plain `Vec` (`ownedFields`)
         const fields = node.fields.map(
-          f => `${pad(d + 1)}${snake(f.name)}: ${rustType(f.type)}`,
+          f =>
+            `${pad(d + 1)}${snake(f.name)}: ${
+              fieldLists.has(`${node.name}/${f.name}`) && f.type.kind === 'array' ? `Vec<${rustElement(f.type)}>` : rustType(f.type)
+            }`,
         )
 
         // a generic parameter no field mentions (an opaque `dock` handle erases it) still has to be used, or
@@ -4057,24 +4833,97 @@ function emitRustPass(
     `// an insertion-ordered map, the Term \`hash\` (note/term/optimize/meaning.md, question 1)
 #[allow(dead_code)]
 #[derive(Clone)]
-pub struct TermMap<K, V> { slot: std::collections::HashMap<K, usize>, entry: Vec<Option<(K, V)>>, dead: usize }
+pub struct TermMap<K, V> { table: Vec<u32>, entry: Vec<Option<(u64, K, V)>>, live: usize, tombs: usize, dead: usize, state: std::collections::hash_map::RandomState }
 #[allow(dead_code)]
 impl<K: std::hash::Hash + Eq + Clone, V> TermMap<K, V> {
-    pub fn new() -> Self { TermMap { slot: std::collections::HashMap::new(), entry: Vec::new(), dead: 0 } }
-    pub fn len(&self) -> usize { self.slot.len() }
-    pub fn is_empty(&self) -> bool { self.slot.is_empty() }
-    pub fn contains_key(&self, key: &K) -> bool { self.slot.contains_key(key) }
-    pub fn get(&self, key: &K) -> Option<&V> { self.slot.get(key).and_then(|&i| self.entry[i].as_ref().map(|e| &e.1)) }
-    pub fn get_mut(&mut self, key: &K) -> Option<&mut V> { match self.slot.get(key) { Some(&i) => self.entry[i].as_mut().map(|e| &mut e.1), None => None } }
+    // each key is held once, in its entry: the table holds entry indexes (EMPTY, or TOMB where one was removed), probed
+    // linearly from the key's hash, and a key is compared in its entry. The entries keep insertion order, which is
+    // what a walk visits
+    const EMPTY: u32 = u32::MAX;
+    const TOMB: u32 = u32::MAX - 1;
+    pub fn new() -> Self { TermMap { table: Vec::new(), entry: Vec::new(), live: 0, tombs: 0, dead: 0, state: std::collections::hash_map::RandomState::new() } }
+    pub fn len(&self) -> usize { self.live }
+    pub fn is_empty(&self) -> bool { self.live == 0 }
+    fn hash<Q: std::hash::Hash + ?Sized>(&self, key: &Q) -> u64 { std::hash::BuildHasher::hash_one(&self.state, key) }
+    // the table slot holding the key, if it is present
+    fn find<Q: Eq + ?Sized>(&self, h: u64, key: &Q) -> Option<usize> where K: std::borrow::Borrow<Q> {
+        if self.table.is_empty() { return None; }
+        let mask = self.table.len() - 1;
+        let mut at = (h as usize) & mask;
+        loop {
+            let i = self.table[at];
+            if i == Self::EMPTY { return None; }
+            if i != Self::TOMB { if let Some((eh, k, _)) = &self.entry[i as usize] { if *eh == h && k.borrow() == key { return Some(at); } } }
+            at = (at + 1) & mask;
+        }
+    }
+    // the table rebuilt at a size for the live entries, which also clears every tomb
+    fn rebuild(&mut self, size: usize) {
+        let size = size.max(8).next_power_of_two();
+        self.table = vec![Self::EMPTY; size];
+        self.tombs = 0;
+        let mask = size - 1;
+        for (i, e) in self.entry.iter().enumerate() {
+            if let Some((h, _, _)) = e {
+                let mut at = (*h as usize) & mask;
+                while self.table[at] != Self::EMPTY { at = (at + 1) & mask; }
+                self.table[at] = i as u32;
+            }
+        }
+    }
+    pub fn contains_key(&self, key: &K) -> bool { self.find(self.hash(key), key).is_some() }
+    pub fn get(&self, key: &K) -> Option<&V> {
+        let at = self.find(self.hash(key), key)?;
+        self.entry[self.table[at] as usize].as_ref().map(|e| &e.2)
+    }
+    pub fn get_mut(&mut self, key: &K) -> Option<&mut V> {
+        let at = self.find(self.hash(key), key)?;
+        let i = self.table[at] as usize;
+        self.entry[i].as_mut().map(|e| &mut e.2)
+    }
     pub fn insert(&mut self, key: K, value: V) -> Option<V> {
-        if let Some(&i) = self.slot.get(&key) { return self.entry[i].as_mut().map(|e| std::mem::replace(&mut e.1, value)); }
-        self.slot.insert(key.clone(), self.entry.len());
-        self.entry.push(Some((key, value)));
+        let h = self.hash(&key);
+        if let Some(at) = self.find(h, &key) {
+            let i = self.table[at] as usize;
+            return self.entry[i].as_mut().map(|e| std::mem::replace(&mut e.2, value));
+        }
+        self.push(h, key, value);
         None
     }
+    // a new entry for a key that is not present, its index answered
+    fn push(&mut self, h: u64, key: K, value: V) -> usize {
+        // at most half full, tombs counted, so a probe always ends at an EMPTY
+        if (self.live + self.tombs + 1) * 2 > self.table.len() { self.rebuild((self.live + 1) * 4); }
+        let mask = self.table.len() - 1;
+        let mut at = (h as usize) & mask;
+        while self.table[at] != Self::EMPTY && self.table[at] != Self::TOMB { at = (at + 1) & mask; }
+        if self.table[at] == Self::TOMB { self.tombs -= 1; }
+        self.table[at] = self.entry.len() as u32;
+        self.entry.push(Some((h, key, value)));
+        self.live += 1;
+        self.entry.len() - 1
+    }
+    // the value of a key, made \`fallback\` first when it is absent: one hash and one probe for a read and write
+    // (backend.ts, \`mapUpdate\`)
+    pub fn upsert(&mut self, key: K, fallback: V) -> &mut V {
+        let h = self.hash(&key);
+        let i = match self.find(h, &key) { Some(at) => self.table[at] as usize, None => self.push(h, key, fallback) };
+        &mut self.entry[i].as_mut().unwrap().2
+    }
+    // the same through a borrowed key (a \`&str\` for a String key), made owned only when it is new: a key read out of a
+    // larger text costs nothing for an entry already there
+    pub fn upsert_ref<Q: std::hash::Hash + Eq + ToOwned<Owned = K> + ?Sized>(&mut self, key: &Q, fallback: V) -> &mut V where K: std::borrow::Borrow<Q> {
+        let h = self.hash(key);
+        let i = match self.find(h, key) { Some(at) => self.table[at] as usize, None => self.push(h, key.to_owned(), fallback) };
+        &mut self.entry[i].as_mut().unwrap().2
+    }
     pub fn remove(&mut self, key: &K) -> Option<V> {
-        let i = self.slot.remove(key)?;
-        let out = self.entry[i].take().map(|e| e.1);
+        let at = self.find(self.hash(key), key)?;
+        let i = self.table[at] as usize;
+        self.table[at] = Self::TOMB;
+        self.tombs += 1;
+        self.live -= 1;
+        let out = self.entry[i].take().map(|e| e.2);
         self.dead += 1;
         if self.dead > 16 && self.dead * 2 > self.entry.len() { self.compact(); }
         out
@@ -4082,10 +4931,11 @@ impl<K: std::hash::Hash + Eq + Clone, V> TermMap<K, V> {
     fn compact(&mut self) {
         self.entry.retain(|e| e.is_some());
         self.dead = 0;
-        for (i, e) in self.entry.iter().enumerate() { if let Some((k, _)) = e { if let Some(s) = self.slot.get_mut(k) { *s = i; } } }
+        let size = self.table.len();
+        self.rebuild(size);
     }
-    pub fn clear(&mut self) { self.slot.clear(); self.entry.clear(); self.dead = 0; }
-    pub fn iter(&self) -> impl Iterator<Item = (&K, &V)> { self.entry.iter().filter_map(|e| e.as_ref().map(|(k, v)| (k, v))) }
+    pub fn clear(&mut self) { self.table.clear(); self.entry.clear(); self.live = 0; self.tombs = 0; self.dead = 0; }
+    pub fn iter(&self) -> impl Iterator<Item = (&K, &V)> { self.entry.iter().filter_map(|e| e.as_ref().map(|(_, k, v)| (k, v))) }
     pub fn keys(&self) -> impl Iterator<Item = &K> { self.iter().map(|(k, _)| k) }
     pub fn values(&self) -> impl Iterator<Item = &V> { self.iter().map(|(_, v)| v) }
 }
@@ -4118,6 +4968,58 @@ impl<T> std::hash::Hash for TermShared<T> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) { (std::rc::Rc::as_ptr(&self.0) as *const () as usize).hash(state) }
 }
 impl<T> std::ops::Deref for TermShared<T> { type Target = std::cell::RefCell<T>; fn deref(&self) -> &Self::Target { &self.0 } }`,
+    // a code point of a text read through its cursor (backend.ts, `textCursors`): the code-point index and byte
+    // offset of the last read, stepped forward or back from, or restarted at the start when that is nearer. A read
+    // past the end leaves it at the end
+    `// a code point read through a cursor, the code-point index and byte offset of the last read: the byte offset of code
+// point i, stepped forward or back from the last, or from the start when that is nearer, the end past the last
+#[allow(dead_code)]
+pub fn term_cursor_to(h: &str, i: usize, c: &mut (usize, usize)) -> usize {
+    let b = h.as_bytes();
+    if i < c.0 {
+        if i <= c.0 - i {
+            *c = (0, 0);
+        } else {
+            while c.0 > i {
+                c.1 -= 1;
+                while b[c.1] & 0xC0 == 0x80 { c.1 -= 1; }
+                c.0 -= 1;
+            }
+        }
+    }
+    while c.0 < i {
+        if c.1 >= b.len() { return b.len(); }
+        c.1 += term_width(b[c.1]);
+        c.0 += 1;
+    }
+    c.1
+}
+// the UTF-8 width of a code point from its first byte
+#[allow(dead_code)]
+#[inline]
+pub fn term_width(x: u8) -> usize { if x < 0x80 { 1 } else if x < 0xE0 { 2 } else if x < 0xF0 { 3 } else { 4 } }
+#[allow(dead_code)]
+pub fn term_cursor(h: &str, i: i64, c: &mut (usize, usize)) -> Option<char> {
+    if i < 0 { return None; }
+    let o = term_cursor_to(h, i as usize, c);
+    h[o..].chars().next()
+}
+// the code points from a to e through the cursor, both clamped to the text and swapped when reversed (the Term
+// meaning): the cursor moves to the start, and the end is counted on from it
+#[allow(dead_code)]
+pub fn term_cursor_slice(h: &str, a: i64, e: i64, c: &mut (usize, usize)) -> String {
+    let (x, y) = if a <= e { (a, e) } else { (e, a) };
+    let (x, y) = (x.max(0) as usize, y.max(0) as usize);
+    let b = h.as_bytes();
+    let from = term_cursor_to(h, x, c);
+    let mut to = from;
+    let mut k = x;
+    while k < y && to < b.len() {
+        to += term_width(b[to]);
+        k += 1;
+    }
+    h[from..to].to_string()
+}`,
     // a float as text, the same on every backend (note/term/stdlib/semantics.md, "Numbers as text"): the shortest
     // digits that read back as the same float, laid out as ECMAScript's Number::toString lays them out. Rust's own
     // Display never uses an exponent and prints -0 as "-0"
@@ -4151,9 +5053,15 @@ pub fn term_number(x: f64) -> String {
 
   const carrier = carries
     ? [
-        `// the one exception value of a Term program on this backend (note/term/hive/11-native-exceptions.md)
+        `// the one exception value of a Term program on this backend (note/term/hive/11-native-exceptions.md). Its fields
+// are boxed, so the carrier is one pointer and every \`Result\` a raising task answers stays the size of its value: the
+// fields inline made each \`Ok\` 136 bytes, copied on every return (clippy's result_large_err). Read through Deref
 #[derive(Clone)]
-pub struct TermException { pub host: String, pub form: String, pub note: String, pub code: String, pub time: i64, pub link: std::rc::Rc<dyn std::any::Any>, pub base: std::rc::Rc<dyn std::any::Any> }
+pub struct TermException(pub Box<TermRaised>);
+#[derive(Clone)]
+pub struct TermRaised { pub host: String, pub form: String, pub note: String, pub code: String, pub time: i64, pub link: std::rc::Rc<dyn std::any::Any>, pub base: std::rc::Rc<dyn std::any::Any> }
+impl std::ops::Deref for TermException { type Target = TermRaised; fn deref(&self) -> &TermRaised { &self.0 } }
+impl std::ops::DerefMut for TermException { fn deref_mut(&mut self) -> &mut TermRaised { &mut self.0 } }
 impl std::fmt::Display for TermException { fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { write!(f, "{}: {}", self.form, self.note) } }
 impl std::fmt::Debug for TermException { fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { write!(f, "{}: {}", self.form, self.note) } }
 impl std::error::Error for TermException {}`,
@@ -4256,7 +5164,92 @@ fn __term_drain() {
     noteClone({ kind: 'named', name: form })
   }
 
-  return [...uses, ...termMap, ...carrier, ...budget, ...spawnHelpers, ...body, ...rustFormWalk(fillSpecs, meltSpecs), ...wake].join('\n\n') + '\n'
+  // the box reuse of each form an arm opened and a construction built (`reusable`); a form with only one of the two
+  // keeps the plain allocation, written back where the calls were emitted
+  const reuse: string[] = []
+  let assembled = body.join('\n\n')
+
+  for (const form of new Set([...reuseOpened, ...reuseBuilt])) {
+    const type = pascal(form)
+    const name = snake(form)
+    const empty = `${type}::${pascal(emptyCase({ kind: 'named', name: form })!.empty)}`
+    const boxed = boxedForms.has(form)
+
+    if (!reuseOpened.has(form) || !reuseBuilt.has(form)) {
+      assembled = assembled
+        .split(`term_box_${name}(`).join(boxed ? 'Box::new(' : 'std::rc::Rc::new(')
+        .replace(new RegExp(`term_open_${name}\\((\\w+)\\)`, 'g'), boxed ? '*$1' : 'std::rc::Rc::unwrap_or_clone($1)')
+      continue
+    }
+
+    const holder = boxed ? `Box<${type}>` : `std::rc::Rc<${type}>`
+    const pool = `TERM_POOL_${name.toUpperCase()}`
+    // a box kept is unique: a Box always, an Rc when `get_mut` answers, and one still shared is cloned out as before
+    const open = boxed
+      ? `fn term_open_${name}(mut held: ${holder}) -> ${type} {
+    let value = std::mem::replace(&mut *held, ${empty});
+    ${pool}.with(|pool| pool.keep(held));
+    value
+}`
+      : `fn term_open_${name}(mut held: ${holder}) -> ${type} {
+    match std::rc::Rc::get_mut(&mut held) {
+        Some(inner) => {
+            let value = std::mem::replace(inner, ${empty});
+            ${pool}.with(|pool| pool.keep(held));
+            value
+        }
+        None => (*held).clone(),
+    }
+}`
+    const make = boxed
+      ? `fn term_box_${name}(value: ${type}) -> ${holder} {
+    match ${pool}.with(|pool| pool.take()) {
+        Some(mut held) => {
+            // a kept box holds the field-less case its opening left, so it is forgotten rather than dropped
+            std::mem::forget(std::mem::replace(&mut *held, value));
+            held
+        }
+        None => Box::new(value),
+    }
+}`
+      : `fn term_box_${name}(value: ${type}) -> ${holder} {
+    match ${pool}.with(|pool| pool.take()) {
+        Some(mut held) => match std::rc::Rc::get_mut(&mut held) {
+            Some(inner) => {
+                std::mem::forget(std::mem::replace(inner, value));
+                held
+            }
+            None => std::rc::Rc::new(value),
+        },
+        None => std::rc::Rc::new(value),
+    }
+}`
+
+    reuse.push(`// the boxes of \`${form}\` an arm unboxed, kept for the next \`${form}\` built: a spare, and up to 64 more behind it
+// for a run of frees before a run of builds (rust.ts, \`reusable\`)
+#[allow(clippy::vec_box)]
+struct TermPool${type} { spare: std::cell::Cell<Option<${holder}>>, more: std::cell::RefCell<Vec<${holder}>> }
+impl TermPool${type} {
+    #[inline]
+    fn keep(&self, held: ${holder}) {
+        if let Some(before) = self.spare.replace(Some(held)) {
+            let mut more = self.more.borrow_mut();
+            if more.len() < 64 { more.push(before); }
+        }
+    }
+    #[inline]
+    fn take(&self) -> Option<${holder}> {
+        self.spare.take().or_else(|| self.more.borrow_mut().pop())
+    }
+}
+thread_local! { static ${pool}: TermPool${type} = const { TermPool${type} { spare: std::cell::Cell::new(None), more: std::cell::RefCell::new(Vec::new()) } }; }
+#[inline]
+${open}
+#[inline]
+${make}`)
+  }
+
+  return [...uses, ...termMap, ...carrier, ...budget, ...spawnHelpers, ...reuse, ...(body.length ? [assembled] : []), ...rustFormWalk(fillSpecs, meltSpecs), ...wake].join('\n\n') + '\n'
 }
 
 // how many asynchronous loops the last `emitRust` gave a budget check, and how many it left one out of because a
@@ -4591,6 +5584,17 @@ function usedNames(body: Statement[], into: Set<string>): void {
         exprNames(s.iterable)
         usedNames(s.body, into)
         break
+      // a guarded body and its handler: the names they read are a closure's captures like any other. Skipped, a guard
+      // inside a closure (every view handler is one, swiftui-target-0003) moved its captures into the `move` closure
+      // without the clone beside it, and the next closure to read the same signal found it moved (E0382)
+      case 'guard':
+        usedNames(s.body, into)
+
+        if (s.catch) {
+          usedNames(s.catch.body, into)
+        }
+
+        break
       default:
         break
     }
@@ -4794,6 +5798,8 @@ function moveOnLastUse(body: Statement[]): Set<string> {
 
   return out
 }
+
+
 
 // the extra element-type bounds a function body needs from its array ops: equality (`includes` / `indexOf`) or display
 // (`join`). Returns the generic variable ids and names sitting at the element position of an array receiving such an op.

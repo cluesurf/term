@@ -5,12 +5,16 @@
 # the mill produces from this, so the two are meant to be read side by side.
 #
 # A reactive read is a bare `read` with the getter nested beneath it: the mill turns that into a `dynamic` text node
-# whose effect re-runs the read, so the node updates when the signal is written and nothing else re-renders.
+# whose effect re-runs the read, so the node updates when the signal is written and nothing else re-renders. A text
+# node holds text, so the count goes through `to-text`: a number there is refused (check/views.ts).
 
 load @term/site/view/reactive
   find make-signal
   find read-signal
   find write-signal
+
+load @term/base/text/string
+  find to-text
 
 view counter
   take host, like view
@@ -29,8 +33,9 @@ view counter
     view span
       seed class, text <count>
       read
-        call read-signal
-          bind self, read count
+        call to-text
+          call read-signal
+            bind self, read count
 
     view button
       seed click

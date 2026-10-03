@@ -6,6 +6,7 @@
 // handle (optimize-0042, 2026-10-02). `note shared`, the spelling from before `note` became text, still reads.
 // SN_ONLY=swift (or kotlin, rust) runs one backend. Run: npx tsx test/compile/shared-native.ts
 
+import { runDir } from './run-dir'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -106,7 +107,7 @@ function frontEnd(shared: boolean): Program {
   return simplify(out, new Set(['run', 'bump']))
 }
 
-const dir = mkdtempSync(join(tmpdir(), 'term-shared-native-'))
+const dir = runDir('term-shared-native-')
 const only = process.env.SN_ONLY ?? ''
 
 // the mill must carry the note onto the form, and only when it is written
