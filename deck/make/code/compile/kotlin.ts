@@ -23,7 +23,7 @@ import {
   isText,
 } from '@term/make/code/compile/backend'
 import type { CollectionOp, FormKind, FormSpec } from '@term/make/code/compile/backend'
-import { escapingParams, formSpec, hasValuedReturn, refuseAny, specForms } from '@term/make/code/compile/backend'
+import { escapingParams, formSpec, hasValuedReturn, refuseAny, specForms, swapAt } from '@term/make/code/compile/backend'
 import {
   collectBinds,
   renderBind,
@@ -1509,11 +1509,24 @@ export function emitKotlin(
       .map(n => n.name),
   )
 
-  const block = (body: Statement[], d: number): string =>
-    body
-      .map(s => `${pad(d)}${stmt(s, d)}`)
-      .filter(Boolean)
-      .join('\n')
+  const block = (body: Statement[], d: number): string => {
+    const lines: string[] = []
+
+    for (let at = 0; at < body.length; at++) {
+      // the three-statement swap of two slots is `Collections.swap`, which checks both indexes before it writes
+      const swap = swapAt(body, at)
+
+      if (swap) {
+        lines.push(`${pad(d)}java.util.Collections.swap(${expr(swap.list)}, Math.toIntExact(${expr(swap.first)}), Math.toIntExact(${expr(swap.second)}))`)
+        at += 2
+        continue
+      }
+
+      lines.push(`${pad(d)}${stmt(body[at]!, d)}`)
+    }
+
+    return lines.join('\n')
+  }
 
   const stmt = (node: Statement, d: number): string => {
     switch (node.form) {
@@ -1606,7 +1619,8 @@ export function emitKotlin(
             ? `throw run { val told = ${built}; hiveTell(HiveEntry(host = told.host, kind = "exception", name = told.form, site = "", base = told)); told }`
             : `throw ${built}`
 
-        return node.value.form === 'string'
+        // an interpolated text (a `template` node) is a text too, and raises `failure` like a plain one
+        return node.value.form === 'string' || node.value.form === 'template'
           ? tell(`TermException("", "failure", ${expr(node.value)}, "", 0L, null, null)`)
           : node.value.form === 'record' && exceptionForms.has(node.value.name)
             ? tell(`run { val raised = ${expr(node.value)}; TermException(raised.host, raised.form, raised.note, raised.code, raised.time, raised.link, raised) }`)

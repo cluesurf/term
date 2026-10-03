@@ -21,6 +21,7 @@ import {
   overloadGroups,
 } from '@term/make/code/check/overload'
 import { extendForms } from '@term/make/code/check/extend'
+import { bindFormsByImport } from '@term/make/code/check/scope'
 import {
   checkPrivateFinds,
   checkPrivateReferences,
@@ -70,6 +71,7 @@ import { pruneToReachable } from '@term/make/code/ir/prune'
 import { simplify } from '@term/make/code/ir/simplify'
 import { passDictionaries } from '@term/make/code/ir/dictionary'
 import { lowerZones } from '@term/make/code/compile/view-lower'
+import { RENDER } from '@term/make/code/compile/render-names'
 import { compileLookCss } from '@term/make/code/compile/look-css'
 import { compileLookTable, styleTableText } from '@term/make/code/compile/look-table'
 import {
@@ -102,19 +104,7 @@ import type { TwinChoices } from '@term/make/code/ir/twin'
 // prune follows references, so pinning the render helpers keeps the dom
 // primitives (set-attribute, append, ...) they call, transitively.
 const ZONE_RENDER_RUNTIME: string[] = [
-  'element',
-  'text',
-  'attribute',
-  'bind-attribute',
-  'event',
-  'dynamic',
-  'dynamic-view',
-  'show',
-  'each',
-  'each-keyed',
-  'gate',
-  'mount',
-  'portal',
+  ...Object.values(RENDER),
   'append',
   'remove',
   'replace',
@@ -542,6 +532,14 @@ export function compileProgram(
   // the certificate checker's refusals so far, so this compile can report its own
   const uncertifiedBefore = uncertifiedCount()
 
+  // module scope for forms: a form two files define is split by file, and every reference bound by its file's import,
+  // before anything below reads a form by name (module-scope-0003, check/scope.ts)
+  const formScope = bindFormsByImport(program, scope, file)
+
+  if (formScope.length) {
+    return { ok: false, diagnostics: formScope }
+  }
+
   // form extension: resolve every `form x` that is `like <base>` with children into an ordinary record, and finish
   // every `halt <form>` raise, before any name is bound. See code/check/extend.ts.
   const extendDiagnostics = extendForms(program, file, { deckOf })
@@ -561,7 +559,7 @@ export function compileProgram(
     return { ok: false, diagnostics: privateFinds }
   }
 
-  const ambiguities = disambiguateOverloads(program, scope)
+  const ambiguities = disambiguateOverloads(program, scope, file)
 
   if (ambiguities.length) {
     return { ok: false, diagnostics: ambiguities }

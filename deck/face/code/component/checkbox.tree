@@ -9,7 +9,7 @@
 # shows via CSS on [data-state=checked]. Parts: checkbox (root button) + checkbox-indicator.
 
 load @term/site/code/view/render
-  find element
+  find make-element
 load @term/site/code/dom/dom
   find view
   find append

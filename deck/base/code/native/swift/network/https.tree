@@ -18,7 +18,7 @@ load @term/base/code/network/server
   find server
 
 # serve HTTPS on (host, port) from a PEM certificate and key, blocking for the life of the process
-task do-serve-secure
+task https-serve
   take port, like size
   take host, like text
   take handler
@@ -37,7 +37,7 @@ task do-serve-secure
     read key
 
 # bind and answer over TLS, without blocking. `stop` on network/server shuts it down.
-task do-start-secure
+task https-start
   note async
   take port, like size
   take host, like text

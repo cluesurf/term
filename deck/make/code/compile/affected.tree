@@ -1,0 +1,248 @@
+# Dependency-driven incremental scheduling: given a dependency graph and the set of nodes that changed, compute
+# exactly which nodes must be rebuilt or rechecked (the changed nodes plus everything that transitively depends on
+# them) and which can be REUSED from cache. This is the "only recheck what depends on what changed" engine.
+#
+# It is generic over the node id, so it works at any granularity:
+#   - PACKAGE level: nodes are packages. Because cross-package dependencies are a DAG (no cross-package cycles, only
+#     modules WITHIN a package may be circular), a package is a clean firewall unit, like a Rust crate: a fully
+#     compiled package is reused until its own sources or a dependency's INTERFACE change.
+#   - MODULE / DEFINITION level: finer-grained early cutoff inside a package.
+#
+# Pure and deterministic. The graph maps each node to the nodes it DEPENDS ON.
+#
+# Ported from compile/affected.ts (self-hosting, phase 2, 2026-10-02). Three shapes changed, and the one caller,
+# deck/test/code/demo-incremental.ts, changed with them:
+#   - a node's dependencies are a LIST, not a native Set: Term's `set` is a record over a hash, so a
+#     `Map<string, Set<string>>` has no Term spelling. Each list holds a node once, in the order it was added
+#   - every answer that was a Set is a list in a stable order, and `affected-set` takes its arguments by position
+#   - the cycle is RETURNED by `find-cycle`, and `topo-order` raises on it, so `is-acyclic` needs no handler
+# Every write into a list held in a hash is written back with `set`, so the port means the same thing under
+# value semantics (D1) as it does on TypeScript.
+
+load @term/base/code/list
+  find list
+
+load @term/base/code/hash
+  find hash
+
+# Invert a dependency graph: each node to the nodes that depend ON it (its dependents), in the order they are met
+task reverse-deps
+  take graph
+    like hash
+      like text
+      like list
+        like text
+  like hash
+    like text
+    like list
+      like text
+
+  save reverse, make hash
+  walk keys(graph)
+    take node
+    fork test, is-equal(has(reverse, node), false)
+      hold
+        set
+          reverse
+          node
+          make list
+  save none, make list
+  walk keys(graph)
+    take node
+    walk get-or-default(graph, node, none)
+      take dep
+      fork test, is-equal(has(reverse, dep), false)
+        hold
+          set
+            reverse
+            dep
+            make list
+      save into, get-or-default(reverse, dep, none)
+      fork test, is-equal(contains(into, node), false)
+        hold
+          push(into, node)
+          set(reverse, dep, into)
+  back reverse
+
+# The nodes that must be rebuilt: every changed node plus everything that transitively depends on it, in the order
+# they are reached. With EARLY CUTOFF, a node's dependents join only when `interface-changed` says the node changed
+# in a way they can observe, so a body-only edit spares them.
+task affected-set
+  take graph
+    like hash
+      like text
+      like list
+        like text
+  take changed
+    like list
+      like text
+  # whether `node`'s observable interface changed, so its dependents must recheck. Always true when left out: no
+  # early cutoff, the conservative answer
+  take interface-changed
+    like task
+      take node, like text
+      like boolean
+    fall
+      task
+        take node, like text
+        back true
+  like list
+    like text
+
+  save reverse, reverse-deps(graph)
+  save seen, make hash
+  save affected, make list
+  save queue, make list
+  save none, make list
+
+  # every changed node is itself rebuilt
+  walk changed
+    take node
+    fork test, is-equal(has(seen, node), false)
+      hold
+        set(seen, node, true)
+        push(affected, node)
+        push(queue, node)
+
+  walk test
+    hook test
+      is-above(queue/length, 0)
+    hook hold
+      save node, pop(queue)
+      # propagate to dependents only if this node's interface changed: a changed node always rebuilds, its
+      # dependents only when the change is observable across the boundary
+      fork test, interface-changed(node)
+        hold
+          walk get-or-default(reverse, node, none)
+            take dependent
+            fork test, is-equal(has(seen, dependent), false)
+              hold
+                set(seen, dependent, true)
+                push(affected, dependent)
+                push(queue, dependent)
+  back affected
+
+# The nodes that can be REUSED from cache: every node of the graph not in `affected`, in the graph's order
+task reusable-set
+  take graph
+    like hash
+      like text
+      like list
+        like text
+  take affected
+    like list
+      like text
+  like list
+    like text
+
+  save reuse, make list
+  walk keys(graph)
+    take node
+    fork test, is-equal(contains(affected, node), false)
+      hold
+        push(reuse, node)
+  back reuse
+
+form topo-walk
+  # dependencies before dependents, as far as the walk got
+  link order
+    like list
+      like text
+  # the path into the first cycle met, ending with the node met twice, or empty when there is none
+  link cycle
+    like list
+      like text
+
+# A depth-first walk from every node in the graph's order, dependencies first, stopping at the first cycle. The same
+# post-order the recursive original built, kept on an explicit stack: each frame is a node and how many of its
+# dependencies have been visited
+task find-cycle
+  take graph
+    like hash
+      like text
+      like list
+        like text
+  like topo-walk
+
+  # `visiting` or `done` per node met
+  save state, make hash
+  save order, make list
+  save none, make list
+
+  walk keys(graph)
+    take top
+    fork test, has(state, top)
+      hold
+        turn next
+    set(state, top, <visiting>)
+    save path, make list
+    save done-at, make list
+    push(path, top)
+    push(done-at, 0)
+
+    walk test
+      hook test
+        is-above(path/length, 0)
+      hook hold
+        save last, subtract(path/length, 1)
+        save node, get(path, last)
+        save at, get(done-at, last)
+        save deps, get-or-default(graph, node, none)
+        fork test, is-below(at, deps/length)
+          hold
+            set(done-at, last, add(at, 1))
+            save dep, get(deps, at)
+            save seen, get-or-default(state, dep, <>)
+            fork test, is-equal(seen, <visiting>)
+              hold
+                save cycle, copy(path)
+                push(cycle, dep)
+                back
+                  make topo-walk
+                    bind order, read order
+                    bind cycle, read cycle
+            fork test, is-equal(seen, <>)
+              hold
+                set(state, dep, <visiting>)
+                push(path, dep)
+                push(done-at, 0)
+          miss
+            set(state, node, <done>)
+            push(order, node)
+            pop(path)
+            pop(done-at)
+
+  back
+    make topo-walk
+      bind order, read order
+      bind cycle, make list
+
+# A topological build order, dependencies before dependents. Raises on a cycle: cross-package edges must be acyclic,
+# so a cycle here is a real error (a package depending on something that depends back on it)
+task topo-order
+  take graph
+    like hash
+      like text
+      like list
+        like text
+  like list
+    like text
+
+  save walked, find-cycle(graph)
+  fork test, is-above(walked/cycle/length, 0)
+    hold
+      # `\>`: a `>` inside a text inside an interpolation closes the outer text, though `< -> >` alone parses
+      halt <dependency cycle: {{join(walked/cycle, < -\> >)}}>
+  back walked/order
+
+# Whether the graph is acyclic (a valid cross-package DAG)
+task is-acyclic
+  take graph
+    like hash
+      like text
+      like list
+        like text
+  like boolean
+
+  save walked, find-cycle(graph)
+  back is-equal(walked/cycle/length, 0)

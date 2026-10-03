@@ -1,8 +1,9 @@
 // A native runtime's namespace never takes a name a Term module defines (native-dom-0042). The stdlib's string runtime
-// was `enum text` on Swift (`object text` on Kotlin, `mod text` on Rust), and the render runtime has a task `text`, so a
-// program that reached both, face's select joining its options with text/util's `join`, failed swiftc with
-// `invalid redeclaration of 'text'`. It is `strings` now. This builds such a program with swiftc and runs it.
-// Skips without swiftc. Run: npx tsx test/compile/runtime-names.ts
+// was `enum text` on Swift (`object text` on Kotlin, `mod text` on Rust), and the render runtime then had a task `text`,
+// so a program that reached both, face's select joining its options with text/util's `join`, failed swiftc with
+// `invalid redeclaration of 'text'`. It is `strings` now. The render task is `make-text` since tasks became verbs, so
+// the program here defines the noun itself, a `view text` component like the vocabulary's word, and places it beside
+// text/util's `join`: the collision stays exercised. Skips without swiftc. Run: npx tsx test/compile/runtime-names.ts
 
 import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
@@ -31,14 +32,22 @@ if (spawnSync('swiftc', ['--version']).status !== 0) {
   process.exit(0)
 }
 
-// the render runtime's `text` (a text node) and text/util's `join` (the string runtime) in one program
+// a Term `text` (a component) and text/util's `join` (the string runtime) in one program
 const PROGRAM = `load @term/site/code/view/render
-  find element
-  find text
+  find make-element
+  find make-text
 
 load @term/site/code/dom/native/memory/dom
+  find view
   find serialize
   find append
+
+# the noun a Swift runtime namespace must not redeclare: a component, as the view vocabulary's word is
+view text
+  take host, like view
+  take content, like text
+  view span
+    read content
 
 load @term/base/code/text/util
   find join
@@ -62,14 +71,13 @@ task names
 task run
   like text
   save root
-    call element
+    call make-element
       text <main>
-  call append
+  call text
     read root
-    call text
-      call join
-        call names
-        text <,>
+    call join
+      call names
+      text <,>
   send back
     call serialize
       read root
@@ -99,7 +107,7 @@ if (result.ok) {
     execFileSync('swiftc', ['-o', exe, file], { stdio: 'pipe' })
     ok('swiftc builds it: no redeclaration of text', true)
     const run = spawnSync(exe, [], { encoding: 'utf8' })
-    ok('it runs, the joined text in a text node', run.stdout.trim() === '<main>a,b</main>', run.stdout + run.stderr)
+    ok('it runs, the joined text in the `text` component', run.stdout.trim() === '<main><span>a,b</span></main>', run.stdout + run.stderr)
   } catch (error) {
     const text = String((error as { stderr?: Buffer }).stderr ?? error)
     ok('swiftc builds it: no redeclaration of text', false, text.split('\n').filter(l => /error:/.test(l)).join('\n').slice(0, 800))

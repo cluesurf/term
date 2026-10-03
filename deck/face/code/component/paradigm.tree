@@ -7,8 +7,8 @@
 # The top-left corner cell is intentionally blank. Compose it inside a document zone with `zone paradigm / bind ...`.
 
 load @term/site/code/view/render
-  find element
-  find text
+  find make-element
+  find make-text
 load @term/site/code/dom/dom
   find view
   find append

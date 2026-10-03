@@ -79,7 +79,8 @@ const COMPLETION_KIND: Record<SymbolKind, number> = {
   local: 6,
 }
 
-// the keywords offered in completion (the four-letter Seed vocabulary), each a plain keyword item
+// the keywords offered in completion (the four-letter Term vocabulary), each a plain keyword item. The retired words
+// (`wave`, `bust`, `kink` as a send) are not offered: `true` / `false` are bare, and `halt` is the one stop word
 const KEYWORDS = [
   'task',
   'take',
@@ -95,14 +96,20 @@ const KEYWORDS = [
   'case',
   'head',
   'link',
+  'slot',
+  'need',
   'fork',
   'hook',
   'walk',
+  'turn',
+  'halt',
+  'wait',
   'load',
   'find',
+  'name',
   'mark',
   'text',
-  'wave',
+  'code',
   'like',
   'note',
   'hold',
@@ -110,11 +117,18 @@ const KEYWORDS = [
   'mask',
   'wear',
   'suit',
+  'fuse',
+  'tree',
+  'rule',
+  'show',
+  'have',
+  'must',
+  'down',
 ]
 
 // the hover popover as markdown. A definition under the cursor renders its full signature (a call shows
 // `greet(name: text) -> text`, a form / mask its head + members); any other expression renders its inferred type. The
-// `seed` fence lets the editor syntax-color the popover.
+// `tree` fence (the language id this extension registers) lets the editor syntax-color the popover.
 function hoverMarkdown(
   def: { name: string; kind: SymbolKind; detail: string } | undefined,
   type: string | undefined,
@@ -125,11 +139,11 @@ function hoverMarkdown(
         ? `${def.name}: ${def.detail}`
         : `${def.name}${def.detail}`
 
-    return '```seed\n' + value + '\n```'
+    return '```tree\n' + value + '\n```'
   }
 
   if (type) {
-    return '```seed\n' + type + '\n```'
+    return '```tree\n' + type + '\n```'
   }
 
   return undefined

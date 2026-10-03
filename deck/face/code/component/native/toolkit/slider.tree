@@ -9,9 +9,9 @@
 # snapped to the step as a web range input is.
 
 load @term/site/code/view/render
-  find element
-  find attribute
-  find event
+  find make-element
+  find write-attribute
+  find attach-event
 load @term/site/code/view/reactive
   find signal
   find make-effect
@@ -35,25 +35,25 @@ task mount-slider
   take step, like decimal
   like view
   save control-view
-    call element
+    call make-element
       text <slider>
-  call attribute
+  call write-attribute
     read control-view
     text <data-slot>
     text <slider>
-  call attribute
+  call write-attribute
     read control-view
     text <class>
     read class
-  call attribute
+  call write-attribute
     read control-view
     text <min>
     text <{{min}}>
-  call attribute
+  call write-attribute
     read control-view
     text <max>
     text <{{max}}>
-  call attribute
+  call write-attribute
     read control-view
     text <step>
     text <{{step}}>
@@ -63,7 +63,7 @@ task mount-slider
         read control-view
         call range-text
           read control
-  call event
+  call attach-event
     read control-view
     text <input>
     task moved

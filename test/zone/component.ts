@@ -30,11 +30,11 @@ const SEED = path.resolve(
 const resolve = projectResolver(SEED, 'node')
 
 const SOURCE = `load @cluesurf/site/code/view/render
-  find element
-  find text
-  find dynamic
-  find attribute
-  find event
+  find make-element
+  find make-text
+  find make-dynamic-text
+  find write-attribute
+  find attach-event
 load @cluesurf/site/code/dom/dom
   find view
   find append
@@ -53,13 +53,13 @@ view label
         bind self, read value
 `
 
-// Stage B: control flow. `fork` lowers to `show` (conditional subtree), `walk` lowers to `each` (list rendering).
+// Stage B: control flow. `fork` lowers to `show` (conditional subtree), `walk` lowers to `render-each` (list rendering).
 const SOURCE_CONTROL = `load @cluesurf/site/code/view/render
-  find element
-  find text
-  find dynamic
+  find make-element
+  find make-text
+  find make-dynamic-text
   find show
-  find each
+  find render-each
 load @cluesurf/site/code/dom/dom
   find view
   find append
@@ -133,12 +133,12 @@ async function main(): Promise<void> {
     '',
   )
   ok(
-    'emits a positional element call',
-    /element\("div"\)/.test(result.typescript),
+    'emits a positional make-element call',
+    /makeElement\("div"\)/.test(result.typescript),
   )
   ok(
-    'emits a reactive dynamic node',
-    /dynamic\(\(\) =>/.test(result.typescript),
+    'emits a reactive dynamic text node',
+    /makeDynamicText\(\(\) =>/.test(result.typescript),
   )
 
   // run it against the headless (node) dom. The dom module docks `<global:html>`, so the native prelude (the one
@@ -153,12 +153,12 @@ async function main(): Promise<void> {
   try {
     const M = (await import(file)) as {
       label: (host: any, value: any) => void
-      element: (tag: string) => any
+      makeElement: (tag: string) => any
       makeSignal: (value: string) => any
       writeSignal: (self: unknown, value: string) => unknown
     }
     // render-runtime calls are positional, matching code/view/render.tree + reactive.tree task signatures
-    const host = M.element('root')
+    const host = M.makeElement('root')
     const signal = M.makeSignal('hello')
     M.label(host, signal)
     const mounted = () =>
@@ -174,7 +174,7 @@ async function main(): Promise<void> {
       mounted() === 'world',
       String(mounted()),
     )
-    // the `seed role, text <box>` attribute went through the render `attribute` call -> dom set-attribute
+    // the `seed role, text <box>` attribute went through the render `write-attribute` call -> dom set-attribute
     const div = host.handle?.children?.[0]
     const attrs: Array<{ name: string; value: string }> =
       div?.handle?.attributes ?? []
@@ -189,14 +189,14 @@ async function main(): Promise<void> {
     console.log(
       result.typescript
         .split('\n')
-        .filter(l => /label|element|dynamic|append/.test(l))
+        .filter(l => /label|makeElement|makeDynamicText|append/.test(l))
         .join('\n'),
     )
   } finally {
     fs.rmSync(file, { force: true })
   }
 
-  // Stage B: fork -> show, walk -> each
+  // Stage B: fork -> show, walk -> render-each
   const control = compile(
     { file: 'control.tree', text: SOURCE_CONTROL },
     // shaking off: the test drives the signal through `write-signal`, which the zone itself never calls
@@ -209,10 +209,10 @@ async function main(): Promise<void> {
   )
   if (control.ok) {
     ok('fork lowers to a show call', /show\(/.test(control.typescript))
-    ok('walk lowers to an each call', /each\(/.test(control.typescript))
+    ok('walk lowers to a render-each call', /renderEach\(/.test(control.typescript))
     try {
       const M = await run(`${nativePrelude(control.program, 'node', readRuntime)}\n${control.typescript}`)
-      const host = M.element('root')
+      const host = M.makeElement('root')
       M.gallery(host, true, ['a', 'b', 'c'])
       const found = texts(host)
       ok(

@@ -6,8 +6,8 @@
 #   class  -> extra classes (e.g. the script's font family)
 
 load @term/site/code/view/render
-  find element
-  find text
+  find make-element
+  find make-text
 load @term/site/code/dom/dom
   find view
   find append

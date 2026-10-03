@@ -3,7 +3,7 @@
 # navigation-menu-item, navigation-menu-trigger, navigation-menu-content, navigation-menu-link. Section open/close is
 # a shared disclosure controller.
 load @term/site/code/view/render
-  find element
+  find make-element
 load @term/site/code/dom/dom
   find view
   find append

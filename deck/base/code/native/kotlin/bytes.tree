@@ -3,56 +3,56 @@
 dock load
   load <global:octets>, name octets
 
-task do-bytes-from-text
+task octets-from-text
   take text, like text
   like bytes
   send back
     call octets/from-text
       read text
 
-task do-bytes-to-text
+task octets-to-text
   take value, like bytes
   like text
   send back
     call octets/to-text
       read value
 
-task do-to-hex
+task octets-to-hex
   take value, like bytes
   like text
   send back
     call octets/to-hex
       read value
 
-task do-from-hex
+task octets-from-hex
   take text, like text
   like bytes
   send back
     call octets/from-hex
       read text
 
-task do-to-base64
+task octets-to-base64
   take value, like bytes
   like text
   send back
     call octets/to-base64
       read value
 
-task do-from-base64
+task octets-from-base64
   take text, like text
   like bytes
   send back
     call octets/from-base64
       read text
 
-task do-length
+task octets-length
   take value, like bytes
   like number
   send back
     call octets/length
       read value
 
-task do-concat
+task bytes-concat
   take left, like bytes
   take right, like bytes
   like bytes
@@ -61,7 +61,7 @@ task do-concat
       read left
       read right
 
-task do-slice
+task bytes-slice
   take value, like bytes
   take start, like number
   take end, like number

@@ -3,21 +3,21 @@
 dock load
   load <global:json>, name json
 
-task do-parse
+task json-parse
   take text, like text
   like dynamic
   send back
     call json/parse
       read text
 
-task do-stringify
+task json-stringify
   take value, like dynamic
   like text
   send back
     call json/stringify
       read value
 
-task do-get-field
+task json-get-field
   take value, like dynamic
   take key, like text
   like dynamic
@@ -26,7 +26,7 @@ task do-get-field
       read value
       read key
 
-task do-get-item
+task json-get-item
   take value, like dynamic
   take index, like number
   like dynamic
@@ -35,40 +35,40 @@ task do-get-item
       read value
       read index
 
-task do-as-number
+task json-as-number
   take value, like dynamic
   like decimal
   send back
     call json/as-number
       read value
 
-task do-as-text
+task json-as-text
   take value, like dynamic
   like text
   send back
     call json/as-text
       read value
 
-task do-as-boolean
+task json-as-boolean
   take value, like dynamic
   like boolean
   send back
     call json/as-boolean
       read value
 
-task do-is-null
+task json-is-null
   take value, like dynamic
   like boolean
   send back
     call json/is-null
       read value
 
-task do-make-object
+task json-make-object
   like dynamic
   send back
     call json/make-object
 
-task do-set-field
+task json-set-field
   take value, like dynamic
   take key, like text
   take field, like dynamic
@@ -79,12 +79,12 @@ task do-set-field
       read key
       read field
 
-task do-make-array
+task json-make-array
   like dynamic
   send back
     call json/make-array
 
-task do-push-item
+task json-push-item
   take value, like dynamic
   take item, like dynamic
   like dynamic
@@ -93,68 +93,68 @@ task do-push-item
       read value
       read item
 
-task do-json-from-text
+task json-from-text
   take value, like text
   like dynamic
   send back
     call json/from-text
       read value
 
-task do-json-from-number
+task json-from-number
   take value, like decimal
   like dynamic
   send back
     call json/from-number
       read value
 
-task do-from-boolean
+task json-from-boolean
   take value, like boolean
   like dynamic
   send back
     call json/from-boolean
       read value
 
-task do-make-null
+task json-make-null
   like dynamic
   send back
     call json/make-null
 
-task do-is-array
+task json-is-array
   take value, like dynamic
   like boolean
   send back
     call json/is-array
       read value
 
-task do-is-object
+task json-is-object
   take value, like dynamic
   like boolean
   send back
     call json/is-object
       read value
 
-task do-is-text
+task json-is-text
   take value, like dynamic
   like boolean
   send back
     call json/is-text
       read value
 
-task do-is-boolean
+task json-is-boolean
   take value, like dynamic
   like boolean
   send back
     call json/is-boolean
       read value
 
-task do-array-size
+task json-array-size
   take value, like dynamic
   like number
   send back
     call json/array-size
       read value
 
-task do-array-item
+task json-array-item
   take value, like dynamic
   take index, like number
   like dynamic
@@ -163,7 +163,7 @@ task do-array-item
       read value
       read index
 
-task do-object-keys
+task json-object-keys
   take value, like dynamic
   like list
     like text

@@ -3,9 +3,9 @@
 note stable
 
 load @term/base/code/native/{platform}/mutex
-  find do-make
-  find do-lock
-  find do-unlock
+  find latch-make
+  find latch-lock
+  find latch-unlock
 
 # a mutual-exclusion lock
 form mutex
@@ -16,7 +16,7 @@ form mutex
     note async
     take self
     like void
-    call do-lock
+    call latch-lock
       read self
       wait true
 
@@ -25,7 +25,7 @@ form mutex
     note async
     take self
     like void
-    call do-unlock
+    call latch-unlock
       read self
       wait true
 
@@ -35,4 +35,4 @@ task make-mutex
   send back
     make mutex
       bind dock
-        call do-make
+        call latch-make

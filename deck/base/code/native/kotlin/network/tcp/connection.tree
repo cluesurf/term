@@ -6,7 +6,7 @@ dock load
 load @term/base/code/network/tcp
   find connection
 
-task do-read
+task wire-read
   note async
   take connection, like connection
   like text
@@ -15,7 +15,7 @@ task do-read
       read connection/dock
       wait true
 
-task do-write
+task wire-write
   note async
   take connection, like connection
   take data, like text
@@ -26,7 +26,7 @@ task do-write
       read data
       wait true
 
-task do-close-stream
+task tcp-close
   note async
   take connection, like connection
   like void

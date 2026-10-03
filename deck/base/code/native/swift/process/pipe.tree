@@ -4,7 +4,7 @@
 load @term/base/code/process
   find child
 
-bind do-connect
+bind pipe-connect
   take from, like child
   take to, like child
   case swift
@@ -16,6 +16,6 @@ task connect
   take from, like child
   take to, like child
 
-  call do-connect
+  call pipe-connect
     read from
     read to

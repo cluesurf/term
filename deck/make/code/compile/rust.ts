@@ -28,6 +28,8 @@ import {
   exhausted,
   reassigned,
   hasValuedReturn,
+  swapAt,
+  escapingParams,
 } from '@term/make/code/compile/backend'
 import type { CollectionOp } from '@term/make/code/compile/backend'
 import { armLocals } from '@term/make/code/check/arm'
@@ -628,6 +630,23 @@ export function emitRust(
   // `move` (so the original stays usable after the closure is built). This is the same interior-mutability currency
   // the collections already use, applied to a scalar/struct local. Recomputed per function body.
   let cellVars = new Set<string>()
+  // F1: the list parameters of the function being emitted that arrive lent, a `&mut [T]` or a `&[T]`
+  // (`lendableParams`): their slots, length and walk are written on the Vec itself, with no `borrow()`
+  let lentNames = new Map<string, Lend>()
+  // F1: the list locals the function being emitted owns outright, plain `Vec<T>`s (`ownedLocals`), each with whether
+  // anything writes it. They are in `lentNames` too, as 'write', since their slots and walks are written the same way
+  let ownedNames = new Map<string, boolean>()
+  // set while the init of an owned local is emitted: a call to a fresh task there takes its `Vec` as it is, where
+  // every other call to one wraps it into the shared cell
+  let rawFresh = false
+  // whether the function being emitted answers a fresh list (`freshLists`), so a `send back` of an owned local is the
+  // `Vec` itself
+  let emittingFresh = false
+  // a list's contents for reading or writing: the lent Vec itself, or a borrow of the shared cell
+  const view = (target: Expression, write: boolean): string =>
+    target.form === 'variable' && lentNames.has(target.name)
+      ? vname(target.name)
+      : `${expr(target)}.${write ? 'borrow_mut' : 'borrow'}()`
   // the names the CURRENT function or closure body actually reassigns. A `let` only needs `mut` when something
   // later assigns to it: a list or map local is an `Rc<RefCell<...>>`, so `push` and `insert` mutate through the
   // cell and never touch the binding. Declaring every local `let mut` made rustc's unused_mut fire on all of
@@ -737,6 +756,119 @@ export function emitRust(
       .filter((n): n is Extract<Statement, { form: 'function' }> => n.form === 'function')
       .map(n => [n.name, n.params.map(p => p.type)]),
   )
+
+  // F2 escape (note/term/codegen/shared.md): a function parameter the task only CALLS is `impl Fn(..)`, statically
+  // dispatched and inlinable, where every other function value is an `Rc<dyn Fn>`, a heap allocation per closure
+  // and an indirect call. Only for a top-level task that is synchronous, no trait method, defined once, and never
+  // used as a value (a generic function cannot become an `Rc<dyn Fn>`). Passing the parameter on counts as an
+  // escape (`escapingParams`), so a recursive task never instantiates itself at an ever-deeper closure type. At the
+  // call site a closure literal is passed bare and any other function value as `&*f`, a `&dyn Fn` being an `Fn`
+  const implFnParams = new Map<string, Set<number>>()
+  // F1: the list parameters each task takes lent (`lendableParams`), under the same gate
+  const lendParams = new Map<string, Map<number, Lend>>()
+  const tasks = new Set(program.flatMap(n => (n.form === 'function' ? [n.name] : [])))
+  // the tasks the gate admits, and of them the ones that answer a fresh list as a plain `Vec` (`freshTasks`)
+  const gated: Extract<Statement, { form: 'function' }>[] = []
+  let freshLists = new Set<string>()
+  {
+    const defined = new Map<string, number>()
+    const asValue = new Set<string>()
+    const seen = new Set<object>()
+    const walk = (value: unknown): void => {
+      if (typeof value !== 'object' || value === null || seen.has(value)) {
+        return
+      }
+
+      seen.add(value)
+
+      if (Array.isArray(value)) {
+        value.forEach(walk)
+
+        return
+      }
+
+      const node = value as { form?: string; name?: string; callee?: { form?: string }; binding?: { kind?: string } }
+
+      // a parameter or local of the same name is not the task (the stdlib's `fold` takes a `total`)
+      if (node.form === 'variable' && typeof node.name === 'string' && node.binding?.kind !== 'local' && node.binding?.kind !== 'parameter') {
+        asValue.add(node.name)
+      }
+
+      for (const [key, child] of Object.entries(node)) {
+        // the callee of a call is the one use of a task's name that is not a value
+        if (key === 'type' || key === 'span' || (node.form === 'call' && key === 'callee' && node.callee?.form === 'variable')) {
+          continue
+        }
+
+        walk(child)
+      }
+    }
+
+    for (const n of program) {
+      if (n.form === 'function') {
+        defined.set(n.name, (defined.get(n.name) ?? 0) + 1)
+      }
+    }
+
+    walk(program)
+
+    for (const n of program) {
+      if (
+        n.form !== 'function' ||
+        n.async ||
+        n.body.length === 0 ||
+        (n as { method?: unknown }).method ||
+        maskMethods.has(n.name) ||
+        defined.get(n.name) !== 1 ||
+        asValue.has(n.name)
+      ) {
+        continue
+      }
+
+      gated.push(n)
+      const lend = lendableParams(n, tasks)
+
+      if (lend.size) {
+        lendParams.set(n.name, lend)
+      }
+
+      const escapes = escapingParams(n)
+      const local = new Set(
+        n.params.flatMap((p, i) =>
+          p.type?.kind === 'function' && !p.type.effects?.includes('async') && !escapes.has(p.name) ? [i] : [],
+        ),
+      )
+
+      if (local.size) {
+        implFnParams.set(n.name, local)
+      }
+    }
+
+    freshLists = freshTasks(gated, lendParams)
+  }
+
+  // the `impl Fn` spelling of a function type, for a parameter in `implFnParams`
+  const implFnType = (type: Extract<Type, { kind: 'function' }>): string => {
+    const result = rustType(type.result)
+
+    return `impl Fn(${type.params.map(rustType).join(', ')})${result === '()' ? '' : ` -> ${result}`}`
+  }
+
+  // an argument passed to an `impl Fn` parameter: a closure literal without its `Rc`, anything else borrowed as `&dyn Fn`
+  const implFnArg = (arg: Expression, rendered: string): string => {
+    const wrap = 'std::rc::Rc::new(move |'
+    const at = rendered.indexOf(wrap)
+
+    if (arg.form === 'closure' && at >= 0) {
+      const tail = rendered.endsWith(') }') ? ' }' : rendered.endsWith(')') ? '' : undefined
+
+      if (tail !== undefined) {
+        return `${rendered.slice(0, at)}${rendered.slice(at + 'std::rc::Rc::new('.length, rendered.length - tail.length - 1)}${tail}`
+      }
+    }
+
+    return /^[\w:.]+$/.test(rendered) ? `&*${rendered}` : `&*(${rendered})`
+  }
 
   // an empty list or map binding spells its checked type, so rust does not have to infer it from later use
   const emptyAnn = (init: Expression): string => {
@@ -1410,6 +1542,24 @@ export function emitRust(
       }
 
       case 'call': {
+        // read once and cleared, so the call's own arguments never take a fresh `Vec` raw
+        const raw = rawFresh
+        rawFresh = false
+
+        // a push onto, or the size of, an owned list local is the Vec's own (ownedLocals)
+        if (
+          node.callee.form === 'variable' &&
+          (node.callee.name === 'list_push' || node.callee.name === 'list_size') &&
+          node.args[0]?.form === 'variable' &&
+          ownedNames.has(node.args[0].name)
+        ) {
+          const list = vname(node.args[0].name)
+
+          return node.callee.name === 'list_size'
+            ? `(${list}.len() as i64)`
+            : `{ let __push_item = ${bare(owned(node.args[1]!))}; ${list}.push(__push_item); ${list}.len() as i64 }`
+        }
+
         // `call fill / <data> / like <form>` and `call melt / <value> / like <form>`: a function per form, generated
         // from the form's fields at the end of the module (see formWalk below)
         if (
@@ -1475,6 +1625,8 @@ export function emitRust(
                 ? node.callee.type.params
                 : undefined))
             : undefined
+        const lending =
+          node.callee.form === 'variable' && !localNames.has(node.callee.name) ? lendParams.get(node.callee.name) : undefined
         const argList = node.args.map((a, i) => {
           // a closure passed where a task is declared answers what that task declares: the checker can leave the
           // closure's own result unknown, and boxing a `View` into an `Rc<dyn Any>` then misses an `Fn() -> View`
@@ -1511,6 +1663,18 @@ export function emitRust(
               : rendered
           })()
 
+          // a parameter the callee only calls is `impl Fn` (implFnParams)
+          if (node.callee.form === 'variable' && !localNames.has(node.callee.name) && implFnParams.get(node.callee.name)?.has(i)) {
+            return implFnArg(a, rendered)
+          }
+
+          // a list the callee takes lent (lendParams): one borrow of the cell for the whole call
+          const lentAs = lending?.get(i)
+
+          if (lentAs) {
+            return expr(a)
+          }
+
           // a binary's grouping parens are redundant at argument position (the comma delimits):
           // rustc warns unused_parens on them
           return bare(boxUnknown(params?.[i], a, rendered))
@@ -1530,6 +1694,51 @@ export function emitRust(
           }
         }
 
+        // a call that lends a list evaluates its arguments into locals first, in order, and borrows the cell only at the
+        // call itself, so no argument can borrow it while it is lent (`flip(&mut perm.borrow_mut(), perm.borrow()[0])`
+        // would panic). A plain variable or a literal does nothing when evaluated, so it is passed as it stands
+        const hoisted: string[] = []
+
+        if (lending) {
+          node.args.forEach((a, i) => {
+            const simple =
+              (a.form === 'variable' && !cellVars.has(a.name)) || a.form === 'integer' || a.form === 'float' || a.form === 'boolean'
+
+            if (!simple) {
+              hoisted.push(`let __lend_${i} = ${argList[i]};`)
+              argList[i] = `__lend_${i}`
+            }
+
+            const lentAs = lending.get(i)
+
+            if (lentAs) {
+              // an owned Vec is lent as itself; anything else through its cell
+              const plain = a.form === 'variable' && ownedNames.has(a.name)
+
+              argList[i] = plain
+                ? `${lentAs === 'write' ? '&mut ' : '&'}${argList[i]}`
+                : lentAs === 'write'
+                  ? `&mut ${argList[i]}.borrow_mut()`
+                  : `&${argList[i]}.borrow()`
+            }
+          })
+        }
+
+        // the call is a `let` statement, never the block's tail: a tail's temporaries (the `RefMut` the lend made)
+        // outlive the block's locals before edition 2024 (E0597), while a statement drops them at its semicolon
+        const unit = !node.type || node.type.kind === 'unit'
+        // a fresh task answers a plain `Vec` (freshLists): into the shared cell here, unless an owned local takes it
+        const fresh =
+          !raw && node.callee.form === 'variable' && !localNames.has(node.callee.name) && freshLists.has(node.callee.name)
+        const lendWrap = (call: string): string => {
+          const made = !hoisted.length
+            ? call
+            : unit
+              ? `{ ${hoisted.join(' ')} ${call}; }`
+              : `{ ${hoisted.join(' ')} let __lent = ${call}; __lent }`
+
+          return fresh ? `std::rc::Rc::new(std::cell::RefCell::new(${made}))` : made
+        }
         const args = argList.join(', ')
 
         // a generic trait-method call (`call measure / read x`, x a trait-bounded generic) lowers to a Rust method call
@@ -1560,10 +1769,10 @@ export function emitRust(
           const suffix = awaitedRaise ? '' : raiseSuffix()
           awaitedRaise = false
 
-          return `${expr(node.callee)}(${args})${suffix}`
+          return lendWrap(`${expr(node.callee)}(${args})${suffix}`)
         }
 
-        return `${expr(node.callee)}(${args})`
+        return lendWrap(`${expr(node.callee)}(${args})`)
       }
 
       case 'array':
@@ -1661,7 +1870,7 @@ export function emitRust(
         // a DYNAMIC segment (`read table/{key}`) indexes the collection through its handle; cloned out, since
         // indexing a Vec of non-Copy values (String, Rc) cannot move
         if (node.index) {
-          return `${expr(node.target)}.borrow()[${asUsize(expr(node.index))}]${copyType(node.type) ? '' : '.clone()'}`
+          return `${view(node.target, false)}[${asUsize(expr(node.index))}]${copyType(node.type) ? '' : '.clone()'}`
         }
 
         // `map.size` / `array.length` read the length (a map goes through its Rc<RefCell> handle; an array is a plain
@@ -1670,7 +1879,7 @@ export function emitRust(
 
         if (read) {
           // both a map and an array read their length through the Rc<RefCell> handle
-          return `(${expr(read.target)}.borrow().len() as i64)`
+          return `(${view(read.target, false)}.len() as i64)`
         }
 
         const textLength = stringRead(node)
@@ -1686,7 +1895,7 @@ export function emitRust(
           node.target.type?.kind === 'array'
         ) {
           // cloned, as a dynamic index read is: a bare `v.borrow()[1]` moves a String out of the Vec and is refused
-          return `${expr(node.target)}.borrow()[${node.name}]${copyType(node.type) ? '' : '.clone()'}`
+          return `${view(node.target, false)}[${node.name}]${copyType(node.type) ? '' : '.clone()'}`
         }
 
         // a field of a `mark shared` value, READ: cloned out of the borrow, since `x.borrow().field` moves a String or
@@ -2123,15 +2332,43 @@ export function emitRust(
     }
   }
 
-  const block = (body: Statement[], d: number): string =>
-    body
-      .map(s => `${pad(d)}${stmt(s, d)}`)
-      .filter(Boolean)
-      .join('\n')
+  const block = (body: Statement[], d: number): string => {
+    const lines: string[] = []
+
+    for (let at = 0; at < body.length; at++) {
+      // the three-statement swap of two slots is `slice::swap`, under one `borrow_mut` where it took four borrows
+      const swap = swapAt(body, at)
+
+      if (swap) {
+        lines.push(`${pad(d)}${view(swap.list, true)}.swap(${asUsize(expr(swap.first))}, ${asUsize(expr(swap.second))});`)
+        at += 2
+        continue
+      }
+
+      lines.push(`${pad(d)}${stmt(body[at]!, d)}`)
+    }
+
+    return lines.join('\n')
+  }
 
   const stmt = (node: Statement, d: number): string => {
     switch (node.form) {
       case 'let': {
+        // an owned list local is a plain `Vec` (ownedLocals): made empty, or taken as it is from a fresh task
+        if (ownedNames.has(node.name) && node.type?.kind === 'array') {
+          const mutable = ownedNames.get(node.name) ? 'mut ' : ''
+
+          if (node.init.form === 'call') {
+            rawFresh = true
+            const made = expr(node.init)
+            rawFresh = false
+
+            return `let ${mutable}${vname(node.name)} = ${made};`
+          }
+
+          return `let ${mutable}${vname(node.name)}: Vec<${rustType(node.type.element)}> = Vec::new();`
+        }
+
         // the gradual boundary on a binding: `host record, like test-entry / read entry/base` re-types the
         // boxed dynamic at a declared FORM, which on rust is a downcast out of the box
         if (
@@ -2234,10 +2471,10 @@ export function emitRust(
             const simple = (e: Expression): boolean => e.form === 'variable' || e.form === 'integer' || e.form === 'float' || e.form === 'boolean'
 
             if (simple(node.value) && copyType(node.value.type) && simple(node.target.index) && !(node.value.form === 'variable' && cellVars.has(node.value.name))) {
-              return `${expr(holder)}.borrow_mut()[${asUsize(expr(node.target.index))}] ${node.op} ${expr(node.value)};`
+              return `${view(holder, true)}[${asUsize(expr(node.target.index))}] ${node.op} ${expr(node.value)};`
             }
 
-            return `{ let __index_value = ${bare(owned(node.value))}; let __index = (${expr(node.target.index)}) as usize; ${expr(holder)}.borrow_mut()[__index] ${node.op} __index_value; }`
+            return `{ let __index_value = ${bare(owned(node.value))}; let __index = (${expr(node.target.index)}) as usize; ${view(holder, true)}[__index] ${node.op} __index_value; }`
           }
 
           if ((kind === 'map' || named === 'hash') && node.op === '=') {
@@ -2292,11 +2529,28 @@ export function emitRust(
           : `${expr(node.target)} ${node.op} ${bare(expr(node.value))};`
       }
       case 'expression':
+        // a push onto an owned list whose new length nothing reads is the Vec's `push`, as Rust writes it
+        if (
+          node.expr.form === 'call' &&
+          node.expr.callee.form === 'variable' &&
+          node.expr.callee.name === 'list_push' &&
+          node.expr.args[0]?.form === 'variable' &&
+          ownedNames.has(node.expr.args[0].name)
+        ) {
+          return `${vname(node.expr.args[0].name)}.push(${bare(owned(node.expr.args[1]!))});`
+        }
+
         return `${expr(node.expr)};`
       case 'return': {
 
+        // an owned list local leaves whole: the Vec itself from a fresh task, otherwise into the shared cell
+        const ownedOut = node.value?.form === 'variable' && ownedNames.has(node.value.name) && closureDepth === 0
         // a list-returning function that returns a native dock call directly wraps the shim's plain `Vec`
-        const value = !node.value
+        const value = ownedOut
+          ? emittingFresh
+            ? vname((node.value as Extract<Expression, { form: 'variable' }>).name)
+            : `std::rc::Rc::new(std::cell::RefCell::new(${vname((node.value as Extract<Expression, { form: 'variable' }>).name)}))`
+          : !node.value
           ? '()'
           : fnReturnsArray && isNativeCall(node.value)
             ? wrapList(expr(node.value))
@@ -2367,8 +2621,10 @@ export function emitRust(
           hasHiveTell
             ? `{ let told = ${built}; hive_tell(HiveEntry { host: told.host.clone(), kind: "exception".to_string(), name: told.form.clone(), site: String::new(), base: std::rc::Rc::new(told.clone()) }); told }`
             : built
+        // an INTERPOLATED text (`halt <cycle: {{x}}>`, a `template` node) is a text too, and raises `failure`
+        // like a plain one. It used to fall to the pass-on branch and hand back a String where a TermException goes
         const carrier =
-          node.value.form === 'string'
+          node.value.form === 'string' || node.value.form === 'template'
             ? tell(
                 `TermException { host: String::new(), form: "failure".to_string(), note: ${expr(node.value)}, code: String::new(), time: 0, link: std::rc::Rc::new(()), base: std::rc::Rc::new(()) }`,
               )
@@ -2387,6 +2643,12 @@ export function emitRust(
       case 'while': {
         const budget = budgetCheck(node, d + 1)
 
+        // the item and index are locals, so a top-level task or dock alias of the same name does not capture a read
+        localNames.add(node.item)
+
+        if (node.index) {
+          localNames.add(node.index)
+        }
         // `while true` emits `loop`, which rustc knows diverges: a function ending in the loop then needs no
         // unreachable trailing value (E0308)
         if (node.cond.form === 'boolean' && node.cond.value === true) {
@@ -2432,12 +2694,6 @@ export function emitRust(
 
         const budget = budgetCheck(node, d + 1)
 
-        // the item and index are locals, so a top-level task or dock alias of the same name does not capture a read
-        localNames.add(node.item)
-
-        if (node.index) {
-          localNames.add(node.index)
-        }
 
         // a list is walked by position, each element cloned out under a borrow that ends before the body runs: no copy
         // of the whole Vec, and the body may still push to the list it walks. The length is read every turn, so an
@@ -2447,6 +2703,22 @@ export function emitRust(
           const index = node.index ? `let ${vname(node.index)} = __at as i64; ` : ''
           // a `Copy` element is read out by value, anything else is cloned out of the borrow
           const element = node.iterable.type.kind === 'array' && copyType(node.iterable.type.element) ? '*value' : 'value.clone()'
+          const lentAs = node.iterable.form === 'variable' ? lentNames.get(node.iterable.name) : undefined
+
+          // a list lent for reading cannot change under the walk: an iterator, as Rust writes it
+          if (lentAs === 'read') {
+            const each = node.index ? `(__at, value) in ${vname(node.iterable.name)}.iter().enumerate()` : `value in ${vname(node.iterable.name)}.iter()`
+
+            return `for ${each} {\n${pad(d + 1)}let ${vname(node.item)} = ${element}; ${index}\n${budget}${block(node.body, d + 1)}\n${pad(d)}}`
+          }
+
+          // a list lent for writing is walked by position on the Vec itself, so the body may still write it
+          if (lentAs === 'write') {
+            return `{ let mut __at: usize = 0; loop { let ${vname(node.item)} = match ${vname(node.iterable.name)}.get(__at) { Some(value) => ${element}, None => break }; ${index}__at += 1;\n${budget}${block(
+              node.body,
+              d + 1,
+            )}\n${pad(d)}} }`
+          }
 
           return `{ let __walked = &(${expr(node.iterable)}); let mut __at: usize = 0; loop { let ${vname(node.item)} = match __walked.borrow().get(__at) { Some(value) => ${element}, None => break }; ${index}__at += 1;\n${budget}${block(
             node.body,
@@ -2807,9 +3079,31 @@ export function emitRust(
 
         const decls = [...kept, ...fresh]
         const generics = decls.length ? `<${decls.join(', ')}>` : ''
+        const local = implFnParams.get(node.name)
+        const lend = lendParams.get(node.name)
         const params = node.params
-          .map(p => `${vname(p.name)}: ${rustType(p.type)}`)
+          .map((p, i) => {
+            const how = lend?.get(i)
+
+            if (how && p.type?.kind === 'array') {
+              const element = rustType(p.type.element)
+
+              // a slice either way: a lent list is read and written slot by slot, never grown (clippy: ptr_arg)
+              return `${vname(p.name)}: ${how === 'write' ? `&mut [${element}]` : `&[${element}]`}`
+            }
+
+            return `${vname(p.name)}: ${local?.has(i) && p.type?.kind === 'function' ? implFnType(p.type) : rustType(p.type)}`
+          })
           .join(', ')
+        const previousLent = lentNames
+        const previousOwned = ownedNames
+        const previousFresh = emittingFresh
+        ownedNames = node.async ? new Map() : ownedLocals(node, freshLists, lendParams)
+        emittingFresh = freshLists.has(node.name)
+        lentNames = new Map([
+          ...node.params.flatMap((p, i) => (lend?.has(i) ? [[p.name, lend.get(i)!] as const] : [])),
+          ...[...ownedNames.keys()].map(name => [name, 'write'] as const),
+        ])
 
         // a task with no declared result but a valued `send back` (a dock forward) answers the boxed dynamic
         const declaredResult =
@@ -2818,8 +3112,13 @@ export function emitRust(
             : hasValuedReturn(node.body)
               ? ({ kind: 'unknown' } as Type)
               : node.result
+        // a task that answers a fresh list answers the `Vec` itself (freshLists)
         const plainResult =
-          declaredResult && declaredResult.kind !== 'unit' ? rustType(declaredResult) : ''
+          emittingFresh && declaredResult?.kind === 'array'
+            ? `Vec<${rustType(declaredResult.element)}>`
+            : declaredResult && declaredResult.kind !== 'unit'
+              ? rustType(declaredResult)
+              : ''
         carries ||= raising.has(node.name)
         const ret = raising.has(node.name)
           ? ` -> std::result::Result<${plainResult || '()'}, TermException>`
@@ -2983,6 +3282,13 @@ export function emitRust(
 
           const value = text.slice(at + marker.length, -1)
 
+          // the line found must START the final statement. A closure's body renders from depth 0, so its own
+          // `return x;` can sit at this depth inside the final statement, followed by shallower lines (`} else {`).
+          // Taking that one dropped the closure's `return` and the final statement's `;` (walk.tree's `take`)
+          if (value.split('\n').slice(1).some(line => line.trim() && !line.startsWith(pad(d + 1)))) {
+            return text
+          }
+
           // a value that borrows (`out.borrow().iter()...`) stays a `return` statement: before edition 2024 a tail
           // expression's temporaries outlive the block's locals, so the `Ref` guard would outlive `out` (E0597),
           // while a statement drops it at its semicolon
@@ -3004,6 +3310,9 @@ export function emitRust(
         currentAsync = previousAsync
         currentResult = previousResult
         fnReturnsArray = previousReturnsArray
+        lentNames = previousLent
+        ownedNames = previousOwned
+        emittingFresh = previousFresh
         moveArgs = previousMoveArgs
         cellVars = previousCellVars
         assignedVars = previousAssigned
@@ -3635,6 +3944,439 @@ function mutatedCaptures(body: Statement[]): Set<string> {
 // every variable name READ or written anywhere in a body (used to decide which Rc<RefCell> handles a closure captures)
 // every name a body binds with `let`, at any depth (loop variables and match arms bind through their own forms
 // and read through the same emitter paths, so a module constant of those names is shadowed the same way)
+// F1, the first and narrowest slice (note/term/codegen/shared.md): the list PARAMETERS a task may take LENT, as
+// `&mut [T]` ('write') or `&[T]` ('read'), where every list is otherwise an `Rc<RefCell<Vec<T>>>` borrowed again at
+// each element. The caller lends once for the whole call. A wrong answer here does not merely slow a program down: a
+// second name reaching the same list while it is lent panics on its `RefCell`. So it is refused unless nothing else
+// in the task CAN reach a list:
+//   - every mention of the parameter is a slot read or write (`xs/{i}`, `xs/0`), its length, or the list a walk walks.
+//     Never reassigned, passed, stored, returned or captured
+//   - every other parameter is a scalar (a number, a float, a flag, a text), so no second name can alias it
+//   - the task makes no call to another task, calls no function value, builds no closure, and reads no collection
+//     from outside itself; a native call takes scalar arguments only
+// `gate` is the same filter `impl Fn` uses: a top-level synchronous task, defined once, never used as a value.
+export type Lend = 'read' | 'write'
+
+const SCALAR_NAMES = new Set(['text', 'boolean', 'number', 'integer', 'decimal'])
+
+function scalarType(type: Type | undefined): boolean {
+  return (
+    type !== undefined &&
+    (type.kind === 'number' ||
+      type.kind === 'float' ||
+      type.kind === 'boolean' ||
+      type.kind === 'string' ||
+      (type.kind === 'named' && SCALAR_NAMES.has(type.name) && !type.args?.length))
+  )
+}
+
+export function lendableParams(fn: Extract<Statement, { form: 'function' }>, tasks: Set<string>): Map<number, Lend> {
+  const lent = new Map<number, Lend>()
+  const candidates = fn.params.flatMap((p, i) => (p.type?.kind === 'array' ? [i] : []))
+
+  if (candidates.length !== 1 || !fn.params.every((p, i) => i === candidates[0] || scalarType(p.type))) {
+    return lent
+  }
+
+  const name = fn.params[candidates[0]!]!.name
+  const locals = new Set(fn.params.map(p => p.name))
+  letNames(fn.body, locals)
+  let refused = false
+  let written = false
+  type Loose = Record<string, unknown> & { form?: string }
+
+  const slotOf = (node: Loose): boolean =>
+    node.form === 'member' &&
+    (node.index !== undefined || /^\d+$/.test(node.name as string)) &&
+    (node.target as Loose).form === 'variable' &&
+    (node.target as Loose).name === name
+
+  const visit = (value: unknown): void => {
+    if (refused || typeof value !== 'object' || value === null) {
+      return
+    }
+
+    if (Array.isArray(value)) {
+      value.forEach(visit)
+
+      return
+    }
+
+    const node = value as Loose
+
+    switch (node.form) {
+      case 'closure':
+      case 'await':
+        refused = true
+
+        return
+      case 'variable': {
+        const id = node.name as string
+
+        // the parameter itself, anywhere but the places handled below; or a collection from outside the task
+        if (id === name || (!locals.has(id) && !scalarType(node.type as Type | undefined) && !tasks.has(id))) {
+          refused = true
+        }
+
+        return
+      }
+      case 'call': {
+        const callee = node.callee as Loose
+
+        // another task, a function value, or a method-shaped operation on a collection: any could reach the list
+        if (callee.form !== 'variable' || tasks.has(callee.name as string) || locals.has(callee.name as string)) {
+          refused = true
+
+          return
+        }
+
+        if (!(node.args as Loose[]).every(a => scalarType(a.type as Type | undefined))) {
+          refused = true
+
+          return
+        }
+
+        visit(node.args)
+
+        return
+      }
+      case 'member':
+        if (slotOf(node)) {
+          visit(node.index)
+
+          return
+        }
+
+        {
+          const read = collectionRead(node as Expression)
+
+          if (read && read.target.form === 'variable' && read.target.name === name) {
+            return
+          }
+        }
+
+        visit(node.target)
+        visit(node.index)
+
+        return
+      case 'assign': {
+        const target = node.target as Loose
+
+        if (slotOf(target)) {
+          written = true
+          visit(target.index)
+          visit(node.value)
+
+          return
+        }
+
+        visit(node.target)
+        visit(node.value)
+
+        return
+      }
+      case 'for-each': {
+        const iterable = node.iterable as Loose
+
+        if (!(iterable.form === 'variable' && iterable.name === name)) {
+          visit(iterable)
+        }
+
+        visit(node.body)
+
+        return
+      }
+      default:
+        for (const [key, child] of Object.entries(node)) {
+          if (key !== 'type' && key !== 'span') {
+            visit(child)
+          }
+        }
+    }
+  }
+
+  visit(fn.body)
+
+  if (!refused) {
+    lent.set(candidates[0]!, written ? 'write' : 'read')
+  }
+
+  return lent
+}
+
+// F1, the second slice: the list LOCALS a task owns outright, held as a plain `Vec<T>`. A local is owned when it is
+// made fresh (`make list`, an empty literal, or a call to a task that answers a fresh list, `fresh`), never rebound,
+// and every mention is one that cannot let a second name reach it:
+//   - a slot read or write, its length (`list_size`), a walk over it, a `list_push` onto it
+//   - an argument a callee takes lent (`lendParams`): the borrow ends with the call
+//   - `send back` of it, the list leaving whole (wrapped into the shared cell then, or handed on as the `Vec` itself
+//     when this task is `fresh`)
+// Never inside a closure, never passed, stored or aliased otherwise. Answers each owned name and whether anything
+// writes it (for `let mut`).
+export function ownedLocals(
+  fn: Extract<Statement, { form: 'function' }>,
+  fresh: Set<string>,
+  lend: Map<string, Map<number, Lend>>,
+): Map<string, boolean> {
+  type Loose = Record<string, unknown> & { form?: string }
+  const made = (init: Loose): boolean =>
+    (init.form === 'array' && (init.items as unknown[]).length === 0) ||
+    (init.form === 'record' && init.name === 'list' && (init.fields as unknown[]).length === 0) ||
+    (init.form === 'call' && (init.callee as Loose).form === 'variable' && fresh.has((init.callee as Loose).name as string))
+  const candidates = new Map<string, boolean>()
+  const declared = new Map<string, number>()
+
+  const collect = (value: unknown): void => {
+    if (typeof value !== 'object' || value === null) {
+      return
+    }
+
+    if (Array.isArray(value)) {
+      value.forEach(collect)
+
+      return
+    }
+
+    const node = value as Loose
+
+    if (node.form === 'let') {
+      declared.set(node.name as string, (declared.get(node.name as string) ?? 0) + 1)
+
+      if ((node.type as Type | undefined)?.kind === 'array' && made(node.init as Loose)) {
+        candidates.set(node.name as string, false)
+      }
+    }
+
+    for (const [key, child] of Object.entries(node)) {
+      if (key !== 'type' && key !== 'span') {
+        collect(child)
+      }
+    }
+  }
+
+  collect(fn.body)
+
+  // a name declared twice (two branches, a shadow) is refused: the analysis is by name
+  for (const name of [...candidates.keys()]) {
+    if (declared.get(name) !== 1 || fn.params.some(p => p.name === name)) {
+      candidates.delete(name)
+    }
+  }
+
+  // refusals and writes are kept apart, so a write seen after a refusal cannot admit the name again
+  const refused = new Set<string>()
+  const written = new Set<string>()
+  const refuse = (name: string): void => {
+    refused.add(name)
+  }
+  const owned = (node: Loose | undefined): string | undefined =>
+    node?.form === 'variable' && candidates.has(node.name as string) ? (node.name as string) : undefined
+  const slotOf = (node: Loose): string | undefined =>
+    node.form === 'member' && (node.index !== undefined || /^\d+$/.test(node.name as string)) ? owned(node.target as Loose) : undefined
+
+  const visit = (value: unknown, inClosure: boolean): void => {
+    if (typeof value !== 'object' || value === null) {
+      return
+    }
+
+    if (Array.isArray(value)) {
+      value.forEach(v => visit(v, inClosure))
+
+      return
+    }
+
+    const node = value as Loose
+
+    switch (node.form) {
+      case 'closure':
+        visit(node.body, true)
+
+        return
+      case 'variable': {
+        const name = owned(node)
+
+        if (name) {
+          refuse(name)
+        }
+
+        return
+      }
+      case 'let':
+        // the declaration of an owned local: its init is fresh by construction, so only the init's own arguments.
+        // Any other `let` is visited whole, so `let y = xs` refuses `xs`
+        if (candidates.has(node.name as string)) {
+          visit((node.init as Loose).form === 'call' ? (node.init as Loose).args : undefined, inClosure)
+        } else {
+          visit(node.init, inClosure)
+        }
+
+        return
+      case 'member': {
+        const name = slotOf(node)
+
+        if (name && !inClosure) {
+          visit(node.index, inClosure)
+
+          return
+        }
+
+        const read = collectionRead(node as Expression)
+        const counted = read ? owned(read.target as Loose) : undefined
+
+        if (counted && !inClosure) {
+          return
+        }
+
+        visit(node.target, inClosure)
+        visit(node.index, inClosure)
+
+        return
+      }
+      case 'assign': {
+        const name = slotOf(node.target as Loose)
+
+        if (name && !inClosure) {
+          written.add(name)
+          visit((node.target as Loose).index, inClosure)
+          visit(node.value, inClosure)
+
+          return
+        }
+
+        visit(node.target, inClosure)
+        visit(node.value, inClosure)
+
+        return
+      }
+      case 'for-each': {
+        const name = owned(node.iterable as Loose)
+
+        if (!name || inClosure) {
+          visit(node.iterable, inClosure)
+        }
+
+        visit(node.body, inClosure)
+
+        return
+      }
+      case 'return': {
+        const name = owned(node.value as Loose)
+
+        if (!name || inClosure) {
+          visit(node.value, inClosure)
+        }
+
+        return
+      }
+      case 'call': {
+        const callee = node.callee as Loose
+        const args = node.args as Loose[]
+        const first = owned(args[0])
+
+        // a push onto, or the size of, an owned list
+        if (!inClosure && first && callee.form === 'variable' && (callee.name === 'list_push' || callee.name === 'list_size')) {
+          if (callee.name === 'list_push') {
+            written.add(first)
+          }
+
+          visit(args.slice(1), inClosure)
+
+          return
+        }
+
+        // an argument the callee takes lent
+        const lent = callee.form === 'variable' ? lend.get(callee.name as string) : undefined
+
+        args.forEach((a, i) => {
+          const name = owned(a)
+          const how = lent?.get(i)
+
+          if (name && how && !inClosure) {
+            if (how === 'write') {
+              written.add(name)
+            }
+          } else {
+            visit(a, inClosure)
+          }
+        })
+
+        visit(callee, inClosure)
+
+        return
+      }
+      default:
+        for (const [key, child] of Object.entries(node)) {
+          if (key !== 'type' && key !== 'span') {
+            visit(child, inClosure)
+          }
+        }
+    }
+  }
+
+  // refusing one name can only refuse, never admit, so one pass sees every disqualifying mention
+  visit(fn.body, false)
+
+  return new Map([...candidates.keys()].filter(name => !refused.has(name)).map(name => [name, written.has(name)]))
+}
+
+// The tasks that answer a FRESH list, returned as a plain `Vec<T>`: every `send back` hands back a list the task owns
+// (`ownedLocals`). A fixpoint, since a local made by a call to a fresh task is itself owned. Begins from every task the
+// gate admits whose result is a list, and drops one each round until none drops
+export function freshTasks(candidates: Extract<Statement, { form: 'function' }>[], lend: Map<string, Map<number, Lend>>): Set<string> {
+  const fresh = new Set(candidates.filter(fn => fn.result?.kind === 'array').map(fn => fn.name))
+  let changed = true
+
+  const returns = (body: unknown, into: Expression[]): void => {
+    if (typeof body !== 'object' || body === null) {
+      return
+    }
+
+    if (Array.isArray(body)) {
+      body.forEach(b => returns(b, into))
+
+      return
+    }
+
+    const node = body as Record<string, unknown> & { form?: string }
+
+    // a closure's own `send back` answers the closure, not the task
+    if (node.form === 'closure') {
+      return
+    }
+
+    if (node.form === 'return') {
+      into.push(node.value as Expression)
+    }
+
+    for (const [key, child] of Object.entries(node)) {
+      if (key !== 'type' && key !== 'span') {
+        returns(child, into)
+      }
+    }
+  }
+
+  while (changed) {
+    changed = false
+
+    for (const fn of candidates) {
+      if (!fresh.has(fn.name)) {
+        continue
+      }
+
+      const owned = ownedLocals(fn, fresh, lend)
+      const values: Expression[] = []
+      returns(fn.body, values)
+
+      if (values.length === 0 || !values.every(v => v?.form === 'variable' && owned.has(v.name))) {
+        fresh.delete(fn.name)
+        changed = true
+      }
+    }
+  }
+
+  return fresh
+}
+
 function letNames(body: Statement[], into: Set<string>): void {
   for (const s of body) {
     switch (s.form) {

@@ -1,0 +1,84 @@
+load @term/base/code/list
+  find list
+
+# list parameters Rust takes lent (rust.ts, `lendableParams`): a `&mut [T]` written in place, a `&[T]` walked, and
+# what must not change: the caller sees every write, an argument that reads the same list is read before the lend
+# (`bump(xs, xs/0)` would otherwise panic on the cell), a list made in the call itself, and a task that passes its
+# list on, which keeps the shared cell
+task counting
+  take n, like number
+  like list, like number
+  save out
+    make list
+  walk size
+    bind base, code 0
+    bind head, read n
+    hook next
+      take site, name i
+      call push
+        bind list, read out
+        bind item, read i
+  send back, read out
+
+# writes one slot: lent `&mut [i64]`
+task bump
+  take xs, like list, like number
+  take by, like number
+  save xs/{by}
+    call add
+      read xs/{by}
+      read by
+
+# reads every slot: lent `&[i64]`. A sum of squares, which the simplifier does not rewrite into the stdlib `sum`
+task total
+  take xs, like list, like number
+  like number
+  save sum, code 0
+  walk list, read xs
+    hook next
+      take site, name x
+      save sum
+        call add
+          read sum
+          call multiply
+            read x
+            read x
+  send back, read sum
+
+# passes its list on, so it keeps the cell
+task bump-twice
+  take xs, like list, like number
+  take by, like number
+  call bump
+    read xs
+    read by
+  call bump
+    read xs
+    read by
+
+task compute
+  like text
+  host xs
+    call counting
+      code 5
+  call bump
+    read xs
+    code 2
+  host after, read xs/2
+  call bump
+    read xs
+    read xs/1
+  host self-read, read xs/1
+  host ys, read xs
+  call bump-twice
+    read ys
+    code 3
+  host shared, read xs/3
+  host sum
+    call total
+      read xs
+  host fresh
+    call total
+      call counting
+        code 4
+  send back, text <after={{after}} self-read={{self-read}} shared={{shared}} sum={{sum}} fresh={{fresh}}>

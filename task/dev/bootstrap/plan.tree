@@ -2,24 +2,20 @@
 # put it there), and a setting (an environment variable, or a directory on PATH). mac.tree, linux.tree and
 # windows.tree each build their list from these; base.tree, the console, checks and installs them. The versions are
 # here once, so every platform installs the same ones.
+#
+# NO STEP IS EVER A SHELL STRING. A step is a program and a list of arguments, handed to the operating system as they
+# are, so a path with a space, a quote, a `$` or a `;` in it is one argument and never code: there is nothing to escape
+# and nothing to inject. What a shell would have done is done here instead: directories are made, moved and removed
+# through the file API, the working directory is set before a step runs, and a program's prompts are answered through
+# its standard input. The one exception is Windows, where a `.bat` or `.cmd` tool can only start through `cmd /c`,
+# which reads its command line again: there, an argument holding any character cmd treats specially is refused, never
+# escaped (see `cmd-safe` in base.tree).
 
 load @term/base/code/list
   find list
-  find size
-  find get
-
-load @term/base/code/text
-  find trim
-  find split
-  find contains
-  find starts-with
-
-load @term/base/code/process/run
-  find run
-  find run-attached
-  find run-result
 
 # the toolchain versions every platform installs alike
+host node-version, text <24.11.0>
 host node-major, text <24>
 host pnpm-version, text <12.8.1>
 host jdk-major, text <21>
@@ -39,24 +35,45 @@ form machine
   link home, like text
   # the Term repository this runs from
   link root, like text
-  # the package manager: brew, apt, dnf, pacman, zypper or winget, or none
+  # the package manager: brew, apt, dnf, pacman, zypper or winget
   link packager, like text
   # the shell profile the settings are written to (~/.zshrc, ~/.bashrc), empty on Windows
   link profile, like text
-  # where downloaded toolchains are unpacked: ~/.local/share/term-dev, or %LOCALAPPDATA%\term-dev
+  # where downloads are unpacked: ~/.local/share/term-dev, or the user's AppData\Local\term-dev
   link store, like text
 
-# one command a tool's installation runs, in the platform's shell (`sh -c`, or PowerShell)
+# One thing a tool's installation does. `run` is a program and its arguments; `make-directory`, `remove-directory`
+# and `move` act on the paths in `arguments` through the file API, the same on every platform.
 form step
-  link script, like text
   link note, like text
+  link action, like text
+  link program, like text
+  link arguments
+    like list
+      like text
+  # written to the program's standard input, then closed: the answers to its prompts. Empty for none
+  link input
+    like text
+    need false
+  # the working directory the program runs in. Empty for the repository
+  link directory
+    like text
+    need false
+  # a failure here does not stop the tool: a step that fails when it has nothing to do
+  link tolerate
+    like boolean
+    need false
 
 form tool
   link name, like text
   # what it unlocks, for the report
   link need, like text
-  # a command that succeeds only when the tool is there; its first line of output is the version shown
-  link probe, like text
+  # a program that succeeds only when the tool is there; its first line of output is the version shown
+  link probe, like step
+  # or a file whose existence means the tool is there, checked instead of the probe when not empty
+  link marker
+    like text
+    need false
   link steps
     like list
       like step
@@ -73,14 +90,248 @@ form setting
   link value, like text
   link path, like boolean
 
-task make-step
-  take script, like text
+# the arguments given, the empty ones left out: each is one argument, never split or reread
+task arguments
+  take a, like(text), fall text <>
+  take b, like(text), fall text <>
+  take c, like(text), fall text <>
+  take d, like(text), fall text <>
+  take e, like(text), fall text <>
+  take f, like(text), fall text <>
+  take g, like(text), fall text <>
+  take h, like(text), fall text <>
+  take i, like(text), fall text <>
+  take j, like(text), fall text <>
+  take k, like(text), fall text <>
+  take l, like(text), fall text <>
+  like list
+    like text
+  save out
+    make list
+  call keep
+    read out
+    read a
+  call keep
+    read out
+    read b
+  call keep
+    read out
+    read c
+  call keep
+    read out
+    read d
+  call keep
+    read out
+    read e
+  call keep
+    read out
+    read f
+  call keep
+    read out
+    read g
+  call keep
+    read out
+    read h
+  call keep
+    read out
+    read i
+  call keep
+    read out
+    read j
+  call keep
+    read out
+    read k
+  call keep
+    read out
+    read l
+  send back, read out
+
+task keep
+  mark private
+  take out
+    like list
+      like text
+  take value, like text
+  like boolean
+  fork test
+    hook test
+      call is-equal
+        read value
+        text <>
+    hook hold
+      send back, false
+  call out/push
+    read value
+  send back, true
+
+# run a program with these arguments
+task command
   take note, like text
+  take program, like text
+  take arguments
+    like list
+      like text
   like step
   send back
     make step
-      bind script, read script
       bind note, read note
+      bind action, text <run>
+      bind program, read program
+      bind arguments, read arguments
+      bind input, text <>
+      bind directory, text <>
+      bind tolerate, false
+
+# the same, where a failure does not stop the tool
+task tolerant-command
+  take note, like text
+  take program, like text
+  take arguments
+    like list
+      like text
+  like step
+  send back
+    make step
+      bind note, read note
+      bind action, text <run>
+      bind program, read program
+      bind arguments, read arguments
+      bind input, text <>
+      bind directory, text <>
+      bind tolerate, true
+
+# a program whose prompts are answered by `input`
+task answered-command
+  take note, like text
+  take program, like text
+  take arguments
+    like list
+      like text
+  take input, like text
+  like step
+  send back
+    make step
+      bind note, read note
+      bind action, text <run>
+      bind program, read program
+      bind arguments, read arguments
+      bind input, read input
+      bind directory, text <>
+      bind tolerate, false
+
+task path-step
+  mark private
+  take note, like text
+  take action, like text
+  take first, like text
+  take second, like text
+  like step
+  send back
+    make step
+      bind note, read note
+      bind action, read action
+      bind program, text <>
+      bind arguments
+        call arguments
+          read first
+          read second
+      bind input, text <>
+      bind directory, text <>
+      bind tolerate, false
+
+task make-directory-step
+  take note, like text
+  take path, like text
+  like step
+  send back
+    call path-step
+      read note
+      text <make-directory>
+      read path
+      text <>
+
+task remove-directory-step
+  take note, like text
+  take path, like text
+  like step
+  send back
+    call path-step
+      read note
+      text <remove-directory>
+      read path
+      text <>
+
+task move-step
+  take note, like text
+  take from, like text
+  take to, like text
+  like step
+  send back
+    call path-step
+      read note
+      text <move>
+      read from
+      read to
+
+# download `url` to the file `into` (curl ships with macOS, Windows 10 and later, and every Linux this supports)
+task download-step
+  take machine, like machine
+  take note, like text
+  take url, like text
+  take into, like text
+  like step
+  save program, text <curl>
+  fork test
+    hook test
+      call is-equal
+        read machine/system
+        text <windows>
+    hook hold
+      save program, text <curl.exe>
+  send back
+    call command
+      read note
+      read program
+      call arguments
+        text <--fail>
+        text <--location>
+        text <--silent>
+        text <--show-error>
+        text <--output>
+        read into
+        read url
+
+# unpack a .zip or .tar.* archive into a directory (tar reads zip on every platform this supports)
+task unpack-step
+  take note, like text
+  take archive, like text
+  take into, like text
+  like step
+  send back
+    call command
+      read note
+      text <tar>
+      call arguments
+        text <-xf>
+        read archive
+        text <-C>
+        read into
+
+# a tool found by running a program
+task probe-command
+  take program, like text
+  take a, like(text), fall text <>
+  take b, like(text), fall text <>
+  take c, like(text), fall text <>
+  like step
+  send back
+    call command
+      text <probe>
+      read program
+      call arguments
+        read a
+        read b
+        read c
 
 task make-setting
   take name, like text
@@ -101,155 +352,91 @@ task path-setting
       bind value, read value
       bind path, true
 
-# the command line that installs `packages` (space separated) with the machine's package manager
-task install-packages
+# the step that installs one package with the machine's package manager
+task package-step
   take machine, like machine
-  take packages, like text
-  like text
+  take note, like text
+  take package, like text
+  like step
   fork test
     hook test
       call is-equal
         read machine/packager
         text <brew>
     hook hold
-      send back, text <brew install {{packages}}>
-    hook test
-      call is-equal
-        read machine/packager
-        text <apt>
-    hook hold
-      send back, text <sudo apt-get update && sudo apt-get install -y {{packages}}>
-    hook test
-      call is-equal
-        read machine/packager
-        text <dnf>
-    hook hold
-      send back, text <sudo dnf install -y {{packages}}>
-    hook test
-      call is-equal
-        read machine/packager
-        text <pacman>
-    hook hold
-      send back, text <sudo pacman -S --needed --noconfirm {{packages}}>
-    hook test
-      call is-equal
-        read machine/packager
-        text <zypper>
-    hook hold
-      send back, text <sudo zypper install -y {{packages}}>
+      send back
+        call command
+          read note
+          text <brew>
+          call arguments
+            text <install>
+            read package
     hook test
       call is-equal
         read machine/packager
         text <winget>
     hook hold
-      send back, text <winget install --exact --silent --accept-source-agreements --accept-package-agreements --id {{packages}}>
-  send back, text <echo "no package manager found: install {{packages}} by hand" && exit 1>
-
-# the program and arguments that run a script in the platform's shell
-task shell-arguments
-  take machine, like machine
-  take script, like text
-  like list
-    like text
-  save out
-    make list
-  fork test
+      send back
+        call command
+          read note
+          text <winget>
+          call arguments
+            text <install>
+            text <--exact>
+            text <--silent>
+            text <--accept-source-agreements>
+            text <--accept-package-agreements>
+            text <--id>
+            read package
     hook test
       call is-equal
-        read machine/system
-        text <windows>
-    hook hold
-      call out/push, text <-NoProfile>
-      call out/push, text <-ExecutionPolicy>
-      call out/push, text <Bypass>
-      call out/push, text <-Command>
-    hook miss
-      call out/push, text <-c>
-  call out/push
-    read script
-  send back, read out
-
-task shell-program
-  take machine, like machine
-  like text
-  fork test
-    hook test
-      call is-equal
-        read machine/system
-        text <windows>
-    hook hold
-      send back, text <powershell>
-  send back, text <sh>
-
-# run a script and capture what it wrote
-task run-script
-  note async
-  take machine, like machine
-  take script, like text
-  like run-result
-  send back
-    call run
-      call shell-program
-        read machine
-      call shell-arguments
-        read machine
-        read script
-      wait true
-
-# run a script on this terminal, where it can prompt and show progress; its exit code
-task run-script-attached
-  note async
-  take machine, like machine
-  take script, like text
-  like number
-  send back
-    call run-attached
-      call shell-program
-        read machine
-      call shell-arguments
-        read machine
-        read script
-      wait true
-
-# the first line of a probe's output, or of its error when it wrote nothing else (`java -version` writes to standard
-# error)
-task first-line
-  take result, like run-result
-  like text
-  save text
-    call trim
-      read result/output
-  fork test
-    hook test
-      call is-equal
-        read text
-        text <>
-    hook hold
-      save text
-        call trim
-          read result/error
-  save lines
-    call split
-      read text
-      call line-break
-  fork test
-    hook test
-      call is-above
-        call size
-          read lines
-        code 0
+        read machine/packager
+        text <dnf>
     hook hold
       send back
-        call trim
-          call get
-            read lines
-            code 0
-  send back, text <>
-
-task line-break
-  like text
+        call command
+          read note
+          text <sudo>
+          call arguments
+            text <dnf>
+            text <install>
+            text <-y>
+            read package
+    hook test
+      call is-equal
+        read machine/packager
+        text <pacman>
+    hook hold
+      send back
+        call command
+          read note
+          text <sudo>
+          call arguments
+            text <pacman>
+            text <-S>
+            text <--needed>
+            text <--noconfirm>
+            read package
+    hook test
+      call is-equal
+        read machine/packager
+        text <zypper>
+    hook hold
+      send back
+        call command
+          read note
+          text <sudo>
+          call arguments
+            text <zypper>
+            text <install>
+            text <-y>
+            read package
   send back
-    call rune-to-text, code 10
-
-load @term/base/code/text/unicode
-  find rune-to-text
+    call command
+      read note
+      text <sudo>
+      call arguments
+        text <apt-get>
+        text <install>
+        text <-y>
+        read package

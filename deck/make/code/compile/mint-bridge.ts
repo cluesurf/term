@@ -1283,6 +1283,14 @@ function readPath(path: string, span: Span): Expression {
   return node
 }
 
+// The tag field a form names with `mark tag, name kind`, or undefined for the default, `form`
+function tagOf(value: Form): string | undefined {
+  const mark = formsAt(value, 'mark').find(m => wordAt(m, 'kind') === 'tag')
+  const name = mark ? (wordAt(firstAt(mark, 'name'), 'name') ?? wordAt(mark, 'name')) : undefined
+
+  return name && name !== 'form' ? name : undefined
+}
+
 // Is this word written with an empty pair of parentheses straight after it, `f()`. The tree keeps no node for
 // them, so the answer is in the token stream: the word's last token, then `(`, then `)`.
 function hasEmptyParens(node: Node): boolean {
@@ -4040,6 +4048,11 @@ function formOf(bridge: Bridge, value: Form): Statement[] {
       formsAt(value, 'note').some(note => wordAt(note, 'text') === 'shared')
         ? { shared: true }
         : {}),
+      // `mark tag, name kind`: the field a union's TypeScript type and values discriminate on, so a port can keep
+      // the shape the TypeScript it replaces declared (the checker's `Type` tags on `kind`, self-hosting-0020).
+      // Written only when present and not `form`, so every other form builds the Program it always did. The
+      // native backends emit enums, which have no tag field, and ignore it
+      ...(tagOf(value) ? { tag: tagOf(value) } : {}),
       ...(alias ? { alias } : {}),
       ...(extend ? { extend } : {}),
       functionFree:

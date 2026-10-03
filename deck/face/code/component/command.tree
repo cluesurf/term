@@ -3,7 +3,7 @@
 # group, command-item, command-empty, command-separator. The query + filtering + highlighted index are wired via the
 # action registry + a selection controller (the interaction layer); these are the themeable structure.
 load @term/site/code/view/render
-  find element
+  find make-element
 load @term/site/code/dom/dom
   find view
   find append

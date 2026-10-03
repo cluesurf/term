@@ -3,10 +3,20 @@ mint mark
     site kind
   case bind, mint mark-bind
     site bind
+  case name, mint mark-name
+    site name
   hook make
     make mark
       bind kind, read kind
       bind bind, read bind
+      bind name, read name
+
+mint mark-name
+  case name
+    site name
+  hook make
+    make mark-name
+      bind name, read name
 
 mint mark-bind
   case key

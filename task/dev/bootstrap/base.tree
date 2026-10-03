@@ -1,0 +1,1232 @@
+# The Term development environment, set up on macOS, Linux or Windows.
+#
+#   check                 every tool a Term developer uses: there, with its version, or missing, and what it unlocks
+#   install               what installing the missing ones would run, step by step, and nothing more
+#   install --commit      run it: each step on this terminal, so a password prompt or a progress bar reaches you
+#   install --all         include the optional tools too (Android, iOS, Swift off a Mac, the desktop libraries)
+#   install --only rust   one tool, by the name `check` shows
+#   profile [--commit]    the environment the tools expect (PATH, JAVA_HOME, ANDROID_HOME), shown, or written to the
+#                         shell profile (on Windows, the user's environment)
+#
+# Start it with task/dev/bootstrap/start.sh (macOS, Linux) or start.ps1 (Windows), which put Node and the Term CLI in
+# place first, since this file is a Term program and needs them to run. The platform's plan is mac.tree, linux.tree or
+# windows.tree; the pieces they share are plan.tree and share.tree. Every step is a program and its arguments, never a
+# shell string (plan.tree says why).
+
+load ./plan
+  find machine
+  find tool
+  find step
+  find setting
+
+load ./mac
+  find mac-tools
+  find mac-settings
+
+load ./linux
+  find linux-tools
+  find linux-settings
+
+load ./windows
+  find windows-tools
+  find windows-settings
+
+load @term/base/code/process
+  find platform
+
+load @term/base/code/process/run
+  find run
+  find run-attached
+  find run-with-input
+  find run-result
+
+load @term/base/code/environment
+  find variable
+  find set-variable
+  find change-directory
+
+load @term/base/code/file
+  find read
+  find write
+  find test
+  find move
+
+load @term/base/code/file/directory
+  find make
+  find remove
+  find exists
+
+load @term/base/code/text
+  find trim
+  find split
+  find contains
+  find ends-with
+  find index-of
+  find substring
+  find pad-right
+  find replace-all
+
+load @term/base/code/text/unicode
+  find rune-to-text
+
+load @term/base/code/list
+  find list
+  find size
+  find get
+  find join
+
+load @term/base/code/log
+  find info
+
+# ---------------------------------------------------------------- the machine
+
+task line-break
+  like text
+  send back
+    call rune-to-text, code 10
+
+task system-name
+  like text
+  save raw
+    call platform
+  fork test
+    hook test
+      call is-equal
+        read raw
+        text <darwin>
+    hook hold
+      send back, text <mac>
+    hook test
+      call is-equal
+        read raw
+        text <win32>
+    hook hold
+      send back, text <windows>
+  send back, text <linux>
+
+# whether a program runs at all (its `--version` exits cleanly)
+task answers
+  note async
+  take program, like text
+  like boolean
+  save version
+    make list
+  call version/push, text <--version>
+  save result
+    call run
+      read program
+      read version
+      wait true
+  send back
+    call is-equal
+      read result/code
+      code 0
+
+task architecture-of
+  note async
+  take system, like text
+  like text
+  fork test
+    hook test
+      call is-equal
+        read system
+        text <windows>
+    hook hold
+      fork test
+        hook test
+          call contains
+            call variable, text <PROCESSOR_ARCHITECTURE>
+            text <ARM64>
+        hook hold
+          send back, text <arm64>
+      send back, text <x64>
+  save flag
+    make list
+  call flag/push, text <-m>
+  save result
+    call run
+      text <uname>
+      read flag
+      wait true
+  save name
+    call trim
+      read result/output
+  fork test
+    hook test
+      call or
+        call is-equal
+          read name
+          text <arm64>
+        call is-equal
+          read name
+          text <aarch64>
+    hook hold
+      send back, text <arm64>
+  send back, text <x64>
+
+task packager-of
+  note async
+  take system, like text
+  like text
+  fork test
+    hook test
+      call is-equal
+        read system
+        text <mac>
+    hook hold
+      send back, text <brew>
+    hook test
+      call is-equal
+        read system
+        text <windows>
+    hook hold
+      send back, text <winget>
+  fork test
+    hook test
+      call answers
+        text <apt-get>
+        wait true
+    hook hold
+      send back, text <apt>
+  fork test
+    hook test
+      call answers
+        text <dnf>
+        wait true
+    hook hold
+      send back, text <dnf>
+  fork test
+    hook test
+      call answers
+        text <pacman>
+        wait true
+    hook hold
+      send back, text <pacman>
+  fork test
+    hook test
+      call answers
+        text <zypper>
+        wait true
+    hook hold
+      send back, text <zypper>
+  send back, text <none>
+
+task detect-machine
+  note async
+  like machine
+  save system
+    call system-name
+  save home
+    call variable, text <HOME>
+  fork test
+    hook test
+      call is-equal
+        read system
+        text <windows>
+    hook hold
+      save home
+        call variable, text <USERPROFILE>
+  save root
+    call variable, text <TERM_DEV_ROOT>
+  save profile, text <>
+  save store, text <{{home}}/.local/share/term-dev>
+  fork test
+    hook test
+      call is-equal
+        read system
+        text <windows>
+    hook hold
+      save separator
+        call rune-to-text, code 92
+      save store, text <{{home}}{{separator}}AppData{{separator}}Local{{separator}}term-dev>
+    hook miss
+      save profile, text <{{home}}/.bashrc>
+      fork test
+        hook test
+          call or
+            call is-equal
+              read system
+              text <mac>
+            call contains
+              call variable, text <SHELL>
+              text <zsh>
+        hook hold
+          save profile, text <{{home}}/.zshrc>
+  send back
+    make machine
+      bind system, read system
+      bind architecture
+        call architecture-of
+          read system
+          wait true
+      bind home, read home
+      bind root, read root
+      bind packager
+        call packager-of
+          read system
+          wait true
+      bind profile, read profile
+      bind store, read store
+
+task tools-for
+  take machine, like machine
+  like list
+    like tool
+  fork test
+    hook test
+      call is-equal
+        read machine/system
+        text <mac>
+    hook hold
+      send back
+        call mac-tools
+          read machine
+    hook test
+      call is-equal
+        read machine/system
+        text <windows>
+    hook hold
+      send back
+        call windows-tools
+          read machine
+  send back
+    call linux-tools
+      read machine
+
+task settings-for
+  take machine, like machine
+  like list
+    like setting
+  fork test
+    hook test
+      call is-equal
+        read machine/system
+        text <mac>
+    hook hold
+      send back
+        call mac-settings
+          read machine
+    hook test
+      call is-equal
+        read machine/system
+        text <windows>
+    hook hold
+      send back
+        call windows-settings
+          read machine
+  send back
+    call linux-settings
+      read machine
+
+# the settings, made true for this run, so a tool installed a step ago is found by the next
+task apply-settings
+  take machine, like machine
+  like boolean
+  save gap, text <:>
+  fork test
+    hook test
+      call is-equal
+        read machine/system
+        text <windows>
+    hook hold
+      save gap, text <;>
+  walk list
+    call present-settings
+      read machine
+    hook next
+      take site, name setting
+      fork test
+        hook test
+          read setting/path
+        hook hold
+          save now
+            call variable, text <PATH>
+          fork test
+            hook test
+              call contains
+                read now
+                read setting/value
+            hook miss
+              call set-variable
+                text <PATH>
+                text <{{setting/value}}{{gap}}{{now}}>
+        hook miss
+          call set-variable
+            read setting/name
+            read setting/value
+  send back, true
+
+# the settings whose directory is there: a JAVA_HOME naming a JDK that is not installed would break `java`, so a
+# setting is made, and written, only for what exists
+task present-settings
+  take machine, like machine
+  like list
+    like setting
+  save out
+    make list
+  walk list
+    call settings-for
+      read machine
+    hook next
+      take site, name setting
+      fork test
+        hook test
+          call exists
+            read setting/value
+        hook hold
+          call out/push
+            read setting
+  send back, read out
+
+# ---------------------------------------------------------------- running a step
+
+# cmd reads a command line again, so an argument holding any character it treats specially is refused, never escaped
+task cmd-safe
+  take value, like text
+  like boolean
+  save bad, text <&|<>^%!">
+  walk list
+    call split
+      read bad
+      text <>
+    hook next
+      take site, name mark
+      fork test
+        hook test
+          call contains
+            read value
+            read mark
+        hook hold
+          send back, false
+  fork test
+    hook test
+      call contains
+        read value
+        call rune-to-text, code 34
+    hook hold
+      send back, false
+  send back, true
+
+form invocation
+  link program, like text
+  link arguments
+    like list
+      like text
+  # why it cannot run, empty when it can
+  link refusal, like text
+
+# the program the operating system runs for a step: a Windows .bat or .cmd tool through `cmd /c`, everything else as is
+task invocation-of
+  take machine, like machine
+  take program, like text
+  take arguments
+    like list
+      like text
+  like invocation
+  fork test
+    hook test
+      call and
+        call is-equal
+          read machine/system
+          text <windows>
+        call or
+          call ends-with
+            read program
+            text <.bat>
+          call ends-with
+            read program
+            text <.cmd>
+    hook hold
+      save wrapped
+        make list
+      call wrapped/push, text </c>
+      call wrapped/push
+        read program
+      save refusal, text <>
+      walk list, read arguments
+        hook next
+          take site, name argument
+          fork test
+            hook test
+              call cmd-safe
+                read argument
+            hook miss
+              save refusal, text <the argument "{{argument}}" holds a character cmd would read as syntax>
+          call wrapped/push
+            read argument
+      send back
+        make invocation
+          bind program, text <cmd>
+          bind arguments, read wrapped
+          bind refusal, read refusal
+  send back
+    make invocation
+      bind program, read program
+      bind arguments, read arguments
+      bind refusal, text <>
+
+# how a step reads in a report: one line, the program and each argument
+task describe
+  take step, like step
+  like text
+  fork test
+    hook test
+      call is-equal
+        read step/action
+        text <run>
+    hook hold
+      save words
+        call join
+          read step/arguments
+          text < >
+      send back, text <{{step/program}} {{words}}>
+  save words
+    call join
+      read step/arguments
+      text < to >
+  send back, text <{{step/action}} {{words}}>
+
+# carry out one step; true when it succeeded (or failed where failing is allowed)
+task perform
+  note async
+  take machine, like machine
+  take step, like step
+  like boolean
+  fork test
+    hook test
+      call is-equal
+        read step/action
+        text <make-directory>
+    hook hold
+      call make
+        call get
+          read step/arguments
+          code 0
+      send back, true
+    hook test
+      call is-equal
+        read step/action
+        text <remove-directory>
+    hook hold
+      call remove
+        call get
+          read step/arguments
+          code 0
+      send back, true
+    hook test
+      call is-equal
+        read step/action
+        text <move>
+    hook hold
+      call move
+        call get
+          read step/arguments
+          code 0
+        call get
+          read step/arguments
+          code 1
+        wait true
+      send back, true
+  save directory, read machine/root
+  fork test
+    hook test
+      call is-unequal
+        read step/directory
+        text <>
+    hook hold
+      save directory, read step/directory
+  call change-directory
+    read directory
+  save how
+    call invocation-of
+      read machine
+      read step/program
+      read step/arguments
+  fork test
+    hook test
+      call is-unequal
+        read how/refusal
+        text <>
+    hook hold
+      call info, text <  refused: {{how/refusal}}>
+      send back, false
+  save code, code 0
+  fork test
+    hook test
+      call is-unequal
+        read step/input
+        text <>
+    hook hold
+      save result
+        call run-with-input
+          read how/program
+          read how/arguments
+          read step/input
+          wait true
+      call info
+        call trim
+          read result/output
+      save code, read result/code
+    hook miss
+      save code
+        call run-attached
+          read how/program
+          read how/arguments
+          wait true
+  fork test
+    hook test
+      call or
+        call is-equal
+          read code
+          code 0
+        read step/tolerate
+    hook hold
+      send back, true
+  call info, text <  failed with exit code {{code}}>
+  send back, false
+
+# ---------------------------------------------------------------- checking a tool
+
+form finding
+  link present, like boolean
+  # the version line, or why the tool is not counted
+  link detail, like text
+
+task first-line
+  take text, like text
+  like text
+  save lines
+    call split
+      call trim
+        read text
+      call line-break
+  fork test
+    hook test
+      call is-above
+        call size
+          read lines
+        code 0
+    hook hold
+      send back
+        call trim
+          call get
+            read lines
+            code 0
+  send back, text <>
+
+task examine
+  note async
+  take machine, like machine
+  take tool, like tool
+  like finding
+  fork test
+    hook test
+      call is-unequal
+        read tool/marker
+        text <>
+    hook hold
+      fork test
+        hook test
+          call or
+            call test
+              read tool/marker
+            call exists
+              read tool/marker
+        hook hold
+          send back
+            make finding
+              bind present, true
+              bind detail, read tool/marker
+      send back
+        make finding
+          bind present, false
+          bind detail, text <not found at {{tool/marker}}>
+  save how
+    call invocation-of
+      read machine
+      read tool/probe/program
+      read tool/probe/arguments
+  save result
+    call run
+      read how/program
+      read how/arguments
+      wait true
+  save both, text <{{result/output}}{{result/error}}>
+  save shown
+    call first-line
+      read both
+  # with an expectation, the line that holds it says more than the first (`== Runtimes ==`)
+  fork test
+    hook test
+      call is-unequal
+        read tool/expect
+        text <>
+    hook hold
+      walk list
+        call split
+          read both
+          call line-break
+        hook next
+          take site, name line
+          fork test
+            hook test
+              call contains
+                read line
+                read tool/expect
+            hook hold
+              save shown
+                call trim
+                  read line
+              halt
+  fork test
+    hook test
+      call is-unequal
+        read result/code
+        code 0
+    hook hold
+      send back
+        make finding
+          bind present, false
+          bind detail, text <not found>
+  fork test
+    hook test
+      call and
+        call is-unequal
+          read tool/expect
+          text <>
+        call is-equal
+          call contains
+            read both
+            read tool/expect
+          false
+    hook hold
+      send back
+        make finding
+          bind present, false
+          bind detail, text <{{shown}} (wants {{tool/expect}})>
+  send back
+    make finding
+      bind present, true
+      bind detail, read shown
+
+task report-line
+  take tool, like tool
+  take finding, like finding
+  like text
+  save mark, text <missing>
+  fork test
+    hook test
+      read finding/present
+    hook hold
+      save mark, text <ok>
+  save kind, text <>
+  fork test
+    hook test
+      read tool/optional
+    hook hold
+      save kind, text < (optional)>
+  save name
+    call pad-right
+      text <{{tool/name}}{{kind}}>
+      code 30
+      text < >
+  save column
+    call pad-right
+      read mark
+      code 9
+      text < >
+  send back, text <{{column}}{{name}}{{finding/detail}}>
+
+# ---------------------------------------------------------------- the commands
+
+task check
+  note async
+  like boolean
+  save machine
+    call detect-machine
+      wait true
+  call apply-settings
+    read machine
+  call info, text <{{machine/system}} {{machine/architecture}}, packages from {{machine/packager}}>
+  save missing, code 0
+  walk list
+    call tools-for
+      read machine
+    hook next
+      take site, name tool
+      save finding
+        call examine
+          read machine
+          read tool
+          wait true
+      call info
+        call report-line
+          read tool
+          read finding
+      fork test
+        hook test
+          call is-equal
+            read finding/present
+            false
+        hook hold
+          call info, text <         {{tool/need}}>
+          save missing
+            call add
+              read missing
+              code 1
+  call info, text <{{missing}} missing. `install` shows what installing them would run.>
+  send back, true
+
+task install
+  note async
+  take commit, like boolean
+  take all, like boolean
+  take only, like text
+  like boolean
+  save machine
+    call detect-machine
+      wait true
+  call apply-settings
+    read machine
+  save failed, code 0
+  walk list
+    call tools-for
+      read machine
+    hook next
+      take site, name tool
+      save wanted, true
+      fork test
+        hook test
+          call is-unequal
+            read only
+            text <>
+        hook hold
+          save wanted
+            call is-equal
+              read tool/name
+              read only
+        hook test
+          call and
+            read tool/optional
+            call is-equal
+              read all
+              false
+        hook hold
+          save wanted, false
+      fork test
+        hook test
+          read wanted
+        hook hold
+          save finding
+            call examine
+              read machine
+              read tool
+              wait true
+          fork test
+            hook test
+              read finding/present
+            hook hold
+              call info
+                call report-line
+                  read tool
+                  read finding
+            hook miss
+              call info, text <install   {{tool/name}}: {{tool/need}}>
+              save going, true
+              walk list, read tool/steps
+                hook next
+                  take site, name step
+                  fork test
+                    hook test
+                      read going
+                    hook hold
+                      call info, text <  {{step/note}}>
+                      call info
+                        call describe
+                          read step
+                      fork test
+                        hook test
+                          read commit
+                        hook hold
+                          save done
+                            call perform
+                              read machine
+                              read step
+                              wait true
+                          fork test
+                            hook test
+                              read done
+                            hook miss
+                              save going, false
+              fork test
+                hook test
+                  read commit
+                hook hold
+                  call apply-settings
+                    read machine
+                  save after
+                    call examine
+                      read machine
+                      read tool
+                      wait true
+                  call info
+                    call report-line
+                      read tool
+                      read after
+                  fork test
+                    hook test
+                      read after/present
+                    hook miss
+                      save failed
+                        call add
+                          read failed
+                          code 1
+  fork test
+    hook test
+      read commit
+    hook hold
+      call write-profile
+        read machine
+        wait true
+      call info, text <{{failed}} tools still missing. Open a new terminal for the profile to take effect.>
+    hook miss
+      call info, text <Nothing was run. `install --commit` runs the steps above.>
+  send back, true
+
+task profile
+  note async
+  take commit, like boolean
+  like boolean
+  save machine
+    call detect-machine
+      wait true
+  fork test
+    hook test
+      call is-equal
+        read machine/system
+        text <windows>
+    hook miss
+      call info
+        call profile-block
+          read machine
+  fork test
+    hook test
+      read commit
+    hook hold
+      call write-profile
+        read machine
+        wait true
+    hook miss
+      call info, text <Nothing was written. `profile --commit` writes it.>
+  send back, true
+
+# ---------------------------------------------------------------- the profile
+
+# one value as a POSIX shell word: in single quotes, each single quote written '\'' (closed, escaped, reopened), so
+# nothing inside is ever read as syntax
+task shell-word
+  take value, like text
+  like text
+  save quote
+    call rune-to-text, code 39
+  save backslash
+    call rune-to-text, code 92
+  save inside
+    call replace-all
+      read value
+      read quote
+      text <{{quote}}{{backslash}}{{quote}}{{quote}}>
+  send back, text <{{quote}}{{inside}}{{quote}}>
+
+host profile-start, text <# --- the term development environment, written by task/dev/bootstrap --->
+host profile-end, text <# --- the end of the term development environment --->
+
+task profile-block
+  take machine, like machine
+  like text
+  save lines
+    make list
+  call lines/push
+    read profile-start
+  save directories
+    make list
+  walk list
+    call present-settings
+      read machine
+    hook next
+      take site, name setting
+      save word
+        call shell-word
+          read setting/value
+      fork test
+        hook test
+          read setting/path
+        hook hold
+          call directories/push, text <export PATH={{word}}:"$PATH">
+        hook miss
+          call lines/push, text <export {{setting/name}}={{word}}>
+  # each directory is put first in turn, so the last one written ends up first: written in reverse, the list's own
+  # order is PATH's
+  save count
+    call size
+      read directories
+  save k, read count
+  walk test
+    hook test
+      call is-above
+        read k
+        code 0
+    hook step
+      save k
+        call subtract
+          read k
+          code 1
+      call lines/push
+        call get
+          read directories
+          read k
+  call lines/push
+    read profile-end
+  send back
+    call join
+      read lines
+      call line-break
+
+# the profile with the block in place of an older one, or after what is there
+task write-profile
+  note async
+  take machine, like machine
+  like boolean
+  fork test
+    hook test
+      call is-equal
+        read machine/system
+        text <windows>
+    hook hold
+      send back
+        call write-windows-environment
+          read machine
+          wait true
+  save existing, text <>
+  fork test
+    hook test
+      call test
+        read machine/profile
+    hook hold
+      save existing
+        call read
+          read machine/profile
+          wait true
+  save block
+    call profile-block
+      read machine
+  save start
+    call index-of
+      read existing
+      read profile-start
+  save end
+    call index-of
+      read existing
+      read profile-end
+  save break
+    call line-break
+  save written, text <{{existing}}{{break}}{{block}}{{break}}>
+  fork test
+    hook test
+      call and
+        call is-minimum
+          read start
+          code 0
+        call is-above
+          read end
+          read start
+    hook hold
+      save before
+        call substring
+          read existing
+          code 0
+          read start
+      save after
+        call substring
+          read existing
+          call add
+            read end
+            call char-count
+              read profile-end
+      save written, text <{{before}}{{block}}{{after}}>
+  call write
+    read machine/profile
+    read written
+    wait true
+  call info, text <wrote the term development environment to {{machine/profile}}>
+  send back, true
+
+load @term/base/code/text
+  find char-count
+
+# On Windows each variable goes to the user's environment through `setx`, and the directories to the user's Path
+# through `reg add`, both programs given their arguments as they are: no shell reads them
+task write-windows-environment
+  note async
+  take machine, like machine
+  like boolean
+  save directories
+    make list
+  walk list
+    call present-settings
+      read machine
+    hook next
+      take site, name setting
+      fork test
+        hook test
+          read setting/path
+        hook hold
+          call directories/push
+            read setting/value
+        hook miss
+          save words
+            make list
+          call words/push
+            read setting/name
+          call words/push
+            read setting/value
+          call run
+            text <setx>
+            read words
+            wait true
+  save query
+    make list
+  call query/push, text <query>
+  call query/push, text <HKCU\Environment>
+  call query/push, text </v>
+  call query/push, text <Path>
+  save current
+    call run
+      text <reg>
+      read query
+      wait true
+  save path
+    call trim
+      call last-word
+        call first-path-line
+          read current/output
+  walk list, read directories
+    hook next
+      take site, name directory
+      fork test
+        hook test
+          call contains
+            read path
+            read directory
+        hook miss
+          fork test
+            hook test
+              call is-equal
+                read path
+                text <>
+            hook hold
+              save path, read directory
+            hook miss
+              save path, text <{{directory}};{{path}}>
+  save words
+    make list
+  call words/push, text <add>
+  call words/push, text <HKCU\Environment>
+  call words/push, text </v>
+  call words/push, text <Path>
+  call words/push, text </t>
+  call words/push, text <REG_EXPAND_SZ>
+  call words/push, text </d>
+  call words/push
+    read path
+  call words/push, text </f>
+  call run
+    text <reg>
+    read words
+    wait true
+  call info, text <wrote the term development environment to the user's environment>
+  send back, true
+
+# the line of `reg query` output that holds the Path value
+task first-path-line
+  take output, like text
+  like text
+  walk list
+    call split
+      read output
+      call line-break
+    hook next
+      take site, name line
+      fork test
+        hook test
+          call contains
+            read line
+            text <REG_>
+        hook hold
+          send back, read line
+  send back, text <>
+
+# what follows the type word on a `reg query` line: `    Path    REG_EXPAND_SZ    C:\a;C:\b`
+task last-word
+  take line, like text
+  like text
+  save at
+    call index-of
+      read line
+      text <REG_>
+  fork test
+    hook test
+      call is-below
+        read at
+        code 0
+    hook hold
+      send back, text <>
+  save rest
+    call substring
+      read line
+      read at
+  save space
+    call index-of
+      read rest
+      text < >
+  fork test
+    hook test
+      call is-below
+        read space
+        code 0
+    hook hold
+      send back, text <>
+  send back
+    call substring
+      read rest
+      read space
+
+# ---------------------------------------------------------------- the console
+
+# Every tool a Term developer uses: there, with its version, or missing
+hook check
+  task check
+
+# Install the missing tools. Without --commit this shows the steps and runs nothing
+hook install
+  # actually run the steps
+  take commit
+    like boolean
+    bind code false
+  # include the optional tools (Android, iOS, Swift off a Mac, the desktop libraries)
+  take all
+    like boolean
+    bind code false
+  # one tool, by the name `check` shows
+  take only
+    like text
+    bind <>
+  task install
+
+# The environment the tools expect. Without --commit this shows it and writes nothing
+hook profile
+  # write it to the shell profile, or on Windows to the user's environment
+  take commit
+    like boolean
+    bind code false
+  task profile

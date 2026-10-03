@@ -129,6 +129,20 @@ const TEXT_WANT = 'length=5 at=😀 code=128512 past=[] y=2 later=4 last=4 middl
 const LISTS = readFileSync(join(import.meta.dirname, 'meaning-native/lists.tree'), 'utf8')
 const LISTS_WANT = 'd0=8 d3=4 b0=4 b1=7 both=6 r0=2 popped=2 left=3 quotient=-3'
 
+// the swap of two list slots, one call on Swift, Rust and Kotlin, and the two near-misses that stay three statements
+const SWAP = readFileSync(join(import.meta.dirname, 'meaning-native/swap.tree'), 'utf8')
+const SWAP_WANT = 'flip=4,0,5 same=2 shared=5,4 kept=3 k=1,3 rotate=1,1,5'
+
+// function parameters only called (`impl Fn` on Rust), passed as a literal, a capture, a variable, a named task and a
+// result-less callback, beside one passed on (an `Rc<dyn Fn>` still)
+const CLOSURES = readFileSync(join(import.meta.dirname, 'meaning-native/closures.tree'), 'utf8')
+const CLOSURES_WANT = 'literal=7 captured=21 held=81 named=18 seen=4,3 summed=14'
+
+// list parameters lent on Rust (`&mut Vec<T>`, `&[T]`): the caller sees the write, an argument reading the same list,
+// a list made in the call, and a task passing its list on
+const LEND = readFileSync(join(import.meta.dirname, 'meaning-native/lend.tree'), 'utf8')
+const LEND_WANT = 'after=4 self-read=2 shared=9 sum=117 fresh=14'
+
 const baseTree = join(process.cwd(), 'deck', 'base')
 const STDLIB_PREFIX = /^@term\/base\//
 
@@ -269,6 +283,9 @@ for (const backend of ['typescript', 'rust', 'swift', 'kotlin']) {
   run(backend, 'count-twins', COUNT_TWINS, COUNT_TWINS_WANT)
   run(backend, 'text', TEXT, TEXT_WANT)
   run(backend, 'lists', LISTS, LISTS_WANT)
+  run(backend, 'swap', SWAP, SWAP_WANT)
+  run(backend, 'closures', CLOSURES, CLOSURES_WANT)
+  run(backend, 'lend', LEND, LEND_WANT)
 }
 
 console.log(`\nmeaning-native: ${pass} pass, ${fail} fail, ${skip} skipped`)

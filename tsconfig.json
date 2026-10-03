@@ -36,5 +36,11 @@
     "deck/scan/code/**/*.ts",
     "deck/flow/code/**/*.ts"
   ],
-  "exclude": ["node_modules", "host", "test", "deck/**/host"]
+  "exclude": [
+    "node_modules",
+    "host",
+    "test",
+    "deck/**/host",
+    "deck/flow/code/extension.ts"
+  ]
 }

@@ -3,10 +3,10 @@
 note stable
 
 load @term/base/code/native/{platform}/atomic
-  find do-make
-  find do-load
-  find do-store
-  find do-increase
+  find atomics-make
+  find atomics-load
+  find atomics-store
+  find atomics-increase
 
 # an atomic integer cell
 form atomic
@@ -17,7 +17,7 @@ form atomic
     take self
     like number
     send back
-      call do-load
+      call atomics-load
         read self
 
   # set the value
@@ -25,7 +25,7 @@ form atomic
     take self
     take value, like number
     like void
-    call do-store
+    call atomics-store
       read self
       read value
 
@@ -35,7 +35,7 @@ form atomic
     take delta, like number
     like number
     send back
-      call do-increase
+      call atomics-increase
         read self
         read delta
 
@@ -46,5 +46,5 @@ task make-atomic
   send back
     make atomic
       bind dock
-        call do-make
+        call atomics-make
           read initial

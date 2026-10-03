@@ -8,12 +8,12 @@ dock type
 dock load
   load <global:channel>, name channel
 
-task do-make
+task mailbox-make
   like channel-handle
   send back
     call channel/make
 
-task do-send
+task mailbox-send
   note async
   take target, like channel-handle
   take item, like unknown
@@ -23,7 +23,7 @@ task do-send
     read item
     wait true
 
-task do-receive
+task mailbox-receive
   note async
   take source, like channel-handle
   like unknown
@@ -32,7 +32,7 @@ task do-receive
       read source
       wait true
 
-task do-close
+task mailbox-close
   note async
   take target, like channel-handle
   like void

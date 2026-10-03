@@ -20,7 +20,7 @@ load @term/base/code/network/server/response
 
 # run the server on (host, port). On node `serve` is fire-and-forget: the listening http.Server holds the event loop open
 # so the process stays alive, matching the blocking accept loop the compiled backends run.
-task do-serve
+task server-serve
   take port, like size
   take host, like text
   take handler
@@ -39,7 +39,7 @@ task do-serve
     read certificate
     read key
 
-task do-start
+task server-start
   note async
   take port, like size
   take host, like text
@@ -65,7 +65,7 @@ task do-start
       bind host, read host
       bind port, read port
 
-task do-stop
+task server-stop
   note async
   take server, like server
   like void

@@ -11,7 +11,7 @@ load @term/base/code/network/tcp
   find connection
   find listener
 
-task do-connect
+task tcp-connect
   note async
   take host, like text
   take port, like number
@@ -30,7 +30,7 @@ task do-connect
       bind port, read port
       bind secure, read secure
 
-task do-listen
+task tcp-listen
   note async
   take port, like number
   take host, like text

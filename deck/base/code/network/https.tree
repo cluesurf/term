@@ -7,8 +7,8 @@
 note unstable
 
 load @term/base/code/native/{platform}/network/https
-  find do-serve-secure
-  find do-start-secure
+  find https-serve
+  find https-start
 
 load @term/base/code/network/server/request
   find request
@@ -34,7 +34,7 @@ task serve
   take certificate, like text
   take key, like text
   like void
-  call do-serve-secure
+  call https-serve
     read port
     read host
     read handler
@@ -57,7 +57,7 @@ task start
   take key, like text
   like server
   send back
-    call do-start-secure
+    call https-start
       read port
       read host
       read handler

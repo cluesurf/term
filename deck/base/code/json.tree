@@ -3,29 +3,29 @@
 note stable
 
 load @term/base/code/native/{platform}/json
-  find do-parse
-  find do-stringify
-  find do-get-field
-  find do-get-item
-  find do-as-number
-  find do-as-text
-  find do-as-boolean
-  find do-is-null
-  find do-make-object
-  find do-set-field
-  find do-make-array
-  find do-push-item
-  find do-json-from-text
-  find do-json-from-number
-  find do-from-boolean
-  find do-make-null
-  find do-is-array
-  find do-is-object
-  find do-is-text
-  find do-is-boolean
-  find do-array-size
-  find do-array-item
-  find do-object-keys
+  find json-parse
+  find json-stringify
+  find json-get-field
+  find json-get-item
+  find json-as-number
+  find json-as-text
+  find json-as-boolean
+  find json-is-null
+  find json-make-object
+  find json-set-field
+  find json-make-array
+  find json-push-item
+  find json-from-text
+  find json-from-number
+  find json-from-boolean
+  find json-make-null
+  find json-is-array
+  find json-is-object
+  find json-is-text
+  find json-is-boolean
+  find json-array-size
+  find json-array-item
+  find json-object-keys
 
 load @term/base/code/json/check
   find check-json
@@ -40,14 +40,14 @@ task parse
   call check-json
     read text
   send back
-    call do-parse
+    call json-parse
       read text
 
 task stringify
   take value, like dynamic
   like text
   send back
-    call do-stringify
+    call json-stringify
       read value
 
 task get-field
@@ -55,7 +55,7 @@ task get-field
   take key, like text
   like dynamic
   send back
-    call do-get-field
+    call json-get-field
       read value
       read key
 
@@ -64,7 +64,7 @@ task get-item
   take index, like number
   like dynamic
   send back
-    call do-get-item
+    call json-get-item
       read value
       read index
 
@@ -72,28 +72,28 @@ task as-number
   take value, like dynamic
   like decimal
   send back
-    call do-as-number
+    call json-as-number
       read value
 
 task as-text
   take value, like dynamic
   like text
   send back
-    call do-as-text
+    call json-as-text
       read value
 
 task as-boolean
   take value, like dynamic
   like boolean
   send back
-    call do-as-boolean
+    call json-as-boolean
       read value
 
 task is-null
   take value, like dynamic
   like boolean
   send back
-    call do-is-null
+    call json-is-null
       read value
 
 task field-text
@@ -131,7 +131,7 @@ task field-boolean
 task make-object
   like dynamic
   send back
-    call do-make-object
+    call json-make-object
 
 task set-field
   take value, like dynamic
@@ -139,7 +139,7 @@ task set-field
   take field, like dynamic
   like dynamic
   send back
-    call do-set-field
+    call json-set-field
       read value
       read key
       read field
@@ -147,14 +147,14 @@ task set-field
 task make-array
   like dynamic
   send back
-    call do-make-array
+    call json-make-array
 
 task push-item
   take value, like dynamic
   take item, like dynamic
   like dynamic
   send back
-    call do-push-item
+    call json-push-item
       read value
       read item
 
@@ -162,27 +162,27 @@ task from-text
   take value, like text
   like dynamic
   send back
-    call do-json-from-text
+    call json-from-text
       read value
 
 task from-number
   take value, like decimal
   like dynamic
   send back
-    call do-json-from-number
+    call json-from-number
       read value
 
 task from-boolean
   take value, like boolean
   like dynamic
   send back
-    call do-from-boolean
+    call json-from-boolean
       read value
 
 task make-null
   like dynamic
   send back
-    call do-make-null
+    call json-make-null
 
 # The shape questions: what a parsed value is, and what an array or an object holds. A reader of foreign JSON walks
 # a value with these; the accessors above assume the shape is already known.
@@ -191,35 +191,35 @@ task is-array
   take value, like dynamic
   like boolean
   send back
-    call do-is-array
+    call json-is-array
       read value
 
 task is-object
   take value, like dynamic
   like boolean
   send back
-    call do-is-object
+    call json-is-object
       read value
 
 task is-text
   take value, like dynamic
   like boolean
   send back
-    call do-is-text
+    call json-is-text
       read value
 
 task is-boolean
   take value, like dynamic
   like boolean
   send back
-    call do-is-boolean
+    call json-is-boolean
       read value
 
 task array-size
   take value, like dynamic
   like number
   send back
-    call do-array-size
+    call json-array-size
       read value
 
 task array-item
@@ -227,7 +227,7 @@ task array-item
   take index, like number
   like dynamic
   send back
-    call do-array-item
+    call json-array-item
       read value
       read index
 
@@ -236,5 +236,5 @@ task object-keys
   like list
     like text
   send back
-    call do-object-keys
+    call json-object-keys
       read value

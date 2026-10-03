@@ -15,8 +15,8 @@ load @term/site/code/view/reactive
   find read-signal
   find write-signal
 load @term/site/code/view/render
-  find element
-  find dynamic-view
+  find make-element
+  find render-dynamic-view
 load @term/site/code/dom/dom
   find view
   find append
@@ -75,7 +75,7 @@ task clear-slot
 view region
   take host, like view
   take slot, like signal
-  call dynamic-view
+  call render-dynamic-view
     bind host, read host
     bind source
       task build
@@ -84,7 +84,7 @@ view region
           call read-signal
             bind self, read slot
         save frag
-          call element
+          call make-element
             bind tag, text <seed-fragment>
         call chrome
           bind host, read frag

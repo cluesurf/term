@@ -1,7 +1,8 @@
 // View lowering: rewrite every `zone` (view component) Statement into a plain
 // `function` Statement whose body builds the DOM through ordinary calls to the
-// reactive-render runtime (`element` / `text` / `dynamic` / `attribute` /
-// `event` / `append` / `show` / `each`) plus component calls. After this pass
+// reactive-render runtime (`make-element` / `make-text` / `make-dynamic-text` /
+// `write-attribute` / `attach-event` / `append` / `show` / `render-each`, named in
+// ./render-names.ts) plus component calls. After this pass
 // the program contains NO `form: 'view'` statements, so every backend emits
 // components for free as ordinary functions — the composition logic lives here,
 // once, instead of being reimplemented in each code generator.
@@ -25,6 +26,7 @@ import type {
   Type,
 } from '@term/make/code/compile/node'
 import type { Span } from '@term/make/code/parser/diagnostic'
+import { RENDER } from '@term/make/code/compile/render-names'
 
 // The render-runtime + component functions are referenced by bare name (a
 // `variable` callee with no binding -> the emitter writes `name(args)`); the
@@ -42,7 +44,7 @@ type Component = { params: string[]; slotted: boolean }
 // components. It deliberately EXCLUDES tags that make good component names and
 // are rarely written raw (dialog, select, progress, menu, meter, output,
 // details, summary), so those remain available as components.
-const HTML_TAGS = new Set<string>([
+export const HTML_TAGS = new Set<string>([
   'a',
   'abbr',
   'address',
@@ -255,10 +257,10 @@ function lowerZone(
   ): Statement =>
     value.form === 'string'
       ? exprStatement(
-          call('attribute', [variable(ref), string(name), value]),
+          call(RENDER.attribute, [variable(ref), string(name), value]),
         )
       : exprStatement(
-          call('bind-attribute', [
+          call(RENDER.bindAttribute, [
             variable(ref),
             string(name),
             {
@@ -301,7 +303,7 @@ function lowerZone(
       inner.push({
         form: 'let',
         name: frag,
-        init: call('element', [string('seed-fragment')]),
+        init: call(RENDER.element, [string('seed-fragment')]),
         mutable: false,
         span,
       })
@@ -352,7 +354,7 @@ function lowerZone(
       out.push({
         form: 'let',
         name: ref,
-        init: call('text', [string(node.value)]),
+        init: call(RENDER.text, [string(node.value)]),
         mutable: false,
         span,
       })
@@ -360,7 +362,7 @@ function lowerZone(
       out.push({
         form: 'let',
         name: ref,
-        init: call('dynamic', [
+        init: call(RENDER.dynamic, [
           {
             form: 'closure',
             params: [],
@@ -381,7 +383,7 @@ function lowerZone(
       out.push({
         form: 'let',
         name: ref,
-        init: call('element', [string('seed-part')]),
+        init: call(RENDER.element, [string('seed-part')]),
         mutable: false,
         span,
       })
@@ -390,7 +392,7 @@ function lowerZone(
       out.push({
         form: 'let',
         name: ref,
-        init: call('element', [string(node.name)]),
+        init: call(RENDER.element, [string(node.name)]),
         mutable: false,
         span,
       })
@@ -399,7 +401,7 @@ function lowerZone(
         out.push(
           attribute.event
             ? exprStatement(
-                call('event', [
+                call(RENDER.event, [
                   variable(ref),
                   string(attribute.name),
                   {
@@ -429,7 +431,7 @@ function lowerZone(
       out.push({
         form: 'let',
         name: ref,
-        init: call('text', [string('')]),
+        init: call(RENDER.text, [string('')]),
         mutable: false,
         span,
       })
@@ -450,7 +452,7 @@ function lowerZone(
       const branch = node.branches[0]
       out.push(
         exprStatement(
-          call('show', [
+          call(RENDER.show, [
             variable(parent),
             {
               form: 'closure',
@@ -474,11 +476,11 @@ function lowerZone(
         ),
       )
     } else if (node.form === 'walk') {
-      // each(parent, () => iterable, (item) => view)
+      // render-each(parent, () => iterable, (item) => view)
       const itemBody = fragmentThunk([{ name: node.item }], node.body)
       out.push(
         exprStatement(
-          call('each', [
+          call(RENDER.each, [
             variable(parent),
             {
               form: 'closure',

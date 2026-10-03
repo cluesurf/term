@@ -1,7 +1,8 @@
-// pnpm term:idiom: is the emitted code idiomatic, as the target's own linter judges it (note/term/codegen/readme.md,
-// rule 4). Today Rust through clippy: every program under bench/ and every meaning-native fixture is emitted with its
-// prelude, linted with `clippy::all`, and the findings counted by lint. The count is the gate: it may only fall.
-// swiftlint, ktlint and detekt join when they are installed on the machine that runs this.
+// pnpm term:idiom: is the emitted code idiomatic, as the target's own tools judge it (note/term/codegen/readme.md,
+// rule 4). Every program under bench/ and every meaning-native fixture is emitted with its prelude on all four
+// targets: Rust linted with `clippy::all`, TypeScript typechecked with `tsc --strict`, Swift and Kotlin counted by
+// their compilers' own warnings and errors. The findings are counted by kind, and the total is the gate: it may only
+// fall. swiftlint, ktlint and detekt join when they are installed on the machine that runs this.
 //
 //   pnpm term:idiom            report
 //   pnpm term:idiom --max 0    fail when the total is above the number

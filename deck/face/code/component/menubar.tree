@@ -2,7 +2,7 @@
 # Menubar — headless. A horizontal bar of menus (like an app menu bar). Parts: menubar, menubar-menu, menubar-trigger,
 # menubar-content, menubar-item. Each menu's open/close is a shared disclosure controller passed as `control`.
 load @term/site/code/view/render
-  find element
+  find make-element
 load @term/site/code/dom/dom
   find view
   find append

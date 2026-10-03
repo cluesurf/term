@@ -40,6 +40,7 @@ import { writeLong } from '@term/make/code/compile/host'
 import type { Data, DataEntry } from '@term/make/code/compile/host'
 import type { ViewCaps } from '@term/make/code/compile/view-cap'
 import { makeViewCaps, capMessage } from '@term/make/code/compile/view-cap'
+import { RENDER } from '@term/make/code/compile/render-names'
 
 // ---- the forms ----
 // One per form in @term/base/code/view-file, plus the ones reused from zone, seed, bind, road, like and take.
@@ -800,7 +801,7 @@ export function readView(
         value: {
           road: {
             form: 'call',
-            value: { name: 'range', bind: [], slot: [base, head], made: true },
+            value: { name: RENDER.integers, bind: [], slot: [base, head], made: true },
             span,
           },
           next: readWalkNext(group),
@@ -1979,7 +1980,7 @@ function ringFrom(
 // The bound of a counted walk when it is a literal range, so nested walks can be multiplied out. A list walk, or
 // a range whose bounds are read at run time, counts as the iteration cap instead.
 function countedBound(road: Seed, caps: ViewCaps): number {
-  if (road.form === 'call' && road.value.name === 'range') {
+  if (road.form === 'call' && road.value.name === RENDER.integers) {
     const [base, head] = road.value.slot
 
     if (base?.form === 'mark' && head?.form === 'mark') {

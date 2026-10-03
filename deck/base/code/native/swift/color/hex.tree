@@ -1,7 +1,7 @@
 # swift hex color implementation: the three bytes formatted as lowercase hex in one native expression.
 # Internal: reached only through the public hex color API.
 
-bind do-rgb-to-hex
+bind hex-of-rgb
   take red, like number
   take green, like number
   take blue, like number
@@ -16,7 +16,7 @@ task rgb-to-hex
   take blue, like number
   like text
   send back
-    call do-rgb-to-hex
+    call hex-of-rgb
       read red
       read green
       read blue

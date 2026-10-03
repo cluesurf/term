@@ -9,21 +9,21 @@ dock load
 load @term/base/code/atomic
   find atomic
 
-task do-make
+task atomics-make
   take initial, like number
   like atomic-handle
   send back
     call atomic/make
       read initial
 
-task do-load
+task atomics-load
   take self, like atomic
   like number
   send back
     call atomic/load
       read self/dock
 
-task do-store
+task atomics-store
   take self, like atomic
   take value, like number
   like void
@@ -31,7 +31,7 @@ task do-store
     read self/dock
     read value
 
-task do-increase
+task atomics-increase
   take self, like atomic
   take delta, like number
   like number

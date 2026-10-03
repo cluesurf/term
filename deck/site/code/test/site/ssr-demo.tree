@@ -3,7 +3,7 @@
 # mounted node's text tracks the signal: write the signal and the DOM node updates. Used by the headless run test.
 
 load ../../view/render
-  find dynamic
+  find make-dynamic-text
   find mount
 load ../../view/reactive
   find make-signal
@@ -24,7 +24,7 @@ task build-counter
       task build
         like view
         send back
-          call dynamic
+          call make-dynamic-text
             bind source
               task source
                 like text

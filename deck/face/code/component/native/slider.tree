@@ -11,9 +11,9 @@
 # `slider` (the control, data-slot for a theme).
 
 load @term/site/code/view/render
-  find element
-  find attribute
-  find event
+  find make-element
+  find write-attribute
+  find attach-event
 load @term/site/code/view/reactive
   find signal
   find make-effect
@@ -37,29 +37,29 @@ task mount-slider
   take step, like decimal
   like view
   save input
-    call element
+    call make-element
       text <input>
-  call attribute
+  call write-attribute
     read input
     text <type>
     text <range>
-  call attribute
+  call write-attribute
     read input
     text <data-slot>
     text <slider>
-  call attribute
+  call write-attribute
     read input
     text <class>
     read class
-  call attribute
+  call write-attribute
     read input
     text <min>
     text <{{min}}>
-  call attribute
+  call write-attribute
     read input
     text <max>
     text <{{max}}>
-  call attribute
+  call write-attribute
     read input
     text <step>
     text <{{step}}>
@@ -71,7 +71,7 @@ task mount-slider
         call range-text
           read control
   # a move the person made, written into the range
-  call event
+  call attach-event
     read input
     text <input>
     task moved

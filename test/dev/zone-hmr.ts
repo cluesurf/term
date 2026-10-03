@@ -33,9 +33,9 @@ const resolve = projectResolver(process.cwd(), 'node')
 const app = (
   label: string,
 ): string => `load @cluesurf/site/code/view/render
-  find element
-  find text
-  find dynamic
+  find make-element
+  find make-text
+  find make-dynamic-text
 load @cluesurf/site/code/dom/dom
   find view
   find append
@@ -168,9 +168,9 @@ async function main(): Promise<void> {
 
   const render = (await import(
     pathToFileURL(path.join(dir, safe(renderFile))).href
-  )) as { element: (t: string) => any }
+  )) as { makeElement: (t: string) => any }
 
-  const host = render.element('root')
+  const host = render.makeElement('root')
   const moduleV1 = (await import(entryUrl)) as {
     counter: (h: any) => void
   }

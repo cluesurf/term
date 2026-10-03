@@ -1,7 +1,7 @@
 
 # Item — headless. A generic list row with media / content / title / description / actions parts.
 load @term/site/code/view/render
-  find element
+  find make-element
 load @term/site/code/dom/dom
   find view
   find append

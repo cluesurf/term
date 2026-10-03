@@ -3,7 +3,7 @@
 # ratio is applied via CSS (theme sets aspect-ratio from a style/class); this provides the slot + styling hook.
 
 load @term/site/code/view/render
-  find element
+  find make-element
 load @term/site/code/dom/dom
   find view
   find append

@@ -2,7 +2,7 @@
 # Input OTP — headless. A one-time-code field: a row of single-character slots. Parts: input-otp (root), input-otp-
 # group, input-otp-slot (one cell), input-otp-separator. Theme the focus ring / caret in CSS.
 load @term/site/code/view/render
-  find element
+  find make-element
 load @term/site/code/dom/dom
   find view
   find append

@@ -4,7 +4,7 @@
 load @term/base/code/process
   find child
 
-bind do-wait
+bind child-wait
   take child, like child
   like size
   case swift
@@ -17,10 +17,10 @@ task wait
   like size
 
   send back
-    call do-wait
+    call child-wait
       read child
 
-bind do-stop
+bind child-stop
   take child, like child
   take force, like boolean
   case swift
@@ -34,13 +34,13 @@ task stop
     like text
     fall text <gentle>
 
-  call do-stop
+  call child-stop
     read child
     call is-equal
       read form
       text <force>
 
-bind do-write
+bind child-write
   take child, like child
   take data, like text
   case swift
@@ -52,11 +52,11 @@ task write
   take child, like child
   take data, like text
 
-  call do-write
+  call child-write
     read child
     read data
 
-bind do-close
+bind child-close
   take child, like child
   case swift
     load <Foundation>
@@ -66,10 +66,10 @@ task close
   note async
   take child, like child
 
-  call do-close
+  call child-close
     read child
 
-bind do-read
+bind child-read
   take child, like child
   take stderr, like boolean
   case swift
@@ -90,7 +90,7 @@ task read
   like text
 
   send back
-    call do-read
+    call child-read
       read child
       call is-equal
         read kind

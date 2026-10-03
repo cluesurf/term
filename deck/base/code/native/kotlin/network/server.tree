@@ -20,7 +20,7 @@ load @term/base/code/network/server
   find server
 
 # run the server on (host, port), blocking for the life of the process (the entry point of a server binary)
-task do-serve
+task server-serve
   take port, like size
   take host, like text
   take handler
@@ -39,8 +39,8 @@ task do-serve
     read certificate
     read key
 
-# bind the port and answer, without blocking. The returned server is what `do-stop` shuts down.
-task do-start
+# bind the port and answer, without blocking. The returned server is what `server-stop` shuts down.
+task server-start
   note async
   take port, like size
   take host, like text
@@ -67,7 +67,7 @@ task do-start
       bind host, read host
       bind port, read port
 
-task do-stop
+task server-stop
   note async
   take server, like server
   like void

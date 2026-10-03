@@ -20,6 +20,7 @@ import {
   toCamel,
   toPascal,
 } from '@term/make/code/compile/typescript'
+import { RENDER } from '@term/make/code/compile/render-names'
 
 const ENTRY = '<entry>'
 
@@ -258,14 +259,14 @@ export interface ModuleEmit {
 // synthesizes them, as does the HMR wiring). They are added to the module's value imports so the dev server resolves
 // them to their real source modules. The first group is the view ABI; the second is the hot-reload bookkeeping.
 const ZONE_MODULE_RUNTIME = [
-  'element',
-  'text',
-  'dynamic',
-  'attribute',
-  'event',
+  RENDER.element,
+  RENDER.text,
+  RENDER.dynamic,
+  RENDER.attribute,
+  RENDER.event,
   'append',
-  'show',
-  'each',
+  RENDER.show,
+  RENDER.each,
   'open-scope',
   'close-scope',
   'make-signal',

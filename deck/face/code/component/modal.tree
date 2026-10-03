@@ -10,8 +10,8 @@
 # author who writes `dialog` gets a sheet on Apple and a Dialog on Android, and this modal only where it is asked for.
 
 load @term/site/code/view/render
-  find element
-  find text
+  find make-element
+  find make-text
 load @term/site/code/dom/dom
   find view
   find append

@@ -3,29 +3,29 @@
 note stable
 
 load @term/base/code/native/{platform}/bytes
-  find do-bytes-from-text
-  find do-bytes-to-text
-  find do-to-hex
-  find do-from-hex
-  find do-to-base64
-  find do-from-base64
-  find do-length
-  find do-concat
-  find do-slice
+  find octets-from-text
+  find octets-to-text
+  find octets-to-hex
+  find octets-from-hex
+  find octets-to-base64
+  find octets-from-base64
+  find octets-length
+  find bytes-concat
+  find bytes-slice
 
 # convert utf8 text to and from raw bytes
 task from-text
   take text, like text
   like bytes
   send back
-    call do-bytes-from-text
+    call octets-from-text
       read text
 
 task to-text
   take value, like bytes
   like text
   send back
-    call do-bytes-to-text
+    call octets-to-text
       read value
 
 # encode bytes to a text representation in the given base (16 = hex, 64 = base64). The named `to-hex` / `to-base64`
@@ -42,11 +42,11 @@ task encode
         code 64
     hook hold
       send back
-        call do-to-base64
+        call octets-to-base64
           read value
     hook miss
       send back
-        call do-to-hex
+        call octets-to-hex
           read value
 
 # decode a text representation in the given base back to bytes
@@ -61,11 +61,11 @@ task decode
         code 64
     hook hold
       send back
-        call do-from-base64
+        call octets-from-base64
           read text
     hook miss
       send back
-        call do-from-hex
+        call octets-from-hex
           read text
 
 # named codec forms: the readable, primary surface. Each calls the native codec directly, so it is optimal with no
@@ -74,28 +74,28 @@ task to-hex
   take value, like bytes
   like text
   send back
-    call do-to-hex
+    call octets-to-hex
       read value
 
 task from-hex
   take text, like text
   like bytes
   send back
-    call do-from-hex
+    call octets-from-hex
       read text
 
 task to-base64
   take value, like bytes
   like text
   send back
-    call do-to-base64
+    call octets-to-base64
       read value
 
 task from-base64
   take text, like text
   like bytes
   send back
-    call do-from-base64
+    call octets-from-base64
       read text
 
 # the number of bytes
@@ -103,7 +103,7 @@ task count
   take value, like bytes
   like number
   send back
-    call do-length
+    call octets-length
       read value
 
 # `length` is kept as a familiar alias for `count`
@@ -111,7 +111,7 @@ task length
   take value, like bytes
   like number
   send back
-    call do-length
+    call octets-length
       read value
 
 task concat
@@ -119,7 +119,7 @@ task concat
   take right, like bytes
   like bytes
   send back
-    call do-concat
+    call bytes-concat
       read left
       read right
 
@@ -129,7 +129,7 @@ task slice
   take end, like number
   like bytes
   send back
-    call do-slice
+    call bytes-slice
       read value
       read start
       read end

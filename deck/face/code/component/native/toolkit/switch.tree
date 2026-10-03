@@ -11,7 +11,7 @@
 # platform's own change as `click`, which toggles the controller, whose effect writes the state back.
 
 load @term/site/code/view/render
-  find element
+  find make-element
 load @term/site/code/dom/dom
   find view
   find append

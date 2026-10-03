@@ -18,6 +18,7 @@ import {
   isText,
 } from '@term/make/code/compile/backend'
 import { lowerRoutes } from '@term/make/code/compile/route-lower'
+import { RENDER } from '@term/make/code/compile/render-names'
 import {
   collectBinds,
   renderBind,
@@ -280,7 +281,9 @@ function variantCase(
 // The fields a construction left out, each set to its type's empty value, so the object literal satisfies the
 // interface (or the variant case) it is written for. A struct has done this since the native backends needed
 // it; a VARIANT did not, which is the disagreement between a construction and its own type that lean-0044
-// names. `need false` fields are optional in the emitted type and so need no filling.
+// names. A `need false` field left out holds its type's empty value too, as it does on Rust, Swift and Kotlin: left
+// `undefined`, a left-out text read as "undefined" here and as the empty text there. One whose type has no empty value
+// (a form) stays out, optional in the emitted type.
 function emptyFor(
   declared: { name: string; type: Type; optional?: boolean }[],
   given: { name: string }[],
@@ -292,7 +295,7 @@ function emptyFor(
   const names = new Set(given.map(f => f.name))
 
   return declared
-    .filter(f => !names.has(f.name) && !f.optional)
+    .filter(f => !names.has(f.name) && (!f.optional || !tsEmptyOf(f.type).startsWith('undefined')))
     .map(f => `${toMember(f.name)}: ${tsEmptyOf(f.type)}`)
 }
 
@@ -383,6 +386,25 @@ const LIST_HELPER: Record<string, string> = {
 }
 // the `note shared` forms: references by design, compared and keyed by identity as on the other backends
 let tsSharedForms = new Set<string>()
+
+// `mark tag, name kind`: the unions that discriminate on a field other than `form`, by the union and by each of its
+// variants. Only tagged forms are listed, so a program without one emits exactly what it always did
+// (self-hosting-0020). Set by emitTypeScript.
+let tsTagByOwner = new Map<string, string>()
+let tsTagByVariant = new Map<string, string>()
+
+// the field a variant's union discriminates on. The union, when the type names one, decides: a known union that
+// carries no mark is `form` even if another union reuses the variant's name with a tag. Otherwise the variant's own
+// entry, else `form`
+function tagFor(variant: string, type?: Type): string {
+  const owner = type?.kind === 'named' ? type.name : undefined
+
+  if (owner && tsVariantFieldsByOwner.has(owner)) {
+    return toMember(tsTagByOwner.get(owner) ?? 'form')
+  }
+
+  return toMember(tsTagByVariant.get(variant) ?? 'form')
+}
 
 // the variants this module constructs with no fields, each ONE frozen constant (name -> constant): a field-less value
 // carries nothing a construction could set and nothing a program could write, so every `make leaf` can be the same
@@ -1428,7 +1450,7 @@ function makeEmitter(
           }
 
           return `{ ${[
-            'form: ' + JSON.stringify(node.name),
+            `${tagFor(node.name, node.type)}: ` + JSON.stringify(node.name),
             ...inDeclaredOrder(variantCase(node.name, node.type), node.fields, fields),
           ].join(', ')} }`
         }
@@ -1610,33 +1632,43 @@ function makeEmitter(
   }
 
   // emit a zone (view component) to a function that builds its DOM via the render runtime: `save` declares state /
-  // computeds, `element` / `text` make nodes, `read` makes a reactive text node (`dynamic`), attributes / events wire
-  // them, and each top-level view node is attached under the host param. fork / walk lower to `show` / `each`. The
-  // render runtime (element / text / dynamic / attribute / event / append / show / each) is imported by the zone's
-  // own module. See note/seed/plan/zone-components.md.
+  // computeds, `make-element` / `make-text` make nodes, `read` makes a reactive text node (`make-dynamic-text`),
+  // attributes / events wire them, and each top-level view node is attached under the host param. fork / walk lower
+  // to `show` / `render-each`. The render runtime's names come from ./render-names.ts, and the zone's own module
+  // imports them. See note/seed/plan/zone-components.md.
   const emitZone = (
     node: Extract<Statement, { form: 'view' }>,
   ): string => {
+    // the render runtime's tasks as this backend spells them
+    const make = {
+      element: toCamel(RENDER.element),
+      text: toCamel(RENDER.text),
+      dynamic: toCamel(RENDER.dynamic),
+      attribute: toCamel(RENDER.attribute),
+      event: toCamel(RENDER.event),
+      show: toCamel(RENDER.show),
+      each: toCamel(RENDER.each),
+    }
     let counter = 0
 
     const next = (): string => `view${counter++}`
 
     // build a node into `out`, returning its variable name. Render-runtime calls are positional, in the param order of
-    // each task in code/view/render.tree: element(tag), text(value), dynamic(source), attribute(node, name, value),
-    // event(node, name, handler).
+    // each task in code/view/render.tree: make-element(tag), make-text(value), make-dynamic-text(source),
+    // write-attribute(node, name, value), attach-event(node, name, handler).
     const build = (zone: ViewNode, out: string[]): string => {
       // a named element (`name x`) is emitted under that name, so handlers elsewhere in the zone can read it
       const ref =
         zone.form === 'element' && zone.ref ? toCamel(zone.ref) : next()
 
       if (zone.form === 'text') {
-        out.push(`const ${ref} = text(${JSON.stringify(zone.value)})`)
+        out.push(`const ${ref} = ${make.text}(${JSON.stringify(zone.value)})`)
       } else if (zone.form === 'read') {
         out.push(
-          `const ${ref} = dynamic(() => ${expression(zone.value)})`,
+          `const ${ref} = ${make.dynamic}(() => ${expression(zone.value)})`,
         )
       } else if (zone.form === 'element') {
-        out.push(`const ${ref} = element(${JSON.stringify(zone.name)})`)
+        out.push(`const ${ref} = ${make.element}(${JSON.stringify(zone.name)})`)
 
         for (const attribute of zone.attributes) {
           // an event handler is a function, so a single expression (`hook click, call submit`) is wrapped in one. A
@@ -1649,10 +1681,10 @@ function makeEmitter(
 
           out.push(
             attribute.event
-              ? `event(${ref}, ${JSON.stringify(
+              ? `${make.event}(${ref}, ${JSON.stringify(
                   attribute.name,
                 )}, ${handler})`
-              : `attribute(${ref}, ${JSON.stringify(
+              : `${make.attribute}(${ref}, ${JSON.stringify(
                   attribute.name,
                 )}, ${expression(attribute.value)})`,
           )
@@ -1662,7 +1694,7 @@ function makeEmitter(
           attach(child, ref, out)
         }
       } else {
-        out.push(`const ${ref} = text("")`)
+        out.push(`const ${ref} = ${make.text}("")`)
       }
 
       return ref
@@ -1675,7 +1707,7 @@ function makeEmitter(
     ): string => {
       const branch = zone.branches[0]
 
-      return `show(${host}, () => ${
+      return `${make.show}(${host}, () => ${
         branch ? expression(branch.cond) : 'false'
       }, ${fragment([], branch ? branch.body : [])}, ${fragment(
         [],
@@ -1687,8 +1719,8 @@ function makeEmitter(
       host: string,
       zone: Extract<ViewNode, { form: 'walk' }>,
     ): string =>
-      // the iterable is passed as a getter so `each` can read it inside an effect (reactive list rendering)
-      `each(${host}, () => ${expression(zone.iterable)}, ${fragment(
+      // the iterable is passed as a getter so `render-each` can read it inside an effect (reactive list rendering)
+      `${make.each}(${host}, () => ${expression(zone.iterable)}, ${fragment(
         [toCamel(zone.item)],
         zone.body,
       )})`
@@ -1705,7 +1737,7 @@ function makeEmitter(
       if (zone.form === 'fork') {
         if (collect) {
           const part = next()
-          out.push(`const ${part} = element("seed-part")`)
+          out.push(`const ${part} = ${make.element}("seed-part")`)
           out.push(showCall(part, zone))
           out.push(`append(${parent}, ${part})`)
           collect.push(part)
@@ -1715,7 +1747,7 @@ function makeEmitter(
       } else if (zone.form === 'walk') {
         if (collect) {
           const part = next()
-          out.push(`const ${part} = element("seed-part")`)
+          out.push(`const ${part} = ${make.element}("seed-part")`)
           out.push(eachCall(part, zone))
           out.push(`append(${parent}, ${part})`)
           collect.push(part)
@@ -1750,7 +1782,7 @@ function makeEmitter(
         const ref = build(only, out)
         out.push(`return ${ref}`)
       } else {
-        out.push(`const frag = element("seed-fragment")`)
+        out.push(`const frag = ${make.element}("seed-fragment")`)
 
         for (const child of body) {
           attach(child, 'frag', out)
@@ -1921,8 +1953,9 @@ function makeEmitter(
           ? `return ${expression(node.value)}`
           : 'return'
       case 'throw':
-        // a raised exception (`halt <form>`) is thrown as the runtime class, a thrown string becomes an Error, and any
-        // other value is thrown as-is
+        // a raised exception (`halt <form>`) is thrown as the runtime class, a thrown text becomes an Error, and any
+        // other value is thrown as-is. An INTERPOLATED text is a text too: `halt <cycle: {{x}}>` was a `template`
+        // node, missed here, and threw a bare string with no message and no stack (found porting compile/affected)
         if (
           node.value.form === 'record' &&
           tsExceptions.has(node.value.name)
@@ -1930,7 +1963,7 @@ function makeEmitter(
           return `throw new ${EXCEPTION_CLASS}(${expression(node.value)})`
         }
 
-        return node.value.form === 'string'
+        return node.value.form === 'string' || node.value.form === 'template'
           ? `throw new Error(${expression(node.value)})`
           : `throw ${expression(node.value)}`
       case 'while':
@@ -2122,7 +2155,7 @@ function makeEmitter(
 
           out += last
             ? ` else ${body}`
-            : `${i ? ' else ' : ''}if (${subject}.form === ${JSON.stringify(
+            : `${i ? ' else ' : ''}if (${subject}.${tagFor(branch.label, node.subject.type)} === ${JSON.stringify(
                 branch.label,
               )}) ${body}`
         })
@@ -2184,7 +2217,7 @@ function makeEmitter(
             )
 
             return `{ ${[
-              'form: ' + JSON.stringify(v.name),
+              `${toMember(node.tag ?? 'form')}: ` + JSON.stringify(v.name),
               ...fields,
             ].join('; ')} }`
           })
@@ -2363,6 +2396,18 @@ export function emitTypeScript(
   tsSharedForms = new Set(
     program.flatMap(n => (n.form === 'record-type' && n.shared ? [n.name] : [])),
   )
+  tsTagByOwner = new Map()
+  tsTagByVariant = new Map()
+
+  for (const node of program) {
+    if (node.form === 'record-type' && node.tag) {
+      tsTagByOwner.set(node.name, node.tag)
+
+      for (const v of node.variants) {
+        tsTagByVariant.set(v.name, node.tag)
+      }
+    }
+  }
   tsFunctionParams = new Map(
     program.flatMap(n => (n.form === 'function' ? [[n.name, n.params] as const] : [])),
   )
@@ -2558,7 +2603,7 @@ export function emitTypeScript(
 
   // the field-less variants' constants, ahead of every use
   for (const [name, constant] of tsFieldless) {
-    prelude.push(`const ${constant} = Object.freeze({ form: ${JSON.stringify(name)} as const })`)
+    prelude.push(`const ${constant} = Object.freeze({ ${tagFor(name)}: ${JSON.stringify(name)} as const })`)
   }
 
   // the wake chain: one `hiveWake` per deck with its static entries, then the raise hook, when the program has the

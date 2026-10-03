@@ -6,9 +6,9 @@
 note stable
 
 load @term/base/code/native/{platform}/network/server
-  find do-start
-  find do-stop
-  find do-serve
+  find server-start
+  find server-stop
+  find server-serve
 
 load @term/base/code/network/server/request
   find request
@@ -51,7 +51,7 @@ task start
     fall text <>
   like server
   send back
-    call do-start
+    call server-start
       read port
       read host
       read handler
@@ -65,7 +65,7 @@ task stop
   note async
   take server, like server
   like void
-  call do-stop
+  call server-stop
     read server
     wait true
 
@@ -95,7 +95,7 @@ task serve
     like text
     fall text <>
   like void
-  call do-serve
+  call server-serve
     read port
     read host
     read handler

@@ -28,9 +28,9 @@ load @term/base/code/exception
   find overload
 
 load @term/base/code/native/{platform}/job
-  find do-settle-any
-  find do-state
-  find do-cancel
+  find job-settle-any
+  find job-state
+  find job-cancel
 
 # which children restart when one stops
 form strategy
@@ -167,7 +167,7 @@ task supervise
           take site, name started
           call docks/push
             read started/dock
-      call do-settle-any
+      call job-settle-any
         read docks
         wait true
       # one child per turn, by index: the condition bounds every list the turn reads, each the same length by
@@ -191,7 +191,7 @@ task supervise
           save started, read handles/{at}
           save running, read alive/{at}
           save state
-            call do-state
+            call job-state
               read started/dock
           fork test
             hook test
@@ -221,7 +221,7 @@ task supervise
                       walk list, read handles
                         hook next
                           take site, name running
-                          call do-cancel
+                          call job-cancel
                             read running/dock
                       halt overload
                         bind thing, read tree/name
@@ -342,7 +342,7 @@ task restart-children
         hook hold
           save one, read tree/children/{place}
           save stopped, read handles/{place}
-          call do-cancel
+          call job-cancel
             read stopped/dock
           save fresh
             call spawn

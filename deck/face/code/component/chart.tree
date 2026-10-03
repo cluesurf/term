@@ -3,7 +3,7 @@
 # chart engine (a canvas/svg render or a docked chart lib) the consumer mounts inside. Parts: chart, chart-tooltip,
 # chart-legend. role=img with an aria-label for a11y.
 load @term/site/code/view/render
-  find element
+  find make-element
 load @term/site/code/dom/dom
   find view
   find append

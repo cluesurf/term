@@ -3,28 +3,28 @@
 dock load
   load <global:strings>, name strings
 
-task do-upper
+task string-upper
   take input, like text
   like text
   send back
     call strings/upper
       read input
 
-task do-lower
+task string-lower
   take input, like text
   like text
   send back
     call strings/lower
       read input
 
-task do-trim
+task string-trim
   take input, like text
   like text
   send back
     call strings/trim
       read input
 
-task do-repeat
+task string-repeat
   take input, like text
   take count, like number
   like text
@@ -33,7 +33,7 @@ task do-repeat
       read input
       read count
 
-task do-contains
+task string-contains
   take input, like text
   take part, like text
   like boolean
@@ -42,7 +42,7 @@ task do-contains
       read input
       read part
 
-task do-starts-with
+task string-starts-with
   take input, like text
   take prefix, like text
   like boolean
@@ -51,7 +51,7 @@ task do-starts-with
       read input
       read prefix
 
-task do-ends-with
+task string-ends-with
   take input, like text
   take suffix, like text
   like boolean
@@ -60,7 +60,7 @@ task do-ends-with
       read input
       read suffix
 
-task do-replace
+task string-replace
   take input, like text
   take from, like text
   take to, like text
@@ -71,7 +71,7 @@ task do-replace
       read from
       read to
 
-task do-slice
+task string-slice
   take input, like text
   take start, like number
   take end, like number
@@ -82,7 +82,7 @@ task do-slice
       read start
       read end
 
-task do-concat
+task string-concat
   take input, like text
   take other, like text
   like text
@@ -91,7 +91,7 @@ task do-concat
       read input
       read other
 
-task do-to-text
+task string-to-text
   take value
   like text
   send back

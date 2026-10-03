@@ -9,7 +9,7 @@ dock type
 dock load
   load <global:job>, name job
 
-task do-spawn
+task job-spawn
   take work
     like task
       like unknown
@@ -19,7 +19,7 @@ task do-spawn
       read work
 
 # wait until the job is no longer running: settled, or cancelled
-task do-settle
+task job-settle
   note async
   take dock, like job-handle
   like void
@@ -28,7 +28,7 @@ task do-settle
     wait true
 
 # the same, giving up after `milliseconds`: true when it stopped running in time
-task do-settle-within
+task job-settle-within
   note async
   take dock, like job-handle
   take milliseconds, like number
@@ -40,7 +40,7 @@ task do-settle-within
       wait true
 
 # wait until every job has stopped running, or until the first one fails or is cancelled
-task do-settle-group
+task job-settle-group
   note async
   take docks
     like list
@@ -51,7 +51,7 @@ task do-settle-group
     wait true
 
 # wait until any one job has stopped running, for any reason
-task do-settle-any
+task job-settle-any
   note async
   take docks
     like list
@@ -62,7 +62,7 @@ task do-settle-any
     wait true
 
 # `running`, `done`, `failed` or `cancelled`
-task do-state
+task job-state
   take dock, like job-handle
   like text
   send back
@@ -70,7 +70,7 @@ task do-state
       read dock
 
 # the result of a job whose state is `done`
-task do-result
+task job-result
   take dock, like job-handle
   like unknown
   send back
@@ -78,20 +78,20 @@ task do-result
       read dock
 
 # raise what a `failed` job raised, unchanged, so a typed exception reaches the waiter as itself
-task do-rethrow
+task job-rethrow
   take dock, like job-handle
   like unknown
   send back
     call job/rethrow
       read dock
 
-task do-cancel
+task job-cancel
   take dock, like job-handle
   like void
   call job/cancel
     read dock
 
-task do-alive
+task job-alive
   take dock, like job-handle
   like boolean
   send back

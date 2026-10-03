@@ -12,21 +12,22 @@ import type {
 } from '@term/make/code/compile/node'
 import { egraphArith } from '@term/make/code/ir/egraph-arith'
 import { expressionsEqual } from '@term/make/code/compile/expr-equal'
+import { RENDER } from '@term/make/code/compile/render-names'
 
 // the render + reactive runtime primitives emitZone (code/compile/typescript.ts) synthesizes as raw calls in a zone's
 // output. They never appear as call nodes in the AST, so reference-counting cannot see them. When a program contains
 // any zone, treat this fixed ABI as referenced so neither forwarder-inlining nor specialization drops a single-return
-// member of it (`element` / `text` / `make-signal`).
+// member of it (`make-element` / `make-text` / `make-signal`). The render names come from compile/render-names.ts.
 const VIEW_RUNTIME = [
-  'element',
-  'text',
-  'dynamic',
-  'attribute',
-  'event',
+  RENDER.element,
+  RENDER.text,
+  RENDER.dynamic,
+  RENDER.attribute,
+  RENDER.event,
   'append',
-  'show',
-  'each',
-  'range',
+  RENDER.show,
+  RENDER.each,
+  RENDER.integers,
   'make-signal',
   'read-signal',
   'write-signal',

@@ -3,7 +3,7 @@
 # components (distinct names so they don't self-collide). Parts: table-header (thead), table-body (tbody), table-footer
 # (tfoot), table-row (tr), table-head (th), table-cell (td), table-caption (caption).
 load @term/site/code/view/render
-  find element
+  find make-element
 load @term/site/code/dom/dom
   find view
   find append

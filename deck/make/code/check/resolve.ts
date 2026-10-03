@@ -21,6 +21,7 @@ import {
 } from '@term/make/code/compile/mill'
 import { isFoldable, nestLeanCalls } from '@term/make/code/check/lean-nest'
 import { armLocals } from '@term/make/code/check/arm'
+import { overloadGroups } from '@term/make/code/check/overload'
 
 // the fields every caught exception binds in an arm, beside its own props (infer.ts keeps the same list)
 const EXCEPTION_SHARED = ['host', 'form', 'note', 'code', 'time']
@@ -84,6 +85,16 @@ export function buildGlobalScope(program: Program): Scope {
         kind: 'function',
         arity: statement.params.length,
       })
+    }
+  }
+
+  // a typed choice among same-named tasks of several modules (check/overload.ts bindByImport): its own key, which the
+  // checker re-targets to the member the arguments fit, so it resolves as its first member does until then
+  for (const [key, members] of overloadGroups) {
+    const first = members[0] !== undefined ? global.get(members[0]) : undefined
+
+    if (first && !global.has(key)) {
+      global.set(key, first)
     }
   }
 

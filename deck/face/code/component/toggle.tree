@@ -2,7 +2,7 @@
 # Toggle — headless, behavior-complete. A two-state pressable button backed by disclosure (pressed = open). aria-pressed
 # + data-state reactive; click toggles. Consumer passes a `control`.
 load @term/site/code/view/render
-  find element
+  find make-element
 load @term/site/code/dom/dom
   find view
   find append

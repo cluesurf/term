@@ -4,10 +4,10 @@
 # text is `dynamic`, so its effect re-runs the read and updates the node when the signal changes.
 
 load ../../view/render
-  find element
-  find text
-  find dynamic
-  find event
+  find make-element
+  find make-text
+  find make-dynamic-text
+  find attach-event
   find mount
 
 load ../../view/reactive
@@ -26,10 +26,10 @@ task counter
       bind value, code 0
 
   save root
-    call element
+    call make-element
       bind tag, text <button>
 
-  call event
+  call attach-event
     bind node, read root
     bind name, text <click>
     bind handler
@@ -47,7 +47,7 @@ task counter
     bind build
       task build-count
         send back
-          call dynamic
+          call make-dynamic-text
             bind source
               # the count is a number and a text node holds text, so it is written into one. The checker accepted
               # the number as it was, which TypeScript forgives and Swift refuses (native-dom-0022)

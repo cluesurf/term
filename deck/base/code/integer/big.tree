@@ -14,7 +14,7 @@ dock type
 dock load
   load <global:termbig>, name termbig
 
-bind do-big-from-text
+bind bignum-from-text
   take value, like text
   like big-handle
   case node
@@ -30,7 +30,7 @@ bind do-big-from-text
   case kotlin
     text <java.math.BigInteger($value)>
 
-bind do-big-from-number
+bind bignum-from-number
   take value, like number
   like big-handle
   case node
@@ -44,7 +44,7 @@ bind do-big-from-number
   case kotlin
     text <java.math.BigInteger.valueOf($value)>
 
-bind do-big-to-text
+bind bignum-to-text
   take value, like big-handle
   like text
   case node
@@ -58,7 +58,7 @@ bind do-big-to-text
   case kotlin
     text <($value as java.math.BigInteger).toString()>
 
-bind do-big-add
+bind bignum-add
   take a, like big-handle
   take b, like big-handle
   like big-handle
@@ -73,7 +73,7 @@ bind do-big-add
   case kotlin
     text <($a as java.math.BigInteger).add($b as java.math.BigInteger)>
 
-bind do-big-subtract
+bind bignum-subtract
   take a, like big-handle
   take b, like big-handle
   like big-handle
@@ -88,7 +88,7 @@ bind do-big-subtract
   case kotlin
     text <($a as java.math.BigInteger).subtract($b as java.math.BigInteger)>
 
-bind do-big-multiply
+bind bignum-multiply
   take a, like big-handle
   take b, like big-handle
   like big-handle
@@ -103,7 +103,7 @@ bind do-big-multiply
   case kotlin
     text <($a as java.math.BigInteger).multiply($b as java.math.BigInteger)>
 
-bind do-big-divide
+bind bignum-divide
   take a, like big-handle
   take b, like big-handle
   like big-handle
@@ -118,7 +118,7 @@ bind do-big-divide
   case kotlin
     text <($a as java.math.BigInteger).divide($b as java.math.BigInteger)>
 
-bind do-big-remainder
+bind bignum-remainder
   take a, like big-handle
   take b, like big-handle
   like big-handle
@@ -133,7 +133,7 @@ bind do-big-remainder
   case kotlin
     text <($a as java.math.BigInteger).remainder($b as java.math.BigInteger)>
 
-bind do-big-negate
+bind bignum-negate
   take value, like big-handle
   like big-handle
   case node
@@ -147,7 +147,7 @@ bind do-big-negate
   case kotlin
     text <($value as java.math.BigInteger).negate()>
 
-bind do-big-compare
+bind bignum-compare
   take a, like big-handle
   take b, like big-handle
   like number
@@ -171,7 +171,7 @@ form big-integer
     take self
     like text
     send back
-      call do-big-to-text
+      call bignum-to-text
         read self/dock
 
   # this integer plus another
@@ -182,7 +182,7 @@ form big-integer
     send back
       make big-integer
         bind dock
-          call do-big-add
+          call bignum-add
             read self/dock
             read other/dock
 
@@ -194,7 +194,7 @@ form big-integer
     send back
       make big-integer
         bind dock
-          call do-big-subtract
+          call bignum-subtract
             read self/dock
             read other/dock
 
@@ -206,7 +206,7 @@ form big-integer
     send back
       make big-integer
         bind dock
-          call do-big-multiply
+          call bignum-multiply
             read self/dock
             read other/dock
 
@@ -218,7 +218,7 @@ form big-integer
     send back
       make big-integer
         bind dock
-          call do-big-divide
+          call bignum-divide
             read self/dock
             read other/dock
 
@@ -230,7 +230,7 @@ form big-integer
     send back
       make big-integer
         bind dock
-          call do-big-remainder
+          call bignum-remainder
             read self/dock
             read other/dock
 
@@ -241,7 +241,7 @@ form big-integer
     send back
       make big-integer
         bind dock
-          call do-big-negate
+          call bignum-negate
             read self/dock
 
   # -1, 0, or 1 as this integer is less than, equal to, or greater than another
@@ -250,7 +250,7 @@ form big-integer
     take other, like big-integer
     like number
     send back
-      call do-big-compare
+      call bignum-compare
         read self/dock
         read other/dock
 
@@ -261,7 +261,7 @@ task make-big-integer
   send back
     make big-integer
       bind dock
-        call do-big-from-text
+        call bignum-from-text
           read value
 
 # a big integer from a platform number
@@ -271,7 +271,7 @@ task big-from-number
   send back
     make big-integer
       bind dock
-        call do-big-from-number
+        call bignum-from-number
           read value
 
 # free-function arithmetic, for other modules to call without colliding with the platform `add` / `multiply` intrinsics
@@ -283,7 +283,7 @@ task big-add
   send back
     make big-integer
       bind dock
-        call do-big-add
+        call bignum-add
           read a/dock
           read b/dock
 
@@ -294,7 +294,7 @@ task big-subtract
   send back
     make big-integer
       bind dock
-        call do-big-subtract
+        call bignum-subtract
           read a/dock
           read b/dock
 
@@ -305,7 +305,7 @@ task big-multiply
   send back
     make big-integer
       bind dock
-        call do-big-multiply
+        call bignum-multiply
           read a/dock
           read b/dock
 
@@ -314,6 +314,6 @@ task big-compare
   take b, like big-integer
   like number
   send back
-    call do-big-compare
+    call bignum-compare
       read a/dock
       read b/dock

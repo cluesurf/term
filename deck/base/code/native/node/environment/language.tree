@@ -7,11 +7,11 @@ load @term/base/code/text
 
 dock load
   load <node:os>, name os
-  load <global:locale>, name locale
+  load <global:locale>, name tongue
 
 task read-locale
   save options
-    call locale/options
+    call tongue/options
   save tag, read options/locale
   save parts
     call split
@@ -48,7 +48,7 @@ task read-locale
 
 task known-locales
   save options
-    call locale/options
+    call tongue/options
   save tag, read options/locale
   send back
     make list

@@ -74,7 +74,7 @@ host clock
   make memory-clock
     bind next, code 0
 
-task make-element
+task make-memory-element
   take tag, like text
   take text, like text
   like memory-element
@@ -115,7 +115,7 @@ task create-element
   send back
     make view
       bind handle
-        call make-element
+        call make-memory-element
           bind tag, read tag
           bind text, text <>
 
@@ -125,7 +125,7 @@ task create-text
   send back
     make view
       bind handle
-        call make-element
+        call make-memory-element
           bind tag, text <>
           bind text, read value
 

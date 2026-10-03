@@ -12,10 +12,10 @@
 note stable
 
 load @term/base/code/native/{platform}/channel
-  find do-make
-  find do-send
-  find do-receive
-  find do-close
+  find mailbox-make
+  find mailbox-send
+  find mailbox-receive
+  find mailbox-close
 
 # a channel carrying messages of type `t` (one letter, as every stdlib generic is: the native emitters spell a
 # generic by upper-casing it, and a longer name reads differently where it is declared and where it is used)
@@ -29,7 +29,7 @@ form channel
     take self
     take item, like t
     like void
-    call do-send
+    call mailbox-send
       read self/dock
       read item
       wait true
@@ -40,7 +40,7 @@ form channel
     take self
     like t
     send back
-      call do-receive
+      call mailbox-receive
         read self/dock
         wait true
 
@@ -49,7 +49,7 @@ form channel
     note async
     take self
     like void
-    call do-close
+    call mailbox-close
       read self/dock
       wait true
 
@@ -60,7 +60,7 @@ task make-channel
   send back
     make channel
       bind dock
-        call do-make
+        call mailbox-make
 
 # make a new channel of text, the old default, spelled out
 task make-text-channel

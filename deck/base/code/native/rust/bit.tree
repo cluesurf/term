@@ -3,7 +3,7 @@
 dock load
   load <global:bit>, name bit
 
-task do-bitwise-and
+task bit-and
   take left, like number
   take right, like number
   like number
@@ -12,7 +12,7 @@ task do-bitwise-and
       read left
       read right
 
-task do-bitwise-or
+task bit-or
   take left, like number
   take right, like number
   like number
@@ -21,7 +21,7 @@ task do-bitwise-or
       read left
       read right
 
-task do-bitwise-exclusive-or
+task bit-exclusive-or
   take left, like number
   take right, like number
   like number
@@ -30,14 +30,14 @@ task do-bitwise-exclusive-or
       read left
       read right
 
-task do-bitwise-not
+task bit-not
   take value, like number
   like number
   send back
     call bit/not
       read value
 
-task do-shift-left
+task bit-shift-left
   take value, like number
   take count, like number
   like number
@@ -46,7 +46,7 @@ task do-shift-left
       read value
       read count
 
-task do-shift-right
+task bit-shift-right
   take value, like number
   take count, like number
   like number
@@ -55,7 +55,7 @@ task do-shift-right
       read value
       read count
 
-task do-unsigned-shift-right
+task bit-shift-right-unsigned
   take value, like number
   take count, like number
   like number
@@ -64,7 +64,7 @@ task do-unsigned-shift-right
       read value
       read count
 
-task do-multiply-32
+task bit-multiply-32
   take left, like number
   take right, like number
   like number

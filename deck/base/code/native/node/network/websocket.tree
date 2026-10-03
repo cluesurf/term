@@ -9,7 +9,7 @@ dock load
 load @term/base/code/network/websocket
   find socket
 
-task do-connect
+task websocket-connect
   note async
   take url, like text
   like socket

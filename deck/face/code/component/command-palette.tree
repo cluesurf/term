@@ -6,7 +6,7 @@
 # the app shell; this is the themeable, registry-driven list.
 
 load @term/site/code/view/render
-  find element
+  find make-element
 load @term/site/code/dom/dom
   find view
   find append

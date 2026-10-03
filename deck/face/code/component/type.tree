@@ -29,7 +29,7 @@
 # data-lines), fitted (scale text to fill its box; the measurement loop is a noted dom-primitive follow-up).
 
 load @term/site/code/view/render
-  find element
+  find make-element
 load @term/site/code/dom/dom
   find view
   find append

@@ -4,7 +4,7 @@
 # consumer's (or a future date controller); these are the themeable, a11y-wired grid. Parts: calendar, calendar-header,
 # calendar-title, calendar-nav, calendar-grid, calendar-row, calendar-cell, calendar-day.
 load @term/site/code/view/render
-  find element
+  find make-element
 load @term/site/code/dom/dom
   find view
   find append

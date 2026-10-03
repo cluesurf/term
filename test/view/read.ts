@@ -4,6 +4,7 @@
 import { parse } from '@term/make/code/parser/tree'
 import { readView, lowerView, viewManifest, checkView } from '@term/make/code/compile/view'
 import { readDataText } from '@term/make/code/compile/host'
+import { RENDER } from '@term/make/code/compile/render-names'
 
 let pass = 0
 let fail = 0
@@ -269,7 +270,7 @@ if (result.ok) {
   ok('it lists every component placed', holds('list view') && holds('<sound/phoneme-chart>'))
   ok('it lists every operator applied', holds('list call') && holds('<titlecase>'))
   ok('it lists every package loaded', holds('list load') && holds('<@view/sound>'))
-  ok('it does not list the synthesized range', !/list call[\s\S]*<range>/.test(manifest))
+  ok('it does not list the synthesized range', !new RegExp(`list call[\\s\\S]*<${RENDER.integers}>`).test(manifest))
 
   // The manifest IS the host dialect, so the host's own READER takes it back, not merely the tree parser. That
   // is the assertion that matters: it is written by `writeLong`, so a value holding a brace, a newline or a tab
@@ -432,8 +433,9 @@ for (const [shape, text] of [
 }
 
 // ---- a counted walk ----
-// `walk size` normalises into a `walk list` over `range(base, head)`, because `view-walk` carries only a list walk
-// and adding a counted one would touch every pass that reads a walk. `range` is a render-runtime task.
+// `walk size` normalises into a `walk list` over `list-integers(base, head)`, because `view-walk` carries only a list
+// walk and adding a counted one would touch every pass that reads a walk. `list-integers` is a render-runtime task, and
+// its name is read from compile/render-names.ts here as everywhere.
 
 const COUNTED = `
 host total, like text
@@ -453,7 +455,7 @@ view page
         bind rank, read n
 `
 
-// Read and lowered directly rather than through `compile`, because `range` is a render-runtime task and a bare
+// Read and lowered directly rather than through `compile`, because `list-integers` is a render-runtime task and a bare
 // compile has no resolver to load it. A real build auto-loads that runtime for any module holding a zone.
 const countedRead = read(COUNTED)
 
@@ -473,7 +475,7 @@ if (countedRead.ok) {
     body[0]?.form === 'walk' &&
       body[0].iterable.form === 'call' &&
       body[0].iterable.callee.form === 'variable' &&
-      body[0].iterable.callee.name === 'range',
+      body[0].iterable.callee.name === RENDER.integers,
   )
   ok(
     'its bounds are the base and the head',

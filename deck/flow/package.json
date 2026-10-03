@@ -1,6 +1,7 @@
 {
-  "name": "seed-language",
+  "name": "term-code",
   "displayName": "Term",
+  "icon": "view/tree.png",
   "description": "Term language support: .tree syntax highlighting plus the Term language server (diagnostics, hover, completion, go-to-definition, go-to-implementation, find references, rename, code actions and quick fixes, document symbols, signature help, code lens, inlay hints, semantic tokens).",
   "version": "0.5.0",
   "license": "MIT",
@@ -15,19 +16,27 @@
   },
   "categories": ["Programming Languages"],
   "activationEvents": ["onLanguage:tree", "workspaceContains:**/*.tree"],
-  "main": "./host/extension.js",
+  "main": "./make/extension.js",
   "scripts": {
     "build": "node build.mjs",
     "dock": "vsce login cluesurf",
     "make": "vsce package",
     "host": "vsce publish",
-    "vscode:prepublish": "node build.mjs"
+    "vscode:prepublish": "node build.mjs",
+    "view": "convert -background none -resize 1024x view/tree.svg view/tree.png"
   },
   "contributes": {
+    "iconThemes": [
+      {
+        "id": "tree",
+        "label": "Tree",
+        "path": "./view/view.json"
+      }
+    ],
     "languages": [
       {
         "id": "tree",
-        "aliases": ["Term", "Tree", "tree"],
+        "aliases": ["Term", "Tree", "TreeCode", "tree"],
         "extensions": [".tree"],
         "configuration": "./text/bind.json"
       },
@@ -54,6 +63,11 @@
     "configurationDefaults": {
       "[tree]": {
         "editor.wordWrap": "on",
+        "editor.quickSuggestions": {
+          "other": true,
+          "comments": true,
+          "strings": true
+        },
         "editor.tabCompletion": "on",
         "editor.wordSeparators": " ()<>{},?/",
         "editor.bracketPairColorization.enabled": false

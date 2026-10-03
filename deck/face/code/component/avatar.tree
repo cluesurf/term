@@ -3,8 +3,8 @@
 # avatar-image (the img; pass `src`/`alt` through bind), avatar-fallback (shown when no image). Theme via data-slot.
 
 load @term/site/code/view/render
-  find element
-  find text
+  find make-element
+  find make-text
 load @term/site/code/dom/dom
   find view
   find append

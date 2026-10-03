@@ -10,9 +10,9 @@
 # property the browser host does not set. Parts: `dialog`, `dialog-title` (data-slots for a theme).
 
 load @term/site/code/view/render
-  find element
-  find text
-  find attribute
+  find make-element
+  find make-text
+  find write-attribute
 load @term/site/code/view/reactive
   find signal
   find make-effect
@@ -34,34 +34,34 @@ task mount-dialog
       take host, like view
   like view
   save frame
-    call element
+    call make-element
       text <div>
-  call attribute
+  call write-attribute
     read frame
     text <role>
     text <dialog>
-  call attribute
+  call write-attribute
     read frame
     text <aria-modal>
     text <true>
-  call attribute
+  call write-attribute
     read frame
     text <data-slot>
     text <dialog>
-  call attribute
+  call write-attribute
     read frame
     text <class>
     read class
   save heading
-    call element
+    call make-element
       text <h2>
-  call attribute
+  call write-attribute
     read heading
     text <data-slot>
     text <dialog-title>
   call append
     read heading
-    call text
+    call make-text
       read title
   call append
     read frame

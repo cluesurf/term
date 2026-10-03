@@ -29,7 +29,7 @@
 
 note stable
 
-bind do-size
+bind code-point-count
   take value, like text
   like number
   case node
@@ -47,7 +47,7 @@ task char-count
   take value, like text
   like number
   send back
-    call do-size
+    call code-point-count
       read value
 
 task char-at

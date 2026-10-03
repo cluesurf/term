@@ -5,19 +5,19 @@
 load @term/base/code/network/http
   find response
 
-bind do-response-text
+bind body-as-text
   take raw, like unknown
   like text
   case rust
     text <$raw.downcast_ref::\<String\>().cloned().unwrap_or_default()>
 
-bind do-response-bytes
+bind body-as-bytes
   take raw, like unknown
   like unknown
   case rust
     text <(std::rc::Rc::new($raw.downcast_ref::\<String\>().cloned().unwrap_or_default().into_bytes()) as std::rc::Rc\<dyn std::any::Any\>)>
 
-bind do-response-json
+bind body-as-json
   take raw, like unknown
   like unknown
   case rust
@@ -37,17 +37,17 @@ task read
   fork case, read format
     case text
       send back
-        call do-response-text
+        call body-as-text
           read raw
     case bytes
       send back
-        call do-response-bytes
+        call body-as-bytes
           read raw
     case json
       send back
-        call do-response-json
+        call body-as-json
           read raw
     case stream
       send back
-        call do-response-bytes
+        call body-as-bytes
           read raw

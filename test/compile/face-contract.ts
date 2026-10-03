@@ -101,7 +101,7 @@ for (const [env, want, why] of [
   writeFileSync(join(app, 'deck.tree'), 'deck @app/face-shadow\n')
 
   const shadow = (props: string) => `load @term/site/code/view/render
-  find element
+  find make-element
 load @term/site/code/dom/dom
   find view
 load @term/face/code/logic/disclosure

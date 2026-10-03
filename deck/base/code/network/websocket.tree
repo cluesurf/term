@@ -3,12 +3,12 @@
 note stable
 
 load @term/base/code/native/{platform}/network/websocket
-  find do-connect
+  find websocket-connect
 
 load @term/base/code/native/{platform}/network/websocket/socket
-  find do-send
-  find do-receive
-  find do-close
+  find websocket-socket-send
+  find websocket-socket-receive
+  find websocket-socket-close
 
 # one received WebSocket frame: `kind` is "text" or "close", `data` is the payload (empty on close)
 form message
@@ -26,7 +26,7 @@ form socket
     take self, like socket
     take data, like text
     like void
-    call do-send
+    call websocket-socket-send
       read self
       read data
       wait true
@@ -37,7 +37,7 @@ form socket
     take self, like socket
     like message
     send back
-      call do-receive
+      call websocket-socket-receive
         read self
         wait true
 
@@ -46,7 +46,7 @@ form socket
     note async
     take self, like socket
     like void
-    call do-close
+    call websocket-socket-close
       read self
       wait true
 
@@ -56,6 +56,6 @@ task connect
   take url, like text
   like socket
   send back
-    call do-connect
+    call websocket-connect
       read url
       wait true

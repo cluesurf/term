@@ -3,12 +3,12 @@
 note stable
 
 load @term/base/code/native/{platform}/network/udp
-  find do-open
+  find udp-open
 
 load @term/base/code/native/{platform}/network/udp/socket
-  find do-send
-  find do-receive
-  find do-close
+  find udp-socket-send
+  find udp-socket-receive
+  find udp-socket-close
 
 # one received message and the address it came from
 form datagram
@@ -31,7 +31,7 @@ form socket
     take port, like number
     like number
     send back
-      call do-send
+      call udp-socket-send
         read self
         read data
         read host
@@ -44,7 +44,7 @@ form socket
     take self
     like datagram
     send back
-      call do-receive
+      call udp-socket-receive
         read self
         wait true
 
@@ -53,7 +53,7 @@ form socket
     note async
     take self
     like void
-    call do-close
+    call udp-socket-close
       read self
       wait true
 
@@ -67,7 +67,7 @@ task open
     fall text <0.0.0.0>
   like socket
   send back
-    call do-open
+    call udp-open
       read port
       read host
       wait true

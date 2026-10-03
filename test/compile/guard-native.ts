@@ -145,6 +145,25 @@ task describe
     fork case, read problem
       case user-absence
         send back, text <no user {{key}}: {{note}}>
+
+# an INTERPOLATED text raises \`failure\` like a plain one. It was a \`template\` node every emitter's throw case
+# missed: Rust handed back a String where the carrier goes (test/compile/halt-text.ts holds TypeScript)
+task need-key
+  take key, like text
+  like text
+  halt <no such key {{key}}>
+
+task checked
+  take key, like text
+  like text
+  note unsafe
+    send back
+      call need-key
+        read key
+  halt take
+    take problem
+    send back
+      text <caught {{problem/form}}: {{problem/note}}>
 `
 
 function frontEnd(env: Env): Program {
@@ -178,7 +197,7 @@ function frontEnd(env: Env): Program {
 
   resolveAsync(program)
 
-  return simplify(program, new Set(['lookup', 'unguarded', 'describe']))
+  return simplify(program, new Set(['lookup', 'unguarded', 'describe', 'checked']))
 }
 
 const dir = mkdtempSync(join(tmpdir(), 'term-guard-native-'))
@@ -188,12 +207,14 @@ const only = process.env.GN_ONLY ?? ''
 const WANT_FOUND = 'alice'
 const WANT_CAUGHT = 'caught user-absence: No such user'
 const WANT_CASED = 'no user zed: No such user'
+const WANT_TEXT = 'caught failure: no such key q'
 
 function judge(env: Env, built: { status: number | null; stdout: string; stderr: string }, uncaught: { status: number | null; stderr: string }): void {
   const lines = built.stdout.split('\n')
   ok(`${env}: the happy path returns`, lines[0] === WANT_FOUND, JSON.stringify(lines[0]))
   ok(`${env}: the raise reaches the handler with its form and note`, lines[1] === WANT_CAUGHT, JSON.stringify(lines[1]))
   ok(`${env}: a fork case over the caught value binds the form's prop`, lines[2] === WANT_CASED, JSON.stringify(lines[2]))
+  ok(`${env}: an interpolated text raises failure with the text as its note`, lines[3] === WANT_TEXT, JSON.stringify(lines[3]))
   ok(`${env}: an uncaught raise ends the program`, uncaught.status !== 0, `exit ${uncaught.status}`)
   ok(`${env}: the uncaught raise names its form and note`, uncaught.stderr.includes('user-absence') && uncaught.stderr.includes('No such user'), uncaught.stderr.slice(0, 200))
 }
@@ -206,7 +227,7 @@ function runSwift(): void {
   const program = frontEnd('swift')
   const source = `${nativePrelude(program, 'swift', readRuntime)}\n${emitSwift(program)}`
   const main = join(dir, 'main.swift')
-  writeFileSync(main, `${source}\nprint(lookup("a"))\nprint(lookup("b"))\nprint(describe("zed"))\nif CommandLine.arguments.count > 1 { print(try! unguarded("z")) }\n`)
+  writeFileSync(main, `${source}\nprint(lookup("a"))\nprint(lookup("b"))\nprint(describe("zed"))\nprint(checked("q"))\nif CommandLine.arguments.count > 1 { print(try! unguarded("z")) }\n`)
 
   try {
     execFileSync('swiftc', ['-o', join(dir, 'swift-main'), main], { stdio: 'pipe' })
@@ -232,7 +253,7 @@ function runKotlin(): void {
   writeFileSync(
     file,
     hoistKotlinImports(
-      `${nativePrelude(program, 'kotlin', readRuntime)}\n${emitKotlin(program)}\nfun main(args: Array<String>) { println(lookup("a")); println(lookup("b")); println(describe("zed")); if (args.isNotEmpty()) { println(unguarded("z")) } }\n`,
+      `${nativePrelude(program, 'kotlin', readRuntime)}\n${emitKotlin(program)}\nfun main(args: Array<String>) { println(lookup("a")); println(lookup("b")); println(describe("zed")); println(checked("q")); if (args.isNotEmpty()) { println(unguarded("z")) } }\n`,
     ),
   )
   const jar = join(dir, 'main.jar')
@@ -284,7 +305,7 @@ function runRust(): void {
   writeFileSync(join(proj, 'Cargo.toml'), CARGO_TOML)
   writeFileSync(
     join(proj, 'src', 'main.rs'),
-    `${nativePrelude(program, 'rust', readRuntime)}\n${emitRust(program)}\nfn main() { println!("{}", lookup("a".to_string())); println!("{}", lookup("b".to_string())); println!("{}", describe("zed".to_string())); if std::env::args().count() > 1 { match unguarded("z".to_string()) { Ok(v) => println!("{}", v), Err(e) => { eprintln!("{}", e); std::process::exit(1) } } } }\n`,
+    `${nativePrelude(program, 'rust', readRuntime)}\n${emitRust(program)}\nfn main() { println!("{}", lookup("a".to_string())); println!("{}", lookup("b".to_string())); println!("{}", describe("zed".to_string())); println!("{}", checked("q".to_string())); if std::env::args().count() > 1 { match unguarded("z".to_string()) { Ok(v) => println!("{}", v), Err(e) => { eprintln!("{}", e); std::process::exit(1) } } } }\n`,
   )
   const env = { ...process.env, CARGO_TARGET_DIR: join(tmpdir(), 'seed-rust-runtime', 'target') }
 

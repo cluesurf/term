@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
-  "name": "TreeCode",
+  "name": "Term",
   "patterns": [
     {
       "include": "#nestedtermsexternal"
@@ -153,11 +153,15 @@
       "patterns": [
         {
           "name": "entity.name.function.tree",
-          "match": "\\d+"
+          "match": "(?<![\\w-])-?0x[0-9a-fA-F]+\\b"
         },
         {
           "name": "entity.name.function.tree",
-          "match": "\\d+\\.\\d+"
+          "match": "(?<![\\w-])-?\\d+\\.\\d+\\b"
+        },
+        {
+          "name": "entity.name.function.tree",
+          "match": "(?<![\\w-])-?\\d+\\b"
         }
       ]
     },
@@ -170,7 +174,7 @@
       ]
     },
     "interpolations": {
-      "begin": "\\{+",
+      "begin": "\\{+(?=[a-z@./])",
       "beginCaptures": {
         "0": {
           "name": "support.type.property-name.tree.tree"
@@ -215,14 +219,25 @@
       },
       "patterns": [
         {
+          "name": "constant.character.escape.tree",
+          "match": "\\\\[<>{}nrte\\\\]"
+        },
+        {
           "include": "#codes"
         },
         {
           "include": "#interpolations"
         },
         {
+          "include": "#strings"
+        },
+        {
           "name": "entity.name.tag.tree",
-          "match": "[^\\\\{>]+"
+          "match": "[^\\\\{<>]+"
+        },
+        {
+          "name": "entity.name.tag.tree",
+          "match": "[\\\\{]"
         }
       ]
     }

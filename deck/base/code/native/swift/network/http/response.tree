@@ -4,14 +4,14 @@
 load @term/base/code/network/http
   find response
 
-bind do-response-text
+bind body-as-text
   take raw, like unknown
   like text
   case swift
     load <Foundation>
     text <String(data: ($raw as? Data) ?? Data(), encoding: .utf8) ?? "">
 
-bind do-response-json
+bind body-as-json
   take raw, like unknown
   like unknown
   case swift
@@ -32,13 +32,13 @@ task read
   fork case, read format
     case text
       send back
-        call do-response-text
+        call body-as-text
           read raw
     case bytes
       send back, read raw
     case json
       send back
-        call do-response-json
+        call body-as-json
           read raw
     case stream
       send back, read raw

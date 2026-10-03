@@ -11,10 +11,10 @@
 # `select` (the control, data-slot for a theme).
 
 load @term/site/code/view/render
-  find element
-  find text
-  find attribute
-  find event
+  find make-element
+  find make-text
+  find write-attribute
+  find attach-event
 load @term/site/code/view/reactive
   find signal
   find make-effect
@@ -36,13 +36,13 @@ task mount-select
       like text
   like view
   save picker
-    call element
+    call make-element
       text <select>
-  call attribute
+  call write-attribute
     read picker
     text <data-slot>
     text <select>
-  call attribute
+  call write-attribute
     read picker
     text <class>
     read class
@@ -50,15 +50,15 @@ task mount-select
     hook next
       take site, name choice
       save option
-        call element
+        call make-element
           text <option>
-      call attribute
+      call write-attribute
         read option
         text <value>
         read choice
       call append
         read option
-        call text
+        call make-text
           read choice
       call append
         read picker
@@ -71,7 +71,7 @@ task mount-select
         call read-signal
           bind self, read control
   # a choice the person made, written into the signal
-  call event
+  call attach-event
     read picker
     text <change>
     task chosen

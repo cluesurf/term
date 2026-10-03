@@ -605,3 +605,78 @@ export function escapingParams(fn: Extract<Statement, { form: 'function' }>): Se
 
   return escapes
 }
+
+// The three-statement swap of two list slots, `save t, read xs/{i}` / `save xs/{i}, read xs/{j}` / `save xs/{j}, read
+// t`, with the temporary read nowhere after. Rust writes it as `slice::swap` under one borrow where the three
+// statements took four, and Kotlin as `Collections.swap`. Swift does not: `swapAt` through `SeedList.data` measured
+// slower than the three statements (swift.ts, `block`). It stops where the three statements stop, before any write: each call
+// checks both indexes before it moves anything. The indexes are a variable or an integer literal, so reading them
+// once is reading them three times. Returns undefined for anything else, which is then emitted statement by statement
+export type Swap = { list: Expression; first: Expression; second: Expression; temp: string }
+
+export function swapAt(body: Statement[], at: number): Swap | undefined {
+  const [hold, move, put] = [body[at], body[at + 1], body[at + 2]]
+
+  if (hold?.form !== 'let' || move?.form !== 'assign' || put?.form !== 'assign' || move.op !== '=' || put.op !== '=') {
+    return undefined
+  }
+
+  // a slot of a LIST read by a dynamic index, off a plain variable; a hash read `table/{key}` is not one
+  const slot = (node: Expression): { list: string; index: Expression } | undefined =>
+    node.form === 'member' &&
+    node.index !== undefined &&
+    node.target.form === 'variable' &&
+    node.target.type?.kind === 'array' &&
+    (node.index.form === 'variable' || node.index.form === 'integer')
+      ? { list: node.target.name, index: node.index }
+      : undefined
+  const same = (a: Expression, b: Expression): boolean =>
+    (a.form === 'variable' && b.form === 'variable' && a.name === b.name) ||
+    (a.form === 'integer' && b.form === 'integer' && a.value === b.value)
+
+  const read = slot(hold.init)
+  const firstWrite = slot(move.target)
+  const secondRead = slot(move.value)
+  const secondWrite = slot(put.target)
+
+  if (
+    !read ||
+    !firstWrite ||
+    !secondRead ||
+    !secondWrite ||
+    ![firstWrite, secondRead, secondWrite].every(s => s.list === read.list) ||
+    !same(read.index, firstWrite.index) ||
+    !same(secondRead.index, secondWrite.index) ||
+    put.value.form !== 'variable' ||
+    put.value.name !== hold.name ||
+    [read.index, secondRead.index].some(i => i.form === 'variable' && (i.name === hold.name || i.name === read.list)) ||
+    mentions(body.slice(at + 3), hold.name)
+  ) {
+    return undefined
+  }
+
+  return { list: (hold.init as Extract<Expression, { form: 'member' }>).target, first: read.index, second: secondRead.index, temp: hold.name }
+}
+
+// is the name read anywhere in these statements (closures and nested blocks included)
+function mentions(body: Statement[], name: string): boolean {
+  const walk = (value: unknown): boolean => {
+    if (Array.isArray(value)) {
+      return value.some(walk)
+    }
+
+    if (value === null || typeof value !== 'object') {
+      return false
+    }
+
+    const node = value as Record<string, unknown>
+
+    if (node.form === 'variable' && node.name === name) {
+      return true
+    }
+
+    return Object.entries(node).some(([key, child]) => key !== 'type' && key !== 'span' && walk(child))
+  }
+
+  return walk(body)
+}

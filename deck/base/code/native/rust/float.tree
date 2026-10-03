@@ -3,35 +3,35 @@
 dock load
   load <global:fmath>, name fmath
 
-task do-sqrt
+task float-square-root
   take value, like decimal
   like decimal
   send back
     call fmath/sqrt
       read value
 
-task do-floor
+task float-floor
   take value, like decimal
   like decimal
   send back
     call fmath/floor
       read value
 
-task do-ceil
+task float-ceiling
   take value, like decimal
   like decimal
   send back
     call fmath/ceil
       read value
 
-task do-round
+task float-round
   take value, like decimal
   like decimal
   send back
     call fmath/round
       read value
 
-task do-power
+task float-power
   take base, like decimal
   take exponent, like decimal
   like decimal
@@ -40,56 +40,56 @@ task do-power
       read base
       read exponent
 
-task do-absolute
+task float-absolute
   take value, like decimal
   like decimal
   send back
     call fmath/abs
       read value
 
-task do-sine
+task float-sine
   take value, like decimal
   like decimal
   send back
     call fmath/sin
       read value
 
-task do-cosine
+task float-cosine
   take value, like decimal
   like decimal
   send back
     call fmath/cos
       read value
 
-task do-tangent
+task float-tangent
   take value, like decimal
   like decimal
   send back
     call fmath/tan
       read value
 
-task do-arc-sine
+task float-arc-sine
   take value, like decimal
   like decimal
   send back
     call fmath/asin
       read value
 
-task do-arc-cosine
+task float-arc-cosine
   take value, like decimal
   like decimal
   send back
     call fmath/acos
       read value
 
-task do-arc-tangent
+task float-arc-tangent
   take value, like decimal
   like decimal
   send back
     call fmath/atan
       read value
 
-task do-arc-tangent-of
+task float-arc-tangent-of
   take y, like decimal
   take x, like decimal
   like decimal

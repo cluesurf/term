@@ -12,15 +12,20 @@ import type {
 } from '@term/make/code/compile/node'
 import { showType } from '@term/make/code/compile/node'
 import { diagnose } from '@term/make/code/parser/diagnostic'
-import type { Diagnostic } from '@term/make/code/parser/diagnostic'
+import type { Diagnostic, Span } from '@term/make/code/parser/diagnostic'
 import type { ImportScope } from '@term/make/code/compile/load'
 import { nestLeanCalls } from '@term/make/code/check/lean-nest'
+import { HTML_TAGS } from '@term/make/code/compile/view-lower'
 
 // same-name, same-arity overloads: the first candidate's (mangled) name -> every candidate's name. Filled here,
 // read by the checker, which picks the candidate whose parameter types fit the arguments (check/infer.ts,
 // chooseOverload). A call is mangled to the first candidate so the resolver finds a definition; the checker
 // re-targets it once the argument types are known.
 export const overloadGroups = new Map<string, string[]>()
+
+// the keys bindByImport added to `overloadGroups` for a call several imported (or no imported) files take at different
+// types: their members are remapped once the arity pass has renamed any of them (disambiguateOverloads)
+const typedChoices = new Set<string>()
 
 type Definition = Extract<Statement, { form: 'function' }>
 
@@ -107,11 +112,13 @@ function boundIn(node: unknown, into = new Set<string>()): Set<string> {
 
   const record = node as Record<string, unknown>
 
-  if (record.form === 'let' && typeof record.name === 'string') {
+  // a let, and a view's own computed local (`save total / ...` in a component body)
+  if ((record.form === 'let' || record.form === 'save') && typeof record.name === 'string') {
     into.add(record.name)
   }
 
-  if (record.form === 'for-each') {
+  // a walk's item, in code (`for-each`) and in a view (`walk`)
+  if (record.form === 'for-each' || record.form === 'walk') {
     for (const key of ['item', 'index']) {
       if (typeof record[key] === 'string') {
         into.add(record[key] as string)
@@ -144,40 +151,63 @@ function boundIn(node: unknown, into = new Set<string>()): Set<string> {
   return into
 }
 
-// TWO MODULES DEFINING ONE NAME (native-dom-0031). Names are package-global, so two definitions of one name, both with
-// bodies, from two files, that neither arity nor parameter types tell apart, used to leave every call bound to
-// whichever was merged last, in silence: `from-text` became the bytes module's in a dispatcher that meant json's, a
-// test's `mount` became the browser dom's, and the stdlib's own `remove` was a file's or a directory's by load order.
+// TWO MODULES DEFINING ONE NAME (native-dom-0031, module-scope-0002). A name belongs to the module that defines it and
+// reaches another module only through `load ... / find` (note/term/project/module-scope.md). The build still merges
+// every module into one flat program, so without this pass two definitions of one name from two files met in it: of
+// one signature, the one merged last won in silence (`from-text` became the bytes module's in a dispatcher that meant
+// json's, the stdlib's own `remove` was a file's or a directory's by load order); of two signatures, they became
+// overloads of one global name, so a call bound to a module its file never imported.
 //
-// Each such definition is renamed apart, and each call is bound by WHAT ITS OWN FILE IMPORTED: the definition in the
-// calling file itself, or else the one in the file its `load ... / find <name>` resolved to (or that file re-exports
-// with `bear`). A call whose file imports the name from none of them, or from more than one, is refused, naming the
-// files. A signature with no body (an abstract declaration, a stub, a claim) is not a candidate, so it is still
-// overridden by its implementation, which is what the env chain relies on. Without a scope (one file, no resolver)
-// there is nothing to bind by, and every call to such a name is refused.
-function bindByImport(program: Program, scope: ImportScope | undefined): Diagnostic[] {
-  const groups: { name: string; min: number; max: number; defs: Definition[]; files: string[] }[] = []
+// So every name with bodied definitions in two or more files is split BY FILE: each file's definitions take a name of
+// their own (`<name>__in<g>_<k>`), and the definitions of one file keep sharing it, so overloads WITHIN a file are
+// still chosen by arity and type in the pass below. The entry file's own keep their original name, which is what its
+// roots and its exported API are called. Each reference is then bound by WHAT ITS OWN FILE IMPORTED:
+//
+//   its own file's definitions, else the files its `load ... / find <name>` reached (or their `bear` chains)
+//   one such file      the reference is that file's
+//   several            the one whose definitions take the call's arity, else refused naming the files
+//   none (unimported)  the one file whose definitions take the arity, else refused with the `find` to add
+//
+// A call is a reference, and so is a task passed as a value (a `variable` that is no local). A signature with no body
+// (an abstract declaration, a stub, a claim) is never a candidate, so it is still overridden by its implementation,
+// which the env chain relies on. Without a scope (one file, no resolver) only the arity can tell.
+function bindByImport(program: Program, scope: ImportScope | undefined, entry?: string): Diagnostic[] {
+  // a task, or a component (module-scope-0004): both are called, both are placed or passed, both are split by file
+  type Bindable = Definition | Extract<Statement, { form: 'view' }>
+  type Group = { name: string; index: number; files: string[]; byFile: Map<string, Bindable[]>; renamed: Map<string, string> }
+  const groups = new Map<string, Group>()
+  const bindable = new Map<string, Bindable[]>()
 
-  for (const [name, list] of definitionsOf(program)) {
-    for (const arity of new Set(list.map(d => d.params.length))) {
-      const defs = list.filter(
-        d => d.params.length === arity && d.body.length > 0 && !d.stub && !d.claim && !d.method,
-      )
-      const files = [...new Set(defs.map(d => d.span.file).filter((f): f is string => !!f))]
-
-      if (files.length < 2 || defs.some((a, i) => defs.slice(i + 1).some(b => differ(a, b)))) {
-        continue
-      }
-
-      groups.push({ name, min: defs[0]!.params.filter(p => !p.optional).length, max: arity, defs, files })
+  for (const s of program) {
+    if (s.form === 'function' || s.form === 'view') {
+      bindable.set(s.name, [...(bindable.get(s.name) ?? []), s])
     }
   }
 
-  if (groups.length === 0) {
+  for (const [name, list] of bindable) {
+    const defs = list.filter(d => d.span.file && (d.form === 'view' || (d.body.length > 0 && !d.stub && !d.claim && !d.method)))
+    const byFile = new Map<string, Bindable[]>()
+
+    for (const d of defs) {
+      byFile.set(d.span.file!, [...(byFile.get(d.span.file!) ?? []), d])
+    }
+
+    if (byFile.size > 1) {
+      groups.set(name, { name, index: groups.size, files: [...byFile.keys()].sort(), byFile, renamed: new Map() })
+    }
+  }
+
+  if (groups.size === 0) {
     return []
   }
 
-  groups.forEach((group, g) => group.defs.forEach((d, k) => (d.name = `${group.name}__from${g}_${k}`)))
+  ;[...groups.values()].forEach((group, g) =>
+    group.files.forEach((file, k) => {
+      const renamed = file === entry ? group.name : `${group.name}__in${g}_${k}`
+      group.renamed.set(file, renamed)
+      group.byFile.get(file)!.forEach(d => (d.name = renamed))
+    }),
+  )
 
   // a file and everything it re-exports with `bear`, transitively
   const exported = (file: string, into = new Set<string>()): Set<string> => {
@@ -194,20 +224,14 @@ function bindByImport(program: Program, scope: ImportScope | undefined): Diagnos
     return into
   }
 
-  // the definition a call in `file` means, `elsewhere` when its import reaches another definition of the name that is
-  // not in this group (a list's `contains` beside text's two), or undefined when it cannot be told
-  const choose = (
-    group: (typeof groups)[number],
-    file: string | undefined,
-  ): Definition | 'elsewhere' | undefined => {
+  // the files of a group a reference in `file` reaches: its own, else those its imports reach
+  const reached = (group: Group, file: string | undefined): string[] => {
     if (!file) {
-      return undefined
+      return []
     }
 
-    const own = group.defs.filter(d => d.span.file === file)
-
-    if (own.length === 1) {
-      return own[0]
+    if (group.byFile.has(file)) {
+      return [file]
     }
 
     const reach = new Set<string>()
@@ -216,73 +240,178 @@ function bindByImport(program: Program, scope: ImportScope | undefined): Diagnos
       exported(target, reach)
     }
 
-    const hits = group.defs.filter(d => d.span.file !== undefined && reach.has(d.span.file))
-
-    if (hits.length === 0 && reach.size > 0) {
-      return 'elsewhere'
-    }
-
-    return hits.length === 1 ? hits[0] : undefined
+    return group.files.filter(f => reach.has(f))
   }
+
+  // the files among `files` with a definition that takes `arity` arguments (a component's parameters are all required)
+  const taking = (group: Group, files: string[], arity: number): string[] =>
+    files.filter(f =>
+      group.byFile.get(f)!.some(d => {
+        const required = d.form === 'view' ? d.params.length : d.params.filter(p => !p.optional).length
+
+        return arity >= required && arity <= d.params.length
+      }),
+    )
 
   const diagnostics: Diagnostic[] = []
   const told = new Set<string>()
   const short = (file: string) => file.split('/').slice(-3).join('/')
+
+  // refuse a reference that cannot be told, once per file and name
+  const refuse = (group: Group, file: string | undefined, span: Span, among: string[], imported: boolean): void => {
+    const key = `${file}\u0000${group.name}`
+
+    if (told.has(key)) {
+      return
+    }
+
+    told.add(key)
+    const here = file ? short(file) : 'this file'
+    diagnostics.push(
+      diagnose('duplicate-definition', {
+        file,
+        span,
+        message: imported
+          ? `${here} imports "${group.name}" from more than one file that defines it (${among.map(short).join(', ')}), so the reference cannot tell which it means`
+          : `"${group.name}" is defined in ${among.length} files (${among.map(short).join(', ')}) and ${here} imports it from none of them, so the reference cannot tell which it means`,
+        markers: [
+          { span },
+          ...among.flatMap(f => group.byFile.get(f)!.map(d => ({ span: d.span, label: `a "${group.name}" here` }))),
+        ],
+        hint: `add \`find ${group.name}\` under the \`load\` of the one ${here} means. A name belongs to the module that defines it`,
+      }),
+    )
+  }
+
+  // the name a reference with `arity` arguments (undefined: a task passed as a value) in `file` binds to, or undefined
+  const bind = (group: Group, file: string | undefined, arity: number | undefined, span: Span): string | undefined => {
+    const imported = reached(group, file)
+
+    // the file imported the name from a module that defines it some OTHER way (a form's method, as `stream.tree`'s
+    // `find contains` from the list, or a signature an env fills): it means that one, never this group's, and is left
+    // as written for the resolver to find there
+    const asked = (file && scope?.get(file)?.finds.get(group.name)) || []
+
+    if (imported.length === 0 && asked.length > 0) {
+      return undefined
+    }
+
+    const candidates = imported.length > 0 ? imported : group.files
+    const fit = arity === undefined ? candidates : taking(group, candidates, arity)
+
+    if (imported.length === 1) {
+      return group.renamed.get(imported[0]!)
+    }
+
+    if (fit.length === 1) {
+      return group.renamed.get(fit[0]!)
+    }
+
+    // nothing takes this arity: left for the checker's own arity diagnostic against what the file reaches
+    if (fit.length === 0 && arity !== undefined) {
+      return group.renamed.get(candidates[0]!)
+    }
+
+    // several files take the arity at DIFFERENT parameter types: the checker picks among exactly those by the
+    // arguments' types, as it picked among a global name's overloads before. Its own key, never a member's name, so a
+    // call that bound to one member directly is not drawn into the choice. Same types cannot be told apart that way,
+    // and are refused. Until the strict step (module-scope-0006) refuses an unimported call outright
+    if (arity !== undefined && fit.length > 1) {
+      const firsts = fit.map(f => group.byFile.get(f)![0]!)
+      const typedApart = firsts.some((a, i) =>
+        firsts.slice(i + 1).some(b => a.form === 'function' && b.form === 'function' && differ(a, b)),
+      )
+
+      if (typedApart) {
+        const key = `${group.name}__any${group.index}_${arity}`
+        overloadGroups.set(key, [...new Set(fit.map(f => group.renamed.get(f)!))])
+        typedChoices.add(key)
+
+        return key
+      }
+    }
+
+    refuse(group, file, span, fit.length > 0 ? fit : candidates, imported.length > 0)
+
+    return undefined
+  }
+
+  // the top-level values that are neither tasks nor components (a `host` constant, a dock alias, a bind): a variable
+  // naming one of these is that value, not a task passed as a value, even where tasks of the same name collide
+  const values = new Set(
+    program.flatMap(s => (s.form === 'let' || s.form === 'bind' ? [s.name] : s.form === 'native' ? [s.alias] : [])),
+  )
 
   for (const top of program) {
     const file = top.span.file
     // the names a local binds inside this statement, which shadow every definition of the group (boundIn)
     const local = boundIn(top)
 
-    eachCall(top, call => {
-      const callee = call.callee as Extract<Expression, { form: 'variable' }>
+    eachReference(top, (variable, arity) => {
+      const group = groups.get(variable.name)
 
-      if (local.has(callee.name)) {
+      if (!group || local.has(variable.name) || (arity === undefined && values.has(variable.name))) {
         return
       }
 
-      const group = groups.find(
-        g => g.name === callee.name && call.args.length >= g.min && call.args.length <= g.max,
-      )
+      const name = bind(group, file, arity, variable.span)
 
-      if (!group) {
-        return
+      if (name) {
+        variable.name = name
       }
-
-      const pick = choose(group, file)
-
-      // imported from a module that defines the name some other way: the arity and type overloading below has it
-      if (pick === 'elsewhere') {
-        return
-      }
-
-      if (pick) {
-        callee.name = pick.name
-
-        return
-      }
-
-      const key = `${file}\u0000${group.name}`
-
-      if (told.has(key)) {
-        return
-      }
-
-      told.add(key)
-      const imported = file ? (scope?.get(file)?.finds.get(group.name) ?? []) : []
-      diagnostics.push(
-        diagnose('duplicate-definition', {
-          file,
-          span: call.span,
-          message: `"${group.name}" is defined in ${group.files.length} files (${group.files.map(short).join(', ')}), and ${file ? short(file) : 'this file'} imports it from ${imported.length ? `${imported.map(short).join(', ')}, which reaches more than one of them` : 'none of them'}, so the call cannot tell which it means`,
-          markers: [{ span: call.span }, ...group.defs.map(d => ({ span: d.span, label: `a "${group.name}" here` }))],
-          hint: `add \`find ${group.name}\` under the \`load\` of the one this file means. Names are package-global, so a definition another import brings in is otherwise as visible as the one you loaded`,
-        }),
-      )
     })
   }
 
   return diagnostics
+}
+
+// every reference to a name under a node: a call's callee with its argument count, and any other variable (a task passed
+// as a value) with none. Generic over the tree, as eachCall is
+function eachReference(
+  node: unknown,
+  visit: (variable: Extract<Expression, { form: 'variable' }>, arity: number | undefined) => void,
+): void {
+  if (!node || typeof node !== 'object') {
+    return
+  }
+
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      eachReference(item, visit)
+    }
+
+    return
+  }
+
+  const record = node as Record<string, unknown>
+
+  if (record.form === 'call' && (record.callee as { form?: string } | undefined)?.form === 'variable') {
+    visit(record.callee as Extract<Expression, { form: 'variable' }>, (record.args as unknown[]).length)
+
+    for (const arg of record.args as unknown[]) {
+      eachReference(arg, visit)
+    }
+
+    return
+  }
+
+  if (record.form === 'variable' && typeof record.name === 'string') {
+    visit(record as Extract<Expression, { form: 'variable' }>, undefined)
+
+    return
+  }
+
+  // a component placed in a view (`view <name>`), unless it is a standard HTML tag, which is always the element
+  // (view-lower.ts HTML_TAGS), or a `node <name>` forcing the element. Bound as a value: it has props, not an arity
+  if (record.form === 'element' && typeof record.name === 'string' && !record.forced && !HTML_TAGS.has(record.name)) {
+    visit(record as unknown as Extract<Expression, { form: 'variable' }>, undefined)
+  }
+
+  for (const [key, value] of Object.entries(record)) {
+    if (key !== 'span' && key !== 'type' && key !== 'result' && key !== 'declared' && key !== 'generics') {
+      eachReference(value, visit)
+    }
+  }
 }
 
 // A FORM'S METHOD CALLING A SIBLING BY ITS BARE NAME (native-dom-0036). A method is callable by its bare name only while
@@ -370,14 +499,16 @@ function nestLeanLabels(program: Program): void {
   }
 }
 
-// Returns the calls it could not bind: see bindByImport.
-export function disambiguateOverloads(program: Program, scope?: ImportScope): Diagnostic[] {
+// Returns the references it could not bind: see bindByImport. `entry` is the file whose own definitions keep their
+// names when a name is split by file, because its roots and its exported API are called by them.
+export function disambiguateOverloads(program: Program, scope?: ImportScope, entry?: string): Diagnostic[] {
   overloadGroups.clear()
+  typedChoices.clear()
 
   nestLeanLabels(program)
   bindSiblingMethods(program)
 
-  const ambiguities = bindByImport(program, scope)
+  const ambiguities = bindByImport(program, scope, entry)
 
   // every definition of each name, after the import binding renamed the ambiguous ones apart
   const definitions = definitionsOf(program)
@@ -585,6 +716,13 @@ export function disambiguateOverloads(program: Program, scope?: ImportScope): Di
 
   for (const s of program) {
     stmt(s)
+  }
+
+  // a typed choice bindByImport made names members before this pass renamed the overloaded ones by arity: each such
+  // member stands for every definition it was renamed into
+  for (const key of typedChoices) {
+    const members = overloadGroups.get(key) ?? []
+    overloadGroups.set(key, [...new Set(members.flatMap(member => ranges.get(member)?.map(r => r.name) ?? [member]))])
   }
 
   return ambiguities

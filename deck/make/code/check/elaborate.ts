@@ -738,12 +738,71 @@ export function elaborate(
   return elaborateReport(program, file).diagnostics
 }
 
+// ONE NAME, TWO KINDS (module-scope-0005). A task and a form may share a name, told apart by where it stands, but the
+// kernel keeps one namespace of constants: the form's type former and the task's definition were both `point`, and a
+// type position found the task (`kernel: expected a type`). So, on the kernel's OWN copy of the program, a form whose
+// name a task also has is renamed `<name>__form` everywhere it stands as a type: a named type, a construction, a raise,
+// a method's owner. Tasks keep their names. The emitted program never sees this copy.
+function kindsApart(program: Program): Program {
+  const tasks = new Set(program.flatMap(s => (s.form === 'function' && !s.method ? [s.name] : [])))
+  const shared = new Set(program.flatMap(s => (s.form === 'record-type' && tasks.has(s.name) ? [s.name] : [])))
+
+  if (shared.size === 0) {
+    return program
+  }
+
+  const copy = structuredClone(program)
+  const apart = (name: string): string => (shared.has(name) ? `${name}__form` : name)
+
+  const visit = (node: unknown): void => {
+    if (!node || typeof node !== 'object') {
+      return
+    }
+
+    if (Array.isArray(node)) {
+      node.forEach(visit)
+
+      return
+    }
+
+    const record = node as Record<string, unknown>
+
+    if (record.kind === 'named' && typeof record.name === 'string') {
+      record.name = apart(record.name)
+    }
+
+    if ((record.form === 'record' || record.form === 'record-type') && typeof record.name === 'string') {
+      record.name = apart(record.name)
+    }
+
+    if (record.form === 'throw' && typeof record.raise === 'string') {
+      record.raise = apart(record.raise)
+    }
+
+    if (record.form === 'function' && record.method && typeof (record.method as { form?: unknown }).form === 'string') {
+      const method = record.method as { form: string }
+      method.form = apart(method.form)
+    }
+
+    for (const [key, value] of Object.entries(record)) {
+      if (key !== 'span') {
+        visit(value)
+      }
+    }
+  }
+
+  visit(copy)
+
+  return copy
+}
+
 export function elaborateReport(
-  program: Program,
+  written: Program,
   file: string,
 ): ElaborationReport {
   resetMetas()
   resetDefinitions()
+  const program = kindsApart(written)
 
   // How many arguments each function DECLARES, and how many it REQUIRES.
   //

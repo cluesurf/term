@@ -9,7 +9,7 @@ dock load
 load @term/base/code/network/udp
   find socket
 
-task do-open
+task udp-open
   note async
   take port, like number
   take host, like text

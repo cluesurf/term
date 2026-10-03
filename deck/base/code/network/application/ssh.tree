@@ -15,7 +15,7 @@ form ssh-message-type
   case user-authentication-failure
   case channel-open
   case channel-data
-  case channel-close
+  case mailbox-close
 
 form ssh-packet
   link length, like u32

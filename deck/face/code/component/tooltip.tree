@@ -4,7 +4,7 @@
 # Positioning + open-delay are behavioral add-ons; the parts are the themeable structure.
 
 load @term/site/code/view/render
-  find element
+  find make-element
 load @term/site/code/dom/dom
   find view
   find append

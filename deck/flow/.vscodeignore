@@ -1,0 +1,17 @@
+.vscode/**
+code/**
+note/**
+editor/**
+host/**
+.base/**
+tmp/**
+deck.tree
+build.mjs
+tsconfig.json
+node_modules/**
+pnpm-lock.yaml
+pnpm-workspace.yaml
+**/*.map
+**/*.vsix
+**/.DS_Store
+.gitignore

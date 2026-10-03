@@ -7,7 +7,7 @@ load @term/base/code/network/udp
   find socket
   find datagram
 
-task do-send
+task udp-socket-send
   note async
   take socket, like socket
   take data, like text
@@ -22,7 +22,7 @@ task do-send
       read port
       wait true
 
-task do-receive
+task udp-socket-receive
   note async
   take socket, like socket
   like datagram
@@ -31,7 +31,7 @@ task do-receive
       read socket/dock
       wait true
 
-task do-close
+task udp-socket-close
   note async
   take socket, like socket
   like void

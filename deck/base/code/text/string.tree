@@ -3,37 +3,37 @@
 note unstable
 
 load @term/base/code/native/{platform}/text/string
-  find do-upper
-  find do-lower
-  find do-trim
-  find do-repeat
-  find do-contains
-  find do-starts-with
-  find do-ends-with
-  find do-replace
-  find do-slice
-  find do-concat
-  find do-to-text
+  find string-upper
+  find string-lower
+  find string-trim
+  find string-repeat
+  find string-contains
+  find string-starts-with
+  find string-ends-with
+  find string-replace
+  find string-slice
+  find string-concat
+  find string-to-text
 
 task to-upper
   take input, like text
   like text
   send back
-    call do-upper
+    call string-upper
       read input
 
 task to-lower
   take input, like text
   like text
   send back
-    call do-lower
+    call string-lower
       read input
 
 task trim
   take input, like text
   like text
   send back
-    call do-trim
+    call string-trim
       read input
 
 task repeat
@@ -41,7 +41,7 @@ task repeat
   take count, like number
   like text
   send back
-    call do-repeat
+    call string-repeat
       read input
       read count
 
@@ -50,7 +50,7 @@ task contains
   take part, like text
   like boolean
   send back
-    call do-contains
+    call string-contains
       read input
       read part
 
@@ -59,7 +59,7 @@ task starts-with
   take prefix, like text
   like boolean
   send back
-    call do-starts-with
+    call string-starts-with
       read input
       read prefix
 
@@ -68,7 +68,7 @@ task ends-with
   take suffix, like text
   like boolean
   send back
-    call do-ends-with
+    call string-ends-with
       read input
       read suffix
 
@@ -78,7 +78,7 @@ task replace
   take to, like text
   like text
   send back
-    call do-replace
+    call string-replace
       read input
       read from
       read to
@@ -89,7 +89,7 @@ task slice
   take end, like number
   like text
   send back
-    call do-slice
+    call string-slice
       read input
       read start
       read end
@@ -100,7 +100,7 @@ task concat
   take other, like text
   like text
   send back
-    call do-concat
+    call string-concat
       read input
       read other
 
@@ -109,5 +109,5 @@ task to-text
   take value
   like text
   send back
-    call do-to-text
+    call string-to-text
       read value

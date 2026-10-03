@@ -10,7 +10,7 @@
 # signal writes, the effects re-run, and the three divs restyle -- the faithful runtime of the React hook + Layout.
 
 load @term/site/code/view/render
-  find element
+  find make-element
 load @term/site/code/dom/dom
   find view
   find append

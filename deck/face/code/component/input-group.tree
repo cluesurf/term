@@ -1,7 +1,7 @@
 
 # Input group — headless. Wraps an input with addons (prefix/suffix). Parts: input-group, input-group-addon.
 load @term/site/code/view/render
-  find element
+  find make-element
 load @term/site/code/dom/dom
   find view
   find append

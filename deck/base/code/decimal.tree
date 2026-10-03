@@ -22,7 +22,7 @@ load @term/base/code/math
   find maximum
 
 # the digits of `value` with the point removed, as a big integer (12.34 -> 1234, -0.5 -> -5)
-bind do-mantissa
+bind decimal-mantissa
   take value, like text
   like text
   case node
@@ -35,7 +35,7 @@ bind do-mantissa
     text <$value.replace(".", "")>
 
 # the number of digits after the point in `value` (12.34 -> 2, 12 -> 0)
-bind do-scale
+bind decimal-scale
   take value, like text
   like number
   case node
@@ -48,7 +48,7 @@ bind do-scale
     text <($value.substringAfter(".", "")).length.toLong()>
 
 # format a mantissa's digits with the point inserted `scale` places from the right (1234, 2 -> "12.34"; 5, 2 -> "0.05")
-bind do-format
+bind decimal-format
   take digits, like text
   take scale, like number
   like text
@@ -96,7 +96,7 @@ form big-decimal
     take self
     like text
     send back
-      call do-format
+      call decimal-format
         call text
           read self/mantissa
         read self/scale
@@ -185,8 +185,8 @@ task make-big-decimal
     make big-decimal
       bind mantissa
         call make-big-integer
-          call do-mantissa
+          call decimal-mantissa
             read value
       bind scale
-        call do-scale
+        call decimal-scale
           read value

@@ -4,10 +4,10 @@
 # the headless test runs it against a DOM stub. `mount-app` takes the host node to render into (the document body).
 
 load ../../view/render
-  find element
-  find text
-  find dynamic
-  find event
+  find make-element
+  find make-text
+  find make-dynamic-text
+  find attach-event
   find mount
 load ../../view/reactive
   find make-signal
@@ -24,14 +24,14 @@ task mount-app
       bind value, text <ready>
 
   save root
-    call element
+    call make-element
       bind tag, text <div>
 
   save button
-    call element
+    call make-element
       bind tag, text <button>
 
-  call event
+  call attach-event
     bind node, read button
     bind name, text <click>
     bind handler
@@ -43,7 +43,7 @@ task mount-app
   call append
     bind parent, read button
     bind child
-      call text
+      call make-text
         bind value, text <click me>
 
   call append
@@ -53,7 +53,7 @@ task mount-app
   call append
     bind parent, read root
     bind child
-      call dynamic
+      call make-dynamic-text
         bind source
           task source
             like text

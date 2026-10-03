@@ -3,7 +3,7 @@
 dock load
   load <global:path>, name path
 
-task do-join
+task path-join
   take base, like text
   take name, like text
   like text
@@ -12,28 +12,28 @@ task do-join
       read base
       read name
 
-task do-directory
+task path-directory
   take target, like text
   like text
   send back
     call path/directory
       read target
 
-task do-file-name
+task path-file-name
   take target, like text
   like text
   send back
     call path/file-name
       read target
 
-task do-file-extension
+task path-file-extension
   take target, like text
   like text
   send back
     call path/file-extension
       read target
 
-task do-is-absolute
+task path-is-absolute
   take target, like text
   like boolean
   send back

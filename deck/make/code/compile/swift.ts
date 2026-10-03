@@ -2004,6 +2004,9 @@ export function emitSwift(
     d: number,
     bind: Bindings,
   ): string =>
+    // NOT `swapAt` for the three-statement swap (backend.ts, swapAt), as Rust and Kotlin write it: measured on
+    // fannkuch-redux, `perm.data.swapAt(low, high)` through the SeedList property ran at a median 1,329 ms against
+    // 865 ms for the three statements, 7 alternating rounds (tmp/swift-swap-ab.ts, 2026-10-02)
     body
       .map(s => `${pad(d)}${stmt(s, d, bind)}`)
       .filter(Boolean)
@@ -2146,12 +2149,15 @@ export function emitSwift(
           ? '; hiveTell(HiveEntry(host: told.host, kind: "exception", name: told.form, site: "", base: told))'
           : ''
 
+        // an interpolated text (a `template` node) is a text too, and raises `failure` like a plain one
+        const isText = node.value.form === 'string' || node.value.form === 'template'
+
         // a text raise with nothing to tell is the carrier itself, with no closure around it
-        if (node.value.form === 'string' && !hasHiveTell) {
+        if (isText && !hasHiveTell) {
           return `throw TermException(host: "", form: "failure", note: ${expr(node.value, bind)}, code: "", time: 0, link: nil, base: nil)`
         }
 
-        return node.value.form === 'string'
+        return isText
           ? `throw ({ () -> TermException in let told = TermException(host: "", form: "failure", note: ${expr(node.value, bind)}, code: "", time: 0, link: nil, base: nil)${tellPart}; return told })()`
           : node.value.form === 'record' && exceptionForms.has(node.value.name)
             ? `throw try ({ () throws -> TermException in let raised = ${expr(node.value, bind)}; let told = TermException(host: raised.host, form: raised.form, note: raised.note, code: raised.code, time: raised.time, link: raised.link, base: raised)${tellPart}; return told })()`

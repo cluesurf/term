@@ -3,8 +3,8 @@
 note stable
 
 load @term/base/code/native/{platform}/network/dns
-  find do-resolve
-  find do-resolve-one
+  find dns-resolve
+  find dns-resolve-one
 
 task resolve
   note async
@@ -12,7 +12,7 @@ task resolve
   like list
     like text
   send back
-    call do-resolve
+    call dns-resolve
       read hostname
       wait true
 
@@ -21,6 +21,6 @@ task resolve-one
   take hostname, like text
   like text
   send back
-    call do-resolve-one
+    call dns-resolve-one
       read hostname
       wait true

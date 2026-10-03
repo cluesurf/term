@@ -3,7 +3,7 @@
 # the trigger toggles it. Parts: sidebar (root, reactive data-state expanded/collapsed), sidebar-trigger, sidebar-
 # header, sidebar-content, sidebar-footer, sidebar-group, sidebar-menu, sidebar-menu-item.
 load @term/site/code/view/render
-  find element
+  find make-element
 load @term/site/code/dom/dom
   find view
   find append

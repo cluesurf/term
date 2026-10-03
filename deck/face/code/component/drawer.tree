@@ -3,7 +3,7 @@
 # drawer-trigger, drawer-overlay, drawer-content, drawer-header, drawer-title, drawer-description, drawer-footer,
 # drawer-close. Overlay + content mount when open with reactive data-state. Consumer passes a `control`.
 load @term/site/code/view/render
-  find element
+  find make-element
 load @term/site/code/dom/dom
   find view
   find append

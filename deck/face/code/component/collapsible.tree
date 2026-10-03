@@ -2,7 +2,7 @@
 # Collapsible — headless, behavior-complete via the shared disclosure controller. Parts: collapsible, collapsible-
 # trigger (toggles), collapsible-content (mounts when open, reactive data-state). Consumer passes a `control`.
 load @term/site/code/view/render
-  find element
+  find make-element
 load @term/site/code/dom/dom
   find view
   find append

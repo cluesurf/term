@@ -79,10 +79,10 @@ const program = (shot: string): string => `load @term/site/code/view/reactive
   find write-signal
 
 load @term/site/code/view/render
-  find element
-  find text
-  find dynamic
-  find event
+  find make-element
+  find make-text
+  find make-dynamic-text
+  find attach-event
   find show
 
 load @term/site/code/dom/dom

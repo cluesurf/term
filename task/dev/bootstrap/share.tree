@@ -1,0 +1,434 @@
+# The tools every platform installs the same way, only the paths differing: pnpm through corepack, the Kotlin compiler
+# and Maven unpacked from their release archives (so the version is exactly the one the Kotlin runtime pins, whatever
+# a package manager carries), the Android SDK from Google's command line tools, and Rust through rustup's installer.
+
+load ./plan
+  find machine
+  find tool
+  find step
+  find arguments
+  find command
+  find answered-command
+  find make-directory-step
+  find remove-directory-step
+  find move-step
+  find download-step
+  find unpack-step
+  find probe-command
+  find pnpm-version
+  find kotlin-version
+  find maven-version
+  find android-tools-build
+  find android-api
+  find android-build-tools
+  find android-device
+
+load @term/base/code/list
+  find list
+
+load @term/base/code/text/unicode
+  find rune-to-text
+
+# `a` and `b` joined with the machine's path separator
+task join-path
+  take machine, like machine
+  take a, like text
+  take b, like text
+  like text
+  fork test
+    hook test
+      call is-equal
+        read machine/system
+        text <windows>
+    hook hold
+      save separator
+        call rune-to-text, code 92
+      send back, text <{{a}}{{separator}}{{b}}>
+  send back, text <{{a}}/{{b}}>
+
+# a script's name as the platform runs it: `sdkmanager`, or `sdkmanager.bat` on Windows
+task script-name
+  take machine, like machine
+  take name, like text
+  take extension, like text
+  like text
+  fork test
+    hook test
+      call is-equal
+        read machine/system
+        text <windows>
+    hook hold
+      send back, text <{{name}}.{{extension}}>
+  send back, read name
+
+task pnpm-tool
+  take machine, like machine
+  like tool
+  save steps
+    make list
+  call steps/push
+    call command
+      text <corepack, which Node carries, switched on>
+      call script-name
+        read machine
+        text <corepack>
+        text <cmd>
+      call arguments, text <enable>
+  call steps/push
+    call command
+      text <pnpm {{pnpm-version}}, the version package.json names>
+      call script-name
+        read machine
+        text <corepack>
+        text <cmd>
+      call arguments
+        text <prepare>
+        text <pnpm@{{pnpm-version}}>
+        text <--activate>
+  send back
+    make tool
+      bind name, text <pnpm>
+      bind need, text <installing the workspace and running every script>
+      bind probe
+        call probe-command
+          call script-name
+            read machine
+            text <pnpm>
+            text <cmd>
+          text <--version>
+      bind steps, read steps
+      bind optional, false
+      bind expect, read pnpm-version
+
+# rustup's installer, downloaded and run with the stable toolchain as the default (Mac and Linux)
+task rust-steps
+  take machine, like machine
+  like list
+    like step
+  save script
+    call join-path
+      read machine
+      read machine/store
+      text <rustup-init.sh>
+  save steps
+    make list
+  call steps/push
+    call make-directory-step
+      text <the store for downloads>
+      read machine/store
+  call steps/push
+    call download-step
+      read machine
+      text <rustup's installer>
+      text <https://sh.rustup.rs>
+      read script
+  call steps/push
+    call command
+      text <rustup and the stable Rust toolchain>
+      text <sh>
+      call arguments
+        read script
+        text <-y>
+        text <--default-toolchain>
+        text <stable>
+        text <--no-modify-path>
+  call steps/push
+    call command
+      text <stable as the default toolchain>
+      text <{{machine/home}}/.cargo/bin/rustup>
+      call arguments
+        text <default>
+        text <stable>
+  send back, read steps
+
+task kotlin-tool
+  take machine, like machine
+  like tool
+  save place
+    call join-path
+      read machine
+      read machine/store
+      text <kotlin>
+  save archive
+    call join-path
+      read machine
+      read machine/store
+      text <kotlin.zip>
+  save base, text <https://github.com/JetBrains/kotlin/releases/download/v{{kotlin-version}}>
+  save steps
+    make list
+  call steps/push
+    call make-directory-step
+      text <a place for the Kotlin compiler>
+      read place
+  call steps/push
+    call download-step
+      read machine
+      text <the Kotlin compiler {{kotlin-version}}, the version the Kotlin runtime's pom pins>
+      text <{{base}}/kotlin-compiler-{{kotlin-version}}.zip>
+      read archive
+  call steps/push
+    call remove-directory-step
+      text <any older compiler>
+      call join-path
+        read machine
+        read place
+        text <kotlinc>
+  call steps/push
+    call unpack-step
+      text <the compiler, unpacked>
+      read archive
+      read place
+  send back
+    make tool
+      bind name, text <kotlin>
+      bind need, text <every Kotlin suite and the Android build>
+      bind probe
+        call probe-command
+          call script-name
+            read machine
+            text <kotlinc>
+            text <bat>
+          text <-version>
+      bind steps, read steps
+      bind optional, false
+      bind expect, read kotlin-version
+
+task maven-tool
+  take machine, like machine
+  like tool
+  save place
+    call join-path
+      read machine
+      read machine/store
+      text <maven>
+  save archive
+    call join-path
+      read machine
+      read machine/store
+      text <maven.zip>
+  save base, text <https://archive.apache.org/dist/maven/maven-3/{{maven-version}}/binaries>
+  save steps
+    make list
+  call steps/push
+    call make-directory-step
+      text <a place for Maven>
+      read place
+  call steps/push
+    call download-step
+      read machine
+      text <Maven {{maven-version}}, which resolves the Kotlin runtime's jars>
+      text <{{base}}/apache-maven-{{maven-version}}-bin.zip>
+      read archive
+  call steps/push
+    call unpack-step
+      text <Maven, unpacked>
+      read archive
+      read place
+  call steps/push
+    call command
+      text <the Kotlin runtime's jars: kotlinx-coroutines and ktor>
+      call script-name
+        read machine
+        text <mvn>
+        text <cmd>
+      call arguments
+        text <-q>
+        text <-B>
+        text <-f>
+        text <deck/base/code/native/kotlin/pom.xml>
+        text <dependency:resolve>
+  send back
+    make tool
+      bind name, text <maven>
+      bind need, text <the Kotlin runtime's classpath>
+      bind probe
+        call probe-command
+          call script-name
+            read machine
+            text <mvn>
+            text <cmd>
+          text <-v>
+      bind steps, read steps
+      bind optional, false
+
+# Google's archive name for the command line tools on this machine
+task android-archive
+  take machine, like machine
+  like text
+  save build, read android-tools-build
+  fork test
+    hook test
+      call is-equal
+        read machine/system
+        text <windows>
+    hook hold
+      send back, text <commandlinetools-win-{{build}}_latest.zip>
+    hook test
+      call is-equal
+        read machine/system
+        text <linux>
+    hook hold
+      send back, text <commandlinetools-linux-{{build}}_latest.zip>
+    hook test
+      call is-equal
+        read machine/architecture
+        text <arm64>
+    hook hold
+      send back, text <commandlinetools-mac_arm64-{{build}}_latest.zip>
+  send back, text <commandlinetools-mac-{{build}}_latest.zip>
+
+# `y` and a line break, enough times to accept every license sdkmanager asks about
+task license-answers
+  like text
+  save line
+    call rune-to-text, code 10
+  save out, text <>
+  save k, code 0
+  walk test
+    hook test
+      call is-below
+        read k
+        code 40
+    hook step
+      save out, text <{{out}}y{{line}}>
+      save k
+        call add
+          read k
+          code 1
+  send back, read out
+
+task android-tool
+  take machine, like machine
+  take home, like text
+  like tool
+  save image-architecture, text <x86_64>
+  fork test
+    hook test
+      call is-equal
+        read machine/architecture
+        text <arm64>
+    hook hold
+      save image-architecture, text <arm64-v8a>
+  save image, text <system-images;android-{{android-api}};google_apis;{{image-architecture}}>
+  save tools
+    call join-path
+      read machine
+      read home
+      text <cmdline-tools>
+  save latest
+    call join-path
+      read machine
+      read tools
+      text <latest>
+  save bin
+    call join-path
+      read machine
+      read latest
+      text <bin>
+  save sdkmanager
+    call join-path
+      read machine
+      read bin
+      call script-name
+        read machine
+        text <sdkmanager>
+        text <bat>
+  save avdmanager
+    call join-path
+      read machine
+      read bin
+      call script-name
+        read machine
+        text <avdmanager>
+        text <bat>
+  save unpacked
+    call join-path
+      read machine
+      read machine/store
+      text <android-tools>
+  save archive
+    call join-path
+      read machine
+      read machine/store
+      text <android-tools.zip>
+  save remote
+    call android-archive
+      read machine
+  save steps
+    make list
+  call steps/push
+    call make-directory-step
+      text <the SDK's tools directory>
+      read tools
+  call steps/push
+    call make-directory-step
+      text <a place to unpack the tools>
+      read unpacked
+  call steps/push
+    call download-step
+      read machine
+      text <the Android command line tools>
+      text <https://dl.google.com/android/repository/{{remote}}>
+      read archive
+  call steps/push
+    call remove-directory-step
+      text <any older tools>
+      read latest
+  call steps/push
+    call unpack-step
+      text <the tools, unpacked>
+      read archive
+      read unpacked
+  call steps/push
+    call move-step
+      text <the tools, moved into the SDK>
+      call join-path
+        read machine
+        read unpacked
+        text <cmdline-tools>
+      read latest
+  call steps/push
+    call answered-command
+      text <the Android SDK licenses, accepted>
+      read sdkmanager
+      call arguments, text <--licenses>
+      call license-answers
+  call steps/push
+    call command
+      text <platform {{android-api}}, build-tools {{android-build-tools}}, adb, the emulator, a system image>
+      read sdkmanager
+      call arguments
+        text <platform-tools>
+        text <platforms;android-{{android-api}}>
+        text <build-tools;{{android-build-tools}}>
+        text <emulator>
+        read image
+  call steps/push
+    call answered-command
+      text <the emulator device the Android suites start ({{android-device}})>
+      read avdmanager
+      call arguments
+        text <create>
+        text <avd>
+        text <--force>
+        text <--name>
+        read android-device
+        text <--package>
+        read image
+      text <no>
+  send back
+    make tool
+      bind name, text <android sdk>
+      bind need, text <the Android toolkit-view, blog-native and toolkit-words suites, and the Android cask>
+      bind probe
+        call probe-command
+          read sdkmanager
+          text <--version>
+      bind marker
+        call join-path
+          read machine
+          read home
+          text <platforms/android-{{android-api}}/android.jar>
+      bind steps, read steps
+      bind optional, true

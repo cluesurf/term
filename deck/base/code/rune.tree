@@ -3,15 +3,15 @@
 note stable
 
 load @term/base/code/native/{platform}/rune
-  find do-is-letter
-  find do-is-number
-  find do-is-whitespace
-  find do-is-uppercase
-  find do-is-lowercase
-  find do-is-alphanumeric
-  find do-is-control
-  find do-to-uppercase
-  find do-to-lowercase
+  find scalar-is-letter
+  find scalar-is-number
+  find scalar-is-whitespace
+  find scalar-is-uppercase
+  find scalar-is-lowercase
+  find scalar-is-alphanumeric
+  find scalar-is-control
+  find scalar-to-uppercase
+  find scalar-to-lowercase
 
 form rune
   link code, like number
@@ -90,7 +90,7 @@ form rune
     take self
     like boolean
     send back
-      call do-is-letter
+      call scalar-is-letter
         read self/code
 
   # any Unicode numeric character (general category N)
@@ -98,7 +98,7 @@ form rune
     take self
     like boolean
     send back
-      call do-is-number
+      call scalar-is-number
         read self/code
 
   # any Unicode whitespace
@@ -106,7 +106,7 @@ form rune
     take self
     like boolean
     send back
-      call do-is-whitespace
+      call scalar-is-whitespace
         read self/code
 
   # an uppercase letter
@@ -114,7 +114,7 @@ form rune
     take self
     like boolean
     send back
-      call do-is-uppercase
+      call scalar-is-uppercase
         read self/code
 
   # a lowercase letter
@@ -122,7 +122,7 @@ form rune
     take self
     like boolean
     send back
-      call do-is-lowercase
+      call scalar-is-lowercase
         read self/code
 
   # a letter or numeric character
@@ -130,7 +130,7 @@ form rune
     take self
     like boolean
     send back
-      call do-is-alphanumeric
+      call scalar-is-alphanumeric
         read self/code
 
   # a control character (general category Cc)
@@ -138,7 +138,7 @@ form rune
     take self
     like boolean
     send back
-      call do-is-control
+      call scalar-is-control
         read self/code
 
   # the uppercase mapping of this rune (unchanged if it has none)
@@ -147,7 +147,7 @@ form rune
     like rune
     send back
       call make-rune
-        call do-to-uppercase
+        call scalar-to-uppercase
           read self/code
 
   # the lowercase mapping of this rune (unchanged if it has none)
@@ -156,7 +156,7 @@ form rune
     like rune
     send back
       call make-rune
-        call do-to-lowercase
+        call scalar-to-lowercase
           read self/code
 
 task make-rune
@@ -169,7 +169,7 @@ task make-rune
 # the one-character text of a code point. Named `rune-to-text`, not `to-text`: `@term/base/code/bytes` already owns
 # that name, and top-level task names are package-global. Inlines directly on every backend (a single native
 # constructor call, unlike the Unicode predicates above), so no runtime shim.
-bind do-rune-to-text
+bind scalar-to-text
   take code, like number
   like text
   case node
@@ -187,6 +187,6 @@ task rune-to-text
   take code, like number
   like text
   send back
-    call do-rune-to-text
+    call scalar-to-text
       read code
 

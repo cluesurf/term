@@ -2,7 +2,7 @@
 # Pagination — headless. Page navigation. Parts: pagination (nav), pagination-content (ul), pagination-item (li),
 # pagination-link (a). Theme via data-slot.
 load @term/site/code/view/render
-  find element
+  find make-element
 load @term/site/code/dom/dom
   find view
   find append

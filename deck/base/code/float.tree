@@ -3,46 +3,46 @@
 note stable
 
 load @term/base/code/native/{platform}/float
-  find do-sqrt
-  find do-floor
-  find do-ceil
-  find do-round
-  find do-power
-  find do-absolute
-  find do-sine
-  find do-cosine
-  find do-tangent
-  find do-arc-sine
-  find do-arc-cosine
-  find do-arc-tangent
-  find do-arc-tangent-of
+  find float-square-root
+  find float-floor
+  find float-ceiling
+  find float-round
+  find float-power
+  find float-absolute
+  find float-sine
+  find float-cosine
+  find float-tangent
+  find float-arc-sine
+  find float-arc-cosine
+  find float-arc-tangent
+  find float-arc-tangent-of
 
 task square-root
   take value, like decimal
   like decimal
   send back
-    call do-sqrt
+    call float-square-root
       read value
 
 task round-down
   take value, like decimal
   like decimal
   send back
-    call do-floor
+    call float-floor
       read value
 
 task round-up
   take value, like decimal
   like decimal
   send back
-    call do-ceil
+    call float-ceiling
       read value
 
 task round
   take value, like decimal
   like decimal
   send back
-    call do-round
+    call float-round
       read value
 
 task power
@@ -50,7 +50,7 @@ task power
   take exponent, like decimal
   like decimal
   send back
-    call do-power
+    call float-power
       read base
       read exponent
 
@@ -58,49 +58,49 @@ task absolute
   take value, like decimal
   like decimal
   send back
-    call do-absolute
+    call float-absolute
       read value
 
 task sine
   take value, like decimal
   like decimal
   send back
-    call do-sine
+    call float-sine
       read value
 
 task cosine
   take value, like decimal
   like decimal
   send back
-    call do-cosine
+    call float-cosine
       read value
 
 task tangent
   take value, like decimal
   like decimal
   send back
-    call do-tangent
+    call float-tangent
       read value
 
 task arc-sine
   take value, like decimal
   like decimal
   send back
-    call do-arc-sine
+    call float-arc-sine
       read value
 
 task arc-cosine
   take value, like decimal
   like decimal
   send back
-    call do-arc-cosine
+    call float-arc-cosine
       read value
 
 task arc-tangent
   take value, like decimal
   like decimal
   send back
-    call do-arc-tangent
+    call float-arc-tangent
       read value
 
 task arc-tangent-of
@@ -108,7 +108,7 @@ task arc-tangent-of
   take x, like decimal
   like decimal
   send back
-    call do-arc-tangent-of
+    call float-arc-tangent-of
       read y
       read x
 

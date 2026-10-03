@@ -11,7 +11,7 @@ dock type
 dock load
   load <global:job>, name job
 
-task do-spawn
+task job-spawn
   take work
     like task
       like unknown
@@ -21,20 +21,20 @@ task do-spawn
       read work
 
 # a job here is settled when its handle exists, so there is nothing to wait for
-task do-settle
+task job-settle
   note async
   take dock, like job-handle
   like void
   send back
 
-task do-settle-within
+task job-settle-within
   note async
   take dock, like job-handle
   take milliseconds, like number
   like boolean
   send back, true
 
-task do-settle-group
+task job-settle-group
   note async
   take docks
     like list
@@ -42,7 +42,7 @@ task do-settle-group
   like void
   send back
 
-task do-settle-any
+task job-settle-any
   note async
   take docks
     like list
@@ -51,34 +51,34 @@ task do-settle-any
   send back
 
 # `done`, or `failed` when the work raised and this backend's shim caught it
-task do-state
+task job-state
   take dock, like job-handle
   like text
   send back
     call job/state
       read dock
 
-task do-result
+task job-result
   take dock, like job-handle
   like unknown
   send back
     call job/result
       read dock
 
-task do-rethrow
+task job-rethrow
   take dock, like job-handle
   like unknown
   send back
     call job/rethrow
       read dock
 
-task do-cancel
+task job-cancel
   take dock, like job-handle
   like void
   call job/cancel
     read dock
 
-task do-alive
+task job-alive
   take dock, like job-handle
   like boolean
   send back, false

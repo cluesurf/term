@@ -4,8 +4,17 @@ mine mark
     mine term
       site kind
     mine list
-      mine form, like mark-bind
-        site bind
+      mine any
+        mine form, like mark-bind
+          site bind
+        # `mark tag, name kind`: a mark that names one thing, the way `twin`'s `mark platform, name rust` does
+        mine form, like mark-name
+          site name
+
+mine mark-name
+  mine term, term name
+    mine term
+      site name
 
 mine mark-bind
   mine term, term bind

@@ -3,17 +3,17 @@
 note stable
 
 load @term/base/code/native/{platform}/network/tcp
-  find do-connect
-  find do-listen
+  find tcp-connect
+  find tcp-listen
 
 load @term/base/code/native/{platform}/network/tcp/connection
-  find do-read
-  find do-write
-  find do-close-stream
+  find wire-read
+  find wire-write
+  find tcp-close
 
 load @term/base/code/native/{platform}/network/tcp/listener
-  find do-accept
-  find do-close-listener
+  find tcp-accept
+  find tcp-close-server
 
 # a live TCP connection to a peer
 form connection
@@ -28,7 +28,7 @@ form connection
     take self
     like text
     send back
-      call do-read
+      call wire-read
         read self
         wait true
 
@@ -39,7 +39,7 @@ form connection
     take data, like text
     like number
     send back
-      call do-write
+      call wire-write
         read self
         read data
         wait true
@@ -49,7 +49,7 @@ form connection
     note async
     take self
     like void
-    call do-close-stream
+    call tcp-close
       read self
       wait true
 
@@ -65,7 +65,7 @@ form listener
     take self
     like connection
     send back
-      call do-accept
+      call tcp-accept
         read self
         wait true
 
@@ -74,7 +74,7 @@ form listener
     note async
     take self
     like void
-    call do-close-listener
+    call tcp-close-server
       read self
       wait true
 
@@ -89,7 +89,7 @@ task connect
     fall false
   like connection
   send back
-    call do-connect
+    call tcp-connect
       read host
       read port
       read secure
@@ -117,7 +117,7 @@ task listen
     need false
   like listener
   send back
-    call do-listen
+    call tcp-listen
       read port
       read host
       read secure

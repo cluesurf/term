@@ -9,9 +9,9 @@
 # tap outside) as `close`, which closes the disclosure.
 
 load @term/site/code/view/render
-  find element
-  find attribute
-  find event
+  find make-element
+  find write-attribute
+  find attach-event
 load @term/site/code/view/reactive
   find signal
   find make-effect
@@ -33,17 +33,17 @@ task mount-dialog
       take host, like view
   like view
   save sheet
-    call element
+    call make-element
       text <sheet>
-  call attribute
+  call write-attribute
     read sheet
     text <data-slot>
     text <dialog>
-  call attribute
+  call write-attribute
     read sheet
     text <class>
     read class
-  call attribute
+  call write-attribute
     read sheet
     text <title>
     read title
@@ -58,12 +58,12 @@ task mount-dialog
       save open
         call disclosure-open
           bind self, read control
-      call attribute
+      call write-attribute
         read sheet
         text <open>
         text <{{open}}>
   # dismissed by the person: the disclosure closes with it
-  call event
+  call attach-event
     read sheet
     text <close>
     task dismissed

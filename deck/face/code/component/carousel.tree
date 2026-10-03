@@ -3,7 +3,7 @@
 # content, carousel-item, carousel-previous, carousel-next. The active index is the consumer's signal (selection);
 # the controls fire `press`. Theme the track transform in CSS.
 load @term/site/code/view/render
-  find element
+  find make-element
 load @term/site/code/dom/dom
   find view
   find append

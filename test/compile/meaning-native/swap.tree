@@ -1,0 +1,113 @@
+load @term/base/code/list
+  find list
+
+# the three-statement swap of two list slots, which Swift, Rust and Kotlin write as one call (backend.ts, `swapAt`),
+# beside the shapes that must stay three statements: a temporary read again afterwards, and a third index where the
+# second belongs (a rotation). The swap runs in a loop, at one index twice, and on a list another name shares
+task counting
+  take n, like number
+  like list, like number
+  save out
+    make list
+  walk size
+    bind base, code 0
+    bind head, read n
+    hook next
+      take site, name i
+      call push
+        bind list, read out
+        bind item, read i
+  send back, read out
+
+# reverse the first k + 1 entries in place
+task flip
+  take perm, like list, like number
+  take k, like number
+  save low, code 0
+  save high, read k
+  walk test
+    hook test
+      call is-below
+        read low
+        read high
+    hook hold
+      host t, read perm/{low}
+      save perm/{low}, read perm/{high}
+      save perm/{high}, read t
+      save low
+        call add
+          read low
+          code 1
+      save high
+        call subtract
+          read high
+          code 1
+
+task swap-pair
+  take xs, like list, like number
+  take i, like number
+  take j, like number
+  host t, read xs/{i}
+  save xs/{i}, read xs/{j}
+  save xs/{j}, read t
+
+# the temporary is read again, so this is not a swap: it answers the value that moved
+task swap-and-keep
+  take xs, like list, like number
+  take i, like number
+  take j, like number
+  like number
+  host t, read xs/{i}
+  save xs/{i}, read xs/{j}
+  save xs/{j}, read t
+  send back, read t
+
+# three slots: i takes j's value and k takes i's
+task rotate
+  take xs, like list, like number
+  take i, like number
+  take j, like number
+  take k, like number
+  host t, read xs/{i}
+  save xs/{i}, read xs/{j}
+  save xs/{k}, read t
+
+task compute
+  like text
+  host xs
+    call counting
+      code 6
+  call flip
+    read xs
+    code 4
+  host f0, read xs/0
+  host f4, read xs/4
+  host f5, read xs/5
+  call swap-pair
+    read xs
+    code 2
+    code 2
+  host same, read xs/2
+  host ys, read xs
+  call swap-pair
+    read ys
+    code 0
+    code 5
+  host shared0, read xs/0
+  host shared5, read xs/5
+  host kept
+    call swap-and-keep
+      read xs
+      code 1
+      code 3
+  host k1, read xs/1
+  host k3, read xs/3
+  call rotate
+    read xs
+    code 0
+    code 1
+    code 2
+  host r0, read xs/0
+  host r1, read xs/1
+  host r2, read xs/2
+  send back, text <flip={{f0}},{{f4}},{{f5}} same={{same}} shared={{shared0}},{{shared5}} kept={{kept}} k={{k1}},{{k3}} rotate={{r0}},{{r1}},{{r2}}>

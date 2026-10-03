@@ -28,7 +28,6 @@ import {
   reverseDeps,
   topoOrder,
   isAcyclic,
-  type DepGraph,
 } from '@term/make/code/compile/affected'
 
 let pass = 0
@@ -80,12 +79,13 @@ ok('body-only edit does NOT change the interface (firewall holds)', ihash(bodyEd
 ok('signature edit DOES change the interface', ihash(sigEdit) !== h0)
 
 // ---- C. affected-set scheduler ----
-// graph: app -> ui -> base ; util (independent). edges = "depends on".
-const graph: DepGraph = new Map([
-  ['app', new Set(['ui'])],
-  ['ui', new Set(['base'])],
-  ['base', new Set()],
-  ['util', new Set()],
+// graph: app -> ui -> base ; util (independent). edges = "depends on". A node's dependencies are a list since
+// compile/affected became Term (2026-10-02), and every answer is a list in a stable order
+const graph = new Map<string, string[]>([
+  ['app', ['ui']],
+  ['ui', ['base']],
+  ['base', []],
+  ['util', []],
 ])
 
 ok('graph is a valid DAG', isAcyclic(graph))
@@ -93,16 +93,16 @@ ok('topo order puts deps before dependents',
   (() => { const o = topoOrder(graph); return o.indexOf('base') < o.indexOf('ui') && o.indexOf('ui') < o.indexOf('app') })())
 
 // change `base` (interface changed): base, ui, app rebuild; util reused
-const aAll = affectedSet({ graph, changed: ['base'] })
+const aAll = affectedSet(graph, ['base'])
 ok('changing base affects base + ui + app (transitive dependents)',
-  aAll.has('base') && aAll.has('ui') && aAll.has('app') && !aAll.has('util'),
+  aAll.includes('base') && aAll.includes('ui') && aAll.includes('app') && !aAll.includes('util'),
   `{${[...aAll].sort().join(',')}}`)
-ok('util is reusable when base changes', reusableSet(graph, aAll).has('util'))
+ok('util is reusable when base changes', reusableSet(graph, aAll).includes('util'))
 
 // change `base` but its INTERFACE did not change (body-only): only base rebuilds
-const aCut = affectedSet({ graph, changed: ['base'], interfaceChanged: () => false })
+const aCut = affectedSet(graph, ['base'], () => false)
 ok('EARLY CUTOFF: a body-only change to base rebuilds only base',
-  aCut.has('base') && !aCut.has('ui') && !aCut.has('app'),
+  aCut.includes('base') && !aCut.includes('ui') && !aCut.includes('app'),
   `{${[...aCut].sort().join(',')}}`)
 
 // reverseDeps sanity

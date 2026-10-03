@@ -6,8 +6,8 @@
 # Internal: reached only through the public network/http2 API.
 
 load @term/base/code/native/node/network/http2
-  find do-serve-http2
-  find do-start-http2
+  find http2-serve
+  find http2-start
 
 load @term/base/code/network/server/request
   find request
@@ -28,7 +28,7 @@ task http2-serve-secure
   take certificate, like text
   take key, like text
   like void
-  call do-serve-http2
+  call http2-serve
     read port
     read host
     read handler
@@ -48,7 +48,7 @@ task http2-start-secure
   take key, like text
   like http2-server
   send back
-    call do-start-http2
+    call http2-start
       read port
       read host
       read handler

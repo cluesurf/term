@@ -1,0 +1,133 @@
+load @term/base/code/list
+  find list
+
+# function parameters a task only calls, which Rust writes `impl Fn` (rust.ts, implFnParams), passed every way a
+# function value arrives: a closure literal, one that captures, one held in a variable, a task named as a value, and a
+# callback with no result. `sum-down` passes its parameter on, so it stays an `Rc<dyn Fn>` on Rust
+task apply-twice
+  take f
+    like task
+      take x, like number
+      like number
+  take x, like number
+  like number
+  send back
+    call f
+      call f
+        read x
+
+task each-up-to
+  take n, like number
+  take visit
+    like task
+      take x, like number
+  walk size
+    bind base, code 0
+    bind head, read n
+    hook next
+      take site, name i
+      call visit
+        read i
+
+task sum-down
+  take f
+    like task
+      take x, like number
+      like number
+  take n, like number
+  like number
+  fork test
+    hook test
+      call is-below
+        read n
+        code 1
+    hook hold
+      send back, code 0
+  send back
+    call add
+      call f
+        read n
+      call sum-down
+        read f
+        call subtract
+          read n
+          code 1
+
+# its parameter is a variable passed on to `apply-twice`: an `Rc<dyn Fn>` here, lent as `&*f` there
+task apply-held
+  take f
+    like task
+      take x, like number
+      like number
+  take x, like number
+  like number
+  send back
+    call apply-twice
+      read f
+      read x
+
+task square
+  take x, like number
+  like number
+  send back
+    call multiply
+      read x
+      read x
+
+task triple
+  take x, like number
+  like number
+  send back
+    call multiply
+      read x
+      code 3
+
+task compute
+  like text
+  host literal
+    call apply-twice
+      task
+        take x, like number
+        like number
+        send back
+          call add
+            read x
+            code 1
+      code 5
+  host step, code 10
+  host captured
+    call apply-twice
+      task
+        take x, like number
+        like number
+        send back
+          call add
+            read x
+            read step
+      code 1
+  host held
+    call apply-held
+      read square
+      code 3
+  host named
+    call apply-twice
+      read triple
+      code 2
+  save seen
+    make list
+  call each-up-to
+    code 4
+    task
+      take x, like number
+      call push
+        bind list, read seen
+        bind item, read x
+  host count
+    call size
+      read seen
+  host last, read seen/3
+  host summed
+    call sum-down
+      read square
+      code 3
+  send back, text <literal={{literal}} captured={{captured}} held={{held}} named={{named}} seen={{count}},{{last}} summed={{summed}}>

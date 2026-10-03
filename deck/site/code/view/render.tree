@@ -24,21 +24,21 @@ load ./reactive
   find make-effect
   find on-cleanup
 
-task element
+task make-element
   take tag, like text
   like view
   send back
     call create-element
       bind tag, read tag
 
-task text
+task make-text
   take value, like text
   like view
   send back
     call create-text
       bind value, read value
 
-task attribute
+task write-attribute
   take node, like view
   take name, like text
   take value, like text
@@ -47,7 +47,7 @@ task attribute
     bind name, read name
     bind value, read value
 
-task event
+task attach-event
   take node, like view
   take name, like text
   take handler
@@ -77,7 +77,7 @@ task bind-attribute
             call source
 
 # a text node kept in sync with a reactive getter
-task dynamic
+task make-dynamic-text
   take source
     like task
       like text
@@ -135,7 +135,7 @@ task show
 # The items a counted walk needs. The `view` role's `walk size` lowers to a `walk list` over this, because the zone
 # AST carries only a list walk and adding a counted one would touch every pass that reads it.
 #
-task range
+task list-integers
   take base, like integer
   take head, like integer
   like list
@@ -155,19 +155,19 @@ task range
 # Empty lists with their element written. A `make list` saved inside a nested task (an effect's body) reaches a
 # native backend as a list of `Any`, because the element inferred from a later `push` is not carried into the
 # closure's local (native-dom-0021). These say it outright, so `each` and `each-keyed` compile on Swift and Kotlin.
-task empty-views
+task make-empty-views
   like list
     like view
   send back
     make list
 
-task empty-texts
+task make-empty-texts
   like list
     like text
   send back
     make list
 
-task each
+task render-each
   head t
   take host, like view
   take items
@@ -192,7 +192,7 @@ task each
             take site, name old
             call remove
               bind node, read old
-        save fresh, call empty-views
+        save fresh, call make-empty-views
         save current, call items
         walk list, read current
           hook next
@@ -212,7 +212,7 @@ task each
 # the node keeps its identity (focus, scroll, animation, component state) when the list reorders or items insert/remove.
 # `key` extracts a stable text key per item. Reconciliation: for each current item reuse its old node by key or build a
 # fresh one, drop nodes whose key vanished, then re-append all current nodes in order (append moves a node to the end).
-task each-keyed
+task render-each-keyed
   head t
   take host, like view
   take items
@@ -235,8 +235,8 @@ task each-keyed
     bind run
       task render
         save current, call items
-        save next-keys, call empty-texts
-        save next-nodes, call empty-views
+        save next-keys, call make-empty-texts
+        save next-nodes, call make-empty-views
         # build or reuse a node per current item, matched by key against the previous render
         walk list, read current
           hook next
@@ -331,7 +331,7 @@ task each-keyed
 # a reactive view slot (component-valued Solid Dynamic): an effect rebuilds whenever `source` (a getter returning a
 # built view) changes, swapping the mounted node. Use for a runtime-chosen component, polymorphic `as`, or a view that
 # depends on a signal. `source` returns any view, including a component's output.
-task dynamic-view
+task render-dynamic-view
   take host, like view
   take source
     like task
@@ -355,7 +355,7 @@ task dynamic-view
 # so the boundary is not a try/catch around render. it is a reactive switch on a status getter: `pending` mounts the
 # loading view, `error` mounts the failure view, anything else mounts the ready content. Driven by a query/result
 # status signal (see logic/query). An effect re-mounts the matching view whenever the status changes.
-task gate
+task render-gate
   take host, like view
   take status
     like task
@@ -416,7 +416,7 @@ task mount
 # page body) instead of the host, so dialogs, popovers, and tooltips escape `overflow:hidden` and z-index stacking. An
 # empty marker stays at the original position. The content is removed when the surrounding scope is disposed, so the
 # overlay tears down with its owner (no leak).
-task portal
+task mount-portal
   take target, like view
   take build
     like task

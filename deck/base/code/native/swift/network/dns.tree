@@ -3,7 +3,7 @@
 dock load
   load <global:dns>, name dns
 
-task do-resolve
+task dns-resolve
   note async
   take hostname, like text
   like list
@@ -12,7 +12,7 @@ task do-resolve
     call dns/resolve
       read hostname
 
-task do-resolve-one
+task dns-resolve-one
   note async
   take hostname, like text
   like text

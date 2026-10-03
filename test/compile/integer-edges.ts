@@ -92,6 +92,23 @@ EDGES['a list read at -1'] = `${oneItem}
 EDGES['a list write one past the end'] = `${oneItem}
   save xs/{past}, code 9
   send back, read xs/0`
+// the swap of two slots is one native call on Swift, Rust and Kotlin (backend.ts, swapAt): either index outside the
+// list still stops, as the three statements it replaces stop
+const zero = `
+  save at
+    call subtract
+      read x
+      read x`
+EDGES['a swap with one index past the end'] = `${oneItem}${zero}
+  host t, read xs/{at}
+  save xs/{at}, read xs/{past}
+  save xs/{past}, read t
+  send back, read xs/0`
+EDGES['a swap with one index at -1'] = `${oneItem}${zero}
+  host t, read xs/{before}
+  save xs/{before}, read xs/{at}
+  save xs/{at}, read t
+  send back, read xs/0`
 
 // the native integer power (imath.pow on Rust, Swift and Kotlin), squared past the maximum: it went through Double on
 // Swift and Kotlin and saturated, and wrapped on a Rust release build. Not TypeScript, whose native power is

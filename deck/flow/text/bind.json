@@ -20,5 +20,8 @@
     ["(", ")"],
     ["<", ">"]
   ],
+  "folding": {
+    "offSide": true
+  },
   "wordPattern": "([a-z][a-z0-9]*(?:-[a-z0-9]+)*)"
 }

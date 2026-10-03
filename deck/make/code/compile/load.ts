@@ -176,7 +176,7 @@ export type Resolver = (
 ) => Source | undefined
 
 // the render runtime backing a `zone` (and a view-role document, whose `view` lowers to one): such a module calls
-// `element` / `text` / `dynamic` / `show` / `each`,
+// `make-element` / `make-text` / `make-dynamic-text` / `show` / `render-each` (compile/render-names.ts),
 // which the emitter synthesizes rather than the user importing. So a module containing a zone implicitly depends on it.
 // `load @path` / `bear @path` (re-exports) both pull the target into the merged program; because the program is one
 // flat namespace, a `bear`ed definition is visible to anything importing this module. `scanImports` (above) reads both.
@@ -219,10 +219,12 @@ export function collectModules(
 
     // a module with a zone implicitly depends on the render runtime (the emitter synthesizes its calls). Inject it
     // unless the module already loads it or IS it (the render module itself must not depend on itself).
+    // (it moved from `zone/render` to `view/render`, and this test named the old place, so a module that loaded the
+    // runtime itself had it injected again, harmless only because both paths resolve to one file)
     if (
       scan.hasZone &&
-      !paths.some(p => p.endsWith('zone/render')) &&
-      !source.file.endsWith('zone/render.tree')
+      !paths.some(p => p.endsWith('view/render')) &&
+      !source.file.endsWith('view/render.tree')
     ) {
       paths.push(VIEW_RUNTIME_MODULE)
     }

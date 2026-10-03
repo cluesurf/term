@@ -5,8 +5,8 @@
 # sub-slots) or pass classes through `class`. Compose them: `zone card / zone card-header / zone card-title ...`.
 
 load @term/site/code/view/render
-  find element
-  find text
+  find make-element
+  find make-text
 load @term/site/code/dom/dom
   find view
   find append

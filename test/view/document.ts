@@ -123,7 +123,7 @@ async function main(): Promise<void> {
   )
 
   const mod = await run(built.program, built.typescript)
-  const host = mod.element('root')
+  const host = mod.makeElement('root')
 
   // the query arrives RESOLVED. The renderer never fetches: the host resolves every query first and passes the
   // result in, which is what keeps the component free of input and output. See note/term/view/03-find.md.

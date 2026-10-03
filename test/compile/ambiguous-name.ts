@@ -56,8 +56,11 @@ task run-helper
   const text = result.ok ? result.typescript : result.diagnostics.map(d => d.message).join(' | ')
   ok('two bodied definitions in two files compile when each caller imported one', result.ok, text)
   const body = (name: string) => (result.ok ? (new RegExp(`function ${name}\\(\\)[^}]*}`).exec(result.typescript)?.[0] ?? '') : '')
-  ok("main's call reaches a's pick, the one main imported", /"a"/.test(body('run')) || /pickFrom\d+_0\(/.test(body('run')), body('run'))
-  ok("c's call reaches b's pick, the one c imported", /"b"/.test(body('helper')) || /pickFrom\d+_1\(/.test(body('helper')), body('helper'))
+  // each file's definitions are renamed `pick__in<group>_<file index>`, files in sorted order: a.tree is 0, b.tree is 1
+  ok("main's call reaches a's pick, the one main imported", /"a"/.test(body('run')) || /pickIn\d+_0\(/.test(body('run')), body('run'))
+  // `helper` may be inlined into `run-helper`, so the answer is read from whichever of the two holds it
+  const helped = `${body('helper')} ${body('runHelper')}`
+  ok("c's call reaches b's pick, the one c imported", /"b"/.test(helped) || /pickIn\d+_1\(/.test(helped), helped)
 }
 
 {

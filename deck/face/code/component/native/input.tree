@@ -13,9 +13,9 @@
 # character survive the round trip. Parts: `input` (the field, data-slot for a theme).
 
 load @term/site/code/view/render
-  find element
-  find attribute
-  find event
+  find make-element
+  find write-attribute
+  find attach-event
 load @term/site/code/view/reactive
   find signal
   find make-effect
@@ -35,21 +35,21 @@ task mount-input
   take placeholder, like text
   like view
   save field
-    call element
+    call make-element
       text <input>
-  call attribute
+  call write-attribute
     read field
     text <type>
     text <text>
-  call attribute
+  call write-attribute
     read field
     text <data-slot>
     text <input>
-  call attribute
+  call write-attribute
     read field
     text <class>
     read class
-  call attribute
+  call write-attribute
     read field
     text <placeholder>
     read placeholder
@@ -61,7 +61,7 @@ task mount-input
         call read-signal
           bind self, read control
   # what the person typed, written into the signal
-  call event
+  call attach-event
     read field
     text <input>
     task typed

@@ -3,21 +3,21 @@
 note stable
 
 load @term/base/code/native/{platform}/bit
-  find do-bitwise-and
-  find do-bitwise-or
-  find do-bitwise-exclusive-or
-  find do-bitwise-not
-  find do-shift-left
-  find do-shift-right
-  find do-unsigned-shift-right
-  find do-multiply-32
+  find bit-and
+  find bit-or
+  find bit-exclusive-or
+  find bit-not
+  find bit-shift-left
+  find bit-shift-right
+  find bit-shift-right-unsigned
+  find bit-multiply-32
 
 task bitwise-and
   take left, like number
   take right, like number
   like number
   send back
-    call do-bitwise-and
+    call bit-and
       read left
       read right
 
@@ -26,7 +26,7 @@ task bitwise-or
   take right, like number
   like number
   send back
-    call do-bitwise-or
+    call bit-or
       read left
       read right
 
@@ -35,7 +35,7 @@ task bitwise-exclusive-or
   take right, like number
   like number
   send back
-    call do-bitwise-exclusive-or
+    call bit-exclusive-or
       read left
       read right
 
@@ -43,7 +43,7 @@ task bitwise-not
   take value, like number
   like number
   send back
-    call do-bitwise-not
+    call bit-not
       read value
 
 task shift-left
@@ -51,7 +51,7 @@ task shift-left
   take count, like number
   like number
   send back
-    call do-shift-left
+    call bit-shift-left
       read value
       read count
 
@@ -60,7 +60,7 @@ task shift-right
   take count, like number
   like number
   send back
-    call do-shift-right
+    call bit-shift-right
       read value
       read count
 
@@ -70,7 +70,7 @@ task unsigned-shift-right
   take count, like number
   like number
   send back
-    call do-unsigned-shift-right
+    call bit-shift-right-unsigned
       read value
       read count
 
@@ -86,6 +86,6 @@ task multiply-32
   take right, like number
   like number
   send back
-    call do-multiply-32
+    call bit-multiply-32
       read left
       read right

@@ -426,6 +426,9 @@ export type Statement =
       // the `like <type>` base of a transparent alias form (`form g-luint, like native-number`): a form with this base
       // and no fields/variants is an alias that unifies with its base. Undefined for ordinary forms.
       alias?: Type
+      // `mark tag, name kind`: the field a union's TypeScript type and values discriminate on. Absent means `form`.
+      // TypeScript only: the native backends emit enums (self-hosting-0020)
+      tag?: string
       // `like <base>` WITH children: the form EXTENDS `base`. `head` children name type arguments (`head a, like
       // text`, or `head a` over `link` lines for an anonymous record), `bind` children PIN fields of the base (fixed by
       // this type, refused at a construction), and `link` children add props to the base's record parameter. Resolved

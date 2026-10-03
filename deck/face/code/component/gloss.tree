@@ -5,8 +5,8 @@
 #            (e.g. "walk-PST"). Lay the words in a row and stack form over gloss via CSS on [data-slot=gloss].
 
 load @term/site/code/view/render
-  find element
-  find text
+  find make-element
+  find make-text
 load @term/site/code/dom/dom
   find view
   find append

@@ -9,9 +9,9 @@
 # it.
 
 load @term/site/code/view/render
-  find element
-  find attribute
-  find event
+  find make-element
+  find write-attribute
+  find attach-event
 load @term/site/code/view/reactive
   find signal
   find make-effect
@@ -35,18 +35,18 @@ task mount-select
       like text
   like view
   save picker
-    call element
+    call make-element
       text <choice>
-  call attribute
+  call write-attribute
     read picker
     text <data-slot>
     text <select>
-  call attribute
+  call write-attribute
     read picker
     text <class>
     read class
   # the choices, one per line: what the host fills the platform's picker with
-  call attribute
+  call write-attribute
     read picker
     text <options>
     call join
@@ -58,7 +58,7 @@ task mount-select
         read picker
         call read-signal
           bind self, read control
-  call event
+  call attach-event
     read picker
     text <change>
     task chosen

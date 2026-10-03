@@ -1,5 +1,5 @@
-// The VS Code client for the Term language server. It launches the bundled server (deck/flow/code/main.ts, built to
-// host/server.js next to this file) as a child `node` process and speaks LSP to it over stdio. Syntax highlighting is
+// The VS Code client for the Term language server. It launches the bundled server (code/main.ts, built to
+// make/server.js beside this extension) as a child `node` process and speaks LSP to it over stdio. Syntax highlighting is
 // provided separately by the TextMate grammar in text/tree.json; this client adds the semantic features the server
 // implements: diagnostics, hover, go-to-definition, references, rename, and document symbols.
 
@@ -19,7 +19,7 @@ let client: LanguageClient | undefined
 export function activate(context: ExtensionContext): void {
   // the server is bundled next to this extension (see build.mjs), so it is fully self-contained -- no tsx, no
   // node_modules at runtime, the same binary whether run from source or a published .vsix
-  const server = context.asAbsolutePath(path.join('host', 'server.js'))
+  const server = context.asAbsolutePath(path.join('make', 'server.js'))
 
   const serverOptions: ServerOptions = {
     run: { command: 'node', args: [server], transport: TransportKind.stdio },
@@ -34,10 +34,11 @@ export function activate(context: ExtensionContext): void {
     documentSelector: [{ scheme: 'file', language: 'tree' }],
   }
 
-  // the id stays `seed`: it is the prefix of the client's settings (`seed.trace.server`), so renaming it would drop
-  // a user's existing configuration. Only the name a person reads (the Output panel's channel) says Term.
+  // the id is the prefix of the client's settings (`term.trace.server`). It was `seed` until the extension was
+  // renamed `term-code` on 2026-10-02, which is a new Marketplace listing, so there was no installed configuration
+  // left to keep by holding the old prefix.
   client = new LanguageClient(
-    'seed',
+    'term',
     'Term Language Server',
     serverOptions,
     clientOptions,

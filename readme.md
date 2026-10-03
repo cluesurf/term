@@ -233,6 +233,18 @@ reuses the same analysis for diagnostics, hover, and go-to-definition.
 pnpm add @cluesurf/term -g
 ```
 
+## Developing Term
+
+Working on Term itself takes Node, pnpm, Rust, Swift, a JDK, Kotlin, Maven and, for the mobile suites, the Android
+SDK and the iOS simulator. One command checks them all on macOS, Linux or Windows, and installs what is missing with
+`--commit`:
+
+```
+sh task/dev/bootstrap/start.sh check
+sh task/dev/bootstrap/start.sh install --commit
+powershell -ExecutionPolicy Bypass -File task\dev\bootstrap\start.ps1 check
+```
+
 ## Getting Started
 
 ```bash

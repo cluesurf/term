@@ -6,8 +6,8 @@
 #   class  -> extra classes, used to apply the script's @font-face family (the font is a package artifact)
 
 load @term/site/code/view/render
-  find element
-  find text
+  find make-element
+  find make-text
 load @term/site/code/dom/dom
   find view
   find append

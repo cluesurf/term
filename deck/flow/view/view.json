@@ -1,0 +1,10 @@
+{
+	"iconDefinitions": {
+		"_file_dark": {
+			"iconPath": "./tree.svg"
+		}
+	},
+	"fileExtensions": {
+		"tree": "_file_dark"
+	}
+}

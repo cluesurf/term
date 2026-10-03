@@ -21,15 +21,15 @@ load @term/base/code/exception
   find timeout
 
 load @term/base/code/native/{platform}/job
-  find do-spawn
-  find do-settle
-  find do-settle-within
-  find do-settle-group
-  find do-state
-  find do-result
-  find do-rethrow
-  find do-cancel
-  find do-alive
+  find job-spawn
+  find job-settle
+  find job-settle-within
+  find job-settle-group
+  find job-state
+  find job-result
+  find job-rethrow
+  find job-cancel
+  find job-alive
 
 # a running concurrent task whose result is an `r`. The platform job object lives in the opaque `dock` handle.
 form handle
@@ -42,7 +42,7 @@ form handle
     note async
     take self
     like r
-    call do-settle
+    call job-settle
       read self/dock
       wait true
     send back
@@ -57,7 +57,7 @@ form handle
     take milliseconds, like number
     like r
     save settled
-      call do-settle-within
+      call job-settle-within
         read self/dock
         read milliseconds
         wait true
@@ -66,7 +66,7 @@ form handle
         call not
           read settled
       hook hold
-        call do-cancel
+        call job-cancel
           read self/dock
         halt timeout
           bind thing, text <task>
@@ -79,7 +79,7 @@ form handle
   task cancel
     take self
     like void
-    call do-cancel
+    call job-cancel
       read self/dock
 
   # whether the task is still running
@@ -87,7 +87,7 @@ form handle
     take self
     like boolean
     send back
-      call do-alive
+      call job-alive
         read self/dock
 
 # what a task that is no longer running gives its waiter
@@ -96,7 +96,7 @@ task outcome
   take self, like handle r
   like r
   save state
-    call do-state
+    call job-state
       read self/dock
   fork test
     hook test
@@ -105,7 +105,7 @@ task outcome
         text <failed>
     hook hold
       send back
-        call do-rethrow
+        call job-rethrow
           read self/dock
   fork test
     hook test
@@ -116,7 +116,7 @@ task outcome
       halt outage
         bind thing, text <task>
   send back
-    call do-result
+    call job-result
       read self/dock
 
 # spawn `work` as a concurrent task and return its handle. `work` is started immediately; its result is collected with
@@ -132,7 +132,7 @@ task spawn
   send back
     make handle
       bind dock
-        call do-spawn
+        call job-spawn
           task boxed
             like unknown
             send back
@@ -165,7 +165,7 @@ task gather
         read started
       call docks/push
         read started/dock
-  call do-settle-group
+  call job-settle-group
     read docks
     wait true
   # the first job, in source order, that failed or was cancelled. A job still running is not it: the group settled
@@ -174,7 +174,7 @@ task gather
     hook next
       take site, name started
       save state
-        call do-state
+        call job-state
           read started/dock
       fork test
         hook test
@@ -189,7 +189,7 @@ task gather
           walk list, read jobs
             hook next
               take site, name other
-              call do-cancel
+              call job-cancel
                 read other/dock
           send back
             make list
