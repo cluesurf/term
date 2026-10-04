@@ -16,12 +16,14 @@ import {
   readDataText,
   toJsonValue,
 } from '@term/make/code/compile/host'
-import { renderDiagnostic } from '@term/call/code/report'
-import { logFail, logStep, fade } from '@term/make/code/tint'
+import { closeRun, count, field, openRun, printData, report, reportProblems } from '@term/call/code/output'
 
 // `term look <module>` -- inspect what a module exposes (forms + tasks with signatures), following its load/bear
 // graph. The target is a package path (`@cluesurf/bind/code/browser/dom`) or a `.tree` file. Output: table (default),
 // `--json`, or `--csv`.
+//
+// THE ANSWER IS DATA. The table, the JSON and the CSV go to stdout as they always read, through `printData`, so a
+// pipe gets them clean; the run around them (what was read, the counts, a failure) is items on stderr.
 export async function callLook(input: {
   root: string
   target?: string
@@ -29,11 +31,13 @@ export async function callLook(input: {
   csv?: boolean
   kind?: string
 }): Promise<void> {
+  openRun({ verb: 'look', root: input.root, facts: [...(input.target ? [input.target] : []), ...(input.kind ? [input.kind] : [])] })
+
   if (!input.target) {
-    logFail(
-      'Usage: term look <module> [--json|--csv] [--kind form|task]',
-    )
-    process.exit(1)
+    report({ glyph: 'failed', kind: 'problem', subject: 'Name a module to look at' })
+    closeRun({ verdict: 'Nothing to look at', next: 'term look <module> [--json|--csv] [--kind form|task]', failure: 'usage' })
+
+    return
   }
 
   const resolve = projectResolver(input.root)
@@ -45,10 +49,10 @@ export async function callLook(input: {
     entry = resolve(input.target, input.root)
 
     if (!entry) {
-      logFail(
-        `Could not resolve ${input.target} (is the package linked? run \`term link\`)`,
-      )
-      process.exit(1)
+      report({ glyph: 'failed', kind: 'problem', verb: 'resolve', subject: `${input.target} does not resolve`, fields: [field('why', 'the package may not be linked')] })
+      closeRun({ verdict: 'Nothing to look at', next: 'term link' })
+
+      return
     }
   } else {
     const file = path.resolve(input.root, input.target)
@@ -56,20 +60,18 @@ export async function callLook(input: {
     try {
       entry = { file, text: readFileSync(file, 'utf-8') }
     } catch {
-      logFail(`File not found: ${input.target}`)
-      process.exit(1)
+      report({ glyph: 'failed', kind: 'problem', verb: 'read', subject: `There is no file ${input.target}` })
+      closeRun({ verdict: 'Nothing to look at' })
+
+      return
     }
   }
 
   // a data file has no forms or tasks: list its keys instead, a path per row
   if (isDataFile(entry)) {
-    lookData(entry, input)
+    lookData(entry, input, input.root)
 
     return
-  }
-
-  if (!input.json && !input.csv) {
-    logStep(`Inspecting ${input.target}...`)
   }
 
   const { symbols, modules, loadDiagnostics } = inspectModule(
@@ -83,26 +85,24 @@ export async function callLook(input: {
     : symbols
 
   if (input.json) {
-    process.stdout.write(toJson(filtered) + '\n')
+    printData(toJson(filtered) + '\n')
   } else if (input.csv) {
-    process.stdout.write(toCsv(filtered) + '\n')
+    printData(toCsv(filtered) + '\n')
   } else {
-    console.log('')
-    console.log(toTable(filtered))
-
-    const forms = symbols.filter(s => s.kind === 'form').length
-    const tasks = symbols.filter(s => s.kind === 'task').length
-    console.log('')
-    console.log(
-      fade(
-        `  ${modules} module(s), ${forms} form(s), ${tasks} task(s)${
-          loadDiagnostics
-            ? `, ${loadDiagnostics} unresolved import(s)`
-            : ''
-        }`,
-      ),
-    )
+    printData(toTable(filtered) + '\n')
   }
+
+  const forms = symbols.filter(s => s.kind === 'form').length
+  const tasks = symbols.filter(s => s.kind === 'task').length
+
+  if (loadDiagnostics) {
+    report({ glyph: 'warning', verb: 'resolve', subject: 'Some imports did not resolve', counts: [count(loadDiagnostics, 'unresolved', 'unresolved')] })
+  }
+
+  closeRun({
+    verdict: `${filtered.length} name${filtered.length === 1 ? '' : 's'} listed`,
+    counts: [count(modules, 'modules', 'module'), count(forms, 'forms', 'form'), count(tasks, 'tasks', 'task')],
+  })
 }
 
 // `term look` on a data file: every key as a path, its kind, and its value (or how much a map or a list holds).
@@ -110,46 +110,37 @@ export async function callLook(input: {
 function lookData(
   entry: Source,
   input: { target?: string; json?: boolean; csv?: boolean },
+  root: string,
 ): void {
   const read = readDataText(entry)
   const expanded = read.ok ? expandData(read.data, entry.file) : read
 
   if (!expanded.ok) {
-    for (const diagnostic of expanded.diagnostics) {
-      console.error(renderDiagnostic(diagnostic, entry.text))
-    }
+    // each defect a Problem item with its frame (section 12)
+    reportProblems(expanded.diagnostics.map(diagnostic => ({ diagnostic, text: entry.text })), root)
+    closeRun({ verdict: 'The data file does not read' })
 
-    process.exit(1)
+    return
   }
 
   const keys = dataKeys(expanded.data)
 
   if (input.json) {
-    process.stdout.write(JSON.stringify(toJsonValue(expanded.data), null, 2) + '\n')
-
-    return
-  }
-
-  if (input.csv) {
+    printData(JSON.stringify(toJsonValue(expanded.data), null, 2) + '\n')
+  } else if (input.csv) {
     const cell = (text: string): string => (/[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text)
-    process.stdout.write(
-      ['path,kind,value', ...keys.map(k => [k.path, k.kind, k.value].map(cell).join(','))].join('\n') + '\n',
-    )
+    printData(['path,kind,value', ...keys.map(k => [k.path, k.kind, k.value].map(cell).join(','))].join('\n') + '\n')
+  } else {
+    const pathWidth = Math.max(4, ...keys.map(k => k.path.length))
+    const kindWidth = Math.max(4, ...keys.map(k => k.kind.length))
+    const lines = [`  ${'path'.padEnd(pathWidth)}  ${'kind'.padEnd(kindWidth)}  value`]
 
-    return
+    for (const key of keys) {
+      lines.push(`  ${key.path.padEnd(pathWidth)}  ${key.kind.padEnd(kindWidth)}  ${key.value}`)
+    }
+
+    printData(lines.join('\n') + '\n')
   }
 
-  logStep(`Inspecting ${input.target}...`)
-  console.log('')
-
-  const pathWidth = Math.max(4, ...keys.map(k => k.path.length))
-  const kindWidth = Math.max(4, ...keys.map(k => k.kind.length))
-  console.log(`  ${'path'.padEnd(pathWidth)}  ${'kind'.padEnd(kindWidth)}  value`)
-
-  for (const key of keys) {
-    console.log(`  ${key.path.padEnd(pathWidth)}  ${key.kind.padEnd(kindWidth)}  ${key.value}`)
-  }
-
-  console.log('')
-  console.log(fade(`  ${keys.length} key${keys.length === 1 ? '' : 's'}`))
+  closeRun({ verdict: `${keys.length} key${keys.length === 1 ? '' : 's'} listed`, facts: ['data'] })
 }

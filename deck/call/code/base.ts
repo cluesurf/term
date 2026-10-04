@@ -40,6 +40,31 @@ import { parseTree } from '@cluesurf/save/tree/parse'
 import { formatTree } from '@cluesurf/save/tree/format'
 import { datasetOf, type Dataset } from '@cluesurf/save/diff/change'
 import type { RecordNode } from '@cluesurf/save/base/type'
+import { closeRun, count, field, isRunOpen, openRun, printData, report } from '@term/call/code/output'
+import type { ItemField } from '@term/call/code/work/item/event'
+
+// THE OUTPUT (note/term/output/readme.md). Each verb opens a run with its own verb and closes it with a verdict on
+// stderr, and what the person asked to SEE (a log, a diff, a record, a listing, a commit hash) is data on stdout,
+// through `printData`, so `term base log > log.txt` holds the log and nothing else.
+
+// a refusal that ends the command at once: a ✗ item, the closing item, and the exit code it gives (section 18). The
+// helpers below hand back a value (`need`, `resolve`, `working`), so the process stops here rather than returning
+// (`failure`: <usage> for a bad invocation, exit 2, rather than the default exit 1)
+export function refuse(subject: string, extra: { message?: string[]; fields?: ItemField[]; next?: string; verdict?: string; failure?: string } = {}): never {
+  if (!isRunOpen()) {
+    openRun({ verb: 'base', root: process.cwd() })
+  }
+
+  report({ glyph: 'failed', kind: 'problem', subject, message: extra.message, fields: extra.fields })
+  process.exit(closeRun({ verdict: extra.verdict ?? 'Nothing was done', next: extra.next, failure: extra.failure }))
+}
+
+// data lines on stdout, one per line, as they always were
+function printLines(lines: string[]): void {
+  if (lines.length) {
+    printData(`${lines.join('\n')}\n`)
+  }
+}
 
 // Where a repository keeps itself, beside the working files, the way `.git` does.
 const HOME = '.base'
@@ -168,15 +193,10 @@ function resolve(repo: Repository, given: string): string {
   }
 
   if (hit.length > 1) {
-    console.error(
-      `\`${given}\` matches ${hit.length} commits. Give more of it:\n` +
-        hit.map(hash => `  ${hash}`).join('\n'),
-    )
-    process.exit(1)
+    refuse(`${given} matches ${hit.length} commits`, { message: hit, next: 'give more of the hash' })
   }
 
-  console.error(`no commit matching \`${given}\``)
-  process.exit(1)
+  refuse(`No commit matches ${given}`, { next: 'term base log, for the hashes' })
 }
 
 export function need(root: string): {
@@ -187,11 +207,7 @@ export function need(root: string): {
   const held = open(root)
 
   if (!held) {
-    console.error(
-      `no repository here. \`${HOME}/\` is missing.\n` +
-        'Run `term base init` in the directory you want to track.',
-    )
-    process.exit(1)
+    refuse('There is no repository here', { fields: [field('looked', path.join(root, HOME))], next: 'term base init, in the directory to track' })
   }
 
   return held
@@ -199,31 +215,39 @@ export function need(root: string): {
 
 /** Every branch, and where it points. */
 export function callBaseLog(input: { root: string; branch?: string }): void {
+  openRun({ verb: 'log', root: input.root, facts: input.branch ? [input.branch] : [] })
   const { repo } = need(input.root)
   const branches = input.branch ? [input.branch] : repo.branches()
 
   if (!branches.length) {
-    console.log('no branches yet')
+    closeRun({ verdict: 'No branches yet', counts: [count(0, 'branches', 'branch')] })
 
     return
   }
+
+  const lines: string[] = []
+  let commits = 0
 
   for (const branch of branches) {
     const head = repo.head(branch)
 
     if (!head) {
-      console.log(`${branch}: no commits`)
+      lines.push(`${branch}: no commits`)
       continue
     }
 
-    console.log(`${branch}`)
+    lines.push(`${branch}`)
 
     for (const { hash, commit } of repo.log(branch)) {
       const when = new Date(commit.time).toISOString().slice(0, 19).replace('T', ' ')
 
-      console.log(`  ${hash.slice(0, 24)}  ${when}  ${commit.author}  ${commit.message}`)
+      lines.push(`  ${hash.slice(0, 24)}  ${when}  ${commit.author}  ${commit.message}`)
+      commits++
     }
   }
+
+  printLines(lines)
+  closeRun({ verdict: 'Log listed', counts: [count(branches.length, 'branches', 'branch'), count(commits, 'commits', 'commit')] })
 }
 
 /** What changed between two commits, as field-level changes. */
@@ -232,37 +256,34 @@ export function callBaseDiff(input: {
   from?: string
   to: string
 }): void {
+  openRun({ verb: 'diff', root: input.root, facts: [input.from === undefined ? input.to : `${input.from} → ${input.to}`] })
   const { repo } = need(input.root)
   const to = resolve(repo, input.to)
   const from = input.from === undefined ? undefined : resolve(repo, input.from)
   const changes = commitChanges(repo, from, to)
-
-  if (!changes.length) {
-    console.log('no changes')
-
-    return
-  }
+  const lines: string[] = []
 
   for (const change of changes) {
     switch (change.type) {
       case 'record.add':
-        console.log(`+ ${change.mark}  ${change.value.type}`)
+        lines.push(`+ ${change.mark}  ${change.value.type}`)
         break
       case 'record.remove':
-        console.log(`- ${change.mark}`)
+        lines.push(`- ${change.mark}`)
         break
       case 'field.set':
-        console.log(`~ ${change.mark}  ${change.field}`)
+        lines.push(`~ ${change.mark}  ${change.field}`)
         break
       case 'field.remove':
-        console.log(`~ ${change.mark}  ${change.field} removed`)
+        lines.push(`~ ${change.mark}  ${change.field} removed`)
         break
       default:
         break
     }
   }
 
-  console.log(`\n${changes.length} change(s)`)
+  printLines(lines)
+  closeRun({ verdict: changes.length ? 'Changes listed' : 'No changes', counts: [count(changes.length, 'changes', 'change')] })
 }
 
 /** One record as of a commit, in canonical form. */
@@ -271,21 +292,20 @@ export function callBaseShow(input: {
   commit: string
   mark: string
 }): void {
+  openRun({ verb: 'show', root: input.root, subject: input.mark, facts: [input.commit] })
   const { repo } = need(input.root)
   const at = resolve(repo, input.commit)
   const found = repo.recordAt(at, input.mark)
 
   if (!found) {
-    console.error(`no record ${input.mark} at ${input.commit}`)
-    process.exit(1)
+    refuse(`There is no record ${input.mark} at ${input.commit}`, { next: 'term base list <commit>, for the marks' })
   }
 
   // Both, and in this order. The readable half is what a person needs to learn the record
   // model, which is what a read verb is for. The canonical half is what is HASHED, and
   // showing only a pretty print would leave the one thing a person cannot otherwise check
   // invisible: whether the bytes about to be trusted are the bytes they think.
-  console.log(`mark  ${input.mark}`)
-  console.log(`form  ${found.type}`)
+  const lines = [`mark  ${input.mark}`, `form  ${found.type}`]
 
   for (const [field, value] of [...found.fields].sort()) {
     const said =
@@ -299,49 +319,54 @@ export function callBaseShow(input: {
               ? '(null)'
               : `(${value.kind})`
 
-    console.log(`  ${field.padEnd(20)} ${said}`)
+    lines.push(`  ${field.padEnd(20)} ${said}`)
   }
 
-  console.log(`\ncanonical bytes, which are what is hashed:`)
-  console.log(canonicalizeRecord(found))
+  lines.push('', 'canonical bytes, which are what is hashed:', canonicalizeRecord(found))
+  printLines(lines)
+  closeRun({ verdict: 'Record shown', counts: [count(found.fields.size, 'fields', 'field')] })
 }
 
 /** Whether a repository is coherent, and what it holds. */
 export function callBaseCheck(input: { root: string }): void {
+  openRun({ verb: 'check', root: input.root })
   const { repo, refs } = need(input.root)
-  const report = repo.fsck()
+  const fsck = repo.fsck()
 
   // Read the ref DIRECTLY. `repo.head(name)` prepends `branch/`, so asking it for
   // `meta/format` looks for `branch/meta/format` and always answers undefined, which made
   // this print "(unversioned)" on a repository that was correctly versioned. The gate was
   // working; only the display was wrong.
-  console.log(`format      ${refs.get(FORMAT_REF) ?? '(unversioned)'}`)
-  console.log(`branches    ${repo.branches().join(', ') || '(none)'}`)
-  console.log(`tags        ${repo.tags().join(', ') || '(none)'}`)
+  printLines([
+    `format      ${refs.get(FORMAT_REF) ?? '(unversioned)'}`,
+    `branches    ${repo.branches().join(', ') || '(none)'}`,
+    `tags        ${repo.tags().join(', ') || '(none)'}`,
+  ])
 
-  if (report.missing.length) {
-    console.error(`\n${report.missing.length} missing chunk(s):`)
+  if (fsck.missing.length) {
+    // a list shows 10 entries and counts the rest (section 14)
+    report({
+      glyph: 'failed',
+      kind: 'problem',
+      subject: `${fsck.missing.length} chunk${fsck.missing.length === 1 ? ' is' : 's are'} missing`,
+      message: [...fsck.missing.slice(0, 10), ...(fsck.missing.length > 10 ? [`… ${fsck.missing.length - 10} more`] : [])],
+    })
+    closeRun({ verdict: 'The repository is not coherent', counts: [count(fsck.missing.length, 'missing')] })
 
-    for (const hash of report.missing.slice(0, 10)) {
-      console.error(`  ${hash}`)
-    }
-
-    process.exit(1)
+    return
   }
 
-  console.log('\nno missing chunks')
+  closeRun({ verdict: 'No missing chunks', counts: [count(0, 'missing')] })
 }
 
 /** Every record at a commit, by mark and form. */
 export function callBaseList(input: { root: string; commit: string }): void {
+  openRun({ verb: 'list', root: input.root, facts: [input.commit] })
   const { repo } = need(input.root)
   const dataset = repo.checkout(resolve(repo, input.commit))
 
-  for (const mark of [...dataset.keys()].sort()) {
-    console.log(`${mark}  ${dataset.get(mark)!.type}`)
-  }
-
-  console.log(`\n${dataset.size} record(s)`)
+  printLines([...dataset.keys()].sort().map(mark => `${mark}  ${dataset.get(mark)!.type}`))
+  closeRun({ verdict: 'Records listed', counts: [count(dataset.size, 'records', 'record')] })
 }
 
 /**
@@ -370,11 +395,11 @@ export function repositoryName(root: string): string {
 
 /** Create a repository here. The one write verb, because nothing else can run without it. */
 export function callBaseInit(input: { root: string }): void {
+  openRun({ verb: 'init', root: input.root })
   const home = path.join(input.root, HOME)
 
   if (fs.existsSync(home)) {
-    console.error(`already a repository: ${HOME}/ exists`)
-    process.exit(1)
+    refuse('This is already a repository', { fields: [field('found', `${HOME}/`)] })
   }
 
   fs.mkdirSync(home, { recursive: true })
@@ -382,7 +407,8 @@ export function callBaseInit(input: { root: string }): void {
   fs.writeFileSync(path.join(home, REFS), '{}\n')
   fs.writeFileSync(path.join(home, NAME), `${mintMark()}\n`)
 
-  console.log(`initialised an empty repository in ${HOME}/`)
+  report({ glyph: 'added', kind: 'change', verb: 'add', subject: `${HOME}/` })
+  closeRun({ verdict: 'An empty repository was made' })
 }
 
 // Where a person authors records: `.tree` files beside the repository, one per record. A
@@ -421,10 +447,7 @@ function working(root: string): Dataset {
         // only the form, which in a directory of five hundred records is not something a
         // person can act on.
         if (node.mark === undefined) {
-          console.error(
-            `${path.relative(root, full)}: no \`mark\` line, so this record has no identity`,
-          )
-          process.exit(1)
+          refuse('This record has no mark line, so it has no identity', { fields: [{ ...field('at', path.relative(root, full)), location: true }] })
         }
 
         records.push(node)
@@ -432,10 +455,8 @@ function working(root: string): Dataset {
         // Named, and fatal. A commit that silently skipped a file it could not read would
         // record a DELETION of that record, because the dataset is the whole working state
         // rather than a list of edits.
-        console.error(
-          `${path.relative(root, full)}: ${error instanceof Error ? error.message : String(error)}`,
-        )
-        process.exit(1)
+        const message = error instanceof Error ? error.message : String(error)
+        refuse(message.charAt(0).toUpperCase() + message.slice(1), { fields: [{ ...field('at', path.relative(root, full)), location: true }] })
       }
     }
   }
@@ -451,6 +472,7 @@ function working(root: string): Dataset {
  * The read half of `commit`, so a person can see what is about to happen before it does.
  */
 export function callBaseStatus(input: { root: string; branch: string }): void {
+  openRun({ verb: 'status', root: input.root, facts: [input.branch] })
   const { repo } = need(input.root)
   const now = working(input.root)
   const head = repo.head(input.branch)
@@ -464,23 +486,27 @@ export function callBaseStatus(input: { root: string; branch: string }): void {
       canonicalizeRecord(now.get(mark)!) !== canonicalizeRecord(before.get(mark)!),
   )
 
+  const lines: string[] = []
+
   for (const mark of added.sort()) {
-    console.log(`+ ${mark}`)
+    lines.push(`+ ${mark}`)
   }
 
   for (const mark of changed.sort()) {
-    console.log(`~ ${mark}`)
+    lines.push(`~ ${mark}`)
   }
 
   // A record absent from the working files is a REMOVAL, because the dataset is the whole
   // state. Said plainly, because the surprising way to lose a record is to move its file.
   for (const mark of gone.sort()) {
-    console.log(`- ${mark}  (absent from ${WORK}/, so committing would remove it)`)
+    lines.push(`- ${mark}  (absent from ${WORK}/, so committing would remove it)`)
   }
 
-  console.log(
-    `\n${now.size} record(s) in ${WORK}/, ${added.length} new, ${changed.length} changed, ${gone.length} removed`,
-  )
+  printLines(lines)
+  closeRun({
+    verdict: `${now.size} record${now.size === 1 ? '' : 's'} in ${WORK}/`,
+    counts: [count(added.length, 'new'), count(changed.length, 'changed'), count(gone.length, 'removed')],
+  })
 }
 
 /** Commit the working files onto a branch. */
@@ -490,15 +516,15 @@ export function callBaseCommit(input: {
   message: string
   author: string
 }): void {
+  openRun({ verb: 'commit', root: input.root, facts: [input.branch] })
   const { repo, save } = need(input.root)
   const next = working(input.root)
 
   if (!next.size) {
-    console.error(
-      `no records in ${WORK}/. Committing would empty the branch, so this refuses rather ` +
-        'than doing it by accident. Use `term base status` to see what is there.',
-    )
-    process.exit(1)
+    refuse(`There are no records in ${WORK}/`, {
+      message: ['Committing would empty the branch, so this refuses rather than doing it by accident.'],
+      next: 'term base status',
+    })
   }
 
   const done = repo.commit(input.branch, {
@@ -508,23 +534,25 @@ export function callBaseCommit(input: {
   }, next)
 
   if (!done.ok) {
-    console.error('refused:')
-
+    // each refusal its own item, the record it is about as its subject
     for (const one of done.diagnostics ?? []) {
-      console.error(`  ${one.mark ?? '(dataset)'}  ${one.message}`)
+      report({ glyph: 'failed', kind: 'problem', subject: one.message, fields: [field('mark', one.mark ?? '(dataset)')] })
     }
 
     for (const one of done.conflicts ?? []) {
-      console.error(`  conflict on ${JSON.stringify(one)}`)
+      report({ glyph: 'failed', kind: 'problem', subject: 'A conflict', message: [JSON.stringify(one)] })
     }
 
-    process.exit(1)
+    closeRun({ verdict: 'The commit was refused' })
+
+    return
   }
 
   save()
 
-  console.log(`${done.commit}`)
-  console.log(`${next.size} record(s) on ${input.branch}`)
+  // the hash is what a script captures, so it is data
+  printData(`${done.commit}\n`)
+  closeRun({ verdict: `Committed onto ${input.branch}`, counts: [count(next.size, 'records', 'record')] })
 }
 
 /** Write a commit's records back out as `.tree` files. */
@@ -532,6 +560,7 @@ export function callBaseCheckout(input: {
   root: string
   commit: string
 }): void {
+  openRun({ verb: 'write', root: input.root, facts: [input.commit] })
   const { repo } = need(input.root)
   const at = resolve(repo, input.commit)
   const dataset = repo.checkout(at)
@@ -546,7 +575,7 @@ export function callBaseCheckout(input: {
     fs.writeFileSync(path.join(into, `${mark}.tree`), formatTree(node))
   }
 
-  console.log(`wrote ${dataset.size} record(s) into ${WORK}/`)
+  closeRun({ verdict: `Records written into ${WORK}/`, counts: [count(dataset.size, 'records', 'record')] })
 }
 
 /** Merge one branch into another. */
@@ -556,6 +585,7 @@ export function callBaseMerge(input: {
   from: string
   author: string
 }): void {
+  openRun({ verb: 'merge', root: input.root, subject: `${input.from} into ${input.into}` })
   const { repo, save } = need(input.root)
   const done = repo.merge(input.into, input.from, {
     author: input.author,
@@ -566,22 +596,25 @@ export function callBaseMerge(input: {
   if (!done.ok) {
     // Conflicts are RETURNED rather than resolved, so a person decides. Printing them per
     // field is the point: "merge failed" would leave nothing to act on.
-    console.error(`${done.conflicts.length} conflict(s):`)
-
     for (const one of done.conflicts) {
-      console.error(`  ${JSON.stringify(one)}`)
+      report({ glyph: 'failed', kind: 'problem', subject: 'A conflict', message: [JSON.stringify(one)] })
     }
 
-    process.exit(1)
+    closeRun({ verdict: 'The merge stopped on conflicts', counts: [count(done.conflicts.length, 'conflicts', 'conflict')] })
+
+    return
   }
 
   save()
 
-  console.log(
-    done.alreadyUpToDate
-      ? `${input.into} already has ${input.from}`
-      : `${done.commit}`,
-  )
+  if (done.alreadyUpToDate) {
+    closeRun({ verdict: `${input.into} already has ${input.from}` })
+
+    return
+  }
+
+  printData(`${done.commit}\n`)
+  closeRun({ verdict: `Merged ${input.from} into ${input.into}` })
 }
 
 /** Name a commit, so it can be cited. */
@@ -591,24 +624,24 @@ export function callBaseTag(input: {
   commit?: string
   branch: string
 }): void {
+  openRun({ verb: 'tag', root: input.root, subject: input.name })
   const { repo, save } = need(input.root)
   const at = input.commit
     ? resolve(repo, input.commit)
     : repo.head(input.branch)
 
   if (!at) {
-    console.error(`nothing to tag: ${input.branch} has no commits`)
-    process.exit(1)
+    refuse(`There is nothing to tag: ${input.branch} has no commits`)
   }
 
   if (!repo.createTag(input.name, at)) {
-    console.error(`a tag named \`${input.name}\` already exists`)
-    process.exit(1)
+    refuse(`A tag named ${input.name} already exists`)
   }
 
   save()
 
-  console.log(`${input.name} -> ${at}`)
+  printData(`${input.name} -> ${at}\n`)
+  closeRun({ verdict: `Tagged ${input.name}` })
 }
 
 /**
@@ -652,19 +685,23 @@ export function callBaseExport(input: {
   commit: string
   out: string
 }): void {
+  openRun({ verb: 'export', root: input.root, facts: [input.commit] })
   const { repo } = need(input.root)
   const at = resolve(repo, input.commit)
-  let count = 0
+  let files = 0
+  let bytes = 0
 
   walkTree({ repo, commit: at }, entry => {
     const full = path.join(input.out, entry.path)
 
     fs.mkdirSync(path.dirname(full), { recursive: true })
     fs.writeFileSync(full, entry.bytes)
-    count += 1
+    files += 1
+    bytes += Buffer.byteLength(entry.bytes)
   })
 
-  console.log(`exported ${count} file(s) to ${input.out}`)
+  report({ glyph: 'done', verb: 'write', subject: input.out, bytes, counts: [count(files, 'files', 'file')] })
+  closeRun({ verdict: `Exported to ${input.out}` })
 }
 
 /**
@@ -711,11 +748,12 @@ export async function callBaseProject(input: {
   commitWrite: boolean
   repository?: string
 }): Promise<void> {
+  openRun({ verb: 'project', root: input.root, facts: [input.commit, input.mapping ? 'mapping' : 'inferred'] })
   const { repo } = need(input.root)
   const at = resolve(repo, input.commit)
   const dataset = repo.checkout(at)
 
-  let mapping: Mapping
+  let mapping!: Mapping
   let forms: Array<TableForm> | undefined
 
   if (input.mapping === undefined) {
@@ -725,67 +763,68 @@ export async function callBaseProject(input: {
       mapping = inferred.mapping
       forms = inferred.forms
     } catch (error) {
-      console.error(
+      refuse(
         error instanceof MixedField
           ? error.message
-          : `could not work out a schema: ${error instanceof Error ? error.message : String(error)}`,
+          : `Could not work out a schema: ${error instanceof Error ? error.message : String(error)}`,
       )
-      process.exit(1)
     }
   } else {
     if (!fs.existsSync(input.mapping)) {
-      console.error(`no mapping file at ${input.mapping}`)
-      process.exit(1)
+      refuse(`There is no mapping file at ${input.mapping}`)
     }
 
     try {
       mapping = JSON.parse(fs.readFileSync(input.mapping, 'utf8')) as Mapping
     } catch (error) {
-      console.error(
-        `${input.mapping} is not readable json: ${error instanceof Error ? error.message : String(error)}`,
-      )
-      process.exit(1)
+      refuse(`${input.mapping} is not readable JSON`, { message: [error instanceof Error ? error.message : String(error)] })
     }
   }
 
   const rows = rowsFor({ mapping, dataset })
 
   if (!rows.size) {
-    console.log('this mapping produces no rows for that commit')
+    closeRun({ verdict: 'This mapping produces no rows for that commit', counts: [count(0, 'rows', 'row')] })
 
     return
   }
 
+  // what a projection WOULD write is data: every table with its row count, and one row in full, so a column a mapping
+  // drops shows as absent
   let total = 0
+  const lines: string[] = []
 
   for (const table of [...rows.keys()].sort()) {
     const held = rows.get(table)!
 
-    console.log(`${table}  ${held.length} row(s)`)
+    lines.push(`${table}  ${held.length} row(s)`)
     total += held.length
 
     const first = held[0]
 
     if (first) {
       for (const [column, value] of [...first].sort()) {
-        console.log(`    ${column.padEnd(24)} ${cell(value)}`)
+        lines.push(`    ${column.padEnd(24)} ${cell(value)}`)
       }
     }
   }
 
+  printLines(lines)
+  const tally = [count(total, 'rows', 'row'), count(rows.size, 'tables', 'table')]
+
   if (input.into === undefined) {
-    console.log(`\n${total} row(s) across ${rows.size} table(s). Nothing was written.`)
-    console.log('Pass --into <url> to write it into a Postgres database.')
+    closeRun({ verdict: 'Nothing was written', counts: tally, next: 'term base project <commit> --into <url>, to write it into Postgres' })
 
     return
   }
 
   if (!input.commitWrite) {
-    console.log(
-      `\n${total} row(s) across ${rows.size} table(s). NOTHING WAS WRITTEN.\n` +
-        `Pass --write to write them into the database at --into` +
-        (forms ? ', creating the tables.' : '. The tables must already exist, because --mapping says the schema is somebody else\'s.'),
-    )
+    closeRun({
+      verdict: 'Nothing was written',
+      counts: tally,
+      message: [forms ? '--write creates the tables.' : 'The tables must already exist, because --mapping says the schema is somebody else\'s.'],
+      next: 'add --write, to write them into the database at --into',
+    })
 
     return
   }
@@ -793,10 +832,10 @@ export async function callBaseProject(input: {
   const repository = input.repository ?? repositoryName(input.root)
 
   if (!isMark(repository)) {
-    console.error(
-      `--repository must be a uuid version 4, because a projection's bookkeeping is keyed by one. Got ${repository}`,
-    )
-    process.exit(1)
+    refuse('--repository must be a uuid version 4', {
+      message: ["A projection's bookkeeping is keyed by one."],
+      fields: [field('gave', repository)],
+    })
   }
 
   const pool = await openPostgres(input.into)
@@ -825,17 +864,19 @@ export async function callBaseProject(input: {
     })
 
     if (!done.applied) {
-      console.log(`\nalready serving ${at}. Nothing to do.`)
+      closeRun({ verdict: `Already serving ${at}` })
 
       return
     }
 
-    console.log(
-      `\nwrote ${done.writes} statement(s) into \`${repository}\`` +
-        (forms ? `, creating ${forms.length} table(s)` : '') +
-        (from ? `, advancing from ${from.slice(0, 20)}` : ', from empty'),
-    )
-    console.log(`serving ${at}`)
+    report({
+      glyph: 'done',
+      verb: 'write',
+      subject: repository,
+      counts: [count(done.writes, 'statements', 'statement'), ...(forms ? [count(forms.length, 'tables created', 'table created')] : [])],
+      facts: [from ? `from ${from.slice(0, 20)}` : 'from empty'],
+    })
+    closeRun({ verdict: `Serving ${at}` })
   } finally {
     await pool.end()
   }

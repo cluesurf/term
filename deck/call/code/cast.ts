@@ -29,7 +29,6 @@ import {
 import { buildSync } from 'esbuild'
 import { compile } from '@term/make/code/compile/compile'
 import { projectResolver } from '@term/call/code/make'
-import { printDiagnostics } from '@term/call/code/report'
 import { nativePrelude } from '@term/make/code/compile/native'
 import {
   findProjectRoot,
@@ -41,12 +40,7 @@ import {
   writeBuildId,
 } from '@term/call/code/boot'
 import { projectCache } from '@term/call/code/cache-store'
-import {
-  logStep,
-  logGood,
-  logFail,
-  formatError,
-} from '@term/make/code/tint'
+import { closeRun, failRun, field, openRun, report, reportProblems, showPath } from '@term/call/code/output'
 
 export async function callCast(input: {
   root: string
@@ -54,15 +48,16 @@ export async function callCast(input: {
   target?: string
 }): Promise<void> {
   const target = input.target ?? 'cloudflare'
+  const started = Date.now()
+
+  openRun({ verb: 'cast', root: input.root, facts: [target] })
 
   if (target !== 'cloudflare') {
-    logFail(
-      `Unknown cast target: ${target} (only \`cloudflare\` is supported)`,
-    )
-    process.exit(1)
-  }
+    report({ glyph: 'failed', kind: 'problem', subject: `There is no cast target named ${target}`, fields: [field('next', 'term cast --target cloudflare')] })
+    closeRun({ verdict: 'Nothing cast', failure: 'usage' })
 
-  logStep(`Casting app to a Cloudflare Worker...`)
+    return
+  }
 
   try {
     const cwd = input.root
@@ -70,12 +65,13 @@ export async function callCast(input: {
     const entry = findEntry(cwd, input.entry)
 
     if (!entry || !existsSync(entry)) {
-      logFail(
-        entry
-          ? `Entry not found: ${entry}`
-          : 'No entry given and no `boot <path>` in deck.tree',
-      )
-      process.exit(1)
+      report({
+        glyph: 'failed',
+        kind: 'problem',
+        subject: entry ? 'The entry file does not exist' : 'There is no entry: none was given and deck.tree has no `boot <path>`',
+        fields: entry ? [field('at', showPath(entry, input.root))] : [],
+      })
+      closeRun({ verdict: 'Nothing cast' })
 
       return
     }
@@ -100,16 +96,14 @@ export async function callCast(input: {
     )
 
     if (!result.ok) {
-      printDiagnostics(result.diagnostics)
-      logFail(
-        `Compile failed: ${result.diagnostics.length} error${
-          result.diagnostics.length === 1 ? '' : 's'
-        }`,
-      )
-      process.exit(1)
+      reportProblems(result.diagnostics.map(diagnostic => ({ diagnostic })), input.root)
+      report({ glyph: 'failed', verb: 'build', subject: showPath(entry, input.root), duration: Date.now() - started, facts: ['cloudflare'] })
+      closeRun({ verdict: 'Cast failed' })
 
       return
     }
+
+    report({ glyph: 'done', verb: 'build', subject: showPath(entry, input.root), duration: Date.now() - started, facts: ['cloudflare'] })
 
     // 2. the browser client bundle + styles the SSR page loads (served from build/ via the Worker's
     // ASSETS binding). Same pipeline as the node SSR build. Assets keep their logical `/base/...`
@@ -187,11 +181,10 @@ export async function callCast(input: {
       ].join('\n'),
     )
 
-    logGood(
-      `Cast -> work/index.ts + work/app.mjs (deploy: \`wrangler deploy\`)`,
-    )
+    report({ glyph: 'done', verb: 'write', subject: showPath(path.join(workDir, 'app.mjs'), input.root) })
+    report({ glyph: 'done', verb: 'write', subject: showPath(path.join(workDir, 'index.ts'), input.root) })
+    closeRun({ verdict: 'Cast to a Cloudflare Worker', next: 'wrangler deploy' })
   } catch (err) {
-    logFail(formatError(err))
-    process.exit(1)
+    failRun(err, input.root)
   }
 }

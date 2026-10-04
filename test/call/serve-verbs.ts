@@ -199,7 +199,8 @@ const cast = spawnSync('node', [LINE, 'cast'], {
 })
 const castOut = `${cast.stdout ?? ''}${cast.stderr ?? ''}`
 
-ok('`cast` builds the scaffolded app for Cloudflare', /Cast -> work/.test(castOut), castOut)
+// the closing item of the terminal output standard: `✓ cast     Cast to a Cloudflare Worker`
+ok('`cast` builds the scaffolded app for Cloudflare', /✓ cast\s+Cast to a Cloudflare Worker/.test(castOut), castOut)
 
 ok(
   'and writes the worker entry and the client bundle it names',

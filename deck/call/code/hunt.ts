@@ -19,11 +19,11 @@ import path from 'node:path'
 import { findTreeFiles, projectResolver } from '@term/call/code/make'
 import {
   huntSeedCompiler,
-  renderHunt,
   type FuzzEntry,
+  type HuntResult,
 } from '@term/test/code/seed-hunt'
 import { runFuzzCampaign } from '@term/test/code/compiler-fuzz'
-import { logGood, logFail } from '@term/make/code/tint'
+import { closeRun, count, field, openRun, printData, report } from '@term/call/code/output'
 
 /**
  * The hidden first argument that makes the CLI run ONE fuzz campaign and exit. `term hunt` forks itself with it
@@ -38,7 +38,7 @@ export function runHuntFuzzChild(args: string[]): never {
   try {
     runFuzzCampaign(args)
   } catch (e) {
-    process.stderr.write(`${e instanceof Error ? e.stack ?? e.message : String(e)}\n`)
+    process.stderr.write(`${e instanceof Error ? e.stack ?? e.message : String(e)}\n`) // output: protocol, the child's stack for its watchdog
     process.exit(2)
   }
   process.exit(0)
@@ -87,18 +87,68 @@ export async function callHunt(input: {
   }
 
   if (input.json) {
-    console.log(JSON.stringify(result, null, 2))
-  } else {
-    console.log(renderHunt(result))
-
-    if (result.ok) {
-      logGood('No issues found, every check ran')
-    } else if (result.findings > 0) {
-      logFail(`Found ${result.findings} issue(s)`)
-    } else {
-      logFail(`${result.unrun.length} check(s) did not run, so this is not a pass`)
-    }
+    printData(`${JSON.stringify(result, null, 2)}\n`)
+    process.exit(result.ok ? 0 : 1)
   }
 
-  process.exit(result.ok ? 0 : 1)
+  // the run is opened after the hunt: the fuzz children inherit this process's stderr while they run, and a live
+  // opening item would sit above their noise. The verdict and exit follow `result.ok`, which is false whenever a
+  // check did not run, so the closing item is ✗ for an incomplete hunt as well as for a finding
+  openRun({ verb: 'hunt', root, counts: [count(files.length, 'files', 'file')] })
+  reportHunt(result)
+  const counts = [count(result.corpus.files, 'files read', 'file read'), count(result.fuzz.runs, 'fuzz runs', 'fuzz run')]
+  process.exit(
+    closeRun({
+      verdict: result.ok ? 'No issues found, every check ran' : result.findings > 0 ? `Found ${result.findings} issue${result.findings === 1 ? '' : 's'}` : 'Not a pass: some checks did not run',
+      counts,
+    }),
+  )
+}
+
+// the hunt as items: one per oracle family with its counts, a ✗ per violation, crash signature and hang, and a ✗
+// per check that did not run. What renderHunt (in @term/test) prints as banners, in the standard's shape
+function reportHunt(result: HuntResult): void {
+  const c = result.corpus
+
+  report({
+    glyph: c.files === 0 ? 'failed' : c.violations.length > 0 ? 'failed' : 'done',
+    verb: 'check',
+    subject: c.files === 0 ? 'No files read, so no oracle ran' : 'Corpus oracles: round trip, determinism, tolerant parse, backend emit',
+    counts: [count(c.files, 'files', 'file'), count(c.compiled, 'compiled'), count(c.violations.length, 'violations', 'violation')],
+    facts: [`emit ${result.backends.join(', ')}`],
+  })
+
+  for (const v of c.violations.slice(0, 20)) {
+    report({ glyph: 'failed', kind: 'problem', verb: 'check', subject: v.violation.detail, facts: [v.violation.oracle], fields: [field('in', v.file)] })
+  }
+
+  for (const s of c.slowest) {
+    report({ glyph: 'info', verb: 'check', subject: s.file, duration: Math.round(s.ms), facts: ['slowest'], level: 'debug' })
+  }
+
+  const f = result.fuzz
+  report({
+    glyph: f.runs === 0 || result.hangs.length > 0 || result.crashes.signatures.length > 0 ? 'failed' : 'done',
+    verb: 'fuzz',
+    subject: f.runs === 0 ? 'Nothing was fuzzed' : 'Structure-aware fuzzing under a watchdog',
+    counts: [
+      count(f.runs, 'runs', 'run'),
+      count(f.seedsRun, 'seeds', 'seed', f.seedsAsked),
+      count(result.crashes.total, 'crashes', 'crash'),
+      count(result.hangs.length, 'hangs', 'hang'),
+    ],
+    facts: [`${f.corpusAdded} project files added`],
+  })
+
+  for (const signature of result.crashes.signatures) {
+    report({ glyph: 'failed', kind: 'problem', verb: 'fuzz', subject: 'The compiler crashed', quote: [signature] })
+  }
+
+  for (const hang of result.hangs) {
+    report({ glyph: 'failed', kind: 'problem', verb: 'fuzz', subject: 'The compiler did not finish on this input', quote: hang.input.split('\n') })
+  }
+
+  for (const missing of result.unrun) {
+    report({ glyph: 'failed', kind: 'problem', verb: 'hunt', subject: missing.charAt(0).toUpperCase() + missing.slice(1), facts: ['did not run'] })
+  }
 }

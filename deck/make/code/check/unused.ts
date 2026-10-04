@@ -175,7 +175,10 @@ export function findUnused(
   }
 
   for (const statement of program) {
-    if (statement.form !== 'function') {
+    // each module reports its own, as check/type-names.ts does. A task merged in from another file carries that
+    // file's span, and stamping it with this one printed `"next" is never used` at clean.tree:147 over a line of
+    // paint.tree, once for every file of the package that loaded it (2026-10-04)
+    if (statement.form !== 'function' || (statement.span.file !== undefined && statement.span.file !== file)) {
       continue
     }
 

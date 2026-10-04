@@ -16,7 +16,7 @@ import type {
   Program,
   Statement,
 } from '@term/make/code/compile/node'
-import { EXCEPTION_FORM } from '@term/make/code/check/extend'
+import { EXCEPTION_FORM, GENERIC_EXCEPTIONS } from '@term/make/code/check/extend'
 
 // the inferred effect row of each function: the set of effects it may perform. `async` is the marker effect
 // (resolved at an await, so it does not propagate). `throw` propagates transitively through the call graph (a
@@ -1000,12 +1000,18 @@ export function checkRaiseBounds(
 
     for (const name of declared) {
       if (!exceptions.has(name)) {
+        // a stdlib exception the build dropped is one nothing here raises: the bound is wider than the body, not
+        // a misspelling, and saying "not an exception form" named the wrong problem
         diagnostics.push(
-          diagnose('type-mismatch', {
+          diagnose('raise-bound', {
             file: at,
             span: s.span,
-            message: `"${s.name}" declares "halt ${name}" on its signature, but "${name}" is not an exception form`,
-            hint: 'a bound names a form that is like exception, or like one of the stdlib exceptions',
+            message: GENERIC_EXCEPTIONS.has(name)
+              ? `"${s.name}" declares "halt ${name}" on its signature, but nothing it calls raises "${name}"`
+              : `"${s.name}" declares "halt ${name}" on its signature, but "${name}" is not an exception form`,
+            ...(GENERIC_EXCEPTIONS.has(name)
+              ? {}
+              : { hint: 'a bound names a form that is like exception, or like one of the stdlib exceptions' }),
           }),
         )
       }
@@ -1033,7 +1039,7 @@ export function checkRaiseBounds(
       })
 
       diagnostics.push(
-        diagnose('type-mismatch', {
+        diagnose('raise-bound', {
           file: at,
           span: s.span,
           message: `"${s.name}" can raise ${chains.join(', ')}, which its signature does not declare`,

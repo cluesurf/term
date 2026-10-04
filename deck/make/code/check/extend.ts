@@ -26,6 +26,28 @@ type Field = RecordType['fields'][number]
 
 // the root every exception descends from, and the stdlib tasks a raise calls for its occurrence code and time
 export const EXCEPTION_FORM = 'exception'
+
+// the seventeen the stdlib declares (@term/base/exception). A roll entry says which one an exception is under, and a
+// signature bound may name one the build dropped because nothing raises it
+export const GENERIC_EXCEPTIONS = new Set([
+  'defect',
+  'omission',
+  'excess',
+  'shortage',
+  'mismatch',
+  'exclusion',
+  'absence',
+  'conflict',
+  'refusal',
+  'anonymity',
+  'denial',
+  'overload',
+  'outage',
+  'timeout',
+  'overage',
+  'failure',
+  'bundle',
+])
 const OCCURRENCE_TASK = 'exception-code'
 const TIME_TASK = 'exception-time'
 

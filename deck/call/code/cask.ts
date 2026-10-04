@@ -24,7 +24,7 @@ import { projectResolver } from '@term/call/code/make'
 import { generateBridge } from '@term/call/code/cask-generate'
 import { runtimeVersion, toolchainOf, type RuntimeVersion } from '@term/call/code/runtime-version'
 import { publishUpdate, stampUpdateKey } from '@term/call/code/update'
-import { logGood, logStep, fade } from '@term/make/code/tint'
+import { closeRun, count, field, followChild, isRunOpen, location, openRun, report, runTool, showPath } from '@term/call/code/output'
 
 export type CaskTarget = 'macos' | 'ios' | 'android' | 'linux' | 'windows'
 
@@ -145,7 +145,7 @@ export async function buildPage({
   )
 
   if (!result.ok) {
-    throw new Error(
+    throw refusal(
       `the page failed to compile: ${result.diagnostics
         .slice(0, 3)
         .map(d => d.message)
@@ -210,7 +210,7 @@ export function buildProgram({
   )
 
   if (!result.ok) {
-    throw new Error(
+    throw refusal(
       `the cask program failed to compile: ${result.diagnostics
         .slice(0, 3)
         .map(d => d.message)
@@ -239,13 +239,9 @@ export function buildProgram({
     // the iOS simulator SDK through xcrun. The stdlib's macOS package flags (swift-nio, Hummingbird) are not iOS
     // modules and are not passed; an app whose closure reaches them does not build for iOS yet
     const sdk = execFileSync('xcrun', ['-sdk', 'iphonesimulator', '--show-sdk-path'], { encoding: 'utf8' }).trim()
-    execFileSync(
-      'xcrun',
-      ['-sdk', 'iphonesimulator', 'swiftc', '-target', IOS_SIMULATOR_TARGET, '-sdk', sdk, ...release, '-o', exe, file],
-      { stdio: 'inherit' },
-    )
+    runTool('xcrun', ['-sdk', 'iphonesimulator', 'swiftc', '-target', IOS_SIMULATOR_TARGET, '-sdk', sdk, ...release, '-o', exe, file])
   } else {
-    execFileSync('swiftc', [...swiftFlags(), ...release, '-o', exe, file], { stdio: 'inherit' })
+    runTool('swiftc', [...swiftFlags(), ...release, '-o', exe, file])
   }
 
   // the native half as compiled, without the driver line, which differs between a dev build and a release of the
@@ -342,7 +338,7 @@ export function buildRustProgram({
   )
 
   if (!result.ok) {
-    throw new Error(
+    throw refusal(
       `the cask program failed to compile: ${result.diagnostics
         .slice(0, 3)
         .map(d => d.message)
@@ -362,14 +358,14 @@ export function buildRustProgram({
   const native = [prelude, rust].join('\n')
 
   if (RUST_TARGETS[target] === process.platform) {
-    execFileSync('cargo', ['build', '--release', '--quiet'], { cwd: project, stdio: 'inherit' })
+    runTool('cargo', ['build', '--release', '--quiet'], { cwd: project })
 
     return { project, exe: path.join(project, 'target/release', target === 'windows' ? `${crate}.exe` : crate), native }
   }
 
   if (cargo) {
     // the emitted program against the runtime's signatures, on this platform's stub half
-    execFileSync('cargo', ['check', '--quiet'], { cwd: project, stdio: 'inherit' })
+    runTool('cargo', ['check', '--quiet'], { cwd: project })
   }
 
   return { project, native }
@@ -426,6 +422,7 @@ async function makeRustCask({
   const bundle = assembleRustBundle({ out, name, target })
   const pageDir = path.join(bundle.resources, 'webview')
 
+  const pageStarted = Date.now()
   const built = await buildPage({
     root,
     page,
@@ -434,7 +431,8 @@ async function makeRustCask({
     title: name,
     work: path.join(work, 'page'),
   })
-  console.log(fade(`  page: ${built.bytes} bytes of JavaScript`))
+  reportPage(built.bytes, pageStarted)
+  const programStarted = Date.now()
 
   // the page directory is found at run time from the executable, so the same binary runs wherever the app lands
   const { project, exe, native } = buildRustProgram({
@@ -471,11 +469,20 @@ async function makeRustCask({
       }
     }
 
-    logGood(`${path.relative(root, bundle.app)}`)
+    report({ glyph: 'done', verb: 'build', subject: 'program', duration: Date.now() - programStarted, facts: [target] })
   } else {
-    console.log(fade(`  the cargo project is at ${path.relative(root, project)}; this is not a ${target} box, so the executable is built there`))
-    logGood(`${path.relative(root, bundle.app)} (page and project; no executable on this platform)`)
+    // the page and the cargo project are written; the executable is built on the target's own box
+    report({
+      glyph: 'skipped',
+      verb: 'build',
+      subject: 'program',
+      duration: Date.now() - programStarted,
+      facts: [target],
+      fields: [field('reason', `This is not a ${target} box, so the executable is built there.`), location(showPath(project, root))],
+    })
   }
+
+  finishCask(root, bundle.app, `${name} built for ${target}`)
 
   return { app: bundle.app }
 }
@@ -494,7 +501,7 @@ export function androidTools(): {
   const platform = path.join(sdk, 'platforms', `android-${ANDROID_PLATFORM}`, 'android.jar')
 
   if (!existsSync(platform)) {
-    throw new Error(`no Android platform ${ANDROID_PLATFORM} at ${platform}. Run task/android/install-android-cli.sh`)
+    throw refusal(`no Android platform ${ANDROID_PLATFORM} at ${platform}. Run task/android/install-android-cli.sh`, 'environment')
   }
 
   const buildToolsRoot = path.join(sdk, 'build-tools')
@@ -503,7 +510,7 @@ export function androidTools(): {
     : []
 
   if (versions.length === 0) {
-    throw new Error(`no Android build tools with aapt2 under ${buildToolsRoot}. The SDK install may still be running`)
+    throw refusal(`no Android build tools with aapt2 under ${buildToolsRoot}. The SDK install may still be running`, 'environment')
   }
 
   const kotlinc = execFileSync('which', ['kotlinc'], { encoding: 'utf8' }).trim()
@@ -513,7 +520,7 @@ export function androidTools(): {
   ].find(candidate => existsSync(candidate))
 
   if (!stdlib) {
-    throw new Error('kotlin-stdlib.jar was not found beside kotlinc')
+    throw refusal('kotlin-stdlib.jar was not found beside kotlinc', 'environment')
   }
 
   return {
@@ -551,7 +558,7 @@ export function buildAndroidProgram({
   )
 
   if (!result.ok) {
-    throw new Error(
+    throw refusal(
       `the cask program failed to compile: ${result.diagnostics
         .slice(0, 3)
         .map(d => d.message)
@@ -575,10 +582,9 @@ export function buildAndroidProgram({
   // Term's types already rule out a null where a non-null is declared, so kotlinc's own null checks at every public
   // function's entry (`Intrinsics.checkNotNullParameter`) and around every call are dead weight: the three flags drop
   // them (note/term/codegen/android.md, Build)
-  execFileSync(
+  runTool(
     'kotlinc',
     ['-cp', tools.platform, '-d', classes, '-nowarn', '-Xno-param-assertions', '-Xno-call-assertions', '-Xno-receiver-assertions', file],
-    { stdio: 'inherit' },
   )
 
   const classFiles: string[] = []
@@ -594,11 +600,10 @@ export function buildAndroidProgram({
   }
   walk(classes)
 
-  execFileSync(
+  runTool(
     path.join(tools.buildTools, 'd8'),
     // `--release`: d8's default is a debug dex, with debug information kept and no optimization of the bytecode
     ['--release', '--lib', tools.platform, '--min-api', String(ANDROID_MINIMUM), '--output', dexDir, ...classFiles, tools.stdlib],
-    { stdio: 'inherit' },
   )
 
   return { dex: path.join(dexDir, 'classes.dex'), native: [prelude, kotlin].join('\n') }
@@ -626,7 +631,7 @@ function publishBuilt({
   }
 
   const { manifest, file } = publishUpdate({ page, out: path.resolve(publish), identifier, platform, runtimeVersion, channel: channel ?? 'main' })
-  console.log(fade(`  published ${manifest.id} to ${file}`))
+  report({ glyph: 'added', kind: 'change', verb: 'publish', subject: manifest.id, facts: [channel ?? 'main'], fields: [location(showPath(file))] })
 }
 
 // stamp the runtime version into the app: one sha256 over the native half as compiled (the generated dispatcher and
@@ -651,7 +656,7 @@ export function stampRuntimeVersion({
   })
   mkdirSync(into, { recursive: true })
   writeFileSync(path.join(into, 'runtime-version'), `${version.hex}\n`)
-  console.log(fade(`  runtime version: ${version.tone}`))
+  report({ glyph: 'info', verb: 'stamp', subject: 'runtime version', facts: [version.tone] })
 
   return version
 }
@@ -708,14 +713,10 @@ export function assembleApk({
   rmSync(aligned, { force: true })
   rmSync(apk, { force: true })
 
-  execFileSync(
-    path.join(tools.buildTools, 'aapt2'),
-    ['link', '-o', unsigned, '-I', tools.platform, '--manifest', manifest, '-A', assets],
-    { stdio: 'inherit' },
-  )
+  runTool(path.join(tools.buildTools, 'aapt2'), ['link', '-o', unsigned, '-I', tools.platform, '--manifest', manifest, '-A', assets])
   // classes.dex at the top of the archive. `zip` stores the path as given, so it is added from its own directory
-  execFileSync('zip', ['-q', '-j', unsigned, dex], { stdio: 'inherit' })
-  execFileSync(path.join(tools.buildTools, 'zipalign'), ['-f', '-p', '4', unsigned, aligned], { stdio: 'inherit' })
+  runTool('zip', ['-q', '-j', unsigned, dex])
+  runTool(path.join(tools.buildTools, 'zipalign'), ['-f', '-p', '4', unsigned, aligned])
 
   const keystore = path.join(process.env.HOME ?? '', '.android', 'debug.keystore')
 
@@ -728,10 +729,9 @@ export function assembleApk({
     )
   }
 
-  execFileSync(
+  runTool(
     path.join(tools.buildTools, 'apksigner'),
     ['sign', '--ks', keystore, '--ks-pass', 'pass:android', '--ks-key-alias', 'androiddebugkey', '--key-pass', 'pass:android', '--out', apk, aligned],
-    { stdio: 'inherit' },
   )
 
   return apk
@@ -757,8 +757,8 @@ export function androidDevice(): { serial: string } | { missing: string } {
 // install the APK and launch its Activity. Returns at once; the app's lines are in `adb logcat -s cask`
 export function launchOnAndroid({ serial, apk, identifier }: { serial: string; apk: string; identifier: string }): void {
   const tools = androidTools()
-  execFileSync(tools.adb, ['-s', serial, 'install', '-r', apk], { stdio: 'inherit' })
-  execFileSync(tools.adb, ['-s', serial, 'shell', 'am', 'start', '-n', `${identifier}/.TermActivity`], { stdio: 'inherit' })
+  runTool(tools.adb, ['-s', serial, 'install', '-r', apk])
+  runTool(tools.adb, ['-s', serial, 'shell', 'am', 'start', '-n', `${identifier}/.TermActivity`])
 }
 
 // ---- the bundle ----
@@ -824,7 +824,7 @@ export function simulator(): { udid: string } | { missing: string } {
   const booted = phones.find(device => device.state === 'Booted') ?? phones[0]
 
   if (booted.state !== 'Booted') {
-    execFileSync('xcrun', ['simctl', 'boot', booted.udid], { stdio: 'inherit' })
+    runTool('xcrun', ['simctl', 'boot', booted.udid])
   }
 
   return { udid: booted.udid }
@@ -838,8 +838,8 @@ export function launchOnSimulator({ udid, app, identifier }: { udid: string; app
   // mode) across an install over it, so a rebuilt app kept running letterboxed until it was removed first
   spawnSync('xcrun', ['simctl', 'terminate', udid, identifier], { stdio: 'ignore' })
   spawnSync('xcrun', ['simctl', 'uninstall', udid, identifier], { stdio: 'ignore' })
-  execFileSync('xcrun', ['simctl', 'install', udid, app], { stdio: 'inherit' })
-  execFileSync('xcrun', ['simctl', 'launch', udid, identifier], { stdio: 'inherit' })
+  runTool('xcrun', ['simctl', 'install', udid, app])
+  runTool('xcrun', ['simctl', 'launch', udid, identifier])
 }
 
 // the `.app` layout AppKit expects, so the process gets a Dock icon and a menu bar of its own
@@ -887,19 +887,15 @@ export function assembleBundle({
 // sign the bundle: ad hoc (`-`) so Gatekeeper on this machine runs it, or with a Developer ID identity when given.
 // Notarization is the identity's owner's step after this, with `notarytool`, and is not run here
 export function signBundle({ app, identity }: { app: string; identity?: string }): void {
-  execFileSync('codesign', ['--force', '--deep', '--sign', identity ?? '-', app], { stdio: 'inherit' })
-  execFileSync('codesign', ['--verify', '--deep', '--strict', app], { stdio: 'inherit' })
+  runTool('codesign', ['--force', '--deep', '--sign', identity ?? '-', app])
+  runTool('codesign', ['--verify', '--deep', '--strict', app])
 }
 
 // a `.dmg` holding the app, the way a macOS download ships
 export function makeDmg({ app, name, out }: { app: string; name: string; out: string }): string {
   const dmg = path.join(out, `${name}.dmg`)
   rmSync(dmg, { force: true })
-  execFileSync(
-    'hdiutil',
-    ['create', '-volname', name, '-srcfolder', app, '-ov', '-format', 'UDZO', '-quiet', dmg],
-    { stdio: 'inherit' },
-  )
+  runTool('hdiutil', ['create', '-volname', name, '-srcfolder', app, '-ov', '-format', 'UDZO', '-quiet', dmg])
 
   return dmg
 }
@@ -925,12 +921,19 @@ export async function makeCask(input: {
   publish?: string
   channel?: string
 }): Promise<{ app: string }> {
+  // a run of its own, unless one is open: `term work --target` holds the run and builds the cask inside it
+  owned = !isRunOpen()
+
+  if (owned) {
+    openRun({ verb: 'make', root: input.root, facts: [`--target ${input.target}`] })
+  }
+
   if (!CASK_TARGETS.includes(input.target)) {
-    throw new Error(`target ${input.target} is not built yet. Today: ${CASK_TARGETS.join(', ')}`)
+    throw refusal(`target ${input.target} is not built yet. Today: ${CASK_TARGETS.join(', ')}`, 'usage')
   }
 
   if ((input.target === 'macos' || input.target === 'ios') && process.platform !== 'darwin') {
-    throw new Error('an Apple cask builds on macOS, where swiftc, codesign and the simulator are')
+    throw refusal('an Apple cask builds on macOS, where swiftc, codesign and the simulator are', 'environment')
   }
 
   const root = path.resolve(input.root)
@@ -939,7 +942,7 @@ export async function makeCask(input: {
 
   for (const [what, file] of [['page', page], ['cask entry', entry]] as const) {
     if (!existsSync(file)) {
-      throw new Error(`no ${what} at ${file}`)
+      throw refusal(`no ${what} at ${file}`, 'usage')
     }
   }
 
@@ -948,11 +951,8 @@ export async function makeCask(input: {
   const work = path.join(out, 'work')
   const version = input.version ?? '0.0.2'
 
-  logStep(`Building ${name} for ${input.target}...`)
-
   // 1. the bridge, from the page's docks
-  const generated = generateBridge({ page, out: path.dirname(entry), commit: true })
-  console.log(fade(`  bridge: ${generated.carried} commands, ${generated.refused.length} refused, ${generated.written} files written`))
+  reportBridge(generateBridge({ page, out: path.dirname(entry), commit: true }))
 
   if (input.target === 'android') {
     return makeAndroidCask({ root, page, entry, name, identifier, out, work, version, url: input.url, publish: input.publish, channel: input.channel })
@@ -970,6 +970,7 @@ export async function makeCask(input: {
   const pageDir = path.join(bundle.resources, 'webview')
 
   // 2. the page
+  const pageStarted = Date.now()
   const built = await buildPage({
     root,
     page,
@@ -978,9 +979,10 @@ export async function makeCask(input: {
     title: name,
     work: path.join(work, 'page'),
   })
-  console.log(fade(`  page: ${built.bytes} bytes of JavaScript`))
+  reportPage(built.bytes, pageStarted)
 
   // 3. the program. `boot` gets the page directory, or the dev URL when asked
+  const programStarted = Date.now()
   const program = buildProgram({
     root,
     entry,
@@ -993,36 +995,82 @@ export async function makeCask(input: {
     work,
     target: input.target,
   })
+  report({ glyph: 'done', verb: 'build', subject: 'program', duration: Date.now() - programStarted, facts: [input.target] })
   const stamped = stampRuntimeVersion({ target: input.target, native: program.native, into: bundle.resources })
   stampUpdateKey({ identifier, into: bundle.resources })
   publishBuilt({ publish: input.publish, channel: input.channel, page: pageDir, identifier, platform: input.target, runtimeVersion: stamped.hex })
 
   if (input.target === 'ios') {
     // a simulator build runs unsigned. A device build is signed with the identity and profile the next item brings
-    logGood(`${path.relative(root, bundle.app)} (simulator, unsigned)`)
-
-    const found = simulator()
-
-    if ('missing' in found) {
-      console.log(fade(`  not launched: ${found.missing}`))
-    } else {
-      launchOnSimulator({ udid: found.udid, app: bundle.app, identifier })
-    }
+    launchOn(simulator(), found => launchOnSimulator({ udid: found.udid, app: bundle.app, identifier }), 'simulator')
+    finishCask(root, bundle.app, `${name} built for the iOS simulator, unsigned`)
 
     return { app: bundle.app }
   }
 
   signBundle({ app: bundle.app, identity: input.sign })
-  console.log(fade(`  signed: ${input.sign ?? 'ad hoc'}`))
+  report({ glyph: 'done', verb: 'sign', subject: name, facts: [input.sign ?? 'ad hoc'] })
 
   if (input.dmg) {
     const dmg = makeDmg({ app: bundle.app, name, out })
-    console.log(fade(`  ${path.relative(root, dmg)}`))
+    report({ glyph: 'done', verb: 'build', subject: 'disk image', fields: [location(showPath(dmg, root))] })
   }
 
-  logGood(`${path.relative(root, bundle.app)}`)
+  finishCask(root, bundle.app, `${name} built for ${input.target}`)
 
   return { app: bundle.app }
+}
+
+// ---- what the cask build prints (section 9: one step item each, through code/output.ts) ----
+
+// whether makeCask opened the run it prints into, so it closes only its own
+let owned = false
+
+// an error a person can act on, not a bug in Term: `expected` keeps failRun from reporting it as a crash (exit 70),
+// and `failure` is the exit it means (section 18): `environment` for a toolchain this machine lacks, `usage` for a
+// target or an entry that is not there
+function refusal(message: string, failure = ''): Error {
+  return Object.assign(new Error(message), { expected: true, failure })
+}
+
+function reportBridge(generated: { carried: number; refused: unknown[]; written: number }): void {
+  report({
+    glyph: generated.refused.length > 0 ? 'warning' : 'done',
+    verb: 'build',
+    subject: 'bridge',
+    counts: [
+      count(generated.carried, 'commands', 'command'),
+      ...(generated.refused.length > 0 ? [count(generated.refused.length, 'refused')] : []),
+      count(generated.written, 'written'),
+    ],
+  })
+}
+
+function reportPage(bytes: number, started: number): void {
+  report({ glyph: 'done', verb: 'build', subject: 'page', duration: Date.now() - started, bytes })
+}
+
+// a launch on a device or simulator when one is there, or a skipped `launch` item saying why not
+function launchOn<T extends object>(found: T | { missing: string }, launch: (found: T) => void, where: string): void {
+  if ('missing' in found) {
+    report({ glyph: 'skipped', verb: 'launch', subject: where, fields: [field('reason', found.missing)] })
+
+    return
+  }
+
+  const started = Date.now()
+  launch(found)
+  report({ glyph: 'done', verb: 'launch', subject: where, duration: Date.now() - started })
+}
+
+// the app's place as the build's last item, and the run closed when makeCask opened it
+function finishCask(root: string, app: string, verdict: string): void {
+  report({ glyph: 'done', verb: 'write', subject: 'app', fields: [location(showPath(app, root))] })
+
+  if (owned) {
+    owned = false
+    closeRun({ verdict })
+  }
 }
 
 // the Android build: the page and the app's files as assets, the program as a dex, one signed APK, installed and
@@ -1052,15 +1100,16 @@ async function makeAndroidCask({
   publish?: string
   channel?: string
 }): Promise<{ app: string }> {
-  const generated = generateBridge({ page, out: path.dirname(entry), commit: true })
-  console.log(fade(`  bridge: ${generated.carried} commands, ${generated.refused.length} refused, ${generated.written} files written`))
+  reportBridge(generateBridge({ page, out: path.dirname(entry), commit: true }))
 
   const assets = path.join(work, 'assets')
   rmSync(assets, { recursive: true, force: true })
   mkdirSync(assets, { recursive: true })
+  const pageStarted = Date.now()
   const built = await buildPage({ root, page, entry: `import { boot } from './app'\nboot()\n`, into: path.join(assets, 'webview'), title: name, work: path.join(work, 'page') })
-  console.log(fade(`  page: ${built.bytes} bytes of JavaScript`))
+  reportPage(built.bytes, pageStarted)
 
+  const programStarted = Date.now()
   const { dex, native } = buildAndroidProgram({
     root,
     entry,
@@ -1074,20 +1123,15 @@ async function makeAndroidCask({
     work,
   })
 
+  report({ glyph: 'done', verb: 'build', subject: 'program', duration: Date.now() - programStarted, facts: ['android'] })
+
   // into the assets before they are packaged, so the app reads it from its own APK
   const stamped = stampRuntimeVersion({ target: 'android', native, into: assets })
   stampUpdateKey({ identifier, into: assets })
   publishBuilt({ publish, channel, page: path.join(assets, 'webview'), identifier, platform: 'android', runtimeVersion: stamped.hex })
   const apk = assembleApk({ out, name, identifier, version, dex, assets, work })
-  logGood(`${path.relative(root, apk)} (debug signed)`)
-
-  const found = androidDevice()
-
-  if ('missing' in found) {
-    console.log(fade(`  not launched: ${found.missing}`))
-  } else {
-    launchOnAndroid({ serial: found.serial, apk, identifier })
-  }
+  launchOn(androidDevice(), found => launchOnAndroid({ serial: found.serial, apk, identifier }), 'device')
+  finishCask(root, apk, `${name} built for android, debug signed`)
 
   return { app: apk }
 }
@@ -1100,9 +1144,12 @@ export async function workCask(input: { root: string; target: CaskTarget; page?:
   const page = path.resolve(root, input.page ?? DEFAULT_PAGE)
   const port = input.port ?? 5179
   const { startDevServer } = await import('@term/call/code/dev/server')
+  const started = Date.now()
   const server = startDevServer({ root, entry: page, port, env: 'webview', boot: true })
   const url = `http://localhost:${server.port}/`
-  logStep(`Dev server for ${path.relative(root, page)} at ${url}`)
+  // a service (section 11): the dev server's `start` item, the cask built inside this run, `Stopped` at the end
+  openRun({ verb: 'work', root, facts: [`--target ${input.target}`] })
+  report({ glyph: 'done', kind: 'lifecycle', verb: 'start', subject: url, duration: Date.now() - started, fields: [field('page', showPath(page, root))] })
 
   const watch = (await import('node:fs')).watch(root, { recursive: true }, (_event, name) => {
     const file = typeof name === 'string' ? name : ''
@@ -1116,14 +1163,26 @@ export async function workCask(input: { root: string; target: CaskTarget; page?:
 
     if (input.target === 'macos') {
       const { name } = appIdentity(root)
-      console.log(fade('  the app is up. Edit a .tree file and the page swaps in place; close the window to stop'))
-      // spawned, not run synchronously: the dev server lives in this process and a blocking wait would starve it
+      report({
+        glyph: 'info',
+        kind: 'lifecycle',
+        verb: 'start',
+        subject: name,
+        message: ['Edit a .tree file and the page swaps in place. Close the window to stop.'],
+      })
+      // spawned, not run synchronously: the dev server lives in this process and a blocking wait would starve it.
+      // The app's lines are ADAPTED (section 15), each an item tagged with the app's name, or passed through under
+      // --raw
       const { spawn } = await import('node:child_process')
       await new Promise<void>(done => {
-        spawn(path.join(app, 'Contents/MacOS', name), [], { stdio: 'inherit' }).on('exit', () => done())
+        const child = spawn(path.join(app, 'Contents/MacOS', name), [], { stdio: ['ignore', 'pipe', 'pipe'] })
+        followChild(child, name)
+        child.on('close', () => done())
       })
+      closeRun({ verdict: 'Stopped', uptime: true })
     } else {
-      console.log(fade('  the app is up on the device, loading the dev server. Ctrl-C stops the server'))
+      report({ glyph: 'info', kind: 'lifecycle', verb: 'start', subject: 'device', message: ['The app is loading the dev server. Ctrl-C stops the server.'] })
+      process.once('SIGINT', () => process.exit(closeRun({ verdict: 'Stopped', failure: 'interrupted', uptime: true })))
       await new Promise(() => {})
     }
   } finally {

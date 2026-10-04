@@ -155,9 +155,12 @@ export function readData(
 ): { ok: true; data: DataFile } | { ok: false; diagnostics: Diagnostic[] } {
   const diagnostics: Diagnostic[] = []
   const trees = new Map<string, DataTree>()
+  // the line that wrote each entry, so a key given twice is reported where it is given the second time. Kept here, not
+  // on the entry: an entry is the data, and its shape is what @term/host reads
+  const written = new Map<DataEntry, Span>()
 
-  const error = (span: Span, message: string): void => {
-    diagnostics.push(diagnose('syntax-error', { file, span, message }))
+  const error = (span: Span, message: string, hint?: string): void => {
+    diagnostics.push(diagnose('syntax-error', { file, span, message, ...(hint ? { hint } : {}) }))
   }
 
   const entries: DataEntry[] = []
@@ -270,6 +273,11 @@ export function readData(
     }
 
     const rest = group.nodes.slice(asHead ? 1 : 2)
+    const kept = (entry: DataEntry): DataEntry => {
+      written.set(entry, spanOf(group))
+
+      return entry
+    }
 
     if (kind === 'host') {
       // a bare `true` / `false` / `void` after the comma parses as a group of one name, so it is a scalar, not a block
@@ -289,13 +297,13 @@ export function readData(
       }
 
       if (scalars.length === 1) {
-        return { name, base: readScalar(scalars[0]!) }
+        return kept({ name, base: readScalar(scalars[0]!) })
       }
 
-      return { name, base: { kind: 'hash', list: readEntries(blocks as GroupNode[], name) } }
+      return kept({ name, base: { kind: 'hash', list: readEntries(blocks as GroupNode[], name) } })
     }
 
-    return { name, base: { kind: 'list', list: readItems(rest, name) } }
+    return kept({ name, base: { kind: 'list', list: readItems(rest, name) } })
   }
 
   // the entries of a map block
@@ -432,7 +440,7 @@ export function readData(
   }
 
   // a key given twice in one map, with no `fuse` between, is an error
-  function checkKeys(data: Data, report: (span: Span, message: string) => void): void {
+  function checkKeys(data: Data, report: (span: Span, message: string, hint?: string) => void): void {
     if (data.kind === 'hash') {
       const seen = new Set<string>()
 
@@ -443,7 +451,11 @@ export function readData(
         }
 
         if (seen.has(entry.name)) {
-          report(spanOf(tree.nodes[0]!), `"${entry.name}" is given twice`)
+          report(
+            written.get(entry) ?? spanOf(tree.nodes[0]!),
+            `"${entry.name}" is given twice`,
+            'keep one of the two. A key may be given again only after a `fuse`, to replace what the anchor gave',
+          )
         }
 
         seen.add(entry.name)

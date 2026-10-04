@@ -1,19 +1,16 @@
 // `term feed [entry]`: the dev server. Compiles the app in per-module mode, serves each module lazily over native
 // ESM, and hot-reloads on change over SSE (it "feeds" live updates to the browser). The entry is an argument or the
 // `deck.tree` boot entry. Stays alive until interrupted. See code/dev/server.ts.
+//
+// A SERVICE in the terminal output standard's sense (section 11): a `start` item with its address, a `reload` item
+// per hot-applied file, and on ctrl-c the closing `Stopped` item with the uptime, exit 130.
 
 import { realpathSync, watch as fsWatch, existsSync } from 'fs'
 import path from 'path'
 import { startDevServer } from '@term/call/code/dev/server'
 import { findEntry } from '@term/call/code/boot'
 import type { NativeEnv } from '@term/make/code/compile/native'
-import {
-  logStep,
-  logGood,
-  logFail,
-  formatError,
-  fade,
-} from '@term/make/code/tint'
+import { closeRun, failRun, field, openRun, report, showPath } from '@term/call/code/output'
 
 export async function callFeed(input: {
   root: string
@@ -21,20 +18,24 @@ export async function callFeed(input: {
   port?: number
   env?: NativeEnv
 }): Promise<void> {
-  logStep('Starting dev server...')
+  openRun({ verb: 'feed', root: input.root })
 
   try {
     const entry = findEntry(input.root, input.entry)
 
     if (!entry || !existsSync(entry)) {
-      logFail(
-        entry
-          ? `Entry not found: ${entry}`
-          : 'No entry given and no `boot <path>` in deck.tree',
-      )
-      process.exit(1)
+      report({
+        glyph: 'failed',
+        kind: 'problem',
+        subject: entry ? 'The entry file does not exist' : 'There is no entry: none was given and deck.tree has no `boot <path>`',
+        fields: entry ? [field('at', showPath(entry, input.root))] : [],
+      })
+      closeRun({ verdict: 'Not started' })
+
+      return
     }
 
+    const started = Date.now()
     const port = input.port ?? 5173
     const server = startDevServer({
       root: input.root,
@@ -75,10 +76,16 @@ export async function callFeed(input: {
 
         timer = setTimeout(() => {
           for (const changed of pending) {
+            const begun = Date.now()
             const result = server.update(changed)
-            console.log(
-              fade(`  ${path.basename(changed)} -> ${result.type}`),
-            )
+            report({
+              glyph: 'info',
+              kind: 'lifecycle',
+              verb: 'reload',
+              subject: `${showPath(changed, input.root)} changed`,
+              duration: Date.now() - begun,
+              facts: [result.type],
+            })
           }
 
           pending.clear()
@@ -86,19 +93,15 @@ export async function callFeed(input: {
       },
     )
 
-    logGood(`dev server on http://localhost:${port}`)
-    console.log(
-      fade('  editing a .tree file hot-reloads. ctrl-c to stop.'),
-    )
+    report({ glyph: 'done', kind: 'lifecycle', verb: 'start', subject: `http://localhost:${port}`, duration: Date.now() - started, facts: ['hot reload'] })
 
-    // stay alive until interrupted, then clean up
+    // stay alive until interrupted, then clean up and close the run
     process.on('SIGINT', () => {
       watcher.close()
       server.close()
-      process.exit(0)
+      process.exit(closeRun({ verdict: 'Stopped', failure: 'interrupted', uptime: true }))
     })
   } catch (err) {
-    logFail(formatError(err))
-    process.exit(1)
+    failRun(err, input.root)
   }
 }

@@ -10,28 +10,7 @@ import type {
 } from '@term/make/code/compile/node'
 import { showType } from '@term/make/code/compile/node'
 import { raiseSets } from '@term/make/code/check/effects'
-import { EXCEPTION_FORM } from '@term/make/code/check/extend'
-
-// the seventeen the stdlib declares, so an exception's roll entry can say which one it is under
-export const GENERIC_EXCEPTIONS = new Set([
-  'defect',
-  'omission',
-  'excess',
-  'shortage',
-  'mismatch',
-  'exclusion',
-  'absence',
-  'conflict',
-  'refusal',
-  'anonymity',
-  'denial',
-  'overload',
-  'outage',
-  'timeout',
-  'overage',
-  'failure',
-  'bundle',
-])
+import { EXCEPTION_FORM, GENERIC_EXCEPTIONS } from '@term/make/code/check/extend'
 
 export type RollEntry = {
   host: string

@@ -23,13 +23,7 @@ import nodePath from 'path'
 
 import { callBoot } from '@term/call/code/boot'
 import { env, keptAt, userHome, legacyUserHome } from '@term/call/code/home'
-import {
-  logGood,
-  logFail,
-  logStep,
-  formatError,
-  fade,
-} from '@term/make/code/tint'
+import { closeRun, count, failRun, field, location, openRun, printData, report } from '@term/call/code/output'
 
 // `term host`: publish this package to its scope's OCI registry, or with `--trust` / `--untrust` rotate the scope's
 // key set instead. Registry credentials come from TERM_OCI_TOKEN (for TERM_OCI_HOST, default ghcr.io), GHCR_TOKEN
@@ -46,18 +40,21 @@ export async function callHost(input: {
   trust?: string
   untrust?: string
 }): Promise<void> {
-  logStep('Reading deck.tree...')
+  openRun({ verb: 'host', root: input.root, facts: input.dryRun ? ['--dry'] : [] })
 
   try {
     const manifest = await loadManifest({ dir: input.root })
     const errors = await validateManifest({ manifest })
 
     if (errors.length > 0) {
+      // each a Problem item, `at` the manifest (section 12)
       for (const err of errors) {
-        logFail(err)
+        report({ glyph: 'failed', kind: 'problem', verb: 'check', subject: sentence(err), fields: [location('deck.tree')] })
       }
 
-      process.exit(1)
+      closeRun({ verdict: 'Nothing was published', counts: [count(errors.length, 'errors', 'error')] })
+
+      return
     }
 
     const name = manifest.host
@@ -70,10 +67,13 @@ export async function callHost(input: {
       const keypair = await loadPublishKeypair({ mint: false })
 
       if (!keypair) {
-        logFail('No signing key on this machine, so it cannot sign a new key set. Publish once first')
-        process.exit(1)
+        report({ glyph: 'failed', kind: 'problem', verb: 'sign', subject: 'There is no signing key on this machine, so it cannot sign a new key set' })
+        closeRun({ verdict: 'The key set was not changed', next: 'term host, once, to publish and make a key', failure: 'environment' })
+
+        return
       }
 
+      const started = Date.now()
       const rotated = await rotateKeys({
         transport: transportFor({ host: route.registry.host }),
         repository: route.keysRepository,
@@ -83,9 +83,17 @@ export async function callHost(input: {
         remove: input.untrust ? [input.untrust] : [],
       })
 
-      logGood(
-        `Key set of ${route.scope} is generation ${rotated.sequence}, ${rotated.keys.length} keys, at ${route.registry.host}/${route.keysRepository}:keys`,
-      )
+      report({
+        glyph: 'changed',
+        kind: 'change',
+        verb: 'rotate',
+        subject: `key set of ${route.scope}`,
+        duration: Date.now() - started,
+        counts: [count(rotated.keys.length, 'keys', 'key')],
+        facts: [`generation ${rotated.sequence}`],
+        fields: [field('ref', `${route.registry.host}/${route.keysRepository}:keys`)],
+      })
+      closeRun({ verdict: 'Key set rotated' })
 
       return
     }
@@ -99,7 +107,7 @@ export async function callHost(input: {
       const entry = nodePath.join(input.root, manifest.line, 'base.tree')
 
       if (existsSync(entry)) {
-        logStep(`Building the ${manifest.line} console into host/line...`)
+        // built inside this run: callBoot reports its own `build` item into it rather than opening another
         await callBoot({ root: input.root, entry, out: nodePath.join(input.root, 'host', 'line') })
         include.push('host/line')
       }
@@ -149,33 +157,44 @@ export async function callHost(input: {
     if (input.dryRun) {
       // a dry run never mints a key: an existing one signs, or a throwaway one does
       const keypair = (await loadPublishKeypair({ mint: false })) ?? generateKeypair()
+      const started = Date.now()
       const { release, artifact } = await buildOciArtifact({ ...common, keypair })
+      const target = `${route.registry.host}/${route.repository.name}:${artifact.config.tag}`
 
-      console.log('')
-      console.log(fade(`  Dry run. Nothing uploaded. Would push to ${route.registry.host}/${route.repository.name}:${artifact.config.tag}`))
-      console.log(fade(`  commit   ${release.commit}`))
-      console.log(fade(`  manifest ${artifact.digest}, ${artifact.manifest.length} bytes`))
-      console.log(
-        fade(
+      report({
+        glyph: 'done',
+        verb: 'build',
+        subject: `${name}@${version}`,
+        duration: Date.now() - started,
+        bytes: artifact.manifest.length,
+        counts: [
+          count(release.files.length, 'files', 'file'),
+          count(release.closure.length, 'objects', 'object'),
+          count(artifact.packed, 'packed'),
+          count(artifact.files.packs.length, 'packs', 'pack'),
+          count(artifact.loose, 'loose'),
+        ],
+        fields: [field('commit', release.commit), field('digest', artifact.digest)],
+      })
+      report({
+        glyph: 'info',
+        verb: 'ping',
+        subject: 'package index',
+        message: [
           (await readIndexToken())
-            ? '  package index: a term.surf token was found, so the ping would credit the version to its account'
-            : '  package index: no term.surf token (TERM_TOKEN or the auth file), so the ping would be anonymous',
-        ),
-      )
-      console.log(
-        fade(
-          `  ${release.files.length} files, ${release.closure.length} objects: ${artifact.packed} packed into ${artifact.files.packs.length} packs, ${artifact.loose} loose`,
-        ),
-      )
-      console.log('')
-      console.log(JSON.stringify(JSON.parse(artifact.manifest.toString('utf8')), null, 2))
+            ? 'A term.surf token was found, so the ping would credit the version to its account.'
+            : 'There is no term.surf token (TERM_TOKEN or the auth file), so the ping would be anonymous.',
+        ],
+      })
+      closeRun({ verdict: 'Dry run, nothing uploaded', facts: [target] })
+      // the manifest itself is the data a dry run is asked for: stdout, as it is
+      printData(`${JSON.stringify(JSON.parse(artifact.manifest.toString('utf8')), null, 2)}\n`)
 
       return
     }
 
     const keypair = (await loadPublishKeypair({ mint: true }))!
-
-    logStep(`Publishing ${name}@${version} to ${route.registry.host}/${route.repository.name}...`)
+    const started = Date.now()
 
     const result = await publishToOci({
       ...common,
@@ -184,39 +203,53 @@ export async function callHost(input: {
       scope: route.scope,
       keysRepository: route.keysRepository,
       keypair,
-      log: message => console.log(fade(`  ${message}`)),
+      // each step of the push, a debug item: shown under --verbose
+      log: message => report({ glyph: 'info', verb: 'push', subject: sentence(message), level: 'debug' }),
     })
 
     if (result.unchanged) {
-      logGood(`${name}@${version} is already published as ${result.digest}. Nothing moved`)
+      report({ glyph: 'skipped', verb: 'push', subject: `${name}@${version}`, duration: Date.now() - started, facts: ['already published'], fields: [field('digest', result.digest)] })
+      closeRun({ verdict: 'Already published, nothing moved' })
 
       return
     }
 
-    logGood(`Published ${result.reference}`)
-    console.log(
-      fade(
-        `  ${result.blobs.uploaded} of ${result.blobs.total} blobs uploaded (${result.bytes.uploaded} of ${result.bytes.total} bytes), ` +
-          `${result.layers} layers, manifest ${result.manifestSize} bytes, signature referrer ${result.referrer}`,
-      ),
-    )
+    report({
+      glyph: 'done',
+      verb: 'push',
+      subject: result.reference,
+      duration: Date.now() - started,
+      bytes: result.bytes.uploaded,
+      counts: [count(result.blobs.uploaded, 'blobs', 'blob', result.blobs.total), count(result.layers, 'layers', 'layer')],
+      fields: [field('manifest', `${result.manifestSize} B`), field('signed', result.referrer)],
+    })
 
     // a hint to the package index; its crawl finds what a lost ping misses, so this never fails a publish. A
     // term.surf token, when there is one, credits the version to its account
     const token = await readIndexToken()
     const ping = await pingIndex({ repository: route.repository, digest: result.digest, token, keypair })
 
-    console.log(
-      fade(
-        ping.form === 'sent'
-          ? `  package index: ${ping.outcome}${ping.publisher ? `, credited to account ${ping.publisher}` : token ? '' : ', anonymous (no term.surf token)'}`
-          : `  package index: ${ping.form}, ${ping.reason}`,
-      ),
+    report(
+      ping.form === 'sent'
+        ? {
+            glyph: 'done',
+            verb: 'ping',
+            subject: 'package index',
+            facts: [ping.outcome, ping.publisher ? `credited to account ${ping.publisher}` : token ? '' : 'anonymous, no term.surf token'].filter(Boolean),
+          }
+        : { glyph: 'warning', verb: 'ping', subject: 'package index', facts: [ping.form], message: [sentence(ping.reason)] },
     )
+    closeRun({ verdict: `Published ${name}@${version}` })
   } catch (err) {
-    logFail(formatError(err))
-    process.exit(1)
+    failRun(err, input.root)
   }
+}
+
+// a message from a library as a sentence: capital first, no trailing period (section 7)
+function sentence(text: string): string {
+  const trimmed = text.trim().replace(/\.$/, '')
+
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1)
 }
 
 // The registry a package publishes to: `--registry` when given, else the package's own `base` line for its scope,
@@ -225,7 +258,7 @@ function routeOf(input: { name: string; registry?: string; manifest: DeckManifes
   const flag = input.registry === undefined ? undefined : normalizeRegistry(input.registry)
 
   if (flag !== undefined && !isOciRegistry(flag)) {
-    throw new Error(
+    throw refusal(
       `--registry must be an OCI registry, <host>/<namespace>. The custom https registry is retired (note/term/registry/18-oci-registry-default.md)`,
     )
   }
@@ -246,16 +279,21 @@ function routeOf(input: { name: string; registry?: string; manifest: DeckManifes
   // It builds and runs as one, and it publishes once it is told where: a scope in deck.tree, or --registry. Said in
   // those words, because "not on an oci:// registry" read as a broken registry rather than a missing scope.
   if (!route && !flag && !input.name.startsWith('@')) {
-    throw new Error(
+    throw refusal(
       `${input.name} has no scope, so there is no registry to publish it to. Name it \`deck @<scope>/${input.name}\` in deck.tree (a scope publishes to ghcr.io/<scope> unless a \`base\` line says otherwise), or pass --registry oci://<host>/<namespace>`,
     )
   }
 
   if (!route) {
-    throw new Error(`${input.name} is not on an oci:// registry. Pass --registry oci://<host>/<namespace>`)
+    throw refusal(`${input.name} is not on an oci:// registry. Pass --registry oci://<host>/<namespace>`)
   }
 
   return route
+}
+
+// an error a person can act on, not a bug in Term: `expected` keeps failRun from reporting it as a crash (exit 70)
+function refusal(message: string): Error {
+  return Object.assign(new Error(message), { expected: true })
 }
 
 // The term.surf token that credits a publish to an account in the package index: `TERM_TOKEN` (`SEED_TOKEN` still

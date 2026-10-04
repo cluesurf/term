@@ -74,7 +74,9 @@ const before = parseManifest({ text: readFileSync(join(root, 'deck.tree'), 'utf8
 
 // the scaffold writes no `code` line: `./code` is the default code root, and `bear ./code`, which it used to write,
 // was the old spelling of that same default (note/term/plan/manifest-mark-and-code-root.md)
-ok('the scaffold declares an entry and a version, and no code root', Boolean(before.boot) && before.mark.patch === 2 && before.code === undefined)
+// it starts at 0.0.1: which patches an author publishes is their own convention, and the toolchain holds none
+// (deck/call/code/wake.ts, 2026-10-03)
+ok('the scaffold declares an entry and a version, and no code root', Boolean(before.boot) && before.mark.patch === 1 && before.code === undefined)
 
 // ---- toss: the destructive round trip ----
 //
@@ -95,7 +97,8 @@ ok(
 // both defects above passed the first test and failed this one.
 // ONE file: the scaffold's code. The scaffold's `deck.tree` is a manifest and is not compiled as code, since the
 // 2026-10-02 `wake` fix (it used to emit a `host/deck.ts` of its own, which is what "2 files" counted)
-const BUILT = /Compiled 1 file to host/
+// The closing item of the terminal output standard says it: `✓ make     1 file built`
+const BUILT = /\b1 file built\b/
 
 ok(
   'the project still BUILDS after `toss`',
@@ -136,9 +139,8 @@ const bumped = parseManifest({ text: readFileSync(join(root, 'deck.tree'), 'utf8
 
 ok(
   `\`move mark 3\` moves ${before.mark.major}.${before.mark.minor}.${before.mark.patch} to ${bumped.mark.major}.${bumped.mark.minor}.${bumped.mark.patch}`,
-  // a published patch is EVEN, so the bump lands on the next even one: the scaffold starts at 0.0.2 and moves to 0.0.4
-  bumped.mark.patch > before.mark.patch &&
-    bumped.mark.patch % 2 === 0 &&
+  // the next patch: the scaffold starts at 0.0.1 and moves to 0.0.2 (no parity rule since 2026-10-03)
+  bumped.mark.patch === before.mark.patch + 1 &&
     bumped.mark.major === before.mark.major &&
     bumped.mark.minor === before.mark.minor,
   moved,
@@ -153,7 +155,7 @@ ok(
 // `move` writes the version as `mark`, never in the old `code <...>` spelling
 ok(
   '`move` writes `mark <version>`',
-  /^\s+mark <0\.0\.4>$/m.test(readFileSync(join(root, 'deck.tree'), 'utf8')) &&
+  /^\s+mark <0\.0\.2>$/m.test(readFileSync(join(root, 'deck.tree'), 'utf8')) &&
     !/^\s+code </m.test(readFileSync(join(root, 'deck.tree'), 'utf8')),
   readFileSync(join(root, 'deck.tree'), 'utf8'),
 )

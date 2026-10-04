@@ -39,6 +39,9 @@ load @term/base/pattern/set
   find put-number
   find number-at
   find set-size
+  find range-set
+  find merge-sets
+  find last-code-point
 
 load @term/base/pattern/syntax
   find parsed
@@ -74,6 +77,11 @@ form program
     like list
       like number
   link groups, like number
+  # every code point a match of the pattern can begin with, when the pattern cannot match the empty text: a search
+  # starts no thread at a position whose code point is outside it. Empty when nothing can be skipped
+  link starts
+    like list
+      like number
   # the next free slot; the program's slot count when compiling is done
   link slots
     like list
@@ -218,6 +226,82 @@ task can-be-empty
     case refer
       send back, true
 
+# the code points a piece can begin with. A lookaround, an edge or a back reference begins with nothing it consumes,
+# so they add nothing (the callers that need certainty also refuse those pieces)
+task first-set
+  take p, like piece
+  like list
+    like number
+  save none, make list
+  fork case, read p
+    case blank
+      send back, read none
+    case letter
+      send back
+        call range-set(read(point), read(point))
+    case ranges
+      send back, read set
+    case edge
+      send back, read none
+    case chain
+      save out, make list
+      walk list, read parts
+        hook next
+          take site, name part
+          save out
+            call merge-sets(read(out), call(first-set, read(part)))
+          fork test
+            hook test
+              call not(call(can-be-empty, read(part)))
+            hook hold
+              send back, read out
+      send back, read out
+    case choice
+      save out, make list
+      walk list, read parts
+        hook next
+          take site, name part
+          save out
+            call merge-sets(read(out), call(first-set, read(part)))
+      send back, read out
+    case loop
+      send back
+        call first-set(read(body))
+    case group
+      send back
+        call first-set(read(body))
+    case atom
+      send back
+        call first-set(read(body))
+    case look
+      send back, read none
+    case refer
+      send back
+        call range-set(code(0), read(last-code-point))
+
+# the code points a match can begin with, for the search to skip every other start: `first-set` when the pattern
+# cannot match the empty text, since a match then consumes its first code point at its start, and a lookaround or an
+# edge before it consumes nothing. Empty (skip nothing) when the pattern can match the empty text, which can begin
+# anywhere, or when the set is every code point, which skips nothing and costs a lookup
+task start-set
+  take p, like piece
+  like list
+    like number
+  save none, make list
+  fork test
+    hook test
+      call can-be-empty(read(p))
+    hook hold
+      send back, read none
+  save starts
+    call first-set(read(p))
+  fork test
+    hook test
+      call is-equal(call(set-size, read(starts)), call(add, read(last-code-point), code(1)))
+    hook hold
+      send back, read none
+  send back, read starts
+
 # the lowest and highest group index inside a piece, (0, -1) for none
 task group-range
   take p, like piece
@@ -323,6 +407,7 @@ task compile-pattern
       bind looks, make list
       bind atoms, make list
       bind groups, read source/groups
+      bind starts, call(start-set, read(source/root))
       bind slots, read slots
   # part 0, the pattern: group 0 around it
   save entries, read g/part-entry

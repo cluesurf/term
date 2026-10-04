@@ -15,16 +15,22 @@ import { compile } from '@term/make/code/compile/compile'
 import { nativePrelude } from '@term/make/code/compile/native'
 import type { NativeEnv } from '@term/make/code/compile/native'
 import { render } from '@term/make/code/parser/diagnostic'
+import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { toCamel } from '@term/make/code/compile/typescript'
 import type { Resolver } from '@term/make/code/compile/load'
 import type { RoleOf } from '@term/call/code/role-of'
-import { preprocessTests } from '@term/call/code/test-preprocess'
+import { preprocessTests, readable } from '@term/call/code/test-preprocess'
 
-export type TestResult = { name: string; label: string; held: boolean }
+// one test: whether it held, how long it took in milliseconds, and the error it threw when it threw one
+export type TestResult = { name: string; label: string; held: boolean; ms?: number; error?: string }
 export type TestRun = {
   ok: boolean
   results: TestResult[]
   failure?: string
+  // the diagnostics behind a failure, whole, and the compiled text their spans point into (the test preprocessor
+  // rewrote the file), so `term test` draws each as a Problem item with its code frame
+  diagnostics?: Diagnostic[]
+  text?: string
 }
 
 // the entry file's own top-level test tasks: a zero-argument task that returns a boolean. Imported helpers take
@@ -52,6 +58,19 @@ function discoverTests(text: string, file: string): string[] {
     .map(node => (node as { name: string }).name)
 }
 
+// a test file's diagnostics moved back onto the lines as written, and rendered against them: the rewritten text holds
+// lines the reader never wrote (guides: commands/test, 2026-10-04)
+function asWritten(
+  found: Diagnostic[],
+  input: { file: string; source: string },
+): { diagnostics: Diagnostic[]; diag: string } {
+  const { place } = readable(input.source)
+  const lines = input.source.split('\n')
+  const diagnostics = found.map(d => (d.file === input.file ? place(d).diagnostic : d))
+
+  return { diagnostics, diag: diagnostics.map(d => render(d, lines, false)).join('\n') }
+}
+
 export async function runTestFile(input: {
   file: string
   source: string
@@ -74,15 +93,14 @@ export async function runTestFile(input: {
   )
 
   if (!result.ok) {
-    const lines = text.split('\n')
-    const diag = result.diagnostics
-      .map(d => render(d, lines, false))
-      .join('\n')
+    const { diagnostics, diag } = asWritten(result.diagnostics, input)
 
     return {
       ok: false,
       results: [],
       failure: `${diag}\ndid not compile`,
+      diagnostics,
+      text: input.source,
     }
   }
 
@@ -94,8 +112,7 @@ export async function runTestFile(input: {
   )
 
   if (unproven.length > 0) {
-    const lines = text.split('\n')
-    const diag = unproven.map(d => render(d, lines, false)).join('\n')
+    const { diagnostics, diag } = asWritten(unproven, input)
 
     return {
       ok: false,
@@ -103,6 +120,8 @@ export async function runTestFile(input: {
       failure: `${diag}\n${unproven.length} unproven hold${
         unproven.length === 1 ? '' : 's'
       }`,
+      diagnostics,
+      text: input.source,
     }
   }
 
@@ -136,8 +155,15 @@ export async function runTestFile(input: {
 
   for (const name of names) {
     const label = labels.get(name) ?? name.replace(/-/g, ' ')
-    const held = Boolean(await mod[toCamel(name)]!())
-    results.push({ name, label, held })
+    const started = Date.now()
+
+    // a test that throws is a test that failed, with what it threw, and the tests after it still run
+    try {
+      const held = Boolean(await mod[toCamel(name)]!())
+      results.push({ name, label, held, ms: Date.now() - started })
+    } catch (error) {
+      results.push({ name, label, held: false, ms: Date.now() - started, error: error instanceof Error ? error.message : String(error) })
+    }
   }
 
   return { ok: results.every(r => r.held), results }

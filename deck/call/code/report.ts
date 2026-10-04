@@ -8,6 +8,7 @@
 import { readFileSync } from 'node:fs'
 import { renderKink } from '@term/make/code/parser/diagnostic'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
+import { reportProblem, reportProblems } from '@term/call/code/output'
 
 // the source lines of a diagnostic's file, read from disk. An optional `text` is used when the file is the one already
 // in memory (the common single-file case), avoiding a re-read.
@@ -31,33 +32,27 @@ export function renderDiagnostic(
   return renderKink(diagnostic, sourceLines(diagnostic, text))
 }
 
-// print a diagnostic's rich frame to stderr (errors) or stdout (warnings), with a trailing blank line so consecutive
-// frames stay readable.
+// print a diagnostic as a Problem item of the run in progress (section 12 of note/term/output/standard.md): its
+// message, an `at` field, the code frame, the hint as `next`. Through the terminal output library, so it lands on
+// stderr in the view the flags chose, never on stdout. Paths are shown relative to the working directory.
 export function printDiagnostic(
   diagnostic: Diagnostic,
   text?: string,
 ): void {
-  const frame = renderDiagnostic(diagnostic, text)
-
-  if (diagnostic.severity === 'warning') {
-    console.log(frame + '\n')
-  } else {
-    console.error(frame + '\n')
-  }
+  reportProblem(diagnostic, process.cwd(), text)
 }
 
-// print a list of diagnostics, each as a rich frame. `text` (the in-memory source) is used for diagnostics whose file is
-// the compiled file; diagnostics in imported modules are read from disk.
+// print a list of diagnostics, sorted, capped and with caused-by problems hidden (section 12). `text` (the in-memory
+// source) is used for diagnostics whose file is the compiled file; diagnostics in imported modules are read from disk.
 export function printDiagnostics(
   diagnostics: Diagnostic[],
   forFile?: { file: string; text: string },
 ): void {
-  for (const diagnostic of diagnostics) {
-    printDiagnostic(
+  reportProblems(
+    diagnostics.map(diagnostic => ({
       diagnostic,
-      forFile && diagnostic.file === forFile.file
-        ? forFile.text
-        : undefined,
-    )
-  }
+      text: forFile && diagnostic.file === forFile.file ? forFile.text : undefined,
+    })),
+    process.cwd(),
+  )
 }

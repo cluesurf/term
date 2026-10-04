@@ -24,6 +24,7 @@ import { emitKotlin, hoistKotlinImports } from '@term/make/code/compile/kotlin'
 import { stdlibBase } from '@term/make/code/resolve'
 import { projectResolver } from '@term/call/code/make'
 import { androidTools } from '@term/call/code/cask'
+import { closeRun, location, openRun, report, showPath } from '@term/call/code/output'
 
 // the toolchain script that resolves the Compose libraries, beside the repository the stdlib lives in
 function toolchainScript(): string {
@@ -410,11 +411,18 @@ export function packageComposeDesktop({
 
 // `term make --target compose|compose-android`: the app's entry (`app.tree` by default, a program with a `main` task
 // that opens a root, mounts its views and runs the app) built into `host/<target>/`
+//
+// It prints through the terminal output library (code/output.ts): a `make` run with one `build` item for the target,
+// and a closing item. A failure is THROWN, as before, so a caller (test/compile/compose-make.ts) can read the reason;
+// the error is marked `expected`, so the CLI's `failRun` reports it as a ✗ item in this same run and closes it, rather
+// than as a bug in Term. `failure` names a missing toolchain (`environment`, exit 3 under section 18) for a `failRun`
+// that reads it; today's exits 1 either way.
 export async function makeCompose(input: { root: string; target: 'compose' | 'compose-android'; entry?: string }): Promise<{ app: string }> {
   const entry = join(input.root, input.entry ?? 'app.tree')
+  openRun({ verb: 'make', root: input.root, facts: [`--target ${input.target}`] })
 
   if (!existsSync(entry)) {
-    throw new Error(`no app entry at ${entry}: a Compose app is a program with a \`main\` task (--entry names another file)`)
+    throw refusal(`There is no app entry at ${showPath(entry, input.root)}: a Compose app is a program with a \`main\` task (--entry names another file)`, 'usage')
   }
 
   const name = basename(input.root).replace(/[^A-Za-z0-9]/g, '') || 'App'
@@ -422,18 +430,24 @@ export async function makeCompose(input: { root: string; target: 'compose' | 'co
   const work = join(out, 'work')
   mkdirSync(work, { recursive: true })
   const text = readFileSync(entry, 'utf8')
+  const started = Date.now()
+
+  // a build that did not finish: skipped is a toolchain this machine lacks, a failed stage is a problem
+  const refuse = (built: { form: 'skipped'; reason: string } | { form: 'failed'; stage: string; reason: string }): Error =>
+    built.form === 'skipped' ? refusal(built.reason, 'environment') : refusal(`${built.stage}: ${built.reason}`, '')
 
   if (input.target === 'compose-android') {
     const identifier = `surf.term.${name.toLowerCase()}`
     const built = buildComposeAndroid({ root: input.root, dir: work, name: 'app', text, identifier })
 
     if (built.form !== 'built') {
-      throw new Error(built.form === 'skipped' ? built.reason : `${built.stage}: ${built.reason}`)
+      throw refuse(built)
     }
 
     const apk = join(out, `${name}.apk`)
     copyFileSync(built.apk, apk)
-    console.log(`  ${apk}`)
+    report({ glyph: 'done', verb: 'build', subject: 'compose-android', duration: Date.now() - started, fields: [location(showPath(apk, input.root))] })
+    closeRun({ verdict: 'Android app built' })
 
     return { app: apk }
   }
@@ -441,11 +455,17 @@ export async function makeCompose(input: { root: string; target: 'compose' | 'co
   const built = buildCompose({ root: input.root, dir: work, name: 'app', text })
 
   if (built.form !== 'built') {
-    throw new Error(built.form === 'skipped' ? built.reason : `${built.stage}: ${built.reason}`)
+    throw refuse(built)
   }
 
   const app = packageComposeDesktop({ jar: built.jar, classpath: built.classpath, main: built.main, name, out })
-  console.log(`  ${app}`)
+  report({ glyph: 'done', verb: 'build', subject: 'compose', duration: Date.now() - started, fields: [location(showPath(app, input.root))] })
+  closeRun({ verdict: 'Desktop app built' })
 
   return { app }
+}
+
+// an error a person can act on, not a bug in Term: `expected` keeps failRun from treating it as a crash (exit 70)
+function refusal(message: string, failure: string): Error {
+  return Object.assign(new Error(message), { expected: true, failure })
 }

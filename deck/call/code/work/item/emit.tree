@@ -18,7 +18,9 @@ load @term/base/environment
   find has-variable
   find current-directory
 
-load @term/base/clock
+# the WALL clock, epoch milliseconds. Not `@term/base/clock`, whose `now` is monotonic milliseconds since the process
+# started: read as an epoch it is a moment in January 1970, so the zone came out as winter time in October
+load @term/base/time
   find now
 
 load ./standard
@@ -202,6 +204,12 @@ task print-data
   like void
   write-data-text(value)
 
+# a child's own stderr passed through untouched, under `--raw` (section 15): the one other way text reaches stderr
+task print-raw-error
+  take value, like text
+  like void
+  write-error-text(value)
+
 form runner
   link output, like output
   link session, like session
@@ -240,7 +248,8 @@ task begin-run
   save session, open-session(verb, options)
   save step, draw-opening(session, opening, out/room)
   save one, make runner, output(out), session(step/session)
-  fork test, or(options/json, or(options/plain, is-equal(options/quiet, false)))
+  # `--quiet` drops the opening from every human view, sentences included; the JSON view carries every event
+  fork test, or(options/json, is-equal(options/quiet, false))
     hold
       print-event(one, opening, step/lines)
   back one

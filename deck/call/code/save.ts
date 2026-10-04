@@ -1,23 +1,21 @@
+// `term save <deck>`: add a dependency to the manifest. Prints through the terminal output library (code/output.ts).
+
 import { addDependency } from '@cluesurf/deck.tree'
-import {
-  logGood,
-  logFail,
-  logStep,
-  formatError,
-  name,
-} from '@term/make/code/tint'
+import { closeRun, openRun, report } from '@term/call/code/output'
 
 export async function callSave(input: {
   root: string
   deck?: string
   constraint?: string
 }): Promise<void> {
-  if (!input.deck) {
-    logFail('Missing deck name. Usage: term save <deck>')
-    process.exit(1)
-  }
+  openRun({ verb: 'save', root: input.root })
 
-  logStep(`Adding ${name(input.deck)}...`)
+  if (!input.deck) {
+    report({ glyph: 'failed', kind: 'problem', subject: 'There is no deck to add' })
+    closeRun({ verdict: 'Nothing added', next: 'term save <deck>', failure: 'usage' })
+
+    return
+  }
 
   try {
     await addDependency({
@@ -25,9 +23,10 @@ export async function callSave(input: {
       name: input.deck,
       constraint: input.constraint,
     })
-    logGood(`Added ${name(input.deck)}`)
+    report({ glyph: 'added', kind: 'change', verb: 'add', subject: input.deck, facts: input.constraint ? [input.constraint] : [] })
+    closeRun({ verdict: `Added ${input.deck}` })
   } catch (err) {
-    logFail(formatError(err))
-    process.exit(1)
+    report({ glyph: 'failed', verb: 'add', subject: input.deck, message: [err instanceof Error ? err.message : String(err)] })
+    closeRun({ verdict: `${input.deck} was not added` })
   }
 }

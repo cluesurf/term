@@ -24,13 +24,7 @@
 
 import fsp from 'fs/promises'
 import path from 'path'
-import {
-  logGood,
-  logFail,
-  logStep,
-  fade,
-  name as tintName,
-} from '@term/make/code/tint'
+import { closeRun, count, field, openRun, report, showPath } from '@term/call/code/output'
 
 // exported so deck/deck/test/scaffold.test.ts can hold the text itself against the formatter and the manifest rules
 export const DECK_TREE = (project: string): string => `deck ${project}
@@ -80,7 +74,7 @@ export async function callWake(input: {
       : input.root
   const label = project && project !== '.' ? project : path.basename(target)
 
-  logStep(`Waking ${tintName(label)}...`)
+  openRun({ verb: 'wake', root: input.root, subject: showPath(target) })
 
   try {
     await fsp.mkdir(target, { recursive: true })
@@ -88,30 +82,36 @@ export async function callWake(input: {
     const existing = await fsp.readdir(target)
 
     if (existing.includes('deck.tree')) {
-      logFail(`A deck.tree already exists in ${target}`)
-      process.exit(1)
+      report({ glyph: 'failed', kind: 'problem', subject: 'A deck.tree is already here', fields: [field('at', `${showPath(target)}/deck.tree`)] })
+      closeRun({ verdict: 'Nothing written' })
+
+      return
     }
 
     await fsp.mkdir(path.join(target, 'code'), { recursive: true })
     await fsp.mkdir(path.join(target, 'test'), { recursive: true })
 
-    await Promise.all([
-      fsp.writeFile(path.join(target, 'deck.tree'), DECK_TREE(label)),
-      fsp.writeFile(path.join(target, 'code', 'boot.tree'), BOOT_TREE),
-      fsp.writeFile(path.join(target, 'readme.md'), README(label)),
-      fsp.writeFile(path.join(target, '.gitignore'), GITIGNORE),
-    ])
+    const written: [string, string][] = [
+      ['deck.tree', DECK_TREE(label)],
+      ['code/boot.tree', BOOT_TREE],
+      ['readme.md', README(label)],
+      ['.gitignore', GITIGNORE],
+    ]
 
-    logGood(`Woke ${tintName(label)}`)
-    console.log(
-      fade(
-        project && project !== '.'
-          ? `  cd ${project} && term boot`
-          : `  term boot`,
-      ),
-    )
+    await Promise.all(written.map(([file, text]) => fsp.writeFile(path.join(target, file), text)))
+
+    // one `add` change item per file written, in the order a reader opens them
+    for (const [file] of written) {
+      report({ glyph: 'added', kind: 'change', verb: 'add', subject: file })
+    }
+
+    closeRun({
+      verdict: `${label} is ready`,
+      counts: [count(written.length, 'files', 'file')],
+      next: project && project !== '.' ? `cd ${project} && term boot` : 'term boot',
+    })
   } catch (error) {
-    logFail(error instanceof Error ? error.message : String(error))
-    process.exit(1)
+    report({ glyph: 'failed', kind: 'problem', subject: 'The project could not be written', message: [error instanceof Error ? error.message : String(error)] })
+    closeRun({ verdict: 'Nothing written' })
   }
 }

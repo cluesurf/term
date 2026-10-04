@@ -1,22 +1,20 @@
+// `term test`: every test file of a Term project compiled and run, or a package's own `test` script. It prints
+// through the terminal output library (code/output.ts) as the standard's Test run card does: a `test` item per file
+// with its counts, a `case` Problem item per test that did not hold, the compile problems of a file that did not
+// build, and a closing item with the run's totals.
+
 import { existsSync, readFileSync } from 'node:fs'
-import {
-  logGood,
-  logFail,
-  logStep,
-  formatError,
-  fade,
-} from '@term/make/code/tint'
-import { runCommand, projectResolver } from '@term/call/code/make'
+import { spawn } from 'node:child_process'
+import { projectResolver } from '@term/call/code/make'
 import { runTestFile } from '@term/call/code/test-run'
 import { declaresDraft } from '@term/call/code/draft'
 import { projectRoleOf, projectLeanOf } from '@term/call/code/role-of'
+import { closeRun, count, failRun, field, openRun, outputOptions, report, reportProblems } from '@term/call/code/output'
 
 export async function callTest(input: {
   root: string
   filter?: string
 }): Promise<void> {
-  logStep('Running tests...')
-
   try {
     const fs = await import('fs/promises')
     const path = await import('path')
@@ -41,23 +39,49 @@ export async function callTest(input: {
       // no package.json
     }
 
-    if (hasTestScript) {
-      const args = ['run', 'test']
+    openRun({ verb: 'test', root: input.root, facts: input.filter ? [input.filter] : [] })
 
-      if (input.filter) {
-        args.push('--', input.filter)
-      }
+    if (!hasTestScript) {
+      report({ glyph: 'failed', kind: 'problem', subject: 'There is no deck.tree here, and package.json has no test script' })
+      closeRun({ verdict: 'Nothing to test', next: 'term wake, to make a Term project here' })
 
-      await runCommand({ cmd: 'pnpm', args, cwd: input.root })
-      logGood('Tests complete')
-    } else {
-      logFail('No test script found in package.json')
-      process.exit(1)
+      return
     }
+
+    const args = ['run', 'test']
+
+    if (input.filter) {
+      args.push('--', input.filter)
+    }
+
+    // the package's own test script: its output quoted under the `run` item when it failed or under --verbose
+    // (section 15), or passed through untouched under --raw
+    const started = Date.now()
+    const run = await runScript(args, input.root, outputOptions().raw)
+    report({
+      glyph: run.code === 0 ? 'done' : 'failed',
+      verb: 'run',
+      subject: `pnpm ${args.join(' ')}`,
+      duration: Date.now() - started,
+      exit: run.code,
+      quote: run.code === 0 && !outputOptions().verbose ? [] : run.lines,
+    })
+    closeRun({ verdict: run.code === 0 ? 'Tests passed' : 'Test run failed' })
   } catch (err) {
-    logFail(formatError(err))
-    process.exit(1)
+    failRun(err, input.root)
   }
+}
+
+// a package script run for its output, both streams, never rejecting. `raw` passes it through instead
+function runScript(args: string[], cwd: string, raw: boolean): Promise<{ code: number; lines: string[] }> {
+  return new Promise(resolve => {
+    const child = spawn('pnpm', args, { cwd, stdio: raw ? 'inherit' : 'pipe', shell: true })
+    const chunks: string[] = []
+    child.stdout?.on('data', chunk => chunks.push(String(chunk)))
+    child.stderr?.on('data', chunk => chunks.push(String(chunk)))
+    child.on('close', (code, signal) => resolve({ code: code ?? (signal ? 130 : 1), lines: chunks.join('').split('\n').filter(line => line !== '') }))
+    child.on('error', error => resolve({ code: 127, lines: [String(error)] }))
+  })
 }
 
 async function hasDeckTree(input: { root: string }): Promise<boolean> {
@@ -165,20 +189,19 @@ async function runSeedTests(input: {
     filter: input.filter,
   })
 
+  openRun({
+    verb: 'test',
+    root: input.root,
+    counts: [count(files.length, 'files', 'file')],
+    facts: input.filter ? [input.filter] : [],
+  })
+
   if (files.length === 0) {
-    console.log(fade('  No test files found.'))
-    logGood('No tests to run')
+    // a zero is data (section 6): the run says what it looked for and found none
+    closeRun({ verdict: 'No tests to run', message: ['No file under code/ or test/ holds a test, a hold or a rule.'] })
 
     return
   }
-
-  console.log(
-    fade(
-      `  Found ${files.length} test file${
-        files.length === 1 ? '' : 's'
-      }`,
-    ),
-  )
 
   // every test file compiles and runs in-process with the project resolver, so each `test` block executes and its
   // `want hold` / `want miss` assertion is reported, not merely that the file compiled. The native runtime is read by
@@ -193,10 +216,12 @@ async function runSeedTests(input: {
 
   let pass = 0
   let fail = 0
+  // files that did not build, which ran no test at all
+  let broken = 0
 
   for (const file of files) {
     const rel = path.relative(input.root, file)
-    console.log(fade(`  ${rel}`))
+    const started = Date.now()
 
     try {
       const source = await fs.readFile(file, 'utf-8')
@@ -211,45 +236,63 @@ async function runSeedTests(input: {
       })
 
       if (run.failure) {
-        fail++
-        // show the full failure (the compile diagnostics or the unproven-hold detail), not just its last line, so a
-        // real error (an unknown name, an invalid proof) is visible rather than a bare "did not compile"
-        logFail(
-          run.failure
-            .split('\n')
-            .map(line => `    ${line}`)
-            .join('\n'),
-        )
+        broken++
+        // the compile diagnostics or the unproven holds, each a Problem item with its frame, not a bare "did not
+        // compile", so a real error (an unknown name, an invalid proof) is visible
+        reportProblems((run.diagnostics ?? []).map(diagnostic => ({ diagnostic, text: diagnostic.file === file ? run.text : undefined })), input.root)
+        report({
+          glyph: 'failed',
+          verb: 'test',
+          subject: rel,
+          duration: Date.now() - started,
+          facts: [run.failure.split('\n').pop() ?? 'did not compile'],
+        })
         continue
       }
 
+      const held = run.results.filter(one => one.held).length
+      const missed = run.results.length - held
+
+      // a proof-only file compiled clean, so its `hold` / `rule` proofs were kernel-checked: one check, held
       if (run.results.length === 0) {
-        // a proof-only file: it compiled clean, so its `hold` / `rule` proofs were kernel-checked
         pass++
-        console.log(`    ${fade('ok')}  proofs checked`)
+        report({ glyph: 'done', verb: 'test', subject: rel, duration: Date.now() - started, facts: ['proofs checked'] })
+        continue
       }
 
-      for (const r of run.results) {
-        if (r.held) {
-          pass++
-          console.log(`    ${fade('ok')}  ${r.label}`)
-        } else {
-          fail++
-          logFail(`    ${r.label}`)
-        }
+      pass += held
+      fail += missed
+
+      report({
+        glyph: missed > 0 ? 'failed' : 'done',
+        verb: 'test',
+        subject: rel,
+        duration: Date.now() - started,
+        counts: [count(run.results.length, 'tests', 'test'), count(held, 'passed'), ...(missed > 0 ? [count(missed, 'failed')] : [])],
+      })
+
+      // each test that did not hold is a Problem of its own, under the verb `case` (section 9)
+      for (const one of run.results.filter(each => !each.held)) {
+        report({
+          glyph: 'failed',
+          kind: 'problem',
+          verb: 'case',
+          subject: one.label.charAt(0).toUpperCase() + one.label.slice(1),
+          duration: one.ms,
+          fields: [field('in', rel), ...(one.error ? [field('why', one.error)] : [])],
+        })
       }
     } catch (err) {
-      fail++
-      logFail(`    ${formatError(err)}`)
+      broken++
+      report({ glyph: 'failed', verb: 'test', subject: rel, duration: Date.now() - started, message: [err instanceof Error ? err.message : String(err)] })
     }
   }
 
-  console.log()
+  const counts = [count(pass + fail, 'tests', 'test'), count(pass, 'passed'), ...(fail > 0 ? [count(fail, 'failed')] : [])]
 
-  if (fail > 0) {
-    logFail(`${fail} failed, ${pass} passed`)
-    process.exit(1)
-  } else {
-    logGood(`${pass} test${pass === 1 ? '' : 's'} passed`)
+  if (broken > 0) {
+    counts.push(count(broken, 'files did not build', 'file did not build'))
   }
+
+  closeRun({ verdict: fail > 0 || broken > 0 ? 'Test run failed' : 'Tests passed', counts })
 }

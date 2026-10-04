@@ -15,7 +15,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import path from 'node:path'
-import { logGood, fade, logStep } from '@term/make/code/tint'
+import { closeRun, count, field, openRun, printData, report } from '@term/call/code/output'
 import { keptAt, projectHome, legacyProjectHome } from '@term/call/code/home'
 
 const KINDS = [
@@ -145,11 +145,11 @@ export async function callMind(input: {
     )
 
     if (json) {
-      process.stdout.write(
-        `${JSON.stringify({ ok: true, ...saved })}\n`,
-      )
+      printData(`${JSON.stringify({ ok: true, ...saved })}\n`)
     } else {
-      logGood(`remembered ${saved.name} (${saved.kind})`)
+      openRun({ verb: 'mind', root: input.root })
+      report({ glyph: 'added', kind: 'change', verb: 'add', subject: saved.name, facts: [saved.kind], fields: [field('at', saved.file)] })
+      closeRun({ verdict: 'Remembered' })
     }
 
     return
@@ -166,7 +166,7 @@ export async function callMind(input: {
   )
 
   if (json) {
-    process.stdout.write(
+    printData(
       `${JSON.stringify({
         ok: true,
         facts: facts.map(f => ({
@@ -182,21 +182,15 @@ export async function callMind(input: {
     return
   }
 
-  if (!facts.length) {
-    console.log(
-      fade(
-        query
-          ? `  no memories match "${input.find}"`
-          : '  no memories yet',
-      ),
-    )
-
-    return
-  }
-
-  logStep(`Memory (${facts.length})`)
+  // each fact one `recall` item: its description as the subject, its kind and name as facts
+  openRun({ verb: 'mind', root: input.root, facts: input.find ? [input.find] : [] })
 
   for (const f of facts) {
-    console.log(`  ${f.name} ${fade(`(${f.kind})`)} — ${f.description}`)
+    report({ glyph: 'info', verb: 'recall', subject: f.description || f.name, facts: [f.kind, f.name] })
   }
+
+  closeRun({
+    verdict: facts.length ? 'Remembered facts' : query ? 'No memory matches' : 'No memories yet',
+    counts: [count(facts.length, 'facts', 'fact')],
+  })
 }

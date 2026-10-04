@@ -33,15 +33,21 @@ import { collectTreeFiles } from '@term/call/code/files'
 import { compilerVersion, projectCache } from '@term/call/code/cache-store'
 import { projectDeckOf } from '@term/call/code/deck-of'
 import { projectRoleOf, projectLeanOf } from '@term/call/code/role-of'
-import { preprocessTests } from '@term/call/code/test-preprocess'
+import { readable } from '@term/call/code/test-preprocess'
 import { renderDiagnostic } from '@term/call/code/report'
+import type { Diagnostic } from '@term/make/code/parser/diagnostic'
+import type { BuildProblem } from '@term/call/code/make'
 import { holdIncremental } from '@term/test/code/hold-incremental'
 import {
   diskObligationCache,
   memoryObligationCache,
 } from '@term/test/code/obligation-cache'
 import { renderReport } from '@term/test/code/prove-file'
-import { logGood, logFail, fade } from '@term/make/code/tint'
+import { closeRun, count, field, openRun, printData, problemOf, report, reportProblems } from '@term/call/code/output'
+
+// where `holdProject` puts what it found, whole, for the caller to draw as Problem items: every diagnostic of a file
+// that did not compile, and each failed tier-0 obligation by its key. It prints nothing itself
+export type HoldFound = { compile: BuildProblem[]; obligations: Map<string, BuildProblem> }
 
 // the baseline: the tier-0 obligations that were unproven when the gate went up, one key per obligation
 type Baseline = { obligations: string[] }
@@ -102,7 +108,7 @@ function ownTasks(program: Program, file: string) {
   )
 }
 
-export function holdProject(root: string, files: string[]): HoldSummary {
+export function holdProject(root: string, files: string[], found?: HoldFound): HoldSummary {
   const resolve = withNativeEnv('node', projectResolver(root))
   const cache = projectCache(root)
   const deckOf = projectDeckOf()
@@ -121,12 +127,17 @@ export function holdProject(root: string, files: string[]): HoldSummary {
 
   for (const file of files) {
     const rel = path.relative(root, file)
-    const source = readFileSync(file, 'utf8')
-    const text = /^\s*test /m.test(source)
-      ? preprocessTests(source).text
-      : source
+    const unit = readable(readFileSync(file, 'utf8'))
+    // a problem in this file, framed against the lines as written
+    const placed = (diagnostic: Diagnostic): string => {
+      const at = unit.place(diagnostic)
+
+      return renderDiagnostic(at.diagnostic, at.text)
+    }
+    const framed = (diagnostic: Diagnostic): BuildProblem =>
+      diagnostic.file === file ? unit.place(diagnostic) : { diagnostic, text: undefined }
     const result = compile(
-      { file, text },
+      { file, text: unit.text },
       { resolve, cache, deckOf, roleOf, leanOf },
     )
 
@@ -134,12 +145,7 @@ export function holdProject(root: string, files: string[]): HoldSummary {
       failed.push(rel)
 
       for (const diagnostic of result.diagnostics) {
-        console.error(
-          renderDiagnostic(
-            diagnostic,
-            diagnostic.file === file ? text : undefined,
-          ),
-        )
+        found?.compile.push(framed(diagnostic))
       }
 
       continue
@@ -173,13 +179,15 @@ export function holdProject(root: string, files: string[]): HoldSummary {
 
       for (const failure of tally.failed) {
         const base = `${rel} ${failure.task} ${failure.origin}`
+        // the ordinal counts every obligation of the kind in the task, proven or not, so proving one does not
+        // renumber the rest
+        const key = `${base} ${failure.ordinal}`
         failures.push({
-          // the ordinal counts every obligation of the kind in the task, proven or not, so proving one does not
-          // renumber the rest
-          key: `${base} ${failure.ordinal}`,
+          key,
           message: failure.diagnostic.message,
-          render: renderDiagnostic(failure.diagnostic, text),
+          render: placed(failure.diagnostic),
         })
+        found?.obligations.set(key, framed(failure.diagnostic))
       }
     }
 
@@ -254,12 +262,19 @@ export async function callHold(input: {
       ? await collectTreeFiles(input.paths, root)
       : findTreeFiles(root, [], 'node')
 
+  openRun({ verb: 'hold', root, counts: [count(files.length, 'files', 'file')], facts: input.commit ? ['--commit'] : [] })
+
   if (files.length === 0) {
-    logFail('No .tree files found')
-    process.exit(1)
+    report({ glyph: 'failed', kind: 'problem', subject: 'There is no .tree file to hold', message: input.paths.length ? [`Looked in ${input.paths.join(', ')}.`] : [] })
+    process.exit(closeRun({ verdict: 'Nothing to hold' }))
   }
 
-  const summary = holdProject(root, files)
+  const found: HoldFound = { compile: [], obligations: new Map() }
+  const summary = holdProject(root, files, found)
+
+  // every file that does not compile, each diagnostic a Problem item with its frame: the checker's errors are the
+  // unproven holds and contracts, the unverified proofs and the unfilled claims
+  reportProblems(found.compile, root)
 
   if (input.commit) {
     const keys = [
@@ -275,61 +290,98 @@ export async function callHold(input: {
       path.join(root, BASELINE),
       JSON.stringify({ obligations: keys }, null, 2) + '\n',
     )
-    console.log(
-      fade(
-        `  ${BASELINE}: ${keys.length} obligation(s), ${summary.fresh.length} added, ${summary.gone.length} removed`,
-      ),
-    )
+    // the count of what the commit ADDED is printed, so a baseline cannot grow in silence
+    report({
+      glyph: 'changed',
+      kind: 'change',
+      verb: 'commit',
+      subject: BASELINE,
+      counts: [
+        count(keys.length, 'obligations', 'obligation'),
+        count(summary.fresh.length, 'added'),
+        count(summary.gone.length, 'removed'),
+      ],
+    })
     summary.baselined += summary.fresh.length
     summary.fresh = []
     summary.gone = []
   }
 
+  // the summary is data the user asked for, on stdout, the same object it always was
   if (input.json) {
-    console.log(JSON.stringify(summary, null, 2))
-  } else {
-    for (const failure of summary.fresh) {
-      console.error('\n' + failure.render)
-    }
+    printData(JSON.stringify(summary, null, 2) + '\n')
+  }
 
-    const { ledger, kernel } = summary
-    console.log(
-      fade(
-        `  kernel: ${kernel.proven} task(s) proven as one term, ${kernel.commands} checked statement by statement, ${kernel.declined} declined${
-          kernel.reasons.length > 0
-            ? ` (${kernel.reasons
-                .slice(0, 4)
-                .map(([reason, n]) => `${n} ${reason}`)
-                .join('; ')})`
-            : ''
-        }`,
-      ),
-    )
-    console.log(
-      fade(
-        `  trusted: ${ledger.native.length} impure task(s) (reach native code, are async, or have no body), ${ledger.axioms.length} axiom(s), ${ledger.unending.length} recursion(s) not shown to end, ${ledger.roaming.length} task(s) marked to run forever (mark roam), and one assumption: native code handed only scalars reaches no Term value`,
-      ),
-    )
-    // the linear prover's refutations and the sum-of-squares provers' Gram matrices are replayed by a separate
-    // checker; one the search found and the checker refused is reported unproven, and counted here because it is a
-    // bug in the search (check/certificate.ts). Sturm and CAD are not certified, and the line says so
-    console.log(
-      fade(
-        `  certified: every linear refutation and sum-of-squares certificate replayed by the checker, ${summary.uncertified} found by the search and refused. Sturm and CAD are trusted as written`,
-      ),
-    )
+  // each tier-0 obligation that is not proven and not in the baseline, a Problem item under `prove` (section 12)
+  for (const failure of summary.fresh) {
+    const placed = found.obligations.get(failure.key)
 
-    if (ledger.axioms.length > 0) {
-      console.log(fade(`  axioms: ${ledger.axioms.join(', ')}`))
+    if (placed) {
+      report({ ...problemOf(placed.diagnostic, root, placed.text), verb: 'prove' })
+    } else {
+      report({ glyph: 'failed', kind: 'problem', verb: 'prove', subject: failure.message, facts: [failure.key] })
     }
+  }
 
-    if (summary.gone.length > 0) {
-      console.log(
-        fade(
-          `  ${summary.gone.length} baselined obligation(s) now proven or gone: run \`term hold --commit\` to shrink ${BASELINE}`,
-        ),
-      )
-    }
+  const { ledger, kernel } = summary
+
+  report({
+    glyph: 'info',
+    verb: 'prove',
+    subject: 'What the kernel did with the tasks',
+    counts: [
+      count(kernel.proven, 'proven as one term'),
+      count(kernel.commands, 'checked statement by statement'),
+      count(kernel.declined, 'declined'),
+    ],
+    // one line per reason, most common first: `An expression the kernel cannot represent: 1`
+    message: kernel.reasons.slice(0, 4).map(([reason, n]) => `${reason.charAt(0).toUpperCase()}${reason.slice(1)}: ${n.toLocaleString('en-US')}`),
+  })
+
+  // the TRUST LEDGER: what the proofs rest on that nothing here proves
+  report({
+    glyph: 'info',
+    verb: 'trust',
+    subject: 'What the proofs rest on and nothing here proves',
+    counts: [
+      count(ledger.native.length, 'impure tasks', 'impure task'),
+      count(ledger.axioms.length, 'axioms', 'axiom'),
+      count(ledger.unending.length, 'recursions not shown to end', 'recursion not shown to end'),
+      count(ledger.roaming.length, 'marked roam'),
+    ],
+    message: ['An impure task reaches native code, is async, or has no body. One assumption: native code handed only scalars reaches no Term value.'],
+    fields: ledger.axioms.length > 0 ? [field('axioms', ledger.axioms.join(', '))] : [],
+  })
+
+  // the linear prover's refutations and the sum-of-squares provers' Gram matrices are replayed by a separate
+  // checker; one the search found and the checker refused is reported unproven, and counted here because it is a
+  // bug in the search (check/certificate.ts). Sturm and CAD are not certified, and the item says so
+  report({
+    glyph: summary.uncertified > 0 ? 'warning' : 'info',
+    verb: 'certify',
+    subject: 'Every linear refutation and sum-of-squares certificate replayed by the checker',
+    counts: [count(summary.uncertified, 'found by the search and refused')],
+    message: ['Sturm and CAD are trusted as written.'],
+  })
+
+  if (summary.gone.length > 0) {
+    report({
+      glyph: 'info',
+      verb: 'hold',
+      subject: `${summary.gone.length} baselined obligation${summary.gone.length === 1 ? ' is' : 's are'} now proven or gone`,
+      fields: [field('next', `term hold --commit, to shrink ${BASELINE}`)],
+    })
+  }
+
+  // an open claim is a promise, and a gate cannot pass a promise
+  if (summary.open.length > 0) {
+    report({
+      glyph: 'failed',
+      kind: 'problem',
+      verb: 'prove',
+      subject: `${summary.open.length} claim${summary.open.length === 1 ? ' is' : 's are'} left open`,
+      message: [summary.open.join(', ')],
+    })
   }
 
   // the cross-backend differential, when asked for, after the proof gate
@@ -348,34 +400,34 @@ export async function callHold(input: {
       force: input.force,
     })
 
+    // a backend that disagrees is a ✗ item, the differential's own report quoted under it
     for (const outcome of result.outcomes) {
       if (!outcome.ok && outcome.report) {
-        console.log(renderReport(outcome.report))
+        report({ glyph: 'failed', kind: 'problem', verb: 'cross', subject: 'The backends disagree', quote: renderReport(outcome.report).split('\n') })
       }
     }
 
     crossOk = result.ok
+
+    if (crossOk) {
+      report({ glyph: 'done', verb: 'cross', subject: 'Every backend agrees', counts: [count(files.length, 'files', 'file')] })
+    }
   }
 
-  const line = `${summary.files} file(s), ${summary.proven} of ${summary.total} obligation(s) proven, ${summary.baselined} in the baseline`
-  const problems = [
-    summary.failed.length > 0
-      ? `${summary.failed.length} file(s) do not hold: ${summary.failed.join(', ')}`
-      : undefined,
-    summary.open.length > 0
-      ? `${summary.open.length} claim(s) open: ${summary.open.join(', ')}`
-      : undefined,
-    summary.fresh.length > 0
-      ? `${summary.fresh.length} obligation(s) not proven and not in ${BASELINE}`
-      : undefined,
-    crossOk ? undefined : 'the cross-backend differential failed',
-  ].filter((p): p is string => p !== undefined)
+  const holds = summary.failed.length === 0 && summary.open.length === 0 && summary.fresh.length === 0 && crossOk
+  const counts = [
+    count(summary.proven, 'obligations proven', 'obligation proven', summary.total),
+    count(summary.baselined, 'in the baseline'),
+    ...(summary.failed.length > 0 ? [count(summary.failed.length, 'files do not hold', 'file does not hold')] : []),
+    ...(summary.fresh.length > 0 ? [count(summary.fresh.length, `not proven and not in ${BASELINE}`)] : []),
+  ]
 
-  if (problems.length === 0) {
-    logGood(`Holds: ${line}`)
-    process.exit(0)
+  // a gate that passed says so with a ✓ of its own: the items above are `·` summaries, and a run of `·` items closes
+  // `·` (section 4), which reads as "nothing was done" for the one command whose whole job is a verdict
+  if (holds) {
+    report({ glyph: 'done', verb: 'prove', subject: 'Every obligation is proven or in the baseline', counts: [count(summary.proven, 'proven', '', summary.total)] })
   }
 
-  logFail(`Does not hold: ${line}. ${problems.join('. ')}`)
-  process.exit(1)
+  // THE GATE: exit 0 when everything holds, 1 when anything does not. Exits at once, as it always has
+  process.exit(closeRun({ verdict: holds ? 'Holds' : 'Does not hold', counts }))
 }

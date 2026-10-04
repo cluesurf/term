@@ -8,19 +8,22 @@ import { compile } from '@term/make/code/compile/compile'
 import type { Roll } from '@term/make/code/compile/roll'
 import { projectDeckOf } from '@term/call/code/deck-of'
 import { projectRoleOf, projectLeanOf } from '@term/call/code/role-of'
-import { renderDiagnostic } from '@term/call/code/report'
 import { mergeRolls, showRoll } from '@term/make/code/compile/roll'
 import { findTreeFiles, projectResolver } from '@term/call/code/make'
+import type { BuildProblem } from '@term/call/code/make'
 import { projectCache } from '@term/call/code/cache-store'
-import { preprocessTests } from '@term/call/code/test-preprocess'
-import { logFail, logStep, fade } from '@term/make/code/tint'
+import { readable } from '@term/call/code/test-preprocess'
+import { closeRun, count, field, openRun, printData, report, reportProblems } from '@term/call/code/output'
 
 export const ROLL_KINDS = ['deck', 'exception', 'task', 'dock', 'tell', 'kind', 'supervision']
 
-// the roll of every entry under `root` that is the project's own (not a linked dependency), merged
+// the roll of every entry under `root` that is the project's own (not a linked dependency), merged. It prints
+// nothing: a file that does not compile is in `failed`, and its diagnostics in `problems` for the caller to report
+// (`term roll` draws them; `term make` has reported the same ones from its own build already)
 export function projectRoll(root: string): {
   roll: Roll
   failed: string[]
+  problems: BuildProblem[]
 } {
   const link = path.join(root, 'link') + path.sep
   // the same walk `term make` does for node: other platforms' native trees are not compiled here either
@@ -35,14 +38,12 @@ export function projectRoll(root: string): {
   const leanOf = projectLeanOf(root)
   const rolls: Roll[] = []
   const failed: string[] = []
+  const problems: BuildProblem[] = []
 
   for (const file of files) {
-    const source = readFileSync(file, 'utf8')
-    const text = /^\s*test /m.test(source)
-      ? preprocessTests(source).text
-      : source
+    const unit = readable(readFileSync(file, 'utf8'))
     const result = compile(
-      { file, text },
+      { file, text: unit.text },
       { resolve, cache, roll: true, deckOf, roleOf, leanOf },
     )
 
@@ -50,12 +51,7 @@ export function projectRoll(root: string): {
       failed.push(path.relative(root, file))
 
       for (const diagnostic of result.diagnostics) {
-        console.error(
-          renderDiagnostic(
-            diagnostic,
-            diagnostic.file === file ? text : undefined,
-          ),
-        )
+        problems.push(diagnostic.file === file ? unit.place(diagnostic) : { diagnostic, text: undefined })
       }
 
       continue
@@ -66,7 +62,7 @@ export function projectRoll(root: string): {
     }
   }
 
-  return { roll: mergeRolls(rolls), failed }
+  return { roll: mergeRolls(rolls), failed, problems }
 }
 
 // sites relative to the root, so the printed roll reads the same on every machine
@@ -91,17 +87,17 @@ export async function callRoll(input: {
   host?: string
   path?: boolean
 }): Promise<void> {
-  if (!input.json) {
-    logStep('Rolling...')
-  }
+  openRun({ verb: 'roll', root: input.root, facts: input.kind ? [input.kind] : [] })
 
-  const { roll, failed } = projectRoll(input.root)
+  const { roll, failed, problems } = projectRoll(input.root)
 
   // a kind is built in, or declared by a deck of this build (`roll <name>`)
   if (input.kind && !ROLL_KINDS.includes(input.kind) && !roll.kind.some(k => k.name === input.kind)) {
     const declared = roll.kind.map(k => k.name)
-    logFail(`Unknown kind "${input.kind}". One of: ${[...ROLL_KINDS, ...declared].join(', ')}`)
-    process.exit(1)
+    report({ glyph: 'failed', kind: 'problem', subject: `There is no roll kind named ${input.kind}`, fields: [field('kinds', [...ROLL_KINDS, ...declared].join(', '))] })
+    closeRun({ verdict: 'Nothing rolled' })
+
+    return
   }
 
   if (input.host) {
@@ -127,17 +123,32 @@ export async function callRoll(input: {
       .map(d => d.name)
   }
 
+  // the roll is the answer the user asked for: data on stdout, as a tree or as the JSON `term make` writes
   if (input.json) {
-    process.stdout.write(JSON.stringify(roll, null, 2) + '\n')
+    printData(JSON.stringify(roll, null, 2) + '\n')
   } else {
-    console.log('')
-    console.log(showRoll(roll, input.kind, { path: input.path }))
-    console.log('')
+    printData(`\n${showRoll(roll, input.kind, { path: input.path })}\n\n`)
   }
 
+  // a file that did not compile is not on the roll: its problems, then a ▲ item naming what is missing, so the
+  // roll still answers and says it is partial
+  reportProblems(problems, input.root)
+
   if (failed.length) {
-    console.error(
-      fade(`  ${failed.length} file(s) did not compile and are not on the roll: ${failed.join(', ')}`),
-    )
+    report({
+      glyph: 'warning',
+      verb: 'roll',
+      subject: `${failed.length} file${failed.length === 1 ? ' did' : 's did'} not compile and ${failed.length === 1 ? 'is' : 'are'} not on the roll`,
+      message: [failed.join(', ')],
+    })
   }
+
+  closeRun({
+    verdict: failed.length ? 'Rolled, with files missing' : 'Rolled',
+    counts: [
+      count(roll.exception.length, 'exceptions', 'exception'),
+      count(roll.task.length, 'tasks', 'task'),
+      count(roll.dock.length, 'routes', 'route'),
+    ],
+  })
 }

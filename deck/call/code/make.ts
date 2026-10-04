@@ -19,7 +19,7 @@ import { compileSeparate } from '@term/make/code/compile/separate'
 import { CompileCache } from '@term/make/code/compile/cache'
 import { makeParseMemo } from '@term/make/code/compile/load'
 import { projectCache } from '@term/call/code/cache-store'
-import { preprocessTests } from '@term/call/code/test-preprocess'
+import { carriesTests, readable } from '@term/call/code/test-preprocess'
 import { isLockfileAt, isRoleFileAt, manifestNameOf } from '@term/call/code/manifest-name'
 import { projectDeckOf } from '@term/call/code/deck-of'
 import { projectRoleOf, projectLeanOf } from '@term/call/code/role-of'
@@ -47,13 +47,14 @@ import { renderDiagnostic } from '@term/call/code/report'
 import { declaresDraft } from '@term/call/code/draft'
 import { FACE_NATIVE_PATH, contractFindings } from '@term/call/code/face-contract'
 import type { ContractFinding } from '@term/call/code/face-contract'
-import {
-  logGood,
-  logFail,
-  logStep,
-  formatError,
-  fade,
-} from '@term/make/code/tint'
+import type { Diagnostic } from '@term/make/code/parser/diagnostic'
+import { addOwed, describeOwed } from '@term/make/code/check/holds'
+import type { Owed } from '@term/make/code/check/holds'
+import { closeRun, count, failRun, field, openRun, outputOptions, report, reportProblems } from '@term/call/code/output'
+
+// one problem of a build, whole: the diagnostic, and the text it was compiled from when that is not the file on disk
+// (the test preprocessor rewrote it, or it is a generated grammar reader), so its code frame shows the right lines
+export type BuildProblem = { diagnostic: Diagnostic; text?: string }
 
 // every .tree file under a directory, skipping generated output and dependency / vcs folders
 // the per-platform native trees. A build targets ONE of these, and `withNativeEnv` rewrites every abstract
@@ -591,10 +592,15 @@ export function compileProject(
   // build line so an open claim is visible rather than silent. See note/term/project/law-proof-gate.md.
   open: string[]
   // tier 0 over the project's own tasks: obligations written and proven. `term hold` holds the rest to hold.json.
-  obligations: { total: number; proven: number }
+  obligations: Owed
+  // the same errors and warnings as `errors` and `warnings`, whole, for the terminal output library to draw as
+  // Problem items with their code frames (code/output.ts). `text` is the compiled text when it is not the file
+  problems: BuildProblem[]
+  // a failure with no diagnostic behind it: a grammar that cannot be read, a shadow that breaks face's contract
+  faults: string[]
 } {
   const files = findTreeFiles(root, [], platform)
-  const obligations = { total: 0, proven: 0 }
+  const obligations: Owed = { total: 0, proven: 0 }
   const resolve = projectResolver(root)
   const deckOf = projectDeckOf()
   const roleOf = projectRoleOf(root)
@@ -612,6 +618,8 @@ export function compileProject(
   const open = new Set<string>()
   const errors: string[] = []
   const warnings: string[] = []
+  const problems: BuildProblem[] = []
+  const faults: string[] = []
 
   for (const file of files) {
     // a file carrying `test <phrase>` blocks is not plain Term until the test preprocessor has rewritten them into
@@ -630,12 +638,14 @@ export function compileProject(
     const read = feedGrammarOf(file, source)
     const grammar = read?.grammar
     let text = source
+    let place: ReturnType<typeof readable>['place'] | undefined
 
     if (read && read.faults.length > 0) {
       failed++
 
       for (const fault of read.faults) {
         errors.push(`${path.relative(root, file)}: ${fault}`)
+        faults.push(`${path.relative(root, file)}: ${fault}`)
       }
 
       continue
@@ -646,11 +656,12 @@ export function compileProject(
 
       if (!substrate) {
         failed++
-        errors.push(
+        const fault =
           `${path.relative(root, file)}: cannot tell whether this grammar reads bytes or text. ` +
-            `Every rule in it is a combinator over rules with no body, so there is no leaf to infer from. ` +
-            `Write one of its leaf rules, or shelve the grammar with \`mark draft\` until it has one.`,
-        )
+          `Every rule in it is a combinator over rules with no body, so there is no leaf to infer from. ` +
+          `Write one of its leaf rules, or shelve the grammar with \`mark draft\` until it has one.`
+        errors.push(fault)
+        faults.push(fault)
         continue
       }
 
@@ -662,12 +673,19 @@ export function compileProject(
         FEED_CURSOR,
         feedMineLoads(file, source),
       )
-    } else if (/^\s*test /m.test(source)) {
+    } else if (carriesTests(source)) {
       // a file carrying `test <phrase>` blocks is not plain Term until the test preprocessor has rewritten them
       // into tasks. `term test` does that before compiling; a plain build has to as well, or every test file in
-      // the project fails here on a construct the compiler is never meant to see.
-      text = preprocessTests(source).text
+      // the project fails here on a construct the compiler is never meant to see. Its frames are moved back onto
+      // the lines as written
+      const unit = readable(source)
+      text = unit.text
+      place = unit.place
     }
+
+    // a problem in this file, framed against what the person wrote
+    const framed = (diagnostic: Diagnostic): BuildProblem =>
+      diagnostic.file !== file ? { diagnostic, text: undefined } : place ? place(diagnostic) : { diagnostic, text }
 
     const result = compile(
       { file, text },
@@ -682,13 +700,9 @@ export function compileProject(
 
       // render each diagnostic as a rich, colored source frame (header + locator + caret), reusing the in-memory text
       // for diagnostics in this file and reading imported modules from disk.
-      for (const diagnostic of result.diagnostics) {
-        errors.push(
-          renderDiagnostic(
-            diagnostic,
-            diagnostic.file === file ? text : undefined,
-          ),
-        )
+      for (const problem of result.diagnostics.map(framed)) {
+        errors.push(renderDiagnostic(problem.diagnostic, problem.text))
+        problems.push(problem)
       }
 
       continue
@@ -700,7 +714,9 @@ export function compileProject(
     // printed once per file that loads it
     for (const warning of result.warnings) {
       if (warning.file === file) {
-        warnings.push(renderDiagnostic(warning, text))
+        const problem = framed(warning)
+        warnings.push(renderDiagnostic(problem.diagnostic, problem.text))
+        problems.push(problem)
       }
     }
 
@@ -708,8 +724,7 @@ export function compileProject(
       open.add(claim)
     }
 
-    obligations.total += result.obligations?.total ?? 0
-    obligations.proven += result.obligations?.proven ?? 0
+    addOwed(obligations, result.obligations)
 
     // a mill definition (the `mill` role) is checked, not built: it has no output, and an empty module per grammar
     // file under host/ would be 344 files nothing imports (compile/mill-check.ts)
@@ -775,7 +790,9 @@ export function compileProject(
   // (native-dom-0025). Face's own are held by test/compile/face-contract.ts.
   for (const finding of appShadowFindings(root, resolve)) {
     failed++
-    errors.push(`${path.relative(root, finding.file)}: shadows face's ${finding.component} on ${finding.rung} and ${finding.problem}`)
+    const fault = `${path.relative(root, finding.file)}: shadows face's ${finding.component} on ${finding.rung} and ${finding.problem}`
+    errors.push(fault)
+    faults.push(fault)
   }
 
   return {
@@ -784,6 +801,8 @@ export function compileProject(
     failed,
     errors,
     warnings,
+    problems,
+    faults,
     open: [...open].sort(),
     obligations,
   }
@@ -822,11 +841,15 @@ export function compileProjectSeparate(
   written: number
   failed: number
   errors: string[]
+  problems: BuildProblem[]
+  faults: string[]
   built: number
   reused: number
 } {
   const files = findTreeFiles(root, [], 'node')
   const resolve = projectResolver(root)
+  const problems: BuildProblem[] = []
+  const faults: string[] = []
 
   // stable, flat artifact name per source module. Project files key by their root-relative path; imported modules
   // living outside the root (stdlib / linked decks) key by their path with separators flattened.
@@ -935,6 +958,7 @@ export function compileProjectSeparate(
             diagnostic.file === file ? text : undefined,
           ),
         )
+        problems.push({ diagnostic, text: diagnostic.file === file ? text : undefined })
       }
 
       continue
@@ -973,7 +997,7 @@ export function compileProjectSeparate(
     )
   }
 
-  return { compiled, written, failed, errors, built, reused }
+  return { compiled, written, failed, errors, problems, faults, built, reused }
 }
 
 // watch the project's .tree files and recompile incrementally on change (a shared cache reuses unchanged modules).
@@ -981,30 +1005,33 @@ export function compileProjectSeparate(
 export function watchProject(root: string): void {
   const cache = projectCache(root)
 
-  const build = (label: string): void => {
-    const { compiled, written, failed, errors } = compileProject(root, cache)
+  openRun({ verb: 'make', root, facts: ['watching'] })
+  stopOnInterrupt()
 
-    for (const error of errors) {
-      console.error('\n' + error)
-    }
-
-    if (failed > 0) {
-      logFail(`${label}: ${compiled} ok, ${failed} failed`)
-    } else if (written === 0) {
-      logGood(`${label}: up to date (${compiled} file${compiled === 1 ? '' : 's'})`)
-    } else {
-      logGood(
-        `${label}: ${written} of ${compiled} file${
-          compiled === 1 ? '' : 's'
-        } changed -> host/`,
-      )
-    }
+  // one `build` item per build, its problems before it, the file that changed as its subject. The run never closes
+  // until ctrl-c: it is a stream (section 11)
+  const build = (changed: string): void => {
+    const started = Date.now()
+    const result = compileProject(root, cache)
+    reportProblems(result.problems, root, result.faults)
+    report({
+      glyph: result.failed > 0 ? 'failed' : 'done',
+      verb: 'build',
+      subject: changed,
+      duration: Date.now() - started,
+      counts: [count(result.compiled, 'files', 'file', result.compiled + result.failed), count(result.written, 'written')],
+    })
   }
 
-  build('built')
-  console.log(fade('  watching for changes... (ctrl-c to stop)'))
+  build('typescript')
+  watchTreeFiles(root, name => build(name))
+}
 
-  watchTreeFiles(root, name => build(`rebuilt (${name})`))
+// a watch ends on ctrl-c, with its closing item and exit 130 (section 18)
+function stopOnInterrupt(): void {
+  process.once('SIGINT', () => {
+    process.exit(closeRun({ verdict: 'Stopped', failure: 'interrupted', uptime: true }))
+  })
 }
 
 // watch every `.tree` file under `root` (recursively) and invoke `onChange` debounced on each edit, so a burst of saves
@@ -1060,21 +1087,25 @@ export function watchTreeFiles(
 // watch and re-run the project's own build script (`pnpm run make`) on each change. Used when the project defines a
 // custom build, so the watcher respects it rather than the built-in .tree -> host compile.
 function watchScript(root: string): void {
-  const run = async (label: string): Promise<void> => {
-    logStep(label)
+  openRun({ verb: 'make', root, facts: ['package.json make', 'watching'] })
+  stopOnInterrupt()
 
-    try {
-      await runCommand({ cmd: 'pnpm', args: ['run', 'make'], cwd: root })
-      logGood(`${label}: done`)
-    } catch (error) {
-      logFail(formatError(error))
-    }
+  const run = async (changed: string): Promise<void> => {
+    const started = Date.now()
+    const done = await runCaptured({ cmd: 'pnpm', args: ['run', 'make'], cwd: root, raw: outputOptions().raw })
+    report({
+      glyph: done.code === 0 ? 'done' : 'failed',
+      verb: 'run',
+      subject: changed,
+      duration: Date.now() - started,
+      exit: done.code,
+      facts: ['pnpm run make'],
+      quote: done.code === 0 && !outputOptions().verbose ? [] : done.lines,
+    })
   }
 
-  void run('build')
-  console.log(fade('  watching for changes... (ctrl-c to stop)'))
-
-  watchTreeFiles(root, name => run(`rebuild (${name})`))
+  void run('pnpm run make')
+  watchTreeFiles(root, name => run(name))
 }
 
 export async function callMake(input: {
@@ -1091,8 +1122,6 @@ export async function callMake(input: {
   // task/term/build-all.ts uses it so no package can hide behind a script again.
   trees?: boolean
 }): Promise<void> {
-  logStep(input.ride ? 'Watching and compiling...' : 'Compiling...')
-
   try {
     const pkgJsonPath = path.join(input.root, 'package.json')
 
@@ -1112,30 +1141,40 @@ export async function callMake(input: {
         // watch mode with a custom build: re-run the project's `make` script on every change
         watchScript(input.root) // runs until interrupted
       } else {
-        await runCommand({ cmd: 'pnpm', args: ['run', 'make'], cwd: input.root })
-        logGood('Build complete')
+        // the package's own build: its output quoted under the `run` item, in full when it failed or under
+        // --verbose, the last 20 lines of it otherwise kept out of the way
+        openRun({ verb: 'make', root: input.root, facts: ['package.json make'] })
+        const started = Date.now()
+        const run = await runCaptured({ cmd: 'pnpm', args: ['run', 'make'], cwd: input.root, raw: outputOptions().raw })
+        report({
+          glyph: run.code === 0 ? 'done' : 'failed',
+          verb: 'run',
+          subject: 'pnpm run make',
+          duration: Date.now() - started,
+          exit: run.code,
+          quote: run.code === 0 && !outputOptions().verbose ? [] : run.lines,
+        })
+        closeRun({ verdict: run.code === 0 ? 'Built by its package script' : 'Its package script failed' })
       }
-    } else if (input.ride) {
-      console.log(
-        fade(
-          '  No build script found. Watching .tree files (incremental)...',
-        ),
-      )
-      watchProject(input.root) // runs until interrupted
-    } else {
-      console.log(
-        fade(
-          hasMakeScript
-            ? '  Compiling .tree files directly (--trees; its `make` script was not run)...'
-            : '  No build script found. Compiling .tree files directly...',
-        ),
-      )
 
-      // big projects fan out across worker threads (each runs the full compile(), sharing the on-disk cache); small
-      // ones build sequentially since the worker bundle + spawn overhead would outweigh it. The parallel path is loaded
-      // dynamically so make.ts's static graph (which the build worker itself bundles) never pulls esbuild. Any failure
-      // setting up the pool falls back to the sequential build, so a worker problem never breaks `term make`.
-      const fileCount = findTreeFiles(input.root).length
+      return
+    }
+
+    if (input.ride) {
+      watchProject(input.root) // runs until interrupted
+
+      return
+    }
+
+    // big projects fan out across worker threads (each runs the full compile(), sharing the on-disk cache); small
+    // ones build sequentially since the worker bundle + spawn overhead would outweigh it. The parallel path is loaded
+    // dynamically so make.ts's static graph (which the build worker itself bundles) never pulls esbuild. Any failure
+    // setting up the pool falls back to the sequential build, so a worker problem never breaks `term make`.
+    const fileCount = findTreeFiles(input.root).length
+    // `--trees` beside a package script is a choice worth saying: the script did not run
+    openRun({ verb: 'make', root: input.root, counts: [count(fileCount, 'files', 'file')], facts: hasMakeScript ? ['--trees'] : [] })
+
+    {
       const parallel =
         !input.separate && fileCount >= 16 && cpus().length > 2
 
@@ -1143,22 +1182,22 @@ export async function callMake(input: {
         compiled: number
         failed: number
         errors: string[]
+        problems: BuildProblem[]
+        faults: string[]
         warnings?: string[]
         written?: number
         open?: string[]
         obligations?: { total: number; proven: number }
       }
 
+      const started = Date.now()
+      // the separate path's own counts, units built against units replayed from the cache
+      let units: { built: number; reused: number } | undefined
+
       if (input.separate) {
         const separate = compileProjectSeparate(input.root)
         result = separate
-        console.log(
-          fade(
-            `  separate: ${separate.built} unit${
-              separate.built === 1 ? '' : 's'
-            } built, ${separate.reused} reused`,
-          ),
-        )
+        units = { built: separate.built, reused: separate.reused }
       } else if (parallel) {
         try {
           const { compileProjectParallel } = await import(
@@ -1172,7 +1211,7 @@ export async function callMake(input: {
         result = compileProject(input.root)
       }
 
-      const { compiled, failed, errors } = result
+      const { compiled, failed } = result
       // present only on the merged path, which is the one that sees a whole program; the separate path checks
       // unit by unit and does not, so it reports nothing rather than reporting a zero it did not measure
       const openClaims =
@@ -1180,100 +1219,122 @@ export async function callMake(input: {
           ? (result.open as string[])
           : undefined
 
-      for (const error of errors) {
-        console.error('\n' + error)
+      // every error and the project's own warnings, as Problem items with their code frames (section 12)
+      reportProblems(result.problems, input.root, result.faults)
+      const warnings = result.problems.filter(one => one.diagnostic.severity === 'warning').length
+      const errorCount = result.problems.length - warnings + result.faults.length
+
+      const facts: string[] = []
+
+      if (units) {
+        facts.push('separate')
       }
 
+      report({
+        glyph: failed > 0 ? 'failed' : 'done',
+        verb: 'build',
+        subject: 'typescript',
+        duration: Date.now() - started,
+        counts: [
+          count(compiled, 'files', 'file', fileCount),
+          ...(result.written !== undefined ? [count(result.written, 'written')] : []),
+          ...(units ? [count(units.built, 'units built', 'unit built'), count(units.reused, 'reused')] : []),
+        ],
+        facts,
+      })
+
       if (failed > 0) {
-        logFail(
-          `Compiled ${compiled} file${
-            compiled === 1 ? '' : 's'
-          }, ${failed} failed.`,
-        )
-        process.exit(1)
+        closeRun({
+          verdict: 'Build failed',
+          counts: [count(errorCount, 'errors', 'error'), ...(warnings ? [count(warnings, 'warnings', 'warning')] : [])],
+        })
+
+        return
       }
 
       if (compiled === 0) {
-        console.log(fade('  No .tree files found.'))
-      } else {
-        // the project's own warnings, each in its frame, then their count. None of them fails the build
-        for (const warning of result.warnings ?? []) {
-          console.error('\n' + warning)
-        }
+        closeRun({ verdict: 'Nothing to build', message: ['There is no .tree file here.'] })
 
-        logGood(
-          `Compiled ${compiled} file${
-            compiled === 1 ? '' : 's'
-          } to host/`,
-        )
-
-        if (result.warnings?.length) {
-          console.log(fade(`  ${result.warnings.length} warning${result.warnings.length === 1 ? '' : 's'}`))
-        }
-
-        // AN OPEN CLAIM IS NOT A PROVEN ONE. A `rule` carrying `mark open` compiles, because a book under
-        // construction has to, but the count says so on every build rather than letting it pass in silence.
-        // `term hold` is the gate that refuses while this is non-zero. note/term/project/law-proof-gate.md.
-        if (openClaims && openClaims.length > 0) {
-          logFail(
-            `${openClaims.length} claim${
-              openClaims.length === 1 ? '' : 's'
-            } open: ${openClaims.join(', ')}`,
-          )
-        }
-
-        // TIER 0, counted on every build: what the project's tasks are proven free of with nothing written. The
-        // build never fails on it; `term hold` is the gate, against hold.json. note/term/proof-by-default/.
-        const obligations =
-          'obligations' in result &&
-          result.obligations &&
-          typeof result.obligations === 'object'
-            ? (result.obligations as { total: number; proven: number })
-            : undefined
-
-        if (obligations && obligations.total > 0) {
-          console.log(
-            fade(
-              `  tier 0: ${obligations.proven} of ${obligations.total} obligations proven (list reads in bounds, no division by zero). \`term hold\` gates the rest`,
-            ),
-          )
-        }
-
-        // the roll of the project's own entries, beside the output, for tools that are not Term. Every compile
-        // above is cached, so this costs the roll pass and nothing else. See code/compile/roll.ts.
-        try {
-          const { projectRoll } = await import('@term/call/code/roll')
-          const { roll } = projectRoll(input.root)
-          const fs = await import('fs')
-          const rollPath = path.join(input.root, 'host', 'roll.json')
-          const text = JSON.stringify(roll, null, 2) + '\n'
-
-          let existing: string | undefined
-
-          try {
-            existing = fs.readFileSync(rollPath, 'utf8')
-          } catch {
-            existing = undefined
-          }
-
-          if (existing !== text) {
-            fs.mkdirSync(path.dirname(rollPath), { recursive: true })
-            fs.writeFileSync(rollPath, text)
-          }
-
-          console.log(
-            fade(
-              `  roll: ${roll.exception.length} exception(s), ${roll.task.length} task(s), ${roll.dock.length} route(s), ${roll.tell.length} tell(s) in host/roll.json`,
-            ),
-          )
-        } catch (error) {
-          console.log(fade(`  roll not written: ${String(error)}`))
-        }
+        return
       }
+
+      // AN OPEN CLAIM IS NOT A PROVEN ONE. A `rule` carrying `mark open` compiles, because a book under
+      // construction has to, but the count says so on every build rather than letting it pass in silence.
+      // `term hold` is the gate that refuses while this is non-zero. note/term/project/law-proof-gate.md.
+      if (openClaims && openClaims.length > 0) {
+        report({
+          glyph: 'warning',
+          verb: 'prove',
+          subject: `${openClaims.length} claim${openClaims.length === 1 ? ' is' : 's are'} left open`,
+          message: [openClaims.join(', ')],
+          fields: [field('next', 'term hold')],
+        })
+      }
+
+      // TIER 0, counted on every build: what the project's tasks are proven free of with nothing written. The
+      // build never fails on it; `term hold` is the gate, against hold.json. note/term/proof-by-default/.
+      const obligations =
+        'obligations' in result &&
+        result.obligations &&
+        typeof result.obligations === 'object'
+          ? (result.obligations as Owed)
+          : undefined
+
+      if (obligations && obligations.total > 0) {
+        report({
+          glyph: 'info',
+          verb: 'prove',
+          // each kind named with its own count: a walk's termination was counted under the first two
+          subject: `tier 0: ${describeOwed(obligations)}`,
+          counts: [count(obligations.proven, 'proven', '', obligations.total)],
+          facts: ['term hold gates the rest'],
+        })
+      }
+
+      // the roll of the project's own entries, beside the output, for tools that are not Term. Every compile
+      // above is cached, so this costs the roll pass and nothing else. See code/compile/roll.ts.
+      try {
+        const { projectRoll } = await import('@term/call/code/roll')
+        const { roll } = projectRoll(input.root)
+        const fs = await import('fs')
+        const rollPath = path.join(input.root, 'host', 'roll.json')
+        const text = JSON.stringify(roll, null, 2) + '\n'
+
+        let existing: string | undefined
+
+        try {
+          existing = fs.readFileSync(rollPath, 'utf8')
+        } catch {
+          existing = undefined
+        }
+
+        if (existing !== text) {
+          fs.mkdirSync(path.dirname(rollPath), { recursive: true })
+          fs.writeFileSync(rollPath, text)
+        }
+
+        report({
+          glyph: 'info',
+          verb: 'write',
+          subject: 'host/roll.json',
+          counts: [
+            count(roll.exception.length, 'exceptions', 'exception'),
+            count(roll.task.length, 'tasks', 'task'),
+            count(roll.dock.length, 'routes', 'route'),
+            count(roll.tell.length, 'tells', 'tell'),
+          ],
+        })
+      } catch (error) {
+        report({ glyph: 'warning', verb: 'write', subject: 'host/roll.json was not written', message: [error instanceof Error ? error.message : String(error)] })
+      }
+
+      closeRun({
+        verdict: `${compiled} file${compiled === 1 ? '' : 's'} built`,
+        counts: warnings ? [count(warnings, 'warnings', 'warning')] : [],
+      })
     }
   } catch (err) {
-    logFail(formatError(err))
-    process.exit(1)
+    failRun(err, input.root)
   }
 }
 
@@ -1360,6 +1421,35 @@ function runCommand(input: {
       process.off('exit', onParentExit)
       reject(err)
     })
+  })
+}
+
+// a child run for its output: every line it writes, both streams in the order they arrive, and its exit code. Never
+// rejects. The output is QUOTED under the item that ran it (section 15), so nothing it prints mixes into the tool's
+// own lines; `--raw` (`raw`) passes it through untouched instead, and then `lines` is empty
+function runCaptured(input: { cmd: string; args: string[]; cwd: string; raw: boolean }): Promise<{ code: number; lines: string[] }> {
+  return new Promise(resolve => {
+    const child = spawn(input.cmd, input.args, { cwd: input.cwd, stdio: input.raw ? 'inherit' : 'pipe', shell: true })
+    const lines: string[] = []
+    let partial = ''
+
+    const take = (chunk: Buffer): void => {
+      const text = partial + chunk.toString('utf8')
+      const parts = text.split('\n')
+      partial = parts.pop() ?? ''
+      lines.push(...parts)
+    }
+
+    child.stdout?.on('data', take)
+    child.stderr?.on('data', take)
+    child.on('close', (code, signal) => {
+      if (partial !== '') {
+        lines.push(partial)
+      }
+
+      resolve({ code: code ?? (signal ? 130 : 1), lines })
+    })
+    child.on('error', error => resolve({ code: 127, lines: [...lines, String(error)] }))
   })
 }
 

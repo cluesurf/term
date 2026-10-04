@@ -3529,6 +3529,11 @@ function emitRustPass(
 
         // an owned list local leaves whole: the Vec itself from a fresh task, otherwise into the shared cell
         const ownedOut = node.value?.form === 'variable' && ownedNames.has(node.value.name) && closureDepth === 0
+        // a field read off a walk item held BY REFERENCE (`borrowedNames`, the walk's `byRef`) is cloned out: returned
+        // as it is, `return one.ascii` moved out of the borrow (E0507), found by the terminal output library's
+        // `find-symbol`, 2026-10-04
+        const offBorrow =
+          node.value?.form === 'member' && !node.value.index && node.value.target.form === 'variable' && borrowedNames.has(node.value.target.name)
         // a list-returning function that returns a native dock call directly wraps the shim's plain `Vec`
         const value = ownedOut
           ? emittingFresh
@@ -3538,7 +3543,7 @@ function emitRustPass(
           ? '()'
           : fnReturnsArray && isNativeCall(node.value)
             ? wrapList(expr(node.value))
-            : bare(boxUnknown(currentResult, node.value, closureDepth > 0 ? owned(node.value) : expr(node.value)))
+            : bare(boxUnknown(currentResult, node.value, closureDepth > 0 || offBorrow ? owned(node.value) : expr(node.value)))
 
         // the gradual boundary: an unknown-typed value returned at a declared FORM type downcasts
         const valueKind =

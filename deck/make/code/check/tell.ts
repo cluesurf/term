@@ -7,7 +7,7 @@ import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
 import type { Program, Statement } from '@term/make/code/compile/node'
 import { raiseSets } from '@term/make/code/check/effects'
-import { EXCEPTION_FORM } from '@term/make/code/check/extend'
+import { EXCEPTION_FORM, GENERIC_EXCEPTIONS } from '@term/make/code/check/extend'
 import { deckFromPath } from '@term/make/code/compile/roll'
 
 export function checkTells(
@@ -42,12 +42,24 @@ export function checkTells(
     }
   }
 
-  // what the entry's own tasks and every route can raise
+  // A file of tells alone, compiled as its own entry, holds no task of the app, so it cannot say what the app reaches.
+  // A tell takes effect only where an entry loads it, and THAT compile is the one that judges it. Judged here, a
+  // `code/tell.tree` was refused as "not an exception in this build" however the app used it (guides: language/errors,
+  // library/exceptions, 2026-10-04).
+  const judges = program.some(s => (s.form === 'function' || s.form === 'dock') && fileOf(s) === file)
+
+  if (!judges) {
+    return []
+  }
+
+  // what the app's own tasks and every route can raise: every task of the deck that tells, in whichever of its files
+  // it is, and not the standard library's, which raise everything and would make every tell look live
   const sets = raiseSets(program, new Set([...exceptions.values()].map(e => e.name)))
   const reachable = new Set<string>()
+  const telling = new Set(tells.map(hostOf))
 
   for (const s of program) {
-    if (s.form === 'function' && fileOf(s) === file) {
+    if (s.form === 'function' && telling.has(hostOf(s))) {
       for (const name of sets.raises.get(s.name) ?? []) {
         reachable.add(name)
       }
@@ -75,10 +87,8 @@ export function checkTells(
   const wire = new Map<string, Statement>()
 
   for (const tell of tells) {
-    const error = (message: string): void => {
-      diagnostics.push(
-        diagnose('type-mismatch', { file: fileOf(tell), span: tell.span, message }),
-      )
+    const error = (message: string, name: 'stale-tell' | 'type-mismatch' = 'type-mismatch'): void => {
+      diagnostics.push(diagnose(name, { file: fileOf(tell), span: tell.span, message }))
     }
 
     const exception = exceptions.get(tell.name)
@@ -87,18 +97,20 @@ export function checkTells(
       const bare = tell.name.slice(tell.name.lastIndexOf('/') + 1)
       const candidates = [...exceptions.keys()].filter(k => k.endsWith(`/${bare}`))
 
+      // a standard exception missing from the build is one nothing raises: the build drops an unraised form
       error(
         candidates.length
           ? `"${tell.name}" is not an exception in this build. Did you mean ${candidates.join(' or ')}?`
-          : `"${tell.name}" is not an exception in this build`,
+          : tell.name.startsWith('@term/base/') && GENERIC_EXCEPTIONS.has(bare)
+            ? `"${tell.name}" is a standard exception, but nothing in this program raises it, so this tell is stale`
+            : `"${tell.name}" is not an exception in this build`,
+        'stale-tell',
       )
       continue
     }
 
     if (!reachable.has(exception.name)) {
-      error(
-        `"${tell.name}" is declared but nothing in this program can raise it, so this tell is stale`,
-      )
+      error(`"${tell.name}" is declared but nothing in this program can raise it, so this tell is stale`, 'stale-tell')
     }
 
     if (told.has(tell.name)) {

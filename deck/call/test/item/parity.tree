@@ -1,0 +1,67 @@
+# The terminal output library drawn by a NATIVE build: a handful of items in every shape the cards use, drawn at 80
+# and 40 columns, in Unicode and ASCII, and printed as plain text. test/item/rust-parity.ts compiles this file for node
+# and for rust, runs both, and holds every line equal. The harness writes each backend's entry (`fn main` on Rust), since
+# the Rust emitter does not lift a top-level statement into one. Compiling on Rust is not answering on Rust: this is the check
+# that the integer arithmetic, the width tables and the wrapping give the same bytes on both.
+
+load ../../code/work/item/standard
+  find make-standard
+
+load ../../code/work/item/layout
+  find make-room
+  find line-text
+
+load ../../code/work/item/event
+  find event
+  find status
+  find tally
+  find plain-subject
+  find plain-field
+
+load ../../code/work/item/item
+  find draw-item
+
+# 2026-10-03 21:42:00.005 UTC, which is 14:42:00.005 in the mockups' zone
+host clock, 1791063720005
+
+task sample-events
+  like list, like event
+  save out, make list
+  save request, make event, glyph(<done>), kind(<request>), verb(<GET>), subject(plain-subject(</api/shapes/search?query=regular-hexagon&limit=50&cursor=eyJpZCI6MTIzfQ>)), source(<payments-reconciler>), clock(clock), duration(31), bytes(2400)
+  save request/status, make status, kind(<http>), value(200)
+  out/push request
+  save problem, make event, glyph(<failed>), kind(<problem>), verb(<check>), subject(plain-subject(<There is no task named multipy in this file or any it loads>)), clock(clock), duration(59990)
+  problem/fields/push plain-field(<at>, <packages/geometry/src/shapes/polygons/regular/hexagon.tree:14:12>)
+  problem/fields/push plain-field(<next>, <define it, import it, or check the spelling of 漢字 and é>)
+  problem/message/push <A number went past the i64 range while summing 31,804 rows of report totals for acct_7Q2>
+  out/push problem
+  save build, make event, glyph(<running>), kind(<progress>), verb(<build>), subject(plain-subject(<rust>)), clock(clock), duration(2900), done(31), total(46)
+  build/tallies/push make tally, amount(31), noun(<files>), total(46)
+  out/push build
+  save size, make event, glyph(<warning>), kind(<job>), verb(<transmogrify>), subject(plain-subject(<send-email>)), clock(clock), duration(36720000), bytes(99960)
+  size/facts/push <#4813>
+  out/push size
+  back out
+
+task draw-samples
+  like text
+  save standard, make-standard()
+  save text, <>
+  # pushed, not `make list(80, 40)`, which builds an EMPTY list (silent-defects-third-batch.md)
+  save widths, make list
+  widths/push 80
+  widths/push 40
+  save charsets, make list
+  charsets/push false
+  charsets/push true
+  walk sample-events()
+    take one
+    walk widths
+      take width
+      walk charsets
+        take ascii
+        save room, make-room(width, standard, ascii, -420, false)
+        walk draw-item(one, room, true)
+          take each
+          save text, <{text}{line-text(each)}\n>
+  back text

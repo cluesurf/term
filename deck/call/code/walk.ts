@@ -8,13 +8,7 @@ import { compile } from '@term/make/code/compile/compile'
 import type { Resolver } from '@term/make/code/compile/load'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { stdlibResolver } from '@term/make/code/resolve'
-import {
-  logStep,
-  logFail,
-  logGood,
-  fade,
-  bold,
-} from '@term/make/code/tint'
+import { closeRun, failRun, openRun, printData, report } from '@term/call/code/output'
 
 // the module resolvers now live in the compiler (make), so the CLI, dev server, and language server share them. Kept
 // re-exported here for the CLI's existing call sites and tests.
@@ -166,22 +160,25 @@ function formatDiagnostics(diagnostics: Diagnostic[]): string {
   return diagnostics.map(d => `${d.name}: ${d.message}`).join('\n')
 }
 
-export async function callWalk(_input: {
+// THE SESSION IS AN INTERACTION, so its dialog is data on stdout: the prompt, each value, `added <name>` for a
+// definition, and `bye`, exactly as typed and answered. Around it the run is items on stderr: the opening with how to
+// use it, a ✗ Problem item per input that did not compile or threw, and the closing item
+export async function callWalk(input: {
   root: string
 }): Promise<void> {
-  logStep('Term REPL')
-  console.log(
-    fade(
-      '  Type a definition (task / form / load) to add it, an expression to evaluate it, or `exit`.',
-    ),
-  )
-  console.log(fade('  Finish a multi-line block with a blank line.\n'))
+  openRun({ verb: 'walk', root: input.root, subject: 'Term REPL' })
+  report({
+    glyph: 'info',
+    verb: 'walk',
+    subject: 'Type a definition to add it, an expression to evaluate it, or exit',
+    message: ['A definition is task, form or load. Finish a multi-line block with a blank line.'],
+  })
 
   const repl = new Repl(stdlibResolver())
   const rl = createInterface({
     input: process.stdin,
     output: process.stdout,
-    prompt: bold('term> '),
+    prompt: 'term> ',
   })
 
   let buffer: string[] = []
@@ -197,11 +194,11 @@ export async function callWalk(_input: {
     const result = await repl.feed(block)
 
     if (result.kind === 'value') {
-      console.log(result.text)
+      printData(`${result.text}\n`)
     } else if (result.kind === 'definition') {
-      console.log(fade(`  added ${result.text}`))
+      printData(`added ${result.text}\n`)
     } else if (result.kind === 'error') {
-      logFail(result.text)
+      report({ glyph: 'failed', kind: 'problem', verb: 'check', subject: result.text.charAt(0).toUpperCase() + result.text.slice(1) })
     }
   }
 
@@ -265,11 +262,14 @@ export async function callWalk(_input: {
     void work
       .then(flush)
       .catch(error => {
-        logFail(String((error as Error).message ?? error))
+        report({ glyph: 'failed', kind: 'problem', subject: String((error as Error).message ?? error) })
       })
       .then(() => {
-        logGood('bye')
-        process.exit(0)
+        printData('bye\n')
+        process.exit(closeRun({ verdict: 'Session ended' }))
+      })
+      .catch(error => {
+        process.exit(failRun(error, input.root))
       })
   })
 }

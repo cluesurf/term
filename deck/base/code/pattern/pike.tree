@@ -493,6 +493,19 @@ task run-part
   save stamp, code 0
   save at, read start
   save going, true
+  # the main part, searched forwards from every position: a thread starts only where the code point can begin a match
+  save starts, make list
+  fork test
+    hook test
+      call and
+        call is-equal(read(part), code(0))
+        call and
+          call not(read(anchored))
+          call not(read(backward))
+    hook hold
+      save starts, read g/starts
+  save filtered
+    call is-above(read(starts/length), code(0))
   # each turn moves one position and the run stops past either end, so it takes at most n + 2 turns
   save limit
     call add(read(n), code(3))
@@ -507,10 +520,16 @@ task run-part
     hook step
       save turns
         call add(read(turns), code(1))
+      save can-start
+        call or
+          call not(read(filtered))
+          call set-has(read(starts), call(rune-from, read(s), read(at), false))
       fork test
         hook test
           call and
-            call not(read(found))
+            call and
+              call not(read(found))
+              read can-start
             call or
               call not(read(anchored))
               call is-equal(read(at), read(start))

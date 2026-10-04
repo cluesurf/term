@@ -280,14 +280,31 @@ task serve
   send back, read x
 `)
 
-  pair('`mark keep` and `mark deprecated` on a task emit what the notes emit', w => `
+  pair('`mark deprecated` on a task emits what the note emits', w => `
 task old-way
   ${w} deprecated
-  ${w} keep
   take x, like number
   like number
   send back, read x
 `)
+
+  // a word read by nothing is refused in either spelling, so a program cannot carry a mark that means nothing
+  // (guides: language/notes, 2026-10-04)
+  const refused = (name: string, body: (word: 'mark' | 'note') => string, pattern: RegExp): void => {
+    for (const word of ['note', 'mark'] as const) {
+      const built = build(body(word))
+
+      ok(`4. ${name}, as \`${word}\``, !built.ok && pattern.test(built.why), built.ok ? 'built' : built.why)
+    }
+  }
+
+  refused('`keep` on a task is refused', w => `
+task old-way
+  ${w} keep
+  take x, like number
+  like number
+  send back, read x
+`, /mark keep/)
 
   pair('`mark stable` at the top of a file emits what `note stable` emits', w => `${w} stable
 
@@ -296,7 +313,7 @@ task one
   send back, code 1
 `)
 
-  pair('`mark native` on a dock load emits what `note native` emits', w => `
+  refused('`native` under a dock load is refused', w => `
 dock load
   load <node:fs/promises>, name fs-promise
   ${w} native
@@ -304,7 +321,7 @@ dock load
 task one
   like number
   send back, code 1
-`, false)
+`, /dock load/)
 
   // a claim left open: `mark open` keeps it open the way `note open` did, counted rather than refused
   const claim = (w: string) =>

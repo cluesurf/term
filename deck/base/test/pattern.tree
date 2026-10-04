@@ -8,6 +8,7 @@ load @term/base/pattern
   find pattern
   find prepare
   find pattern-tier
+  find backtrack-reason
   find matches
   find find-match
   find find-matches
@@ -25,6 +26,7 @@ load @term/base/pattern/node
 
 load @term/base/native/{platform}/regex
   find engine-linear
+  find engine-class-limit
 
 load @term/base/pattern/syntax
   find parse-pattern
@@ -104,6 +106,17 @@ task unanchored-tier
   fork test
     hook test
       call engine-linear
+    hook hold
+      send back, text <native>
+  send back, text <linear>
+
+# `\p{Lu}+` reaches a native engine as a class of hundreds of ranges: native where the engine tests a class in
+# constant time, tier B where it tests one range by range (java.util.regex, `engine-class-limit` 32)
+task property-tier
+  like text
+  fork test
+    hook test
+      call is-above(call(engine-class-limit), code(1000))
     hook hold
       send back, text <native>
   send back, text <linear>
@@ -277,7 +290,23 @@ test <each pattern lands on the tier that can run it fastest without hanging>
         call and
           call is-equal(call(tier, text(<(a)\1>)), text(<native>))
           call is-equal(call(tier, text(<(\w)\1>)), text(<backtrack>))
-        call is-equal(call(tier, text(<[a-z]++x>)), text(<linear>))
+        call and
+          call is-equal(call(tier, text(<[a-z]++x>)), text(<linear>))
+          call is-equal(call(tier, text(<\p\{Lu\}+>)), call(property-tier))
+
+test <the backtracking tier names what put a pattern there, after the rewrites>
+  want hold
+    call and
+      call and
+        call is-equal(call(backtrack-reason, make(pattern, text(<(\w)\1>))), text(<the back reference to group 1>))
+        call is-equal(call(backtrack-reason, make(pattern, text(<(?\>ab|a)c>))), text(<an atomic group>))
+      call and
+        call and
+          call is-equal(call(backtrack-reason, make(pattern, text(<(ab)++c>))), text(<a possessive repetition>))
+          call is-equal(call(backtrack-reason, make(pattern, text(<(a)\1>))), text(<>))
+        call and
+          call is-equal(call(backtrack-reason, make(pattern, text(<[a-z]++x>))), text(<>))
+          call is-equal(call(backtrack-reason, make(pattern, text(<a*b>))), text(<>))
 
 test <a pattern that is not one is refused before any engine sees it>
   want hold

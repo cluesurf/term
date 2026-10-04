@@ -1,7 +1,6 @@
 import fs from 'fs/promises'
 import path from 'path'
 import { analyze } from '@term/make/code/analyze'
-import { render } from '@term/make/code/parser/diagnostic'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import type { Finding, TextEdit } from '@term/make/code/lint/rule'
 import { collectTreeFiles } from '@term/call/code/files'
@@ -13,18 +12,14 @@ import { parse, renderHead } from '@term/make/code/parser/tree'
 import type { GroupNode, Node } from '@term/make/code/parser/tree'
 import { spanOfNode } from '@term/make/code/compile/mill-run'
 import type { Resolver } from '@term/make/code/compile/load'
-import {
-  logGood,
-  logFail,
-  logStep,
-  fade,
-} from '@term/make/code/tint'
+import { closeRun, count, openRun, report, reportProblems } from '@term/call/code/output'
 
 // turn a lint finding into the compiler's Diagnostic shape so it renders identically. The stable rule code (`L003`)
-// becomes the numeric diagnostic code and the rule name is the heading.
+// is printed as written (`rule`), and the rule name is the heading.
 function toDiagnostic(finding: Finding, file: string): Diagnostic {
   return {
     code: parseInt(finding.code.replace(/\D/g, ''), 10),
+    rule: finding.code,
     name: finding.rule,
     message: finding.message,
     file,
@@ -192,12 +187,14 @@ export async function callLint(input: {
 }): Promise<void> {
   const files = await collectTreeFiles(input.paths, input.root)
 
-  if (files.length === 0) {
-    logFail('No .tree files found')
-    process.exit(1)
-  }
+  openRun({ verb: 'lint', root: input.root, counts: [count(files.length, 'files', 'file')], facts: input.fix ? ['--fix'] : [] })
 
-  logStep(input.fix ? 'Linting and fixing...' : 'Linting...')
+  if (files.length === 0) {
+    report({ glyph: 'failed', kind: 'problem', subject: 'There is no .tree file to lint', message: input.paths.length ? [`Looked in ${input.paths.join(', ')}.`] : [] })
+    closeRun({ verdict: 'Nothing to lint' })
+
+    return
+  }
 
   // the role and `mark lean` each file's role rule gives it, as the build reads them. Without these a lean file is
   // milled as longhand and linted as a program the build never compiles.
@@ -211,6 +208,8 @@ export async function callLint(input: {
   let totalFindings = 0
   let totalErrors = 0
   let totalFixed = 0
+  // every finding of every file, drawn together at the end so they sort by path, line and column (section 12)
+  const found: { diagnostic: Diagnostic; text: string }[] = []
 
   // the build's own resolver, so an ambiguity is reported exactly where the build would resolve one
   const resolve = projectResolver(input.root)
@@ -255,64 +254,39 @@ export async function callLint(input: {
         ...fileFindings(fixedText, absolute),
       ]
 
-      const lines = fixedText.split('\n')
-
       for (const finding of remaining) {
         if (finding.severity === 'error') {
           totalErrors++
         }
 
         totalFindings++
-        console.error(render(toDiagnostic(finding, relative), lines))
+        found.push({ diagnostic: toDiagnostic(finding, relative), text: fixedText })
       }
     } else {
-      const lines = text.split('\n')
-
       for (const finding of findings) {
         if (finding.severity === 'error') {
           totalErrors++
         }
 
         totalFindings++
-        console.error(render(toDiagnostic(finding, relative), lines))
+        found.push({ diagnostic: toDiagnostic(finding, relative), text })
       }
     }
   }
 
+  reportProblems(found, input.root)
+
   if (totalFixed > 0) {
-    console.log(
-      fade(
-        `  applied ${totalFixed} fix${totalFixed === 1 ? '' : 'es'}`,
-      ),
-    )
+    report({ glyph: 'changed', kind: 'change', verb: 'fix', subject: 'findings fixed in place', counts: [count(totalFixed, 'fixes', 'fix')] })
   }
 
-  if (totalFindings === 0) {
-    logGood('No lint findings')
-  } else {
-    logWarnSummary(totalFindings, totalErrors)
-  }
+  const warnings = totalFindings - totalErrors
+  const counts = [...(totalErrors ? [count(totalErrors, 'errors', 'error')] : []), ...(warnings ? [count(warnings, 'warnings', 'warning')] : [])]
 
-  if (totalErrors > 0) {
-    process.exit(1)
-  }
-}
-
-function logWarnSummary(findings: number, errors: number): void {
-  const warnings = findings - errors
-  const parts: string[] = []
-
-  if (errors > 0) {
-    parts.push(`${errors} error${errors === 1 ? '' : 's'}`)
-  }
-
-  if (warnings > 0) {
-    parts.push(`${warnings} warning${warnings === 1 ? '' : 's'}`)
-  }
-
-  if (errors > 0) {
-    logFail(parts.join(', '))
-  } else {
-    console.log(fade(`  ${parts.join(', ')}`))
-  }
+  // the closing glyph is the worst finding's: ✗ for an error (exit 1), ▲ for warnings alone (exit 0, 1 under --strict)
+  closeRun({
+    verdict: totalFindings === 0 ? 'No lint findings' : `${totalFindings} finding${totalFindings === 1 ? '' : 's'}`,
+    counts,
+    next: found.some(one => one.diagnostic.hint) && !input.fix ? 'term lint --fix' : undefined,
+  })
 }

@@ -91,6 +91,7 @@ import androidx.compose.runtime.remember as cxRemember
 import androidx.compose.ui.Alignment as CxAlignment
 import androidx.compose.ui.Modifier as CxModifier
 import androidx.compose.ui.graphics.Color as CxColor
+import androidx.compose.ui.layout.layout as cxLayout
 import androidx.compose.ui.platform.testTag as cxTestTag
 import androidx.compose.ui.semantics.SemanticsNode as CxSemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties as CxSemanticsProperties
@@ -1243,7 +1244,7 @@ fun CxNode(node: TermNode, given: CxModifier) {
         }
         TermNode.Kind.SCROLL -> {
             val scroll = cxRemember { CxScrollState(0) }
-            CxColumn(cxSized(node, given).cxVerticalScroll(scroll)) {
+            CxColumn(cxBoundedHeight(cxSized(node, given)).cxVerticalScroll(scroll)) {
                 for (child in node.children) CxNode(child, CxModifier)
             }
         }
@@ -1253,6 +1254,20 @@ fun CxNode(node: TermNode, given: CxModifier) {
             node.hosted.value?.let { content -> CxBox(CxModifier.cxTestTag(node.hostedTag)) { content() } }
         }
     }
+}
+
+// the most a scroll with no height of its own may be, in px, where its room has no bottom. Finite and far above any
+// screen, inside what a Compose constraint can hold beside any window's width
+private const val COMPOSE_UNBOUNDED_HEIGHT = 65_535
+
+// a scroll in a room with no bottom (the page, which scrolls itself) is as tall as its content, as CSS lays out an
+// `overflow-y: auto` block with no height: there is nothing to scroll, and the page scrolls instead. Compose refuses a
+// vertical scroll measured with no maximum height at all, which threw for a face `scroll` placed in a page, so the
+// room is given a finite bottom first, far below the content, and the scroll measures to its content
+private fun cxBoundedHeight(modifier: CxModifier): CxModifier = modifier.cxLayout { measurable, constraints ->
+    val room = if (constraints.hasBoundedHeight) constraints else constraints.copy(maxHeight = COMPOSE_UNBOUNDED_HEIGHT)
+    val placed = measurable.measure(room)
+    layout(placed.width, placed.height) { placed.place(0, 0) }
 }
 
 private fun cxPlainValue(number: Float): String {

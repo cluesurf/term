@@ -26,6 +26,9 @@ export type Marker = { span: Span; label?: string }
 
 export type Diagnostic = {
   code: number
+  // a lint finding's own rule code, `L023`, printed in place of `code`. Lint codes are decimal and the compiler's
+  // are hexadecimal, so printing a lint code as a compiler code showed L023 as `0017` (guides: commands/lint)
+  rule?: string
   name: string
   message: string
   file: string
@@ -146,9 +149,12 @@ export const CATALOG = {
   'unchecked-hold': {
     code: 0xf,
     message:
-      'this hold is outside the decidable linear fragment and was not proven',
+      'this hold is outside the decidable linear fragment: it was neither proven nor refuted, and may still be true',
     severity: 'error',
-    fix: 'rewrite it as a linear comparison (<, <=, >, >=, ==), prove it in the dependent kernel with `calm` / `fold` / `cite`, or mark the claim `mark open` to leave it open and counted',
+    // `mark open` is accepted only on a claim, a `rule` with no `show`, so the hint says so: offered bare, it sent a
+    // reader to mark a theorem, which refuses it (guides: tests/laws, 2026-10-04). `unproven` is the other verdict,
+    // a goal the provers can decide and that does not follow
+    fix: 'rewrite it as a linear comparison (<, <=, >, >=, ==), prove it in the dependent kernel with `calm` / `fold` / `cite`, or state it as a claim (a `rule` with no `show`) and `mark open` that, to leave it open and counted',
   },
   'duplicate-instance': {
     code: 0x10,
@@ -319,6 +325,40 @@ export const CATALOG = {
     severity: 'error',
     fix: 'end every path with `back`, or add a `hook miss` that does',
   },
+  // a `make pattern, <...>` literal that @term/base/pattern's reader refuses: it built, and the program raised
+  // `pattern-mismatch` the first time it ran the pattern (check/patterns.ts)
+  'pattern-mismatch': {
+    code: 0x29,
+    message: 'this pattern literal is not a pattern',
+    severity: 'error',
+    fix: 'correct the pattern at the position named, or build the text at run time and handle `pattern-mismatch`',
+  },
+  // a `make pattern, <...>` literal that runs on the backtracking tier, the one tier whose work can grow faster than
+  // its input, bounded by the step budget and raising `pattern-budget` past it (note/term/stdlib/regex-engine.md)
+  'pattern-backtracks': {
+    code: 0x2a,
+    message: 'this pattern runs on the backtracking tier',
+    severity: 'warning',
+    fix: 'rewrite it without the part named, or handle `pattern-budget` where it is searched',
+  },
+  // The `halt <form>` lines on a task's signature do not match what it raises: a name that is no exception, one the
+  // body never raises, or a raise the lines leave out (a broken promise). All three were `type-mismatch`, and the
+  // second said `"absence" is not an exception form`, because the build drops an exception nothing raises (guides:
+  // language/errors, library/exceptions, 2026-10-04)
+  'raise-bound': {
+    code: 0x2b,
+    message: "this task's raise bound does not match what it can raise",
+    severity: 'error',
+    fix: 'bound exactly what the body can raise. `term roll task` lists what each task raises',
+  },
+  // A `tell` for an exception no task in the build can raise: the stale customer wording the roll exists to catch.
+  // It was `type-mismatch` (guides: language/errors, commands/roll, 2026-10-04)
+  'stale-tell': {
+    code: 0x2c,
+    message: 'this tell is for an exception nothing in the build raises',
+    severity: 'error',
+    fix: 'remove the tell, or raise the exception where it is meant. `term roll exception` lists what each task raises',
+  },
 } satisfies Record<string, CatalogEntry>
 
 export type DiagnosticName = keyof typeof CATALOG
@@ -358,8 +398,9 @@ export class DiagnosticError extends Error {
   }
 }
 
-function toHex(n: number): string {
-  return n.toString(16).padStart(4, '0')
+// the code a frame prints: a lint rule's own (`L023`), else the compiler's catalog code in hexadecimal (`0007`)
+function codeOf(diagnostic: Diagnostic): string {
+  return diagnostic.rule ?? diagnostic.code.toString(16).padStart(4, '0')
 }
 
 // Render a diagnostic against the source lines: a gutter, the offending line, a red range, a caret underline, a
@@ -392,9 +433,7 @@ export function render(
   const out: string[] = []
 
   // header shows the readable name and the stable code, e.g. `error[type-mismatch 0007]`
-  const heading = `${diagnostic.severity}[${diagnostic.name} ${toHex(
-    diagnostic.code,
-  )}]`
+  const heading = `${diagnostic.severity}[${diagnostic.name} ${codeOf(diagnostic)}]`
 
   out.push(
     `${paint.bold(accent(heading))}: ${paint.bold(diagnostic.message)}`,
@@ -614,7 +653,7 @@ export function renderKink(
   out.push(
     `  ${paint.dim('code')} ${wrap(
       '<',
-      paint.cyan(toHex(diagnostic.code)),
+      paint.cyan(codeOf(diagnostic)),
     )}`,
   )
 
@@ -656,7 +695,7 @@ export function report(
 // Machine-readable form for the language server and CI.
 export function toJson(diagnostic: Diagnostic): string {
   return JSON.stringify({
-    code: toHex(diagnostic.code),
+    code: codeOf(diagnostic),
     name: diagnostic.name,
     message: diagnostic.message,
     file: diagnostic.file,

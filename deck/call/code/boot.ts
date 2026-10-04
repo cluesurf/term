@@ -24,7 +24,6 @@ import {
   resolveTreeFile,
   watchTreeFiles,
 } from '@term/call/code/make'
-import { printDiagnostics } from '@term/call/code/report'
 import { nativePrelude } from '@term/make/code/compile/native'
 import type { NativeEnv } from '@term/make/code/compile/native'
 import { hashText } from '@term/make/code/term/hash'
@@ -40,13 +39,7 @@ import { toConstant } from '@term/make/code/compile/typescript'
 import { parse } from '@term/make/code/parser/tree'
 import type { GroupNode } from '@term/make/code/parser/tree'
 import { manifestValueOf } from '@term/call/code/manifest-name'
-import {
-  logStep,
-  logGood,
-  logFail,
-  formatError,
-  fade,
-} from '@term/make/code/tint'
+import { closeRun, count, failRun, field, followChild, isRunOpen, location, openRun, report, reportProblems, showPath } from '@term/call/code/output'
 
 // the head name of a tree group (its first `name` node), and the group's first argument as text. The structured way to
 // read a `.tree` file (mirrors the helpers in code/deck/install.ts).
@@ -253,6 +246,7 @@ export async function buildClientBundle(opts: {
   prod: boolean
 }): Promise<void> {
   const { entry, appDir, projectRoot, installRoot, prod } = opts
+  const started = Date.now()
 
   try {
     const resolve = projectResolver(appDir, 'browser', installRoot)
@@ -271,12 +265,16 @@ export async function buildClientBundle(opts: {
     )
 
     if (!result.ok) {
-      printDiagnostics(result.diagnostics)
-      logFail(
-        `Client build failed: ${result.diagnostics.length} error${
-          result.diagnostics.length === 1 ? '' : 's'
-        } (server SSR still served)`,
-      )
+      reportProblems(result.diagnostics.map(diagnostic => ({ diagnostic })), projectRoot)
+      // a warning, not a failure: the server still renders every page, only without the client taking over
+      report({
+        glyph: 'warning',
+        verb: 'build',
+        subject: 'client bundle',
+        duration: Date.now() - started,
+        counts: [count(result.diagnostics.length, 'errors', 'error')],
+        message: ['The server still renders every page, without the client taking over.'],
+      })
 
       return
     }
@@ -323,7 +321,7 @@ export async function buildClientBundle(opts: {
       existsSync(stampFile) &&
       readFileSync(stampFile, 'utf8') === key
     ) {
-      logGood(`Cached client bundle (build/boot.js)`)
+      report({ glyph: 'skipped', verb: 'build', subject: 'client bundle', duration: Date.now() - started, facts: ['cached'], fields: [location('build/boot.js')] })
 
       return
     }
@@ -386,11 +384,15 @@ export async function buildClientBundle(opts: {
     }
 
     writeFileSync(stampFile, key)
-    logGood(`Built client bundle -> build/boot.js (${key.slice(0, 8)})`)
+    report({ glyph: 'done', verb: 'build', subject: 'client bundle', duration: Date.now() - started, fields: [location('build/boot.js')] })
   } catch (err) {
-    logFail(
-      `Client build error: ${formatError(err)} (server SSR still served)`,
-    )
+    report({
+      glyph: 'warning',
+      verb: 'build',
+      subject: 'client bundle',
+      duration: Date.now() - started,
+      message: [err instanceof Error ? err.message : String(err), 'The server still renders every page, without the client taking over.'],
+    })
   }
 }
 
@@ -484,9 +486,7 @@ export function hashAssets(buildDir: string, prod: boolean): void {
   }
 
   writeFileSync(manifestFile, JSON.stringify(map, null, 2))
-  logGood(
-    `Hashed ${Object.keys(map).length} assets -> build/asset-manifest.json`,
-  )
+  report({ glyph: 'done', verb: 'write', subject: 'asset manifest', counts: [count(Object.keys(map).length, 'assets', 'asset')], fields: [location('build/asset-manifest.json')] })
 }
 
 // the dev live-reload build id: the client polls `/base/__id` and reloads when it changes. Bumped on boot and on every
@@ -556,7 +556,7 @@ function watchStyles(appDir: string): () => void {
     timer = setTimeout(() => {
       buildStyles(appDir)
       writeBuildId(appDir)
-      logGood('Styles rebuilt (hot reload)')
+      report({ glyph: 'info', kind: 'lifecycle', verb: 'reload', subject: 'styles' })
     }, 60)
   })
 
@@ -585,7 +585,16 @@ export async function callBoot(input: {
    * it runs wherever it is copied: this is how a Term CLI ships to npm. */
   out?: string
 }): Promise<void> {
-  logStep('Booting app...')
+  // a run of its own, unless one is open: `term host` builds a package's console inside its own run
+  const owned = !isRunOpen()
+
+  if (owned) {
+    openRun({ verb: 'boot', root: input.root, facts: input.out ? ['--out'] : [] })
+  }
+
+  // the run closed, when this call opened it
+  const finish = (verdict: string, extra: { failure?: string; uptime?: boolean; next?: string } = {}): number =>
+    owned ? closeRun({ verdict, ...extra }) : 0
 
   try {
     const cwd = input.root
@@ -593,12 +602,15 @@ export async function callBoot(input: {
     const entry = findEntry(cwd, input.entry)
 
     if (!entry || !existsSync(entry)) {
-      logFail(
-        entry
-          ? `Entry not found: ${entry}`
-          : 'No entry given and no `boot <path>` in deck.tree',
-      )
-      process.exit(1)
+      report({
+        glyph: 'failed',
+        kind: 'problem',
+        subject: entry ? 'The entry is not there' : 'No entry was given, and deck.tree names none',
+        fields: entry ? [field('looked', showPath(entry, cwd))] : [],
+      })
+      finish('Nothing was booted', { failure: 'usage', next: 'term boot <file.tree>, or a `boot <path>` line in deck.tree' })
+
+      return
     }
 
     const env: NativeEnv = input.env ?? 'node'
@@ -608,9 +620,13 @@ export async function callBoot(input: {
     const loadedEnv = appDir ? loadHostEnv(appDir) : []
 
     if (loadedEnv.length) {
-      console.log(
-        fade(`  env: ${loadedEnv.join(', ')} (bind/host/base.tree)`),
-      )
+      report({
+        glyph: 'info',
+        verb: 'load',
+        subject: 'environment',
+        counts: [count(loadedEnv.length, 'variables', 'variable')],
+        fields: [location('bind/host/base.tree'), field('names', loadedEnv.join(', '))],
+      })
     }
 
     // warm the local cache from a remote (Tier 5) before compiling, so a cold machine / CI reuses shared artifacts
@@ -625,11 +641,7 @@ export async function callBoot(input: {
         )
 
         if (pulled) {
-          console.log(
-            fade(
-              `  pulled ${pulled} cache artifacts from ${input.remote}`,
-            ),
-          )
+          report({ glyph: 'done', verb: 'pull', subject: 'build cache', counts: [count(pulled, 'artifacts', 'artifact')], facts: [input.remote] })
         }
       } catch {
         // a remote-cache failure must never fail the build
@@ -691,6 +703,7 @@ export async function callBoot(input: {
       run: string
       cli: boolean
     } | null> => {
+      const started = Date.now()
       const result = compile(
         { file: entry, text: readFileSync(entry, 'utf8') },
         {
@@ -705,12 +718,14 @@ export async function callBoot(input: {
       )
 
       if (!result.ok) {
-        printDiagnostics(result.diagnostics)
-        logFail(
-          `Compile failed: ${result.diagnostics.length} error${
-            result.diagnostics.length === 1 ? '' : 's'
-          }`,
-        )
+        reportProblems(result.diagnostics.map(diagnostic => ({ diagnostic })), cwd)
+        report({
+          glyph: 'failed',
+          verb: 'build',
+          subject: path.relative(cwd, entry) || entry,
+          duration: Date.now() - started,
+          counts: [count(result.diagnostics.length, 'errors', 'error')],
+        })
 
         return null
       }
@@ -753,7 +768,12 @@ export async function callBoot(input: {
         : JSON.stringify(path.join(projectRoot, 'index.js'))
 
       if (input.out && !cli) {
-        logFail('--out writes a command-line program, and this entry declares no `hook` commands')
+        report({
+          glyph: 'failed',
+          kind: 'problem',
+          subject: '--out writes a command-line program, and this entry declares no `hook` commands',
+          fields: [location(showPath(entry, cwd))],
+        })
 
         return null
       }
@@ -815,7 +835,7 @@ export async function callBoot(input: {
 
       // an `--out` directory is always rewritten: it is somebody's published copy, not a cache keyed by its input
       if (!input.out && existsSync(bundle)) {
-        logGood(`Cached ${path.relative(cwd, entry)} (${shown})`)
+        report({ glyph: 'skipped', verb: 'build', subject: path.relative(cwd, entry) || entry, duration: Date.now() - started, facts: ['cached'], fields: [location(shown)] })
       } else {
         mkdirSync(cached, { recursive: true })
         mkdirSync(out, { recursive: true })
@@ -825,7 +845,7 @@ export async function callBoot(input: {
           outfile: bundle,
           ...bundleConfig,
         })
-        logGood(`Built ${path.relative(cwd, entry)} -> ${shown}`)
+        report({ glyph: 'done', verb: 'build', subject: path.relative(cwd, entry) || entry, duration: Date.now() - started, fields: [location(shown)] })
       }
 
       // link the CLI install's node_modules next to the bundle so ESM resolves the external bare specifiers
@@ -899,7 +919,7 @@ export async function callBoot(input: {
           `import * as app from './app.mjs'`,
           `app.wakeHive?.()`,
           `const boot = app.boot ?? app.start ?? app.main`,
-          `if (!boot) { console.error('entry has no boot/start/main task'); process.exit(1) }`,
+          `if (!boot) { console.error('entry has no boot/start/main task'); process.exit(1) }`, // output: generated, run.mjs's own line
           `const url = process.env.DATABASE_URL ?? ''`,
           `const port = Number(process.env.PORT ?? ${port})`,
           `await boot(url, port)`,
@@ -913,14 +933,27 @@ export async function callBoot(input: {
     const built = await buildOnce()
 
     if (!built) {
-      process.exit(1)
+      // a caller holding the run (term host) cannot go on with a console that did not build: it fails its own run
+      if (!owned) {
+        throw new Error(`${path.relative(cwd, entry) || entry} did not build`)
+      }
+
+      finish('Build failed')
+
+      return
     }
 
     const runPath = built.run
 
     // `--out`: the bundle is the product. Nothing runs.
     if (input.out) {
-      logGood(`Wrote ${path.relative(cwd, path.dirname(runPath)) || '.'}/run.mjs, app.mjs and dock.mjs`)
+      report({
+        glyph: 'done',
+        verb: 'write',
+        subject: 'run.mjs, app.mjs and dock.mjs',
+        fields: [location(showPath(path.dirname(runPath), cwd))],
+      })
+      finish('Console built')
 
       return
     }
@@ -929,6 +962,10 @@ export async function callBoot(input: {
     // exits with the command's own code. No port, no watcher, no server
     // lifecycle - `term boot cli.tree -- show` behaves like `view show`.
     if (built.cli) {
+      // the run closes BEFORE the program runs: what follows is the program's own output, and its exit code is the
+      // process's
+      finish(`${binName} built`)
+
       // A command-line tool runs in the USER'S cwd, not the app dir. A
       // server needs the app dir (its `build/` and `deck.tree` live
       // there), but a CLI resolves the user's relative paths -- a
@@ -957,24 +994,27 @@ export async function callBoot(input: {
         )
 
         if (pushed) {
-          console.log(
-            fade(`  pushed ${pushed} cache artifacts to ${input.remote}`),
-          )
+          report({ glyph: 'done', verb: 'push', subject: 'build cache', counts: [count(pushed, 'artifacts', 'artifact')], facts: [input.remote] })
         }
       } catch {
         // a remote-cache failure must never fail the build
       }
     }
 
-    logGood(`Serving on http://localhost:${port}`)
-    console.log(fade(`  press ctrl-c to stop`))
+    // a service (section 11): its `start` item names the address. No time to ready: the child does not say when it
+    // is listening, and the time to spawn it would be a wrong number. The server's own lines are ADAPTED (section 15)
+    // by `followChild`: a JSON or logfmt line becomes an item, a plain line an item of its own, each tagged `server`,
+    // and `--raw` passes them through untouched
+    const address = `http://localhost:${port}`
 
     // the server child: spawned now from the APP dir (where deck.tree + build/ live), killed + respawned by the dev
-    // watcher on an app-code rebuild.
+    // watcher on an app-code rebuild. stdin stays the terminal's; stdout and stderr are piped to be adapted
     let child: ChildProcess = spawn('node', [runPath], {
       cwd: serverCwd,
-      stdio: 'inherit',
+      stdio: ['inherit', 'pipe', 'pipe'],
     })
+    followChild(child, 'server')
+    report({ glyph: 'done', kind: 'lifecycle', verb: 'start', subject: address })
 
     // restart the server on a freshly-built entry: wait for the old process to fully EXIT (releasing the port) before
     // binding the new one, so a restart never races into EADDRINUSE. If the child already exited on its own (a crash),
@@ -987,7 +1027,8 @@ export async function callBoot(input: {
         })
       }
 
-      child = spawn('node', [next], { cwd: serverCwd, stdio: 'inherit' })
+      child = spawn('node', [next], { cwd: serverCwd, stdio: ['inherit', 'pipe', 'pipe'] })
+      followChild(child, 'server')
     }
 
     const stops: Array<() => void> = []
@@ -1003,23 +1044,25 @@ export async function callBoot(input: {
       const codeWatcher = watchTreeFiles(
         appDir,
         async name => {
-          logStep(`change in ${name}, rebuilding...`)
+          // a failed rebuild prints its problems and leaves the running server up
+          const started = Date.now()
           const next = await buildOnce()
 
           if (next) {
             await restart(next.run)
-            logGood('reloaded')
+            report({ glyph: 'info', kind: 'lifecycle', verb: 'reload', subject: `${name} changed`, duration: Date.now() - started })
           }
         },
         ['build/', '.base/@cluesurf/term/', 'node_modules/', 'host/'],
       )
       stops.push(() => codeWatcher.close())
 
-      console.log(fade('  hot reload on (watching app code + styles)'))
+      report({ glyph: 'info', kind: 'lifecycle', verb: 'watch', subject: 'app code and styles', message: ['An edit rebuilds and reloads. Ctrl-C stops.'] })
     }
 
-    // keep the CLI alive; ctrl-c stops the watchers and the server child
-    const shutdown = (): void => {
+    // keep the CLI alive; ctrl-c stops the watchers and the server child. Ctrl-C exits 130 (section 18), a SIGTERM
+    // is an ordinary stop
+    const shutdown = (signal: 'SIGINT' | 'SIGTERM'): void => {
       for (const stop of stops) {
         stop()
       }
@@ -1030,21 +1073,27 @@ export async function callBoot(input: {
         // already gone
       }
 
-      process.exit(0)
+      report({ glyph: 'info', kind: 'lifecycle', verb: 'stop', subject: address })
+      process.exit(finish('Stopped', { uptime: true, failure: signal === 'SIGINT' ? 'interrupted' : '' }))
     }
 
-    process.on('SIGINT', shutdown)
-    process.on('SIGTERM', shutdown)
+    process.on('SIGINT', () => shutdown('SIGINT'))
+    process.on('SIGTERM', () => shutdown('SIGTERM'))
 
     if (stops.length > 0) {
       // dev: the watchers own the server child's lifecycle (rebuild -> restart), so stay alive until a signal
       await new Promise<void>(() => {})
     } else {
       // production / no-watch: run until the server child exits, then return (matching a plain `node run.mjs`)
-      await new Promise<void>(done => child.once('exit', () => done()))
+      const code = await new Promise<number | null>(done => child.once('exit', exit => done(exit)))
+
+      if (code) {
+        report({ glyph: 'failed', kind: 'lifecycle', verb: 'exit', subject: `code ${code}`, exit: code })
+      }
+
+      finish('Stopped', { uptime: true })
     }
   } catch (err) {
-    logFail(formatError(err))
-    process.exit(1)
+    failRun(err, input.root)
   }
 }

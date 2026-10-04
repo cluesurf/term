@@ -388,6 +388,13 @@ function checkTermination(
     }
 
     const statement = byName.get(name)!
+
+    // each module reports its own. A task merged in from another file carries that file's span, and stamping it with
+    // this one put 11 of @term/host's tasks at `code/boot.tree:1054` in a 22-line file (guides: language/data)
+    if (statement.span.file !== undefined && statement.span.file !== file) {
+      continue
+    }
+
     const calls: SelfCall[] = []
     collectSelfCalls(statement.body, name, calls, new Map())
 

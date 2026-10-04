@@ -7,8 +7,7 @@ import path from 'node:path'
 import { compile } from '@term/make/code/compile/compile'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { editorResolver } from '@term/make/code/resolve'
-import { logGood, logFail, fade } from '@term/make/code/tint'
-import { printDiagnostic } from '@term/call/code/report'
+import { closeRun, count, field, openRun, printData, report, reportProblems } from '@term/call/code/output'
 
 // the JSON shape an agent consumes: stable, workspace-relative, no machine paths or timestamps
 function toJson(
@@ -44,18 +43,21 @@ export async function callScan(input: {
 
   if (!existsSync(file)) {
     if (json) {
-      process.stdout.write(
+      printData(
         `${JSON.stringify({
           ok: false,
           error: 'not-found',
           file: input.file,
         })}\n`,
       )
+      process.exitCode = 1
     } else {
-      logFail(`File not found: ${input.file}`)
+      openRun({ verb: 'scan', root: input.root, subject: input.file })
+      report({ glyph: 'failed', kind: 'problem', subject: 'There is no such file', fields: [field('looked', file)] })
+      closeRun({ verdict: 'Nothing scanned' })
     }
 
-    process.exit(1)
+    return
   }
 
   const text = readFileSync(file, 'utf8')
@@ -68,7 +70,8 @@ export async function callScan(input: {
   const diagnostics = result.ok ? result.warnings : result.diagnostics
 
   if (json) {
-    process.stdout.write(
+    // the answer the agent asked for: data on stdout, the exit code the gate
+    printData(
       `${JSON.stringify({
         ok: result.ok,
         diagnostics: diagnostics.map(d => toJson(input.root, d)),
@@ -76,26 +79,19 @@ export async function callScan(input: {
     )
 
     if (!result.ok) {
-      process.exit(1)
+      process.exitCode = 1
     }
 
     return
   }
 
-  for (const d of diagnostics) {
-    // a rich, colored source frame (header + locator + caret), the same renderer the editor uses
-    printDiagnostic(d)
-  }
-
-  if (!result.ok) {
-    process.exit(1)
-  }
-
-  logGood(
-    diagnostics.length
-      ? `${input.file} ✓ (${diagnostics.length} warning${
-          diagnostics.length === 1 ? '' : 's'
-        })`
-      : `${input.file} ✓`,
-  )
+  openRun({ verb: 'scan', root: input.root, subject: input.file })
+  // each diagnostic a Problem item with its frame (section 12); the run fails on any error, as before
+  reportProblems(diagnostics.map(diagnostic => ({ diagnostic, text: diagnostic.file === file ? text : undefined })), input.root)
+  const errors = diagnostics.filter(d => d.severity === 'error').length
+  const warnings = diagnostics.length - errors
+  closeRun({
+    verdict: result.ok ? `${input.file} checks` : `${input.file} does not check`,
+    counts: [...(errors ? [count(errors, 'errors', 'error')] : []), ...(warnings ? [count(warnings, 'warnings', 'warning')] : [])],
+  })
 }

@@ -38,6 +38,7 @@ load @term/base/native/{platform}/regex
   find engine-search-all
   find end-anchor
   find engine-linear
+  find engine-class-limit
 
 load @term/base/regex/dialect
   find regex-literal
@@ -75,6 +76,7 @@ load @term/base/pattern/analyze
   find tier-native
   find tier-linear
   find tier-backtrack
+  find backtrack-cause
 
 # a pattern: its text, read when it is first used
 form pattern
@@ -136,7 +138,7 @@ task prepare
   save parsed
     call parse-pattern(read(value/text))
   save found
-    call analyze-pattern(read(parsed/root), call(end-anchor), call(engine-linear))
+    call analyze-pattern(read(parsed/root), call(end-anchor), call(engine-linear), call(engine-class-limit))
   save rewritten
     make parsed
       bind root, read found/root
@@ -171,6 +173,24 @@ task pattern-tier
     hook hold
       send back, text <linear>
   send back, text <backtrack>
+
+# why the pattern runs on the backtracking tier, in words (`the back reference to group 1`, `an atomic group`, `a
+# possessive repetition`), or the empty text when it does not. The same on every backend: the backtracking tier is
+# chosen by what the pattern needs, never by the platform's engine
+task backtrack-reason
+  take value, like pattern
+  like text
+  save parsed
+    call parse-pattern(read(value/text))
+  save found
+    call analyze-pattern(read(parsed/root), call(end-anchor), call(engine-linear), call(engine-class-limit))
+  fork test
+    hook test
+      call is-equal(read(found/tier), read(tier-backtrack))
+    hook hold
+      send back
+        call backtrack-cause(read(found/root))
+  send back, text <>
 
 # a session over one input, for a prepared pattern
 task open-session

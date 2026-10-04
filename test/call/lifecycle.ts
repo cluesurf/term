@@ -92,7 +92,8 @@ ok('`make` emits host/ from the scaffolded source', existsSync(join(root, 'host/
 // and ONLY the code. `wake` writes an unscoped `deck demo`, and `make` used to accept only `deck @scope/name` as a
 // manifest, so it compiled deck.tree as code into host/deck.ts and said "Compiled 2 files" for a project of one
 ok('`make` does not compile the unscoped manifest as code', !existsSync(join(root, 'host/deck.ts')), made)
-ok('`make` counts one compiled file', /Compiled 1 file\b/.test(made), made)
+// the closing item of the terminal output standard: `✓ make     1 file built`
+ok('`make` counts one compiled file', /\b1 file built\b/.test(made), made)
 
 // `time`: compiles the project THE WAY THE BUILD DOES, then reports what it found.
 //
@@ -103,7 +104,7 @@ ok('`make` counts one compiled file', /Compiled 1 file\b/.test(made), made)
 // rather than blaming its imports.
 const timed = term(root, 'time')
 
-ok('`time` finds no benchmarks rather than failing to resolve', /no benchmarks found/i.test(timed), timed)
+ok('`time` finds no benchmarks rather than failing to resolve', /There is no benchmark to run/.test(timed), timed)
 ok('`time` does not report an imported name as undefined', !/unknown-name/.test(timed), timed)
 
 // `show`: reports the version, and does not need a project to do it
@@ -152,10 +153,10 @@ ok(
 writeFileSync(join(root, 'code/lintable.tree'), 'task a\n  save y\n    call add\n      read x\n      code 0\n')
 const linted = term(root, 'lint')
 
-// `warning[prefer-host-for-constant 0004]: ...`
+// a ▲ Problem item whose facts line reads `prefer-host-for-constant L004`, the name and the code `# lint off` takes
 ok(
   '`lint` reports a finding by rule name and code',
-  /warning\[[a-z-]+ \d{4}\]/.test(linted),
+  /▲ check[\s\S]*?\b[a-z]+(-[a-z]+)+ L\d{3}\b/.test(linted),
   linted,
 )
 
@@ -183,7 +184,7 @@ ok('`base init` creates a repository', existsSync(join(repo, '.base')), inited)
 
 const checked = term(repo, 'base', 'check')
 
-ok('`base check` reports a fresh repository coherent', /no missing chunks/.test(checked), checked)
+ok('`base check` reports a fresh repository coherent', /No missing chunks/.test(checked), checked)
 
 // `halt`: reports honestly when nothing is running, AND says `term`, not `seed`.
 //
@@ -195,20 +196,22 @@ const halted = term(root, 'halt')
 // the assertion deliberately does not spell the name of the verb `halt` stops: task/term/cli-coverage.ts counts a
 // verb as covered when a test names it, so mentioning one verb inside another verb's test claims coverage that
 // does not exist. Only `halt` is tested here.
-ok('`halt` reports when nothing is running', /instances running/i.test(halted), halted)
+ok('`halt` reports when nothing is running', /No term boot instance is running/.test(halted), halted)
 ok('`halt` says `term`, not `seed`', !/\bseed [a-z]/.test(halted), halted)
 
 // `note`: names the package and its version, read from the manifest
 const noted = term(root, 'note')
 
-ok('`note` names the package and version', /demo/.test(noted) && /0\.0\.2/.test(noted), noted)
+// the scaffold starts at 0.0.1 (deck/call/code/wake.ts, 2026-10-03)
+ok('`note` names the package and version', /demo/.test(noted) && /0\.0\.1/.test(noted), noted)
 
 // `hold`: the gate. One line counting the files and the tier-0 obligations it proved
 const held = term(root, 'hold')
 
 ok(
   '`hold` counts what it checked',
-  /\d+ file\(s\), \d+ of \d+ obligation\(s\) proven/.test(held),
+  // the closing item's facts: `0/0 obligations proven · 0 in the baseline`
+  /\b\d+\/\d+ obligations? proven\b/.test(held),
   held,
 )
 
@@ -222,7 +225,8 @@ const viewed = term(root, 'view')
 
 ok(
   '`view` refuses a `task` in a document, and says why',
-  /document cannot declare a function/.test(viewed),
+  // the item's subject wraps at the body column, so the words may stand on two lines
+  /document\s+cannot\s+declare\s+a\s+function/.test(viewed),
   viewed,
 )
 
@@ -249,7 +253,8 @@ writeFileSync(
 
 const tested = term(root, 'test')
 
-ok('`test` runs a test file and counts it', /1 test passed/.test(tested), tested)
+// the closing item, `✓ test     Tests passed`, its facts `1 test · 1 passed`
+ok('`test` runs a test file and counts it', /Tests passed[\s\S]*?\b1 test\b[\s\S]*?\b1 passed\b/.test(tested), tested)
 
 // `hunt`: reads THIS project's files, really fuzzes, and an empty corpus FAILS rather than passing.
 //
@@ -262,8 +267,9 @@ const hunt = (...argv: string[]) =>
 const hunted = hunt('--runs', '20', '--seeds', '1')
 const huntedText = `${hunted.stdout ?? ''}${hunted.stderr ?? ''}`
 
-ok('`hunt` reads the project\'s own files by default', /corpus oracles: [1-9]\d* file\(s\) read/.test(huntedText), huntedText)
-ok('`hunt` runs the fuzz campaign from the built CLI', /fuzzing: 20 run\(s\) over 1 of 1 seed/.test(huntedText), huntedText)
+// the `check` and `fuzz` items of the terminal output standard, each with its counts on its facts line
+ok('`hunt` reads the project\'s own files by default', /Corpus oracles[\s\S]*?\b[1-9]\d* files?\b/.test(huntedText), huntedText)
+ok('`hunt` runs the fuzz campaign from the built CLI', /Structure-aware fuzzing under a watchdog[\s\S]*?\b20 runs\b[\s\S]*?\b1\/1 seeds?\b/.test(huntedText), huntedText)
 
 mkdirSync(join(root, 'empty'), { recursive: true })
 const huntedEmpty = hunt('empty', '--runs', '20', '--seeds', '1')

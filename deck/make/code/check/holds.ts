@@ -3035,6 +3035,51 @@ export type Tally = {
   }[]
   // the running count per `<task> <kind>`, for the ordinal
   seen?: Map<string, number>
+  // the same counts per kind, so a build line can say what was owed. One `tier 0` line counted a walk's termination
+  // under "list reads in bounds, no division by zero" (guides: language/notes, 2026-10-04)
+  kinds?: Partial<Record<Tier0, { total: number; proven: number }>>
+}
+
+// the obligations nobody wrote, which the gate counts rather than fails
+export type Tier0 = 'index' | 'zero' | 'ends'
+
+// tier-0 obligations summed over files, as a build reports them
+export type Owed = { total: number; proven: number; kinds?: Tally['kinds'] }
+
+// what each kind of tier-0 obligation is, as the build line names it
+const OWED_KINDS: [Tier0, string][] = [
+  ['index', 'list reads in bounds'],
+  ['zero', 'divisions by something other than zero'],
+  ['ends', 'walks shown to end'],
+]
+
+// add one file's obligations into a running total
+export function addOwed(into: Owed, from: Owed | undefined): void {
+  if (!from) {
+    return
+  }
+
+  into.total += from.total
+  into.proven += from.proven
+
+  for (const [kind] of OWED_KINDS) {
+    const add = from.kinds?.[kind]
+
+    if (add) {
+      const sum = ((into.kinds ??= {})[kind] ??= { total: 0, proven: 0 })
+      sum.total += add.total
+      sum.proven += add.proven
+    }
+  }
+}
+
+// `12 of 12 list reads in bounds, 2 of 3 walks shown to end`: each kind that was owed, with its denominator
+export function describeOwed(owed: Owed): string {
+  return OWED_KINDS.flatMap(([kind, what]) => {
+    const one = owed.kinds?.[kind]
+
+    return one && one.total > 0 ? [`${one.proven} of ${one.total} ${what}`] : []
+  }).join(', ')
 }
 
 // what a checker-written hold was owed for, as the start of its failure message
@@ -4179,11 +4224,14 @@ function walkHolds(
             : diagnostics
 
         if (tier0 && walk.tally) {
+          const kind = (walk.tally.kinds ??= {})[statement.origin as Tier0] ??= { total: 0, proven: 0 }
           walk.tally.total++
-        }
+          kind.total++
 
-        if (verdict === true && tier0 && walk.tally) {
-          walk.tally.proven++
+          if (verdict === true) {
+            walk.tally.proven++
+            kind.proven++
+          }
         }
 
         if (verdict === null) {
@@ -4193,7 +4241,7 @@ function walkHolds(
               span: statement.span,
               message: owed
                 ? `${owed}, and it is outside what the provers decide`
-                : 'this hold is outside the decidable linear fragment and was not proven',
+                : 'this hold is outside the decidable linear fragment: it was neither proven nor refuted, and may still be true',
             }),
           )
         } else if (verdict === false) {
@@ -4203,7 +4251,7 @@ function walkHolds(
               span: statement.span,
               message: owed
                 ? `${owed}: it does not follow from what is known here`
-                : 'this hold could not be proven from the available assumptions',
+                : 'this hold does not follow from what is known here: it is false for some value the facts allow, or it needs a fact the code does not state',
             }),
           )
         }

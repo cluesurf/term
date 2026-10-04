@@ -1,12 +1,6 @@
 import fsp from 'fs/promises'
 import path from 'path'
-import {
-  logGood,
-  logFail,
-  logStep,
-  formatError,
-  fade,
-} from '@term/make/code/tint'
+import { closeRun, count, openRun, report } from '@term/call/code/output'
 
 // `.base/term/cache` is the PRE-RENAME path, kept here on purpose. `.base/term/` became
 // `.base/@cluesurf/term/` on 2026-08-30, and a cache deliberately does not travel through `keptAt` on a rename
@@ -20,26 +14,28 @@ const BUILD_DIRS = [
   '.base/term/cache',
 ]
 
+// `term wash`: the build's output removed, one `remove` change item per directory that was there (terminal output
+// standard, section 9)
 export async function callWash(input: {
   root: string
   target?: string
 }): Promise<void> {
-  if (input.target === 'tail') {
-    logStep('Clearing logs...')
+  openRun({ verb: 'wash', root: input.root, facts: input.target ? [input.target] : [] })
 
+  if (input.target === 'tail') {
     const logDir = path.join(input.root, '.base/@cluesurf/term', 'log')
 
     try {
       await fsp.rm(logDir, { recursive: true, force: true })
-      logGood('Logs cleared')
+      report({ glyph: 'removed', kind: 'change', verb: 'remove', subject: '.base/@cluesurf/term/log/' })
+      closeRun({ verdict: 'Logs cleared' })
     } catch (err) {
-      logFail(formatError(err))
+      report({ glyph: 'failed', kind: 'problem', subject: 'The logs could not be removed', message: [err instanceof Error ? err.message : String(err)] })
+      closeRun({ verdict: 'Logs not cleared' })
     }
 
     return
   }
-
-  logStep('Cleaning build artifacts...')
 
   let cleaned = 0
 
@@ -49,16 +45,15 @@ export async function callWash(input: {
     try {
       await fsp.access(fullPath)
       await fsp.rm(fullPath, { recursive: true, force: true })
-      console.log(fade(`    removed ${dir}/`))
+      report({ glyph: 'removed', kind: 'change', verb: 'remove', subject: `${dir}/` })
       cleaned++
     } catch {
       // directory doesn't exist
     }
   }
 
-  if (cleaned > 0) {
-    logGood(`Cleaned ${cleaned} directories`)
-  } else {
-    logGood('Nothing to clean')
-  }
+  closeRun({
+    verdict: cleaned > 0 ? 'Build output removed' : 'Nothing to clean',
+    counts: [count(cleaned, 'directories', 'directory')],
+  })
 }

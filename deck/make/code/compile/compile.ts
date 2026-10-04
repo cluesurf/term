@@ -35,6 +35,7 @@ import { checkRaiseBounds } from '@term/make/code/check/effects'
 import { checkMissingBacks } from '@term/make/code/check/returns'
 import { checkTypeNames } from '@term/make/code/check/type-names'
 import { checkLiterals } from '@term/make/code/check/literals'
+import { checkPatterns } from '@term/make/code/check/patterns'
 import { checkConstants } from '@term/make/code/check/constants'
 import { checkBindTargets } from '@term/make/code/check/binds'
 import { checkBodilessCalls } from '@term/make/code/check/bodiless'
@@ -642,6 +643,14 @@ export function compileProgram(
     return { ok: false, diagnostics: literals.errors }
   }
 
+  // every `make pattern, <...>` literal read by the stdlib's own pattern reader: refused when it is not a pattern,
+  // warned when it lands on the backtracking tier (check/patterns.ts)
+  const patterns = checkPatterns(program, file)
+
+  if (patterns.errors.length) {
+    return { ok: false, diagnostics: patterns.errors }
+  }
+
   // a `host` inside a task is written once (check/constants.ts)
   const constantDiagnostics = checkConstants(program, file)
 
@@ -943,7 +952,10 @@ export function compileProgram(
     return { ok: false, diagnostics: totality.errors }
   }
 
-  // warnings do not fail the build (unused bindings, termination, unchecked holds, etc.)
+  // warnings do not fail the build (unused bindings, termination, unchecked holds, etc.). Each names the file its span
+  // is in: a check handed the entry's name and a merged-in module's span printed the module's line under the entry's
+  // name, `code/boot.tree:1054` in a 22-line file, and a build that prints only its own file's warnings could not
+  // tell them apart (guides: language/data, 2026-10-04)
   const warnings = [
     ...checkWarnings,
     ...findUnused(program, file),
@@ -951,11 +963,12 @@ export function compileProgram(
     ...totality.warnings,
     ...holdWarnings,
     ...literals.warnings,
+    ...patterns.warnings,
     ...bindChecks.warnings,
     ...warnDeprecated(program, file),
     // a host description's undeclared types and imports, counted rather than refused (HOST_DESCRIPTIONS)
     ...(describesHost ? [...typeNameDiagnostics, ...staleFinds].map(d => ({ ...d, severity: 'warning' as const })) : []),
-  ]
+  ].map(d => (d.span.file !== undefined && d.span.file !== d.file ? { ...d, file: d.span.file } : d))
 
   // the app's `tell` decisions: each must name an exception the program can raise, with props it declares
   const tellDiagnostics = checkTells(program, file, deckOf)

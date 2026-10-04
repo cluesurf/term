@@ -214,7 +214,8 @@ for (const target of ['node', 'rust']) {
   const done = emit(target, 'code/bad.tree', out)
 
   ok(`${target}: a type error exits non-zero`, done.status === 1, `status ${done.status}`)
-  ok(`${target}: the refusal names the error`, /refused: \d+ error/.test(done.stderr), done.stderr)
+  // the closing item of the terminal output standard: `✗ make     Refused, nothing written`, then `1 error` on its facts
+  ok(`${target}: the refusal names the error`, /Refused, nothing written[\s\S]*?\b\d+ errors?\b/.test(done.stderr), done.stderr)
   ok(`${target}: a refused emit writes nothing`, !existsSync(out))
 }
 

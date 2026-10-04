@@ -15,7 +15,11 @@ import { fileURLToPath } from 'node:url'
 import { buildSync } from 'esbuild'
 import { compilerVersions } from '@term/call/code/cache-store'
 import { findTreeFiles } from '@term/call/code/make'
+import type { BuildProblem } from '@term/call/code/make'
+import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { stdlibBase } from '@term/make/code/resolve'
+import { addOwed } from '@term/make/code/check/holds'
+import type { Owed } from '@term/make/code/check/holds'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 
@@ -103,7 +107,11 @@ type Reply = {
   error?: string
   openClaims?: string[]
   warnings?: string[]
-  obligations?: { total: number; proven: number }
+  // the file's diagnostics whole, errors on a failure and its own warnings on a success, and the compiled text when
+  // it is not the file on disk (the test preprocessor rewrote it)
+  problems?: Diagnostic[]
+  text?: string
+  obligations?: Owed
 }
 
 export function compileProjectParallel(
@@ -114,8 +122,10 @@ export function compileProjectParallel(
   failed: number
   errors: string[]
   warnings: string[]
+  problems: BuildProblem[]
+  faults: string[]
   open: string[]
-  obligations: { total: number; proven: number }
+  obligations: Owed
 }> {
   // the SAME selection the sequential build makes. A build targets one platform, and the
   // other platforms' native trees are not compiled: without this filter the pool picks up
@@ -130,6 +140,8 @@ export function compileProjectParallel(
       failed: 0,
       errors: [],
       warnings: [],
+      problems: [],
+      faults: [],
       open: [],
       obligations: { total: 0, proven: 0 },
     })
@@ -164,8 +176,10 @@ export function compileProjectParallel(
   let failed = 0
   const errors: string[] = []
   const warnings: string[] = []
+  const problems: BuildProblem[] = []
+  const faults: string[] = []
   const open = new Set<string>()
-  const obligations = { total: 0, proven: 0 }
+  const obligations: Owed = { total: 0, proven: 0 }
   let next = 0
   let done = 0
 
@@ -176,8 +190,16 @@ export function compileProjectParallel(
 
     warnings.push(...(reply.warnings ?? []))
 
-    obligations.total += reply.obligations?.total ?? 0
-    obligations.proven += reply.obligations?.proven ?? 0
+    for (const diagnostic of reply.problems ?? []) {
+      problems.push({ diagnostic, text: diagnostic.file === reply.file ? reply.text : undefined })
+    }
+
+    // a failure with no diagnostic behind it (a worker that threw, or died) is still reported, as a line
+    if (!reply.ok && !reply.problems?.length) {
+      faults.push(reply.error ?? `${reply.file}: compile failed`)
+    }
+
+    addOwed(obligations, reply.obligations)
 
     if (reply.ok) {
       const outPath = path.join(
@@ -255,6 +277,8 @@ export function compileProjectParallel(
       failed,
       errors,
       warnings,
+      problems,
+      faults,
       open: [...open].sort(),
       obligations,
     }))

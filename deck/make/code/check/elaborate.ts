@@ -1961,7 +1961,7 @@ export function elaborateReport(
             param.name,
             closureContext.level,
           )
-          closureContext = bind(closureContext, 'many', paramTypeValue)
+          closureContext = bind(closureContext, 'many', paramTypeValue, param.name)
         }
 
         if (!ok) {
@@ -2475,7 +2475,7 @@ export function elaborateReport(
           return null
         }
 
-        const inner = bind(context, 'many', valueType)
+        const inner = bind(context, 'many', valueType, head.name)
         const innerScope = new Map(scope).set(head.name, context.level)
         const rest = body(tail, innerScope, inner, resultValue)
 
@@ -2485,7 +2485,7 @@ export function elaborateReport(
 
         // model `let x = v; rest` as an immediately-applied lambda: (\ (x : T). rest) v. The codomain is the result
         // type quoted one binder deeper (so any generic reference is shifted past the new binding).
-        const lambda: Term = { tag: 'lam', body: rest }
+        const lambda: Term = { tag: 'lam', body: rest, name: head.name }
         const piType: Term = arrow(
           quote(context.level, valueType),
           quote(context.level + 1, resultValue),
@@ -2699,6 +2699,7 @@ export function elaborateReport(
               branchContext,
               'many',
               evaluate([], field.type),
+              localName,
             )
           })
 
@@ -2713,11 +2714,11 @@ export function elaborateReport(
             return null
           }
 
-          // wrap the body in one lambda per field, innermost field last
+          // wrap the body in one lambda per field, innermost field last, each named as the arm names it
           let term = inner
 
-          for (let w = 0; w < fieldInfo.length; w++) {
-            term = { tag: 'lam', body: term }
+          for (let w = fieldInfo.length - 1; w >= 0; w--) {
+            term = { tag: 'lam', body: term, name: branch.binds?.[w] ?? fieldInfo[w]!.name }
           }
 
           branches.push(term)
@@ -3034,7 +3035,7 @@ export function elaborateReport(
           const term = need(expr(statement.init, sc, ctx))
           const type = infer(ctx, term).type
           sc = new Map(sc).set(statement.name, ctx.level)
-          ctx = bind(ctx, 'many', type)
+          ctx = bind(ctx, 'many', type, statement.name)
           // a `let x = e` (this is also how an existential witness `find x / e` is bound) makes `x` equal to `e` until
           // `x` is written again, so record `x == e` as a path assumption, after dropping every fact about the name's
           // previous value (a rebinding in a loop, or a shadowing). A later `hold` referencing `x` then discharges
@@ -3438,7 +3439,7 @@ export function elaborateReport(
           arg: substituteVars(term.arg, map, depth),
         }
       case 'lam':
-        return { tag: 'lam', body: substituteVars(term.body, map, depth + 1) }
+        return { ...term, body: substituteVars(term.body, map, depth + 1) }
       case 'pi':
         return {
           ...term,
@@ -3594,7 +3595,7 @@ export function elaborateReport(
           holes,
         )
 
-        return body ? { tag: 'lam', body } : null
+        return body ? { ...rhs, body } : null
       }
 
       default:
@@ -3658,7 +3659,7 @@ export function elaborateReport(
       case 'lam': {
         const body = rewriteOnce(target.body, rule)
 
-        return body ? { tag: 'lam', body } : null
+        return body ? { ...target, body } : null
       }
 
       default:
@@ -3835,7 +3836,7 @@ export function elaborateReport(
           arg: acNormalize(term.arg, operators),
         }
       case 'lam':
-        return { tag: 'lam', body: acNormalize(term.body, operators) }
+        return { ...term, body: acNormalize(term.body, operators) }
       default:
         return term
     }
@@ -3927,7 +3928,7 @@ export function elaborateReport(
       case 'lam': {
         const body = acRewriteAt(term.body, operators, rules)
 
-        return body ? { tag: 'lam', body } : null
+        return body ? { ...term, body } : null
       }
 
       default:
@@ -4551,6 +4552,7 @@ export function elaborateReport(
                 inner2,
                 'many',
                 evaluate(inner2.env, f.type),
+                f.name,
               )
             }
 
@@ -4646,7 +4648,7 @@ export function elaborateReport(
         for (const field of fields) {
           const fieldTypeValue = evaluate(inner.env, field.type)
           fieldTypeValues.push(fieldTypeValue)
-          inner = bind(inner, 'many', fieldTypeValue)
+          inner = bind(inner, 'many', fieldTypeValue, field.name)
         }
 
         // the constructor applied to its fresh field variables (field j sits at de Bruijn index k-1-j in `inner`)
@@ -5089,7 +5091,7 @@ export function elaborateReport(
 
           for (const field of fields) {
             fieldLevels.push(inner.level)
-            inner = bind(inner, 'many', evaluate(inner.env, field.type))
+            inner = bind(inner, 'many', evaluate(inner.env, field.type), field.name)
           }
 
           chosen.push({
@@ -5972,7 +5974,7 @@ export function elaborateReport(
       genericLevels.push(context.level)
       const domain = remaining.domain
       const codomain = remaining.codomain
-      context = bind(context, remaining.mult, domain)
+      context = bind(context, remaining.mult, domain, statement.generics[i]!.name)
       remaining = closeOver(codomain, witness)
     }
 
@@ -5986,7 +5988,7 @@ export function elaborateReport(
 
       const domain = remaining.domain
       const codomain = remaining.codomain
-      context = bind(context, remaining.mult, domain)
+      context = bind(context, remaining.mult, domain, parameter.name)
       remaining = closeOver(codomain, witness)
     }
 

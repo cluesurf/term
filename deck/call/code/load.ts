@@ -1,10 +1,7 @@
+// `term load`: install the project's dependencies. Prints through the terminal output library (code/output.ts).
+
 import { install } from '@cluesurf/deck.tree'
-import {
-  logGood,
-  logFail,
-  logStep,
-  formatError,
-} from '@term/make/code/tint'
+import { closeRun, openRun, report } from '@term/call/code/output'
 
 export async function callLoad(input: {
   root: string
@@ -12,7 +9,9 @@ export async function callLoad(input: {
   offline?: boolean
   like?: string
 }): Promise<void> {
-  logStep('Installing dependencies...')
+  const facts = [...(input.clean ? ['--clean'] : []), ...(input.offline ? ['--offline'] : [])]
+  openRun({ verb: 'load', root: input.root, facts })
+  const started = Date.now()
 
   try {
     await install({
@@ -20,9 +19,15 @@ export async function callLoad(input: {
       clean: input.clean,
       offline: input.offline,
     })
-    logGood('Dependencies installed')
+    report({ glyph: 'done', verb: 'install', subject: 'Dependencies', duration: Date.now() - started })
+    closeRun({ verdict: 'Dependencies installed' })
   } catch (err) {
-    logFail(formatError(err))
-    process.exit(1)
+    // an install that fails (a registry, a constraint, the network) is the user's environment, exit 1, not a bug
+    report({ glyph: 'failed', verb: 'install', subject: 'Dependencies', duration: Date.now() - started, message: [messageOf(err)] })
+    closeRun({ verdict: 'Dependencies not installed' })
   }
+}
+
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }

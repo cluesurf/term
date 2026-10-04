@@ -174,7 +174,8 @@ export type Term =
   | { tag: 'const'; name: string } // a postulated global constant (base type or primitive in the signature)
   | { tag: 'type'; level: Level }
   | { tag: 'pi'; mult: Mult; domain: Term; codomain: Term }
-  | { tag: 'lam'; body: Term }
+  // `name` is what the source called the bound variable. Read only to print an error, never to decide one
+  | { tag: 'lam'; body: Term; name?: string }
   | { tag: 'app'; fun: Term; arg: Term }
   | { tag: 'ann'; term: Term; type: Term }
   | { tag: 'id'; type: Term; left: Term; right: Term }
@@ -1550,11 +1551,14 @@ function subtype(level: number, a: Value, b: Value): boolean {
 
 // ---- context and usage ----
 // `globals` is the signature: each postulated constant mapped to its type (a value). Threaded through binders.
+// `names` is what the source called each bound variable, in the order of `env` ('' where it had no name). The kernel
+// never reads it: it is how an error prints `c` where it printed `#1` (guides: proofs/equality, 2026-10-04).
 export type Context = {
   level: number
   env: Value[]
   types: Value[]
   mults: Mult[]
+  names: string[]
   globals: Map<string, Value>
 }
 export const emptyContext: Context = {
@@ -1562,6 +1566,7 @@ export const emptyContext: Context = {
   env: [],
   types: [],
   mults: [],
+  names: [],
   globals: new Map(),
 }
 
@@ -1582,12 +1587,14 @@ export function bind(
   context: Context,
   mult: Mult,
   type: Value,
+  name = '',
 ): Context {
   return {
     level: context.level + 1,
     env: [neutralVar(context.level), ...context.env],
     types: [type, ...context.types],
     mults: [mult, ...context.mults],
+    names: [name, ...context.names],
     globals: context.globals,
   }
 }
@@ -1896,7 +1903,7 @@ export function check(
       )
     }
 
-    const inner = bind(context, expected.mult, expected.domain)
+    const inner = bind(context, expected.mult, expected.domain, term.name)
     const bodyType = closeOver(
       expected.codomain,
       neutralVar(context.level),
@@ -1969,10 +1976,7 @@ export function check(
 
   if (!subtype(context.level, actual.type, expected)) {
     throw new TypeError(
-      `type mismatch:\n  expected ${showValue(
-        context.level,
-        expected,
-      )}\n  found    ${showValue(context.level, actual.type)}`,
+      `type mismatch:\n  expected ${showValue(context, expected)}\n  found    ${showValue(context, actual.type)}`,
     )
   }
 
@@ -1993,8 +1997,72 @@ function showMult(m: Mult): string {
   return m === 'many' ? 'many' : String(m)
 }
 
-function showValue(level: number, value: Value): string {
-  return showTerm(quote(level, value))
+// a value as a person reads it, in a context whose variables have the source's names
+function showValue(context: Context, value: Value): string {
+  // a variable the source did not name is called by its level, as a fresh binder is
+  const names = context.names.map((name, index) => name || `x${context.level - 1 - index}`)
+
+  return showNamed(quote(context.level, value), names)
+}
+
+// The source's spelling of a constant: a case is `succ`, not the compiler's `nat__succ`, and a name split by module
+// scope loses its `__in0_0`.
+function sourceName(name: string): string {
+  const unscoped = name.replace(/__in\d+_\d+$/, '')
+  const at = unscoped.lastIndexOf('__')
+
+  return at > 0 ? unscoped.slice(at + 2) : unscoped
+}
+
+// A term as a person reads it: a variable by the name the source gave it, where `showTerm` prints its de Bruijn index
+// (`c` where it printed `#1`), and a binder the term itself opens by a fresh name. `names[i]` is index i's name.
+// The kernel errors print through this (guides: proofs/equality, 2026-10-04). `showTerm` is the exact form.
+export function showNamed(term: Term, names: string[] = []): string {
+  const fresh = (): string => `x${names.length}`
+  const under = (body: Term, name: string): string => showNamed(body, [name, ...names])
+
+  switch (term.tag) {
+    case 'var':
+      return names[term.index] || `#${term.index}`
+    case 'const':
+      return sourceName(term.name)
+    case 'pi': {
+      const name = fresh()
+
+      return `(${showMult(term.mult)} ${name} : ${showNamed(term.domain, names)}) -> ${under(term.codomain, name)}`
+    }
+    case 'lam': {
+      const name = term.name || fresh()
+
+      return `\\${name}. ${under(term.body, name)}`
+    }
+    case 'sigma': {
+      const name = fresh()
+
+      return `(${showMult(term.mult)} ${name} : ${showNamed(term.domain, names)}) * ${under(term.codomain, name)}`
+    }
+    case 'self': {
+      const name = fresh()
+
+      return `Self ${name}. ${under(term.body, name)}`
+    }
+    case 'app':
+      return `(${showNamed(term.fun, names)} ${showNamed(term.arg, names)})`
+    case 'ann':
+      return `(${showNamed(term.term, names)} : ${showNamed(term.type, names)})`
+    case 'id':
+      return `Id ${showNamed(term.type, names)} ${showNamed(term.left, names)} ${showNamed(term.right, names)}`
+    case 'j':
+      return `J(${showNamed(term.proof, names)})`
+    case 'pair':
+      return `(${showNamed(term.first, names)}, ${showNamed(term.second, names)})`
+    case 'fst':
+      return `${showNamed(term.pair, names)}.1`
+    case 'snd':
+      return `${showNamed(term.pair, names)}.2`
+    default:
+      return showTerm(term)
+  }
 }
 
 export function showTerm(term: Term): string {
@@ -2061,7 +2129,7 @@ export function instantiateLevel(
           codomain: go(t.codomain),
         }
       case 'lam':
-        return { tag: 'lam', body: go(t.body) }
+        return { ...t, body: go(t.body) }
       case 'app':
         return { tag: 'app', fun: go(t.fun), arg: go(t.arg) }
       case 'ann':

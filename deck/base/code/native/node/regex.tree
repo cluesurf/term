@@ -29,6 +29,14 @@ task engine-linear
   like boolean
   send back, false
 
+# the most ranges one class may hold for this engine to stay faster than Term's tier B on it. A \p{...} reaches a
+# native engine written out as a class, hundreds of ranges, so its meaning is Term's table and not the engine's. V8
+# tests a class in about constant time: the 1,759-character class written for \p{Lu}\p{Ll}+ ran in 690 µs where V8's
+# own \p{Lu}\p{Ll}+ took 947
+task engine-class-limit
+  like number
+  send back, code 557056
+
 # every match, left to right, none overlapping, in one pass over the text: the width of one match's slots first, then
 # each match's slots in code points, as engine-search gives them; [-1] when nothing matches. After an empty match the
 # search moves on one code point

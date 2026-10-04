@@ -7,12 +7,7 @@
 // from anywhere with no shared state to go stale. `term halt <port>` instead asks the OS who is listening on the port.
 
 import { execSync } from 'child_process'
-import {
-  logStep,
-  logGood,
-  logFail,
-  fade,
-} from '@term/make/code/tint'
+import { closeRun, count, openRun, report } from '@term/call/code/output'
 
 // the marker that identifies a term boot server process in the process table
 const BOOT_MARKER = '.base/@cluesurf/term/boot/'
@@ -68,8 +63,9 @@ export async function callHalt(input: {
   ports?: number[]
 }): Promise<void> {
   // `term halt -p 2400,2401` stops the apps on those ports; bare `term halt` stops every term boot instance
+  // each process stopped is a `stop` lifecycle item (section 9), its pid a fact
   if (input.ports?.length) {
-    logStep(`Halting app(s) on port ${input.ports.join(', ')}...`)
+    openRun({ verb: 'halt', root: process.cwd(), facts: input.ports.map(port => `:${port}`) })
 
     let stopped = 0
 
@@ -77,7 +73,7 @@ export async function callHalt(input: {
       const pids = pidsOnPort(port)
 
       if (!pids.length) {
-        logFail(`Nothing is serving on port ${port}`)
+        report({ glyph: 'warning', kind: 'lifecycle', verb: 'stop', subject: `Nothing is serving on :${port}` })
 
         continue
       }
@@ -85,34 +81,30 @@ export async function callHalt(input: {
       for (const pid of pids) {
         if (stop(pid)) {
           stopped++
-          console.log(fade(`  stopped pid ${pid} (port ${port})`))
+          report({ glyph: 'done', kind: 'lifecycle', verb: 'stop', subject: `:${port}`, facts: [`pid ${pid}`] })
         }
       }
     }
 
-    logGood(`Stopped ${stopped} process(es)`)
+    closeRun({ verdict: stopped > 0 ? 'Stopped' : 'Nothing stopped', counts: [count(stopped, 'processes', 'process')] })
 
     return
   }
 
-  logStep('Halting all term boot instances...')
+  openRun({ verb: 'halt', root: process.cwd(), facts: ['every term boot'] })
 
   const pids = bootPids()
-
-  if (!pids.length) {
-    logGood('No term boot instances running')
-
-    return
-  }
-
   let stopped = 0
 
   for (const pid of pids) {
     if (stop(pid)) {
       stopped++
-      console.log(fade(`  stopped pid ${pid}`))
+      report({ glyph: 'done', kind: 'lifecycle', verb: 'stop', subject: 'term boot', facts: [`pid ${pid}`] })
     }
   }
 
-  logGood(`Stopped ${stopped} term boot instance(s)`)
+  closeRun({
+    verdict: pids.length ? 'Stopped' : 'No term boot instance is running',
+    counts: [count(stopped, 'instances', 'instance')],
+  })
 }

@@ -17,6 +17,7 @@ import { spawn } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { closeRun, field, openRun, report } from '@term/call/code/output'
 
 const MARK_MANIFEST = /^deck @term\/mark$/m
 
@@ -78,14 +79,18 @@ export async function callMark({ root, argv }: { root: string; argv: string[] })
   const suite = findSuite(root)
 
   if (!suite) {
-    process.stderr.write(
-      'term mark: cannot find the benchmark suite.\n\n' +
-        'It is the `mark/` directory of the Term repository (deck/term/deck/term/mark in the\n' +
-        'cluesurf checkout), and this CLI was not started from inside one or installed from one.\n' +
-        'Run `term mark` from inside that checkout, or call its CLI directly:\n' +
-        '  node <checkout>/deck/term/deck/term/host/line.js mark\n',
-    )
-    process.exit(1)
+    // a missing toolchain piece is the environment, exit 3 (section 18)
+    openRun({ verb: 'mark', root })
+    report({
+      glyph: 'failed',
+      kind: 'problem',
+      subject: 'There is no benchmark suite here',
+      message: [
+        'It is the mark/ directory of the Term repository (deck/term/deck/term/mark in the cluesurf checkout), and this CLI was not started from inside one or installed from one.',
+      ],
+      fields: [field('next', 'node <checkout>/deck/term/deck/term/host/line.js mark')],
+    })
+    process.exit(closeRun({ verdict: 'Nothing benchmarked', failure: 'environment' }))
   }
 
   // the whole process argument vector from yargs, sliced after `mark`; the ported console (work/tool-verbs.tree)

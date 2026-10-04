@@ -1,32 +1,24 @@
-// The pattern engine (deck/base/code/pattern/) held to its definition. Three witnesses:
+// The pattern engine (deck/base/code/pattern/) held to its definition. Four witnesses:
 //   1. the reference interpreter against V8, on patterns whose meaning the two share (test262's hard cases among them)
 //   2. tier B (linear) and tier C (backtracking) against the reference, on hand-written fixtures
 //   3. every tier, and the tier the public API picks, against the reference, on generated patterns and inputs
+//   4. with PATTERN_NATIVE=rust,swift,kotlin: every case of 1 to 3 run through the public API on each of those
+//      backends, built on its real toolchain, and held to node's answer, which 3 already held to the reference. The
+//      tier differs by backend (Rust's engine is linear, so more lands native there); the matches may not
 // note/term/stdlib/regex-engine.md, "How it is held".
 //
 // Run: npx tsx test/compile/pattern.ts
-//      PATTERN_COUNT=2000 PATTERN_SEED=7 npx tsx test/compile/pattern.ts     (pnpm term:regex-differential)
+//      PATTERN_COUNT=2000 PATTERN_SEED=7 PATTERN_NATIVE=rust,swift,kotlin npx tsx test/compile/pattern.ts
+//      (pnpm term:regex-differential)
 
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { compile } from '@term/make/code/compile/compile'
 import { stdlibResolver } from '@term/make/code/resolve'
 import { nativePrelude, withNativeEnv } from '@term/make/code/compile/native'
-
-const baseTree = join(process.cwd(), 'deck', 'base')
-const PREFIX = /^@term\/base\//
-
-const readRuntime = (path: string): string | undefined => {
-  if (existsSync(path)) {
-    return readFileSync(path, 'utf8')
-  }
-
-  const file = join(baseTree, path.replace(PREFIX, ''))
-
-  return existsSync(file) ? readFileSync(file, 'utf8') : undefined
-}
+import { chunked, readRuntime, runProgram } from './pattern-build'
+import { runDir } from './run-dir'
 
 type Engine = {
   referenceAt: (source: string, runes: number[], from: number) => number[]
@@ -138,8 +130,7 @@ async function loadEngine(): Promise<Engine> {
     throw new Error(compiled.diagnostics.map(d => `${d.file}:${d.span.start.line + 1} ${d.message}`).join('\n'))
   }
 
-  const dir = mkdtempSync(join(tmpdir(), 'term-pattern-'))
-  const file = join(dir, 'engine.ts')
+  const file = join(runDir('term-pattern-'), 'engine.ts')
 
   writeFileSync(file, `${nativePrelude(compiled.program, 'node', readRuntime)}\n${compiled.typescript}`)
 
@@ -163,6 +154,8 @@ function v8Search(pattern: string, input: string): number[] {
 
 let pass = 0
 let fail = 0
+// every case the node legs ran through the public API, with node's answer, for the native leg to replay
+const replay: { pattern: string; input: string; want: number[]; feature?: string }[] = []
 
 function same(label: string, pattern: string, input: string, want: number[], got: number[]): void {
   if (JSON.stringify(want) === JSON.stringify(got)) {
@@ -214,6 +207,39 @@ const BACKTRACKING: [string, string[]][] = [
   ['(?>a|ab)c', ['abc', 'ac']],
   ['a++a', ['aaa']],
   ['(?i)(a)\\1', ['aA']],
+]
+
+// the engine probe (regex-engine-0001): one row per feature the native tier can be handed, each input chosen where
+// the four engines are known to read the same text differently. Node holds each to the reference; the native leg runs
+// each on its engine and prints the matrix. A row whose pattern is not native on node says so, since it then probes
+// tier B there and the native engine only on Rust
+const FEATURES: [string, string, string[]][] = [
+  ['literal', 'abc', ['xabcx', 'ABC']],
+  ['astral literal', '𝄞+', ['a𝄞𝄞b']],
+  ['escaped punctuation', '\\.\\*\\+\\?\\(\\)\\[\\]\\{\\}\\|\\^\\$\\\\/', ['x.*+?()[]{}|^$\\/']],
+  ['class range', '[a-cé-ë]+', ['xbéëz']],
+  ['astral class', '[\\u{1F600}-\\u{1F60F}]+', ['hi 😀😃!']],
+  ['negated class', '[^a-c]+', ['abcé𝄞d']],
+  ['dot', 'a.c', ['a\nc', 'a\rc', 'a c', 'aéc', 'a𝄞c']],
+  ['dot under s', '(?s)a.c', ['a\nc']],
+  ['digit', '\\d+', ['x٣12']],
+  ['word', '\\w+', ['éa_1b']],
+  ['space', '\\s+', ['a b', 'a\t c', 'a\u000bb']],
+  ['not word, digit, space', '\\W\\D\\S', ['é é', '-!x']],
+  ['case fold', '(?i)k+', ['xKkKy']],
+  ['case fold sigma', '(?i)σ+', ['aΣσςb']],
+  ['case fold class', '(?i)[a-c]+', ['xABcy']],
+  ['general category', '\\p{Lu}+', ['abcÉCOLE x']],
+  ['script', '\\p{Script=Greek}+', ['a αβγ b']],
+  ['binary property', '\\p{Alphabetic}+', ['1aé2']],
+  ['alternation order', 'a|ab', ['ab']],
+  ['lazy', 'a+?', ['aaa']],
+  ['counted', 'a{2,3}', ['aaaa', 'a']],
+  ['groups', '(a)(?:b)(c)?', ['ab', 'abc']],
+  ['named group', '(?<x>a)b', ['ab']],
+  ['text start', '^a', ['ba', 'ab']],
+  ['text end', 'a$', ['a\n', 'a', 'a\r\n']],
+  ['absolute anchors', '\\Aa\\z', ['a', 'a\n']],
 ]
 
 // 3. a seeded generator, so a failure replays
@@ -304,6 +330,148 @@ function makeInput(): string {
   return out
 }
 
+// 4. the native leg. Each case is written as code point numbers, `p,p,p,;i,i,|`, so no pattern needs escaping into a
+// Term text literal, in chunks well under Kotlin's 64 KB constant. The program decodes them, runs each through
+// `prepare` and `search-slots` exactly as `find-match` does, and answers one field per case: the slots, each followed
+// by a comma, or `-` for no match
+const answerOf = (slots: number[]): string => (slots.length === 0 ? '-' : slots.map(n => `${n},`).join(''))
+
+function replayProgram(cases: typeof replay): string {
+  const data = cases
+    .map(({ pattern, input }) => `${runesOf(pattern).map(n => `${n},`).join('')};${runesOf(input).map(n => `${n},`).join('')}|`)
+    .join('')
+  return `load @term/base/pattern
+  find pattern
+  find prepare
+  find search-slots
+  find open-session
+
+load @term/base/text/unicode
+  find to-runes
+  find from-runes
+
+host cases
+  make list
+${chunked(data)}
+
+task answer-of
+  take source, like text
+  take input, like text
+  like text
+  save ready
+    call prepare(make(pattern, read(source)))
+  save slots
+    call search-slots(read(ready), call(open-session, read(ready), read(input)), code(0))
+  fork test
+    hook test
+      call is-equal(read(slots/length), code(0))
+    hook hold
+      send back, text <->
+  save line, text <>
+  walk list, read slots
+    hook next
+      take site, name slot
+      save line, text <{line}{slot},>
+  send back, read line
+
+task compute
+  like text
+  save out, text <>
+  save field, make list
+  save source, text <>
+  save number, code 0
+  walk list, read cases
+    hook next
+      take site, name chunk
+      walk list
+        call to-runes(read(chunk))
+        hook next
+          take site, name c
+          fork test
+            hook test
+              call and
+                call is-minimum(read(c), code(48))
+                call is-maximum(read(c), code(57))
+            hook hold
+              save number
+                call add(call(multiply, read(number), code(10)), call(subtract, read(c), code(48)))
+            hook test
+              call is-equal(read(c), code(44))
+            hook hold
+              call field/push(read(number))
+              save number, code 0
+            hook test
+              call is-equal(read(c), code(59))
+            hook hold
+              save source
+                call from-runes(read(field))
+              save field, make list
+            hook test
+              call is-equal(read(c), code(124))
+            hook hold
+              save input
+                call from-runes(read(field))
+              save field, make list
+              save answer
+                call answer-of(read(source), read(input))
+              save out, text <{out}{answer}|>
+  send back, read out
+`
+}
+
+// replays every case on one backend; answers each probe feature's tally as `agreeing/total`, or nothing when the
+// replay could not build or run
+function replayOn(backend: 'rust' | 'swift' | 'kotlin'): Map<string, string> | undefined {
+  const cases = replay
+  const want = cases.map(c => answerOf(c.want))
+  let output: string
+
+  try {
+    output = runProgram(backend, replayProgram(cases), join(process.cwd(), 'test', 'compile', 'pattern-replay.tree'))
+  } catch (error) {
+    fail++
+    console.log(`FAIL  native ${backend}: ${error instanceof Error ? error.message : String(error)}`)
+
+    return
+  }
+
+  const got = output.split('|').slice(0, -1)
+
+  if (got.length !== want.length) {
+    fail++
+    console.log(`FAIL  native ${backend}: ${got.length} answers for ${want.length} cases`)
+
+    return
+  }
+
+  let wrong = 0
+  const agree = new Map<string, [number, number]>()
+
+  for (let k = 0; k < cases.length; k++) {
+    const feature = cases[k]!.feature
+
+    if (feature) {
+      const [held, total] = agree.get(feature) ?? [0, 0]
+      agree.set(feature, [held + (got[k] === want[k] ? 1 : 0), total + 1])
+    }
+
+    if (got[k] === want[k]) {
+      pass++
+    } else {
+      fail++
+      wrong++
+
+      if (wrong <= 20) {
+        console.log(`FAIL  native ${backend} /${cases[k]!.pattern}/ on ${JSON.stringify(cases[k]!.input)}: want ${want[k]} got ${got[k]}`)
+      }
+    }
+  }
+
+  console.log(`native ${backend}: ${cases.length - wrong} of ${cases.length} cases agree with node`)
+
+  return new Map([...agree].map(([feature, [held, total]]) => [feature, `${held}/${total}`]))
+}
+
 async function main(): Promise<void> {
   const engine = await loadEngine()
 
@@ -329,7 +497,38 @@ async function main(): Promise<void> {
 
       same('backtrack', pattern, input, want, engine.backAt(pattern, runesOf(input), 0))
       same('chosen', pattern, input, want, engine.chosenAt(pattern, input, 0))
+      replay.push({ pattern, input, want })
     }
+  }
+
+  // the probe rows: each must read, and the public API must give the reference's answer on node
+  const offNative: string[] = []
+
+  for (const [feature, pattern, inputs] of FEATURES) {
+    let tier: string
+
+    try {
+      tier = engine.tierOf(pattern)
+    } catch (error) {
+      fail++
+      console.log(`FAIL  probe ${feature}: /${pattern}/ is refused: ${error instanceof Error ? error.message : String(error)}`)
+      continue
+    }
+
+    if (tier !== 'native') {
+      offNative.push(`${feature} (${tier})`)
+    }
+
+    for (const input of inputs) {
+      const want = engine.referenceAt(pattern, runesOf(input), 0)
+
+      same(`probe ${feature}`, pattern, input, want, engine.chosenAt(pattern, input, 0))
+      replay.push({ pattern, input, want, feature })
+    }
+  }
+
+  if (offNative.length) {
+    console.log(`probe rows not native on node, so tier B there: ${offNative.join(', ')}`)
   }
 
   const count = Number(process.env.PATTERN_COUNT ?? 150)
@@ -356,6 +555,7 @@ async function main(): Promise<void> {
 
       same('generated back', pattern, input, want, engine.backAt(pattern, runes, 0))
       same(`generated ${tier}`, pattern, input, want, engine.chosenAt(pattern, input, 0))
+      replay.push({ pattern, input, want })
 
       if (!backOnly) {
         same('generated linear', pattern, input, want, engine.pikeAt(pattern, runes, 0))
@@ -364,6 +564,32 @@ async function main(): Promise<void> {
   }
 
   console.log(`generated: ${count} patterns, tiers ${JSON.stringify(Object.fromEntries(tiers))}`)
+
+  const matrix = new Map<string, Map<string, string>>()
+
+  for (const backend of (process.env.PATTERN_NATIVE ?? '').split(',').filter(Boolean)) {
+    if (backend !== 'rust' && backend !== 'swift' && backend !== 'kotlin') {
+      throw new Error(`PATTERN_NATIVE names ${backend}: rust, swift or kotlin`)
+    }
+
+    const tally = replayOn(backend)
+
+    if (tally) {
+      matrix.set(backend, tally)
+    }
+  }
+
+  // the probe matrix: each feature's cases that agree with node, per engine. Node's own column is the reference
+  if (matrix.size) {
+    const engines = [...matrix.keys()]
+    const width = Math.max(...FEATURES.map(([feature]) => feature.length))
+    console.log(`\n${'feature'.padEnd(width)}  ${engines.map(e => e.padEnd(7)).join(' ')}`)
+
+    for (const [feature] of FEATURES) {
+      console.log(`${feature.padEnd(width)}  ${engines.map(e => (matrix.get(e)!.get(feature) ?? 'none').padEnd(7)).join(' ')}`)
+    }
+  }
+
   console.log(`\npattern: ${pass} pass, ${fail} fail`)
 
   if (fail > 0) {

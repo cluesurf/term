@@ -36,8 +36,9 @@ import {
   type Row,
 } from '@cluesurf/save/bridge/from-data'
 import { diffDataset } from '@cluesurf/save/diff/diff'
-import { need } from './base'
+import { need, refuse } from './base'
 import type { Dataset } from '@cluesurf/save/diff/change'
+import { closeRun, count, field, openRun, printData, report } from '@term/call/code/output'
 
 // What a source's extension says it is. A directory is walked for these and nothing else,
 // so a readme or a licence beside the data is skipped rather than failing the run.
@@ -51,8 +52,7 @@ const JSON_LIKE = new Set(['.json', '.jsonl', '.ndjson'])
 /** Every data file a source names: the file itself, or the ones inside a directory. */
 function sourceFiles(source: string): Array<string> {
   if (!fs.existsSync(source)) {
-    console.error(`no file or directory at ${source}`)
-    process.exit(1)
+    refuse(`There is no file or directory at ${source}`)
   }
 
   if (!fs.statSync(source).isDirectory()) {
@@ -75,11 +75,9 @@ function sourceFiles(source: string): Array<string> {
     })
 
   if (!found.length) {
-    console.error(
-      `no .csv, .tsv, .json, .jsonl or .ndjson files in ${source}. ` +
-        'A directory is walked for those and nothing else.',
-    )
-    process.exit(1)
+    refuse(`There is no .csv, .tsv, .json, .jsonl or .ndjson file in ${source}`, {
+      message: ['A directory is walked for those and nothing else.'],
+    })
   }
 
   return found
@@ -108,16 +106,21 @@ export function callBaseImport(input: {
   author: string
   message?: string
 }): void {
+  openRun({ verb: 'import', root: input.root, subject: input.source, facts: [input.form, input.branch] })
+
   if ((input.key === undefined) === (input.mark === undefined)) {
     // Neither, or both. Without one of them every row would get a fresh mark and a second
     // import would duplicate every record silently, which is the one failure a data
     // pipeline must not have.
-    console.error(
-      'say where the mark comes from, with exactly one of:\n' +
-        '  --key <column>   the column identifies a row in the source. The mark is found or created against it, so a re-import updates\n' +
-        '  --mark <column>  the column already holds a uuid version 4, and it is used as the mark',
-    )
-    process.exit(1)
+    refuse('Say where the mark comes from, with exactly one of --key and --mark', {
+      // a flag the command line owed: wrong usage, exit 2 (section 18)
+      failure: 'usage',
+      fields: [
+        field('--key', 'the column identifies a row in the source; the mark is found or created against it, so a re-import updates'),
+        field('--mark', 'the column already holds a uuid version 4, and it is used as the mark'),
+      ],
+      verdict: 'The command line was not understood',
+    })
   }
 
   const { repo, save } = need(input.root)
@@ -130,17 +133,14 @@ export function callBaseImport(input: {
       const found = rowsOf(file)
 
       rows.push(...found)
-      console.log(`${path.basename(file)}: ${found.length} row(s)`)
+      report({ glyph: 'done', verb: 'read', subject: path.basename(file), counts: [count(found.length, 'rows', 'row')] })
     } catch (error) {
-      console.error(
-        `${file}: ${error instanceof Error ? error.message : String(error)}`,
-      )
-      process.exit(1)
+      refuse(error instanceof Error ? error.message : String(error), { fields: [{ ...field('at', file), location: true }] })
     }
   }
 
   if (!rows.length) {
-    console.log('nothing to import')
+    closeRun({ verdict: 'Nothing to import', counts: [count(0, 'rows', 'row')] })
 
     return
   }
@@ -161,12 +161,11 @@ export function callBaseImport(input: {
       existing,
     })
   } catch (error) {
-    console.error(
+    refuse(
       error instanceof BadRow
         ? error.message
-        : `could not lift the rows: ${error instanceof Error ? error.message : String(error)}`,
+        : `Could not lift the rows: ${error instanceof Error ? error.message : String(error)}`,
     )
-    process.exit(1)
   }
 
   // Applied ON TOP of what is there, so importing one form leaves every other form alone.
@@ -180,9 +179,11 @@ export function callBaseImport(input: {
   const changes = diffDataset(existing, next)
 
   if (!changes.length) {
-    console.log(
-      `\n${rows.length} row(s), nothing changed. Every record is already what the source says.`,
-    )
+    closeRun({
+      verdict: 'Nothing changed',
+      counts: [count(rows.length, 'rows', 'row'), count(0, 'changes', 'change')],
+      message: ['Every record is already what the source says.'],
+    })
 
     return
   }
@@ -200,21 +201,25 @@ export function callBaseImport(input: {
   )
 
   if (!done.ok) {
-    console.error('refused:')
-
     for (const one of done.diagnostics ?? []) {
-      console.error(`  ${one.mark ?? '(dataset)'}  ${one.message}`)
+      report({ glyph: 'failed', kind: 'problem', subject: one.message, fields: [field('mark', one.mark ?? '(dataset)')] })
     }
 
-    process.exit(1)
+    closeRun({ verdict: 'The commit was refused' })
+
+    return
   }
 
   save()
 
-  console.log(`\n${done.commit}`)
-  console.log(
-    `${lifted.records.length} ${input.form} record(s): ` +
-      `${lifted.minted} new, ${lifted.reused} matched by \`${input.key ?? input.mark}\``,
-  )
-  console.log(`${changes.length} change(s) on ${input.branch}`)
+  // the commit hash is what a script captures, so it is data
+  printData(`${done.commit}\n`)
+  report({
+    glyph: 'done',
+    verb: 'commit',
+    subject: `${lifted.records.length} ${input.form} record${lifted.records.length === 1 ? '' : 's'}`,
+    counts: [count(lifted.minted, 'new'), count(lifted.reused, 'matched')],
+    facts: [`by ${input.key ?? input.mark}`],
+  })
+  closeRun({ verdict: `Imported onto ${input.branch}`, counts: [count(changes.length, 'changes', 'change')] })
 }

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import yargs from 'yargs'
 import { hideBin } from 'yargs/helpers'
-import { showBanner, showInfo } from '@term/make/code/show'
+import { bannerText, infoText } from '@term/make/code/show'
 import { callLoad } from '@term/call/code/load'
 import { callSave } from '@term/call/code/save'
 import { callZone } from '@term/call/code/zone'
@@ -37,7 +37,8 @@ import { callLook } from '@term/call/code/look'
 import { callRoll } from '@term/call/code/roll'
 import { callMold } from '@term/call/code/mold'
 import { callView } from '@term/call/code/view'
-import { logFail, warn } from '@term/make/code/tint'
+import { closeRun, failRun, field, openRun, printData, report, setOutput, showPath } from '@term/call/code/output'
+import type { OutputFlags } from '@term/call/code/output'
 import {
   callBaseCheck,
   callBaseCheckout,
@@ -178,6 +179,21 @@ const cli = yargs(hideBin(process.argv))
     default: 'line',
     description: 'Response format',
   })
+  // the global output flags of the terminal output standard (note/term/output/standard.md, sections 18 and 20), on
+  // every command, read once by the middleware below into the run every command prints through (code/output.ts)
+  .option('quiet', { alias: 'q', type: 'boolean', description: 'Print only failed items and the closing item' })
+  .option('verbose', { type: 'boolean', description: 'Also print debug items' })
+  .option('trace', { type: 'boolean', description: 'Also print trace items, for debugging Term itself' })
+  .option('log', { type: 'string', choices: ['json'] as const, description: 'One JSON object per event on stdout, and no human view' })
+  .option('color', { type: 'string', choices: ['auto', 'always', 'never'] as const, default: 'auto', description: 'Color the output' })
+  .option('utc', { type: 'boolean', description: 'Clocks in UTC rather than local time' })
+  .option('plain', { type: 'boolean', description: 'One sentence per item, for screen readers and transcripts' })
+  .option('strict', { type: 'boolean', description: 'Warnings fail the run with exit 1' })
+  .option('motion', { type: 'boolean', default: true, description: 'Animate the spinner (--no-motion holds it still)' })
+  .option('yes', { alias: 'y', type: 'boolean', description: 'Accept every default instead of asking' })
+  .option('raw', { type: 'boolean', description: "Pass a child process's output through untouched" })
+  .option('source', { type: 'string', description: 'Show one service of a stream, without tags' })
+  .middleware(argv => setOutput(argv as OutputFlags, readVersion()))
   .command('base', 'The base record system', yargs =>
     yargs
       .command('init', 'Create a repository here', {}, () => {
@@ -1321,12 +1337,15 @@ const cli = yargs(hideBin(process.argv))
 
         try {
           const manifest = await loadManifest({ dir: root })
-          console.log(showCode(manifest.mark))
+          printData(`${showCode(manifest.mark)}\n`)
         } catch {
-          logFail('No deck.tree found')
+          openRun({ verb: 'show', root })
+          report({ glyph: 'failed', kind: 'problem', subject: 'There is no deck.tree here', fields: [field('looked', showPath(root))] })
+          closeRun({ verdict: 'No version to show', next: 'term wake, to make a project here' })
         }
       } else {
-        showInfo(readVersion())
+        // the toolchain's version and platform: the answer asked for, data on stdout
+        printData(infoText(readVersion()))
       }
     },
   )
@@ -1359,18 +1378,13 @@ const cli = yargs(hideBin(process.argv))
   .demandCommand(0)
   .strict(false)
   .fail((msg, err) => {
-    // a thrown command error exits with the general failure code; a usage / validation error exits with the
-    // conventional usage code (64), so scripts can tell a bad invocation from a real failure.
+    // a thrown command error ends the run through failRun (exit 1, or 70 for a bug in Term); a usage or validation
+    // error is wrong command-line usage, exit 2 (section 18), so scripts can tell a bad invocation from a real failure
     if (err) {
-      logFail(err.message)
-      process.exit(1)
+      process.exit(failRun(err, root))
     }
 
-    if (msg) {
-      logFail(msg)
-    }
-
-    process.exit(64)
+    process.exit(usageFailure(msg || 'The command line was not understood.'))
   })
   .version('version', 'Show the version number', readVersion())
   .alias('version', 'v')
@@ -1379,7 +1393,8 @@ async function main(): Promise<void> {
   const argv = await cli.parse()
 
   if (argv._.length === 0) {
-    showBanner()
+    // `term` alone answers with the list of commands: data on stdout
+    printData(bannerText())
 
     return
   }
@@ -1389,23 +1404,19 @@ async function main(): Promise<void> {
   if (!COMMANDS.includes(cmd)) {
     const suggestion = suggestCommand(cmd)
 
-    if (suggestion) {
-      logFail(
-        `Unknown command "${cmd}". Did you mean ${warn(
-          `term ${suggestion}`,
-        )}?`,
-      )
-    } else {
-      logFail(
-        `Unknown command "${cmd}". Run "term" for a list of commands.`,
-      )
-    }
-
-    process.exit(64)
+    process.exit(usageFailure(`There is no command named ${cmd}`, suggestion ? `term ${suggestion}` : 'term, for the list of commands'))
   }
 }
 
+// wrong command-line usage (section 18): a ✗ item saying what was not understood, a `next` field with what to run,
+// exit 2
+function usageFailure(message: string, next = 'term --hint'): number {
+  openRun({ verb: 'term', root })
+  report({ glyph: 'failed', kind: 'problem', verb: 'term', subject: message })
+
+  return closeRun({ verdict: 'The command line was not understood', next, failure: 'usage' })
+}
+
 main().catch(err => {
-  logFail(err.message ?? String(err))
-  process.exit(1)
+  process.exit(failRun(err, root))
 })

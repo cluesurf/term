@@ -2925,7 +2925,8 @@ function conditionOf(
       }
 
       const second = child.nodes[1]
-      const word = second?.kind === 'term' ? second.value : second?.kind === 'group' ? headWord(second) : undefined
+      // every word after a head parses as a group of its own, so the arm's word is that group's head
+      const word = second?.kind === 'group' ? headWord(second) : undefined
 
       if (word !== undefined && !FORK_TEST_ARMS.has(word)) {
         refuse(

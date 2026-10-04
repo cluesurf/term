@@ -230,6 +230,14 @@ task closing-glyph
   fork test, and(one/options/strict, is-equal(one/worst-glyph, <warning>))
     hold
       back <failed>
+  # a run whose worst item was skipped or cached did its work, so it closes ✓: `○` closes a run only when Ctrl-C
+  # stopped it (above). A fully cached build closed `○ boot  shelf built`, which reads as not done
+  fork test, is-equal(one/worst-glyph, <skipped>)
+    hold
+      back <done>
+  # the worst glyph by section 4's order, `·` included: a run that only planned, or found nothing, closes `·`, as the
+  # mockups' Planned changes card does. Section 18's table pairs exit 0 with ✓ or ▲ and is the one place the spec
+  # disagrees; section 4 and the mockup win, and a `·` close says that nothing was done
   back one/worst-glyph
 
 task exit-code

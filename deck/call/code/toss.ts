@@ -1,31 +1,31 @@
+// `term toss <deck>`: remove a dependency from the manifest. Prints through the terminal output library
+// (code/output.ts).
+
 import { removeDependency } from '@cluesurf/deck.tree'
-import {
-  logGood,
-  logFail,
-  logStep,
-  formatError,
-  name,
-} from '@term/make/code/tint'
+import { closeRun, openRun, report } from '@term/call/code/output'
 
 export async function callToss(input: {
   root: string
   deck?: string
 }): Promise<void> {
-  if (!input.deck) {
-    logFail('Missing deck name. Usage: term toss <deck>')
-    process.exit(1)
-  }
+  openRun({ verb: 'toss', root: input.root })
 
-  logStep(`Removing ${name(input.deck)}...`)
+  if (!input.deck) {
+    report({ glyph: 'failed', kind: 'problem', subject: 'There is no deck to remove' })
+    closeRun({ verdict: 'Nothing removed', next: 'term toss <deck>', failure: 'usage' })
+
+    return
+  }
 
   try {
     await removeDependency({
       root: input.root,
       name: input.deck,
     })
-    logGood(`Removed ${name(input.deck)}`)
+    report({ glyph: 'removed', kind: 'change', verb: 'remove', subject: input.deck })
+    closeRun({ verdict: `Removed ${input.deck}` })
   } catch (err) {
-    logFail(formatError(err))
-    process.exit(1)
+    report({ glyph: 'failed', verb: 'remove', subject: input.deck, message: [err instanceof Error ? err.message : String(err)] })
+    closeRun({ verdict: `${input.deck} was not removed` })
   }
 }

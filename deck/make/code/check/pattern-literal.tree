@@ -1,0 +1,59 @@
+# A pattern written as a literal (`make pattern, <...>`) read when the program is built, by the same reader and
+# analysis that read it at run time (@term/base/pattern), so the build and the program cannot disagree about it.
+#
+# check/patterns.ts calls this for every such literal: a text the reader refuses fails the build where it is written,
+# and a pattern that lands on the backtracking tier is a warning naming what put it there, so nobody pays for that
+# tier without knowing (note/term/stdlib/regex-engine.md, "Tier C"). Ported like check/arm.tree: TypeScript imports
+# `readLiteralPattern` from the module this emits.
+
+load @term/base/pattern
+  find pattern
+  find backtrack-reason
+
+load @term/base/pattern/syntax
+  find parse-pattern
+
+load @term/base/pattern/node
+  find pattern-mismatch
+
+# what the build learned about one literal: refused (with where, in code points, and why), or read, with the reason
+# it lands on the backtracking tier, empty when it does not
+form literal-pattern
+  link refused, like boolean
+  link at, like number
+  link reason, like text
+  link backtracks, like text
+
+task read-literal-pattern
+  take source, like text
+  like literal-pattern
+
+  # the field by name: in a lean file `make(pattern, source)` built `{ text: "" }`, the bare variable dropped in silence
+  save literal
+    make pattern
+      bind text, read source
+
+  mark unsafe
+    parse-pattern(source)
+    back
+      make literal-pattern
+        bind refused, false
+        bind at, code -1
+        bind reason, <>
+        bind backtracks, backtrack-reason(literal)
+  halt take
+    take error
+    sift error
+      case pattern-mismatch
+        back
+          make literal-pattern
+            bind refused, true
+            bind at, read at
+            bind reason, read reason
+            bind backtracks, <>
+    back
+      make literal-pattern
+        bind refused, true
+        bind at, code -1
+        bind reason, <the reader stopped>
+        bind backtracks, <>

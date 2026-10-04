@@ -50,6 +50,7 @@ load @term/base/pattern/set
 
 load @term/base/pattern/program
   find can-be-empty
+  find first-set
   find group-range
 
 load @term/base/pattern/unicode-read
@@ -70,59 +71,6 @@ form analysis
   link has-native, like boolean
   # whether a back reference compares under `i`, so the matcher needs the case table
   link folds, like boolean
-
-# the code points a piece can begin with. A lookaround, an edge or a back reference begins with nothing it consumes,
-# so they add nothing (the callers that need certainty also refuse those pieces)
-task first-set
-  take p, like piece
-  like list
-    like number
-  save none, make list
-  fork case, read p
-    case blank
-      send back, read none
-    case letter
-      send back
-        call range-set(read(point), read(point))
-    case ranges
-      send back, read set
-    case edge
-      send back, read none
-    case chain
-      save out, make list
-      walk list, read parts
-        hook next
-          take site, name part
-          save out
-            call merge-sets(read(out), call(first-set, read(part)))
-          fork test
-            hook test
-              call not(call(can-be-empty, read(part)))
-            hook hold
-              send back, read out
-      send back, read out
-    case choice
-      save out, make list
-      walk list, read parts
-        hook next
-          take site, name part
-          save out
-            call merge-sets(read(out), call(first-set, read(part)))
-      send back, read out
-    case loop
-      send back
-        call first-set(read(body))
-    case group
-      send back
-        call first-set(read(body))
-    case atom
-      send back
-        call first-set(read(body))
-    case look
-      send back, read none
-    case refer
-      send back
-        call range-set(code(0), read(last-code-point))
 
 # every code point a piece can consume anywhere in it
 task all-set
@@ -895,6 +843,64 @@ task needs-backtracking
     case edge
       send back, false
 
+# the first part of the piece, left to right, that puts it in the backtracking tier, in words; empty when none does.
+# Read on the REWRITTEN tree, so a reference the analysis replaced with its text, or a possessive repetition it made
+# a lookaround, is not named
+task backtrack-cause
+  take p, like piece
+  like text
+  fork case, read p
+    case refer
+      send back, text <the back reference to group {index}>
+    case atom
+      send back, text <an atomic group>
+    case loop
+      fork test
+        hook test
+          read possessive
+        hook hold
+          send back, text <a possessive repetition>
+      send back
+        call backtrack-cause(read(body))
+    case chain
+      walk list, read parts
+        hook next
+          take site, name part
+          save cause
+            call backtrack-cause(read(part))
+          fork test
+            hook test
+              call is-above(read(cause/length), code(0))
+            hook hold
+              send back, read cause
+      send back, text <>
+    case choice
+      walk list, read parts
+        hook next
+          take site, name part
+          save cause
+            call backtrack-cause(read(part))
+          fork test
+            hook test
+              call is-above(read(cause/length), code(0))
+            hook hold
+              send back, read cause
+      send back, text <>
+    case group
+      send back
+        call backtrack-cause(read(body))
+    case look
+      send back
+        call backtrack-cause(read(body))
+    case blank
+      send back, text <>
+    case letter
+      send back, text <>
+    case ranges
+      send back, text <>
+    case edge
+      send back, text <>
+
 # the one set a piece consumes when it is exactly one code point from a set, else an empty list
 task single-set
   take p, like piece
@@ -1330,10 +1336,69 @@ task possessive-of-set
 
 # analyze a parsed pattern for an engine: `end` is how it writes the end of the text, `linear` whether it is linear on
 # everything it accepts
+# the most ranges any one class in the piece holds, which is what a native engine that tests a class range by range
+# pays at every position (a `\p{...}` is written out as a class, hundreds of ranges, so its meaning is the table's on
+# every engine)
+task largest-class
+  take p, like piece
+  like number
+  fork case, read p
+    case ranges
+      send back
+        call divide(read(set/length), code(2))
+    case letter
+      send back, code 1
+    case chain
+      save most, code 0
+      walk list, read parts
+        hook next
+          take site, name part
+          save size
+            call largest-class(read(part))
+          fork test
+            hook test
+              call is-above(read(size), read(most))
+            hook hold
+              save most, read size
+      send back, read most
+    case choice
+      save most, code 0
+      walk list, read parts
+        hook next
+          take site, name part
+          save size
+            call largest-class(read(part))
+          fork test
+            hook test
+              call is-above(read(size), read(most))
+            hook hold
+              save most, read size
+      send back, read most
+    case loop
+      send back
+        call largest-class(read(body))
+    case group
+      send back
+        call largest-class(read(body))
+    case atom
+      send back
+        call largest-class(read(body))
+    case look
+      send back
+        call largest-class(read(body))
+    case blank
+      send back, code 0
+    case edge
+      send back, code 0
+    case refer
+      send back, code 0
+
 task analyze-pattern
   take root, like piece
   take end, like text
   take linear, like boolean
+  # the most ranges one class may hold for the native engine to stay faster than tier B (`engine-class-limit`)
+  take class-limit, like number
   like analysis
   save none, make list
   save rewritten
@@ -1364,7 +1429,9 @@ task analyze-pattern
   fork test
     hook test
       call and
-        read has-native
+        call and
+          read has-native
+          call is-maximum(call(largest-class, read(rewritten)), read(class-limit))
         call or
           read linear
           call is-safe-to-backtrack(read(rewritten))

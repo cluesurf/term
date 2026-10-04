@@ -13,7 +13,10 @@
 // kept even when nothing calls it, and the native emitters mangle their names (`run-all` is `run_all` on Rust and
 // `runAll` on Swift and Kotlin).
 //
-// A check error REFUSES: every diagnostic is printed to stderr, nothing is written, and the exit code is 1. This is
+// The program is DATA, on stdout (or the `--out` file); the run around it is the human view on stderr, through the
+// terminal output library (code/output.ts).
+//
+// A check error REFUSES: every diagnostic is drawn as a Problem item, nothing is written, and the exit code is 1. This is
 // task/term/native-emit.ts made into a command, with that script's one difference removed: it printed check errors and
 // emitted anyway, which is right for reading a half-checked module and wrong for anything that will be run.
 
@@ -33,6 +36,8 @@ import { projectDeckOf } from '@term/call/code/deck-of'
 import { projectLeanOf, projectRoleOf } from '@term/call/code/role-of'
 import { renderDiagnostic } from '@term/call/code/report'
 import { checkBindTargets } from '@term/make/code/check/binds'
+import type { Diagnostic } from '@term/make/code/parser/diagnostic'
+import { closeRun, count, field, location, openRun, printData, report, reportProblems, showPath } from '@term/call/code/output'
 
 // the per-target emit is make/code/compile/emit-target.ts, shared with the browser worker (make/code/browser/)
 export { EMIT_TARGETS, isEmitTarget }
@@ -41,12 +46,13 @@ export type { EmitTarget }
 const readRuntime = (file: string): string | undefined =>
   existsSync(file) ? readFileSync(file, 'utf8') : undefined
 
-// the source text, or every diagnostic rendered. Exported for the test, which asks without a process exit
+// the source text, or every diagnostic rendered. Exported for the test, which asks without a process exit. `problems`
+// carries the same diagnostics whole, with the text their spans point into, for the command to draw as Problem items
 export function emitProgram(input: {
   root: string
   file: string
   target: EmitTarget
-}): { ok: true; source: string } | { ok: false; errors: string[] } {
+}): { ok: true; source: string } | { ok: false; errors: string[]; problems?: { diagnostic: Diagnostic; text?: string }[] } {
   const file = path.resolve(input.root, input.file)
 
   if (!existsSync(file)) {
@@ -75,6 +81,7 @@ export function emitProgram(input: {
       errors: result.diagnostics.map(diagnostic =>
         renderDiagnostic(diagnostic, diagnostic.file === file ? text : undefined),
       ),
+      problems: result.diagnostics.map(diagnostic => ({ diagnostic, text: diagnostic.file === file ? text : undefined })),
     }
   }
 
@@ -96,6 +103,7 @@ export function emitProgram(input: {
       errors: unbound.map(diagnostic =>
         renderDiagnostic(diagnostic, diagnostic.file === file ? text : undefined),
       ),
+      problems: unbound.map(diagnostic => ({ diagnostic, text: diagnostic.file === file ? text : undefined })),
     }
   }
 
@@ -116,39 +124,46 @@ export function callEmit(input: {
   target: string
   out?: string
 }): void {
+  openRun({ verb: 'make', root: input.root, subject: input.file, facts: ['--emit', input.target] })
+
+  // wrong usage, exit 2 (section 18)
   if (!isEmitTarget(input.target)) {
-    process.stderr.write(
-      `--emit takes one of ${EMIT_TARGETS.join(', ')}, not ${input.target}\n`,
-    )
-    process.exit(2)
+    report({ glyph: 'failed', kind: 'problem', subject: `There is no target named ${input.target}`, fields: [field('targets', EMIT_TARGETS.join(', '))] })
+    process.exit(closeRun({ verdict: 'Nothing emitted', failure: 'usage' }))
   }
 
   if (!input.file) {
-    process.stderr.write(
-      'usage: term make --emit <node|rust|swift|kotlin> <file.tree> [--out <path>]\n',
-    )
-    process.exit(2)
+    report({ glyph: 'failed', kind: 'problem', subject: 'There is no file to emit' })
+    process.exit(closeRun({ verdict: 'Nothing emitted', next: 'term make --emit <node|rust|swift|kotlin> <file.tree> [--out <path>]', failure: 'usage' }))
   }
 
+  const started = Date.now()
   const emitted = emitProgram({
     root: input.root,
     file: input.file,
     target: input.target,
   })
 
+  // a check error refuses: every problem drawn, nothing written, exit 1
   if (!emitted.ok) {
-    for (const error of emitted.errors) {
-      process.stderr.write(`${error}\n`)
+    if (emitted.problems) {
+      reportProblems(emitted.problems, input.root)
+    } else {
+      for (const error of emitted.errors) {
+        report({ glyph: 'failed', kind: 'problem', verb: 'check', subject: error.charAt(0).toUpperCase() + error.slice(1) })
+      }
     }
 
-    process.stderr.write(
-      `refused: ${emitted.errors.length} error${emitted.errors.length === 1 ? '' : 's'}, nothing written\n`,
-    )
-    process.exit(1)
+    process.exit(closeRun({ verdict: 'Refused, nothing written', counts: [count(emitted.errors.length, 'errors', 'error')] }))
   }
 
+  const source = emitted.source.endsWith('\n') ? emitted.source : `${emitted.source}\n`
+
+  // the program is the answer the user asked for: data, on stdout, as it is
   if (!input.out) {
-    process.stdout.write(emitted.source.endsWith('\n') ? emitted.source : `${emitted.source}\n`)
+    printData(source)
+    report({ glyph: 'done', verb: 'emit', subject: input.target, duration: Date.now() - started, bytes: Buffer.byteLength(source), facts: ['stdout'] })
+    closeRun({ verdict: `Emitted ${input.target}` })
 
     return
   }
@@ -156,5 +171,7 @@ export function callEmit(input: {
   const out = path.resolve(input.root, input.out)
 
   mkdirSync(path.dirname(out), { recursive: true })
-  writeFileSync(out, emitted.source.endsWith('\n') ? emitted.source : `${emitted.source}\n`)
+  writeFileSync(out, source)
+  report({ glyph: 'done', verb: 'emit', subject: input.target, duration: Date.now() - started, bytes: Buffer.byteLength(source), fields: [location(showPath(out, input.root))] })
+  closeRun({ verdict: `Emitted ${input.target}` })
 }

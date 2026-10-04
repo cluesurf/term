@@ -8,8 +8,9 @@
  * name, `@term/zone`. It ships through the Term registry, and its own `bin/zone`
  * runs it. This verb stays until every caller has moved, because the API
  * container still starts with `term zone load` from a published
- * `@cluesurf/term` that carries zone inside it. It prints one line naming the
- * replacement, on stderr, so a script's stdout is untouched.
+ * `@cluesurf/term` that carries zone inside it. It prints a `zone` run whose
+ * one item names the replacement, on stderr with the rest of the human view
+ * (code/output.ts), so a script's stdout is untouched.
  *
  * The console is a Term program (`code/line/base.tree` in the zone package),
  * so this finds it and boots it, passing everything after `zone` through.
@@ -24,6 +25,7 @@ import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { closeRun, field, openRun, report } from '@term/call/code/output'
 
 /**
  * Where the zone console lives.
@@ -58,17 +60,23 @@ export async function callZone({
 }): Promise<void> {
   const entry = findConsole(root)
 
+  openRun({ verb: 'zone', root })
+
   if (!entry) {
-    process.stderr.write(
-      'term zone: cannot find the zone console.\n\n' +
-        'Zone is its own package, `@term/zone`, and its command is `zone`.\n' +
-        'It is not beside this CLI and not linked into this project. Run its\n' +
-        '`bin/zone` from a checkout, or link it with `term link @term/zone`.\n',
-    )
-    process.exit(1)
+    // the console is a piece of the toolchain that is missing: the environment, exit 3 (section 18)
+    report({
+      glyph: 'failed',
+      kind: 'problem',
+      subject: 'There is no zone console here',
+      message: ['Zone is its own package, @term/zone, and its command is zone. It is not beside this CLI and not linked into this project.'],
+      fields: [field('next', 'term link @term/zone, or run bin/zone from a checkout')],
+    })
+    process.exit(closeRun({ verdict: 'Nothing forwarded', failure: 'environment' }))
   }
 
-  process.stderr.write('term zone: the command is `zone` now. This forwards for the callers that have not moved.\n')
+  // one item naming the replacement, on stderr with the rest of the human view, so a script's stdout is untouched.
+  // The run closes when the console exits, with its exit code, which is the console's own
+  report({ glyph: 'warning', verb: 'zone', subject: 'The command is zone now', message: ['This forwards for the callers that have not moved.'] })
 
   // everything after the `zone` verb, exactly as typed
   const at = argv.indexOf('zone')

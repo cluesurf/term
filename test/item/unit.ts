@@ -43,6 +43,7 @@ import { writeJsonEvent } from '@term/call/code/work/item/json'
 import { annotateEvent } from '@term/call/code/work/item/annotate'
 import { makeServiceOpening } from '@term/call/code/work/item/service'
 import type { Event } from '@term/call/code/work/item/event'
+import { problemOf } from '@term/call/code/output'
 import { OFFSET, STANDARD, T, at, ev, field, frame, room, tally } from './build'
 
 let pass = 0
@@ -555,6 +556,15 @@ function runChild(flags: string[], environment: Record<string, string> = {}) {
   const quietJson = runChild(['--log-json', '--quiet'])
   same('--quiet hides items from the human view, never from the JSON', quietJson.stdout.trim().split('\n').length, 4)
 
+  // the zone is today's, read off the wall clock: `@term/base/clock`'s monotonic `now` once put every run in January
+  // 1970, an hour off in summer
+  const minutes = -new Date().getTimezoneOffset()
+  const zone = minutes === 0 ? 'Z' : `${minutes < 0 ? '-' : '+'}${String(Math.floor(Math.abs(minutes) / 60)).padStart(2, '0')}:${String(Math.abs(minutes) % 60).padStart(2, '0')}`
+  ok('the JSON time carries the local offset of today', json.stdout.split('\n')[0]!.includes(`${zone}"`), json.stdout.split('\n')[0]!)
+
+  const quietPlain = runChild(['--plain', '--quiet'])
+  ok('--quiet drops the opening from --plain too', !quietPlain.stderr.includes('info: make') && quietPlain.stderr.includes('failed: check'), quietPlain.stderr)
+
   const plain = runChild(['--plain'])
   ok('--plain writes one sentence per item to stderr', plain.stdout === '' && plain.stderr.includes('failed: check There is no task named multipy'), JSON.stringify(plain))
 
@@ -570,6 +580,63 @@ function runChild(flags: string[], environment: Record<string, string> = {}) {
 
   const dumb = runChild([], { TERM: 'dumb' })
   ok('TERM=dumb prints ASCII', /^[\x00-\x7f]*$/.test(dumb.stderr) && dumb.stderr.includes('x check    There is no task named multipy'), dumb.stderr)
+}
+
+// ---- section 15: a child process's lines, adapted (deck/call/code/output.ts `followChild`) ----
+
+{
+  const follow = (flags: string[]) =>
+    spawnSync(process.execPath, [join(process.cwd(), '../../../../node_modules/tsx/dist/cli.mjs'), 'test/item/follow-child.ts', ...flags], {
+      encoding: 'utf8',
+      // REMOVED, not emptied: a variable set to nothing is set (FORCE_COLOR= colors, CI= annotates)
+      env: {
+        ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !['CI', 'NO_COLOR', 'FORCE_COLOR', 'FORCE_HYPERLINK', 'COLORTERM', 'TERM'].includes(name))),
+        LANG: 'en_US.UTF-8',
+      },
+    })
+  const adapted = follow([])
+  ok('a JSON line is an item: level the glyph, logger the verb cut to 7 cells, msg the subject, tagged', /✗ databa… +Connection lost +server/.test(adapted.stderr), adapted.stderr)
+  ok('its other keys are fields', /host +db1/.test(adapted.stderr), adapted.stderr)
+  ok('a logfmt line on stderr is an item too, with its duration', /▲ smtp +slow to respond +server[\s\S]*?3\.00 s/.test(adapted.stderr), adapted.stderr)
+  ok('plain text is QUOTED under one `log` item named for the child', /· log +server\n[\s\S]*?│ listening on 4000/.test(adapted.stderr), adapted.stderr)
+  same('nothing the child wrote reaches stdout', adapted.stdout, '')
+
+  const raw = follow(['--raw'])
+  ok('--raw passes stdout through untouched', raw.stdout.includes('{"level":"error","logger":"database"') && raw.stdout.includes('listening on 4000\n'), raw.stdout)
+  ok('--raw passes stderr through untouched', raw.stderr.includes('level=warn module=smtp msg="slow to respond" duration=3000\n'), raw.stderr)
+}
+
+// ---- section 12: a compiler diagnostic as a Problem item (deck/call/code/output.ts) ----
+
+{
+  const text = ['task area', '  take side, like number', '  send back', '    call multipy', '      read side'].join('\n')
+  const diagnostic = {
+    code: 5,
+    name: 'unknown-name',
+    message: 'the name "multipy" is not defined',
+    file: '/home/me/shape/code/area.tree',
+    span: { start: { line: 3, column: 9 }, end: { line: 3, column: 16 } },
+    markers: [{ span: { start: { line: 3, column: 9 }, end: { line: 3, column: 16 } }, label: 'did you mean multiply?' }],
+    hint: 'define it, import it, or check the spelling',
+    severity: 'error' as const,
+  }
+  const one = problemOf(diagnostic, '/home/me/shape', text)
+  same('a diagnostic is a failed problem, its message the subject, capital first', [one.glyph, one.kind, one.verb, spansText(one.subject)], ['failed', 'problem', 'check', 'The name "multipy" is not defined'])
+  same('its location is an `at` field, 1-based and relative to the root', one.fields.map(each => `${each.key} ${spansText(each.value)}`), ['at code/area.tree:4:10', 'next define it, import it, or check the spelling'])
+  same('its place sorts by path, line and column', one.place, { path: 'code/area.tree', line: 4, column: 10 })
+  same('its frame is the line and the one before, 1-based', one.frames[0]!.lines.map(line => line.number), [3, 4])
+  same('its mark is the span, with the marker label', one.frames[0]!.marks, [{ line: 4, column: 10, length: 7, label: 'did you mean multiply?', primary: true }])
+  const drawn = texts(drawItem(one, room(80), true))
+  ok('it draws as section 12 shows', drawn[0] === '✗ check    The name "multipy" is not defined' && drawn.some(line => line.includes('━━━━━━━ did you mean multiply?')), drawn.join('\n'))
+  same('a proof diagnostic is verb prove', problemOf({ ...diagnostic, name: 'unchecked-hold' }, '/home/me/shape', text).verb, 'prove')
+  same('a warning is ▲', problemOf({ ...diagnostic, severity: 'warning' }, '/home/me/shape', text).glyph, 'warning')
+  const twoLines = problemOf({ ...diagnostic, message: 'kernel: type mismatch:\n  expected number\n  found text' }, '/home/me/shape', text)
+  same('a message of several lines keeps its breaks: the first the subject, the rest message lines', [spansText(twoLines.subject), twoLines.message], [
+    'Kernel: type mismatch:',
+    ['expected number', 'found text'],
+  ])
+  ok('and no line break reaches a drawn line', !texts(drawItem(twoLines, room(80), true)).some(line => /[\n␊]/.test(line)))
+  same('a diagnostic in a file that cannot be read has no frame, and still its place', problemOf({ ...diagnostic, file: '/nowhere/x.tree' }, '/home/me/shape').frames.length, 0)
 }
 
 // ---- the standard is data: change one value and the output follows ----

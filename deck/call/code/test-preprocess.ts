@@ -5,6 +5,8 @@
 // consumes the `test` grammar (term.tree/code/code/test), this step folds into the mint with no change to any test
 // file. See note/library/seed/test-dsl.md.
 
+import type { Diagnostic, Position, Span } from '@term/make/code/parser/diagnostic'
+
 // the one assertion head, `want`, with a mode named for the fork branch it requires: `want hold` asserts its body (a
 // boolean expression) is true (it holds), `want miss` asserts it is false (it misses). The body holds the actual
 // `call` to whatever predicate (`is-equal`, `contains`, any boolean task) — `want` does not delegate to a comparator,
@@ -123,6 +125,55 @@ function takenNames(lines: string[]): Set<string> {
   }
 
   return taken
+}
+
+// does a file carry `test <phrase>` blocks, and so need rewriting before the compiler can read it
+export function carriesTests(source: string): boolean {
+  return /^\s*test /m.test(source)
+}
+
+// One file as the compiler reads it: a file of `test` blocks rewritten, any other as written. `place` moves a
+// diagnostic raised against the rewritten text back onto the lines the person wrote, and hands back the text its
+// frame should quote. A test file's errors pointed into the rewritten text, a line the reader never wrote, until
+// 2026-10-04 (guides: commands/test). `term make`, `test`, `roll`, `time` and `hold` all compile through this.
+export function readable(source: string): {
+  text: string
+  place: (diagnostic: Diagnostic) => { diagnostic: Diagnostic; text: string }
+} {
+  if (!carriesTests(source)) {
+    return { text: source, place: diagnostic => ({ diagnostic, text: source }) }
+  }
+
+  const rewritten = preprocessTests(source)
+  const from = source.split('\n')
+  const to = rewritten.text.split('\n')
+
+  // a rewritten line keeps its source line's text, perhaps at another indent, so a column moves by the difference.
+  // A line the rewrite made up (a guard, `send back, true`) points at the start of the line it came from
+  const at = (position: Position): Position => {
+    const line = rewritten.origin[position.line] ?? position.line
+    const written = from[line] ?? ''
+    const compiled = to[position.line] ?? ''
+    const column =
+      compiled.trim() === written.trim()
+        ? position.column + indentOf(written) - indentOf(compiled)
+        : indentOf(written)
+
+    return { line, column: Math.max(0, Math.min(written.length, column)) }
+  }
+  const span = (s: Span): Span => ({ ...s, start: at(s.start), end: at(s.end) })
+
+  return {
+    text: rewritten.text,
+    place: diagnostic => ({
+      diagnostic: {
+        ...diagnostic,
+        span: span(diagnostic.span),
+        markers: diagnostic.markers.map(m => ({ ...m, span: span(m.span) })),
+      },
+      text: source,
+    }),
+  }
 }
 
 export function preprocessTests(source: string): Preprocessed {

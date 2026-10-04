@@ -3,6 +3,10 @@
 // canonical long form, the compact one-line-per-entry form (`--pack`), JSON (`--json`, `--keep` leaves keys
 // kebab), or only its diagnostics (`--check`). Never writes a file in place:
 // `term form` is the in-place formatter. See note/term/host/06-package-and-cli.md.
+//
+// The shaped data is DATA, on stdout through `printData`, byte for byte as before, so `term mold x.tree --json | jq`
+// reads it clean. The run around it, and every diagnostic as a Problem item with its frame, is the human view on
+// stderr (code/output.ts).
 
 import { readFileSync } from 'fs'
 import path from 'path'
@@ -16,8 +20,14 @@ import {
   writeLong,
 } from '@term/make/code/compile/host'
 import type { Data, DataTree } from '@term/make/code/compile/host'
-import { renderDiagnostic } from '@term/call/code/report'
-import { logFail } from '@term/make/code/tint'
+import type { Diagnostic } from '@term/make/code/parser/diagnostic'
+import { closeRun, openRun, printData, report, reportProblems } from '@term/call/code/output'
+
+// the run ends on the data's own defects, each with its frame
+function refuse(diagnostics: Diagnostic[], text: string, root: string): void {
+  reportProblems(diagnostics.map(diagnostic => ({ diagnostic, text })), root)
+  closeRun({ verdict: 'The data does not read' })
+}
 
 export async function callMold(input: {
   root: string
@@ -31,6 +41,9 @@ export async function callMold(input: {
   lines?: boolean
 }): Promise<void> {
   const file = input.file ? path.resolve(input.root, input.file) : '<stdin>'
+  const shape = input.check ? '--check' : input.json ? '--json' : input.pack ? '--pack' : 'long'
+
+  openRun({ verb: 'mold', root: input.root, facts: [input.file ?? 'stdin', shape] })
 
   let text: string
 
@@ -39,8 +52,10 @@ export async function callMold(input: {
       ? readFileSync(file, 'utf8')
       : readFileSync(0, 'utf8')
   } catch {
-    logFail(`Could not read ${input.file ?? 'stdin'}`)
-    process.exit(1)
+    report({ glyph: 'failed', kind: 'problem', verb: 'read', subject: `${input.file ?? 'Standard input'} could not be read` })
+    closeRun({ verdict: 'Nothing to mold' })
+
+    return
   }
 
   let data: Data
@@ -50,22 +65,24 @@ export async function callMold(input: {
     try {
       data = fromJson(text)
     } catch (error) {
-      logFail(`Not JSON: ${String(error)}`)
-      process.exit(1)
+      report({ glyph: 'failed', kind: 'problem', verb: 'read', subject: 'The input is not JSON', message: [error instanceof Error ? error.message : String(error)] })
+      closeRun({ verdict: 'The data does not read' })
+
+      return
     }
   } else if (input.lines) {
     // a stream: one form per line, anchors re-declarable, each line expanded as it is read
     const stream = readStream({ file, text })
 
     if (!stream.ok) {
-      for (const diagnostic of stream.diagnostics) {
-        console.error(renderDiagnostic(diagnostic, text))
-      }
+      refuse(stream.diagnostics, text, input.root)
 
-      process.exit(1)
+      return
     }
 
     if (input.check) {
+      closeRun({ verdict: 'The data reads' })
+
       return
     }
 
@@ -74,23 +91,21 @@ export async function callMold(input: {
     const read = readDataText({ file, text })
 
     if (!read.ok) {
-      for (const diagnostic of read.diagnostics) {
-        console.error(renderDiagnostic(diagnostic, text))
-      }
+      refuse(read.diagnostics, text, input.root)
 
-      process.exit(1)
+      return
     }
 
     if (input.check) {
       const expanded = expandData(read.data, file)
 
       if (!expanded.ok) {
-        for (const diagnostic of expanded.diagnostics) {
-          console.error(renderDiagnostic(diagnostic, text))
-        }
+        refuse(expanded.diagnostics, text, input.root)
 
-        process.exit(1)
+        return
       }
+
+      closeRun({ verdict: 'The data reads' })
 
       return
     }
@@ -103,11 +118,9 @@ export async function callMold(input: {
       const expanded = expandData(read.data, file)
 
       if (!expanded.ok) {
-        for (const diagnostic of expanded.diagnostics) {
-          console.error(renderDiagnostic(diagnostic, text))
-        }
+        refuse(expanded.diagnostics, text, input.root)
 
-        process.exit(1)
+        return
       }
 
       data = expanded.data
@@ -115,14 +128,18 @@ export async function callMold(input: {
   }
 
   if (input.check) {
+    closeRun({ verdict: 'The data reads' })
+
     return
   }
 
   if (input.json) {
-    process.stdout.write(toJson(data, input.keep) + '\n')
+    printData(toJson(data, input.keep) + '\n')
   } else if (input.pack) {
-    process.stdout.write(writeCompact(data, anchors))
+    printData(writeCompact(data, anchors))
   } else {
-    process.stdout.write(writeLong(data, anchors))
+    printData(writeLong(data, anchors))
   }
+
+  closeRun({ verdict: 'Molded' })
 }

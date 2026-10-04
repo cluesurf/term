@@ -6,6 +6,10 @@
 //
 // Reports by default and writes nothing. `--find` prints the query manifest, which is the `host` dialect, so it
 // pipes into `term mold --json` for a route loader that wants it that way. See note/term/view/08-package-and-cli.md.
+//
+// What a document uses, the manifest and the JSON are DATA on stdout, byte for byte as before: word.surf's guide
+// save gate reads `--find` from stdout (mesh/deck/back/code/tool/guide.ts). A document that does not read is a
+// Problem item per diagnostic, with its `at` and frame, in the human view on stderr (code/output.ts).
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { resolve, join, relative } from 'node:path'
@@ -16,6 +20,8 @@ import {
   type ViewFile,
   type ViewNode,
 } from '@term/make/code/compile/view'
+import type { Diagnostic } from '@term/make/code/parser/diagnostic'
+import { closeRun, count, openRun, printData, report as reportItem, reportProblems } from '@term/call/code/output'
 
 export type ViewCall = {
   root: string
@@ -44,20 +50,26 @@ export async function callView(input: ViewCall): Promise<void> {
   // temp file.
   const target = input.path ? resolve(input.root, input.path) : input.root
 
+  openRun({ verb: 'view', root: input.root, facts: [...(input.path ? [input.path] : []), ...(input.find ? ['--find'] : [])] })
+
   if (!existsSync(target)) {
-    console.error(`no such path: ${input.path ?? '.'}`)
-    process.exit(2)
+    reportItem({ glyph: 'failed', kind: 'problem', verb: 'read', subject: `There is no path ${input.path ?? '.'}` })
+    // a path that is not there is the caller's mistake, exit 2 as it always was
+    closeRun({ verdict: 'Nothing to check', failure: 'usage' })
+
+    return
   }
 
   const files = statSync(target).isDirectory() ? walk(target) : [target]
 
   if (files.length === 0) {
-    console.log('no .tree files here')
+    closeRun({ verdict: 'No .tree file here' })
 
     return
   }
 
   const looks: Look[] = []
+  const problems: { diagnostic: Diagnostic; text: string }[] = []
 
   let failed = 0
 
@@ -70,35 +82,37 @@ export async function callView(input: ViewCall): Promise<void> {
 
     if (!read.ok) {
       failed++
-      report(name, read.diagnostics)
+
+      for (const diagnostic of read.diagnostics) {
+        problems.push({ diagnostic, text })
+      }
+
       continue
     }
 
     looks.push(look(name, read.file))
   }
 
+  reportProblems(problems, input.root)
+
   if (input.find) {
-    for (const one of looks) {
-      console.log(one.manifest)
-    }
+    printData(looks.map(one => `${one.manifest}\n`).join(''))
   } else if (input.back === 'json') {
-    console.log(
-      JSON.stringify(
+    printData(
+      `${JSON.stringify(
         looks.map(({ manifest, ...rest }) => rest),
         null,
         2,
-      ),
+      )}\n`,
     )
   } else {
-    for (const one of looks) {
-      say(one)
-    }
+    printData(looks.map(say).join(''))
   }
 
-  if (failed > 0) {
-    console.error(`\n${failed} document${failed === 1 ? '' : 's'} did not read`)
-    process.exit(1)
-  }
+  closeRun({
+    verdict: failed > 0 ? `${failed} document${failed === 1 ? '' : 's'} did not read` : `${looks.length} document${looks.length === 1 ? '' : 's'} read`,
+    counts: [count(files.length, 'files', 'file')],
+  })
 }
 
 function look(file: string, read: ViewFile): Look {
@@ -182,12 +196,13 @@ function look(file: string, read: ViewFile): Look {
   }
 }
 
-function say(one: Look): void {
-  console.log(one.file)
+// what one document uses, the lines it has always printed
+function say(one: Look): string {
+  const lines = [one.file]
 
   const row = (name: string, values: string[]): void => {
     if (values.length > 0) {
-      console.log(`  ${name.padEnd(7)} ${values.join('  ')}`)
+      lines.push(`  ${name.padEnd(7)} ${values.join('  ')}`)
     }
   }
 
@@ -195,19 +210,10 @@ function say(one: Look): void {
   row('find', one.find)
   row('call', one.call)
   row('load', one.load)
-  console.log(`  ${'node'.padEnd(7)} ${one.node}`)
-  console.log(`  ${'deep'.padEnd(7)} ${one.deep}`)
-}
+  lines.push(`  ${'node'.padEnd(7)} ${one.node}`)
+  lines.push(`  ${'deep'.padEnd(7)} ${one.deep}`)
 
-function report(file: string, diagnostics: { message: string; span?: unknown }[]): void {
-  console.error(file)
-
-  for (const one of diagnostics) {
-    const span = one.span as { start?: { line: number; column: number } } | undefined
-    const at = span?.start ? `${span.start.line + 1}:${span.start.column + 1}` : '?'
-
-    console.error(`  ${at}  ${one.message}`)
-  }
+  return `${lines.join('\n')}\n`
 }
 
 function walk(dir: string, into: string[] = []): string[] {
