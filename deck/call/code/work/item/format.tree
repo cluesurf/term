@@ -1,0 +1,649 @@
+# Facts and values (section 6): every number the human view prints, from the number the event holds.
+#
+# INTEGER ARITHMETIC ONLY. A duration is whole milliseconds, a size whole bytes, and every rounding is a whole-number
+# division rounded half up (`divide-round`). On Rust a `number` is an i64, and on TypeScript a double, so anything
+# that depended on a float's last bit (`toFixed(2)` of 2.905) would print differently on the two. Nothing here does.
+#
+# A FORMATTER RETURNS SPANS, because the facts line colors the number and dims the unit (section 6, "numbers bright,
+# words dim"), and a no-break space joins them so the wrap can never part a number from its unit (section 8). The
+# text of a value, for the plain sentences and anything else that wants one string, is `spans-text` of the same
+# spans, so the two views cannot disagree.
+#
+# ODD INPUT NEVER THROWS: a NaN reads as absent, a negative duration or size as zero, and anything past the largest
+# exact integer as that integer. A formatter always returns something printable.
+
+load @term/base/text
+  find char-count
+  find starts-with
+  find substring
+
+load @term/base/text/unicode
+  find to-runes
+  find rune-to-text
+
+load ./standard
+  find standard
+
+load ./layout
+  find span
+  find room
+  find make-span
+  find find-symbol
+
+load ./measure
+  find measure-text
+  find make-grains
+
+# the largest integer every backend holds exactly
+task largest-whole
+  like number
+  back 9007199254740991
+
+# a no-break space: what joins a number to its unit, so a wrap never parts them
+task make-glue
+  like text
+  back rune-to-text(160)
+
+# a number that is safe to do arithmetic on: NaN is 0, a fraction rounds half up, past the largest exact integer is
+# that integer.
+#
+# COMPARISONS ONLY until the value is known to be finite and in range. A Term `number` is an integer to the checker,
+# and on TypeScript every sum is guarded (`__termInt`) and throws on NaN or past 2^53, so a NaN duration handed in
+# from TypeScript would throw at the first `add`. A fraction (a TypeScript caller's 2.4 ms) is the one case that
+# needs arithmetic, and `(2v + 1) / 2` truncated is v rounded half up on TypeScript and v itself on an i64
+task make-whole
+  take value, like number
+  like number
+  fork test, is-equal(is-equal(value, value), false)
+    hold
+      back 0
+  save limit, largest-whole()
+  fork test, is-above(value, limit)
+    hold
+      back limit
+  save least, subtract(0, limit)
+  fork test, is-below(value, least)
+    hold
+      back least
+  # past 2^52 every double is already whole, and doubling it would leave the exact range
+  save exact, 4503599627370496
+  fork test, or(is-minimum(value, exact), is-maximum(value, subtract(0, exact)))
+    hold
+      back value
+  fork test, is-minimum(value, 0)
+    hold
+      back divide(add(multiply(value, 2), 1), 2)
+  save flipped, subtract(0, value)
+  back subtract(0, divide(add(multiply(flipped, 2), 1), 2))
+
+# `top` over `bottom`, both whole and not negative, rounded half up. `divide` truncates on every backend
+task divide-round
+  take top, like number
+  take bottom, like number
+  like number
+  fork test, is-maximum(bottom, 0)
+    hold
+      back 0
+  save half, divide(bottom, 2)
+  back divide(add(top, half), bottom)
+
+# `top` over `bottom`, whole, rounded down for the non-negative values it is used on
+task divide-whole
+  take top, like number
+  take bottom, like number
+  like number
+  fork test, is-maximum(bottom, 0)
+    hold
+      back 0
+  back divide(top, bottom)
+
+# ten to the power
+task power-of-ten
+  take places, like number
+  like number
+  save out, 1
+  save at, 0
+  walk test
+    hook test, is-below(at, places)
+    hook hold
+      save out, multiply(out, 10)
+      save at, add(at, 1)
+  back out
+
+# a whole number's digits, left-padded with zeros to `places`
+task pad-digits
+  take value, like number
+  take places, like number
+  like text
+  save out, <{value}>
+  save have, char-count(out)
+  walk test
+    hook test, is-below(have, places)
+    hook hold
+      save out, <0{out}>
+      save have, add(have, 1)
+  back out
+
+# a whole number with the standard's thousands separator: 31,804
+task group-number
+  take value, like number
+  take standard, like standard
+  like text
+  save whole, make-whole(value)
+  save sign, <>
+  fork test, is-below(whole, 0)
+    hold
+      save sign, <->
+      save whole, subtract(0, whole)
+  save digits, <{whole}>
+  save runes, to-runes(digits)
+  save count, runes/length
+  save every, standard/numbers/group-digits
+  save mark, standard/numbers/group
+  save out, <>
+  save at, 0
+  walk runes
+    take rune
+    save left, subtract(count, at)
+    fork test, and(is-above(at, 0), and(is-above(every, 0), is-equal(modulo(left, every), 0)))
+      hold
+        save out, <{out}{mark}>
+    save out, <{out}{rune-to-text(rune)}>
+    save at, add(at, 1)
+  back <{sign}{out}>
+
+# the plain text of spans, joined
+task spans-text
+  take spans, like list, like span
+  like text
+  save out, <>
+  walk spans
+    take one
+    save out, <{out}{one/value}>
+  back out
+
+# a number then a unit, joined so they never part: `18 ms`, the number in `number-role` and the unit dim
+task push-figure
+  take spans, like list, like span
+  take number, like text
+  take unit, like text
+  take number-role, like text
+  take unit-role, like text
+  like list, like span
+  spans/push make-span(number, number-role)
+  spans/push make-span(make-glue(), unit-role)
+  spans/push make-span(unit, unit-role)
+  back spans
+
+# a duration of section 6, to three significant figures: `4 ms`, `410 ms`, `2.90 s`, `24.1 s`, `2m 05s`, `10h 12m`.
+# `number-role` colors the numbers: `text` normally, `warning` over budget (then the units follow it)
+task format-duration
+  take milliseconds, like number
+  take standard, like standard
+  take number-role, like text
+  like list, like span
+  save rule, standard/durations
+  save unit-role, <dim>
+  fork test, is-unequal(number-role, <text>)
+    hold
+      save unit-role, number-role
+  save spans, make list
+  save ms, make-whole(milliseconds)
+  fork test, is-below(ms, 0)
+    hold
+      save ms, 0
+  # below a second: whole milliseconds, which are three figures or fewer
+  fork test, is-below(ms, 1000)
+    hold
+      back push-figure(spans, <{ms}>, rule/millisecond-unit, number-role, unit-role)
+  # one to ten seconds: three figures is two decimals. 9,995 ms rounds to 10.00, which is the next form's 10.0
+  save hundredths, divide-round(ms, 10)
+  fork test, is-below(hundredths, 1000)
+    hold
+      save whole, divide-whole(hundredths, 100)
+      save part, pad-digits(modulo(hundredths, 100), 2)
+      back push-figure(spans, <{whole}.{part}>, rule/second-unit, number-role, unit-role)
+  # ten seconds to a minute: one decimal. 59,950 ms rounds to 60.0, which is a minute
+  save tenths, divide-round(ms, 100)
+  fork test, is-below(tenths, 600)
+    hold
+      save whole, divide-whole(tenths, 10)
+      save part, modulo(tenths, 10)
+      back push-figure(spans, <{whole}.{part}>, rule/second-unit, number-role, unit-role)
+  # a minute to an hour: minutes and zero-padded seconds
+  save seconds, divide-round(ms, 1000)
+  fork test, is-below(seconds, 3600)
+    hold
+      save minutes, divide-whole(seconds, 60)
+      save rest, pad-digits(modulo(seconds, 60), 2)
+      spans/push make-span(<{minutes}>, number-role)
+      spans/push make-span(rule/minute-unit, unit-role)
+      spans/push make-span(make-glue(), unit-role)
+      spans/push make-span(rest, number-role)
+      spans/push make-span(rule/second-unit, unit-role)
+      back spans
+  # an hour and more: hours and zero-padded minutes
+  save minutes, divide-round(ms, 60000)
+  save hours, divide-whole(minutes, 60)
+  save rest, pad-digits(modulo(minutes, 60), 2)
+  spans/push make-span(group-number(hours, standard), number-role)
+  spans/push make-span(rule/hour-unit, unit-role)
+  spans/push make-span(make-glue(), unit-role)
+  spans/push make-span(rest, number-role)
+  spans/push make-span(rule/minute-unit, unit-role)
+  back spans
+
+# a size of section 6, in decimal units with one decimal under 100 of a unit: `84 B`, `3.1 kB`, `18.4 MB`, `212 MB`
+task format-size
+  take bytes, like number
+  take standard, like standard
+  like list, like span
+  save rule, standard/sizes
+  save spans, make list
+  save value, make-whole(bytes)
+  fork test, is-below(value, 0)
+    hold
+      save value, 0
+  save units, rule/units
+  save step, rule/step
+  fork test, is-below(step, 2)
+    hold
+      save step, 1000
+  save scale, power-of-ten(rule/decimals)
+  fork test, or(is-below(value, step), is-below(units/length, 2))
+    hold
+      save first, units/0
+      back push-figure(spans, group-number(value, standard), first, <text>, <dim>)
+  save index, 1
+  save divisor, step
+  walk test
+    hook test, is-below(index, units/length)
+    hook hold
+      save unit, units/{index}
+      # one decimal under `whole-from` of the unit, so 99.95 kB is 100 kB, never 100.0 kB
+      save fraction, divide-round(multiply(value, scale), divisor)
+      fork test, is-below(fraction, multiply(rule/whole-from, scale))
+        hold
+          save whole, divide-whole(fraction, scale)
+          save part, pad-digits(modulo(fraction, scale), rule/decimals)
+          fork test, is-above(rule/decimals, 0)
+            hold
+              back push-figure(spans, <{whole}.{part}>, unit, <text>, <dim>)
+          back push-figure(spans, <{whole}>, unit, <text>, <dim>)
+      save whole, divide-round(value, divisor)
+      # 999.5 kB is 1.0 MB, never 1000 kB
+      save last, is-equal(add(index, 1), units/length)
+      fork test, or(is-below(whole, step), last)
+        hold
+          back push-figure(spans, group-number(whole, standard), unit, <text>, <dim>)
+      save index, add(index, 1)
+      save divisor, multiply(divisor, step)
+  save first, units/0
+  back push-figure(spans, group-number(value, standard), first, <text>, <dim>)
+
+# a count of section 6: `24 tests`, `1 error`, `31/46 files`, `2/3 tries`
+task format-tally
+  take amount, like number
+  take noun, like text
+  take one, like text
+  take total, like number
+  take standard, like standard
+  like list, like span
+  save spans, make list
+  save number, group-number(amount, standard)
+  save word, noun
+  fork test, is-minimum(total, 0)
+    hold
+      save part, standard/numbers/part
+      save number, <{number}{part}{group-number(total, standard)}>
+    miss
+      fork test, and(is-equal(make-whole(amount), 1), is-unequal(one, <>))
+        hold
+          save word, one
+  fork test, is-equal(word, <>)
+    hold
+      spans/push make-span(number, <text>)
+      back spans
+  back push-figure(spans, number, word, <text>, <dim>)
+
+# the role a status number takes (section 6): 1xx to 3xx done, 4xx warning, 5xx failed; exit 0 done, any other
+# failed; a signal is a failure
+task status-role
+  take kind, like text
+  take value, like number
+  like text
+  fork test, is-equal(kind, <http>)
+    hold
+      fork test, is-below(value, 400)
+        hold
+          back <done>
+      fork test, is-below(value, 500)
+        hold
+          back <warning>
+      back <failed>
+  fork test, and(is-equal(kind, <exit>), is-equal(value, 0))
+    hold
+      back <done>
+  back <failed>
+
+# a status with its label: `HTTP 200`, `exit 1`, `signal TERM`
+task format-status
+  take kind, like text
+  take value, like number
+  take name, like text
+  take standard, like standard
+  like list, like span
+  save spans, make list
+  save rule, standard/facts
+  save role, status-role(kind, value)
+  fork test, is-equal(kind, <http>)
+    hold
+      back push-figure(spans, rule/http-label, <{make-whole(value)}>, <dim>, role)
+  fork test, is-equal(kind, <exit>)
+    hold
+      back push-figure(spans, rule/exit-label, <{make-whole(value)}>, <dim>, role)
+  fork test, is-equal(kind, <signal>)
+    hold
+      back push-figure(spans, rule/signal-label, name, <dim>, role)
+  back spans
+
+# what `x % m` should be: never negative, so a clock before 1970 still reads as a time of day
+task modulo-floor
+  take value, like number
+  take base, like number
+  like number
+  save rest, modulo(value, base)
+  fork test, is-below(rest, 0)
+    hold
+      back add(rest, base)
+  back rest
+
+# epoch milliseconds moved to the display zone
+task shift-clock
+  take epoch, like number
+  take offset, like number
+  like number
+  back add(make-whole(epoch), multiply(make-whole(offset), 60000))
+
+# the clock of section 6: `HH:MM:SS.mmm`, 24-hour, in the zone `offset` minutes east of UTC
+task format-clock
+  take epoch, like number
+  take offset, like number
+  like text
+  save local, shift-clock(epoch, offset)
+  save day, modulo-floor(local, 86400000)
+  save hours, divide-whole(day, 3600000)
+  save minutes, divide-whole(modulo(day, 3600000), 60000)
+  save seconds, divide-whole(modulo(day, 60000), 1000)
+  save millis, modulo(day, 1000)
+  save a, pad-digits(hours, 2)
+  save b, pad-digits(minutes, 2)
+  save c, pad-digits(seconds, 2)
+  save d, pad-digits(millis, 3)
+  back <{a}:{b}:{c}.{d}>
+
+# the civil date of a day count since 1970-01-01, as year, month and day (Howard Hinnant's `civil_from_days`, which
+# is exact over the whole proleptic Gregorian calendar with integer arithmetic alone)
+form civil-date
+  link year, like number
+  link month, like number
+  link day, like number
+
+task make-civil-date
+  take days, like number
+  like civil-date
+  save z, add(days, 719468)
+  save era, divide-whole(z, 146097)
+  fork test, is-below(z, 0)
+    hold
+      save era, divide-whole(subtract(z, 146096), 146097)
+  save doe, subtract(z, multiply(era, 146097))
+  save yoe, divide-whole(subtract(subtract(add(doe, divide-whole(doe, 36524)), divide-whole(doe, 1460)), divide-whole(doe, 146096)), 365)
+  save y, add(yoe, multiply(era, 400))
+  save doy, subtract(doe, subtract(add(multiply(365, yoe), divide-whole(yoe, 4)), divide-whole(yoe, 100)))
+  save mp, divide-whole(add(multiply(5, doy), 2), 153)
+  save d, add(subtract(doy, divide-whole(add(multiply(153, mp), 2), 5)), 1)
+  save m, add(mp, 3)
+  fork test, is-above(m, 12)
+    hold
+      save m, subtract(m, 12)
+  fork test, is-maximum(m, 2)
+    hold
+      save y, add(y, 1)
+  back make civil-date, year(y), month(m), day(d)
+
+# the local date of an instant: `2026-10-04`, the subject of a `date` item (section 11)
+task format-date
+  take epoch, like number
+  take offset, like number
+  like text
+  save local, shift-clock(epoch, offset)
+  save days, divide-whole(subtract(local, modulo-floor(local, 86400000)), 86400000)
+  save one, make-civil-date(days)
+  save y, pad-digits(one/year, 4)
+  save m, pad-digits(one/month, 2)
+  save d, pad-digits(one/day, 2)
+  back <{y}-{m}-{d}>
+
+# the day number of an instant in the display zone, to tell when the local date changes
+task day-of
+  take epoch, like number
+  take offset, like number
+  like number
+  save local, shift-clock(epoch, offset)
+  back divide-whole(subtract(local, modulo-floor(local, 86400000)), 86400000)
+
+# an offset as RFC 3339 writes it: `-07:00`, `+05:30`, or `Z` for UTC
+task format-offset
+  take offset, like number
+  take utc, like boolean
+  like text
+  fork test, utc
+    hold
+      back <Z>
+  save sign, <+>
+  save size, make-whole(offset)
+  fork test, is-below(size, 0)
+    hold
+      save sign, <->
+      save size, subtract(0, size)
+  save h, pad-digits(divide-whole(size, 60), 2)
+  save m, pad-digits(modulo(size, 60), 2)
+  back <{sign}{h}:{m}>
+
+# an instant as RFC 3339 with its offset (section 19): `2026-10-03T14:02:07.412-07:00`
+task format-instant
+  take epoch, like number
+  take offset, like number
+  take utc, like boolean
+  like text
+  save shift, offset
+  fork test, utc
+    hold
+      save shift, 0
+  save date, format-date(epoch, shift)
+  save clock, format-clock(epoch, shift)
+  save zone, format-offset(shift, utc)
+  back <{date}T{clock}{zone}>
+
+# the zone fact of an opening item (section 11): `PDT, UTC−7`, `UTC+5:30`, or `UTC` under --utc. The name comes from
+# the platform and may be empty
+task format-zone
+  take name, like text
+  take offset, like number
+  take utc, like boolean
+  take room, like room
+  like text
+  fork test, utc
+    hold
+      back <UTC>
+  save size, make-whole(offset)
+  save sign, <+>
+  fork test, is-below(size, 0)
+    hold
+      save sign, find-symbol(room, <minus>)
+      save size, subtract(0, size)
+  save hours, divide-whole(size, 60)
+  save minutes, modulo(size, 60)
+  save utc-text, <UTC{sign}{hours}>
+  fork test, is-equal(size, 0)
+    hold
+      save utc-text, <UTC>
+  fork test, is-above(minutes, 0)
+    hold
+      save padded, pad-digits(minutes, 2)
+      save utc-text, <{utc-text}:{padded}>
+  fork test, is-equal(name, <>)
+    hold
+      back utc-text
+  save glue, make-glue()
+  back <{name},{glue}{utc-text}>
+
+# a version as published, no `v`
+task format-version
+  take value, like text
+  like text
+  fork test, starts-with(value, <v>)
+    hold
+      save rest, substring(value, 1)
+      save runes, to-runes(rest)
+      fork test, is-above(runes/length, 0)
+        hold
+          save head, runes/0
+          fork test, and(is-minimum(head, 48), is-maximum(head, 57))
+            hold
+              back rest
+  back value
+
+# a version change: `5.6.3 → 5.9.2`
+task format-change
+  take before, like text
+  take after, like text
+  take room, like room
+  like text
+  save arrow, find-symbol(room, <arrow>)
+  save a, format-version(before)
+  save b, format-version(after)
+  back <{a} {arrow} {b}>
+
+# a dependency chain (section 6): `app › @shape/ui › react-dom`, the separators dim. Past the standard's link limit
+# the middle collapses: `app › @shape/charts › … 3 more › react-reconciler 0.29.0 › react 18.3.1`
+task format-chain
+  take links, like list, like text
+  take room, like room
+  like list, like span
+  save spans, make list
+  save limit, room/standard/layout/chain-links
+  save count, links/length
+  save mark, find-symbol(room, <chain>)
+  save more, find-symbol(room, <more>)
+  save word, room/standard/caps/more-word
+  save keep, divide-whole(limit, 2)
+  save collapse, and(is-above(count, limit), is-above(keep, 0))
+  save at, 0
+  save first, true
+  walk links
+    take one
+    save shown, true
+    fork test, collapse
+      hold
+        fork test, and(is-minimum(at, keep), is-below(at, subtract(count, keep)))
+          hold
+            save shown, false
+            fork test, is-equal(at, keep)
+              hold
+                spans/push make-span(< {mark} >, <dim>)
+                save hidden, subtract(count, multiply(keep, 2))
+                spans/push make-span(<{more} {hidden} {word}>, <dim>)
+    fork test, shown
+      hold
+        fork test, first
+          miss
+            spans/push make-span(< {mark} >, <dim>)
+        spans/push make-span(one, <text>)
+        save first, false
+    save at, add(at, 1)
+  back spans
+
+# a path relative to the working directory or the root the opening item named, `~` for home (section 6)
+task format-path
+  take path, like text
+  take directory, like text
+  take home, like text
+  like text
+  fork test, and(is-unequal(directory, <>), is-equal(path, directory))
+    hold
+      back <.>
+  fork test, and(is-unequal(directory, <>), starts-with(path, <{directory}/>))
+    hold
+      save cut, add(char-count(directory), 1)
+      back substring(path, cut)
+  fork test, and(is-unequal(home, <>), is-equal(path, home))
+    hold
+      back <~>
+  fork test, and(is-unequal(home, <>), starts-with(path, <{home}/>))
+    hold
+      save cut, char-count(home)
+      save rest, substring(path, cut)
+      back <~{rest}>
+  back path
+
+# a location: `path:line:col`, 1-based, the line and column left out when unknown
+task format-place
+  take path, like text
+  take line, like number
+  take column, like number
+  like text
+  fork test, is-above(line, 0)
+    miss
+      back path
+  fork test, is-above(column, 0)
+    miss
+      back <{path}:{line}>
+  back <{path}:{line}:{column}>
+
+# a text cut to `width` cells with `…` in the middle (section 11's source tags): `paymen…ciler`
+task truncate-middle
+  take value, like text
+  take width, like number
+  take room, like room
+  like text
+  save grains, make-grains(value)
+  save total, 0
+  walk grains
+    take one
+    save total, add(total, one/wide)
+  fork test, is-maximum(total, width)
+    hold
+      back value
+  save more, find-symbol(room, <more>)
+  save room-left, subtract(width, measure-text(more))
+  fork test, is-below(room-left, 1)
+    hold
+      back more
+  save head-room, divide-round(room-left, 2)
+  save tail-room, subtract(room-left, head-room)
+  save head, <>
+  save used, 0
+  walk grains
+    take one
+    fork test, is-maximum(add(used, one/wide), head-room)
+      hold
+        save head, <{head}{one/value}>
+        save used, add(used, one/wide)
+      miss
+        halt
+  save tail, <>
+  save used, 0
+  save at, subtract(grains/length, 1)
+  walk test
+    hook test, is-minimum(at, 0)
+    hook hold
+      save one, grains/{at}
+      fork test, is-above(add(used, one/wide), tail-room)
+        hold
+          halt
+      save tail, <{one/value}{tail}>
+      save used, add(used, one/wide)
+      save at, subtract(at, 1)
+  back <{head}{more}{tail}>

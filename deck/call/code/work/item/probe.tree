@@ -1,77 +1,42 @@
-# A probe of the constructs the item library needs, emitted on every backend before any of it is written.
-
-load @term/base/text
-  find char-count
-  find substring
-
-load @term/base/text/unicode
-  find to-runes
-  find rune-to-text
-
-load @term/base/math
-  find round-down
+# A probe: the wrap engine on the mockups' long values.
 
 load @term/base/console
   find log
 
-form span
-  link value, like text
-  link role, like text, fall <text>
-  link strong, like boolean, fall false
+load ./standard
+  find make-standard
 
-form node
-  link label, like text
-  link children, like list, like node
+load ./layout
+  find make-span
+  find line-text
 
-form knob
-  link width, like number
-  link name, like text
+load ./wrap
+  find wrap-spans
+  find text-breaks
 
-task count-nodes
-  take one, like node
-  like number
-  save total, 1
-  walk one/children
-    take child
-    save total, add(total, count-nodes(child))
-  back total
-
-task quotient
-  take top, like number
-  take bottom, like number
-  like number
-  back round-down divide(top, bottom)
-
-task is-real
-  take value, like number
-  like boolean
-  back is-equal(value, value)
+task show
+  take spans, like list, like span
+  take first, like number
+  take rest, like number
+  like void
+  save one, make-standard()
+  save lines, wrap-spans(spans, first, rest, 2, text-breaks(one), false)
+  walk lines
+    take each
+    log <[{line-text(each)}]>
+  log <-->
 
 task boot
-  save plain, make span, value(<ab>)
-  log <{plain/value} {plain/role} {plain/strong}>
-  save leaf, make node, label(<leaf>), children(make list)
-  save kids, make list
-  kids/push leaf
-  kids/push leaf
-  save top, make node, label(<top>), children(kids)
-  log <nodes {count-nodes(top)}>
-  save k, make knob, width(7), name(<a>)
-  save k/width, 9
-  log <knob {k/width}>
-  save q, quotient(2905, 10)
-  save r, modulo(2905, 10)
-  log <quotient {q} {r}>
-  save items, make list
-  items/push <x>
-  items/push <y>
-  save at, 1
-  log <item {items/{at}} size {items/length}>
-  save real, is-real(5)
-  save differ, is-equal(is-equal(<a>, <b>), false)
-  log <real {real} {differ}>
-  save built, <>
-  walk to-runes(<héllo>)
-    take rune
-    save built, <{built}{rune-to-text(rune)}.>
-  log built
+  save url, make list
+  url/push make-span(</api/shapes/search?query=regular-hexagon&limit=50&cursor=eyJpZCI6MTIzLCJ0cyI6MTcyOH0>, <text>)
+  show(url, 69, 67)
+  show(url, 49, 47)
+  show(url, 33, 31)
+  save hashed, make list
+  hashed/push make-span(</files/sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08>, <text>)
+  hashed/push make-span(<  >, <text>)
+  hashed/push make-span(<api>, <source>)
+  show(hashed, 69, 67)
+  save words, make list
+  words/push make-span(<A number went past the i64 range while summing 31 rows of report totals>, <text>)
+  show(words, 33, 31)

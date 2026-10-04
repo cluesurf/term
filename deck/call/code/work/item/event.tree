@@ -1,0 +1,191 @@
+# The event of section 21: what a command hands the library, and the one object both views are rendered from.
+#
+# QUANTITIES STAY NUMBERS until render. A duration is milliseconds, a size is bytes, a clock is epoch milliseconds, a
+# count is its number: section 6 formats them, so the JSON view (section 19) carries the numbers and the human view
+# the figures, from one object.
+#
+# ABSENCE IS A VALUE THAT CANNOT BE REAL, not a `maybe`: -1 for a number (a duration, a size, a clock, a total), the
+# empty text for a text, the empty list for a list. Every field has a `fall`, so an event names only what it has, and
+# `make event, glyph(<done>), verb(<GET>), subject(...)` is a whole event. The TypeScript side builds one by spreading
+# `blankEvent()` (below), which is the same defaults as a value.
+#
+# Every field is plain data, so an event is copied, compared and serialized as it is, on every backend.
+
+load ./layout
+  find span
+
+# an HTTP status, an exit code or a signal. `kind` is empty when there is none
+form status
+  link kind, like text, fall <>
+  link value, like number, fall 0
+  link name, like text, fall <>
+
+# a count of section 6: number then noun, or parts of a total (`31/46 files`). `noun` is the stable plural, the key
+# in JSON; `one` is the singular the human view prints beside 1, empty when the noun does not change (`passed`)
+form tally
+  link amount, like number
+  link noun, like text
+  link one, like text, fall <>
+  link total, like number, fall -1
+
+# one field of section 7. `value` is spans, so a dependency chain keeps its dim separators. `location` breaks only
+# after `/` (section 12)
+form item-field
+  link key, like text
+  link value, like list, like span
+  link location, like boolean, fall false
+
+# a line of source in a code frame, by its 1-based number
+form frame-line
+  link number, like number
+  link value, like text
+
+# a span under a frame line: 1-based column in characters of that line, length in characters, a short label.
+# `primary` is drawn `━` in the item's color, secondary `─` dim
+form frame-mark
+  link line, like number
+  link column, like number
+  link length, like number
+  link label, like text, fall <>
+  link primary, like boolean, fall true
+
+form frame
+  link lines
+    like list, like frame-line
+    fall make list
+  link marks
+    like list, like frame-mark
+    fall make list
+  # the file's tab width: a tab in a source line expands to the next multiple of it
+  link tab-width, like number, fall 8
+
+# one choice of a question (section 13)
+form choice
+  link label, like text
+  link hint, like text, fall <>
+  link picked, like boolean, fall false
+  link focused, like boolean, fall false
+
+# a table column (section 14): its title, and whether it holds numbers, which right-aligns it
+form column
+  link title, like text
+  link numeric, like boolean, fall false
+
+form table-row
+  link entries, like list, like span
+
+# a node of a tree (section 14). `detail` is dim beside the label
+form tree-node
+  link label, like text
+  link detail, like text, fall <>
+  link deduped, like boolean, fall false
+  link children
+    like list, like tree-node
+    fall make list
+
+# one entry of a list (section 14)
+form list-entry
+  link label, like text
+  link detail, like text, fall <>
+
+# where a problem is: path, then 1-based line and column, for sorting (section 12) and CI annotations (section 17)
+form location
+  link path, like text, fall <>
+  link line, like number, fall 0
+  link column, like number, fall 0
+
+form event
+  # the glyph's name in the standard: done, failed, warning, info, skipped, running, asking, added, removed, changed
+  link glyph, like text, fall <info>
+  # the catalog kind of section 9
+  link kind, like text, fall <step>
+  link verb, like text, fall <>
+  link subject
+    like list, like span
+    fall make list
+  link source, like text, fall <>
+  link clock, like number, fall -1
+  link duration, like number, fall -1
+  # the duration is an uptime, printed `up 2m 56s`
+  link uptime, like boolean, fall false
+  # the duration's budget: over it, the duration is in the warning color and a `budget` field follows
+  link budget, like number, fall -1
+  link status, like status, fall make status
+  link bytes, like number, fall -1
+  link tallies
+    like list, like tally
+    fall make list
+  # the rest of section 6, short words in order
+  link facts
+    like list, like text
+    fall make list
+  link message
+    like list, like text
+    fall make list
+  link fields
+    like list, like item-field
+    fall make list
+  link frames
+    like list, like frame
+    fall make list
+  link quote
+    like list, like text
+    fall make list
+  # how many lines came before the quote kept here, and the full log they are in
+  link quote-earlier, like number, fall 0
+  link quote-log, like text, fall <>
+  link done, like number, fall -1
+  link total, like number, fall -1
+  link choices
+    like list, like choice
+    fall make list
+  # a question's answer line while it waits: what is typed so far, shown as `•` when secret
+  link asking, like boolean, fall false
+  link typed, like text, fall <>
+  link secret, like boolean, fall false
+  link columns
+    like list, like column
+    fall make list
+  link rows
+    like list, like table-row
+    fall make list
+  link nodes
+    like list, like tree-node
+    fall make list
+  link entries
+    like list, like list-entry
+    fall make list
+  # how many entries there are in all, when more exist than `entries` holds
+  link entry-total, like number, fall -1
+  # <debug> or <trace>: the whole item dim, printed only with --verbose or --trace
+  link level, like text, fall <>
+  # the closing item: its subject is the bold verdict
+  link verdict, like boolean, fall false
+  link place, like location, fall make location
+  # a problem caused by another names it; the cause gains `n hidden`
+  link id, like text, fall <>
+  link cause, like text, fall <>
+  # identical items collapsed into this one (section 11), printed `×n`
+  link repeat, like number, fall 0
+
+# every field at its absent value, for a caller outside Term that builds an event by spreading it
+task blank-event
+  like event
+  back make event
+
+# a subject of one plain span
+task plain-subject
+  take value, like text
+  like list, like span
+  save spans, make list
+  spans/push make span, value(value)
+  back spans
+
+# a field whose value is one plain span
+task plain-field
+  take key, like text
+  take value, like text
+  like item-field
+  save spans, make list
+  spans/push make span, value(value)
+  back make item-field, key(key), value(spans)

@@ -1,0 +1,232 @@
+# The layout: what every component returns, and what every output target reads.
+#
+# A LAYOUT IS LINES OF STYLED SPANS, AND NOTHING ELSE. No escape codes, no colors, no widths: a span names its ROLE
+# (`dim`, `done`, ...), and a target decides what a role looks like (truecolor, 16 colors, none). So a component is
+# written once and every target works on it, and a test compares layouts as well as final text.
+#
+# A COMPONENT DRAWS IN A ROOM: the cells it may use, the standard it reads every size and glyph from, and whether
+# the terminal can show more than ASCII. It returns lines starting at its own left edge, each no wider than the room;
+# the caller places them at a column with `indent-lines`. The charset is decided HERE, before anything is measured,
+# because `…` is one cell and `...` is three, and a line wrapped for one does not fit when drawn in the other.
+
+load ./standard
+  find standard
+  find symbol-rule
+  find glyph-rule
+  find role-rule
+
+# one run of text in one style. `href` is a URL the target may emit as an OSC 8 hyperlink. `focus` is the background
+# highlight of a focused choice. `strong` is bold, which the standard reserves for the verdict and the echoed command
+form span
+  link value, like text
+  link role, like text, fall <text>
+  link strong, like boolean, fall false
+  link href, like text, fall <>
+  link focus, like boolean, fall false
+
+form line
+  link spans
+    like list, like span
+    fall make list
+
+form room
+  # the cells a line may use
+  link width, like number
+  link standard, like standard
+  link ascii, like boolean, fall false
+  # the display zone of every clock: minutes east of UTC, and whether it is UTC
+  link offset, like number, fall 0
+  link utc, like boolean, fall false
+
+# a room as wide as the terminal, never narrower than the standard's least width (section 8)
+task make-room
+  take width, like number
+  take standard, like standard
+  take ascii, like boolean
+  take offset, like number
+  take utc, like boolean
+  like room
+  save floor, standard/layout/least-width
+  save cols, width
+  fork test, is-equal(is-equal(cols, cols), false)
+    hold
+      save cols, floor
+  fork test, is-below(cols, floor)
+    hold
+      save cols, floor
+  back make room, width(cols), standard(standard), ascii(ascii), offset(offset), utc(utc)
+
+# the same room, narrower by `by` cells: a component nested at a column draws in what is left of the line
+task narrow-room
+  take one, like room
+  take by, like number
+  like room
+  save less, one
+  save cells, subtract(one/width, by)
+  fork test, is-below(cells, 1)
+    hold
+      save cells, 1
+  save less/width, cells
+  back less
+
+task make-span
+  take value, like text
+  take role, like text
+  like span
+  back make span, value(value), role(role)
+
+task make-line
+  take spans, like list, like span
+  like line
+  back make line, spans(spans)
+
+task blank-line
+  like line
+  back make line
+
+# `count` spaces
+task make-spaces
+  take count, like number
+  like text
+  save out, <>
+  save at, 0
+  walk test
+    hook test, is-below(at, count)
+    hook hold
+      save out, <{out} >
+      save at, add(at, 1)
+  back out
+
+# `piece` repeated `count` times
+task repeat-text
+  take piece, like text
+  take count, like number
+  like text
+  save out, <>
+  save at, 0
+  walk test
+    hook test, is-below(at, count)
+    hook hold
+      save out, <{out}{piece}>
+      save at, add(at, 1)
+  back out
+
+# the lines moved right by `column` cells. A blank line stays blank: no trailing spaces
+task indent-lines
+  take lines, like list, like line
+  take column, like number
+  like list, like line
+  save out, make list
+  save pad, make-spaces(column)
+  walk lines
+    take one
+    fork test, is-equal(one/spans/length, 0)
+      hold
+        out/push one
+      miss
+        save spans, make list
+        spans/push make span, value(pad)
+        walk one/spans
+          take piece
+          spans/push piece
+        out/push make line, spans(spans)
+  back out
+
+# one list of lines after another
+task join-lines
+  take first, like list, like line
+  take second, like list, like line
+  like list, like line
+  save out, make list
+  walk first
+    take one
+    out/push one
+  walk second
+    take one
+    out/push one
+  back out
+
+# the plain text of a line, every span's value in order
+task line-text
+  take one, like line
+  like text
+  save out, <>
+  walk one/spans
+    take piece
+    save out, <{out}{piece/value}>
+  back out
+
+# a drawing of the standard's, in the room's charset: `…` or `...`
+task find-symbol
+  take room, like room
+  take name, like text
+  like text
+  walk room/standard/symbols
+    take one
+    fork test, is-equal(one/name, name)
+      hold
+        fork test, room/ascii
+          hold
+            back one/ascii
+        back one/unicode
+  back <>
+
+# a glyph's rule by its name. A name the standard does not hold reads as `info`, so an odd event still draws
+task find-glyph
+  take standard, like standard
+  take name, like text
+  like glyph-rule
+  walk standard/glyphs
+    take one
+    fork test, is-equal(one/name, name)
+      hold
+        back one
+  walk standard/glyphs
+    take one
+    fork test, is-equal(one/name, <info>)
+      hold
+        back one
+  back make glyph-rule, name(name), unicode(<·>), ascii(<->), role(<dim>), rank(0)
+
+# the glyph as drawn in the room
+task draw-glyph
+  take room, like room
+  take name, like text
+  like text
+  save rule, find-glyph(room/standard, name)
+  fork test, room/ascii
+    hold
+      back rule/ascii
+  back rule/unicode
+
+# the role a glyph is colored in
+task glyph-role
+  take standard, like standard
+  take name, like text
+  like text
+  save rule, find-glyph(standard, name)
+  back rule/role
+
+# a role's rule by name, or the text role for a name the standard does not hold
+task find-role
+  take standard, like standard
+  take name, like text
+  like role-rule
+  walk standard/roles
+    take one
+    fork test, is-equal(one/name, name)
+      hold
+        back one
+  back make role-rule, name(name), dark(<>), light(<>), ansi(<>)
+
+# does a list of texts hold this one
+task holds-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false

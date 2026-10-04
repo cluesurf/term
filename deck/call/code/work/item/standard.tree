@@ -1,0 +1,507 @@
+# The Terminal Output Standard, as data (note/term/output/standard.md).
+#
+# EVERY DECISION THE SPEC MAKES IS A FIELD HERE: the columns, the glyphs and their ranks, the role palette, the fact
+# order, the duration and size rules, the wrap break tiers, the field keys, the frame and quote limits, the bar, the
+# live-region timing, the service rules, the caps, the exit codes, the environment names, the event catalog, the
+# child-log mapping and the JSON keys. The renderers read all of it from the `standard` they are handed and hard-code
+# none of it, so refining the standard is an edit to `make-standard` below, and a variant (a test, a later revision)
+# is the default with one field changed: `save mine, make-standard()` then `save mine/layout/verb-width, 9`.
+#
+# THE RULES THAT ARE NOT NUMBERS stay in the renderers as code, because a table cannot say them: "a token breaks
+# after the first tier, failing that the second" is an algorithm over the tiers listed here. Where a rule has a
+# number or a word in it, the number or the word lives here.
+#
+# After any change here, run `pnpm term:test --only item` (note/term/output/readme.md).
+
+# one glyph of section 4: its JSON name, its two drawings, the role it is colored in, and its rank in the worst-glyph
+# order (higher is worse). A rank of 0 is outside the order: + − ~ describe a change, not an outcome
+form glyph-rule
+  link name, like text
+  link unicode, like text
+  link ascii, like text
+  link role, like text
+  link rank, like number
+
+# one color role of section 16. `ansi` is the SGR parameter of the 16-color fallback, empty for the terminal's default
+form role-rule
+  link name, like text
+  link dark, like text
+  link light, like text
+  link ansi, like text
+
+# a drawing that is not a glyph (a separator, a gutter, a bar cell), in its two forms. Also a fold: a character of a
+# subject or a message and the ASCII it becomes when the terminal cannot show it
+form symbol-rule
+  link name, like text
+  link unicode, like text
+  link ascii, like text
+
+# section 2's columns, and the gaps that recur
+form layout-rule
+  # the verb starts here, after the glyph and one space
+  link verb-column, like number
+  link verb-width, like number
+  # subject, facts, details and every continuation start here
+  link body-column, like number
+  # a continuation indents this far past where its text began
+  link hang, like number
+  # below this many columns the width is treated as this
+  link least-width, like number
+  # spaces between the subject and its source tag
+  link tag-gap, like number
+  # spaces between a field's key and its value, and between table columns
+  link key-gap, like number
+  # a dependency chain longer than this collapses its middle
+  link chain-links, like number
+  # a tab in text expands to the next multiple of this
+  link tab-stop, like number
+
+# section 6's durations: the significant figures below a minute, and the unit words
+form duration-rule
+  link figures, like number
+  link millisecond-unit, like text
+  link second-unit, like text
+  link minute-unit, like text
+  link hour-unit, like text
+  # the word before a duration that is an uptime
+  link uptime-word, like text
+
+# section 6's sizes: decimal units, one decimal below `whole-from` of a unit
+form size-rule
+  # how many of one unit make the next
+  link step, like number
+  link units, like list, like text
+  link whole-from, like number
+  link decimals, like number
+
+# section 6's numbers
+form number-rule
+  # the thousands separator of the human view, and how many digits it groups
+  link group, like text
+  link group-digits, like number
+  # between the parts of a total: 31/46
+  link part, like text
+
+# section 6's facts line: the fixed order, and the label words
+form fact-rule
+  link order, like list, like text
+  link http-label, like text
+  link exit-label, like text
+  link signal-label, like text
+
+# section 8's break tiers. Each tier is a text of the characters a long token may break AFTER; a token tries the first
+# tier, then the next, then the edge. `never` is the sequence nothing breaks inside. A location (section 12) breaks
+# only after the characters of `location-tier`
+form wrap-rule
+  link tiers, like list, like text
+  link never, like text
+  link location-tier, like text
+
+# section 7's fields. `location-key` is drawn before the code frame, `action-keys` close the item, and the rest sit
+# between the frame and the quote, in the order given
+form field-rule
+  link location-key, like text
+  link action-keys, like list, like text
+  link standard-keys, like list, like text
+  link budget-key, like text
+  link pass-key, like text
+  link log-key, like text
+  link next-key, like text
+  link sources-key, like text
+
+# section 7's code frame
+form frame-rule
+  # lines of context above the line a span is on
+  link context, like number
+  link tab-width, like number
+
+# section 7's quoted output
+form quote-rule
+  # the last lines kept of long output
+  link lines, like number
+  link earlier-word, like text
+  link frames-word, like text
+  # a stack frame line starts with this, once trimmed
+  link frame-start, like text
+  # a frame that names one of these is not the user's code
+  link foreign, like list, like text
+
+# section 7's progress bar
+form bar-rule
+  link width, like number
+
+# section 10's live region
+form live-rule
+  # the least time between two redraws: 10 a second
+  link redraw-ms, like number
+  # without a terminal, a step longer than this prints a progress item this often
+  link quiet-progress-ms, like number
+
+# section 11's services
+form service-rule
+  # a source tag wider than this is middle-truncated
+  link tag-width, like number
+  # identical items within this window collapse into the first
+  link collapse-ms, like number
+  link date-verb, like text
+  link footer-verb, like text
+
+# section 12's and 14's caps, and the words of their summary lines
+form cap-rule
+  link problems, like number
+  link entries, like number
+  link all-flag, like text
+  link more-problems-word, like text
+  link hidden-word, like text
+  link more-word, like text
+  link lists-word, like text
+  link dropped-word, like text
+  link deduped-word, like text
+
+# one row of section 18's exit table, with the closing glyph it goes with
+form exit-rule
+  link value, like number
+  link name, like text
+  link glyph, like text
+
+# section 17's environment: the names a decision reads, never a literal in the decision itself
+form environment-rule
+  link no-color, like text
+  link force-color, like text
+  link color-term, like text
+  link truecolor-values, like list, like text
+  link force-off-values, like list, like text
+  link terminal, like text
+  link dumb, like text
+  link ci, like text
+  link locale-names, like list, like text
+  link utf-markers, like list, like text
+  link force-hyperlink, like text
+  link hyperlink-programs, like list, like text
+  link hyperlink-variables, like list, like text
+  link program-variable, like text
+  link background-variable, like text
+
+# one row of section 9's catalog: the kind, its verbs, the facts it may carry after the clock, and its detail blocks.
+# A verb list holding `*` takes any verb: the command's own, or an app logger's name
+form kind-rule
+  link name, like text
+  link verbs, like list, like text
+  link facts, like list, like text
+  link details, like list, like text
+
+# a log level word of section 15 and the glyph it becomes. `quiet` makes the item a debug item
+form level-rule
+  link word, like text
+  link glyph, like text
+  link quiet, like boolean
+
+# section 15's child-field mapping
+form child-rule
+  link level-keys, like list, like text
+  link verb-keys, like list, like text
+  link message-keys, like list, like text
+  link time-keys, like list, like text
+  link duration-keys, like list, like text
+  link stack-keys, like list, like text
+  link default-verb, like text
+  link levels, like list, like level-rule
+
+# section 19's keys, by the job each does
+form key-rule
+  link glyph, like text
+  link verb, like text
+  link subject, like text
+  link source, like text
+  link time, like text
+  link milliseconds, like text
+  link status, like text
+  link bytes, like text
+  link counts, like text
+  link facts, like text
+  link message, like text
+  link fields, like text
+  link kind, like text
+
+# section 20's sentences: the plain word of a size unit, singular and plural
+form unit-word
+  link unit, like text
+  link one, like text
+  link many, like text
+
+form standard
+  link layout, like layout-rule
+  link glyphs, like list, like glyph-rule
+  link roles, like list, like role-rule
+  link symbols, like list, like symbol-rule
+  link folds, like list, like symbol-rule
+  link durations, like duration-rule
+  link sizes, like size-rule
+  link numbers, like number-rule
+  link facts, like fact-rule
+  link wraps, like wrap-rule
+  link fields, like field-rule
+  link frames, like frame-rule
+  link quotes, like quote-rule
+  link bars, like bar-rule
+  link lives, like live-rule
+  link services, like service-rule
+  link caps, like cap-rule
+  link exits, like list, like exit-rule
+  link environment, like environment-rule
+  link kinds, like list, like kind-rule
+  link children, like child-rule
+  link keys, like key-rule
+  link unit-words, like list, like unit-word
+
+# The standard as it is written, every value the spec states. A renderer is handed this unless a caller hands it
+# another one.
+task make-standard
+  like standard
+  back
+    make standard
+      layout
+        make layout-rule
+          verb-column 2
+          verb-width 7
+          body-column 11
+          hang 2
+          least-width 40
+          tag-gap 2
+          key-gap 2
+          chain-links 4
+          tab-stop 8
+      glyphs
+        make glyph-rule, name(<done>), unicode(<✓>), ascii(<v>), role(<done>), rank(4)
+        make glyph-rule, name(<failed>), unicode(<✗>), ascii(<x>), role(<failed>), rank(7)
+        make glyph-rule, name(<warning>), unicode(<▲>), ascii(<!>), role(<warning>), rank(6)
+        make glyph-rule, name(<info>), unicode(<·>), ascii(<->), role(<dim>), rank(2)
+        make glyph-rule, name(<skipped>), unicode(<○>), ascii(<o>), role(<dim>), rank(3)
+        make glyph-rule, name(<running>), unicode(<◐>), ascii(<*>), role(<active>), rank(5)
+        make glyph-rule, name(<asking>), unicode(<?>), ascii(<?>), role(<active>), rank(5)
+        make glyph-rule, name(<added>), unicode(<+>), ascii(<+>), role(<done>), rank(0)
+        make glyph-rule, name(<removed>), unicode(<−>), ascii(<->), role(<failed>), rank(0)
+        make glyph-rule, name(<changed>), unicode(<~>), ascii(<~>), role(<warning>), rank(0)
+      roles
+        make role-rule, name(<text>), dark(<#E6E6E1>), light(<#1C1E20>), ansi(<>)
+        make role-rule, name(<dim>), dark(<#8A8F95>), light(<#6B6F75>), ansi(<90>)
+        make role-rule, name(<faint>), dark(<#3A3F44>), light(<#CFD1D4>), ansi(<2;90>)
+        make role-rule, name(<done>), dark(<#8FCB9B>), light(<#2E7D45>), ansi(<32>)
+        make role-rule, name(<failed>), dark(<#F08C8C>), light(<#B93A3A>), ansi(<31>)
+        make role-rule, name(<warning>), dark(<#E8C77A>), light(<#8A5A00>), ansi(<33>)
+        make role-rule, name(<active>), dark(<#8FB8E8>), light(<#2F5FA8>), ansi(<34>)
+        make role-rule, name(<source>), dark(<#8FB3D9>), light(<#3D6797>), ansi(<36>)
+        make role-rule, name(<focus>), dark(<#1D2630>), light(<#DCE6F1>), ansi(<7>)
+      symbols
+        make symbol-rule, name(<separator>), unicode(<·>), ascii(<.>)
+        make symbol-rule, name(<chain>), unicode(<›>), ascii(<\>>)
+        make symbol-rule, name(<arrow>), unicode(<→>), ascii(<-\>>)
+        make symbol-rule, name(<more>), unicode(<…>), ascii(<...>)
+        make symbol-rule, name(<gutter>), unicode(<│>), ascii(<|>)
+        make symbol-rule, name(<primary>), unicode(<━>), ascii(<~>)
+        make symbol-rule, name(<secondary>), unicode(<─>), ascii(<->)
+        make symbol-rule, name(<skip>), unicode(<⋮>), ascii(<:>)
+        make symbol-rule, name(<rule>), unicode(<─>), ascii(<->)
+        make symbol-rule, name(<bar-full>), unicode(<━>), ascii(<->)
+        make symbol-rule, name(<bar-empty>), unicode(<─>), ascii(< >)
+        make symbol-rule, name(<picked>), unicode(<◉>), ascii(<(*)>)
+        make symbol-rule, name(<unpicked>), unicode(<◯>), ascii(<( )>)
+        make symbol-rule, name(<secret>), unicode(<•>), ascii(<*>)
+        make symbol-rule, name(<prompt>), unicode(<❯>), ascii(<$>)
+        make symbol-rule, name(<times>), unicode(<×>), ascii(<x>)
+        make symbol-rule, name(<minus>), unicode(<−>), ascii(<->)
+        make symbol-rule, name(<branch>), unicode(<├─>), ascii(<|->)
+        make symbol-rule, name(<last>), unicode(<└─>), ascii(<`->)
+        make symbol-rule, name(<stem>), unicode(<│ >), ascii(<| >)
+        make symbol-rule, name(<spin-1>), unicode(<◐>), ascii(<*>)
+        make symbol-rule, name(<spin-2>), unicode(<◓>), ascii(<*>)
+        make symbol-rule, name(<spin-3>), unicode(<◑>), ascii(<*>)
+        make symbol-rule, name(<spin-4>), unicode(<◒>), ascii(<*>)
+      folds
+        make symbol-rule, name(<arrow>), unicode(<→>), ascii(<-\>>)
+        make symbol-rule, name(<chain>), unicode(<›>), ascii(<\>>)
+        make symbol-rule, name(<more>), unicode(<…>), ascii(<...>)
+        make symbol-rule, name(<separator>), unicode(<·>), ascii(<.>)
+        make symbol-rule, name(<minus>), unicode(<−>), ascii(<->)
+        make symbol-rule, name(<en-dash>), unicode(<–>), ascii(<->)
+        make symbol-rule, name(<em-dash>), unicode(<—>), ascii(<-->)
+        make symbol-rule, name(<left-quote>), unicode(<‘>), ascii(<'>)
+        make symbol-rule, name(<right-quote>), unicode(<’>), ascii(<'>)
+        make symbol-rule, name(<left-double>), unicode(<“>), ascii(<">)
+        make symbol-rule, name(<right-double>), unicode(<”>), ascii(<">)
+        make symbol-rule, name(<times>), unicode(<×>), ascii(<x>)
+        make symbol-rule, name(<bullet>), unicode(<•>), ascii(<*>)
+        make symbol-rule, name(<done>), unicode(<✓>), ascii(<v>)
+        make symbol-rule, name(<failed>), unicode(<✗>), ascii(<x>)
+        make symbol-rule, name(<warning>), unicode(<▲>), ascii(<!>)
+        make symbol-rule, name(<skipped>), unicode(<○>), ascii(<o>)
+        make symbol-rule, name(<running>), unicode(<◐>), ascii(<*>)
+        make symbol-rule, name(<gutter>), unicode(<│>), ascii(<|>)
+      durations
+        make duration-rule
+          figures 3
+          millisecond-unit <ms>
+          second-unit <s>
+          minute-unit <m>
+          hour-unit <h>
+          uptime-word <up>
+      sizes
+        make size-rule
+          step 1000
+          units <B>, <kB>, <MB>, <GB>, <TB>, <PB>
+          whole-from 100
+          decimals 1
+      numbers
+        make number-rule, group(<,>), group-digits(3), part(</>)
+      facts
+        make fact-rule
+          order <clock>, <duration>, <status>, <size>, <counts>, <rest>
+          http-label <HTTP>
+          exit-label <exit>
+          signal-label <signal>
+      wraps
+        make wrap-rule
+          tiers </?&>, <:.=->
+          never <://>
+          location-tier </>
+      fields
+        make field-rule
+          location-key <at>
+          action-keys <fix>, <next>, <pass>
+          standard-keys <at>, <why>, <want>, <seen>, <gave>, <fix>, <next>, <reason>, <via>, <wait>, <budget>, <log>, <pass>
+          budget-key <budget>
+          pass-key <pass>
+          log-key <log>
+          next-key <next>
+          sources-key <sources>
+      frames
+        make frame-rule, context(2), tab-width(8)
+      quotes
+        make quote-rule
+          lines 20
+          earlier-word <earlier lines>
+          frames-word <more frames>
+          frame-start <at >
+          foreign <node_modules/>, <node:>, <internal/>, <\<anonymous\>>
+      bars
+        make bar-rule, width(24)
+      lives
+        make live-rule, redraw-ms(100), quiet-progress-ms(10000)
+      services
+        make service-rule, tag-width(12), collapse-ms(10000), date-verb(<date>), footer-verb(<up>)
+      caps
+        make cap-rule
+          problems 20
+          entries 10
+          all-flag <--all>
+          more-problems-word <more problems>
+          hidden-word <hidden>
+          more-word <more>
+          lists-word <lists them>
+          dropped-word <more columns>
+          deduped-word <deduped>
+      exits
+        make exit-rule, value(0), name(<success>), glyph(<done>)
+        make exit-rule, value(1), name(<input>), glyph(<failed>)
+        make exit-rule, value(2), name(<usage>), glyph(<failed>)
+        make exit-rule, value(3), name(<environment>), glyph(<failed>)
+        make exit-rule, value(70), name(<bug>), glyph(<failed>)
+        make exit-rule, value(130), name(<interrupted>), glyph(<skipped>)
+      environment
+        make environment-rule
+          no-color <NO_COLOR>
+          force-color <FORCE_COLOR>
+          color-term <COLORTERM>
+          truecolor-values <truecolor>, <24bit>
+          force-off-values <0>, <false>
+          terminal <TERM>
+          dumb <dumb>
+          ci <CI>
+          locale-names <LC_ALL>, <LC_CTYPE>, <LANG>
+          utf-markers <utf-8>, <utf8>
+          force-hyperlink <FORCE_HYPERLINK>
+          hyperlink-programs <iTerm.app>, <WezTerm>, <vscode>, <ghostty>, <Hyper>, <Tabby>
+          hyperlink-variables <WT_SESSION>, <KITTY_WINDOW_ID>, <KONSOLE_VERSION>, <DOMTERM>
+          program-variable <TERM_PROGRAM>
+          background-variable <COLORFGBG>
+      kinds
+        make kind-rule, name(<open>), verbs(<*>), facts(<rest>, <counts>), details(<fields>)
+        make kind-rule, name(<close>), verbs(<*>), facts(<duration>, <counts>, <rest>), details(<message>, <fields>)
+        make kind-rule
+          name <lifecycle>
+          verbs <start>, <reload>, <stop>, <exit>, <restart>, <rotate>, <watch>
+          facts <duration>, <status>, <size>, <counts>, <rest>
+          details <message>, <fields>
+        make kind-rule
+          name <request>
+          verbs <GET>, <POST>, <PUT>, <PATCH>, <DELETE>, <HEAD>, <OPTIONS>
+          facts <duration>, <status>, <size>, <rest>
+          details <message>, <fields>
+        make kind-rule, name(<job>), verbs(<job>), facts(<duration>, <counts>, <rest>), details(<message>, <fields>, <quote>)
+        make kind-rule, name(<query>), verbs(<query>), facts(<duration>, <counts>), details(<quote>)
+        make kind-rule, name(<health>), verbs(<health>), facts(<duration>, <size>, <counts>, <rest>), details(<fields>)
+        make kind-rule
+          name <step>
+          verbs <*>
+          facts <duration>, <status>, <size>, <counts>, <rest>
+          details <message>, <fields>, <frame>, <quote>, <data>
+        make kind-rule, name(<progress>), verbs(<*>), facts(<duration>, <counts>, <rest>), details(<bar>, <fields>)
+        make kind-rule, name(<change>), verbs(<add>, <remove>, <update>, <change>), facts(<rest>), details(<fields>)
+        make kind-rule
+          name <problem>
+          verbs <*>
+          facts <duration>, <status>, <counts>, <rest>
+          details <message>, <fields>, <frame>, <quote>
+        make kind-rule, name(<question>), verbs(<ask>), facts(<rest>), details(<choices>, <input>, <fields>)
+        make kind-rule, name(<date>), verbs(<date>), facts(<none>), details(<none>)
+      children
+        make child-rule
+          level-keys <level>, <severity>
+          verb-keys <logger>, <module>, <name>
+          message-keys <msg>, <message>
+          time-keys <time>, <ts>
+          duration-keys <duration>, <ms>
+          stack-keys <stack>, <err.stack>
+          default-verb <log>
+          levels
+            make level-rule, word(<fatal>), glyph(<failed>), quiet(false)
+            make level-rule, word(<panic>), glyph(<failed>), quiet(false)
+            make level-rule, word(<critical>), glyph(<failed>), quiet(false)
+            make level-rule, word(<error>), glyph(<failed>), quiet(false)
+            make level-rule, word(<err>), glyph(<failed>), quiet(false)
+            make level-rule, word(<warn>), glyph(<warning>), quiet(false)
+            make level-rule, word(<warning>), glyph(<warning>), quiet(false)
+            make level-rule, word(<info>), glyph(<info>), quiet(false)
+            make level-rule, word(<notice>), glyph(<info>), quiet(false)
+            make level-rule, word(<debug>), glyph(<info>), quiet(true)
+            make level-rule, word(<trace>), glyph(<info>), quiet(true)
+            make level-rule, word(<60>), glyph(<failed>), quiet(false)
+            make level-rule, word(<50>), glyph(<failed>), quiet(false)
+            make level-rule, word(<40>), glyph(<warning>), quiet(false)
+            make level-rule, word(<30>), glyph(<info>), quiet(false)
+            make level-rule, word(<20>), glyph(<info>), quiet(true)
+            make level-rule, word(<10>), glyph(<info>), quiet(true)
+      keys
+        make key-rule
+          glyph <glyph>
+          verb <verb>
+          subject <subject>
+          source <source>
+          time <time>
+          milliseconds <ms>
+          status <status>
+          bytes <bytes>
+          counts <counts>
+          facts <facts>
+          message <message>
+          fields <fields>
+          kind <kind>
+      unit-words
+        make unit-word, unit(<B>), one(<byte>), many(<bytes>)
+        make unit-word, unit(<kB>), one(<kilobyte>), many(<kilobytes>)
+        make unit-word, unit(<MB>), one(<megabyte>), many(<megabytes>)
+        make unit-word, unit(<GB>), one(<gigabyte>), many(<gigabytes>)
+        make unit-word, unit(<TB>), one(<terabyte>), many(<terabytes>)
+        make unit-word, unit(<PB>), one(<petabyte>), many(<petabytes>)
+        make unit-word, unit(<ms>), one(<millisecond>), many(<milliseconds>)
+        make unit-word, unit(<s>), one(<second>), many(<seconds>)

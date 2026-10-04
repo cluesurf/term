@@ -1,0 +1,398 @@
+# Wrapping (section 8): styled spans into lines no wider than the room.
+#
+# THE RULE. Text wraps at spaces. A continuation indents `hang` cells past where the text began. A token longer than
+# a line breaks after a character of the standard's first tier (`/ ? &`), failing that its second (`: . = -`),
+# failing that at the edge, and never inside the standard's `never` sequence (`://`). A location breaks only after
+# `/` (section 12). A no-break space is not a place to break, which is how a number stays with its unit.
+#
+# THE ORDER IS HIERARCHICAL, and the mockups pin it down: a token that does not fit what is left of a line goes to a
+# fresh line first, and is split only when it does not fit a fresh line either. So `/files/sha256:9f86…` at 80
+# columns is `/files/`, then `sha256:` on the next line, then the hash on its own. Each piece of a split token is
+# placed by the same rule with the next tier, so a piece that fits stays whole.
+#
+# ITERATIVE, NOT RECURSIVE: the units still to place are a stack, and the lines a list that only grows. A recursive
+# placement that mutated a record it was handed would mean one thing on TypeScript, where a record is shared, and
+# another on Rust, where it is a value.
+#
+# Every line it returns is within the room: `display_width(line) <= cols`. The one exception is a single cluster
+# wider than the whole line, which only a room narrower than two cells could produce, and `make-room` never makes one.
+
+load @term/base/text
+  find char-count
+
+load @term/base/text/unicode
+  find to-runes
+  find rune-to-text
+
+load ./standard
+  find standard
+
+load ./layout
+  find span
+  find line
+  find make-span
+  find make-spaces
+
+load ./measure
+  find make-grains
+
+# one cluster of the text being wrapped, and the span it came from
+form piece
+  link value, like text
+  link wide, like number
+  link owner, like number
+
+# a stretch of pieces to place: the pieces from `start` to `end`, after the spaces from `gap-start` to `gap-end`.
+# `tier` is the next break tier to try if it does not fit
+form stretch
+  link start, like number
+  link end, like number
+  link gap-start, like number
+  link gap-end, like number
+  link tier, like number
+
+form wrapped
+  link indices, like list, like number
+
+# how a text may break: the tiers in order (each a text of characters to break after) and the sequence never broken
+form breaks
+  link tiers, like list, like text
+  link never, like text
+
+# the breaks of ordinary text: the standard's tiers
+task text-breaks
+  take standard, like standard
+  like breaks
+  back make breaks, tiers(standard/wraps/tiers), never(standard/wraps/never)
+
+# the breaks of a location (section 12): only after `/`
+task place-breaks
+  take standard, like standard
+  like breaks
+  save tiers, make list
+  tiers/push standard/wraps/location-tier
+  back make breaks, tiers(tiers), never(standard/wraps/never)
+
+# the pieces of every span, in order, each knowing its span
+task make-pieces
+  take spans, like list, like span
+  take keep-leading, like boolean
+  like list, like piece
+  save out, make list
+  save glue, rune-to-text(160)
+  save owner, 0
+  save leading, keep-leading
+  walk spans
+    take one
+    walk make-grains(one/value)
+      take grain
+      save value, grain/value
+      # leading spaces are kept as written, never a place to break and never dropped at the start of a line
+      fork test, leading
+        hold
+          fork test, is-equal(value, < >)
+            hold
+              save value, glue
+            miss
+              save leading, false
+      out/push make piece, value(value), wide(grain/wide), owner(owner)
+    save owner, add(owner, 1)
+  back out
+
+task measure-pieces
+  take pieces, like list, like piece
+  take start, like number
+  take end, like number
+  like number
+  save total, 0
+  save at, start
+  walk test
+    hook test, is-below(at, end)
+    hook hold
+      save one, pieces/{at}
+      save total, add(total, one/wide)
+      save at, add(at, 1)
+  back total
+
+# the words of the pieces: each word with the spaces before it
+task make-stretches
+  take pieces, like list, like piece
+  like list, like stretch
+  save out, make list
+  save count, pieces/length
+  save at, 0
+  walk test
+    hook test, is-below(at, count)
+    hook hold
+      save gap-start, at
+      walk test
+        hook test, and(is-below(at, count), is-equal(piece-value(pieces, at), < >))
+        hook hold
+          save at, add(at, 1)
+      save gap-end, at
+      save start, at
+      walk test
+        hook test, and(is-below(at, count), is-unequal(piece-value(pieces, at), < >))
+        hook hold
+          save at, add(at, 1)
+      fork test, is-above(at, start)
+        hold
+          out/push make stretch, start(start), end(at), gap-start(gap-start), gap-end(gap-end), tier(0)
+  back out
+
+task piece-value
+  take pieces, like list, like piece
+  take at, like number
+  like text
+  save one, pieces/{at}
+  back one/value
+
+# does the `never` sequence cover the cut between piece `at` and the one after it
+task is-cut-forbidden
+  take pieces, like list, like piece
+  take at, like number
+  take start, like number
+  take end, like number
+  take never, like text
+  like boolean
+  save size, char-count(never)
+  fork test, is-below(size, 2)
+    hold
+      back false
+  save from, add(subtract(at, size), 2)
+  fork test, is-below(from, start)
+    hold
+      save from, start
+  walk test
+    hook test, is-maximum(from, at)
+    hook hold
+      save stop, add(from, size)
+      fork test, is-maximum(stop, end)
+        hold
+          save joined, <>
+          save k, from
+          walk test
+            hook test, is-below(k, stop)
+            hook hold
+              save joined, <{joined}{piece-value(pieces, k)}>
+              save k, add(k, 1)
+          fork test, is-equal(joined, never)
+            hold
+              back true
+      save from, add(from, 1)
+  back false
+
+# does a tier's text hold this piece
+task is-break-after
+  take tier, like text
+  take value, like text
+  like boolean
+  walk to-runes(tier)
+    take rune
+    fork test, is-equal(rune-to-text(rune), value)
+      hold
+        back true
+  back false
+
+# the stretches a unit splits into at one tier, or at every cluster when the tiers are spent. One stretch back means
+# the tier found nowhere to cut
+task split-stretch
+  take pieces, like list, like piece
+  take one, like stretch
+  take rules, like breaks
+  like list, like stretch
+  save out, make list
+  save edge, is-minimum(one/tier, rules/tiers/length)
+  save tier-text, <>
+  # the index is saved first: `rules/tiers/{one/tier}` compiles, and emits `rules.tiers.{one.tier}`
+  save tier, one/tier
+  fork test, edge
+    miss
+      save tier-text, rules/tiers/{tier}
+  save next-tier, add(one/tier, 1)
+  save from, one/start
+  save at, one/start
+  save last, subtract(one/end, 1)
+  walk test
+    hook test, is-below(at, last)
+    hook hold
+      save cut, edge
+      fork test, edge
+        miss
+          save cut, is-break-after(tier-text, piece-value(pieces, at))
+      fork test, cut
+        hold
+          fork test, is-cut-forbidden(pieces, at, one/start, one/end, rules/never)
+            hold
+              save cut, false
+      fork test, cut
+        hold
+          save stop, add(at, 1)
+          out/push make stretch, start(from), end(stop), gap-start(from), gap-end(from), tier(next-tier)
+          save from, stop
+      save at, add(at, 1)
+  out/push make stretch, start(from), end(one/end), gap-start(from), gap-end(from), tier(next-tier)
+  back out
+
+# spans into lines. `first` is the cells line 0 may use, `rest` the cells each later line may use AFTER its `hang`
+# spaces. Leading spaces are kept when `keep-leading` is set (quoted output keeps its indentation)
+task wrap-spans
+  take spans, like list, like span
+  take first, like number
+  take rest, like number
+  take hang, like number
+  take rules, like breaks
+  take keep-leading, like boolean
+  like list, like line
+  save pieces, make-pieces(spans, keep-leading)
+  save first-room, first
+  fork test, is-below(first-room, 1)
+    hold
+      save first-room, 1
+  save rest-room, rest
+  fork test, is-below(rest-room, 1)
+    hold
+      save rest-room, 1
+  # the stack, top last: the words pushed in reverse so the first is placed first
+  save words, make-stretches(pieces)
+  save stack, make list
+  save at, subtract(words/length, 1)
+  walk test
+    hook test, is-minimum(at, 0)
+    hook hold
+      stack/push words/{at}
+      save at, subtract(at, 1)
+  save done, make list
+  save current, make list
+  save used, 0
+  walk test
+    hook test, is-above(stack/length, 0)
+    hook hold
+      save one, stack/pop()
+      save wide, measure-pieces(pieces, one/start, one/end)
+      save gap-wide, measure-pieces(pieces, one/gap-start, one/gap-end)
+      save room-now, first-room
+      fork test, is-above(done/length, 0)
+        hold
+          save room-now, rest-room
+      save placed, false
+      fork test, is-equal(current/length, 0)
+        hold
+          fork test, is-maximum(wide, room-now)
+            hold
+              save at, one/start
+              walk test
+                hook test, is-below(at, one/end)
+                hook hold
+                  current/push at
+                  save at, add(at, 1)
+              save used, wide
+              save placed, true
+        miss
+          fork test, is-maximum(add(add(used, gap-wide), wide), room-now)
+            hold
+              save at, one/gap-start
+              walk test
+                hook test, is-below(at, one/end)
+                hook hold
+                  current/push at
+                  save at, add(at, 1)
+              save used, add(add(used, gap-wide), wide)
+              save placed, true
+            miss
+              done/push make wrapped, indices(current)
+              save current, make list
+              save used, 0
+              fork test, is-maximum(wide, rest-room)
+                hold
+                  save at, one/start
+                  walk test
+                    hook test, is-below(at, one/end)
+                    hook hold
+                      current/push at
+                      save at, add(at, 1)
+                  save used, wide
+                  save placed, true
+      fork test, placed
+        miss
+          # the line is empty here: the unit is too long for a fresh line, so it splits
+          save parts, split-stretch(pieces, one, rules)
+          fork test, is-equal(parts/length, 1)
+            hold
+              save only, parts/0
+              fork test, is-maximum(one/tier, rules/tiers/length)
+                hold
+                  # nowhere to cut at this tier: try the next one
+                  stack/push only
+                miss
+                  # a single cluster wider than the line: placed anyway, as the only thing that can be done
+                  save at, one/start
+                  walk test
+                    hook test, is-below(at, one/end)
+                    hook hold
+                      current/push at
+                      save at, add(at, 1)
+                  save used, add(used, wide)
+            miss
+              save at, subtract(parts/length, 1)
+              walk test
+                hook test, is-minimum(at, 0)
+                hook hold
+                  stack/push parts/{at}
+                  save at, subtract(at, 1)
+  fork test, or(is-above(current/length, 0), is-equal(done/length, 0))
+    hold
+      done/push make wrapped, indices(current)
+  back draw-wrapped(done, pieces, spans, hang)
+
+# the placed pieces as lines of spans: consecutive pieces of one span joined back into one span of its style, the
+# no-break spaces turned back into spaces, and each continuation after its hang
+task draw-wrapped
+  take done, like list, like wrapped
+  take pieces, like list, like piece
+  take spans, like list, like span
+  take hang, like number
+  like list, like line
+  save out, make list
+  save glue, rune-to-text(160)
+  save pad, make-spaces(hang)
+  save row, 0
+  walk done
+    take placed
+    save built, make list
+    fork test, and(is-above(row, 0), is-above(hang, 0))
+      hold
+        built/push make-span(pad, <text>)
+    save owner, -1
+    save value, <>
+    walk placed/indices
+      take index
+      save one, pieces/{index}
+      save shown, one/value
+      fork test, is-equal(shown, glue)
+        hold
+          save shown, < >
+      fork test, is-equal(one/owner, owner)
+        hold
+          save value, <{value}{shown}>
+        miss
+          fork test, is-minimum(owner, 0)
+            hold
+              built/push restyle(spans/{owner}, value)
+          save owner, one/owner
+          save value, shown
+    fork test, is-minimum(owner, 0)
+      hold
+        built/push restyle(spans/{owner}, value)
+    out/push make line, spans(built)
+    save row, add(row, 1)
+  back out
+
+# a span's style around a new value
+task restyle
+  take one, like span
+  take value, like text
+  like span
+  save copy, one
+  save copy/value, value
+  back copy
