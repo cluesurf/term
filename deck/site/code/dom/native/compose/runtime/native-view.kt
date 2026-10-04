@@ -49,6 +49,7 @@ import androidx.compose.foundation.ScrollState as CxScrollState
 import androidx.compose.foundation.layout.Arrangement as CxArrangement
 import androidx.compose.foundation.layout.Box as CxBox
 import androidx.compose.foundation.layout.Column as CxColumn
+import androidx.compose.foundation.layout.IntrinsicSize as CxIntrinsicSize
 import androidx.compose.foundation.layout.Row as CxRow
 import androidx.compose.foundation.layout.fillMaxHeight as cxFillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth as cxFillMaxWidth
@@ -1305,6 +1306,14 @@ private fun cxStretches(column: TermNode, child: TermNode): Boolean = when (colu
     else -> false
 }
 
+// whether a row stretches its children to its height: a FLEX row (an inline run of text is a line, not a flex row)
+// whose align-items is unset or `stretch`
+private fun cxStretchesRow(row: TermNode): Boolean {
+    val align = row.style("align-items")
+    val flex = cxIsFlex(row) || row.style("flex-direction") == "row"
+    return flex && (align == "" || align == "stretch")
+}
+
 // a container: a Row or a Column, its gap, alignment and justification from its style rows, a child's `flex-grow` its
 // weight. A sheet child is composed in place but draws in a Dialog's own layer and takes no room here, so it is
 // called for every child: a sheet left out was a Dialog never composed, open or not
@@ -1326,10 +1335,15 @@ fun CxStack(node: TermNode, given: CxModifier) {
             "end", "flex-end" -> CxAlignment.Bottom
             else -> CxAlignment.Top
         }
-        CxRow(cxSized(node, given), horizontalArrangement = arrangement, verticalAlignment = vertical) {
+        // a flex row stretches its children to its height unless align-items says otherwise (CSS's `normal`, which is
+        // `stretch` in a flex container); with no height of its own the row is as tall as its tallest child
+        val stretch = cxStretchesRow(node)
+        val row = if (stretch && cxLength(node.style("height")) == null) cxSized(node, given).cxHeight(CxIntrinsicSize.Min) else cxSized(node, given)
+        CxRow(row, horizontalArrangement = arrangement, verticalAlignment = vertical) {
             for (child in drawn) {
                 val grow = child.style("flex-grow").toFloatOrNull() ?: 0f
-                CxNode(child, if (grow > 0f) CxModifier.weight(grow) else CxModifier)
+                val stretched = if (stretch) CxModifier.cxFillMaxHeight() else CxModifier
+                CxNode(child, if (grow > 0f) stretched.weight(grow) else stretched)
             }
         }
     } else {

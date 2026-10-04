@@ -1,0 +1,24 @@
+
+# Where an app has been, kept across a relaunch (live reload, note/term/project/live-reload.md). The navigation
+# contract (../navigation) hands its whole history here each time the app moves, and asks for it once at the start, so
+# a native app rebuilt and relaunched by `term work` opens on the screen the person was looking at, with the same
+# screens behind it for back.
+#
+# This file is the fallback for every env with no address of its own, and keeps nothing: a page has its own address bar
+# and history, and the web's hot swap keeps the running app (deck/make/code/dev/client.ts), so there is nothing to
+# carry. The toolkits keep it in ./toolkit/address.
+#
+#   restore-history   the paths kept by the run before this one, oldest first, or none
+#   keep-history      the paths now, oldest first, for the next run
+
+task restore-history
+  like list
+    like text
+  send back
+    make list
+
+task keep-history
+  take paths
+    like list
+      like text
+  save skip, code 0

@@ -352,8 +352,6 @@ export const CATALOG = {
     severity: 'error',
     fix: 'bound exactly what the body can raise. `term roll task` lists what each task raises',
   },
-  // A `tell` for an exception no task in the build can raise: the stale customer wording the roll exists to catch.
-  // It was `type-mismatch` (guides: language/errors, commands/roll, 2026-10-04)
   // A `view` document that uses what a document may not: code, a macro it cannot reach, a fuse cycle, too large an
   // expansion. Each message says what is allowed instead, and the generic bracket-and-indentation note under it was
   // advice about a different problem (guides: commands/view, 2026-10-04)
@@ -379,11 +377,21 @@ export const CATALOG = {
     severity: 'warning',
     fix: 'rename the field with a `link` under the case, or rename the outer variable',
   },
+  // A `tell` for an exception no task in the build can raise: the stale customer wording the roll exists to catch.
+  // It was `type-mismatch` (guides: language/errors, commands/roll, 2026-10-04)
   'stale-tell': {
     code: 0x2c,
     message: 'this tell is for an exception nothing in the build raises',
     severity: 'error',
     fix: 'remove the tell, or raise the exception where it is meant. `term roll exception` lists what each task raises',
+  },
+  // An async task handed to a parameter whose type is a task that is not: the callee calls it without waiting, and
+  // reads the pending value as the result. TypeScript printed `[object Promise]` (guides: language/async, 2026-10-04)
+  'async-argument': {
+    code: 0x30,
+    message: 'an async task is passed where the parameter takes a task that is not async',
+    severity: 'error',
+    fix: 'write `mark async` under the parameter\'s `like task`, so the calls to it are awaited',
   },
 } satisfies Record<string, CatalogEntry>
 

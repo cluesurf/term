@@ -756,11 +756,13 @@ export function androidDevice(): { serial: string } | { missing: string } {
   return { serial: ready[0][0] }
 }
 
-// install the APK and launch its Activity. Returns at once; the app's lines are in `adb logcat -s cask`
-export function launchOnAndroid({ serial, apk, identifier }: { serial: string; apk: string; identifier: string }): void {
+// install the APK and launch its Activity. Returns at once; the app's lines are in `adb logcat -s cask`. `extras` are
+// the launch Intent's text extras, how a host hands an Activity what a desktop app gets as environment variables
+export function launchOnAndroid({ serial, apk, identifier, extras = {} }: { serial: string; apk: string; identifier: string; extras?: Record<string, string> }): void {
   const tools = androidTools()
   runTool(tools.adb, ['-s', serial, 'install', '-r', apk])
-  runTool(tools.adb, ['-s', serial, 'shell', 'am', 'start', '-n', `${identifier}/.TermActivity`])
+  const given = Object.entries(extras).flatMap(([key, value]) => ['--es', key, value])
+  runTool(tools.adb, ['-s', serial, 'shell', 'am', 'start', '-n', `${identifier}/.TermActivity`, ...given])
 }
 
 // ---- the bundle ----

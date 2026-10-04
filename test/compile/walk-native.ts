@@ -6,7 +6,8 @@
 //
 // It also runs the `hook miss` arm of a `sift`, the catch-all (phase 2, language/matching, 2026-10-04): `corners`
 // lists `square` and answers every other shape through the miss arm, and `probe-shapes` folds three answers into one
-// number, 4 for a square, 0 for a circle and for a dot.
+// number, 4 for a square, 0 for a circle and for a dot. And `walk size` with a `step` (by 2 to 12, down by 1 to 321)
+// and `turn next` inside a counted walk, which jumped past the counter's step and never ended (to 6).
 // Run: npx tsx test/compile/walk-native.ts   (WN_ONLY=rust, swift or kotlin runs one)
 
 import { execFileSync, spawnSync } from 'node:child_process'
@@ -108,7 +109,67 @@ task probe-shapes
           make dot
 `
 
-const EXPECTED = '16 10 400'
+const STEPS = `
+task evens
+  take n, like number
+  like number
+  save total, code 0
+  walk size
+    take i
+    bind base, code 0
+    bind head, read n
+    bind step, code 2
+    hook next
+      save total
+        call add
+          read total
+          read i
+  send back, read total
+
+task down
+  take n, like number
+  like number
+  save total, code 0
+  walk size
+    take i
+    bind base, read n
+    bind head, code 0
+    bind step, code -1
+    hook next
+      save total
+        call add
+          call multiply
+            read total
+            code 10
+          read i
+  send back, read total
+
+task skip-odd
+  take n, like number
+  like number
+  save total, code 0
+  walk size
+    take i
+    bind base, code 0
+    bind head, read n
+    hook next
+      fork test
+        hook test
+          call is-equal
+            call modulo
+              read i
+              code 2
+            code 1
+        hook hold
+          turn next
+      save total
+        call add
+          read total
+          read i
+  send back, read total
+`
+
+const EXPECTED = '16 10 400 12 321 6'
 
 for (const target of ['rust', 'swift', 'kotlin'] as const) {
   if (only && only !== target) {
@@ -122,7 +183,7 @@ for (const target of ['rust', 'swift', 'kotlin'] as const) {
     continue
   }
 
-  const built = compile({ file: join(dir, `${target}.tree`), text: PROGRAM }, { resolve: withNativeEnv(target, stdlib), env: target })
+  const built = compile({ file: join(dir, `${target}.tree`), text: PROGRAM + STEPS }, { resolve: withNativeEnv(target, stdlib), env: target })
 
   if (!built.ok) {
     ok(`${target}: the loops build`, false, built.diagnostics.map(d => d.message).join(' | '))
@@ -135,15 +196,15 @@ for (const target of ['rust', 'swift', 'kotlin'] as const) {
 
   try {
     if (target === 'rust') {
-      writeFileSync(`${stem}.rs`, `${prelude}\n${emitRust(built.program)}\nfn main() { println!("{} {} {}", grid(4), sum_to(5), probe_shapes()); }\n`)
+      writeFileSync(`${stem}.rs`, `${prelude}\n${emitRust(built.program)}\nfn main() { println!("{} {} {} {} {} {}", grid(4), sum_to(5), probe_shapes(), evens(7), down(3), skip_odd(6)); }\n`)
       execFileSync('rustc', ['-A', 'warnings', `${stem}.rs`, '-o', stem], { stdio: ['ignore', 'pipe', 'pipe'] })
       got = execFileSync(stem, { timeout: 10_000 }).toString().trim()
     } else if (target === 'swift') {
-      writeFileSync(`${stem}.swift`, `${prelude}\n${emitSwift(built.program)}\nprint("\\(grid(4)) \\(sumTo(5)) \\(probeShapes())")\n`)
+      writeFileSync(`${stem}.swift`, `${prelude}\n${emitSwift(built.program)}\nprint("\\(grid(4)) \\(sumTo(5)) \\(probeShapes()) \\(evens(7)) \\(down(3)) \\(skipOdd(6))")\n`)
       execFileSync('swiftc', ['-o', stem, `${stem}.swift`], { stdio: ['ignore', 'pipe', 'pipe'] })
       got = execFileSync(stem, { timeout: 10_000 }).toString().trim()
     } else {
-      writeFileSync(`${stem}.kt`, hoistKotlinImports(`${prelude}\n${emitKotlin(built.program)}\nfun main() { println("\${grid(4L)} \${sumTo(5L)} \${probeShapes()}") }\n`))
+      writeFileSync(`${stem}.kt`, hoistKotlinImports(`${prelude}\n${emitKotlin(built.program)}\nfun main() { println("\${grid(4L)} \${sumTo(5L)} \${probeShapes()} \${evens(7L)} \${down(3L)} \${skipOdd(6L)}") }\n`))
       execFileSync('kotlinc', [`${stem}.kt`, '-nowarn', '-include-runtime', '-d', `${stem}.jar`], { stdio: ['ignore', 'pipe', 'pipe'] })
       got = execFileSync('java', ['-jar', `${stem}.jar`], { timeout: 10_000 }).toString().trim()
     }
@@ -151,7 +212,7 @@ for (const target of ['rust', 'swift', 'kotlin'] as const) {
     got = String((error as { stderr?: Buffer }).stderr ?? error).slice(0, 600)
   }
 
-  ok(`${target}: both loops end (grid(4) = 16, sum-to(5) = 10), and a sift's miss arm answers every case it does not list (400)`, got === EXPECTED, got)
+  ok(`${target}: both loops end (grid(4) = 16, sum-to(5) = 10), a sift's miss arm answers every case it does not list (400), and a stepped, a downward and a turn-next walk (12 321 6)`, got === EXPECTED, got)
 }
 
 console.log(`\nwalk-native: ${pass} pass, ${fail} fail`)

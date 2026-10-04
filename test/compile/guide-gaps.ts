@@ -26,7 +26,7 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-type Built = { ok: boolean; typescript: string; messages: string; names: string[]; warnings: string[] }
+type Built = { ok: boolean; typescript: string; messages: string; names: string[]; lines?: number[]; warnings: string[] }
 
 // `linked` resolves the stdlib and @term/site, for a sample that loads them
 function build(text: string, file = '/gate/code/gap.tree', linked = false): Built {
@@ -45,6 +45,8 @@ function build(text: string, file = '/gate/code/gap.tree', linked = false): Buil
         typescript: '',
         messages: out.diagnostics.map(d => d.message).join(' | '),
         names: out.diagnostics.map(d => d.name),
+        // 1-based, the way a frame prints them
+        lines: out.diagnostics.map(d => d.span.start.line + 1),
         warnings,
       }
 }
@@ -684,6 +686,108 @@ view counter
     ok('a `hook miss` over two cases does not warn', caught.ok && !caught.warnings.some(w => /thin-catch-all/.test(w)), caught.warnings.join(' | '))
   }
 
+  // ---- language/loops: a step, a count down, and `turn next` in a counted walk ----
+  {
+    const STEPS = `task evens
+  take n, like number
+  like number
+  save total, code 0
+  walk size
+    take i
+    bind base, code 0
+    bind head, read n
+    bind step, code 2
+    hook next
+      save total
+        call add
+          read total
+          read i
+  send back, read total
+
+task down
+  take n, like number
+  like number
+  save total, code 0
+  walk size
+    take i
+    bind base, read n
+    bind head, code 0
+    bind step, code -1
+    hook next
+      save total
+        call add
+          call multiply
+            read total
+            code 10
+          read i
+  send back, read total
+
+task by
+  take n, like number
+  take s, like number
+  like number
+  save count, code 0
+  walk size
+    bind base, code 0
+    bind head, read n
+    bind step, read s
+    hook next
+      save count
+        call add
+          read count
+          code 1
+  send back, read count
+
+task skip-odd
+  take n, like number
+  like number
+  save total, code 0
+  walk size
+    take i
+    bind base, code 0
+    bind head, read n
+    hook next
+      fork test
+        hook test
+          call is-equal
+            call modulo
+              read i
+              code 2
+            code 1
+        hook hold
+          turn next
+      save total
+        call add
+          read total
+          read i
+  send back, read total
+`
+    const stepped = build(STEPS)
+    ok('`walk size` takes a `step`', stepped.ok, stepped.messages)
+
+    if (stepped.ok) {
+      const mod = await load(stepped.typescript)
+
+      ok('by 2: 0 + 2 + 4 + 6', mod.evens!(7) === 12)
+      ok('a negative step counts down to above the head: 3, 2, 1', mod.down!(3) === 321)
+      ok('a step read from a variable: 0, 3, 6, 9 is four turns', mod.by!(10, 3) === 4)
+      ok('and a negative one from a variable counts down: 0, -3, -6, -9 is four turns', mod.by!(-10, -3) === 4)
+      ok('`turn next` steps the counter before the next turn, and the walk ends', mod.skipOdd!(6) === 6)
+    }
+
+    const zero = build(`task spin
+  like number
+  walk size
+    bind base, code 0
+    bind head, code 3
+    bind step, code 0
+    hook next
+      turn next
+  send back, code 0
+`)
+    ok('a step of 0 is refused: it never ends', !zero.ok && /step 0/.test(zero.messages), zero.messages)
+  }
+
   // ---- language/matching: an arm field that hides a variable in scope warns ----
   {
     const SHAPES = `form shape
@@ -716,6 +820,96 @@ view counter
       send back, read radius
 `)
     ok('renamed with `link`, it does not', renamed.ok && !renamed.warnings.some(w => /arm-shadow/.test(w)), renamed.warnings.join(' | '))
+  }
+
+  // ---- types/annotations: a generic form that names itself passes its parameter on ----
+  {
+    const bare = build(`form loose
+  head t
+  case loose-end
+  case loose-node
+    link item, like t
+    link rest, like loose
+`)
+    ok('a generic form naming itself without its parameter is refused', !bare.ok && /names itself without its parameter: write `like loose t`/.test(bare.messages), bare.messages)
+
+    const kept = build(`form chain
+  head t
+  case chain-end
+  case chain-node
+    link item, like t
+    link rest, like chain t
+`)
+    ok('and with it, it builds', kept.ok, kept.messages)
+  }
+
+  // ---- language/async: a parameter typed as an async task ----
+  {
+    const twice = build(`task run-twice
+  take work
+    like task
+      mark async
+      like text
+  like text
+
+  save a, work()
+  save b, work()
+  send back, <{a}{b}>
+
+task fetch-word
+  mark async
+  like text
+  send back, <ab>
+
+task both
+  like text
+  send back, run-twice(fetch-word)
+`)
+    ok('a `like task` with `mark async` builds', twice.ok, twice.messages)
+    ok('its type is a promise', /work: \(\) => Promise<string>/.test(twice.typescript), twice.typescript.slice(0, 600))
+    ok('the task taking it is async, and awaits each call', /async function runTwice/.test(twice.typescript) && /await work\(\)/.test(twice.typescript), twice.typescript.slice(0, 600))
+
+    if (twice.ok) {
+      const module = await load(twice.typescript)
+      const value = await module.both?.()
+      ok('and the caller reads the text, not `[object Promise]`', value === 'abab', String(value))
+    }
+
+    const plain = build(`task run-twice
+  take work
+    like task
+      like text
+  like text
+
+  save a, work()
+  send back, read a
+
+task fetch-word
+  mark async
+  like text
+  send back, <ab>
+
+task both
+  like text
+  send back, run-twice(fetch-word)
+`)
+    ok('an async task passed where the parameter is not async is refused', !plain.ok && plain.names.includes('async-argument'), plain.messages)
+  }
+
+  // ---- types/annotations: an unknown type is reported at the line that names it ----
+  {
+    const param = build(`task greet
+  take who, like person
+  like text
+  send back, <hi>
+`)
+    ok('a misspelled parameter type is refused at its `take` line', !param.ok && param.names.includes('unknown-name') && param.lines?.[0] === 2, `${param.messages} at ${param.lines}`)
+
+    const field = build(`form pair
+  link left, like number
+  link right, like nmber
+`)
+    ok('a misspelled field type is refused at its `link` line', !field.ok && field.names.includes('unknown-name') && field.lines?.[0] === 3, `${field.messages} at ${field.lines}`)
   }
 
   // ---- types/inference: a fraction is not a whole number ----

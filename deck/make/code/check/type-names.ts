@@ -152,18 +152,57 @@ export function checkTypeNames(program: Program, file: string): Diagnostic[] {
         ...(owner?.params ?? []),
         ...families.map(p => p.name),
       ])
-      check([...declared.params, declared.result], generics, s.span, `in \`${s.method?.name ?? s.name}\``)
+      const where = `in \`${s.method?.name ?? s.name}\``
+
+      // each parameter at its own `take` line, the result at the task
+      declared.params.forEach((type, i) => check([type], generics, s.params[i]?.span ?? s.span, where))
+      check([declared.result], generics, s.span, where)
     }
 
     if (s.form === 'record-type') {
-      check(
-        [...s.fields.map(f => f.type), ...s.variants.flatMap(v => v.fields.map(f => f.type))],
-        new Set(s.params),
-        s.span,
-        `in the form \`${s.name}\``,
-      )
+      const written = [...s.fields, ...s.variants.flatMap(v => v.fields)]
+      const fields = written.map(f => f.type)
+
+      // each field at its own `link` line
+      for (const field of written) {
+        check([field.type], new Set(s.params), field.span ?? s.span, `in the form \`${s.name}\``)
+      }
+
+      // a generic form that names ITSELF without its parameter: `link rest, like chain` in `form chain / head t`
+      // built, and each native backend filled the missing argument its own way, `i64` on Rust and `Any` on Swift and
+      // Kotlin, so the rest of a chain of text held numbers on Rust (guides: types/annotations, 2026-10-04)
+      if (s.params.length > 0 && fields.some(type => bareSelf(type, s.name))) {
+        out.push(
+          diagnose('type-mismatch', {
+            file,
+            span: s.span,
+            message: `the form \`${s.name}\` names itself without its ${s.params.length === 1 ? 'parameter' : 'parameters'}: write \`like ${s.name} ${s.params.join(' ')}\``,
+            hint: `a generic form passes its own ${s.params.length === 1 ? 'parameter' : 'parameters'} on where it names itself, or each backend fills the gap differently`,
+          }),
+        )
+      }
     }
   }
 
   return out
+}
+
+// does a type name the form `name` anywhere without type arguments
+function bareSelf(type: Type | undefined, name: string): boolean {
+  if (!type) {
+    return false
+  }
+
+  switch (type.kind) {
+    case 'named':
+      return (type.name === name && (type.args?.length ?? 0) === 0) || (type.args ?? []).some(arg => bareSelf(arg, name))
+    case 'array':
+      return bareSelf(type.element, name)
+    case 'map':
+      return bareSelf(type.key, name) || bareSelf(type.value, name)
+    case 'function':
+      return type.params.some(param => bareSelf(param, name)) || bareSelf(type.result, name)
+    default:
+      return false
+  }
 }

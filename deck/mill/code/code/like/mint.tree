@@ -7,6 +7,9 @@ load @term/mill/code/wait/mint
 load @term/mill/code/drop/mint
   find drop
 
+load @term/mill/code/code/note/mint
+  find mark-note
+
 load @term/mill/code/fall/mint
   find fall
 
@@ -82,6 +85,8 @@ mint like
     site arg
   case wait
     site wait
+  case note, mint mark-note
+    site note
   case halt
     site halt
   case drop
@@ -101,5 +106,6 @@ mint like
       bind head, read head
       bind arg, read arg
       bind wait, read wait
+      bind note, read note
       bind halt, read halt
       bind drop, read drop

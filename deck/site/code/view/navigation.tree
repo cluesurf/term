@@ -6,7 +6,8 @@
 # moved it themselves (back, forward), through `follow-address`. Everything a route reads is a signal or a task here,
 # never the host's own state: note/term/project/native-navigation.md.
 #
-#   start-navigation   begin at the host's own path (`/` with no address)
+#   start-navigation   begin where the last run left off when the host kept it, else at the host's own path (`/` with
+#                      no address)
 #   navigate           go to a path: on top of the stack
 #   navigate-replace   go to a path in place of the current one
 #   navigate-back      the one before, false at the first
@@ -26,6 +27,9 @@ load @term/site/dom/page
   find replace-path
   find go-back
   find set-title
+load ./native/{platform}/address
+  find restore-history
+  find keep-history
 load @term/base/list
   find list
 load @term/base/text
@@ -60,17 +64,19 @@ task route-signal
   like signal text
   send back, read navigation/current
 
-# write the current path, the one place it changes, so every reader wakes once
+# write the current path, the one place it changes, so every reader wakes once. Every change to the stack ends here, so
+# here is also where the history is kept for the next run (./native/address: a relaunched app opens where it was)
 task arrive
   take path, like text
+  call keep-history
+    read navigation/paths
   call write-signal
     bind self, read navigation/current
     bind value, read path
 
-# begin at the host's own path: the address on the web, `/` where there is none
+# begin where the run before this one left off, when the host kept its history (a native app `term work` relaunched),
+# else at the host's own path: the address on the web, `/` where there is none
 task start-navigation
-  save here
-    call page-path
   save paths, read navigation/paths
   # emptied with the native pop, which every backend lowers; the list form's `clear` is not a native array method
   walk test
@@ -81,10 +87,27 @@ task start-navigation
     hook hold
       save gone
         call paths/pop
-  call paths/push
-    read here
+  save kept
+    call restore-history
+  walk list, read kept
+    hook next
+      take site, name path
+      call paths/push
+        read path
+  fork test
+    hook test
+      call is-equal
+        read paths/length
+        code 0
+    hook hold
+      call paths/push
+        call page-path
+  save top
+    call subtract
+      read paths/length
+      code 1
   call arrive
-    read here
+    read paths/{top}
 
 # go to a path, on top of the stack
 task navigate

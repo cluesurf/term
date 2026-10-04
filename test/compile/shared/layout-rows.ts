@@ -43,6 +43,15 @@ view tall-row
     view button
       text <bb>
 
+view stretch-row
+  take host, like view
+  view div
+    bind style, text <display: flex; flex-direction: row; height: 60px>
+    view button
+      text <a>
+    view button
+      text <bb>
+
 view block-fill
   take host, like view
   view div
@@ -124,6 +133,9 @@ export const LAYOUT_LABELS: [label: string, view: string][] = [
   ['end', 'end-row'],
   ['start-column', 'start-column'],
   ['end-column', 'end-column'],
+  // a flex row's children stretch to its height when nothing says otherwise: CSS's `align-items: normal`, which is
+  // `stretch` in a flex container. Compose put them at the top (compose-target-0002 recorded it as unmapped)
+  ['stretch-row', 'stretch-row'],
 ]
 
 const near = (a: number, b: number) => Math.abs(a - b) <= 1
@@ -149,8 +161,15 @@ export function judgeLayout(output: string): [string, boolean, string][] {
   const end = rowsOf(output, 'end')
   const startColumn = rowsOf(output, 'start-column')
   const endColumn = rowsOf(output, 'end-column')
+  const stretchRow = rowsOf(output, 'stretch-row')
 
   return [
+    [
+      'a flex row of height 60 with no align-items stretches both children to 60 tall, at its top',
+      !!stretchRow && near(stretchRow[0]![3]!, 60) && near(stretchRow[1]![3]!, 60) && near(stretchRow[2]![3]!, 60) &&
+        near(stretchRow[1]![1]!, stretchRow[0]![1]!),
+      JSON.stringify(stretchRow),
+    ],
     [
       'justify-content center leaves equal room before the first child and after the last in a 300 row',
       !!center && near(center[0]![2]!, 300) && center[1]![0]! - center[0]![0]! > 1 &&

@@ -652,12 +652,14 @@ object nativeView {
                 continue
             }
             // the cross axis, by CSS's rules (native-dom-0027, 0037): a size the child declared wins, an explicit
-            // `align-items` decides by itself, a FLEX column stretches every child (CSS's default is `stretch`), and a
-            // BLOCK container's block-level children fill its width while inline ones and controls keep their size
+            // `align-items` decides by itself, a FLEX container stretches every child across its cross axis, a row's to
+            // its height as a column's to its width (CSS's default is `stretch` either way; a row with no height of its
+            // own is as tall as its tallest child, which LinearLayout's uniform pass gives MATCH_PARENT children), and
+            // a BLOCK container's block-level children fill its width while inline ones and controls keep their size
             val cross = if (row) "height" else "width"
             val fills = when {
                 declared != null -> declared == "stretch"
-                node.styles["display"]?.trim() == "flex" -> !row
+                node.styles["display"]?.trim() == "flex" -> true
                 // a scroll is a block too: it fills the width and scrolls the height
                 else -> !row && (child.kind == TermNode.Kind.CONTAINER || child.kind == TermNode.Kind.SCROLL) && child.tag !in INLINE_TAGS
             }

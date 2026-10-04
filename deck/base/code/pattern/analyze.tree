@@ -1045,10 +1045,15 @@ task rewrite
       save inner
         call rewrite(read(body), read(backward))
       # an atomic group around a greedy repetition of one class is that repetition made possessive
+      # the inner piece's own fields, renamed apart from the atom's `body`
       fork case, read inner
         case loop
+          link loop-body
+          link least
+          link most
+          link greedy
           save only
-            call single-set(read(body))
+            call single-set(read(loop-body))
           fork test
             hook test
               call and
@@ -1056,7 +1061,7 @@ task rewrite
                 call is-above(read(only/length), code(0))
             hook hold
               send back
-                call possessive-of-set(read(body), read(only), read(least), read(most), read(backward))
+                call possessive-of-set(read(loop-body), read(only), read(least), read(most), read(backward))
         case blank
           send back, read inner
         case letter
@@ -1074,12 +1079,15 @@ task rewrite
             make atom
               bind body, read inner
         case group
+          link group-body
           send back
             make atom
               bind body, read inner
         case atom
+          link atom-body
           send back, read inner
         case look
+          link look-body
           send back, read inner
         case refer
           send back
@@ -1238,8 +1246,10 @@ task fixed-text
             case edge
               send back, read none
             case chain
+              link inner-parts
               send back, read none
             case choice
+              link inner-parts
               send back, read none
             case loop
               send back, read none

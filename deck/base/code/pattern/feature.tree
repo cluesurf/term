@@ -331,18 +331,21 @@ task collect-features
       send back
         call collect-features(read(body), read(out), read(sure), read(in-loop), read(in-look), read(behind))
     case look
+      # the lookaround's own direction, renamed apart from the `behind` that says what encloses it
+      link body
+      link look-behind
       fork test
         hook test
           call is-below(call(most-length, read(body)), code(0))
         hook hold
           call note-feature(read(out), text(<look-unbounded>))
         hook test
-          read behind
+          read look-behind
         hook hold
           call note-feature(read(out), text(<look-behind>))
         hook miss
           call note-feature(read(out), text(<look-ahead>))
-      call collect-features(read(body), read(out), call(copy-numbers, read(sure)), read(in-loop), true, read(behind))
+      call collect-features(read(body), read(out), call(copy-numbers, read(sure)), read(in-loop), true, read(look-behind))
       # a group inside a lookaround is not counted as surely set after it: a negative one sets nothing
       send back, read sure
 

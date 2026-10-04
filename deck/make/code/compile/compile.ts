@@ -18,7 +18,7 @@ import { checkView, lowerView } from '@term/make/code/compile/view'
 import { checkMillDefinition } from '@term/make/code/compile/mill-check'
 import { resolve } from '@term/make/code/check/resolve'
 import { check } from '@term/make/code/check/infer'
-import { resolveAsync } from '@term/make/code/check/async-resolve'
+import { checkAsyncArguments, resolveAsync } from '@term/make/code/check/async-resolve'
 import {
   disambiguateOverloads,
   overloadGroups,
@@ -831,7 +831,11 @@ export function compileProgram(
   // effect checking: async / await discipline (the surface slice of the effect system)
   // and outside every task, where nothing can wait, a call to an async task is `tick`ed or refused (behind the
   // switch until the repository is migrated: check/effects.ts, `setAwaitOutsideTasks`)
-  const effectDiagnostics = [...checkEffects(program, file), ...checkCallsOutsideTasks(program, file)]
+  const effectDiagnostics = [
+    ...checkEffects(program, file),
+    ...checkCallsOutsideTasks(program, file),
+    ...checkAsyncArguments(program, file),
+  ]
 
   if (effectDiagnostics.length) {
     return { ok: false, diagnostics: effectDiagnostics }

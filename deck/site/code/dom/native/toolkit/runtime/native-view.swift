@@ -2068,8 +2068,9 @@ enum nativeView {
 
     // whether a child fills its stack's cross axis, by CSS's rules (native-dom-0027, 0037). A size the child declared
     // on that axis always wins. An explicit `align-items` decides by itself. Otherwise a FLEX container stretches every
-    // child (CSS's default `align-items` is `stretch`), and a BLOCK container's block-level children fill its width
-    // while its inline ones and its controls keep their own size.
+    // child across its cross axis, a row's to its height as a column's to its width (CSS's default `align-items` is
+    // `stretch` either way), and a BLOCK container's block-level children fill its width while its inline ones and its
+    // controls keep their own size.
     private static func shouldFill(_ child: TermNode, in parent: TermNode) -> Bool {
         // a divider spans its stack by itself (`orient`)
         guard let stack = parent.box, child.kind != .divider else { return false }
@@ -2084,7 +2085,7 @@ enum nativeView {
         }
 
         if parent.styles["display"]?.trimmingCharacters(in: .whitespaces) == "flex" {
-            return down
+            return true
         }
 
         // a scroll is a block too: it fills the width and scrolls the height

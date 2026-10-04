@@ -1,0 +1,46 @@
+
+# Where the app has been, kept across a relaunch on the toolkits (live reload, note/term/project/live-reload.md). Conforms
+# to ../address. `term work` starts the app with a DEV ADDRESS, a file the history is written to one path a line; with
+# none (every app a person installs) nothing is read or written. How the address reaches the app is the platform's: an
+# environment variable on the desktop (the JVM, macOS), an Intent extra on Android, read by the `native-address` runtime
+# beside this file. The `ios`, `macos`, `android`, `compose` and `compose-android` envs reach this file through the
+# `toolkit` rung of their chains.
+
+dock load
+  load <global:native-address>, name native-address
+load @term/base/text
+  find split
+load @term/base/text/util
+  find join
+
+# the paths the run before this one kept, oldest first. A blank line is no path: an empty file is no history
+task restore-history
+  like list
+    like text
+  save paths
+    make list
+  save lines
+    call split
+      call native-address/read
+      text <\n>
+  walk list, read lines
+    hook next
+      take site, name path
+      fork test
+        hook test
+          call is-above
+            read path/length
+            code 0
+        hook hold
+          call paths/push
+            read path
+  send back, read paths
+
+task keep-history
+  take paths
+    like list
+      like text
+  call native-address/write
+    call join
+      read paths
+      text <\n>

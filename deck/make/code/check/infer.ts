@@ -1747,10 +1747,11 @@ export function check(
               // a field named like a variable in scope hides it for the whole arm, and a `read` of it there reads the
               // field without a word. A module-level name is not a variable this warns about: only one the task
               // bound (a parameter, a `save`), which is what the reader expects to still mean what it meant
-              // (guides: language/matching, 2026-10-04)
+              // (guides: language/matching, 2026-10-04). Nor is the match's own subject: `sift value` / `case
+              // number` binding a field `value` is the idiom, the value read as its case
               const outer = env.get(local)
 
-              if (outer !== undefined && outer !== moduleEnv.get(local)) {
+              if (outer !== undefined && outer !== moduleEnv.get(local) && local !== subjectVar) {
                 diagnostics.push(
                   diagnose('arm-shadow', {
                     file: currentFile,

@@ -9,7 +9,10 @@ import type {
   Expression,
   Program,
   Statement,
+  Type,
 } from '@term/make/code/compile/node'
+import type { Diagnostic } from '@term/make/code/parser/diagnostic'
+import { diagnose } from '@term/make/code/parser/diagnostic'
 
 type Fn = Extract<Statement, { form: 'function' }>
 
@@ -28,6 +31,68 @@ export function resolveAsync(program: Program): void {
 
     fn.body = fn.body.map(s => stmt(s, visible))
   }
+}
+
+// An async task handed to a parameter typed as a task that is NOT async. The callee calls it without waiting and
+// reads the pending value as the result, so TypeScript printed `[object Promise]` (guides: language/async,
+// 2026-10-04). Runs after `resolveAsync`, when every async task is marked, inferred ones included. Only the tasks of
+// `file` are read, so a dependency is held to it where it is compiled itself.
+export function checkAsyncArguments(program: Program, file: string): Diagnostic[] {
+  const functions = functionsOf(program)
+  const asyncSet = new Set([...functions].filter(([, fn]) => fn.async).map(([name]) => name))
+  const out: Diagnostic[] = []
+
+  for (const fn of functions.values()) {
+    if (fn.span.file !== file) {
+      continue
+    }
+
+    const visible = inScope(asyncSet, fn)
+    const own = new Set(fn.params.map(p => p.name))
+
+    const e = (node: Expression | undefined): void => {
+      if (!node) {
+        return
+      }
+
+      if (node.form === 'closure') {
+        node.body.forEach(s => walkStmt(s, e))
+
+        return
+      }
+
+      // a parameter of the same name is the value, never the task
+      if (node.form === 'call' && node.callee.form === 'variable' && !own.has(node.callee.name)) {
+        const callee = functions.get(node.callee.name)
+
+        node.args.forEach((arg, i) => {
+          const param = callee?.params[i]
+          const passed =
+            (arg.form === 'variable' && visible.has(arg.name)) || (arg.form === 'closure' && arg.async === true)
+
+          if (
+            passed &&
+            param?.type?.kind === 'function' &&
+            !param.type.effects?.includes('async')
+          ) {
+            out.push(
+              diagnose('async-argument', {
+                file,
+                span: arg.span,
+                message: `${arg.form === 'variable' ? `\`${arg.name}\` is async, and` : 'this task is async, and'} \`${param.name}\` of \`${node.callee.form === 'variable' ? node.callee.name : ''}\` takes a task that is not: it would be called without waiting`,
+              }),
+            )
+          }
+        })
+      }
+
+      walkExpr(node, e)
+    }
+
+    fn.body.forEach(s => walkStmt(s, e))
+  }
+
+  return out
 }
 
 // The tasks of a program that are async, marked or inferred, without changing the program: what `resolveAsync`
@@ -82,8 +147,21 @@ function asyncSetOf(functions: Map<string, Fn>): Set<string> {
 // the async names a function's body can reach. A parameter or a local of the same name SHADOWS the global task, so a
 // call to it is a call to the value, never the task: `find-index` takes a callback named `test`, and calling it was
 // awaited as though it were the async file `test` the stdlib also defines, which refused the whole program
-export function inScope(asyncSet: Set<string>, fn: { params: { name: string }[]; body: Statement[] }): Set<string> {
+//
+// A parameter typed as an async task (`take work / like task / mark async`) is async itself: a call to it is awaited
+// and makes the task taking it async, the same as a call to an async task by name (guides: language/async, 2026-10-04)
+export function inScope(
+  asyncSet: Set<string>,
+  fn: { params: { name: string; type?: Type }[]; body: Statement[] },
+): Set<string> {
+  const awaited = fn.params.filter(p => p.type?.kind === 'function' && p.type.effects?.includes('async'))
   const local = new Set<string>(fn.params.map(p => p.name))
+  const scope = inScopeOf(asyncSet, local, fn.body)
+
+  return awaited.length === 0 ? scope : new Set([...scope, ...awaited.map(p => p.name)])
+}
+
+function inScopeOf(asyncSet: Set<string>, local: Set<string>, body: Statement[]): Set<string> {
 
   const collect = (node: unknown): void => {
     if (!node || typeof node !== 'object') {
@@ -114,7 +192,7 @@ export function inScope(asyncSet: Set<string>, fn: { params: { name: string }[];
     }
   }
 
-  collect(fn.body)
+  collect(body)
 
   if (![...local].some(name => asyncSet.has(name))) {
     return asyncSet

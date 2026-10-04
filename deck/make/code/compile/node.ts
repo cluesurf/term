@@ -342,6 +342,8 @@ export type Statement =
         // `like u8` and the other width aliases: the parameter is a `number`, and a literal argument outside the width
         // is refused (check/literals.ts). Wider checking needs range types
         width?: string
+        // the `take` line, so a mistake in its type is reported there rather than at the whole task
+        span?: Span
       }[]
       body: Statement[]
       result?: Type
@@ -424,10 +426,12 @@ export type Statement =
         fallback?: Expression
         // `slot <name>` instead of `link <name>`: fillable by position at a `make`, in declaration order
         positional?: boolean
+        // the `link` line, so a mistake in its type is reported there rather than at the whole form
+        span?: Span
       }[]
       variants: {
         name: string
-        fields: { name: string; type: Type; nick?: string; identity?: boolean }[]
+        fields: { name: string; type: Type; nick?: string; identity?: boolean; span?: Span }[]
         // the output index expressions of this constructor (one per declared index, in order): `vnil` outputs `zero`,
         // `vcons` outputs `succ count`. Present only on an indexed family; the constructor's result type is
         // `T <params> <indexValues>`.

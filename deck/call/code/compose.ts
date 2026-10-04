@@ -25,6 +25,8 @@ import { stdlibBase } from '@term/make/code/resolve'
 import { projectResolver } from '@term/call/code/make'
 import { androidTools } from '@term/call/code/cask'
 import { closeRun, location, openRun, report, showPath } from '@term/call/code/output'
+import { kotlinc } from '@term/call/code/kotlin-worker'
+import type { KotlinCompiler } from '@term/call/code/kotlin-worker'
 
 // the toolchain script that resolves the Compose libraries, beside the repository the stdlib lives in
 function toolchainScript(): string {
@@ -45,7 +47,12 @@ const TARGET_SDK = 36
 // a command's failure as its errors, not the warnings around them
 function failure(error: unknown): string {
   const said = error as { stderr?: Buffer; stdout?: Buffer }
-  const text = `${String(said.stdout ?? '')}${String(said.stderr ?? '')}` || String(error)
+
+  return errorsOf(`${String(said.stdout ?? '')}${String(said.stderr ?? '')}` || String(error))
+}
+
+// what a tool said, cut to its errors
+function errorsOf(text: string): string {
   const errors = text.split('\n').filter(line => /error|e: |Exception/.test(line))
 
   return (errors.length > 0 ? errors.slice(0, 12).join('\n') : text.slice(-1200)).slice(0, 2400)
@@ -78,8 +85,20 @@ export type ComposeBuilt =
   | { form: 'built'; jar: string; classpath: string; main: string }
 
 // compile `text` (entry file `<dir>/<name>.tree`) for Compose on the desktop JVM and build it into a jar. `root` is where
-// the program's packages resolve
-export function buildCompose({ root, dir, name, text }: { root: string; dir: string; name: string; text: string }): ComposeBuilt {
+// the program's packages resolve. `compiler` is `kotlinc` unless a session holds a warm one (./kotlin-worker.ts)
+export function buildCompose({
+  root,
+  dir,
+  name,
+  text,
+  compiler = kotlinc,
+}: {
+  root: string
+  dir: string
+  name: string
+  text: string
+  compiler?: KotlinCompiler
+}): ComposeBuilt {
   if (!have('kotlinc') || !have('java')) {
     return { form: 'skipped', reason: 'kotlinc or java not installed' }
   }
@@ -121,14 +140,12 @@ export function buildCompose({ root, dir, name, text }: { root: string; dir: str
   }
 
   const jar = join(dir, `${name}.jar`)
-  const built = spawnSync('kotlinc', [file, '-classpath', classpath, `-Xplugin=${plugin}`, '-jvm-target', '17', '-nowarn', '-d', jar], {
-    encoding: 'utf8',
-  })
+  const built = compiler([file, '-classpath', classpath, `-Xplugin=${plugin}`, '-jvm-target', '17', '-nowarn', '-d', jar])
 
   if (built.status !== 0) {
-    const errors = `${built.stdout}${built.stderr}`.split('\n').filter(line => /error:/.test(line))
+    const errors = built.output.split('\n').filter(line => /error:/.test(line))
 
-    return { form: 'failed', stage: 'build', reason: errors.slice(0, 8).join('\n') || built.stderr.slice(-800) }
+    return { form: 'failed', stage: 'build', reason: errors.slice(0, 8).join('\n') || built.output.slice(-800) }
   }
 
   // kotlinc names a file's top-level class after the file: `<name>.kt` holds `<Name>Kt`
@@ -143,7 +160,8 @@ export type ComposeAndroidBuilt =
   | { form: 'built'; apk: string }
 
 // compile `text` for Jetpack Compose and make a signed APK of it, `identifier` its package. `assets` are files the APK
-// carries, by name, which the program reads as `asset:<name>` (an emulator cannot read the build machine's paths)
+// carries, by name, which the program reads as `asset:<name>` (an emulator cannot read the build machine's paths).
+// `compiler` is `kotlinc` unless a session holds a warm one (./kotlin-worker.ts)
 export function buildComposeAndroid({
   root,
   dir,
@@ -151,6 +169,7 @@ export function buildComposeAndroid({
   text,
   identifier,
   assets = {},
+  compiler = kotlinc,
 }: {
   root: string
   dir: string
@@ -158,6 +177,7 @@ export function buildComposeAndroid({
   text: string
   identifier: string
   assets?: Record<string, string>
+  compiler?: KotlinCompiler
 }): ComposeAndroidBuilt {
   let tools: ReturnType<typeof androidTools>
 
@@ -308,23 +328,23 @@ export function buildComposeAndroid({
   // 4. the program, with the Compose plugin, against android.jar, the libraries and the R classes
   const appJar = join(work, 'app.jar')
 
-  try {
-    run('kotlinc', [
-      source,
-      '-classpath',
-      [tools.platform, rJar, ...jars].join(':'),
-      `-Xplugin=${plugin}`,
-      '-jvm-target',
-      '17',
-      '-nowarn',
-      '-Xno-param-assertions',
-      '-Xno-call-assertions',
-      '-Xno-receiver-assertions',
-      '-d',
-      appJar,
-    ])
-  } catch (e) {
-    return { form: 'failed', stage: 'kotlinc', reason: failure(e) }
+  const compiled = compiler([
+    source,
+    '-classpath',
+    [tools.platform, rJar, ...jars].join(':'),
+    `-Xplugin=${plugin}`,
+    '-jvm-target',
+    '17',
+    '-nowarn',
+    '-Xno-param-assertions',
+    '-Xno-call-assertions',
+    '-Xno-receiver-assertions',
+    '-d',
+    appJar,
+  ])
+
+  if (compiled.status !== 0) {
+    return { form: 'failed', stage: 'kotlinc', reason: errorsOf(compiled.output) }
   }
 
   // 5. everything dexed: d8 writes classes.dex, classes2.dex, ... as the method count needs
@@ -409,6 +429,13 @@ export function packageComposeDesktop({
   return image
 }
 
+// an app folder's name as an app is named after it, and its Android package: what `make` builds and `work` launches
+export function composeIdentity(root: string): { name: string; identifier: string } {
+  const name = basename(root).replace(/[^A-Za-z0-9]/g, '') || 'App'
+
+  return { name, identifier: `surf.term.${name.toLowerCase()}` }
+}
+
 // `term make --target compose|compose-android`: the app's entry (`app.tree` by default, a program with a `main` task
 // that opens a root, mounts its views and runs the app) built into `host/<target>/`
 //
@@ -425,7 +452,7 @@ export async function makeCompose(input: { root: string; target: 'compose' | 'co
     throw refusal(`There is no app entry at ${showPath(entry, input.root)}: a Compose app is a program with a \`main\` task (--entry names another file)`, 'usage')
   }
 
-  const name = basename(input.root).replace(/[^A-Za-z0-9]/g, '') || 'App'
+  const { name, identifier } = composeIdentity(input.root)
   const out = join(input.root, 'host', input.target)
   const work = join(out, 'work')
   mkdirSync(work, { recursive: true })
@@ -437,7 +464,6 @@ export async function makeCompose(input: { root: string; target: 'compose' | 'co
     built.form === 'skipped' ? refusal(built.reason, 'environment') : refusal(`${built.stage}: ${built.reason}`, '')
 
   if (input.target === 'compose-android') {
-    const identifier = `surf.term.${name.toLowerCase()}`
     const built = buildComposeAndroid({ root: input.root, dir: work, name: 'app', text, identifier })
 
     if (built.form !== 'built') {

@@ -993,11 +993,21 @@ const cli = yargs(hideBin(process.argv))
         .option('env', { type: 'string', description: 'Target env' })
         .option('target', {
           type: 'string',
-          description: 'Develop a native app cask: the page on a dev server with hot swaps, the app pointed at it',
+          description:
+            'Develop a native app: a cask (its page on a dev server with hot swaps, the app pointed at it), or `compose` / `compose-android` (rebuilt and relaunched on each edit, on the screen it was on)',
         })
         .option('page', { type: 'string', description: 'The page entry of the cask app (default face/base.tree)' })
-        .option('entry', { type: 'string', description: 'The cask entry of the app (default cask.tree)' }),
+        .option('entry', { type: 'string', description: 'The entry of the app (default cask.tree; app.tree for a Compose target)' }),
     async argv => {
+      // a Compose app (live-reload): no WebView to swap a page in, so each edit is a new build, relaunched where it was
+      if (argv.target === 'compose' || argv.target === 'compose-android') {
+        const { workCompose } = await import('@term/call/code/compose-work')
+
+        await workCompose({ root, target: argv.target, entry: argv.entry })
+
+        return
+      }
+
       if (argv.target) {
         const { workCask } = await import('@term/call/code/cask')
 

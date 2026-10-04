@@ -482,11 +482,11 @@ function typeOf(
       paramNames.push(wordAt(take, 'name'))
     }
 
-    // EFFECTS on a callback type: `wait true` makes it async, and a bare `halt` makes it one that may raise.
-    // They belong to the type, so a caller knows what the callback it is handed can do.
+    // EFFECTS on a callback type: `mark async` makes it async (`wait true` is the older spelling), and a bare `halt`
+    // makes it one that may raise. They belong to the type, so a caller knows what the callback it is handed can do.
     const effects: string[] = []
 
-    if (formsAt(value, 'wait').some(wait => wordAt(wait, 'seed') === 'true')) {
+    if (marked(value, 'async') || waitsTrue(value)) {
       effects.push('async')
     }
 
@@ -2625,6 +2625,14 @@ function loopOf(
       )
     const from = boundOf('base') ?? { form: 'integer', value: 0, span }
     const to = boundOf('head')
+    // `bind step` counts by that much, and a negative step counts DOWN, from `base` to above `head` (guides:
+    // language/loops, 2026-10-04). A literal step decides the comparison here; zero never ends, so it is refused
+    const by = boundOf('step') ?? { form: 'integer', value: 1, span }
+    const literal = by.form === 'integer' ? Number(by.value) : by.form === 'unary' && by.op === '-' && by.operand.form === 'integer' ? -Number(by.operand.value) : undefined
+
+    if (literal === 0) {
+      return refuse(bridge, value, 'a `walk size` with `step 0` never ends: count by a step other than zero')
+    }
     const next = hooks.find(h => wordAt(h, 'name') === 'next') ?? hooks[0]
     // the counter is named by a `take` inside `hook next`, or by one beside the `bind` lines, which used to be dropped
     // and leave the counter `i` while the body read a name nothing bound
@@ -2655,30 +2663,42 @@ function loopOf(
     const headName = `walk-head-${span.start.line}-${span.start.column}`
     const bound: Expression = steady ? to : { form: 'variable', name: headName, span }
 
+    // a step that is not a literal is read once too, and the condition follows its sign
+    const stepName = `walk-step-${span.start.line}-${span.start.column}`
+    const stepping: Expression = literal !== undefined || by.form === 'variable' ? by : { form: 'variable', name: stepName, span }
+    const zero: Expression = { form: 'integer', value: 0, span }
+    const below: Expression = { form: 'binary', op: '<', left: counter, right: bound, span }
+    const above: Expression = { form: 'binary', op: '>', left: counter, right: bound, span }
+    const cond: Expression =
+      literal === undefined
+        ? {
+            form: 'binary',
+            op: '||',
+            left: { form: 'binary', op: '&&', left: { form: 'binary', op: '>', left: stepping, right: zero, span }, right: below, span },
+            right: { form: 'binary', op: '&&', left: { form: 'binary', op: '<', left: stepping, right: zero, span }, right: above, span },
+            span,
+          }
+        : literal > 0
+          ? below
+          : above
+
     const flow = scopedFlow(bridge, at(next, 'flow'), [item])
+    const advance: Statement = {
+      form: 'assign',
+      target: counter,
+      op: '=',
+      value: { form: 'binary', op: '+', left: counter, right: stepping, span },
+      span,
+    }
 
     return [
       ...(steady ? [] : [{ form: 'let', name: headName, init: to, mutable: false, span } as Statement]),
+      ...(stepping === by ? [] : [{ form: 'let', name: stepName, init: by, mutable: false, span } as Statement]),
       { form: 'let', name, init: from, mutable: true, span },
       {
       form: 'while',
-      cond: { form: 'binary', op: '<', left: counter, right: bound, span },
-      body: [
-        ...(name === item ? flow : renameLocal(flow, item, name)),
-        {
-          form: 'assign',
-          target: counter,
-          op: '=',
-          value: {
-            form: 'binary',
-            op: '+',
-            left: counter,
-            right: { form: 'integer', value: 1, span },
-            span,
-          },
-          span,
-        },
-      ],
+      cond,
+      body: [...advancedBeforeContinue(name === item ? flow : renameLocal(flow, item, name), advance), advance],
       ...contract,
       span,
       },
@@ -2693,6 +2713,45 @@ function loopOf(
     body: [],
     span,
   }
+}
+
+// A counted walk is a `while` whose last statement steps the counter, and `turn next` is a `continue`, which jumps
+// past that step: a walk that turned next on any turn counted the same number forever (guides: language/loops,
+// 2026-10-04). Every `continue` that belongs to THIS loop steps the counter first. One inside a nested loop belongs to
+// that loop and is left alone.
+function advancedBeforeContinue(body: Statement[], advance: Statement): Statement[] {
+  return body.flatMap((statement): Statement[] => {
+    switch (statement.form) {
+      case 'continue':
+        return [structuredClone(advance), statement]
+      case 'if':
+        return [
+          {
+            ...statement,
+            branches: statement.branches.map(b => ({ ...b, body: advancedBeforeContinue(b.body, advance) })),
+            ...(statement.otherwise ? { otherwise: advancedBeforeContinue(statement.otherwise, advance) } : {}),
+          },
+        ]
+      case 'match':
+        return [
+          {
+            ...statement,
+            cases: statement.cases.map(c => ({ ...c, body: advancedBeforeContinue(c.body, advance) })),
+            ...(statement.otherwise ? { otherwise: advancedBeforeContinue(statement.otherwise, advance) } : {}),
+          },
+        ]
+      case 'guard':
+        return [
+          {
+            ...statement,
+            body: advancedBeforeContinue(statement.body, advance),
+            ...(statement.catch ? { catch: { ...statement.catch, body: advancedBeforeContinue(statement.catch.body, advance) } } : {}),
+          },
+        ]
+      default:
+        return [statement]
+    }
+  })
 }
 
 // `fork case, <subject>` with one `case <label>` arm per variant
@@ -3011,6 +3070,7 @@ function paramOf(
   optional?: boolean
   fallback?: Expression
   positional?: boolean
+  span: Span
 } {
   const name = wordAt(take, 'name') ?? ''
   const declared = withHeadArgs(
@@ -3043,6 +3103,7 @@ function paramOf(
     ...(width ? { width } : {}),
     ...(optional ? { optional: true } : {}),
     ...(fallback ? { fallback } : {}),
+    span: spanOf(take),
   }
 }
 
@@ -4438,6 +4499,7 @@ function fieldOf(
   nick?: string
   optional?: boolean
   fallback?: Expression
+  span: Span
 } {
   const like = firstAt(link, 'like')
   const listOf = firstAt(link, 'list')
@@ -4479,6 +4541,7 @@ function fieldOf(
     // constructor may leave out.
     ...(need === 'false' ? { optional: true } : {}),
     ...(fallback ? { fallback } : {}),
+    span: spanOf(link),
   }
 }
 
@@ -4594,7 +4657,7 @@ function formOf(bridge: Bridge, value: Form): Statement[] {
       return {
         name: wordAt(arm, 'name') ?? '',
         fields: payload
-          ? [...armFields, { name: 'value', type: payload }]
+          ? [...armFields, { name: 'value', type: payload, span: spanOf(arm) }]
           : armFields,
         ...(indexValues.length > 0 ? { indexValues } : {}),
       }
