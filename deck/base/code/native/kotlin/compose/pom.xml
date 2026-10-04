@@ -39,6 +39,42 @@
     </repository>
   </repositories>
 
+  <!--
+    The androidx libraries under Compose pin EXACT ranges ([1.11.0,1.11.0]) on the runtime, which disagree with the
+    1.12.1 Compose itself asks for. Gradle settles that by taking the highest; Maven refuses. These pins state the
+    answer Gradle would reach, so the two resolve the same graph.
+  -->
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>androidx.compose.runtime</groupId>
+        <artifactId>runtime-desktop</artifactId>
+        <version>${compose.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>androidx.compose.runtime</groupId>
+        <artifactId>runtime-saveable-desktop</artifactId>
+        <version>${compose.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>androidx.compose.runtime</groupId>
+        <artifactId>runtime-annotation-jvm</artifactId>
+        <version>${compose.version}</version>
+      </dependency>
+      <!-- the multiplatform root artifacts, which Maven reads where Gradle follows module metadata to `-desktop` -->
+      <dependency>
+        <groupId>androidx.compose.runtime</groupId>
+        <artifactId>runtime</artifactId>
+        <version>${compose.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>androidx.compose.runtime</groupId>
+        <artifactId>runtime-saveable</artifactId>
+        <version>${compose.version}</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
   <dependencies>
     <dependency>
       <groupId>org.jetbrains.kotlin</groupId>

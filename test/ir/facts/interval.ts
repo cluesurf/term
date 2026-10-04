@@ -661,6 +661,79 @@ ok('a task answering 3 or 5 is their hull', proven(answers('pick'), big) === tru
 ok('a task answering its unknown argument is unknown', proven(answers('echo'), big) === false)
 ok('a task answering its own answer plus one is widened', proven(answers('grow'), big) === false)
 
+// 17. flow: a value at its own point. `x` clamped into [0, 500] by two branches that each assign it (AWFY's Bounce)
+const clamp = (both: boolean, by: number): string =>
+  task(`  save x
+    call add
+      read n
+      code 0
+  fork test
+    hook test
+      call is-above
+        read x
+        code 500
+    hook hold
+      save x, code 500
+${
+  both
+    ? `  fork test
+    hook test
+      call is-below
+        read x
+        code 0
+    hook hold
+      save x, code 0
+`
+    : ''
+}  save out
+    call multiply
+      read x
+      code ${by}`)
+
+ok('a value clamped by two assigning branches is bounded after them', proven(clamp(true, 10000000000000), 10000000000000) === true)
+ok('one clamped on one side only is not', proven(clamp(false, 10000000000001), 10000000000001) === false)
+
+// a counter under a large literal leaves its loop bounded: the loop widens, then narrows back to `i <= 1000`
+ok(
+  'a counter under i < 1000 leaves its loop at most 1000',
+  proven(
+    task(`  save i, code 0
+  walk test
+    hook test
+      call is-below
+        read i
+        code 1000
+    hook hold
+      save i
+        call add
+          read i
+          code 1
+  save out
+    call multiply
+      read i
+      code 9000000000000`),
+    9000000000000,
+  ) === true,
+)
+
+// a guard's handler may follow any prefix of its body, so a name the body assigns is unknown there
+ok(
+  'a handler sees a name its body assigned as unknown',
+  proven(
+    task(`  save x, code 1
+  mark unsafe
+    save x, read n
+    save out, code 0
+  halt take
+    take problem
+    save out
+      call multiply
+        read x
+        code 7000000000000`),
+    7000000000000,
+  ) === false,
+)
+
 console.log(`\ninterval: ${pass} pass, ${fail} fail`)
 
 if (fail) {

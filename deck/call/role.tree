@@ -10,3 +10,4 @@
 role code
   mark lean
   take @/code/work/**/*.tree
+  take @/test/item/**/*.tree

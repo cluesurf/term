@@ -5,7 +5,8 @@
 // on each platform by ./shared/toolkit-run.ts.
 //
 // The image is a 4 by 3 PNG written here as a `data:` URI, so no file has to reach a simulator or an emulator.
-// WORDS_ONLY=macos (or ios, android) runs one platform. Run: npx tsx test/compile/toolkit-words.ts
+// The same program also runs on Compose on the desktop JVM, headless (compose-target).
+// WORDS_ONLY=macos (or ios, android, compose) runs one platform. Run: npx tsx test/compile/toolkit-words.ts
 
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -262,7 +263,13 @@ runToolkits(
     program,
     judge,
     ok,
-    shots: { macos: process.env.SNAPSHOT_WORDS, ios: process.env.SNAPSHOT_WORDS_IOS, android: process.env.SNAPSHOT_WORDS_ANDROID },
+    shots: {
+      macos: process.env.SNAPSHOT_WORDS,
+      ios: process.env.SNAPSHOT_WORDS_IOS,
+      android: process.env.SNAPSHOT_WORDS_ANDROID,
+      compose: process.env.SNAPSHOT_WORDS_COMPOSE,
+    },
+    compose: true,
   },
   process.env.WORDS_ONLY ?? '',
 )

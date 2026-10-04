@@ -3,7 +3,9 @@
 // listens for keys and draws the ones it hears in a span, presses Escape, `a` and the up arrow through the platform
 // (`type-key`: a key event posted to the app on macOS, a KeyEvent dispatched through the Activity on Android, the root
 // controller's delivery on iOS, where a test cannot make a UIPress), and reads the span back off the platform's view.
-// KEYS_ONLY=macos (or ios, android) runs one platform. Run: npx tsx test/compile/toolkit-keys.ts
+// On Compose (compose-target-0003) the window's root box hears the keys through onPreviewKeyEvent, and `type-key` focuses
+// it and injects real key events through Compose's own test input.
+// KEYS_ONLY=macos (or ios, android, compose) runs one platform. Run: npx tsx test/compile/toolkit-keys.ts
 
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -133,6 +135,7 @@ runToolkits(
     judge,
     ok,
     shots: {},
+    compose: true,
   },
   process.env.KEYS_ONLY ?? '',
 )

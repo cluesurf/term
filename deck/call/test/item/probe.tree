@@ -1,0 +1,13 @@
+# A probe of `term test` over a lean test file in the CLI package.
+
+load ../../code/work/item/probe
+  find quotient
+  find count-nodes
+  find node
+
+test <a quotient rounds down>
+  want hold, is-equal(quotient(2905, 10), 290)
+
+test <a leaf counts one>
+  save leaf, make node, label(<leaf>), children(make list)
+  want hold, is-equal(count-nodes(leaf), 1)

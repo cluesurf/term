@@ -8,8 +8,9 @@
 //
 // The check: the new post's title is in the tree after the press and not before, so the store (SQLite) and the
 // renderer (the toolkit host) both ran natively. SNAPSHOT_BLOG, SNAPSHOT_BLOG_IOS and SNAPSHOT_BLOG_ANDROID name where
-// each PNG goes; they are how the screenshots in note/term/project/native-dom/ are made. BLOG_ONLY=macos (or ios,
-// android) runs one platform. Run: npx tsx test/compile/blog-native.ts
+// each PNG goes; they are how the screenshots in note/term/project/native-dom/ are made. The same program also runs as
+// Jetpack Compose on the emulator (compose-target-0005), SNAPSHOT_BLOG_COMPOSE_ANDROID its PNG. BLOG_ONLY=macos (or ios,
+// android, compose-android) runs one platform. Run: npx tsx test/compile/blog-native.ts
 
 import { runDir } from './run-dir'
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
@@ -135,7 +136,15 @@ runToolkits(
     program,
     judge,
     ok,
-    shots: { macos: process.env.SNAPSHOT_BLOG, ios: process.env.SNAPSHOT_BLOG_IOS, android: process.env.SNAPSHOT_BLOG_ANDROID },
+    shots: {
+      macos: process.env.SNAPSHOT_BLOG,
+      ios: process.env.SNAPSHOT_BLOG_IOS,
+      android: process.env.SNAPSHOT_BLOG_ANDROID,
+      'compose-android': process.env.SNAPSHOT_BLOG_COMPOSE_ANDROID,
+      compose: process.env.SNAPSHOT_BLOG_COMPOSE,
+    },
+    compose: true,
+    composeAndroid: true,
   },
   process.env.BLOG_ONLY ?? '',
 )

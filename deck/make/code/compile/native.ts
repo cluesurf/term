@@ -33,6 +33,12 @@ export const NATIVE_ENVS = [
   'android',
   'windows',
   'linux',
+  // Compose (compose-target): the toolkit dom drawn by Compose rather than by a platform's views. `compose` is Compose
+  // Multiplatform on the desktop JVM, falling back through the toolkit and Kotlin's JVM natives; `compose-android` is
+  // Jetpack Compose, falling back through `android` first so it keeps every Android native. Each finds its own
+  // `runtime/<env>/` shim beside the toolkit dom, ahead of the Android views one (`nativePrelude`)
+  'compose',
+  'compose-android',
   // a SHARED rung under the two Apple platforms: an impl here serves both, with AppKit and UIKit told apart inside its
   // Swift runtime by `#if canImport`, the way the cask runtime does it. Never a build target of its own
   'apple',
@@ -63,6 +69,8 @@ export const RUNTIME_EXTENSION: Record<NativeEnv, string> = {
   android: 'kt',
   windows: 'rs',
   linux: 'rs',
+  compose: 'kt',
+  'compose-android': 'kt',
   apple: 'swift',
   // its runtimes are found by the BUILD env's extension (swift for macos and ios, kt for android), never this one
   toolkit: 'txt',
@@ -151,6 +159,47 @@ function mentions(source: string, alias: string): boolean {
   return false
 }
 
+// A runtime shim may be assembled from shared parts: a line `// runtime-include: <path>` is replaced by that file,
+// the path relative to the shim's own directory, itself expanded the same way. So a per-env shim
+// (`runtime/compose/native-view.kt`) is the shared Compose runtime plus its platform's host, with no copy of either.
+// A part named twice is included once, and a part that cannot be read fails loudly rather than vanishing
+const RUNTIME_INCLUDE = /^[ \t]*\/\/[ \t]*runtime-include:[ \t]*(\S+)[ \t]*$/gm
+
+function withIncludes(
+  file: string,
+  source: string,
+  readRuntime: (path: string) => string | undefined,
+  seen: Set<string> = new Set([file]),
+): string {
+  return source.replace(RUNTIME_INCLUDE, (_, relative: string) => {
+    const segments = `${directoryOf(file)}/${relative}`.split('/')
+    const resolved: string[] = []
+
+    for (const segment of segments) {
+      if (segment === '..') {
+        resolved.pop()
+      } else if (segment !== '.') {
+        resolved.push(segment)
+      }
+    }
+
+    const path = resolved.join('/')
+
+    if (seen.has(path)) {
+      return ''
+    }
+
+    seen.add(path)
+    const part = readRuntime(path)
+
+    if (part === undefined) {
+      throw new Error(`runtime ${file} includes ${relative}, which does not exist (${path})`)
+    }
+
+    return withIncludes(path, part, readRuntime, seen)
+  })
+}
+
 // build the native prelude for a target: the concatenation of every runtime-shim file the program's global docks
 // reference and that actually exists. Each shim is looked up next to the module that docks it (its origin file), with
 // the base.tree path as a fallback. `readRuntime(path)` returns the raw source for a runtime path, or undefined.
@@ -198,7 +247,11 @@ export function nativePrelude(
       let dir = directoryOf(file)
 
       for (let up = 0; up < RUNTIME_SEARCH_DEPTH; up += 1) {
+        // the env's OWN shim first, `runtime/<env>/<name>`: one module with a runtime per platform that shares an
+        // extension (the toolkit dom's `native-view.kt` is Android's views, `runtime/compose/native-view.kt`
+        // Compose's), then the shim every env of the extension shares
         candidates.push(
+          `${dir}/runtime/${env}/${name}.${RUNTIME_EXTENSION[env]}`,
           `${dir}/runtime/${name}.${RUNTIME_EXTENSION[env]}`,
         )
 
@@ -215,24 +268,28 @@ export function nativePrelude(
     // a SHARED module (`code/hold/hash/fnv.tree`, `code/native/shared/...`) docks a global whose shim lives
     // under the target platform's own runtime dir: derive `<pkg>/code/native/<env>/runtime/<name>` from the
     // docking file's path, since the upward walk from a shared dir never reaches another platform's tree
+    // Each env of the chain is tried in turn (`envChain`): a platform env with no runtime dir of its own (`android`,
+    // `compose`) reaches its language's, `native/kotlin/runtime`, rather than missing the shim
     if (file) {
       const at = file.lastIndexOf('/code/')
 
       if (at >= 0) {
-        candidates.push(
-          `${file.slice(0, at)}/code/native/${env}/runtime/${name}.${RUNTIME_EXTENSION[env]}`,
-        )
+        for (const rung of envChain(env)) {
+          candidates.push(`${file.slice(0, at)}/code/native/${rung}/runtime/${name}.${RUNTIME_EXTENSION[env]}`)
+        }
       }
     }
 
     // the stdlib's runtime dir for the env, by path: a global the stdlib provides for an env (`bridge` in `webview`)
     // is for every package that docks it, and a dock in another package (`@term/site`'s db shim, `@term/cask`'s own)
     // never walks up into the stdlib. Without this the bundle built clean and the first call died with
-    // `ReferenceError: bridge is not defined`
+    // `ReferenceError: bridge is not defined`. The env's chain, as above
     const stdlib = stdlibBase()
 
     if (stdlib) {
-      candidates.push(`${stdlib}/code/native/${env}/runtime/${name}.${RUNTIME_EXTENSION[env]}`)
+      for (const rung of envChain(env)) {
+        candidates.push(`${stdlib}/code/native/${rung}/runtime/${name}.${RUNTIME_EXTENSION[env]}`)
+      }
     }
 
     candidates.push(runtimePath(env, name))
@@ -246,7 +303,7 @@ export function nativePrelude(
 
       if (source !== undefined) {
         added.add(candidate)
-        parts.push(source)
+        parts.push(withIncludes(candidate, source, readRuntime))
         break
       }
     }
@@ -305,6 +362,8 @@ export const NATIVE_ENV_FALLBACK: Partial<Record<NativeEnv, NativeEnv[]>> = {
   android: ['toolkit', 'kotlin', 'memory'],
   windows: ['rust', 'memory'],
   linux: ['rust', 'memory'],
+  compose: ['toolkit', 'kotlin', 'memory'],
+  'compose-android': ['android', 'toolkit', 'kotlin', 'memory'],
 }
 
 // the envs a build for `env` reads impls from, in order: its own, then its fallback chain

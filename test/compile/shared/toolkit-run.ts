@@ -1,7 +1,8 @@
-// One Term program on the three toolkit hosts: built for macOS with swiftc and run, built for the iPhone simulator into
-// a flat .app and launched on a booted simulator with its console read, and built for Android with kotlinc and d8 into
-// an APK, installed on the emulator and its `native-dom` log read until it says it exits. Each run's output and the path
-// of its PNG are handed to the caller's judge. A helper, not a suite: it sits under shared/, which the runner does not
+// One Term program on the four toolkit hosts: built for macOS with swiftc and run, built for the iPhone simulator into
+// a flat .app and launched on a booted simulator with its console read, built for Android with kotlinc and d8 into
+// an APK, installed on the emulator and its `native-dom` log read until it says it exits, and built for Compose on the
+// desktop JVM and run headless (compose-target). Each run's output and the path of its PNG are handed to the caller's
+// judge. A helper, not a suite: it sits under shared/, which the runner does not
 // walk. Used by test/compile/blog-native.ts and test/compile/toolkit-words.ts.
 
 import { execFileSync, spawnSync } from 'node:child_process'
@@ -19,12 +20,14 @@ import {
   buildAndroidProgram,
   simulator,
 } from '@term/call/code/cask'
+import { buildCompose, runCompose } from './compose-build'
+import { buildComposeAndroid, runComposeAndroid } from './compose-android'
 
 // a macOS test app opens its window past the right edge of the screens and never takes focus (native-view.swift
 // windowAway), run from the gate or by hand alike
 process.env.TERM_WINDOW_AWAY ??= '1'
 
-export type Leg = 'macos' | 'ios' | 'android'
+export type Leg = 'macos' | 'ios' | 'android' | 'compose' | 'compose-android'
 
 export type ToolkitRun = {
   // the Term root, where `@term/*` resolves
@@ -47,9 +50,20 @@ export type ToolkitRun = {
   ok: (name: string, cond: boolean, info?: string) => void
   // where each PNG goes, when set
   shots: Partial<Record<Leg, string>>
+  // whether the program runs on Compose (compose-target): a test opts in once the Compose runtime draws everything it
+  // uses. Without it the compose leg runs only when asked for by name
+  compose?: boolean
+  // the same for Jetpack Compose on the Android emulator (compose-target-0006), the `compose-android` leg
+  composeAndroid?: boolean
 }
 
-const TOOLKIT: Record<Leg, string> = { macos: 'AppKit', ios: 'UIKit', android: 'Android views' }
+const TOOLKIT: Record<Leg, string> = {
+  macos: 'AppKit',
+  ios: 'UIKit',
+  android: 'Android views',
+  compose: 'Compose',
+  'compose-android': 'Jetpack Compose',
+}
 
 const readRuntime = (file: string): string | undefined => (existsSync(file) ? readFileSync(file, 'utf8') : undefined)
 
@@ -221,7 +235,63 @@ function runAndroid(run: ToolkitRun): void {
   run.judge('android', TOOLKIT.android, said, shot)
 }
 
-// every leg `only` allows ('' for all three), each skipped with its reason where its toolchain or device is absent
+// Compose on the desktop JVM (compose-target): the Android program with the Compose runtime in place of the Android
+// one, built by kotlinc with the Compose plugin and run headless, no emulator (./compose-build.ts)
+function runComposeLeg(run: ToolkitRun): void {
+  const shot = run.shots.compose ?? join(run.dir, 'compose.png')
+  const built = buildCompose({ root: run.root, dir: run.dir, name: 'compose', text: run.program('compose', shot) })
+
+  if (built.form === 'skipped') {
+    console.log(`skip  compose  (${built.reason})`)
+
+    return
+  }
+
+  run.ok('compose: builds', built.form === 'built', built.form === 'failed' ? `${built.stage}: ${built.reason}` : '')
+
+  if (built.form !== 'built') {
+    return
+  }
+
+  const ran = runCompose(built)
+  run.ok('compose: the app said it exits 0', ran.output.includes('native-view exit 0') && ran.status === 0, `status ${ran.status}: ${ran.error.slice(-1200)}`)
+  run.judge('compose', TOOLKIT.compose, ran.output, shot)
+}
+
+// Jetpack Compose on the Android emulator (compose-target-0006): an APK from Compose's Android libraries with no Android
+// Gradle plugin, its `native-dom` log read and its PNG pulled (./compose-android.ts)
+function runComposeAndroidLeg(run: ToolkitRun): void {
+  const shot = run.shots['compose-android'] ?? join(run.dir, 'compose-android.png')
+  const identifier = `${run.androidIdentifier}.compose`
+  const built = buildComposeAndroid({ root: run.root, dir: run.dir, name: 'compose', text: run.program('compose-android', 'compose.png'), identifier })
+
+  if (built.form === 'skipped') {
+    console.log(`skip  compose-android  (${built.reason})`)
+
+    return
+  }
+
+  run.ok('compose-android: builds', built.form === 'built', built.form === 'failed' ? `${built.stage}: ${built.reason}` : '')
+
+  if (built.form !== 'built') {
+    return
+  }
+
+  const ran = runComposeAndroid({ apk: built.apk, identifier, shot: 'compose.png', pulled: shot })
+
+  if (ran.form === 'skipped') {
+    console.log(`skip  compose-android  (${ran.reason})`)
+
+    return
+  }
+
+  run.ok('compose-android: installs', ran.installed)
+  run.ok('compose-android: the app said it exits 0', ran.exited, ran.output.slice(-1600))
+  run.judge('compose-android', TOOLKIT['compose-android'], ran.output, shot)
+}
+
+// every leg `only` allows ('' for all, Compose among them only where the test opted in), each skipped with its reason
+// where its toolchain or device is absent
 export function runToolkits(run: ToolkitRun, only: string): void {
   const apple = process.platform === 'darwin'
 
@@ -235,5 +305,13 @@ export function runToolkits(run: ToolkitRun, only: string): void {
 
   if (!only || only === 'android') {
     runAndroid(run)
+  }
+
+  if (only === 'compose' || (!only && run.compose)) {
+    runComposeLeg(run)
+  }
+
+  if (only === 'compose-android' || (!only && run.composeAndroid)) {
+    runComposeAndroidLeg(run)
   }
 }
