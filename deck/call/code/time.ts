@@ -5,7 +5,6 @@
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
-import { readable } from '@term/call/code/test-preprocess'
 import { closeRun, count, field, location, openRun, printData, problemOf, report, showPath } from '@term/call/code/output'
 import {
   compileBenchmarks,
@@ -33,7 +32,8 @@ import {
   runMemoryProfile,
   formatMemoryResult,
 } from '@term/make/code/time/memory'
-import { findTreeFiles, projectResolver } from '@term/call/code/make'
+import { buildable, findTreeFiles, projectResolver } from '@term/call/code/make'
+import { projectRoleOf } from '@term/call/code/role-of'
 import { withNativeEnv } from '@term/make/code/compile/native'
 
 export async function callTime(input: {
@@ -67,6 +67,7 @@ export async function callTime(input: {
   // the same resolver `term make` uses, so a benchmark file's imports resolve the way its build does. Without it
   // `term time` reported every imported name as undefined on a project that compiles.
   const resolve = withNativeEnv('node', projectResolver(input.root))
+  const roleOf = projectRoleOf(input.root)
 
   try {
     // the baseline is read first, so a name that does not exist fails before anything runs. It was read after the
@@ -90,8 +91,13 @@ export async function callTime(input: {
     for (const file of files) {
       // a file of `test` blocks rewritten into tasks, as `term test` and `term roll` do, so it compiles rather than
       // printing a page of `unknown-name` for `test`, `want` and `hold`
-      const unit = readable(await fs.readFile(file, 'utf-8'))
+      const unit = buildable(file, await fs.readFile(file, 'utf-8'), roleOf(file))
       const relative = path.relative(input.root, file)
+
+      // a grammar that cannot generate a reader holds no benchmark, and `term make` reports why
+      if ('faults' in unit) {
+        continue
+      }
 
       let module
 

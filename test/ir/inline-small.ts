@@ -173,6 +173,21 @@ task use
 `)
 ok('a left-out optional boolean is NOT inlined', /pick\(/.test(flagged), flagged)
 
+// a small task answering a template, inlined into another template: one template, its parts spliced in order, where two
+// nested were two text builds (Rust's `format!` in `format!`)
+const nested = emit(`task pair
+  take a, like number
+  take b, like number
+  like text
+  send back, text <{a}|{b}>
+
+task use
+  take n, like number
+  like text
+  send back, text <[{pair(n, n)}]>
+`)
+ok('a template inlined into a template is one template', /`\[\$\{n\}\|\$\{n\}\]`/.test(nested) && (nested.match(/`/g) ?? []).length === 2, nested)
+
 console.log(`\ninline-small: ${pass} pass, ${fail} fail`)
 
 if (fail > 0) {

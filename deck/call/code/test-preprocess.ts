@@ -67,8 +67,10 @@ function statements(
 // a fail-fast guard around one assertion. `want hold` / `want miss` followed by a boolean expression becomes a
 // `fork test` whose condition is that expression (re-indented under `hook test`). The result is tracked into the test
 // by failing the task on the wrong branch: `want hold` fails when the expression misses (`hook miss`), `want miss`
-// fails when it holds (`hook hold`).
-function guard(group: string[]): string[] {
+// fails when it holds (`hook hold`). It fails by raising `want:<line>`, the `want`'s line in the file counted from
+// one, which `term test` reads back as the line itself (`wantFailed`). It sent back `false`, and a failing test
+// printed only its phrase (guides: commands/test, tests/writing, 2026-10-04).
+function guard(group: string[], line: number): string[] {
   // the head line is `want <mode>` with the condition indented under it, or the one-line form
   // `want <mode>, <expr>` with the condition inline after the comma. The inline expression used to
   // be dropped on the floor (an empty condition, so the test failed no matter what it said).
@@ -89,9 +91,27 @@ function guard(group: string[]): string[] {
     '    hook test',
     ...condition,
     `    ${failOn}`,
-    '      send back',
-    '        false',
+    `      halt <${WANT_FAILED}${line + 1}>`,
   ]
+}
+
+// the marker a failing `want` raises, and its reader: the source line the marker names, or undefined for any other
+// raise, which is the test's own failure and reported as it is
+const WANT_FAILED = 'want:'
+
+export function wantFailed(note: string | undefined, source: string): string | undefined {
+  const line = wantLine(note)
+
+  return line !== undefined
+    ? `line ${line + 1} did not hold: ${source.split('\n')[line]?.trim() ?? ''}`
+    : undefined
+}
+
+// the line, counted from zero, of the `want` a failing test's marker names, or undefined for any other raise
+export function wantLine(note: string | undefined): number | undefined {
+  const line = note?.startsWith(WANT_FAILED) ? Number(note.slice(WANT_FAILED.length)) : NaN
+
+  return Number.isInteger(line) && line > 0 ? line - 1 : undefined
 }
 
 // `origin[n]` is the source line that output line `n` came from, so a diagnostic on the rewritten text can be put
@@ -102,6 +122,8 @@ export type Preprocessed = {
   text: string
   labels: Map<string, string>
   origin: number[]
+  // each test's `test <phrase>` line, counted from zero, by its task name: where a failing test points
+  heads: Map<string, number>
 }
 
 // The names a test's task must not take: what the file defines (`task`, `form`, `rule`, `bind`, `host`) and what it
@@ -181,6 +203,7 @@ export function preprocessTests(source: string): Preprocessed {
   const out: string[] = []
   const origin: number[] = []
   const labels = new Map<string, string>()
+  const heads = new Map<string, number>()
   const taken = takenNames(lines)
 
   const emit = (text: string, from: number): void => {
@@ -206,6 +229,7 @@ export function preprocessTests(source: string): Preprocessed {
     // a test whose name the file already uses for something else gets a task name of its own
     const slug = taken.has(parsed.slug) ? `${parsed.slug}-test` : parsed.slug
     labels.set(slug, label)
+    heads.set(slug, at)
     // gather the block body: the following lines that are blank or indented
     i++
 
@@ -228,8 +252,8 @@ export function preprocessTests(source: string): Preprocessed {
       const head = lines[group[0]!]!.trim().split(/[\s,]/)[0]!
 
       if (head === ASSERTION) {
-        const written = guard(group.map(n => lines[n]!))
-        // two lines of `fork test` / `hook test`, the condition, then three of the failing branch. The condition
+        const written = guard(group.map(n => lines[n]!), group[0]!)
+        // two lines of `fork test` / `hook test`, the condition, then two of the failing branch. The condition
         // is the inline expression (one line, from the `want` line) or the lines under the `want`, one for one.
         const inline = /^want(?:\s+(?:hold|miss))?\s*,/.test(
           lines[group[0]!]!.trim(),
@@ -240,7 +264,6 @@ export function preprocessTests(source: string): Preprocessed {
           group[0]!,
           group[0]!,
           ...conditionFrom,
-          group[0]!,
           group[0]!,
           group[0]!,
         ]
@@ -255,5 +278,5 @@ export function preprocessTests(source: string): Preprocessed {
     emit('    true', at)
   }
 
-  return { text: out.join('\n'), labels, origin }
+  return { text: out.join('\n'), labels, origin, heads }
 }

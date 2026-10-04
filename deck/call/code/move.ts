@@ -45,7 +45,7 @@ export async function callMove(input: {
     )
 
     report({ glyph: 'changed', kind: 'change', verb: 'change', subject: 'mark', facts: [`${oldCode} → ${newCodeStr}`] })
-    closeRun({ verdict: `Version is ${newCodeStr}` })
+    closeRun({ verdict: `Version is ${newCodeStr}`, done: true })
   } catch (err) {
     report({ glyph: 'failed', verb: 'change', subject: 'mark', message: [err instanceof Error ? err.message : String(err)] })
     closeRun({ verdict: 'Version not moved' })

@@ -376,6 +376,122 @@ tell @term/base/overage, note <Too many requests>
   ok('and the build line names it, not list reads and division', owed !== undefined && describeOwed(owed) === '0 of 1 walks shown to end', owed && describeOwed(owed))
 }
 
+// ---- language/tasks: a required argument left out is reported once ----
+{
+  const once = said(`task area
+  take w, like number
+  take h, like number
+  like number
+  send back
+    call multiply
+      read w
+      read h
+
+task use
+  like number
+  send back
+    call area
+      code 3
+`)
+  const lines = once.split(' | ')
+
+  ok('a left-out argument is refused, naming it', /"area" needs "h", which this call leaves out/.test(once), once)
+  ok('and only once, not again as a mismatch with `void`', lines.length === 1 && !/void/.test(once), once)
+}
+
+// ---- commands/view: a refused document says what a document allows, not where the brackets go ----
+{
+  const out = compile(
+    {
+      file: '/gate/page/hostile.tree',
+      text: `view text/heading
+  <Sounds>
+
+task steal
+  like text
+  send back, text <x>
+`,
+    },
+    { roleOf: () => 'view' },
+  )
+  const refused = out.ok ? undefined : out.diagnostics.find(d => /"task" is not part of a document/.test(d.message))
+
+  ok('a task in a document is refused', refused !== undefined, out.ok ? 'built' : out.diagnostics.map(d => `${d.name}: ${d.message}`).join(' | '))
+  ok('as `document-refused`, with advice about documents', refused?.name === 'document-refused' && !/brackets/.test(refused.hint ?? ''), `${refused?.name} ${refused?.hint}`)
+}
+
+// ---- language/templates: an error in an expansion points at the fuse that caused it ----
+{
+  const out = compile(
+    {
+      file: '/gate/code/tags.tree',
+      text: `tree is-tag
+  take name
+  take tag
+  hook fuse
+    task is-{name}
+      take value, like number
+
+      like boolean
+
+      back is-equal(value, code {tag})
+
+fuse is-tag
+  bind name, red
+  bind tag, 0
+
+fuse is-tag
+  bind name, green
+`,
+    },
+    { leanOf: () => true },
+  )
+  const lines = out.ok ? [] : out.diagnostics.map(d => d.span.start.line)
+
+  ok('a fuse that leaves out a hole fails the build', !out.ok, out.ok ? 'built' : '')
+  ok(
+    'and every error is in that fuse, lines 15 and 16, not at the `tree` on line 1',
+    lines.length > 0 && lines.every(line => line === 14 || line === 15),
+    out.ok ? '' : out.diagnostics.map(d => `${d.span.start.line + 1}: ${d.message}`).join(' | '),
+  )
+}
+
+// ---- language/syntax: the one line the grammar could not read is named, in a longhand file too ----
+{
+  const typo = said(`task more
+  take n, like number
+  like number
+  save total, read n
+  fork test, is-above n, 0
+    hodl
+      send back, read total
+  send back, read n
+`)
+
+  ok('an unreadable `fork` names the `fork` line', /`fork` is a statement, and its grammar could not read this line/.test(typo), typo)
+  ok('and nothing else: not `test`, `hodl` or `back` as undefined names', typo.split(' | ').length === 1, typo)
+
+  const comma = said(`task double
+  take n, like number
+  like number
+  send back
+    call multiply
+      read n
+      code 2
+
+task more
+  take n, like number
+  like number
+  send back
+    call add
+      call double
+        read n
+        code 1
+`)
+
+  ok('an argument too many names the call it landed in', /"double" takes 1 argument, and this is one more/.test(comma), comma)
+}
+
 // ---- a warning names the file it is about ----
 {
   const helper = `task helper

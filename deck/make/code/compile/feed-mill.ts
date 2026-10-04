@@ -1045,6 +1045,10 @@ interface Ops {
   advance: string // -> the raw byte/char, cursor advances by one
   atEnd: string
   remaining: string
+  // -> the cursor's position, and a description of what is next (a quoted character, a byte, or the end of input),
+  // for the refusal a miss raises
+  position: string
+  describe: string
   imports: string[]
 }
 
@@ -1056,7 +1060,11 @@ const OPS: Record<Substrate, Ops> = {
     advance: 'read-text-cursor',
     atEnd: 'is-text-cursor-at-end',
     remaining: '',
+    position: 'get-text-cursor-position',
+    describe: 'describe-text-cursor-next',
     imports: [
+      'find get-text-cursor-position',
+      'find describe-text-cursor-next',
       'find text-cursor',
       'find make-text-cursor',
       'find is-text-cursor-at-end',
@@ -1072,7 +1080,11 @@ const OPS: Record<Substrate, Ops> = {
     advance: 'read-byte',
     atEnd: 'at-end',
     remaining: 'remaining',
+    position: 'get-cursor-position',
+    describe: 'describe-byte-cursor-next',
     imports: [
+      'find get-cursor-position',
+      'find describe-byte-cursor-next',
       'find feed-cursor',
       'find make-cursor',
       'find at-end',
@@ -1085,6 +1097,20 @@ const OPS: Record<Substrate, Ops> = {
       'find integer-sign',
     ],
   },
+}
+
+// A miss, as the generated reader raises it: what the grammar expected, where reading stopped, and what was there
+// instead. `expected "." at position 2, found "-"`. It said `expected character 46`: a code point, and no position
+// (guides: parsers/grammars, 2026-10-04). The cursor answers the position and the description when it is raised.
+function miss(ops: Ops, expected: string): string {
+  return `halt <expected ${expected} at position {${ops.position}(cursor)}, found {${ops.describe}(cursor)}>`
+}
+
+// one character as a miss names it: quoted when it can be written inside a text literal as itself, else its code
+function shownCharacter(code: number): string {
+  const character = String.fromCodePoint(code)
+
+  return code > 32 && code < 127 && !'<>{}\\"'.includes(character) ? `"${character}"` : `character ${code}`
 }
 
 export function compileFeedMine(
@@ -1507,7 +1533,7 @@ function compileExpr(
       out.push(`${p}  hook test`)
       out.push(`${p}    call not, call is-equal(call(${ops.peekCode}(read(cursor))), code ${rule.literal})`)
       out.push(`${p}  hook hold`)
-      out.push(`${p}    halt <expected byte ${rule.literal}>`)
+      out.push(`${p}    ${miss(ops, `byte ${rule.literal}`)}`)
       out.push(`${p}save ${localName}`)
       out.push(`${p}  call ${ops.advance}(read(cursor))`)
 
@@ -1524,7 +1550,7 @@ function compileExpr(
       out.push(`${p}  hook test`)
       out.push(`${p}    call not, call is-equal(call(${ops.peekCode}(read(cursor))), code ${rule.literal})`)
       out.push(`${p}  hook hold`)
-      out.push(inRepetition > 0 ? `${p}    halt` : `${p}    halt <expected character ${rule.literal}>`)
+      out.push(inRepetition > 0 ? `${p}    halt` : `${p}    ${miss(ops, shownCharacter(Number(rule.literal)))}`)
       out.push(`${p}save ${localName}`)
       out.push(`${p}  call ${ops.advance}(read(cursor))`)
 
@@ -1545,7 +1571,7 @@ function compileExpr(
         out.push(`${p}  hook test`)
         out.push(`${p}    call not, call is-equal(call(${ops.peekCode}(read(cursor))), code ${code})`)
         out.push(`${p}  hook hold`)
-        out.push(inRepetition > 0 ? `${p}    halt` : `${p}    halt <expected ${rule.literal}>`)
+        out.push(inRepetition > 0 ? `${p}    halt` : `${p}    ${miss(ops, shownCharacter(code))}`)
         out.push(`${p}  hook miss`)
         out.push(`${p}    call ${ops.advance}(read(cursor))`)
       }
@@ -1573,7 +1599,11 @@ function compileExpr(
       out.push(`${p}        call is-minimum(call(${ops.peekCode}(read(cursor))), code ${baseCode})`)
       out.push(`${p}        call is-maximum(call(${ops.peekCode}(read(cursor))), code ${headCode})`)
       out.push(`${p}  hook hold`)
-      out.push(inRepetition > 0 ? `${p}    halt` : `${p}    halt <expected a character between ${baseCode} and ${headCode}>`)
+      out.push(
+        inRepetition > 0
+          ? `${p}    halt`
+          : `${p}    ${miss(ops, `a character from ${shownCharacter(baseCode)} to ${shownCharacter(headCode)}`)}`,
+      )
       out.push(`${p}save ${localName}`)
       out.push(`${p}  call ${ops.advance}(read(cursor))`)
 
@@ -1591,7 +1621,7 @@ function compileExpr(
       out.push(`${p}  hook test`)
       out.push(`${p}    ${test}`)
       out.push(`${p}  hook hold`)
-      out.push(`${p}    halt <unexpected character here>`)
+      out.push(`${p}    halt <unexpected {${ops.describe}(cursor)} at position {${ops.position}(cursor)}>`)
 
       return
     }
@@ -2019,7 +2049,7 @@ function compileAnyHelper(name: string, branches: FeedMineRule[], ops: Ops, gram
     }
   })
 
-  lines.push(`  halt <expected a match for ${name}>`)
+  lines.push(`  ${miss(ops, `a match for ${name}`)}`)
 
   return lines
 }

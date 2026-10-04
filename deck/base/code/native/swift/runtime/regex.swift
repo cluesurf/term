@@ -1,6 +1,6 @@
 import Foundation
 
-// The one regex primitive over NSRegularExpression (ICU). The pattern arrives in the canonical dialect
+// The one regex primitive over NSRegularExpression (ICU). The pattern arrives in a form this engine reads as Term does
 // (base/code/regex/dialect.tree); this runs it without anchoring bounds, so ^ and \z mean the ends of the whole text
 // whatever position the search starts from, and turns UTF-16 offsets into code point offsets.
 enum regex {
@@ -11,7 +11,8 @@ enum regex {
         if let found = compiled[pattern] {
             engine = found
         } else {
-            guard let made = try? NSRegularExpression(pattern: pattern) else { return [] }
+            // an engine that refuses the pattern answers [-2], never "no match": Term answers it with its own tier
+            guard let made = try? NSRegularExpression(pattern: pattern) else { return [-2] }
             compiled[pattern] = made
             engine = made
         }
@@ -55,7 +56,8 @@ enum regex {
         if let found = compiled[pattern] {
             engine = found
         } else {
-            guard let made = try? NSRegularExpression(pattern: pattern) else { return out }
+            // an engine that refuses the pattern answers [-2], never "no match": Term answers it with its own tier
+            guard let made = try? NSRegularExpression(pattern: pattern) else { return [-2] }
             compiled[pattern] = made
             engine = made
         }

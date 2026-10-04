@@ -23,9 +23,9 @@ import type {
   Expression,
   HoldOrigin,
   Program,
-  Span,
   Statement,
 } from '@term/make/code/compile/node'
+import type { Span } from '@term/make/code/parser/diagnostic'
 import { readNames } from '@term/make/code/check/facts'
 
 type Fn = Extract<Statement, { form: 'function' }>

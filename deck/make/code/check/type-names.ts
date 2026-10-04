@@ -9,7 +9,8 @@
 // opaque `dock type`, a name the language gives (`list`, `hash`, `unknown`, `type`), or a type parameter its task
 // or form declares. It reads only the file being compiled, so a dependency is held to it where it is compiled itself.
 
-import type { Program, Statement, Type, Span } from '@term/make/code/compile/node'
+import type { Program, Statement, Type } from '@term/make/code/compile/node'
+import type { Span } from '@term/make/code/parser/diagnostic'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
 

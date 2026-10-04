@@ -43,7 +43,15 @@ const build = (file: string, text = readFileSync(file, 'utf8')) => {
 const boxes = build(join(TERM, 'test/compile/meaning-native/boxes.tree'))
 const boxesFacts = rustBoxing(boxes)
 ok('a chain nothing clones is boxed', JSON.stringify(boxesFacts.boxed) === '["chain"]', JSON.stringify(boxesFacts))
-ok('its children are `Box<Chain>`, moved out with `*rest`', /rest: Box<Chain>/.test(emitRust(boxes)), emitRust(boxes).split('\n').filter(l => /Chain \{|Node \{/.test(l)).join(' | '))
+// a case holding the form keeps every field in ONE box, a payload struct (rust.ts, `payloads`): `Node(Box<ChainNode>)`,
+// its child a plain `Chain` inside it, and an arm destructures the box with the fields' own pattern
+const boxesRust = emitRust(boxes)
+ok(
+  'its node is one box, `Node(Box<ChainNode>)`, the child plain inside it',
+  /Node\(Box<ChainNode>\)/.test(boxesRust) && /struct ChainNode \{ head: i64, rest: Chain \}/.test(boxesRust) && !/Box<Chain>/.test(boxesRust),
+  boxesRust.split('\n').filter(l => /Chain|Node/.test(l)).slice(0, 8).join(' | '),
+)
+ok('an arm opens the box by its fields', /let ChainNode \{ [^}]*\} = /.test(boxesRust), boxesRust.split('\n').filter(l => /ChainNode/.test(l)).join(' | '))
 
 // 2. binary-trees' tree, the benchmark this is for
 const trees = rustBoxing(build(join(TERM, 'bench/binary-trees/term.tree')))

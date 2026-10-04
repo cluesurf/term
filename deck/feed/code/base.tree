@@ -296,6 +296,20 @@ task peek-byte
   send back
     call get(call(get-cursor-bytes(read cursor)), call(get-cursor-position(read cursor)))
 
+# what a reader found where it stopped, for the refusal it raises: the next byte, or the end of the input. The byte
+# twin of `describe-text-cursor-next`
+task describe-byte-cursor-next
+  take cursor, like feed-cursor
+  like text
+  fork test
+    hook test
+      call at-end read cursor
+    hook hold
+      send back, text <the end of the input>
+  save next
+    call peek-byte read cursor
+  send back, text <byte {next}>
+
 task read-byte
   take cursor, like feed-cursor
   like u8
@@ -769,6 +783,21 @@ task peek-text-cursor-code
   like number
   send back
     call char-code-at(call(peek-text-cursor(read cursor)), code 0)
+
+# what a reader found where it stopped, for the refusal it raises: the next character quoted, or the end of the
+# input. A generated reader's miss names it beside what it expected and where (compile/feed-mill.ts). It named a
+# code point alone, `expected character 46` (guides: parsers/grammars, 2026-10-04)
+task describe-text-cursor-next
+  take cursor, like text-cursor
+  like text
+  fork test
+    hook test
+      call is-text-cursor-at-end read cursor
+    hook hold
+      send back, text <the end of the input>
+  save next
+    call peek-text-cursor read cursor
+  send back, text <"{next}">
 
 task read-text-cursor
   take cursor, like text-cursor

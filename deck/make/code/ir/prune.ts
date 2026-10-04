@@ -39,6 +39,9 @@ function collectNames(node: unknown, out: Set<string>): void {
   // kept definitions, never a missed dependency.
   if (typeof obj.name === 'string') {out.add(obj.name)}
 
+  // a match arm names its case by `label`
+  if (typeof obj.label === 'string') {out.add(obj.label)}
+
   for (const key in obj) {
     if (key === 'span') {continue} // spans carry only positions, never names
 
@@ -79,6 +82,13 @@ export function pruneToReachable(
 
       if (method) {
         index(method.name, statement)
+      }
+
+      // a form is reached through its CASES too: `make one` and `case one` name the case, never the form, so a task
+      // that builds and matches a variant without writing the form's name lost the whole form, and every backend then
+      // wrote the cases as records nothing declared
+      for (const variant of (statement as { variants?: { name: string }[] }).variants ?? []) {
+        index(variant.name, statement)
       }
     }
   }

@@ -281,6 +281,8 @@ task close-session
   save next, one
   save shown, close-event(one, closing, room/standard)
   save lines, make list
+  # the blank line BEFORE the closing, always: under `--quiet` with nothing above it, it parts the closing from the
+  # command line the terminal echoed, as the mockups' Quiet card shows (and this file's header says)
   lines/push blank-line()
   walk draw-item(shown, room, true)
     take each

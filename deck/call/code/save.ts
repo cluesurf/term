@@ -24,7 +24,7 @@ export async function callSave(input: {
       constraint: input.constraint,
     })
     report({ glyph: 'added', kind: 'change', verb: 'add', subject: input.deck, facts: input.constraint ? [input.constraint] : [] })
-    closeRun({ verdict: `Added ${input.deck}` })
+    closeRun({ verdict: `Added ${input.deck}`, done: true })
   } catch (err) {
     report({ glyph: 'failed', verb: 'add', subject: input.deck, message: [err instanceof Error ? err.message : String(err)] })
     closeRun({ verdict: `${input.deck} was not added` })

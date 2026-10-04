@@ -221,19 +221,31 @@ object composeHost {
     // the color Compose drew at the node tagged `tag`, `dx` and `dy` dp in from its top left, as `#rrggbb`: the Compose
     // root holding the node drawn into a bitmap, and the pixel read off it. A node below the screen is scrolled to first,
     // through the page's own scroll action (the one TalkBack performs), as a person would scroll to look at it
+    // TRIED A FEW TIMES, scrolling again while the node is still off the screen, and looking again while no root holds
+    // it yet: on a loaded emulator the panel's fill came back `none` in a full gate run while the same leg alone read it
+    // right, the frame after the write or the scroll not yet laid out when the bitmap was drawn
     fun pixel(tag: String, dx: Float, dy: Float): String? {
-        settle()
-        val first = sample(tag, dx, dy)
-        if (first != OFF_SCREEN) return first
-        val top = find(tag, merged = false)?.positionInRoot?.y ?: return null
-        val page = find("term-root", merged = false) ?: return null
-        onMain { page.config.cxHostGetOrNull(CxHostActions.ScrollBy)?.action?.invoke(0f, top - 200f * density()) }
+        repeat(PIXEL_TRIES) {
+            settle()
+            val drawn = sample(tag, dx, dy)
+            if (drawn != null && drawn != OFF_SCREEN) return drawn
+            if (drawn == OFF_SCREEN) {
+                val top = find(tag, merged = false)?.positionInRoot?.y
+                val page = find("term-root", merged = false)
+                if (top != null && page != null) {
+                    onMain { page.config.cxHostGetOrNull(CxHostActions.ScrollBy)?.action?.invoke(0f, top - 200f * density()) }
+                }
+            }
+        }
         settle()
         return sample(tag, dx, dy).takeIf { it != OFF_SCREEN }
     }
 
     // a point outside the drawn window, told apart from a node that is not there at all
     private const val OFF_SCREEN = "off-screen"
+
+    // how many times a pixel is looked for before the node is said to be off the screen
+    private const val PIXEL_TRIES = 4
 
     private fun sample(tag: String, dx: Float, dy: Float): String? =
         onMain {

@@ -26,9 +26,18 @@ export async function callWash(input: {
     const logDir = path.join(input.root, '.base/@cluesurf/term', 'log')
 
     try {
+      // a removal is reported only when there was something to remove
+      const existed = await fsp.access(logDir).then(
+        () => true,
+        () => false,
+      )
       await fsp.rm(logDir, { recursive: true, force: true })
-      report({ glyph: 'removed', kind: 'change', verb: 'remove', subject: '.base/@cluesurf/term/log/' })
-      closeRun({ verdict: 'Logs cleared' })
+
+      if (existed) {
+        report({ glyph: 'removed', kind: 'change', verb: 'remove', subject: '.base/@cluesurf/term/log/' })
+      }
+
+      closeRun({ verdict: existed ? 'Logs cleared' : 'No logs to clear', done: existed })
     } catch (err) {
       report({ glyph: 'failed', kind: 'problem', subject: 'The logs could not be removed', message: [err instanceof Error ? err.message : String(err)] })
       closeRun({ verdict: 'Logs not cleared' })
@@ -55,5 +64,6 @@ export async function callWash(input: {
   closeRun({
     verdict: cleaned > 0 ? 'Build output removed' : 'Nothing to clean',
     counts: [count(cleaned, 'directories', 'directory')],
+    done: cleaned > 0,
   })
 }

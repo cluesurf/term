@@ -28,12 +28,11 @@ import { compile } from '@term/make/code/compile/compile'
 import { withNativeEnv } from '@term/make/code/compile/native'
 import { pureFunctions } from '@term/make/code/check/facts'
 import type { Program } from '@term/make/code/compile/node'
-import { findTreeFiles, projectResolver } from '@term/call/code/make'
+import { buildable, findTreeFiles, projectResolver } from '@term/call/code/make'
 import { collectTreeFiles } from '@term/call/code/files'
 import { compilerVersion, projectCache } from '@term/call/code/cache-store'
 import { projectDeckOf } from '@term/call/code/deck-of'
 import { projectRoleOf, projectLeanOf } from '@term/call/code/role-of'
-import { readable } from '@term/call/code/test-preprocess'
 import { renderDiagnostic } from '@term/call/code/report'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import type { BuildProblem } from '@term/call/code/make'
@@ -127,7 +126,13 @@ export function holdProject(root: string, files: string[], found?: HoldFound): H
 
   for (const file of files) {
     const rel = path.relative(root, file)
-    const unit = readable(readFileSync(file, 'utf8'))
+    const unit = buildable(file, readFileSync(file, 'utf8'), roleOf(file))
+
+    if ('faults' in unit) {
+      failed.push(rel)
+      continue
+    }
+
     // a problem in this file, framed against the lines as written
     const placed = (diagnostic: Diagnostic): string => {
       const at = unit.place(diagnostic)
@@ -419,6 +424,7 @@ export async function callHold(input: {
     count(summary.proven, 'obligations proven', 'obligation proven', summary.total),
     count(summary.baselined, 'in the baseline'),
     ...(summary.failed.length > 0 ? [count(summary.failed.length, 'files do not hold', 'file does not hold')] : []),
+    ...(summary.open.length > 0 ? [count(summary.open.length, 'claims open', 'claim open')] : []),
     ...(summary.fresh.length > 0 ? [count(summary.fresh.length, `not proven and not in ${BASELINE}`)] : []),
   ]
 

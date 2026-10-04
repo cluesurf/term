@@ -55,10 +55,15 @@ let runner: Runner | undefined
 let started = 0
 let verb = ''
 
-// the flags, read once before any command runs (line.ts, a yargs middleware), and the tool's version for the
-// opening item
-export function setOutput(flags: OutputFlags, toolVersion: string): void {
+// the flags, read once before any command runs (line.ts, a yargs middleware), the tool's version for the opening item,
+// and the command's own verb (`argv._[0]`), so a failure before the command opens its run is still under its verb
+export function setOutput(flags: OutputFlags & { _?: (string | number)[] }, toolVersion: string): void {
   version = toolVersion
+
+  if (!verb && flags._ && flags._.length > 0) {
+    verb = String(flags._[0])
+  }
+
   options = {
     ...makeOptions(),
     quiet: flags.quiet ?? false,
@@ -159,9 +164,11 @@ export function showPath(where: string, root = ''): string {
 
 // the opening item: the command's verb, the working directory or project root, the tool and version, and up to three
 // context counts (section 3)
-export function openRun(input: { verb: string; root: string; subject?: string; counts?: Tally[]; facts?: string[]; tool?: string }): void {
+// (`started`: when the work began, for a run that opens its item only after it, as `term hunt` does while its fuzz
+// children own the terminal. The opening clock and the closing total are then the work's, not the print's)
+export function openRun(input: { verb: string; root: string; subject?: string; counts?: Tally[]; facts?: string[]; tool?: string; started?: number }): void {
   verb = input.verb
-  started = Date.now()
+  started = input.started ?? Date.now()
   const opening = makeOpening(input.verb, input.subject ?? showPath(input.root), started, input.tool ?? (version ? `term ${version}` : 'term'))
   opening.tallies = input.counts ?? []
   opening.facts = input.facts ?? []
@@ -185,13 +192,19 @@ export function report(input: ItemInput | Event): void {
 // the closing item: the verdict, the total time and the counts, a `next` field when there is one. The glyph is the
 // worst of the run, and the exit code follows it (section 18). `failure` is <usage>, <environment>, <bug> or
 // <interrupted> when the run ends for that reason. Sets process.exitCode, and returns it
-export function closeRun(input: { verdict: string; counts?: Tally[]; facts?: string[]; message?: string[]; next?: string; failure?: string; uptime?: boolean }): number {
+// (`done`: the run did its work through change items, `+ − ~`, which rank below ✓ in section 4's order, so a wash
+// that removed three folders would close `·`, the glyph of a run that did nothing. With it, the closing is ✓ unless
+// something worse happened. A plan that only says what it WOULD change leaves it off and closes `·`)
+export function closeRun(input: { verdict: string; counts?: Tally[]; facts?: string[]; message?: string[]; next?: string; failure?: string; uptime?: boolean; done?: boolean }): number {
   if (!runner) {
     openRun({ verb: verb || 'term', root: process.cwd() })
   }
 
   const now = Date.now()
-  const closing = makeItem({ verb, subject: input.verdict, clock: now, duration: now - started, counts: input.counts, facts: input.facts, message: input.message })
+  // under --strict a run whose worst item is a warning closes ✗ and exits 1 (section 18), whatever its verdict says
+  // ("1 file built"): the closing says why, so the glyph and the verdict do not seem to disagree
+  const strictly = options.strict && !input.failure && runner?.session.worstGlyph === 'warning' ? ['Warnings fail the run under --strict.'] : []
+  const closing = makeItem({ verb, subject: input.verdict, clock: now, duration: now - started, counts: input.counts, facts: input.facts, message: [...(input.message ?? []), ...strictly] })
   closing.uptime = input.uptime ?? false
 
   if (input.next) {
@@ -199,6 +212,11 @@ export function closeRun(input: { verdict: string; counts?: Tally[]; facts?: str
   }
 
   let one = runner!
+  const doneRank = STANDARD.glyphs.find(glyph => glyph.name === 'done')?.rank ?? 0
+
+  if (input.done && one.session.worst < doneRank) {
+    one = { ...one, session: { ...one.session, worst: doneRank, worstGlyph: 'done' } }
+  }
 
   if (input.failure) {
     one = { ...one, session: { ...one.session, failure: input.failure } }
@@ -410,7 +428,8 @@ export function problemOf(diagnostic: Diagnostic, root: string, text?: string): 
   // The kernel's mismatch is two lines on purpose, what was expected over what was found
   const [first = '', ...rest] = diagnostic.message.split('\n')
   // capital first, unless the message opens with a path or a name, which is written as it is (`mod-both/code/x.tree`)
-  const opening = first.split(' ')[0] ?? ''
+  // the first word without the punctuation a sentence puts after it (`kernel:` is a word, `a/b.tree` a path)
+  const opening = (first.split(' ')[0] ?? '').replace(/[:,;.]+$/, '')
   const subject = /[/.:\\@`"<]/.test(opening) ? first : first.charAt(0).toUpperCase() + first.slice(1)
 
   return makeItem({
@@ -441,7 +460,23 @@ export function reportProblems(list: { diagnostic: Diagnostic; text?: string }[]
     openRun({ verb: verb || 'term', root })
   }
 
-  for (const one of arrangeProblems(list.map(each => problemOf(each.diagnostic, root, each.text)), STANDARD, runner!.output.room)) {
+  // ONE item per problem: a diagnostic in a module several entries load comes back once per entry, and the build
+  // printed a stdlib module's two errors four times each. The same file, place, name and message is the same problem
+  const seen = new Set<string>()
+  const unique = list.filter(each => {
+    const d = each.diagnostic
+    const key = `${d.file}:${d.span.start.line}:${d.span.start.column}:${d.name}:${d.message}`
+
+    if (seen.has(key)) {
+      return false
+    }
+
+    seen.add(key)
+
+    return true
+  })
+
+  for (const one of arrangeProblems(unique.map(each => problemOf(each.diagnostic, root, each.text)), STANDARD, runner!.output.room)) {
     report(one)
   }
 
@@ -472,9 +507,10 @@ export function failRun(error: unknown, root: string): number {
   if (!bug || !(error instanceof Error)) {
     // a tool's own output rides on the error (`runTool`), quoted under the item: the library keeps its last lines
     const quote = (error as { quote?: string[] })?.quote ?? []
-    report({ glyph: 'failed', kind: 'problem', subject: message.charAt(0).toUpperCase() + message.slice(1), quote })
+    // written as thrown: a thrown message often opens with a name (`shelf has no scope`), and a capital would change it
+    report({ glyph: 'failed', kind: 'problem', subject: message, quote })
 
-    return closeRun({ verdict: `${verb || 'term'} failed`, failure })
+    return closeRun({ verdict: 'Failed', failure })
   }
 
   const log = writeCrashLog(error, root)

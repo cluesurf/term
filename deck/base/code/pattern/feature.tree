@@ -1,0 +1,366 @@
+# The features a pattern uses, as engines tell them apart (note/term/stdlib/regex-engine.md, "Capability sets").
+#
+# A native engine runs a pattern only when every feature the pattern uses is in the engine's capability set: the
+# features it runs with exactly Term's meaning, each proven on that engine by a probe row in test/compile/pattern.ts.
+# The set is declared beside the engine (`engine-features` in native/<platform>/regex.tree). What each feature is,
+# decided on the pattern after the analysis's rewrites:
+#
+#   look-ahead      a lookahead whose body matches text of a bounded length
+#   look-behind     a lookbehind whose body matches text of a bounded length
+#   look-unbounded  a lookaround whose body can match text of any length
+#   look-capture    a capturing group inside a lookaround
+#   refer-set       a back reference to a group that has surely taken part when it is reached: earlier in the same
+#                   chain, or an enclosing one, and not inside a choice, an optional repetition or a lookaround
+#   refer-unset     any other back reference: its group may have taken no part, where Term matches the empty text
+#   refer-fold      a back reference compared by case class, under `i`
+#   refer-behind    a back reference inside a lookbehind, reached before its group because the body runs backwards
+#   atomic          an atomic group
+#   possessive      a possessive repetition
+#   word-edge       \b or \B: Term's word characters (L, M, N, Pc) on both sides
+#   line-edge       ^ or $ under `m`: a line ends only at a line feed
+#   loop-capture    a capturing group inside a repetition: it reports the last iteration, reset at each one
+#   empty-loop      a repetition whose body can match the empty text: past its least count an empty iteration is
+#                   not taken
+#   empty-set       a class that holds nothing
+#   big-count       a repetition count over 1,000
+#
+# A pattern using none of these is the canonical dialect, which every engine runs alike.
+
+mark stable
+
+load @term/base/list
+  find list
+
+load @term/base/boolean
+  find not
+
+load @term/base/pattern/node
+  find piece
+  find edge-line-start
+  find edge-line-end
+  find edge-word
+  find edge-not-word
+
+load @term/base/pattern/set
+  find set-size
+  find copy-numbers
+
+load @term/base/pattern/program
+  find can-be-empty
+
+# the length of the longest text the piece can match, or -1 when it has no bound. A back reference has none: its
+# group's text is not known here
+task most-length
+  take p, like piece
+  like number
+  fork case, read p
+    case blank
+      send back, code 0
+    case edge
+      send back, code 0
+    case look
+      send back, code 0
+    case letter
+      send back, code 1
+    case ranges
+      send back, code 1
+    case refer
+      send back, code -1
+    case chain
+      save total, code 0
+      walk list, read parts
+        hook next
+          take site, name part
+          save one
+            call most-length(read(part))
+          fork test
+            hook test
+              call is-below(read(one), code(0))
+            hook hold
+              send back, code -1
+          save total
+            call add(read(total), read(one))
+      send back, read total
+    case choice
+      save longest, code 0
+      walk list, read parts
+        hook next
+          take site, name part
+          save one
+            call most-length(read(part))
+          fork test
+            hook test
+              call is-below(read(one), code(0))
+            hook hold
+              send back, code -1
+          fork test
+            hook test
+              call is-above(read(one), read(longest))
+            hook hold
+              save longest, read one
+      send back, read longest
+    case loop
+      save one
+        call most-length(read(body))
+      fork test
+        hook test
+          call is-equal(read(one), code(0))
+        hook hold
+          send back, code 0
+      fork test
+        hook test
+          call or
+            call is-below(read(one), code(0))
+            call is-below(read(most), code(0))
+        hook hold
+          send back, code -1
+      send back
+        call multiply(read(one), read(most))
+    case group
+      send back
+        call most-length(read(body))
+    case atom
+      send back
+        call most-length(read(body))
+
+# whether the list holds the text
+task holds-name
+  take names
+    like list
+      like text
+  take name, like text
+  like boolean
+  walk list, read names
+    hook next
+      take site, name one
+      fork test
+        hook test
+          call is-equal(read(one), read(name))
+        hook hold
+          send back, true
+  send back, false
+
+# whether the list holds the number
+task holds-number
+  take numbers
+    like list
+      like number
+  take value, like number
+  like boolean
+  walk list, read numbers
+    hook next
+      take site, name one
+      fork test
+        hook test
+          call is-equal(read(one), read(value))
+        hook hold
+          send back, true
+  send back, false
+
+# add a feature once
+task note-feature
+  take out
+    like list
+      like text
+  take name, like text
+  like boolean
+  fork test
+    hook test
+      call holds-name(read(out), read(name))
+    hook hold
+      send back, false
+  call out/push(read(name))
+  send back, true
+
+# every feature the piece uses, once each, in the order first met
+task piece-features
+  take p, like piece
+  like list
+    like text
+  save out, make list
+  save sure, make list
+  call collect-features(read(p), read(out), read(sure), false, false, false)
+  send back, read out
+
+# note the features of `p` into `out`. `sure` holds the groups that have surely taken part before `p` is reached;
+# the answer is the groups surely set once it has matched. `in-loop`, `in-look` and `behind` say what encloses `p`
+task collect-features
+  take p, like piece
+  take out
+    like list
+      like text
+  take sure
+    like list
+      like number
+  take in-loop, like boolean
+  take in-look, like boolean
+  take behind, like boolean
+  like list
+    like number
+  fork case, read p
+    case blank
+      send back, read sure
+    case letter
+      send back, read sure
+    case ranges
+      fork test
+        hook test
+          call is-equal(call(set-size, read(set)), code(0))
+        hook hold
+          call note-feature(read(out), text(<empty-set>))
+      send back, read sure
+    case edge
+      fork test
+        hook test
+          call or
+            call is-equal(read(kind), read(edge-word))
+            call is-equal(read(kind), read(edge-not-word))
+        hook hold
+          call note-feature(read(out), text(<word-edge>))
+        hook test
+          call or
+            call is-equal(read(kind), read(edge-line-start))
+            call is-equal(read(kind), read(edge-line-end))
+        hook hold
+          call note-feature(read(out), text(<line-edge>))
+      send back, read sure
+    case refer
+      fork test
+        hook test
+          read behind
+        hook hold
+          call note-feature(read(out), text(<refer-behind>))
+      fork test
+        hook test
+          read fold
+        hook hold
+          call note-feature(read(out), text(<refer-fold>))
+      fork test
+        hook test
+          call holds-number(read(sure), read(index))
+        hook hold
+          call note-feature(read(out), text(<refer-set>))
+        hook miss
+          call note-feature(read(out), text(<refer-unset>))
+      send back, read sure
+    case chain
+      # a lookbehind's body runs right to left, so its parts are met in that order
+      save now
+        call copy-numbers(read(sure))
+      save count, read parts/length
+      save k, code 0
+      walk test
+        down
+          call subtract(read(count), read(k))
+        hook test
+          call is-below(read(k), read(count))
+        hook step
+          save at, read k
+          fork test
+            hook test
+              read behind
+            hook hold
+              save at
+                call subtract(call(subtract, read(count), code(1)), read(k))
+          save part, make blank
+          fork test
+            hook test
+              call and
+                call is-minimum(read(at), code(0))
+                call is-below(read(at), read(parts/length))
+            hook hold
+              save part, read parts/{at}
+          save now
+            call collect-features(read(part), read(out), read(now), read(in-loop), read(in-look), read(behind))
+          save k
+            call add(read(k), code(1))
+      send back, read now
+    case choice
+      # a group inside one alternative is not surely set after the choice, whichever was taken
+      walk list, read parts
+        hook next
+          take site, name part
+          call collect-features(read(part), read(out), call(copy-numbers, read(sure)), read(in-loop), read(in-look), read(behind))
+      send back, read sure
+    case loop
+      fork test
+        hook test
+          read possessive
+        hook hold
+          call note-feature(read(out), text(<possessive>))
+      fork test
+        hook test
+          call or
+            call is-above(read(least), code(1000))
+            call is-above(read(most), code(1000))
+        hook hold
+          call note-feature(read(out), text(<big-count>))
+      fork test
+        hook test
+          call can-be-empty(read(body))
+        hook hold
+          call note-feature(read(out), text(<empty-loop>))
+      save inner
+        call collect-features(read(body), read(out), call(copy-numbers, read(sure)), true, read(in-look), read(behind))
+      # at least one iteration: what the last one set is set after it
+      fork test
+        hook test
+          call is-minimum(read(least), code(1))
+        hook hold
+          send back, read inner
+      send back, read sure
+    case group
+      fork test
+        hook test
+          read in-loop
+        hook hold
+          call note-feature(read(out), text(<loop-capture>))
+      fork test
+        hook test
+          read in-look
+        hook hold
+          call note-feature(read(out), text(<look-capture>))
+      save inner
+        call collect-features(read(body), read(out), read(sure), read(in-loop), read(in-look), read(behind))
+      save after
+        call copy-numbers(read(inner))
+      call after/push(read(index))
+      send back, read after
+    case atom
+      call note-feature(read(out), text(<atomic>))
+      send back
+        call collect-features(read(body), read(out), read(sure), read(in-loop), read(in-look), read(behind))
+    case look
+      fork test
+        hook test
+          call is-below(call(most-length, read(body)), code(0))
+        hook hold
+          call note-feature(read(out), text(<look-unbounded>))
+        hook test
+          read behind
+        hook hold
+          call note-feature(read(out), text(<look-behind>))
+        hook miss
+          call note-feature(read(out), text(<look-ahead>))
+      call collect-features(read(body), read(out), call(copy-numbers, read(sure)), read(in-loop), true, read(behind))
+      # a group inside a lookaround is not counted as surely set after it: a negative one sets nothing
+      send back, read sure
+
+# whether every feature named is in the set an engine can run
+task features-covered
+  take used
+    like list
+      like text
+  take able
+    like list
+      like text
+  like boolean
+  walk list, read used
+    hook next
+      take site, name one
+      fork test
+        hook test
+          call not(call(holds-name, read(able), read(one)))
+        hook hold
+          send back, false
+  send back, true

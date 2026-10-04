@@ -614,6 +614,39 @@ function emitRustPass(
     }
   }
 
+  // A BOXED PAYLOAD. A case of a boxed form that holds the form itself keeps ALL its fields in one box, a struct of its
+  // own (`Disk(Box<StackDisk>)`, `StackDisk { size, below: Stack }`), where it held each recursive field in a box of
+  // its own (`Disk { size, below: Box<Stack> }`). The enum is one pointer, a node is one allocation however many
+  // children it has (binary-trees' branch was two), and the box a match opens holds the whole node, so a node built
+  // again takes it entire (Towers' moves: 78 ms to 70, `tmp/rust-towers-payload-ab.ts`). An arm binds the box and
+  // destructures it with the fields' own pattern (`Stack::Disk(__node) => { let StackDisk { size, .. } = *__node; }`).
+  // Keyed `form/case`. A struct name some form already takes leaves its case as it was
+  const payloads = new Map<string, string>()
+  const takenNames = new Set(program.flatMap(n => (n.form === 'record-type' ? [pascal(n.name)] : [])))
+
+  for (const node of program) {
+    if (node.form !== 'record-type' || !boxedForms.has(node.name)) {
+      continue
+    }
+
+    for (const v of node.variants) {
+      const name = `${pascal(node.name)}${pascal(v.name)}`
+
+      if (v.fields.some(f => recursiveFields.has(`${v.name}/${f.name}`)) && !takenNames.has(name)) {
+        payloads.set(`${node.name}/${v.name}`, name)
+      }
+    }
+  }
+
+  const payloadOf = (owner: string, label: string): string | undefined => payloads.get(`${owner}/${label}`)
+  // the payload a form's reused boxes hold: its one payload case's, so the helpers have one type. A form with two keeps
+  // the plain allocation
+  const reusedPayload = (owner: string): string | undefined => {
+    const own = [...payloads].filter(([key]) => key.startsWith(`${owner}/`))
+
+    return own.length === 1 ? own[0]![1] : undefined
+  }
+
   // traits (masks) emit as native Rust traits, instances as `impl` blocks, and a trait-bounded generic gains a trait
   // bound on its type parameter, so a generic trait-method call lowers to `x.method(..)`. Method signatures are derived
   // from the instance implementations (each desugared to a `<target>_<method>` free function tagged with `method`),
@@ -826,8 +859,15 @@ function emitRustPass(
   // `Box::new`, rewritten at the end, so a program that only builds and drops pays nothing
   const reusable = (name: string): boolean => {
     const form = program.find(n => n.form === 'record-type' && n.name === name)
+    // a form held by payload reuses only the boxes of its one payload case (`reusedPayload`)
+    const payloaded = form?.form === 'record-type' && form.variants.some(v => payloadOf(name, v.name))
 
-    return form?.form === 'record-type' && form.params.length === 0 && form.variants.some(v => v.fields.length === 0)
+    return (
+      form?.form === 'record-type' &&
+      form.params.length === 0 &&
+      form.variants.some(v => v.fields.length === 0) &&
+      (!payloaded || reusedPayload(name) !== undefined)
+    )
   }
 
   // MUTABLE CAPTURES. A closure is a `Box<dyn Fn>`, which cannot mutate captured state, so a variable ASSIGNED inside
@@ -2177,6 +2217,19 @@ function emitRustPass(
               return rustString(a.value)
             }
 
+            // a path into a value (`piles/0`, `p/inner`) is lent where it lies, `&piles[0]`, where `&${expr}` cloned the
+            // element first to lend the clone. Only a path through no cell (a plain `Vec` or slice, a local record), and
+            // only where no other argument names its root, so the loan can meet no write
+            const root = a.form === 'member' ? rootVariable(a) : undefined
+
+            if (root !== undefined && !node.args.some((other, j) => j !== i && namesIn(other).has(root))) {
+              const place = memberPath(a)
+
+              if (!place.includes('.borrow') && !place.includes('::')) {
+                return `&${place}`
+              }
+            }
+
             return a.form === 'variable' && borrowedNames.has(a.name) ? vname(a.name) : `&${expr(a)}`
           }
 
@@ -2434,13 +2487,15 @@ function emitRustPass(
             : variantOwner.get(node.name)
 
         if (owner) {
+          // a case held by payload has its recursive fields plain: the one box is around the whole struct
+          const payload = payloadOf(owner, node.name)
           const fields = node.fields.map(f => {
             // a list the node owns (`ownedFields`) takes the plain `Vec`: an owned local moves in, a fresh task's answer
             // is taken as it is, an empty list is a new one
             // a node of a reusable form is built in a box an arm kept (`reusable`)
             const value = fieldLists.has(`${node.name}/${f.name}`)
               ? plainList(f.value)
-              : !recursiveFields.has(`${node.name}/${f.name}`)
+              : payload || !recursiveFields.has(`${node.name}/${f.name}`)
               ? owned(f.value)
               : reusable(owner)
                 ? (reuseBuilt.add(owner), `term_box_${snake(owner)}(${owned(f.value)})`)
@@ -2457,6 +2512,15 @@ function emitRustPass(
           const named = args.some(free)
             ? `${pascal(owner)}::<${args.map(a => (free(a) ? '()' : '_')).join(', ')}>`
             : pascal(owner)
+
+          // the payload built and boxed once, in a box an arm kept when the form's boxes are reused
+          if (payload) {
+            const built = `${payload} { ${fields.join(', ')} }`
+
+            return `${named}::${pascal(node.name)}(${
+              reusable(owner) ? (reuseBuilt.add(owner), `term_box_${snake(owner)}(${built})`) : `Box::new(${built})`
+            })`
+          }
 
           return fields.length > 0
             ? `${named}::${pascal(node.name)} { ${fields.join(
@@ -3933,6 +3997,28 @@ function emitRustPass(
                   ...(locals.length < fields.length ? ['..'] : []),
                 ].join(', ')} }`
               : ''
+          // a case held by payload (`payloads`) binds its box and destructures it with the fields' own pattern: in place
+          // under a borrowed or a referenced subject, so each field arrives as the reference it always did, and by value
+          // otherwise, through `term_open_` when the form's boxes are reused (the box kept, the whole node in it)
+          const payload = payloadOf(owner, b.label)
+          const unbox = (fieldPattern: string, bound: boolean): { arm: string; lines: string[] } => {
+            if (!payload) {
+              return { arm: fieldPattern, lines: [] }
+            }
+
+            if (!bound) {
+              return { arm: '(_)', lines: [] }
+            }
+
+            const source =
+              borrowedSubject || referenced
+                ? '&**__node'
+                : reusable(owner)
+                  ? (reuseOpened.add(owner), `term_open_${snake(owner)}(__node)`)
+                  : '*__node'
+
+            return { arm: '(__node)', lines: [`${pad(d + 2)}let ${payload}${fieldPattern} = ${source};`] }
+          }
 
           const previous = subjectVar
             ? narrowing.get(subjectVar)
@@ -3992,8 +4078,9 @@ function emitRustPass(
                   ...(locals.length < fields.length ? ['..'] : []),
                 ].join(', ')} }`
               : ''
+            const handed = unbox(handedPattern, true)
 
-            return `${pad(d + 1)}${pascal(owner)}::${pascal(b.label)}${handedPattern} => {\n${pad(d + 2)}return ${out};\n${pad(d + 1)}}`
+            return `${pad(d + 1)}${pascal(owner)}::${pascal(b.label)}${handed.arm} => {\n${[...handed.lines, `${pad(d + 2)}return ${out};`].join('\n')}\n${pad(d + 1)}}`
           }
 
           // a list the node owns (`ownedFields`) is only read in the arm: read in place, never copied out
@@ -4022,7 +4109,7 @@ function emitRustPass(
 
                     noteClone(fieldTypes?.get(field))
 
-                    return recursiveFields.has(`${b.label}/${field}`)
+                    return recursiveFields.has(`${b.label}/${field}`) && !payload
                       ? `${pad(d + 2)}let ${snake(local)} = (**${snake(local)}).clone();`
                       : `${pad(d + 2)}let ${snake(local)} = ${snake(local)}.clone();`
                   })
@@ -4064,7 +4151,7 @@ function emitRustPass(
           // it is for a tree built and consumed once, and clones only a shared one: it was always `(*x).clone()`, a
           // clone per node per walk (binary-trees)
           const unwraps = locals
-            .filter(({ field, local }) => !borrowedSubject && !referenced && reads(local) && recursiveFields.has(`${b.label}/${field}`))
+            .filter(({ field, local }) => !payload && !borrowedSubject && !referenced && reads(local) && recursiveFields.has(`${b.label}/${field}`))
             .map(({ local }) =>
               // a reusable form's box is kept for the next node built (`reusable`); otherwise a `Box` child (item
               // 0029) moves out, and an `Rc` one moves when unique and clones when shared
@@ -4080,12 +4167,13 @@ function emitRustPass(
           const only = unwraps.length + derefs.length === 1 ? /^\s*let (\w+) = (.+);$/.exec([...unwraps, ...derefs][0]!) : null
           const answered = only && body.trim() === `return ${only[1]};` ? `${pad(d + 2)}return ${only[2]};` : undefined
           // the arms of a match nested in tail position answer their values (clippy: needless_return), see `tailMatches`
-          const lines = answered ? [answered] : [...unwraps, ...derefs, body]
+          const unboxed = unbox(pattern, locals.some(({ local }) => reads(local)))
+          const lines = [...unboxed.lines, ...(answered ? [answered] : [...unwraps, ...derefs, body])]
           const text = lines.join('\n')
           const last = tailMatches.has(node) ? new RegExp(`(^|\\n)${pad(d + 2)}return (.*);$`).exec(text) : null
           const tailed = last && !borrowsAtTail(last[2]!) ? `${text.slice(0, last.index + last[1]!.length)}${pad(d + 2)}${last[2]}` : text
 
-          return `${pad(d + 1)}${pascal(owner)}::${pascal(b.label)}${pattern} => {\n${tailed}\n${pad(d + 1)}}`
+          return `${pad(d + 1)}${pascal(owner)}::${pascal(b.label)}${unboxed.arm} => {\n${tailed}\n${pad(d + 1)}}`
         })
 
         if (node.otherwise) {
@@ -4615,11 +4703,14 @@ function emitRustPass(
         const written = writeIt ? `\n${pad(d)}${keyedEquality(node, keyed)}` : ''
 
         if (node.variants.length > 0) {
+          // the structs the payload cases hold, after the enum, deriving what it derives (`payloads`)
+          const structs: string[] = []
           const cases = node.variants.map(v => {
+            const payload = payloadOf(node.name, v.name)
             const fields = v.fields.map(
               f =>
                 `${snake(f.name)}: ${
-                  recursiveFields.has(`${v.name}/${f.name}`)
+                  recursiveFields.has(`${v.name}/${f.name}`) && !payload
                     ? boxedForms.has(node.name)
                       ? `Box<${rustType(f.type)}>`
                       : `std::rc::Rc<${rustType(f.type)}>`
@@ -4630,6 +4721,12 @@ function emitRustPass(
                 }`,
             )
 
+            if (payload) {
+              structs.push(`\n${pad(d)}${derive}struct ${payload} { ${fields.join(', ')} }`)
+
+              return `${pad(d + 1)}${pascal(v.name)}(Box<${payload}>)`
+            }
+
             return `${pad(d + 1)}${pascal(v.name)}${
               fields.length > 0 ? ` { ${fields.join(', ')} }` : ''
             }`
@@ -4637,7 +4734,7 @@ function emitRustPass(
 
           return `${derive}enum ${pascal(
             node.name,
-          )}${generics} {\n${cases.join(',\n')}\n${pad(d)}}${written}`
+          )}${generics} {\n${cases.join(',\n')}\n${pad(d)}}${structs.join('')}${written}`
         }
 
         // a list the record owns is the plain `Vec` (`ownedFields`)
@@ -5225,10 +5322,12 @@ fn __term_drain() {
       if (!out.includes(`term_open_${name}(`) || !out.includes(`term_box_${name}(`)) continue
 
       const spare = `__spare_${name}`
+      const payload = reusedPayload(form)
       out = addArgument(out, `term_open_${name}`, `term_open_local_${name}`, `&mut ${spare}`)
       out = addArgument(out, `term_box_${name}`, `term_box_local_${name}`, `&mut ${spare}`)
       const open = out.indexOf('{\n')
-      out = `${out.slice(0, open + 2)}    let mut ${spare}: Option<Box<${pascal(form)}>> = None;\n${out.slice(open + 2)}`
+      const kept = payload ? `std::mem::MaybeUninit<${payload}>` : pascal(form)
+      out = `${out.slice(0, open + 2)}    let mut ${spare}: Option<Box<${kept}>> = None;\n${out.slice(open + 2)}`
       localUsed.add(form)
     }
 
@@ -5249,8 +5348,77 @@ fn __term_drain() {
       continue
     }
 
-    const holder = boxed ? `Box<${type}>` : `std::rc::Rc<${type}>`
     const pool = `TERM_POOL_${name.toUpperCase()}`
+    const payload = reusedPayload(form)
+
+    // a form held by payload keeps the box of its payload case as memory of that layout, uninitialized: opening reads
+    // the node out and writes nothing back, building writes the node in, and nothing is forgotten. Rust has no safe
+    // spelling for taking a value out of a box and keeping the allocation, hence the two `unsafe` lines
+    if (payload) {
+      const kept = `Box<std::mem::MaybeUninit<${payload}>>`
+
+      reuse.push(`// the boxes of \`${form}\` an arm opened, kept for the next \`${form}\` built: a spare, and up to 64 more behind it
+// for a run of frees before a run of builds (rust.ts, \`reusable\`). Each is the memory of a \`${payload}\`, holding none
+#[allow(clippy::vec_box)]
+struct TermPool${type} { spare: std::cell::Cell<Option<${kept}>>, more: std::cell::RefCell<Vec<${kept}>> }
+impl TermPool${type} {
+    #[inline]
+    fn keep(&self, held: ${kept}) {
+        if let Some(before) = self.spare.replace(Some(held)) {
+            let mut more = self.more.borrow_mut();
+            if more.len() < 64 { more.push(before); }
+        }
+    }
+    #[inline]
+    fn take(&self) -> Option<${kept}> {
+        self.spare.take().or_else(|| self.more.borrow_mut().pop())
+    }
+}
+thread_local! { static ${pool}: TermPool${type} = const { TermPool${type} { spare: std::cell::Cell::new(None), more: std::cell::RefCell::new(Vec::new()) } }; }
+// a node read out of its box, and the box kept as memory of the same layout
+#[inline]
+fn term_split_${name}(held: Box<${payload}>) -> (${payload}, ${kept}) {
+    let raw = Box::into_raw(held);
+    // SAFETY: \`raw\` came from a live box: the node is read out once, and the allocation is handed back as uninitialized
+    unsafe { (std::ptr::read(raw), Box::from_raw(raw.cast::<std::mem::MaybeUninit<${payload}>>())) }
+}
+#[inline]
+fn term_open_${name}(held: Box<${payload}>) -> ${payload} {
+    let (value, held) = term_split_${name}(held);
+    ${pool}.with(|pool| pool.keep(held));
+    value
+}
+#[inline]
+fn term_box_${name}(value: ${payload}) -> Box<${payload}> {
+    match ${pool}.with(|pool| pool.take()) {
+        Some(held) => Box::write(held, value),
+        None => Box::new(value),
+    }
+}${
+        localUsed.has(form)
+          ? `
+// the same, through a task's own spare first (\`localForms\`): a box opened is kept there, a box built takes it
+#[inline]
+fn term_open_local_${name}(held: Box<${payload}>, spare: &mut Option<${kept}>) -> ${payload} {
+    let (value, held) = term_split_${name}(held);
+    if let Some(before) = spare.replace(held) {
+        ${pool}.with(|pool| pool.keep(before));
+    }
+    value
+}
+#[inline]
+fn term_box_local_${name}(value: ${payload}, spare: &mut Option<${kept}>) -> Box<${payload}> {
+    match spare.take() {
+        Some(held) => Box::write(held, value),
+        None => term_box_${name}(value),
+    }
+}`
+          : ''
+      }`)
+      continue
+    }
+
+    const holder = boxed ? `Box<${type}>` : `std::rc::Rc<${type}>`
     // a box kept is unique: a Box always, an Rc when `get_mut` answers, and one still shared is cloned out as before
     const open = boxed
       ? `fn term_open_${name}(mut held: ${holder}) -> ${type} {

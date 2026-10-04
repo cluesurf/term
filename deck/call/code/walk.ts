@@ -8,7 +8,7 @@ import { compile } from '@term/make/code/compile/compile'
 import type { Resolver } from '@term/make/code/compile/load'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { stdlibResolver } from '@term/make/code/resolve'
-import { closeRun, failRun, openRun, printData, report } from '@term/call/code/output'
+import { closeRun, failRun, field, openRun, printData, report } from '@term/call/code/output'
 
 // the module resolvers now live in the compiler (make), so the CLI, dev server, and language server share them. Kept
 // re-exported here for the CLI's existing call sites and tests.
@@ -53,7 +53,8 @@ function isDefinition(line: string): boolean {
 export type FeedResult =
   | { kind: 'definition'; text: string }
   | { kind: 'value'; text: string }
-  | { kind: 'error'; text: string }
+  // `diagnostics` when the compiler refused it, each drawn as its own Problem item
+  | { kind: 'error'; text: string; diagnostics?: Diagnostic[] }
   | { kind: 'empty' }
 
 // A live Seed session: accumulate definitions, and evaluate an expression by wrapping it in a function, compiling the
@@ -83,6 +84,7 @@ export class Repl {
         return {
           kind: 'error',
           text: formatDiagnostics(result.diagnostics),
+          diagnostics: result.diagnostics,
         }
       }
 
@@ -109,6 +111,7 @@ export class Repl {
       return {
         kind: 'error',
         text: formatDiagnostics(result.diagnostics),
+        diagnostics: result.diagnostics,
       }
     }
 
@@ -197,8 +200,14 @@ export async function callWalk(input: {
       printData(`${result.text}\n`)
     } else if (result.kind === 'definition') {
       printData(`added ${result.text}\n`)
+    } else if (result.kind === 'error' && result.diagnostics?.length) {
+      // the message is the subject and the name a fact (section 12); the session's text is not a file, so no `at`
+      for (const diagnostic of result.diagnostics) {
+        const [first = '', ...rest] = diagnostic.message.split('\n')
+        report({ glyph: diagnostic.severity === 'warning' ? 'warning' : 'failed', kind: 'problem', verb: 'check', subject: first.charAt(0).toUpperCase() + first.slice(1), facts: [diagnostic.name], message: rest, fields: diagnostic.hint ? [field('next', diagnostic.hint)] : [] })
+      }
     } else if (result.kind === 'error') {
-      report({ glyph: 'failed', kind: 'problem', verb: 'check', subject: result.text.charAt(0).toUpperCase() + result.text.slice(1) })
+      report({ glyph: 'failed', kind: 'problem', verb: 'run', subject: result.text.charAt(0).toUpperCase() + result.text.slice(1) })
     }
   }
 

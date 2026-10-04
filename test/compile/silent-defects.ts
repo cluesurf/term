@@ -482,7 +482,7 @@ mine digits
     const short = reader(spelling)
 
     ok(`8. \`${spelling}\` generates the reader \`mine char, text <.>\` does`, short === long)
-    ok(`8. ...which checks for character 46`, short.includes('expected character 46'), short.slice(0, 400))
+    ok(`8. ...which checks for character 46`, short.includes('code 46)') && short.includes('expected "." at position'), short.slice(0, 400))
   }
 
   const faults = (char: string): string[] => {

@@ -120,7 +120,7 @@ export const CATALOG = {
     code: 0xb,
     message: 'this match does not cover every case',
     severity: 'error',
-    fix: 'add the missing cases, or add an `else` branch',
+    fix: 'add the missing cases, or one `hook miss` arm for every case not listed',
   },
   'no-instance': {
     code: 0xc,
@@ -333,11 +333,12 @@ export const CATALOG = {
     severity: 'error',
     fix: 'correct the pattern at the position named, or build the text at run time and handle `pattern-mismatch`',
   },
-  // a `make pattern, <...>` literal that runs on the backtracking tier, the one tier whose work can grow faster than
-  // its input, bounded by the step budget and raising `pattern-budget` past it (note/term/stdlib/regex-engine.md)
+  // a `make pattern, <...>` literal that needs a backtracking matcher: tier C wherever the platform's engine cannot run
+  // it safely, the one tier whose work can grow faster than its input, bounded by the step budget and raising
+  // `pattern-budget` past it (note/term/stdlib/regex-engine.md)
   'pattern-backtracks': {
     code: 0x2a,
-    message: 'this pattern runs on the backtracking tier',
+    message: 'this pattern needs a backtracking matcher',
     severity: 'warning',
     fix: 'rewrite it without the part named, or handle `pattern-budget` where it is searched',
   },
@@ -353,6 +354,31 @@ export const CATALOG = {
   },
   // A `tell` for an exception no task in the build can raise: the stale customer wording the roll exists to catch.
   // It was `type-mismatch` (guides: language/errors, commands/roll, 2026-10-04)
+  // A `view` document that uses what a document may not: code, a macro it cannot reach, a fuse cycle, too large an
+  // expansion. Each message says what is allowed instead, and the generic bracket-and-indentation note under it was
+  // advice about a different problem (guides: commands/view, 2026-10-04)
+  'document-refused': {
+    code: 0x2d,
+    message: 'this document uses something a document may not',
+    severity: 'error',
+    fix: 'write what the message names. A document places views and reads data, and code goes in a file of the `code` role',
+  },
+  // A `hook miss` arm that answers one case of the match or none: listing the case says more, and a case added
+  // later goes to the arm without a word (note/term/gaps/decisions.md, the catch-all)
+  'thin-catch-all': {
+    code: 0x2e,
+    message: 'this `hook miss` arm answers one case or none',
+    severity: 'warning',
+    fix: 'list the case it answers, or remove the arm',
+  },
+  // A match arm's field named like a variable already in scope, which it hides for the whole arm without a word
+  // (guides: language/matching, 2026-10-04)
+  'arm-shadow': {
+    code: 0x2f,
+    message: "this arm's field hides a variable already in scope",
+    severity: 'warning',
+    fix: 'rename the field with a `link` under the case, or rename the outer variable',
+  },
   'stale-tell': {
     code: 0x2c,
     message: 'this tell is for an exception nothing in the build raises',

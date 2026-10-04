@@ -9,7 +9,7 @@ import { projectResolver } from '@term/call/code/make'
 import { runTestFile } from '@term/call/code/test-run'
 import { declaresDraft } from '@term/call/code/draft'
 import { projectRoleOf, projectLeanOf } from '@term/call/code/role-of'
-import { closeRun, count, failRun, field, openRun, outputOptions, report, reportProblems } from '@term/call/code/output'
+import { closeRun, count, failRun, field, location, openRun, outputOptions, report, reportProblems } from '@term/call/code/output'
 
 export async function callTest(input: {
   root: string
@@ -279,7 +279,9 @@ async function runSeedTests(input: {
           verb: 'case',
           subject: one.label.charAt(0).toUpperCase() + one.label.slice(1),
           duration: one.ms,
-          fields: [field('in', rel), ...(one.error ? [field('why', one.error)] : [])],
+          // where the test is, `file:line` of its `test` line as written (section 12), and what it threw
+          fields: [one.line ? location(`${rel}:${one.line}`) : field('in', rel), ...(one.error ? [field('why', one.error)] : [])],
+          place: one.line ? { path: rel, line: one.line, column: 1 } : undefined,
         })
       }
     } catch (err) {

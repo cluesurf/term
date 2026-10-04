@@ -89,9 +89,10 @@ export class Substitution {
       return true
     }
 
-    // `number` and `float` are one numeric domain: every arithmetic builtin returns `number`, a fractional literal
-    // is a `float`, and both lower to the same host numeric type on every backend. Keeping them apart makes it
-    // impossible to compare a computed value against a fractional constant.
+    // `number` and `float` unify, so arithmetic and comparison can mix a computed value with a fractional constant.
+    // They are not one type: `number` is `i64` on Rust, Swift and Kotlin and `float` is `f64`. The direction is
+    // held where a value meets the type it is wanted as (check/expect.ts): a whole number widens to a fraction, and
+    // a fraction where a whole number is wanted is refused.
     if (
       (x.kind === 'number' || x.kind === 'float') &&
       (y.kind === 'number' || y.kind === 'float')

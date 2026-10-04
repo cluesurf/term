@@ -180,7 +180,7 @@ for (const [variant, code] of DISPATCH) {
 
 // the `halt` is the FALLBACK, and it belongs there: a helper that matched nothing has to refuse. What would be
 // wrong is the halt being all there is, which is what it was before the dispatch existed.
-const halted = dispatch.indexOf('halt <expected a match for value-helper-0>')
+const halted = dispatch.indexOf('halt <expected a match for value-helper-0 at position')
 const branched = dispatch.indexOf('call read-string(')
 
 ok(

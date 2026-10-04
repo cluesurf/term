@@ -2,13 +2,14 @@
 //   1. the reference interpreter against V8, on patterns whose meaning the two share (test262's hard cases among them)
 //   2. tier B (linear) and tier C (backtracking) against the reference, on hand-written fixtures
 //   3. every tier, and the tier the public API picks, against the reference, on generated patterns and inputs
-//   4. with PATTERN_NATIVE=rust,swift,kotlin: every case of 1 to 3 run through the public API on each of those
-//      backends, built on its real toolchain, and held to node's answer, which 3 already held to the reference. The
-//      tier differs by backend (Rust's engine is linear, so more lands native there); the matches may not
+//   4. with PATTERN_NATIVE=node,rust,swift,kotlin: every case of 1 to 3 run through the public API on each of those
+//      backends, built on its real toolchain, and held to the reference. The tier differs by backend, by each
+//      engine's capability set; the matches may not. And each probe row FORCED onto every engine whose capability
+//      set admits it, the safety rule bypassed, which is what holds an engine's claimed features to Term's meaning
 // note/term/stdlib/regex-engine.md, "How it is held".
 //
 // Run: npx tsx test/compile/pattern.ts
-//      PATTERN_COUNT=2000 PATTERN_SEED=7 PATTERN_NATIVE=rust,swift,kotlin npx tsx test/compile/pattern.ts
+//      PATTERN_COUNT=2000 PATTERN_SEED=7 PATTERN_NATIVE=node,rust,swift,kotlin npx tsx test/compile/pattern.ts
 //      (pnpm term:regex-differential)
 
 import { writeFileSync } from 'node:fs'
@@ -240,6 +241,38 @@ const FEATURES: [string, string, string[]][] = [
   ['text start', '^a', ['ba', 'ab']],
   ['text end', 'a$', ['a\n', 'a', 'a\r\n']],
   ['absolute anchors', '\\Aa\\z', ['a', 'a\n']],
+  // the capability features (pattern/feature.tree): each row is forced onto every engine that claims its feature
+  ['look-ahead', '\\w+(?=,)', ['ab, cd,', 'x']],
+  ['look-ahead, negative', 'a(?!b)', ['abac']],
+  ['look-behind', '(?<=\\$)\\d+', ['cost $10 and 20']],
+  ['look-behind, negative', '(?<!\\$)\\d', ['$1 2']],
+  ['look-behind, astral', '(?<=𝄞)a', ['a𝄞a']],
+  ['look-unbounded', '(?=\\w*z)\\w+', ['abz cd', 'ab']],
+  ['look-unbounded, behind', '(?<=\\$\\d*)x', ['$12x 3x']],
+  ['look-capture', '(?=(a+))a', ['baaa']],
+  // the group took part in the attempt the negative lookaround rejected: Term reports it unset
+  ['look-capture, negative', '(?!(a)x)(\\w)', ['ab']],
+  ['refer-set', '(\\w)\\1', ['abccd']],
+  ['refer-set, through a choice', '(a|b)c\\1', ['acb bcb acac']],
+  ['refer-unset', '(?:(a)|b)\\1c', ['bc', 'aac']],
+  ['refer-fold', '(?i)(a)\\1', ['aA', 'Ab']],
+  ['refer-fold, past ASCII', '(?i)(\\w|é|σ|k)\\1', ['éÉ', 'σς', 'kK', 'ſs']],
+  ['refer-behind', '(?<=\\1(a))b', ['aab', 'ab']],
+  ['atomic', '(?>ab|a)c', ['abc', 'ac']],
+  // an atomic group never reopens: `a` taken, `c` fails against `b`, and `ab` is never tried
+  ['atomic, never reopened', '(?>a|ab)c', ['abc', 'ac']],
+  ['possessive', '(?:ab)++c', ['ababc', 'abab']],
+  // a possessive repetition gives nothing back: it takes every `ab`, so the last `ab` cannot match
+  ['possessive, gives nothing back', '(?:ab)++ab', ['ababab', 'ab']],
+  ['word-edge', '\\bcat\\b', ['a cat.', 'cats', 'écat', 'cat_', 'cat٣']],
+  ['word-edge, past ASCII', '\\bé\\w*', ['aé é']],
+  ['word-edge, astral', '\\b𝐀', ['x𝐀 𝐀']],
+  ['word-edge, not', '\\Bat', ['cat at']],
+  ['line-edge', '(?m)^b$', ['a\nb\nc', 'a\r\nb\r\nc', 'b ']],
+  ['loop-capture', '(?:(a)|b)+', ['ab', 'ba']],
+  ['empty-loop', '(a*)*b', ['b', 'aab']],
+  ['empty-set', 'a[]|b', ['ab']],
+  ['big-count', 'a{1001,}', ['a'.repeat(1002), 'a'.repeat(1000)]],
 ]
 
 // 3. a seeded generator, so a failure replays
@@ -330,21 +363,31 @@ function makeInput(): string {
   return out
 }
 
-// 4. the native leg. Each case is written as code point numbers, `p,p,p,;i,i,|`, so no pattern needs escaping into a
-// Term text literal, in chunks well under Kotlin's 64 KB constant. The program decodes them, runs each through
-// `prepare` and `search-slots` exactly as `find-match` does, and answers one field per case: the slots, each followed
-// by a comma, or `-` for no match
+// 4. the native leg. Each case is written as code point numbers, `p,p,p,;i,i,;f|`, so no pattern needs escaping into
+// a Term text literal, in chunks well under Kotlin's 64 KB constant. The program decodes them and answers each case
+// as `chosen#forced`. CHOSEN runs the pattern through `prepare` and `search-slots` exactly as `find-match` does.
+// FORCED, asked when `f` is 1 (the probe rows), runs the pattern's capable text on the engine itself, the safety rule
+// bypassed: `x` when the engine's capability set does not admit the pattern. Each is the slots, each followed by a
+// comma, or `-` for no match
 const answerOf = (slots: number[]): string => (slots.length === 0 ? '-' : slots.map(n => `${n},`).join(''))
+
+// PATTERN_EXPLORE=1: the forced column runs the written text on every row, whatever the capability set says
+const explore = process.env.PATTERN_EXPLORE === '1'
 
 function replayProgram(cases: typeof replay): string {
   const data = cases
-    .map(({ pattern, input }) => `${runesOf(pattern).map(n => `${n},`).join('')};${runesOf(input).map(n => `${n},`).join('')}|`)
+    .map(({ pattern, input, feature }) => `${runesOf(pattern).map(n => `${n},`).join('')};${runesOf(input).map(n => `${n},`).join('')};${feature ? 1 : 0}|`)
     .join('')
   return `load @term/base/pattern
   find pattern
   find prepare
   find search-slots
   find open-session
+  find capable-native-text
+  find written-native-text
+
+load @term/base/native/{platform}/regex
+  find engine-search
 
 load @term/base/text/unicode
   find to-runes
@@ -354,14 +397,11 @@ host cases
   make list
 ${chunked(data)}
 
-task answer-of
-  take source, like text
-  take input, like text
+task slots-text
+  take slots
+    like list
+      like number
   like text
-  save ready
-    call prepare(make(pattern, read(source)))
-  save slots
-    call search-slots(read(ready), call(open-session, read(ready), read(input)), code(0))
   fork test
     hook test
       call is-equal(read(slots/length), code(0))
@@ -374,11 +414,43 @@ task answer-of
       save line, text <{line}{slot},>
   send back, read line
 
+task answer-of
+  take source, like text
+  take input, like text
+  take forced, like boolean
+  like text
+  save ready
+    call prepare(make(pattern, read(source)))
+  save chosen
+    call slots-text(call(search-slots, read(ready), call(open-session, read(ready), read(input)), code(0)))
+  save native, text <x>
+  fork test
+    hook test
+      read forced
+    hook hold
+      save capable
+        call ${explore ? 'written-native-text' : 'capable-native-text'}(make(pattern, read(source)))
+      fork test
+        hook test
+          call not(call(is-equal, read(capable), text(<>)))
+        hook hold
+          save native
+            call slots-text(call(engine-search, read(capable), read(input), code(0)))
+          # an engine that refuses the text answers [-2]
+          fork test
+            hook test
+              call is-equal(read(native), text(<-2,>))
+            hook hold
+              save native, text <refused>
+  send back, text <{chosen}#{native}>
+
 task compute
   like text
   save out, text <>
   save field, make list
   save source, text <>
+  save input, text <>
+  save seen, code 0
   save number, code 0
   walk list, read cases
     hook next
@@ -403,25 +475,35 @@ task compute
             hook test
               call is-equal(read(c), code(59))
             hook hold
-              save source
-                call from-runes(read(field))
+              fork test
+                hook test
+                  call is-equal(read(seen), code(0))
+                hook hold
+                  save source
+                    call from-runes(read(field))
+                hook miss
+                  save input
+                    call from-runes(read(field))
+              save seen
+                call add(read(seen), code(1))
               save field, make list
             hook test
               call is-equal(read(c), code(124))
             hook hold
-              save input
-                call from-runes(read(field))
-              save field, make list
               save answer
-                call answer-of(read(source), read(input))
+                call answer-of(read(source), read(input), call(is-equal, read(number), code(1)))
               save out, text <{out}{answer}|>
+              save number, code 0
+              save seen, code 0
   send back, read out
 `
 }
 
-// replays every case on one backend; answers each probe feature's tally as `agreeing/total`, or nothing when the
-// replay could not build or run
-function replayOn(backend: 'rust' | 'swift' | 'kotlin'): Map<string, string> | undefined {
+type Backend = 'node' | 'rust' | 'swift' | 'kotlin'
+
+// replays every case on one backend; answers each probe feature's forced tally as `agreeing/total`, `-` where the
+// engine does not claim the feature, or nothing when the replay could not build or run
+function replayOn(backend: Backend): Map<string, string> | undefined {
   const cases = replay
   const want = cases.map(c => answerOf(c.want))
   let output: string
@@ -435,7 +517,7 @@ function replayOn(backend: 'rust' | 'swift' | 'kotlin'): Map<string, string> | u
     return
   }
 
-  const got = output.split('|').slice(0, -1)
+  const got = output.split('|').slice(0, -1).map(answer => answer.split('#') as [string, string])
 
   if (got.length !== want.length) {
     fail++
@@ -445,31 +527,51 @@ function replayOn(backend: 'rust' | 'swift' | 'kotlin'): Map<string, string> | u
   }
 
   let wrong = 0
-  const agree = new Map<string, [number, number]>()
+  let forcedWrong = 0
+  const forced = new Map<string, [number, number]>()
+  const refused = new Set<string>()
 
   for (let k = 0; k < cases.length; k++) {
-    const feature = cases[k]!.feature
+    const [chosen, native] = got[k]!
+    const { feature, pattern, input } = cases[k]!
 
-    if (feature) {
-      const [held, total] = agree.get(feature) ?? [0, 0]
-      agree.set(feature, [held + (got[k] === want[k] ? 1 : 0), total + 1])
-    }
-
-    if (got[k] === want[k]) {
+    if (chosen === want[k]) {
       pass++
     } else {
       fail++
       wrong++
 
       if (wrong <= 20) {
-        console.log(`FAIL  native ${backend} /${cases[k]!.pattern}/ on ${JSON.stringify(cases[k]!.input)}: want ${want[k]} got ${got[k]}`)
+        console.log(`FAIL  native ${backend} /${pattern}/ on ${JSON.stringify(input)}: want ${want[k]} got ${chosen}`)
+      }
+    }
+
+    // a probe row: the engine itself, wherever its capability set admits the pattern
+    if (feature && native !== 'x') {
+      const [held, total] = forced.get(feature) ?? [0, 0]
+      forced.set(feature, [held + (native === want[k] ? 1 : 0), total + 1])
+
+      if (native === 'refused') {
+        refused.add(feature)
+      }
+
+      if (explore) {
+        continue
+      }
+
+      if (native === want[k]) {
+        pass++
+      } else {
+        fail++
+        forcedWrong++
+        console.log(`FAIL  forced ${backend} [${feature}] /${pattern}/ on ${JSON.stringify(input)}: want ${want[k]} got ${native}`)
       }
     }
   }
 
-  console.log(`native ${backend}: ${cases.length - wrong} of ${cases.length} cases agree with node`)
+  console.log(`native ${backend}: ${cases.length - wrong} of ${cases.length} cases agree with node; forced probe rows ${forcedWrong === 0 ? 'all agree' : `${forcedWrong} differ`}`)
 
-  return new Map([...agree].map(([feature, [held, total]]) => [feature, `${held}/${total}`]))
+  return new Map([...forced].map(([feature, [held, total]]) => [feature, refused.has(feature) ? 'refused' : `${held}/${total}`]))
 }
 
 async function main(): Promise<void> {
@@ -568,8 +670,8 @@ async function main(): Promise<void> {
   const matrix = new Map<string, Map<string, string>>()
 
   for (const backend of (process.env.PATTERN_NATIVE ?? '').split(',').filter(Boolean)) {
-    if (backend !== 'rust' && backend !== 'swift' && backend !== 'kotlin') {
-      throw new Error(`PATTERN_NATIVE names ${backend}: rust, swift or kotlin`)
+    if (backend !== 'node' && backend !== 'rust' && backend !== 'swift' && backend !== 'kotlin') {
+      throw new Error(`PATTERN_NATIVE names ${backend}: node, rust, swift or kotlin`)
     }
 
     const tally = replayOn(backend)
@@ -579,14 +681,15 @@ async function main(): Promise<void> {
     }
   }
 
-  // the probe matrix: each feature's cases that agree with node, per engine. Node's own column is the reference
+  // the probe matrix: per row and engine, the forced cases (the engine itself, safety bypassed) that give the
+  // reference's answer, and `-` where the engine's capability set does not admit the row's pattern
   if (matrix.size) {
     const engines = [...matrix.keys()]
     const width = Math.max(...FEATURES.map(([feature]) => feature.length))
-    console.log(`\n${'feature'.padEnd(width)}  ${engines.map(e => e.padEnd(7)).join(' ')}`)
+    console.log(`\nforced on the engine itself:\n${'feature'.padEnd(width)}  ${engines.map(e => e.padEnd(7)).join(' ')}`)
 
     for (const [feature] of FEATURES) {
-      console.log(`${feature.padEnd(width)}  ${engines.map(e => (matrix.get(e)!.get(feature) ?? 'none').padEnd(7)).join(' ')}`)
+      console.log(`${feature.padEnd(width)}  ${engines.map(e => (matrix.get(e)!.get(feature) ?? '-').padEnd(7)).join(' ')}`)
     }
   }
 

@@ -22,6 +22,7 @@ import type {
 import type { Span } from '@term/make/code/parser/diagnostic'
 import type { Token } from '@term/make/code/parser/token'
 import { TokenKind } from '@term/make/code/parser/token'
+import { spanOfWhole } from '@term/make/code/compile/mill-run'
 
 const ZERO_SPAN: Span = {
   start: { line: 0, column: 0 },
@@ -434,12 +435,64 @@ function expandFuse(group: GroupNode, ctx: Context): Node[] {
     }
   }
 
-  return expandBody(template.body, {
-    templates: ctx.templates,
-    enums: ctx.enums,
-    subs,
-    beams,
-  })
+  // the expansion is code this fuse wrote, so a mistake in it is reported at the fuse: the line naming it, `fuse is-tag`
+  const head = group.nodes[0]
+  const at: Span = head
+    ? { start: spanOfWhole(head).start, end: spanOfWhole(group.nodes[1] ?? head).end }
+    : ZERO_SPAN
+
+  const expanded = expandBody(
+    template.body.map(node => atFuse(node, at, () => true)),
+    { templates: ctx.templates, enums: ctx.enums, subs, beams },
+  )
+
+  // what the substitution built (a filled hole, a `read`) carries no line of its own until it is given the fuse's
+  return expanded.map(node => atFuse(node, at, isZero))
+}
+
+const isZero = (span: Span): boolean =>
+  span.start.line === 0 && span.start.column === 0 && span.end.line === 0 && span.end.column === 0
+
+// A copy of a template's body with every span set to the `fuse` that expands it. A mistake in an expansion was
+// reported at the `tree` line, the same line for every fuse of that template, so a template fused ten times named
+// none of the ten (guides: language/templates, 2026-10-04). What a fuse beams in keeps its own lines: those are
+// lines its caller wrote. The copy follows a node's children and nothing else: its `parent` is a back-link.
+// `replace` says which spans it sets: all of the body's, then only the zero ones the substitution left.
+function atFuse<T extends Node>(node: T, span: Span, replace: (span: Span) => boolean): T {
+  return restamp(node, span, replace) as T
+}
+
+function restamp(node: Node, span: Span, replace: (span: Span) => boolean): Node {
+  const token = (t: Token): Token => (replace(t.span) ? { ...t, span } : t)
+
+  switch (node.kind) {
+    case 'group': {
+      const { parent: _, ...group } = node
+
+      return { ...group, nodes: group.nodes.map(child => atFuse(child, span, replace)) }
+    }
+    case 'name':
+    case 'text': {
+      const { parent: _, ...named } = node
+
+      return { ...named, parts: named.parts.map(part => atFuse(part, span, replace)) }
+    }
+    case 'interpolation': {
+      const { parent: _, ...hole } = node
+
+      return { ...hole, ...(hole.group ? { group: atFuse(hole.group, span, replace) } : {}) }
+    }
+    case 'chunk':
+    case 'integer':
+    case 'decimal':
+    case 'radix': {
+      const { parent: _, ...leaf } = node
+
+      return { ...leaf, token: token(leaf.token) }
+    }
+    default:
+      return node
+  }
 }
 
 // unroll a compile-time meta-loop, or return undefined if it is not one (a runtime `walk` over a real list)

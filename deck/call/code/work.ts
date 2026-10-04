@@ -34,8 +34,8 @@ export async function callWork(input: {
     })
     process.on('SIGINT', () => {
       daemon.close()
-      // stopping the worker is how it ends, not a failure: exit 0, as it always did
-      process.exit(closeRun({ verdict: 'Stopped', uptime: true }))
+      // Ctrl-C: ○ and exit 130 (section 18), as `term boot` and `term feed` end
+      process.exit(closeRun({ verdict: 'Stopped', failure: 'interrupted', uptime: true }))
     })
   } catch (err) {
     report({ glyph: 'failed', kind: 'lifecycle', verb: 'start', subject: 'The compiler worker did not start', message: [err instanceof Error ? err.message : String(err)] })

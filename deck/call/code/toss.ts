@@ -23,7 +23,7 @@ export async function callToss(input: {
       name: input.deck,
     })
     report({ glyph: 'removed', kind: 'change', verb: 'remove', subject: input.deck })
-    closeRun({ verdict: `Removed ${input.deck}` })
+    closeRun({ verdict: `Removed ${input.deck}`, done: true })
   } catch (err) {
     report({ glyph: 'failed', verb: 'remove', subject: input.deck, message: [err instanceof Error ? err.message : String(err)] })
     closeRun({ verdict: `${input.deck} was not removed` })

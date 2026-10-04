@@ -1,5 +1,5 @@
 mod regex {
-    // The one regex primitive over the regex crate. The pattern arrives in the canonical dialect
+    // The one regex primitive over the regex crate. The pattern arrives in a form this engine reads as Term does
     // (base/code/regex/dialect.tree); this runs it and turns byte offsets into code point offsets.
     use std::cell::RefCell;
     use std::collections::HashMap;
@@ -23,9 +23,10 @@ mod regex {
                 Err(_) => None,
             }
         });
+        // an engine that refuses the pattern answers [-2], never "no match": Term answers it with its own tier
         let engine = match engine {
             Some(engine) => engine,
-            None => return out,
+            None => return vec![-2],
         };
         if from < 0 {
             return out;
@@ -78,9 +79,10 @@ mod regex {
                 Err(_) => None,
             }
         });
+        // an engine that refuses the pattern answers [-2], never "no match": Term answers it with its own tier
         let engine = match engine {
             Some(engine) => engine,
-            None => return out,
+            None => return vec![-2],
         };
         // a cursor: the code point count at a byte offset, moved forwards only
         let mut cursor_byte = 0usize;

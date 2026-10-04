@@ -181,7 +181,7 @@ export function readView(
   const diagnostics: Diagnostic[] = []
 
   const error = (span: Span, message: string): void => {
-    diagnostics.push(diagnose('syntax-error', { file, span, message }))
+    diagnostics.push(diagnose('document-refused', { file, span, message }))
   }
 
   const out: ViewFile = { load: [], host: [], find: [], view: [] }
@@ -2170,7 +2170,7 @@ export function viewFused(
 
         if (name && !have.has(name)) {
           diagnostics.push(
-            diagnose('syntax-error', {
+            diagnose('document-refused', {
               file,
               span: spanOf(node),
               message: `"${name}" is not a macro this document can reach. ${near(name, have)}`,
@@ -2279,7 +2279,7 @@ export function viewBomb(
   const at = tree.nodes.find(n => n.kind === 'group' && headOf(n) === 'view')
 
   return [
-    diagnose('syntax-error', {
+    diagnose('document-refused', {
       file,
       span: at ? spanOf(at) : ZERO,
       message: `this document would expand to about ${total} nodes and the cap is ${cap}. Counted from the macros before expanding, because expanding it first is the denial of service`,
@@ -2351,7 +2351,7 @@ export function viewCycles(tree: RootNode, file: string): Diagnostic[] {
         const group = body.get(path[0] ?? name)
 
         diagnostics.push(
-          diagnose('syntax-error', {
+          diagnose('document-refused', {
             file,
             span: group ? spanOf(group) : ZERO,
             message: `a macro cannot fuse itself, and this one does: ${ring}`,

@@ -27,8 +27,8 @@
 // and `simplify` drops each one that is no root and that nothing references any more (`dropDeadFunctions`, which
 // counts every kind of reference). A compile that names no roots keeps every definition, since anything may call it
 
-import type { Expression, Program, Statement, Type } from '../compile/node'
-import { RENDER, RENDER_SUPPORT } from '../compile/render-names'
+import type { Expression, Program, Statement, Type } from '@term/make/code/compile/node'
+import { RENDER, RENDER_SUPPORT } from '@term/make/code/compile/render-names'
 
 type Fn = Extract<Statement, { form: 'function' }>
 type Call = Extract<Expression, { form: 'call' }>
@@ -43,7 +43,49 @@ const RUNTIME = new Set<string>([...Object.values(RENDER), ...RENDER_SUPPORT])
 // the forms whose literal a parameter may be substituted with
 const LITERALS = new Set(['integer', 'float', 'boolean', 'string'])
 
-let fresh = 0
+// THE NAMES AN INLINING MAKES. Every name the callee binds gets a fresh one in the caller: its own spelling and a
+// number, `size-2`, which every backend writes as its own idiom (`size_2` on Rust, `size2` on Swift), where a
+// `size__in7` was a name rustc warns about. Fresh by construction: the number is the first that makes a name no node in
+// the program carries, and every name made joins the set. A name made from one an earlier inlining made starts again
+// from that one's spelling (`size-2` inlined again is `size-5`, never `size-2-5`), and a hoisted argument is named for
+// the task that answers it (`pop-disk-1`)
+type Names = { used: Set<string>; made: Map<string, string> }
+
+// a name as every backend's spelling sees it: `size-2`, `size_2` and `size2` are one name to Swift's camel case
+const spelled = (name: string): string => name.replace(/[-_]/g, '').toLowerCase()
+
+// every name a node of the program carries, as spelled
+function namesOf(program: Program): Set<string> {
+  const used = new Set<string>()
+  const add = (name: unknown): void => {
+    if (typeof name === 'string') used.add(spelled(name))
+  }
+
+  each(program, node => {
+    add(node.name)
+    add(node.item)
+    add(node.index)
+    if (Array.isArray(node.binds)) node.binds.forEach(add)
+    if (Array.isArray(node.params)) (node.params as { name?: string }[]).forEach(p => add(p.name))
+  })
+
+  return used
+}
+
+function freshName(names: Names, name: string): string {
+  const base = names.made.get(name) ?? name
+
+  for (let k = 1; ; k++) {
+    const candidate = `${base}-${k}`
+
+    if (!names.used.has(spelled(candidate))) {
+      names.used.add(spelled(candidate))
+      names.made.set(candidate, base)
+
+      return candidate
+    }
+  }
+}
 
 const clone = <T>(value: T): T => structuredClone(value)
 
@@ -149,10 +191,12 @@ function zero(type: Type | undefined, span: unknown): Expression | undefined {
 // Answers the program and every task some call to which was inlined
 export function inlineStatements(program: Program): { program: Program; inlined: Set<string> } {
   const inlined = new Set<string>()
+  // the program's names, read once and only when something is inlined (`freshName`)
+  const holder: { names?: Names } = {}
   let out = program
 
   for (let round = 0; round < 3; round++) {
-    const next = inlineRound(out, inlined)
+    const next = inlineRound(out, inlined, holder)
 
     if (next === out) {
       break
@@ -164,7 +208,7 @@ export function inlineStatements(program: Program): { program: Program; inlined:
   return { program: out, inlined }
 }
 
-function inlineRound(program: Program, inlinedNames: Set<string>): Program {
+function inlineRound(program: Program, inlinedNames: Set<string>, holder: { names?: Names }): Program {
   const statements = program as Statement[]
   const fns = statements.filter((n): n is Fn => n.form === 'function')
   const defined = new Map<string, number>()
@@ -302,11 +346,12 @@ function inlineRound(program: Program, inlinedNames: Set<string>): Program {
     return program
   }
 
+  holder.names ??= { used: namesOf(program), made: new Map() }
+  const names = holder.names
   let changed = false
 
   // the callee's body with its parameters bound and its names renamed, and each tail return handed to `back`
   const expand = (callee: Fn, args: Expression[], back: (value: Expression, span: unknown) => Statement[]): Statement[] => {
-    const tag = `__in${fresh++}`
     const body = clone(callee.body)
     const rename = new Map<string, string>()
     const substitute = new Map<string, Expression>()
@@ -325,7 +370,7 @@ function inlineRound(program: Program, inlinedNames: Set<string>): Program {
       if (plain && !written.has(p.name)) {
         substitute.set(p.name, arg)
       } else {
-        const name = `${p.name}${tag}`
+        const name = freshName(names, p.name)
         rename.set(p.name, name)
         before.push({ form: 'let', name, init: arg, mutable: written.has(p.name), span: arg.span, type: p.type } as unknown as Statement)
       }
@@ -334,7 +379,7 @@ function inlineRound(program: Program, inlinedNames: Set<string>): Program {
     // every name the body binds, renamed; an arm reading its fields by their own names given them renamed
     const bind = (name: string): string => {
       if (!rename.has(name)) {
-        rename.set(name, `${name}${tag}`)
+        rename.set(name, freshName(names, name))
       }
 
       return rename.get(name)!
@@ -438,7 +483,7 @@ function inlineRound(program: Program, inlinedNames: Set<string>): Program {
       const callee = target(a, owner)
 
       if (callee && plainBefore && zero(a.type, a.span)) {
-        const name = `__arg${fresh++}`
+        const name = freshName(names, callee.name)
         before.push(...inlineLet(name, a as Call, callee, owner))
 
         return { form: 'variable', name, binding: { kind: 'local' }, span: a.span, type: a.type } as unknown as Expression

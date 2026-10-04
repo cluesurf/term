@@ -24,3 +24,17 @@ export const RENDER = {
   // the items a counted `walk size` walks, made by render.tree for the view role's lowering
   integers: 'list-integers',
 } as const
+
+// the rest of what the lowered views call by name: the dom and scope primitives under the render tasks and the signals
+// a component's state is made of. With RENDER, the tasks that must survive every pass before the lowering, which is
+// why the prune pins them (compile.ts) and the statement inliner leaves them alone (ir/inline-statements.ts)
+export const RENDER_SUPPORT = [
+  'append',
+  'remove',
+  'replace',
+  'open-scope',
+  'close-scope',
+  'make-signal',
+  'read-signal',
+  'dispose-scope',
+] as const

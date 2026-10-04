@@ -121,6 +121,7 @@ export const CACHE_SCOPE: Record<string, string[]> = {
     'deck/make/code/ir/facts/interval.ts',
     'deck/make/code/ir/facts/range.ts',
     'deck/make/code/ir/facts/text.ts',
+    'deck/make/code/ir/inline-statements.ts',
     'deck/make/code/ir/prune.ts',
     'deck/make/code/ir/simplify.ts',
     'deck/make/code/ir/twin.ts',

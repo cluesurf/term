@@ -30,7 +30,8 @@ export async function callFeed(input: {
         subject: entry ? 'The entry file does not exist' : 'There is no entry: none was given and deck.tree has no `boot <path>`',
         fields: entry ? [field('at', showPath(entry, input.root))] : [],
       })
-      closeRun({ verdict: 'Not started' })
+      // an entry the command line or the manifest owed: wrong usage, exit 2, as `term boot` ends on the same miss
+      closeRun({ verdict: 'Not started', failure: 'usage' })
 
       return
     }

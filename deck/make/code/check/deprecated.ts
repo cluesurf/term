@@ -4,7 +4,8 @@
 // 2026-10-03). A call from the file that defines the task is its own business and is left alone; a call from any other
 // file in the file being compiled is a warning at the call, naming the task.
 
-import type { Program, Span } from '@term/make/code/compile/node'
+import type { Program } from '@term/make/code/compile/node'
+import type { Span } from '@term/make/code/parser/diagnostic'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
 

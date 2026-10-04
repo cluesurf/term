@@ -76,7 +76,8 @@ run = term(['mold', at('bad/twice.tree'), '--check'])
 ok('mold --check exits 1 on a broken file', run.code === 1 && run.err.includes('given twice'), run.out + run.err)
 
 run = term(['mold', at('basic.tree'), '--check'])
-ok('mold --check is silent on a clean file', run.code === 0 && run.out === '' && run.err === '', run.out + run.err)
+// no data on stdout, and on stderr only the run's own items, closing on the verdict (the terminal output standard)
+ok('mold --check writes no data on a clean file, and says it reads', run.code === 0 && run.out === '' && /The data reads/.test(run.err), run.out + run.err)
 
 run = term(['mold', at('stream.line'), '--lines'])
 ok(

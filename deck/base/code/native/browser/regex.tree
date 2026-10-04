@@ -1,5 +1,6 @@
 # browser regex primitive: the one search the public regex API is built on (regex.tree). Internal: reached only through
-# that API, which hands it a pattern already rewritten into the canonical dialect.
+# those APIs: regex.tree hands it a pattern in the canonical dialect, and pattern.tree any text this engine's
+# capability set admits (engine-features, pattern/feature.tree), the engine's own reading proven by the probe.
 
 dock load
   load <global:regex>, name regex
@@ -35,6 +36,42 @@ task engine-linear
 task engine-class-limit
   like number
   send back, code 557056
+
+# the engine, by name, for messages and tests
+task engine-name
+  like text
+  send back, text <ECMAScript (the page's engine)>
+
+# the features this engine runs with exactly Term's meaning (pattern/feature.tree, each held by a probe row in
+# test/compile/pattern.ts): not `refer-fold`: the scoped flag `(?i:...)` it needs is not in every browser yet
+task engine-features
+  like list
+    like text
+  save out, make list
+  call out/push(text(<look-ahead>))
+  call out/push(text(<look-behind>))
+  call out/push(text(<look-unbounded>))
+  call out/push(text(<look-capture>))
+  call out/push(text(<refer-set>))
+  call out/push(text(<refer-unset>))
+  call out/push(text(<refer-behind>))
+  call out/push(text(<word-edge>))
+  call out/push(text(<line-edge>))
+  call out/push(text(<loop-capture>))
+  call out/push(text(<empty-loop>))
+  call out/push(text(<empty-set>))
+  call out/push(text(<big-count>))
+  send back, read out
+
+# whether a line edge is written `(?m:^)` and `(?m:$)`, true only where the engine's line ends at a line feed alone
+task engine-line-inline
+  like boolean
+  send back, false
+
+# the scoped flags that make a back reference compare by case class: `i`
+task engine-fold-flags
+  like text
+  send back, text <i>
 
 # every match, left to right, none overlapping, in one pass over the text: the width of one match's slots first, then
 # each match's slots in code points, as engine-search gives them; [-1] when nothing matches. After an empty match the

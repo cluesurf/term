@@ -1,0 +1,262 @@
+load @term/base/list
+  find list
+  find push
+
+# recursive forms nothing clones, whose cases that hold the form keep every field in one box on Rust (rust.ts,
+# `payloads`): `tree` has two such cases, so its boxes are not reused, and `pile` one, so a node opened gives its box to
+# the next node built. Each tree read through a borrow, one field handed straight back, a tree consumed and rebuilt
+# mirrored, a pile moved layer by layer onto another. The same answers on every backend
+
+form tree
+  case tip
+  case pair
+    link left, like tree
+    link value, like number
+    link right, like tree
+  case one
+    link value, like number
+    link next, like tree
+
+form pile
+  case bottom
+  case layer
+    link size, like number
+    link under, like pile
+
+task grow
+  take d, like number
+  like tree
+  fork test
+    hook test
+      call is-above
+        read d
+        code 0
+    hook hold
+      send back
+        make pair
+          bind left
+            call grow
+              call subtract
+                read d
+                code 1
+          bind value, read d
+          bind right
+            make one
+              bind value
+                call multiply
+                  read d
+                  code 10
+              bind next
+                make tip
+  send back
+    make tip
+
+task total
+  take t, like tree
+  like number
+  fork case, read t
+    case tip
+      send back, code 0
+    case pair
+      send back
+        call add
+          call add
+            call total
+              read left
+            read value
+          call total
+            read right
+    case one
+      send back
+        call add
+          read value
+          call total
+            read next
+
+# answers one field and nothing else
+task top
+  take t, like tree
+  like number
+  fork case, read t
+    case tip
+      send back, code -1
+    case pair
+      send back, read value
+    case one
+      send back, read value
+
+# the leftmost value: the value of the last pair a walk down the left children reaches, or of the first `one`
+task leftmost
+  take t, like tree
+  take at, like number
+  like number
+  fork case, read t
+    case tip
+      send back, read at
+    case pair
+      send back
+        call leftmost
+          read left
+          read value
+    case one
+      send back, read value
+
+# consumes its tree: each child moves out into the call that mirrors it
+task flip
+  take t, like tree
+  like tree
+  fork case, read t
+    case tip
+      send back
+        make tip
+    case pair
+      send back
+        make pair
+          bind left
+            call flip
+              read right
+          bind value, read value
+          bind right
+            call flip
+              read left
+    case one
+      send back
+        make one
+          bind value, read value
+          bind next
+            call flip
+              read next
+
+task stack-up
+  take n, like number
+  like pile
+  fork test
+    hook test
+      call is-above
+        read n
+        code 0
+    hook hold
+      send back
+        make layer
+          bind size, read n
+          bind under
+            call stack-up
+              call subtract
+                read n
+                code 1
+  send back
+    make bottom
+
+# every layer of `a` moved onto `b`, the top first, so the order turns over
+task restack
+  take a, like pile
+  take b, like pile
+  like pile
+  fork case, read a
+    case bottom
+      send back, read b
+    case layer
+      send back
+        call restack
+          read under
+          make layer
+            bind size, read size
+            bind under, read b
+
+# the top layer of one pile moved onto another, both held in a list: the layer's box opened by value and built again
+task move-layer
+  take piles, like list, like pile
+  take from, like number
+  take to, like number
+  host top, read piles/{from}
+  fork case, read top
+    case bottom
+    case layer
+      save piles/{from}, read under
+      host onto, read piles/{to}
+      save piles/{to}
+        make layer
+          bind size, read size
+          bind under, read onto
+
+# the sizes from the top down
+task show
+  take p, like pile
+  like text
+  fork case, read p
+    case bottom
+      send back, text <.>
+    case layer
+      send back, text <{size}{show(under)}>
+
+# every pile in the list, read where it lies
+task show-all
+  take piles, like list, like pile
+  like text
+  send back, text <{show(piles/0)}|{show(piles/1)}|{show(piles/2)}>
+
+task compute
+  like text
+  host t
+    call grow
+      code 3
+  host before
+    call total
+      read t
+  host lead
+    call leftmost
+      read t
+      code 0
+  host f
+    call flip
+      read t
+  host after
+    call total
+      read f
+  host root
+    call top
+      read f
+  host turned
+    call leftmost
+      read f
+      code 0
+  host empty
+    call top
+      make tip
+  host p
+    call restack
+      call stack-up
+        code 4
+      make bottom
+  save piles
+    make list
+  call push
+    bind list, read piles
+    bind item
+      call stack-up
+        code 3
+  call push
+    bind list, read piles
+    bind item
+      make bottom
+  call push
+    bind list, read piles
+    bind item
+      make bottom
+  call move-layer
+    read piles
+    code 0
+    code 2
+  call move-layer
+    read piles
+    code 0
+    code 1
+  call move-layer
+    read piles
+    code 2
+    code 1
+  call move-layer
+    read piles
+    code 2
+    code 0
+  send back, text <{before}:{lead}:{after}:{root}:{turned}:{empty}:{show(p)}:{show-all(piles)}>

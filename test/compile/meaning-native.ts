@@ -225,6 +225,10 @@ const CASE_NAME_WANT = '73:11:9'
 // raise caught by the caller, an answer dropped, names of the callee's own, and a record field write that keeps its call
 const INLINE = readFileSync(join(import.meta.dirname, 'meaning-native/inline.tree'), 'utf8')
 const INLINE_WANT = '7:11:10:-1:9:refused:-1:4:3:5'
+// recursive forms held by payload on Rust (rust.ts, `payloads`): one with two such cases read through borrows and
+// rebuilt mirrored, one with a single case moved layer by layer between piles in a list, its boxes reused
+const PAYLOAD = readFileSync(join(import.meta.dirname, 'meaning-native/payload.tree'), 'utf8')
+const PAYLOAD_WANT = '66:1:66:3:30:-1:1234.:1.|32.|.'
 const CURSOR = readFileSync(join(import.meta.dirname, 'meaning-native/cursor.tree'), 'utf8')
 const CURSOR_WANT =
   '6:757073106:çb😀€éa::-1:aé/aé€.é€/é€😀.€😀/€😀b.😀b/😀bç.bç/bç.ç/ç. 5:214865557:nialp::-1:pl/pla.la/lai.ai/ain.in/in.n/n. 6:757073106'
@@ -407,6 +411,7 @@ for (const backend of ['typescript', 'rust', 'swift', 'kotlin']) {
   run(backend, 'variant-array', VARIANT_ARRAY, VARIANT_ARRAY_WANT)
   run(backend, 'case-name', CASE_NAME, CASE_NAME_WANT)
   run(backend, 'inline', INLINE, INLINE_WANT)
+  run(backend, 'payload', PAYLOAD, PAYLOAD_WANT)
 }
 
 console.log(`\nmeaning-native: ${pass} pass, ${fail} fail, ${skip} skipped`)

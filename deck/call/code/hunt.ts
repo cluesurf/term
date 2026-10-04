@@ -64,6 +64,8 @@ export async function callHunt(input: {
   json?: boolean
 }): Promise<void> {
   const { root } = input
+  // the run's real start: its opening item is printed after the hunt (below), and its clock and total are this one
+  const started = Date.now()
 
   // the project's own code, found the way `term make` finds it (manifests, role files, lockfiles and drafts are
   // skipped, other platforms' native trees too). This defaulted to `deck/base/code`, the compiler's stdlib, which a
@@ -94,7 +96,7 @@ export async function callHunt(input: {
   // the run is opened after the hunt: the fuzz children inherit this process's stderr while they run, and a live
   // opening item would sit above their noise. The verdict and exit follow `result.ok`, which is false whenever a
   // check did not run, so the closing item is ✗ for an incomplete hunt as well as for a finding
-  openRun({ verb: 'hunt', root, counts: [count(files.length, 'files', 'file')] })
+  openRun({ verb: 'hunt', root, counts: [count(files.length, 'files', 'file')], started })
   reportHunt(result)
   const counts = [count(result.corpus.files, 'files read', 'file read'), count(result.fuzz.runs, 'fuzz runs', 'fuzz run')]
   process.exit(
@@ -128,7 +130,7 @@ function reportHunt(result: HuntResult): void {
 
   const f = result.fuzz
   report({
-    glyph: f.runs === 0 || result.hangs.length > 0 || result.crashes.signatures.length > 0 ? 'failed' : 'done',
+    glyph: f.runs === 0 || result.hangs.length > 0 || result.crashes.found.length > 0 ? 'failed' : 'done',
     verb: 'fuzz',
     subject: f.runs === 0 ? 'Nothing was fuzzed' : 'Structure-aware fuzzing under a watchdog',
     counts: [
@@ -136,12 +138,13 @@ function reportHunt(result: HuntResult): void {
       count(f.seedsRun, 'seeds', 'seed', f.seedsAsked),
       count(result.crashes.total, 'crashes', 'crash'),
       count(result.hangs.length, 'hangs', 'hang'),
+      count(f.corpusAdded, 'project files added', 'project file added'),
     ],
-    facts: [`${f.corpusAdded} project files added`],
   })
 
-  for (const signature of result.crashes.signatures) {
-    report({ glyph: 'failed', kind: 'problem', verb: 'fuzz', subject: 'The compiler crashed', quote: [signature] })
+  // the signature, then the smallest program that raised it, so the crash can be reproduced from the report
+  for (const crash of result.crashes.found) {
+    report({ glyph: 'failed', kind: 'problem', verb: 'fuzz', subject: 'The compiler crashed', quote: [crash.signature, '', ...crash.input.split('\n')] })
   }
 
   for (const hang of result.hangs) {
@@ -149,6 +152,6 @@ function reportHunt(result: HuntResult): void {
   }
 
   for (const missing of result.unrun) {
-    report({ glyph: 'failed', kind: 'problem', verb: 'hunt', subject: missing.charAt(0).toUpperCase() + missing.slice(1), facts: ['did not run'] })
+    report({ glyph: 'failed', kind: 'problem', verb: 'check', subject: missing.charAt(0).toUpperCase() + missing.slice(1), facts: ['did not run'] })
   }
 }

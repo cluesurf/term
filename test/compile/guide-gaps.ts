@@ -581,6 +581,179 @@ view counter
     ok('a number read into a text node is refused', !number.ok && /String|text/i.test(number.messages), number.messages)
   }
 
+  // ---- language/matching: `hook miss` is the arm for every case a match does not list ----
+  {
+    const SHAPE = `form shape
+  case circle
+    link r, like number
+  case square
+    link side, like number
+  case dot
+
+`
+    const caught = build(`${SHAPE}task corners
+  take s, like shape
+  like number
+  sift s
+    case square
+      send back, code 4
+    hook miss
+      send back, code 0
+`)
+    ok('a `sift` with a `hook miss` arm builds', caught.ok, caught.messages)
+
+    if (caught.ok) {
+      const mod = await load(caught.typescript)
+      const corners = mod.corners!
+
+      ok(
+        'and answers the listed case, and every other through the miss arm',
+        corners({ form: 'square', side: 2 }) === 4 && corners({ form: 'circle', r: 1 }) === 0 && corners({ form: 'dot' }) === 0,
+      )
+    }
+
+    const other = build(`${SHAPE}task corners
+  take s, like shape
+  like number
+  sift s
+    case square
+      send back, code 4
+    hook hold
+      send back, code 0
+`)
+    ok('`hook hold` under a `sift` is refused, naming the arms a match takes', !other.ok && /hook hold.*hook miss/.test(other.messages), other.messages)
+
+    const twice = build(`${SHAPE}task corners
+  take s, like shape
+  like number
+  sift s
+    case square
+      send back, code 4
+    hook miss
+      send back, code 0
+    hook miss
+      send back, code 1
+`)
+    ok('two `hook miss` arms are refused', !twice.ok && /two `hook miss`/.test(twice.messages), twice.messages)
+
+    const open = compile(
+      {
+        file: '/gate/code/gap.tree',
+        text: `${SHAPE}task corners
+  take s, like shape
+  like number
+  sift s
+    case square
+      send back, code 4
+`,
+      },
+      {},
+    )
+    const hint = open.ok ? '' : open.diagnostics.map(d => d.hint ?? '').join(' | ')
+
+    ok('a match that leaves cases out names `hook miss`, not an `else` the grammar refuses', /hook miss/.test(hint) && !/else/.test(hint), hint)
+
+    // a miss arm that answers one case or none builds, with a warning naming the case to list
+    const one = build(`${SHAPE}task corners
+  take s, like shape
+  like number
+  sift s
+    case square
+      send back, code 4
+    case circle
+      send back, code 0
+    hook miss
+      send back, code 0
+`)
+    ok('a `hook miss` that answers only `dot` builds, warning to write `case dot`', one.ok && one.warnings.some(w => /thin-catch-all/.test(w) && /`dot`/.test(w)), one.warnings.join(' | '))
+
+    const none = build(`${SHAPE}task corners
+  take s, like shape
+  like number
+  sift s
+    case square
+      send back, code 4
+    case circle
+      send back, code 0
+    case dot
+      send back, code 0
+    hook miss
+      send back, code 0
+`)
+    ok('and one that answers no case warns that every case is listed', none.ok && none.warnings.some(w => /answers no case/.test(w)), none.warnings.join(' | '))
+    ok('a `hook miss` over two cases does not warn', caught.ok && !caught.warnings.some(w => /thin-catch-all/.test(w)), caught.warnings.join(' | '))
+  }
+
+  // ---- language/matching: an arm field that hides a variable in scope warns ----
+  {
+    const SHAPES = `form shape
+  case circle
+    link radius, like number
+  case dot
+
+`
+    const hidden = build(`${SHAPES}task grow
+  take s, like shape
+  take radius, like number
+  like number
+  sift s
+    case circle
+      send back, read radius
+    case dot
+      send back, read radius
+`)
+    ok('a field named like a parameter warns that it hides it', hidden.ok && hidden.warnings.some(w => /arm-shadow/.test(w) && /"radius"/.test(w)), hidden.warnings.join(' | '))
+
+    const renamed = build(`${SHAPES}task grow
+  take s, like shape
+  take radius, like number
+  like number
+  sift s
+    case circle
+      link r
+      send back, read radius
+    case dot
+      send back, read radius
+`)
+    ok('renamed with `link`, it does not', renamed.ok && !renamed.warnings.some(w => /arm-shadow/.test(w)), renamed.warnings.join(' | '))
+  }
+
+  // ---- types/inference: a fraction is not a whole number ----
+  {
+    const WHOLE = `task whole
+  take x, like integer
+  like integer
+  send back, read x
+
+`
+    const literal = build(`${WHOLE}task use
+  like integer
+  send back
+    call whole
+      code 1.5
+`)
+    ok('`whole(1.5)` against `like integer` is refused', !literal.ok && /expected number, a whole number, found float/.test(literal.messages), literal.messages)
+
+    const returned = build(`task half
+  like integer
+  send back, code 1.5
+`)
+    ok('and so is returning 1.5 from a task typed to return a whole number', !returned.ok && /found float/.test(returned.messages), returned.messages)
+
+    const widened = build(`task scale
+  take x, like float
+  like float
+  send back, read x
+
+task use
+  like float
+  send back
+    call scale
+      code 2
+`)
+    ok('a whole number where a fraction is wanted widens, and builds', widened.ok, widened.messages)
+  }
+
   console.log(`\nguide-gaps: ${pass} pass, ${fail} fail`)
 
   if (fail > 0) {

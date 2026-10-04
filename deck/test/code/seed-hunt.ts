@@ -44,7 +44,9 @@ export type HuntResult = {
     // extra seed programs taken from the hunted files
     corpusAdded: number
   }
-  crashes: { total: number; signatures: string[] }
+  // one per distinct signature, with the smallest program that raised it, so a crash can be reproduced without
+  // fuzzing again
+  crashes: { total: number; found: { signature: string; input: string }[] }
   hangs: { input: string }[]
   // what did not run, in plain words. Non-empty fails the hunt.
   unrun: string[]
@@ -157,7 +159,7 @@ export function huntSeedCompiler(input: {
 
   // ---- phase 2: hang-safe fuzzing (child-process watchdog) ----
   const entry = input.fuzzEntry ?? sourceFuzzEntry()
-  const signatures = new Set<string>()
+  const found = new Map<string, string>()
   const hangs: { input: string }[] = []
   let totalCrashes = 0
   let seedsRun = 0
@@ -228,7 +230,14 @@ export function huntSeedCompiler(input: {
       seedsRun++
       fuzzRuns += report.runs
       totalCrashes += report.crashes.length
-      for (const c of report.crashes) signatures.add(c.error.split('\n')[0]!.slice(0, 100))
+      for (const c of report.crashes) {
+        const signature = c.error.split('\n')[0]!.slice(0, 100)
+        const smallest = found.get(signature)
+
+        if (smallest === undefined || c.input.length < smallest.length) {
+          found.set(signature, c.input)
+        }
+      }
     }
 
     if (seedsRun > 0 && fuzzRuns === 0) {
@@ -236,12 +245,12 @@ export function huntSeedCompiler(input: {
     }
   }
 
-  const findings = corpus.violations.length + signatures.size + hangs.length
+  const findings = corpus.violations.length + found.size + hangs.length
   return {
     corpus,
     backends: EMIT_BACKENDS.map(b => b.name),
     fuzz: { seedsRun, seedsAsked: seeds, runs: fuzzRuns, corpusAdded: extraSeeds.length },
-    crashes: { total: totalCrashes, signatures: [...signatures] },
+    crashes: { total: totalCrashes, found: [...found].map(([signature, input]) => ({ signature, input })) },
     hangs,
     unrun,
     findings,
@@ -283,11 +292,14 @@ export function renderHunt(result: HuntResult): string {
     out.push(`  ${result.hangs.length} HANG(S):`)
     for (const h of result.hangs) out.push(h.input.split('\n').map(l => '      | ' + l).join('\n'))
   }
-  if (result.crashes.signatures.length > 0) {
-    out.push(`  ${result.crashes.total} crashes, ${result.crashes.signatures.length} distinct signature(s):`)
-    for (const sig of result.crashes.signatures) out.push(`    - ${sig}`)
+  if (result.crashes.found.length > 0) {
+    out.push(`  ${result.crashes.total} crashes, ${result.crashes.found.length} distinct signature(s):`)
+    for (const crash of result.crashes.found) {
+      out.push(`    - ${crash.signature}`)
+      out.push(crash.input.split('\n').map(l => '      | ' + l).join('\n'))
+    }
   }
-  if (result.hangs.length === 0 && result.crashes.signatures.length === 0) {
+  if (result.hangs.length === 0 && result.crashes.found.length === 0) {
     out.push(f.runs > 0 ? '  no crashes, no hangs' : '  NOTHING FUZZED')
   }
 

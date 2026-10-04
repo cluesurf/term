@@ -32,19 +32,19 @@ const CASES: [string, string, string, Want][] = [
     'a back reference',
     '',
     '  send back, call(matches, make(pattern, text(<(\\w)\\1>)), read(input))',
-    { builds: true, said: ['pattern-backtracks: `(\\w)\\1` runs on the backtracking tier, because of the back reference to group 1'] },
+    { builds: true, said: ['pattern-backtracks: `(\\w)\\1` needs a backtracking matcher, because of the back reference to group 1'] },
   ],
   [
     'an atomic group, bound by name',
     '',
     '  save p\n    make pattern\n      bind text, text <(?\\>ab|a)c>\n  send back, call(matches, read(p), read(input))',
-    { builds: true, said: ['pattern-backtracks: `(?>ab|a)c` runs on the backtracking tier, because of an atomic group'] },
+    { builds: true, said: ['pattern-backtracks: `(?>ab|a)c` needs a backtracking matcher, because of an atomic group'] },
   ],
   [
     'a possessive repetition in a top-level host',
     'host fixed, make pattern, <(ab)++c>\n',
     '  send back, call(matches, read(fixed), read(input))',
-    { builds: true, said: ['pattern-backtracks: `(ab)++c` runs on the backtracking tier, because of a possessive repetition'] },
+    { builds: true, said: ['pattern-backtracks: `(ab)++c` needs a backtracking matcher, because of a possessive repetition'] },
   ],
   // the analysis takes both out of tier C, so neither is warned: `(a)\1` is `(a)a`, `[a-z]++` a greedy run and a lookahead
   ['a back reference the analysis replaces', '', '  send back, call(matches, make(pattern, text(<(a)\\1>)), read(input))', { builds: true, said: [] }],

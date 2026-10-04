@@ -31,7 +31,17 @@ function trapExit(): { restore: () => void; calls: number[] } {
     throw new Error(`process.exit(${code ?? 0})`)
   }) as typeof process.exit
 
-  return { restore: () => (process.exit = original), calls }
+  // the run's closing item sets process.exitCode before it exits (code/output.ts closeRun): the trapped exit records
+  // the code in `calls`, so restoring puts the process's own code back too, or a passing suite exits 1
+  const exitCode = process.exitCode
+
+  return {
+    restore: () => {
+      process.exit = original
+      process.exitCode = exitCode
+    },
+    calls,
+  }
 }
 
 async function makeProject(source: string): Promise<string> {

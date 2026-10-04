@@ -44,7 +44,26 @@ export function makeExpect(deps: {
       suspects.push(wanted.id)
     }
 
-    if (!unify(actual, wanted, span)) {
+    const unified = unify(actual, wanted, span)
+
+    // `number` and `float` unify, so arithmetic can mix them, but a fraction is not a whole number: `number` is `i64`
+    // on Rust, Swift and Kotlin and `float` is `f64`. A whole number where a fraction is wanted widens; a fraction
+    // where a whole number is wanted was accepted, and `whole(1.5)` against `like integer` emitted `return 1.5`
+    // (guides: types/inference, 2026-10-04). Asked after the unify, when both sides are what they resolved to
+    if (unified && resolve(actual).kind === 'float' && resolve(wanted).kind === 'number') {
+      diagnostics.push(
+        diagnose('type-mismatch', {
+          file: getFile(),
+          span,
+          message: `${what}: expected number, a whole number, found float`,
+          hint: 'make it whole with `to-number` from @term/base/float (after `round`, `round-down` or `round-up` to choose the direction), or take `like float` if a fraction is meant',
+        }),
+      )
+
+      return
+    }
+
+    if (!unified) {
       const markers: { span: Span; label?: string }[] = [{ span }]
 
       for (const id of suspects) {

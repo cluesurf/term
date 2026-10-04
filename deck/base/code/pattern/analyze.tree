@@ -1,10 +1,12 @@
-# The analysis: which tier runs a pattern, and the rewrites that move a pattern to a cheaper one
-# (note/term/stdlib/regex-engine.md, "How a pattern runs: three tiers").
+# The analysis: which tier runs a pattern on one engine, and the rewrites that move a pattern to a cheaper one
+# (note/term/stdlib/regex-engine.md, "Capability sets").
 #
-#   A  native     the target's own engine, given the pattern in the canonical dialect every engine reads alike
-#                 (./regex/dialect.tree's writers), when the pattern uses nothing else AND, on an engine that
-#                 backtracks, cannot make it backtrack without end
-#   B  linear     ./pike.tree, for any pattern with no back reference and no atomic group left after the rewrites
+#   A  native     the target's own engine, given the pattern written for it (`native-text`), when every feature the
+#                 pattern uses is in the engine's capability set (./feature.tree, `engine-profile`), no class is
+#                 wider than the engine is fast on, AND, on an engine that backtracks, the pattern cannot make it
+#                 backtrack without end
+#   B  linear     ./pike.tree, for any pattern with no back reference, atomic group or possessive repetition left
+#                 after the rewrites
 #   C  backtrack  ./back.tree, with a budget, for the rest
 #
 # Rewrites, each exact:
@@ -14,10 +16,11 @@
 #
 # Safe on a backtracking engine means two things checked here. Every choice point is decided by the next code point:
 # a repetition's body cannot match empty, and the code points it can start with are not ones that can follow it, and
-# the alternatives of a choice start with code points apart from each other. That keeps one attempt linear. And no
-# attempt re-reads what an earlier one read: the pattern is anchored at the start, or none of the code points it can
-# start with can occur inside an unbounded repetition. A pattern that fails either goes to the linear tier, which
-# cannot be made slow.
+# the alternatives of a choice start with code points apart from each other. An atomic group and a possessive
+# repetition are decided alone, since they never reopen; a lookaround must read a bounded stretch; a back reference
+# opens no choice. That keeps one attempt linear. And no attempt re-reads what an earlier one read: the pattern is
+# anchored at the start, or none of the code points it can start with can occur inside an unbounded repetition. A
+# pattern that fails either goes to the linear tier, which cannot be made slow.
 
 mark stable
 
@@ -39,6 +42,9 @@ load @term/base/pattern/node
   find piece
   find edge-text-start
   find edge-text-end
+  find edge-line-start
+  find edge-line-end
+  find edge-word
 
 load @term/base/pattern/set
   find number-at
@@ -46,7 +52,14 @@ load @term/base/pattern/set
   find sets-are-apart
   find set-size
   find range-set
+  find negate-set
   find last-code-point
+
+load @term/base/pattern/feature
+  find most-length
+  find piece-features
+  find features-covered
+  find holds-name
 
 load @term/base/pattern/program
   find can-be-empty
@@ -55,11 +68,30 @@ load @term/base/pattern/program
 
 load @term/base/pattern/unicode-read
   find close-under-case
+  find word-set
 
 # which tier a pattern runs on
 host tier-native, code 0
 host tier-linear, code 1
 host tier-backtrack, code 2
+
+# one platform's regex engine, as the analysis needs to know it: what it runs with Term's meaning (its capability
+# set, ./feature.tree), whether it is linear on everything it accepts, the most ranges one class may hold for it to
+# stay faster than tier B, and how it writes the end of the text and the edges of a line. Built from
+# native/<platform>/regex.tree by `prepare`
+form engine-profile
+  link name, like text
+  link features
+    like list
+      like text
+  link linear, like boolean
+  link class-limit, like number
+  link end, like text
+  # `(?m:^)` and `(?m:$)` where the engine's line ends only at a line feed (Rust); a lookaround everywhere else
+  link line-inline, like boolean
+  # the scoped flags that make a back reference compare by case class: `i`, or `iu` where `i` alone folds only ASCII
+  # (java.util.regex)
+  link fold-flags, like text
 
 # what the analysis found
 form analysis
@@ -71,6 +103,17 @@ form analysis
   link has-native, like boolean
   # whether a back reference compares under `i`, so the matcher needs the case table
   link folds, like boolean
+  # the tier Term runs the pattern on itself, B or C: the tier when it is not native, and where a native search goes
+  # should the engine refuse the text after all
+  link fallback, like number
+  # every feature the rewritten pattern uses (./feature.tree)
+  link features
+    like list
+      like text
+  # the text the engine would be given on its capability set and class width alone, whatever the safety rule
+  # decided: what the probe runs. The same as `native` when the pattern is native; empty when the engine cannot
+  # run it at all
+  link capable, like text
 
 # every code point a piece can consume anywhere in it
 task all-set
@@ -247,6 +290,14 @@ task is-deterministic
           send back, false
       save starts
         call first-set(read(body))
+      # a possessive repetition never gives an iteration back, so what follows it cannot reopen the choice: only the
+      # body's own choices count, each iteration followed by the next
+      fork test
+        hook test
+          read possessive
+        hook hold
+          send back
+            call is-deterministic(read(body), read(starts))
       # a repetition with a choice left (more than its least) is decided by the next code point only when the body
       # cannot start with what follows
       fork test
@@ -261,12 +312,24 @@ task is-deterministic
     case group
       send back
         call is-deterministic(read(body), read(follow))
+    # an atomic group takes its body's first match and never reopens it, so its body is decided alone, with nothing
+    # after it
     case atom
-      send back, false
+      save nothing, make list
+      send back
+        call is-deterministic(read(body), read(nothing))
+    # a lookaround is tried once at a position and consumes nothing: safe when its body is decided alone and reads a
+    # bounded stretch, so each test costs a constant. An unbounded body reads to the end at every position
     case look
-      send back, false
+      save nothing, make list
+      send back
+        call and
+          call is-minimum(call(most-length, read(body)), code(0))
+          call is-deterministic(read(body), read(nothing))
+    # a back reference matches its group's text one way or not at all: it opens no choice. What it can start with is
+    # every code point (`first-set`), so a repetition before it that could also take that text is refused there
     case refer
-      send back, false
+      send back, true
     case blank
       send back, true
     case letter
@@ -470,66 +533,6 @@ task risky-loop-set
     case refer
       send back, read none
 
-# whether any group sits inside a repetition, or any repetition's body can match empty: the two places the engines
-# disagree about what a group remembers
-task has-loop-capture
-  take p, like piece
-  take inside, like boolean
-  like boolean
-  fork case, read p
-    case group
-      fork test
-        hook test
-          read inside
-        hook hold
-          send back, true
-      send back
-        call has-loop-capture(read(body), read(inside))
-    case loop
-      fork test
-        hook test
-          call can-be-empty(read(body))
-        hook hold
-          send back, true
-      send back
-        call has-loop-capture(read(body), true)
-    case chain
-      walk list, read parts
-        hook next
-          take site, name part
-          fork test
-            hook test
-              call has-loop-capture(read(part), read(inside))
-            hook hold
-              send back, true
-      send back, false
-    case choice
-      walk list, read parts
-        hook next
-          take site, name part
-          fork test
-            hook test
-              call has-loop-capture(read(part), read(inside))
-            hook hold
-              send back, true
-      send back, false
-    case atom
-      send back
-        call has-loop-capture(read(body), read(inside))
-    case look
-      send back
-        call has-loop-capture(read(body), read(inside))
-    case blank
-      send back, false
-    case letter
-      send back, false
-    case ranges
-      send back, false
-    case edge
-      send back, false
-    case refer
-      send back, false
-
 # a set written as a class body in the canonical dialect, the surrogate block left out (no input holds one)
 task class-text
   take set
@@ -612,36 +615,36 @@ task push-range-text
   call parts/push(text(<{first}-{last}>))
   send back, code 1
 
-# the piece in the canonical dialect, or an empty list when it uses something outside it. `end` is how the engine
-# writes the end of the text
-task dialect-text
+# the piece as text for a native engine, or an empty list when some part has no spelling at all. Every construct a
+# capability set can admit is written; the capability check decides beforehand whether the text is used. `words`
+# and `lines` are class bodies: Term's word characters, and every code point but a line feed, each written only when
+# the piece needs it
+task native-text
   take p, like piece
+  # how the engine writes the end of the text, and whether it writes a line's edges inline (`engine-profile`)
   take end, like text
+  take line-inline, like boolean
+  take fold-flags, like text
+  take words, like text
+  take lines, like text
   like list
     like text
   save no, make list
+  save out, make list
   fork case, read p
     case blank
-      save out, make list
       call out/push(text(<(?:)>))
       send back, read out
     case letter
-      save out, make list
       call out/push(call(regex-literal, read(point)))
       send back, read out
     case ranges
-      fork test
-        hook test
-          call is-equal(call(set-size, read(set)), code(0))
-        hook hold
-          send back, read no
+      # the empty class: `[]` is ECMAScript's spelling, and no capability set but its own admits `empty-set`
       save body
         call class-text(read(set))
-      save out, make list
       call out/push(text(<[{body}]>))
       send back, read out
     case edge
-      save out, make list
       fork test
         hook test
           call is-equal(read(kind), read(edge-text-start))
@@ -653,14 +656,49 @@ task dialect-text
         hook hold
           call out/push(read(end))
           send back, read out
-      send back, read no
+        hook test
+          call is-equal(read(kind), read(edge-line-start))
+        hook hold
+          fork test
+            hook test
+              read line-inline
+            hook hold
+              call out/push(text(<(?m:^)>))
+            hook miss
+              call out/push(text(<(?\<![{lines}])>))
+          send back, read out
+        hook test
+          call is-equal(read(kind), read(edge-line-end))
+        hook hold
+          fork test
+            hook test
+              read line-inline
+            hook hold
+              call out/push(text(<(?m:$)>))
+            hook miss
+              call out/push(text(<(?![{lines}])>))
+          send back, read out
+      # a word edge, as the two lookarounds that say it with Term's word characters
+      fork test
+        hook test
+          call is-equal(read(words), text(<>))
+        hook hold
+          send back, read no
+      fork test
+        hook test
+          call is-equal(read(kind), read(edge-word))
+        hook hold
+          call out/push(text(<(?:(?\<=[{words}])(?![{words}])|(?\<![{words}])(?=[{words}]))>))
+        hook miss
+          call out/push(text(<(?:(?\<=[{words}])(?=[{words}])|(?\<![{words}])(?![{words}]))>))
+      send back, read out
     case chain
       save written, make list
       walk list, read parts
         hook next
           take site, name part
           save one
-            call dialect-text(read(part), read(end))
+            call native-text(read(part), read(end), read(line-inline), read(fold-flags), read(words), read(lines))
           fork test
             hook test
               call is-equal(read(one/length), code(0))
@@ -669,7 +707,6 @@ task dialect-text
           call written/push(read(one/0))
       save joined
         call join(read(written), text(<>))
-      save out, make list
       call out/push(text(<(?:{joined})>))
       send back, read out
     case choice
@@ -678,7 +715,7 @@ task dialect-text
         hook next
           take site, name part
           save one
-            call dialect-text(read(part), read(end))
+            call native-text(read(part), read(end), read(line-inline), read(fold-flags), read(words), read(lines))
           fork test
             hook test
               call is-equal(read(one/length), code(0))
@@ -687,32 +724,21 @@ task dialect-text
           call written/push(read(one/0))
       save joined
         call join(read(written), text(<|>))
-      save out, make list
       call out/push(text(<(?:{joined})>))
       send back, read out
     case group
       save one
-        call dialect-text(read(body), read(end))
+        call native-text(read(body), read(end), read(line-inline), read(fold-flags), read(words), read(lines))
       fork test
         hook test
           call is-equal(read(one/length), code(0))
         hook hold
           send back, read no
-      save out, make list
       call out/push(text(<({one/0})>))
       send back, read out
     case loop
-      fork test
-        hook test
-          call or
-            read possessive
-            call or
-              call is-above(read(least), code(1000))
-              call is-above(read(most), code(1000))
-        hook hold
-          send back, read no
       save one
-        call dialect-text(read(body), read(end))
+        call native-text(read(body), read(end), read(line-inline), read(fold-flags), read(words), read(lines))
       fork test
         hook test
           call is-equal(read(one/length), code(0))
@@ -730,18 +756,65 @@ task dialect-text
           save count, text <\{{least}\}>
       fork test
         hook test
+          read possessive
+        hook hold
+          save count, text <{count}+>
+        hook test
           call not(read(greedy))
         hook hold
           save count, text <{count}?>
-      save out, make list
       call out/push(text(<(?:{one/0}){count}>))
       send back, read out
     case atom
-      send back, read no
+      save one
+        call native-text(read(body), read(end), read(line-inline), read(fold-flags), read(words), read(lines))
+      fork test
+        hook test
+          call is-equal(read(one/length), code(0))
+        hook hold
+          send back, read no
+      call out/push(text(<(?\>{one/0})>))
+      send back, read out
     case look
-      send back, read no
+      save one
+        call native-text(read(body), read(end), read(line-inline), read(fold-flags), read(words), read(lines))
+      fork test
+        hook test
+          call is-equal(read(one/length), code(0))
+        hook hold
+          send back, read no
+      save opening, text <(?=>
+      fork test
+        hook test
+          call and
+            read behind
+            read negate
+        hook hold
+          save opening, text <(?\<!>
+        hook test
+          read behind
+        hook hold
+          save opening, text <(?\<=>
+        hook test
+          read negate
+        hook hold
+          save opening, text <(?!>
+      call out/push(text(<{opening}{one/0})>))
+      send back, read out
+    # a reference in a group of its own, so a digit after it is never read as part of its number; under `i` the flag
+    # scoped to it alone, since everything else carries its case closed into its classes
     case refer
-      send back, read no
+      # the backslash as a value: written before `{` in a text literal it would escape the brace
+      save backslash
+        call rune-to-text(code(92))
+      fork test
+        hook test
+          read fold
+        hook hold
+          call out/push(text(<(?{fold-flags}:{backslash}{index})>))
+        hook miss
+          call out/push(text(<(?:{backslash}{index})>))
+      send back, read out
 
 # whether the piece holds a back reference that compares under `i`
 task has-folded-refer
@@ -1334,8 +1407,6 @@ task possessive-of-set
                   bind possessive, false
                 read stop
 
-# analyze a parsed pattern for an engine: `end` is how it writes the end of the text, `linear` whether it is linear on
-# everything it accepts
 # the most ranges any one class in the piece holds, which is what a native engine that tests a class range by range
 # pays at every position (a `\p{...}` is written out as a class, hundreds of ranges, so its meaning is the table's on
 # every engine)
@@ -1393,50 +1464,175 @@ task largest-class
     case refer
       send back, code 0
 
+# the native text of one form of the pattern for the engine, or the empty text when the engine cannot run it: a
+# feature outside its capability set, a class wider than it is fast on, or, on an engine that backtracks, a pattern
+# that could make it backtrack without end. `widest` is the widest class the text will hold
+task native-for
+  take p, like piece
+  take features
+    like list
+      like text
+  take widest, like number
+  take profile, like engine-profile
+  take words, like text
+  take lines, like text
+  like text
+  # the cheap tests first (capability and class width, in capable-text), so the safety analysis runs only for a
+  # pattern the engine could take. `linear` is read before the profile is handed on, being the one field read here
+  save linear, read profile/linear
+  save written
+    call capable-text(read(p), read(features), read(widest), read(profile), read(words), read(lines))
+  fork test
+    hook test
+      call is-equal(read(written), text(<>))
+    hook hold
+      send back, text <>
+  fork test
+    hook test
+      call and
+        call not(read(linear))
+        call not(call(is-safe-to-backtrack, read(p)))
+    hook hold
+      send back, text <>
+  send back, read written
+
+# the native text of one form of the pattern on capability and class width ALONE, whatever the safety rule says:
+# what the probe runs to hold each engine's capability set to Term's meaning, including features the safety rule
+# seldom lets through. Empty when a feature is outside the set or a class is too wide
+task capable-text
+  take p, like piece
+  take features
+    like list
+      like text
+  take widest, like number
+  take profile, like engine-profile
+  take words, like text
+  take lines, like text
+  like text
+  fork test
+    hook test
+      call is-above(read(widest), read(profile/class-limit))
+    hook hold
+      send back, text <>
+  fork test
+    hook test
+      call not(call(features-covered, read(features), read(profile/features)))
+    hook hold
+      send back, text <>
+  save written
+    call native-text(read(p), read(profile/end), read(profile/line-inline), read(profile/fold-flags), read(words), read(lines))
+  fork test
+    hook test
+      call is-equal(read(written/length), code(0))
+    hook hold
+      send back, text <>
+  send back, read written/0
+
+# the text the writer gives this engine for the rewritten pattern, capability set, class width and safety all
+# IGNORED: what the exploration probe runs to find out whether an engine could claim more features than it does.
+# Empty only when some part has no spelling at all
+task written-text
+  take root, like piece
+  take profile, like engine-profile
+  like text
+  save rewritten
+    call rewrite(read(root), false)
+  save word-text, text <>
+  fork test
+    hook test
+      call holds-name(call(piece-features, read(rewritten)), text(<word-edge>))
+    hook hold
+      save word-text
+        call class-text(call(word-set))
+  save line-text
+    call class-text(call(negate-set, call(range-set, code(10), code(10))))
+  save written
+    call native-text(read(rewritten), read(profile/end), read(profile/line-inline), read(profile/fold-flags), read(word-text), read(line-text))
+  fork test
+    hook test
+      call is-equal(read(written/length), code(0))
+    hook hold
+      send back, text <>
+  send back, read written/0
+
+# analyze a parsed pattern for one engine. The tier is the first of these that can run it:
+#
+#   A  native     every feature the pattern uses is in the engine's capability set, no class holds more ranges than
+#                 its limit, and the engine is linear or the pattern cannot make it backtrack without end
+#   B  linear     tier B's set: everything but a back reference, an atomic group and a possessive repetition
+#   C  backtrack  everything
 task analyze-pattern
   take root, like piece
-  take end, like text
-  take linear, like boolean
-  # the most ranges one class may hold for the native engine to stay faster than tier B (`engine-class-limit`)
-  take class-limit, like number
+  take profile, like engine-profile
   like analysis
-  save none, make list
   save rewritten
     call rewrite(read(root), false)
   save folds
     call has-folded-refer(read(rewritten))
-  save written, make list
-  fork test
-    hook test
-      call not(call(has-loop-capture, read(rewritten), false))
-    hook hold
-      save written
-        call dialect-text(read(rewritten), read(end))
-  save has-native
-    call is-above(read(written/length), code(0))
-  save native, text <>
-  fork test
-    hook test
-      call is-above(read(written/length), code(0))
-    hook hold
-      save native, read written/0
+  save features
+    call piece-features(read(rewritten))
   save tier, read tier-linear
   fork test
     hook test
       call needs-backtracking(read(rewritten))
     hook hold
       save tier, read tier-backtrack
+  # the classes the native text holds: the pattern's own, and those its edges are written with
+  save words, make list
+  save widest
+    call largest-class(read(rewritten))
+  save word-edges
+    call holds-name(read(features), text(<word-edge>))
   fork test
     hook test
-      call and
-        call and
-          read has-native
-          call is-maximum(call(largest-class, read(rewritten)), read(class-limit))
-        call or
-          read linear
-          call is-safe-to-backtrack(read(rewritten))
+      read word-edges
+    hook hold
+      save words
+        call word-set
+      save size
+        call divide(read(words/length), code(2))
+      fork test
+        hook test
+          call is-above(read(size), read(widest))
+        hook hold
+          save widest, read size
+  save word-text, text <>
+  fork test
+    hook test
+      read word-edges
+    hook hold
+      save word-text
+        call class-text(read(words))
+  save line-text
+    call class-text(call(negate-set, call(range-set, code(10), code(10))))
+  # the rewritten pattern first; then the pattern as written, since a rewrite made for tier B (a possessive repetition
+  # as greedy plus a lookahead) can leave it worse for an engine that runs the original construct itself
+  save native
+    call native-for(read(rewritten), read(features), read(widest), read(profile), read(word-text), read(line-text))
+  fork test
+    hook test
+      call is-equal(read(native), text(<>))
+    hook hold
+      save native
+        call native-for(read(root), call(piece-features, read(root)), read(widest), read(profile), read(word-text), read(line-text))
+  save has-native
+    call not(call(is-equal, read(native), text(<>)))
+  save capable, read native
+  save fallback, read tier
+  fork test
+    hook test
+      read has-native
     hook hold
       save tier, read tier-native
+    hook miss
+      save capable
+        call capable-text(read(rewritten), read(features), read(widest), read(profile), read(word-text), read(line-text))
+      fork test
+        hook test
+          call is-equal(read(capable), text(<>))
+        hook hold
+          save capable
+            call capable-text(read(root), call(piece-features, read(root)), read(widest), read(profile), read(word-text), read(line-text))
   send back
     make analysis
       bind root, read rewritten
@@ -1444,3 +1640,6 @@ task analyze-pattern
       bind native, read native
       bind has-native, read has-native
       bind folds, read folds
+      bind fallback, read fallback
+      bind features, read features
+      bind capable, read capable

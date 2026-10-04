@@ -7,7 +7,7 @@ import path from 'node:path'
 import { compile } from '@term/make/code/compile/compile'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { editorResolver } from '@term/make/code/resolve'
-import { closeRun, count, field, openRun, printData, report, reportProblems } from '@term/call/code/output'
+import { closeRun, count, field, openRun, printData, report, reportProblems, showPath } from '@term/call/code/output'
 
 // the JSON shape an agent consumes: stable, workspace-relative, no machine paths or timestamps
 function toJson(
@@ -52,8 +52,8 @@ export async function callScan(input: {
       )
       process.exitCode = 1
     } else {
-      openRun({ verb: 'scan', root: input.root, subject: input.file })
-      report({ glyph: 'failed', kind: 'problem', subject: 'There is no such file', fields: [field('looked', file)] })
+      openRun({ verb: 'scan', root: input.root, facts: [input.file] })
+      report({ glyph: 'failed', kind: 'problem', subject: 'There is no such file', fields: [field('looked', showPath(file, input.root))] })
       closeRun({ verdict: 'Nothing scanned' })
     }
 
@@ -85,7 +85,8 @@ export async function callScan(input: {
     return
   }
 
-  openRun({ verb: 'scan', root: input.root, subject: input.file })
+  // the working folder is the subject (section 3), the file a fact
+  openRun({ verb: 'scan', root: input.root, facts: [input.file] })
   // each diagnostic a Problem item with its frame (section 12); the run fails on any error, as before
   reportProblems(diagnostics.map(diagnostic => ({ diagnostic, text: diagnostic.file === file ? text : undefined })), input.root)
   const errors = diagnostics.filter(d => d.severity === 'error').length

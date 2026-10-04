@@ -88,7 +88,7 @@ import { simplify } from '@term/make/code/ir/simplify'
 import { passDictionaries } from '@term/make/code/ir/dictionary'
 import { lowerZones } from '@term/make/code/compile/view-lower'
 import { lowerRoutes } from '@term/make/code/compile/route-lower'
-import { RENDER } from '@term/make/code/compile/render-names'
+import { RENDER, RENDER_SUPPORT } from '@term/make/code/compile/render-names'
 import { compileLookCss } from '@term/make/code/compile/look-css'
 import { compileLookTable, styleTableText } from '@term/make/code/compile/look-table'
 import {
@@ -128,17 +128,7 @@ const HOST_DESCRIPTIONS = new Set(['@term/bind'])
 // whenever a program contains a zone, or they get shaken out and dangle. The
 // prune follows references, so pinning the render helpers keeps the dom
 // primitives (set-attribute, append, ...) they call, transitively.
-const ZONE_RENDER_RUNTIME: string[] = [
-  ...Object.values(RENDER),
-  'append',
-  'remove',
-  'replace',
-  'open-scope',
-  'close-scope',
-  'make-signal',
-  'read-signal',
-  'dispose-scope',
-]
+const ZONE_RENDER_RUNTIME: string[] = [...Object.values(RENDER), ...RENDER_SUPPORT]
 
 export type CompileResult =
   | {

@@ -65,6 +65,11 @@ export function check(
 ): Diagnostic[] {
   const diagnostics: Diagnostic[] = []
 
+  // the placeholders standing in for a required argument a call leaves out. The refusal is already said, so the
+  // placeholder is not checked against the parameter: it was, and the one mistake read twice, the second time as
+  // `argument: expected number, found void` (guides: language/tasks, 2026-10-04)
+  const leftOut = new WeakSet<Expression>()
+
   // the file currently being checked. With a merged multi-module program `file` is only the entry; `fileOrigin` maps
   // each top-level statement to its module, so a type error points at the real source rather than the entry.
   let currentFile = file
@@ -1158,12 +1163,7 @@ export function check(
             )
           } else {
             args.forEach((arg, i) =>
-              expect(
-                arg,
-                signature.params[i]!,
-                node.args[i]!.span,
-                'argument',
-              ),
+              leftOut.has(node.args[i]!) || expect(arg, signature.params[i]!, node.args[i]!.span, 'argument'),
             )
           }
 
@@ -1660,6 +1660,27 @@ export function check(
               // with an `else`. See `closed` in compile/node.ts.
               node.closed = true
             }
+          } else {
+            // a `hook miss` arm that answers one case or none says less than listing it would, and a case added
+            // later is answered by it without a word (note/term/gaps/decisions.md, the catch-all)
+            const rest = [...variants].filter(v => !covered.has(v))
+
+            if (rest.length <= 1) {
+              diagnostics.push(
+                diagnose('thin-catch-all', {
+                  file: currentFile,
+                  span: node.span,
+                  message:
+                    rest.length === 0
+                      ? `this \`hook miss\` arm answers no case of "${subjectType.name}": every case is listed above it`
+                      : `this \`hook miss\` arm answers one case of "${subjectType.name}", \`${rest[0]}\``,
+                  hint:
+                    rest.length === 0
+                      ? 'remove the arm'
+                      : `write it as \`case ${rest[0]}\`, so a case added to "${subjectType.name}" later stops the build rather than going to this arm`,
+                }),
+              )
+            }
           }
         }
 
@@ -1723,6 +1744,23 @@ export function check(
             }
 
             for (const { field, local } of armLocals(fieldNames, branch.binds ?? [])) {
+              // a field named like a variable in scope hides it for the whole arm, and a `read` of it there reads the
+              // field without a word. A module-level name is not a variable this warns about: only one the task
+              // bound (a parameter, a `save`), which is what the reader expects to still mean what it meant
+              // (guides: language/matching, 2026-10-04)
+              const outer = env.get(local)
+
+              if (outer !== undefined && outer !== moduleEnv.get(local)) {
+                diagnostics.push(
+                  diagnose('arm-shadow', {
+                    file: currentFile,
+                    span: node.span,
+                    message: `"case ${branch.label}" binds its field "${field}" as "${local}", which hides the "${local}" already in scope for the whole arm`,
+                    hint: `rename the fields under \`case ${branch.label}\` with \`link\` lines, which name them in the order the variant declares them, or rename the outer "${local}"`,
+                  }),
+                )
+              }
+
               inner.set(local, {
                 vars: [],
                 type: seedType(fields.get(field)!, argMap),
@@ -2603,6 +2641,10 @@ export function check(
               message: `"${callee}" takes ${ordered.length} argument${
                 ordered.length === 1 ? '' : 's'
               }, and this is one more`,
+              // the usual cause is a comma after a call written with a space, which puts what follows inside that
+              // call (`add double n, 1`). The extra argument is where the comma landed, so the hint names the
+              // spelling that keeps it out (guides: language/syntax, 2026-10-04)
+              hint: `if a comma put it here, close the call with parentheses, \`${callee}(...)\`, or stack its arguments one per line: a comma after a call written with a space puts what follows inside that call`,
             }),
           )
           failed = true
@@ -2707,6 +2749,7 @@ export function check(
         )
         // keep the positions aligned for the rest of the check; the diagnostic already stops the build
         ordered[i] = { form: 'unit', span: node.span }
+        leftOut.add(ordered[i]!)
       }
     }
 
@@ -2733,6 +2776,7 @@ export function check(
         )
         // keep the positions aligned for the rest of the check; the diagnostic already stops the build
         ordered[i] = { form: 'unit', span: node.span }
+        leftOut.add(ordered[i]!)
         continue
       }
 

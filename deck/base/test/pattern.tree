@@ -20,13 +20,21 @@ load @term/base/pattern
   find escape-pattern
   find is-valid-pattern
   find pattern-match
+  find prepared-pattern
+  find find-match-prepared
+  find find-matches-prepared
 
 load @term/base/pattern/node
   find pattern-budget
 
+load @term/base/pattern/analyze
+  find tier-native
+
 load @term/base/native/{platform}/regex
-  find engine-linear
-  find engine-class-limit
+  find engine-name
+
+load @term/base/text
+  find starts-with
 
 load @term/base/pattern/syntax
   find parse-pattern
@@ -99,27 +107,129 @@ task tier
   send back
     call pattern-tier(make(pattern, read(source)))
 
-# `a*b` unanchored makes a backtracking engine try each start over the whole run of a: native only where the
-# platform's engine is linear (Rust's regex crate), tier B everywhere else
-task unanchored-tier
+# the tier expected on this platform's engine, from one per engine family: ECMAScript (node and the browser), the
+# Rust regex crate, java.util.regex (Kotlin), ICU (Swift)
+task on
+  take ecmascript, like text
+  take rust, like text
+  take java, like text
+  take icu, like text
   like text
+  save name
+    call engine-name
   fork test
     hook test
-      call engine-linear
+      call starts-with(read(name), text(<ECMAScript>))
     hook hold
-      send back, text <native>
-  send back, text <linear>
+      send back, read ecmascript
+    hook test
+      call is-equal(read(name), text(<the regex crate>))
+    hook hold
+      send back, read rust
+    hook test
+      call is-equal(read(name), text(<java.util.regex>))
+    hook hold
+      send back, read java
+  send back, read icu
 
-# `\p{Lu}+` reaches a native engine as a class of hundreds of ranges: native where the engine tests a class in
-# constant time, tier B where it tests one range by range (java.util.regex, `engine-class-limit` 32)
-task property-tier
+# one line per pattern whose tier here is not the one expected, or the empty text
+task tier-misses
   like text
-  fork test
-    hook test
-      call is-above(call(engine-class-limit), code(1000))
-    hook hold
-      send back, text <native>
-  send back, text <linear>
+  save out, text <>
+  save rows, make list
+  # anchored, one way through: native on every engine
+  call rows/push(text(<^a*b>))
+  call rows/push(call(on, text(<native>), text(<native>), text(<native>), text(<native>)))
+  # unanchored, a backtracking engine re-reads the run of a from every start: native only on the linear engine
+  call rows/push(text(<a*b>))
+  call rows/push(call(on, text(<linear>), text(<native>), text(<linear>), text(<linear>)))
+  # a group in a repetition, catastrophic on a backtracking engine: tier B everywhere
+  call rows/push(text(<(a+)+$>))
+  call rows/push(call(on, text(<linear>), text(<linear>), text(<linear>), text(<linear>)))
+  # a bounded lookbehind: native on every engine with lookaround, tier B on Rust
+  call rows/push(text(<(?\<=x)y>))
+  call rows/push(call(on, text(<native>), text(<linear>), text(<native>), text(<native>)))
+  # a reference the analysis replaces with its text: the canonical dialect, native everywhere
+  call rows/push(text(<(a)\1>))
+  call rows/push(call(on, text(<native>), text(<native>), text(<native>), text(<native>)))
+  # a reference to a group that has taken part, one way through: native where references are read, tier C on Rust
+  call rows/push(text(<(\w)\1>))
+  call rows/push(call(on, text(<native>), text(<backtrack>), text(<native>), text(<native>)))
+  # unanchored possessive: every start re-reads the run, so no backtracking engine takes it
+  call rows/push(text(<[a-z]++x>))
+  call rows/push(call(on, text(<linear>), text(<linear>), text(<linear>), text(<linear>)))
+  # anchored possessive: Java and ICU run the possessive itself; ECMAScript has no syntax for it and its rewrite to
+  # greedy plus a lookahead leaves `[a-z]+` before an `x` it could take
+  call rows/push(text(<^[a-z]++x>))
+  call rows/push(call(on, text(<linear>), text(<linear>), text(<native>), text(<native>)))
+  # an atomic group whose body has two ways to start: no backtracking engine takes it, and Rust cannot
+  call rows/push(text(<(?\>ab|a)c>))
+  call rows/push(call(on, text(<backtrack>), text(<backtrack>), text(<backtrack>), text(<backtrack>)))
+  # an atomic run of one set, rewritten to greedy plus a lookahead: native wherever lookaround is
+  call rows/push(text(<^(?\>a+)b>))
+  call rows/push(call(on, text(<native>), text(<linear>), text(<native>), text(<native>)))
+  # a class of hundreds of ranges: native where the engine tests a class in constant time, tier B on Java
+  call rows/push(text(<\p\{Lu\}+>))
+  call rows/push(call(on, text(<native>), text(<native>), text(<linear>), text(<native>)))
+  # Term's word edge, written as lookarounds over its word characters: too wide a class for Java, unknown to Rust
+  call rows/push(text(<\bcat\b>))
+  call rows/push(call(on, text(<native>), text(<linear>), text(<linear>), text(<native>)))
+  # line edges: lookarounds on the backtracking engines, `(?m:^)` on Rust
+  call rows/push(text(<(?m)^a$>))
+  call rows/push(call(on, text(<native>), text(<native>), text(<native>), text(<native>)))
+  # the rows come in pairs, a pattern then its expected tier: walked in order, with no index to keep inside the list
+  save source, text <>
+  save waiting, true
+  walk list, read rows
+    hook next
+      take site, name row
+      fork test
+        hook test
+          read waiting
+        hook hold
+          save source, read row
+          save waiting, false
+        hook miss
+          save got
+            call tier(read(source))
+          fork test
+            hook test
+              call not(call(is-equal, read(got), read(row)))
+            hook hold
+              save out, text <{out}{source} is {got}, want {row}; >
+          save waiting, true
+  send back, read out
+
+# `a+` prepared, then marked native with a text no engine accepts: every search must still answer, by the fallback
+task refused-answers
+  like text
+  save ready
+    call prepare(make(pattern, text(<a+>)))
+  save broken
+    make prepared-pattern
+      bind source, read ready/source
+      bind groups, read ready/groups
+      bind names, read ready/names
+      bind tier, read tier-native
+      bind fallback, read ready/fallback
+      bind native, text <(>
+      bind program, read ready/program
+      bind folds, read ready/folds
+      bind words, read ready/words
+  save texts, make list
+  walk list
+    call find-matches-prepared(read(broken), text(<baa ca>))
+    hook next
+      take site, name hit
+      call texts/push(read(hit/text))
+  save first, text <none>
+  fork case, call(find-match-prepared, read(broken), text(<xaay>))
+    case some
+      link hit
+      save first, text <{hit/start}:{hit/end}>
+    case none
+      save first, text <none>
+  send back, text <{call(join, read(texts), text(<,>))} {first}>
 
 task refuses
   take source, like text
@@ -278,21 +388,7 @@ test <positions count code points>
 
 test <each pattern lands on the tier that can run it fastest without hanging>
   want hold
-    call and
-      call and
-        call and
-          call is-equal(call(tier, text(<^a*b>)), text(<native>))
-          call is-equal(call(tier, text(<a*b>)), call(unanchored-tier))
-        call and
-          call is-equal(call(tier, text(<(a+)+$>)), text(<linear>))
-          call is-equal(call(tier, text(<(?\<=x)y>)), text(<linear>))
-      call and
-        call and
-          call is-equal(call(tier, text(<(a)\1>)), text(<native>))
-          call is-equal(call(tier, text(<(\w)\1>)), text(<backtrack>))
-        call and
-          call is-equal(call(tier, text(<[a-z]++x>)), text(<linear>))
-          call is-equal(call(tier, text(<\p\{Lu\}+>)), call(property-tier))
+    call is-equal(call(tier-misses), text(<>))
 
 test <the backtracking tier names what put a pattern there, after the rewrites>
   want hold
@@ -307,6 +403,10 @@ test <the backtracking tier names what put a pattern there, after the rewrites>
         call and
           call is-equal(call(backtrack-reason, make(pattern, text(<[a-z]++x>))), text(<>))
           call is-equal(call(backtrack-reason, make(pattern, text(<a*b>))), text(<>))
+
+test <a native engine that refuses its text is answered by Term's own tier, never as no match>
+  want hold
+    call is-equal(call(refused-answers), text(<aa,a 1:3>))
 
 test <a pattern that is not one is refused before any engine sees it>
   want hold

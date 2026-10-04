@@ -814,7 +814,9 @@ export function raiseSets(
             exceptions.has(node.value.name)
           ) {
             direct.add(node.value.name)
-          } else if (node.value.form === 'string') {
+          } else if (node.value.form === 'string' || node.value.form === 'template') {
+            // `halt <text>` raises `failure`, and so does one whose text interpolates (`halt <at {position}>`), which
+            // was counted as a re-raise of an unknown exception
             direct.add('failure')
           } else {
             // a re-raised value: what it is was decided where it was first raised

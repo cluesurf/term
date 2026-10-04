@@ -19,10 +19,10 @@ import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { toCamel } from '@term/make/code/compile/typescript'
 import type { Resolver } from '@term/make/code/compile/load'
 import type { RoleOf } from '@term/call/code/role-of'
-import { preprocessTests, readable } from '@term/call/code/test-preprocess'
+import { preprocessTests, readable, wantFailed, wantLine } from '@term/call/code/test-preprocess'
 
 // one test: whether it held, how long it took in milliseconds, and the error it threw when it threw one
-export type TestResult = { name: string; label: string; held: boolean; ms?: number; error?: string }
+export type TestResult = { name: string; label: string; held: boolean; ms?: number; error?: string; line?: number }
 export type TestRun = {
   ok: boolean
   results: TestResult[]
@@ -84,7 +84,8 @@ export async function runTestFile(input: {
   leanOf?: (file: string) => boolean
 }): Promise<TestRun> {
   // expand `test <phrase>` blocks into top-level tasks; a file with none passes through unchanged
-  const { text, labels } = preprocessTests(input.source)
+  // `heads`: each test task's 0-based line in the file as written, so a test that does not hold is placed (`at`)
+  const { text, labels, heads } = preprocessTests(input.source)
   const names = discoverTests(text, input.file)
   const result = compile(
     // use the real file path as the entry so `@/...` local-package aliases resolve against this file's deck.tree
@@ -155,14 +156,24 @@ export async function runTestFile(input: {
 
   for (const name of names) {
     const label = labels.get(name) ?? name.replace(/-/g, ' ')
+    const head = heads.get(name)
+    const line = head === undefined ? undefined : head + 1
     const started = Date.now()
 
     // a test that throws is a test that failed, with what it threw, and the tests after it still run
     try {
       const held = Boolean(await mod[toCamel(name)]!())
-      results.push({ name, label, held, ms: Date.now() - started })
+      results.push({ name, label, held, ms: Date.now() - started, line })
     } catch (error) {
-      results.push({ name, label, held: false, ms: Date.now() - started, error: error instanceof Error ? error.message : String(error) })
+      // a failing `want` raises a marker naming its line, read back as the line itself
+      const note = (error as { note?: unknown } | null)?.note
+      const why =
+        wantFailed(typeof note === 'string' ? note : undefined, input.source) ??
+        (error instanceof Error ? error.message : String(error))
+
+      // the failing `want`'s own line when the marker names it, else the test's `test` line
+      const wanted = wantLine(typeof note === 'string' ? note : undefined)
+      results.push({ name, label, held: false, ms: Date.now() - started, error: why, line: wanted !== undefined ? wanted + 1 : line })
     }
   }
 

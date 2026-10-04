@@ -156,13 +156,22 @@ mine fork-miss
       mine form, like flow
         site flow
 
+# The arms are `case <name>`, and one `hook miss` (lean: `miss`) for every case they do not list: the catch-all, in
+# the word `fork test` already uses for "otherwise", so a variant cannot take it (note/term/gaps/plan.md, the open
+# decisions). The `hook` and bare arms mint the form `fork test`'s do, which carries no case name, and the bridge
+# reads an arm with no name as the match's `otherwise` and refuses any kind but `miss` (compile/mint-bridge.ts).
 mine fork-case
   mine term, term case
   mine form, like seed
     site seed
   mine list
-    mine form, like fork-arm
-      site arm
+    mine any
+      mine form, like fork-arm
+        site arm
+      mine form, like fork-arm-hook
+        site arm
+      mine form, like fork-arm-bare
+        site arm
 
 # `sift <value>` is the match: exactly `fork case, <value>`, the same subject and the same `case` arms, minted into
 # the same `fork-case` form, so nothing downstream of the mill can tell the two spellings apart.
@@ -171,8 +180,13 @@ mine sift
     mine form, like seed
       site seed
     mine list
-      mine form, like fork-arm
-        site arm
+      mine any
+        mine form, like fork-arm
+          site arm
+        mine form, like fork-arm-hook
+          site arm
+        mine form, like fork-arm-bare
+          site arm
 
 mine fork-arm
   mine term, term case

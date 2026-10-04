@@ -52,6 +52,7 @@ import {
   ownedElements,
   ownedFields,
   namesIn,
+  lastReads,
 } from '@term/make/code/compile/backend'
 import type { Lend, TextCursors } from '@term/make/code/compile/backend'
 import {
@@ -913,6 +914,89 @@ export function emitSwift(
   // `indirect` because they can contain themselves
   const declaredForms = new Set<string>()
   const recursive = recursiveEnums(program)
+  // NODES REUSED (Swift's side of rust.ts `reusable`). An `indirect` case allocates a box per value and cannot be
+  // reused: Towers' every move freed one node and allocated the next. A recursive form whose case that holds the form
+  // is opened at a local's last read and built again in one task keeps that case's fields in a final class instead
+  // (`case disk(StackDisk)`), and the task keeps a node its match opened in a spare of its own and builds the next
+  // node in it. Only when `isKnownUniquelyReferenced` says nothing else holds the node, so no binding the program can
+  // still read ever sees a field change: a value stays a value. The class alone measured slower than `indirect` (708 ms
+  // against 657), and the reuse with it 306, against the hand version's 344 (`tmp/swift-towers-payload-ab.ts`), so a
+  // form takes it only where some task does both. Keyed by form: its payload case and the class's name
+  const nodeClasses = new Map<string, { label: string; name: string; fields: { name: string; type: Type }[] }>()
+  // per task, the forms it keeps a spare node of; and the match subjects that are a task's local at its last read,
+  // matched with `consume` so the node a case binds is held by that binding alone
+  const spareTasks = new Map<string, Set<string>>()
+  const consumedSubjects = new WeakSet<object>()
+
+  {
+    const taken = new Set(program.flatMap(n => (n.form === 'record-type' ? [pascal(n.name)] : [])))
+    const candidates = new Map<string, { label: string; name: string; fields: { name: string; type: Type }[] }>()
+
+    for (const n of program) {
+      if (n.form !== 'record-type' || !recursive.has(n.name) || n.params.length > 0 || !n.variants.some(v => v.fields.length === 0)) {
+        continue
+      }
+
+      const holding = n.variants.filter(v => v.fields.some(f => f.type.kind === 'named' && f.type.name === n.name))
+      const name = holding.length === 1 ? `${pascal(n.name)}${pascal(holding[0]!.name)}` : ''
+
+      if (holding.length === 1 && !taken.has(name)) {
+        candidates.set(n.name, { label: holding[0]!.name, name, fields: holding[0]!.fields })
+      }
+    }
+
+    for (const fn of program) {
+      if (fn.form !== 'function' || candidates.size === 0) {
+        continue
+      }
+
+      const last = lastReads(fn.body)
+      const lets = new Set<string>()
+      const opened = new Map<string, object[]>()
+      const built = new Set<string>()
+      // outside closures: a spare is the task's own local
+      const visit = (value: unknown): void => {
+        if (typeof value !== 'object' || value === null) return
+        if (Array.isArray(value)) return value.forEach(visit)
+        const s = value as { form?: string; name?: string; subject?: Expression; cases?: { label: string }[]; type?: Type }
+        if (s.form === 'closure') return
+        if (s.form === 'let' && s.name) lets.add(s.name)
+
+        if (s.form === 'match' && s.subject?.form === 'variable' && s.subject.type?.kind === 'named' && last.has(s.subject)) {
+          const form = candidates.get(s.subject.type.name)
+
+          if (form && s.cases?.some(c => c.label === form.label)) {
+            opened.set(s.subject.type.name, [...(opened.get(s.subject.type.name) ?? []), s.subject])
+          }
+        }
+
+        if (s.form === 'record' && s.type?.kind === 'named' && candidates.get(s.type.name)?.label === s.name) {
+          built.add(s.type.name)
+        }
+
+        for (const [key, child] of Object.entries(s)) if (key !== 'type' && key !== 'span') visit(child)
+      }
+
+      visit(fn.body)
+
+      for (const [form, subjects] of opened) {
+        // a subject the task binds itself, never a parameter or a global, which `consume` cannot take
+        const own = subjects.filter(subject => lets.has((subject as { name: string }).name))
+
+        if (built.has(form) && own.length > 0) {
+          nodeClasses.set(form, candidates.get(form)!)
+          spareTasks.set(fn.name, (spareTasks.get(fn.name) ?? new Set()).add(form))
+          own.forEach(subject => consumedSubjects.add(subject))
+        }
+      }
+    }
+  }
+
+  // the payload case of a form held by node class, by its label
+  const nodeCase = new Map([...nodeClasses].map(([form, c]) => [c.label, { form, ...c }]))
+  // the forms the task being emitted keeps a spare of (`spareTasks`), none inside a closure
+  let spares = new Set<string>()
+  const spareName = (form: string): string => `__spare${pascal(form)}`
   // when the stdlib hive is in the program, every new raise tells it (the throw lowering), and the compiler can
   // emit the wake chain (`wakeHive`) from the roll the driver hands over
   const hasHiveTell = program.some(
@@ -2067,6 +2151,18 @@ export function emitSwift(
             f => `${camel(f.name)}: ${expr(f.value, bind)}`,
           )
 
+          // a case held by node class (`nodeClasses`) builds its node: in the spare a match kept, in a task that keeps
+          // one, and new otherwise
+          const held = nodeCase.get(node.name)
+
+          if (held && node.type?.kind === 'named' && node.type.name === held.form) {
+            const made = spares.has(held.form)
+              ? `termNode${held.name}(&${spareName(held.form)}, ${labelled.join(', ')})`
+              : `${held.name}(${labelled.join(', ')})`
+
+            return `.${camel(node.name)}(${made})`
+          }
+
           // a type argument nothing constrains (the error type of `make okay` handed straight to a generic task)
           // leaves Swift nothing to infer from: it is any type, so it is named `Never`, the others left as `_`
           const args = node.type?.kind === 'named' ? (node.type.args ?? []) : []
@@ -2207,6 +2303,9 @@ export function emitSwift(
         const outerThrows = currentThrows
         const outerGuard = guardDepth
         const outerBound = boundNames
+        // a closure keeps no spare of the task's: `spareTasks` counted nothing inside one
+        const outerSpares = spares
+        spares = new Set()
         currentThrows = false
         guardDepth = 0
         boundNames = new Set([...outerBound, ...node.params.map(p => p.name)])
@@ -2225,6 +2324,7 @@ export function emitSwift(
               ? stmt(last, 0, bind)
               : ''
 
+        spares = outerSpares
         currentThrows = outerThrows
         guardDepth = outerGuard
         boundNames = outerBound
@@ -2823,6 +2923,10 @@ export function emitSwift(
         const booleans =
           labels.length > 0 &&
           labels.every(label => label === 'true' || label === 'false')
+        // whether this match keeps a node of `form` in the task's spare: its subject a local at its last read
+        // (`consumedSubjects`), matched with `consume` so the case's binding is the only one the program has
+        const keeps = (form: string): boolean => spares.has(form) && consumedSubjects.has(node.subject)
+        const consumes = node.subject.type?.kind === 'named' && keeps(node.subject.type.name)
 
         const arms = node.cases.map(b => {
           if (booleans) {
@@ -2877,6 +2981,29 @@ export function emitSwift(
           }
 
           const read = (field: string): boolean => named.has(locals.get(field) ?? field) || throughSubject.has(field)
+
+          // a case held by node class (`nodeClasses`) binds its node and reads the fields the arm reads off it. Where the
+          // task keeps a spare and the subject is consumed, the node goes to the spare as the case's block ends, after
+          // the arm has moved what it needs out of the slot it came from, if nothing else holds it then
+          const held = nodeCase.get(b.label)
+
+          if (held && node.subject.type?.kind === 'named' && node.subject.type.name === held.form) {
+            const keep = keeps(held.form)
+            const reads = fields.filter(read)
+            const body = armBlock(b.body, d + 2, branchBind)
+
+            if (!keep && reads.length === 0) {
+              return `${pad(d + 1)}case .${camel(b.label)}:\n${body}`
+            }
+
+            const lines = [
+              ...(keep ? [`${pad(d + 2)}defer { if isKnownUniquelyReferenced(&__node) { ${spareName(held.form)} = __node } }`] : []),
+              ...reads.map(field => `${pad(d + 2)}let ${camel(locals.get(field) ?? field)} = __node.${camel(field)}`),
+            ]
+
+            return `${pad(d + 1)}case ${keep ? 'var' : 'let'} .${camel(b.label)}(__node):\n${[...lines, body].join('\n')}`
+          }
+
           const pattern =
             fields.length > 0 && fields.some(read)
               ? `case let .${camel(b.label)}(${fields
@@ -2904,7 +3031,7 @@ export function emitSwift(
           arms.push(`${pad(d + 1)}default:\n${pad(d + 2)}break`)
         }
 
-        return `switch ${subject} {\n${arms.join('\n')}\n${pad(d)}}`
+        return `switch ${consumes ? 'consume ' : ''}${subject} {\n${arms.join('\n')}\n${pad(d)}}`
       }
 
       case 'if': {
@@ -3029,6 +3156,9 @@ export function emitSwift(
         // because some other task reassigns a `count` of its own, and swiftc warns on each (warnings fail the gates)
         const previousAssigned = currentAssigned
         currentAssigned = mutated
+        // the nodes this task keeps for reuse (`spareTasks`), each an empty spare until a match opens one
+        const previousSpares = spares
+        spares = spareTasks.get(node.name) ?? new Set()
 
         // a signature-only stub compiles: its body is the not-implemented trap
         const bodyText =
@@ -3037,12 +3167,14 @@ export function emitSwift(
             : [
                 ...shadows,
                 ...cursors.names.map(name => `${pad(d + 1)}var __cursor${camelize(`-${name}`)} = (0, 0)`),
+                ...[...spares].map(form => `${pad(d + 1)}var ${spareName(form)}: ${nodeClasses.get(form)!.name}? = nil`),
                 block(node.body, d + 1, new Map()),
                 unreachable,
               ]
                 .filter(Boolean)
                 .join('\n')
 
+        spares = previousSpares
         currentAssigned = previousAssigned
         fnReturnsArray = previousReturnsArray
         plainNames = previousPlain
@@ -3090,6 +3222,25 @@ export function emitSwift(
           // the heap, so it goes only on an enum that can contain itself (recursiveEnums). It was on every enum until
           // 2026-10-02, and a `maybe` or a field-less tag paid an allocation per value
           declaredForms.add(node.name)
+
+          // a form held by node class (`nodeClasses`): its payload case holds the class, which holds the form, so the
+          // enum itself needs no `indirect`. The class is final, its fields `var` only so a spare node can be built
+          // again, and `termNode` builds in the spare when there is one
+          const held = nodeClasses.get(node.name)
+
+          if (held) {
+            const own = cases.map(c => (c.trimStart().startsWith(`case ${camel(held.label)}(`) ? `${pad(d + 1)}case ${camel(held.label)}(${held.name})` : c))
+            const fields = held.fields.map(f => `${pad(d + 1)}var ${camel(f.name)}: ${swiftType(f.type)}`)
+            const params = held.fields.map(f => `${camel(f.name)}: ${swiftType(f.type)}`).join(', ')
+            const assigns = held.fields.map(f => `self.${camel(f.name)} = ${camel(f.name)}`).join('; ')
+            const builds = held.fields.map(f => `${pad(d + 1)}node.${camel(f.name)} = ${camel(f.name)}`)
+
+            return [
+              `enum ${pascal(node.name)} {\n${own.join('\n')}\n${pad(d)}}`,
+              `final class ${held.name} {\n${fields.join('\n')}\n${pad(d + 1)}init(${params}) { ${assigns} }\n${pad(d)}}`,
+              `// a node built in the one a match kept (\`spare\`), which nothing else holds, or a new one\n${pad(d)}@inline(__always) func termNode${held.name}(_ spare: inout ${held.name}?, ${params}) -> ${held.name} {\n${pad(d + 1)}guard let node = spare else { return ${held.name}(${held.fields.map(f => `${camel(f.name)}: ${camel(f.name)}`).join(', ')}) }\n${pad(d + 1)}spare = nil\n${builds.join('\n')}\n${pad(d + 1)}return node\n${pad(d)}}`,
+            ].join(`\n\n${pad(d)}`)
+          }
 
           return `${recursive.has(node.name) ? 'indirect ' : ''}enum ${pascal(node.name)}${generics} {\n${cases.join(
             '\n',
@@ -3484,6 +3635,20 @@ export function emitSwift(
         : ''
 
       conformances.push(`extension ${swiftName}: ${protocol}${where} {}`)
+
+      // a node class (`nodeClasses`) compares and hashes by its fields, as the case it holds did, so the enum's
+      // synthesized conformance means what it meant
+      const held = nodeClasses.get(name)
+
+      if (held) {
+        const fields = held.fields.map(f => camel(f.name))
+
+        conformances.push(
+          protocol === 'Equatable'
+            ? `extension ${held.name}: Equatable { static func == (a: ${held.name}, b: ${held.name}) -> Bool { a === b || (${fields.map(f => `a.${f} == b.${f}`).join(' && ')}) } }`
+            : `extension ${held.name}: Hashable { func hash(into hasher: inout Hasher) { ${fields.map(f => `hasher.combine(${f})`).join('; ')} } }`,
+        )
+      }
     }
   }
 

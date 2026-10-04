@@ -117,10 +117,47 @@ ok('towers: move-top calls neither', callees(towers.program, 'move-top').length 
 ok('towers: both answered as inlined', towers.inlined.has('push-disk') && towers.inlined.has('pop-disk'), [...towers.inlined].join(', '))
 
 const lets = nodes(towers.program, 'move-top', 'let').map(n => n.name as string)
-ok('towers: the popped size is a `let` of its own', lets.some(n => n.startsWith('__arg')), lets.join(', '))
-ok('towers: each callee local renamed apart', lets.filter(n => n.startsWith('top__in')).length === 2, lets.join(', '))
+ok('towers: the popped size is a `let` named for its task', lets.includes('pop-disk-1'), lets.join(', '))
+ok('towers: each callee local renamed apart', lets.includes('top-1') && lets.includes('top-2'), lets.join(', '))
 ok('towers: the raise kept', nodes(towers.program, 'move-top', 'throw').length === 1)
 ok('towers: the definitions are left for simplify', fn(towers.program, 'push-disk') !== undefined && fn(towers.program, 'pop-disk') !== undefined)
+
+// 1b. the move inlined into its own caller in a later round: the move's body already holds both callees' locals, so
+// every name must come out apart, each with one tag
+const twice = inlineStatements(
+  checked(`${STACK}\n${PUSH}\n${POP}\n${MOVE}\ntask move-twice
+  take piles, like list, like stack
+  call move-top
+    read piles
+    code 0
+    code 1
+  call move-top
+    read piles
+    code 1
+    code 2
+`),
+)
+const twiceLets = nodes(twice.program, 'move-twice', 'let').map(n => n.name as string)
+ok('twice: move-twice calls nothing', callees(twice.program, 'move-twice').length === 0, callees(twice.program, 'move-twice').join(', '))
+ok('twice: every local apart', new Set(twiceLets).size === twiceLets.length && twiceLets.length >= 6, twiceLets.join(', '))
+ok('twice: one number a name', twiceLets.every(n => /^[a-z]+(-[a-z]+)*-\d+$/.test(n)), twiceLets.join(', '))
+
+// 1c. a name an inlining makes is one nothing in the program spells the same way, on any backend: a caller that already
+// has `top-1`, and `top1`, which Swift's camel case writes alike
+const clash = inlineStatements(
+  checked(`${STACK}\n${PUSH}\ntask crowded
+  take piles, like list, like stack
+  take top-1, like number
+  take top1, like number
+  call push-disk
+    read piles
+    read top-1
+    read top1
+`),
+)
+const clashLets = nodes(clash.program, 'crowded', 'let').map(n => n.name as string)
+ok('clash: inlined', callees(clash.program, 'crowded').length === 0)
+ok('clash: no name the caller spells alike', !clashLets.some(n => ['top1'].includes(n.replace(/[-_]/g, ''))), clashLets.join(', '))
 
 // 2. a call whose answer is dropped: the arm's `send back, read size` leaves no statement of a bare variable
 const dropped = inlineStatements(

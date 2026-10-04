@@ -141,7 +141,10 @@ describe('term hunt fails closed', () => {
     })
 
     expect(result.ok).toBe(false)
-    expect(result.crashes.signatures).toEqual(['TypeError: boom'])
+    expect(result.crashes.found.map(c => c.signature)).toEqual(['TypeError: boom'])
+    // the program that raised it comes with it, so the crash can be reproduced without fuzzing again
+    expect(result.crashes.found[0]!.input).toBe('x')
+    expect(renderHunt(result)).toMatch(/TypeError: boom\n\s+\| x/)
   })
 
   it('a watchdog that fires before the first input is a run that did not happen, not a hang', () => {

@@ -49,7 +49,7 @@ export function runProgram(backend: Backend, text: string, entry: string): strin
   const compiled = compile({ file: entry, text }, { resolve: withNativeEnv(backend, stdlibResolver()!), env: backend })
 
   if (!compiled.ok) {
-    throw new Error(`did not compile: ${compiled.diagnostics.slice(0, 3).map(d => d.message).join('; ')}`)
+    throw new Error(`did not compile: ${compiled.diagnostics.slice(0, 3).map(d => `${d.file.split('/').slice(-2).join('/')}:${d.span.start.line + 1} ${d.message}`).join('; ')}`)
   }
 
   const dir = runDir(`term-pattern-${backend}-`)

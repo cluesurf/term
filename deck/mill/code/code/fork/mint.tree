@@ -65,7 +65,8 @@ mint fork-miss, like fork-miss
 mint fork-case, like fork-case
   case seed
     site seed
-  case arm, mint fork-arm
+  # each arm through the mint of the rule it matched: `case <name>`, or the `hook miss` / `miss` catch-all
+  case arm
     site arm
   hook make
     make fork-case
@@ -76,7 +77,8 @@ mint fork-case, like fork-case
 mint sift, like fork-case
   case seed
     site seed
-  case arm, mint fork-arm
+  # each arm through the mint of the rule it matched: `case <name>`, or the `hook miss` / `miss` catch-all
+  case arm
     site arm
   hook make
     make fork-case

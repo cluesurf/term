@@ -12,7 +12,8 @@
 // it is how a proof states an uninterpreted constant (a higher inductive type's path constructor, `loop` in
 // test/check/circle.ts) and how the soundness suite models a call the prover may assume nothing about.
 
-import type { Program, Statement, Span } from '@term/make/code/compile/node'
+import type { Program, Statement } from '@term/make/code/compile/node'
+import type { Span } from '@term/make/code/parser/diagnostic'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
 

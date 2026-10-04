@@ -22,6 +22,7 @@ mark stable
 
 load @term/base/list
   find list
+  find get
 
 load @term/base/boolean
   find not
@@ -39,6 +40,10 @@ load @term/base/native/{platform}/regex
   find end-anchor
   find engine-linear
   find engine-class-limit
+  find engine-name
+  find engine-features
+  find engine-line-inline
+  find engine-fold-flags
 
 load @term/base/regex/dialect
   find regex-literal
@@ -73,6 +78,8 @@ load @term/base/pattern/back
 
 load @term/base/pattern/analyze
   find analyze-pattern
+  find written-text
+  find engine-profile
   find tier-native
   find tier-linear
   find tier-backtrack
@@ -91,6 +98,8 @@ form prepared-pattern
     like list
       like text
   link tier, like number
+  # where a native search goes if the engine refuses the text after all: tier B or C, which mean the same
+  link fallback, like number
   link native, like text
   link program, like program
   link folds, like boolean
@@ -132,13 +141,61 @@ form pattern-match
 # the most instructions one search of the backtracking tier may run
 host pattern-step-limit, code 10000000
 
+# this platform's regex engine, as the tier choice reads it: its capability set, whether it is linear, the widest
+# class it is fast on, and how it writes the end of the text and a line's edges (native/<platform>/regex.tree)
+task engine-here
+  like engine-profile
+  send back
+    make engine-profile
+      bind name, call(engine-name)
+      bind features, call(engine-features)
+      bind linear, call(engine-linear)
+      bind class-limit, call(engine-class-limit)
+      bind end, call(end-anchor)
+      bind line-inline, call(engine-line-inline)
+      bind fold-flags, call(engine-fold-flags)
+
+# the features the pattern uses that engines tell apart (pattern/feature.tree), after the rewrites: what decides
+# whether this platform's engine can run it. Empty for the canonical dialect, which every engine runs alike
+task pattern-features
+  take value, like pattern
+  like list
+    like text
+  save parsed
+    call parse-pattern(read(value/text))
+  save found
+    call analyze-pattern(read(parsed/root), call(engine-here))
+  send back, read found/features
+
+# the text this platform's engine would be given for the pattern on its capability set and class width alone,
+# whether or not the safety rule lets the engine run it; empty when the engine cannot run the pattern at all. For
+# probing an engine's capability set (test/compile/pattern.ts), never for searching: a search goes through `prepare`
+task capable-native-text
+  take value, like pattern
+  like text
+  save parsed
+    call parse-pattern(read(value/text))
+  save found
+    call analyze-pattern(read(parsed/root), call(engine-here))
+  send back, read found/capable
+
+# the text the writer gives this platform's engine for the pattern with its capability set, class width and safety
+# all ignored: for the exploration probe only, which asks whether the engine could claim more than it does
+task written-native-text
+  take value, like pattern
+  like text
+  save parsed
+    call parse-pattern(read(value/text))
+  send back
+    call written-text(read(parsed/root), call(engine-here))
+
 task prepare
   take value, like pattern
   like prepared-pattern
   save parsed
     call parse-pattern(read(value/text))
   save found
-    call analyze-pattern(read(parsed/root), call(end-anchor), call(engine-linear), call(engine-class-limit))
+    call analyze-pattern(read(parsed/root), call(engine-here))
   save rewritten
     make parsed
       bind root, read found/root
@@ -152,6 +209,7 @@ task prepare
       bind groups, read parsed/groups
       bind names, read parsed/names
       bind tier, read found/tier
+      bind fallback, read found/fallback
       bind native, read found/native
       bind program, read program
       bind folds, read found/folds
@@ -174,23 +232,19 @@ task pattern-tier
       send back, text <linear>
   send back, text <backtrack>
 
-# why the pattern runs on the backtracking tier, in words (`the back reference to group 1`, `an atomic group`, `a
-# possessive repetition`), or the empty text when it does not. The same on every backend: the backtracking tier is
-# chosen by what the pattern needs, never by the platform's engine
+# why the pattern needs a backtracking matcher, in words (`the back reference to group 1`, `an atomic group`, `a
+# possessive repetition`), or the empty text when it does not. The same on every backend: such a pattern runs on the
+# platform's own engine where that engine admits it and cannot be made slow by it, and on tier C, under its step
+# budget, everywhere else (Rust always)
 task backtrack-reason
   take value, like pattern
   like text
   save parsed
     call parse-pattern(read(value/text))
   save found
-    call analyze-pattern(read(parsed/root), call(end-anchor), call(engine-linear), call(engine-class-limit))
-  fork test
-    hook test
-      call is-equal(read(found/tier), read(tier-backtrack))
-    hook hold
-      send back
-        call backtrack-cause(read(found/root))
-  send back, text <>
+    call analyze-pattern(read(parsed/root), call(engine-here))
+  send back
+    call backtrack-cause(read(found/root))
 
 # a session over one input, for a prepared pattern
 task open-session
@@ -244,10 +298,41 @@ task search-slots
     hook test
       call is-equal(read(ready/tier), read(tier-native))
     hook hold
-      send back
+      save slots
         call engine-search(read(ready/native), read(open/input), read(from))
+      fork test
+        hook test
+          call is-refused(read(slots))
+        hook hold
+          send back
+            call term-search(read(ready), read(open), read(from), read(ready/fallback))
+      send back, read slots
+  send back
+    call term-search(read(ready), read(open), read(from), read(ready/tier))
+
+# whether a native engine refused the text it was given: every shim answers [-2] then. Term wrote the text, so this
+# is never expected; it is answered by Term's own tier, never as "no match"
+task is-refused
+  take answer
+    like list
+      like number
+  like boolean
+  send back
+    call and
+      call is-equal(read(answer/length), code(1))
+      call is-equal(call(get, read(answer), code(0)), code(-2))
+
+# the first match by Term's own engine: tier B, or tier C under its budget
+task term-search
+  take ready, like prepared-pattern
+  take open, like session
+  take from, like number
+  take tier, like number
+  like list
+    like number
+  fork test
     hook test
-      call is-equal(read(ready/tier), read(tier-linear))
+      call is-equal(read(tier), read(tier-linear))
     hook hold
       send back
         call pike-search-with(read(ready/program), read(open/scene), call(session-tables, read(ready), read(open)), read(from))
@@ -389,13 +474,21 @@ task find-matches-prepared
     like pattern-match
   save open
     call open-session(read(ready), read(input))
+  save tier, read ready/tier
   fork test
     hook test
-      call is-equal(read(ready/tier), read(tier-native))
+      call is-equal(read(tier), read(tier-native))
     hook hold
       # the native engine walks the text once for every match
-      send back
-        call matches-of-slots(read(ready), read(open/runes), call(engine-search-all, read(ready/native), read(input)))
+      save all
+        call engine-search-all(read(ready/native), read(input))
+      fork test
+        hook test
+          call not(call(is-refused, read(all)))
+        hook hold
+          send back
+            call matches-of-slots(read(ready), read(open/runes), read(all))
+      save tier, read ready/fallback
   save n, read open/runes/length
   save out, make list
   save at, code 0
@@ -404,7 +497,7 @@ task find-matches-prepared
       call is-maximum(read(at), read(n))
     hook step
       save slots
-        call search-slots(read(ready), read(open), read(at))
+        call term-search(read(ready), read(open), read(at), read(tier))
       fork test
         hook test
           call is-equal(read(slots/length), code(0))

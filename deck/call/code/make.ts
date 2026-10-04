@@ -19,7 +19,7 @@ import { compileSeparate } from '@term/make/code/compile/separate'
 import { CompileCache } from '@term/make/code/compile/cache'
 import { makeParseMemo } from '@term/make/code/compile/load'
 import { projectCache } from '@term/call/code/cache-store'
-import { carriesTests, readable } from '@term/call/code/test-preprocess'
+import { readable } from '@term/call/code/test-preprocess'
 import { isLockfileAt, isRoleFileAt, manifestNameOf } from '@term/call/code/manifest-name'
 import { projectDeckOf } from '@term/call/code/deck-of'
 import { projectRoleOf, projectLeanOf } from '@term/call/code/role-of'
@@ -124,6 +124,62 @@ function feedGrammarOf(
   return grammar.size > 0
     ? { grammar, faults: feedMineFaults(parsed.tree) }
     : undefined
+}
+
+// One file as the build compiles it. A feed grammar is the reader generated from it (`generated`), or the faults
+// that stop one being generated. A file of `test` blocks is its rewritten text, and `place` moves a diagnostic back
+// onto the lines as written. Anything else is its own text. `term make`, `roll`, `hold` and `time` all compile
+// through this, so no command reads a file differently from the build: `term roll` compiled a `mine.tree` as plain
+// Term and printed `unknown-name` for every word of every grammar (guides: parsers/grammars, 2026-10-04).
+//
+// A `mine.tree` is a GRAMMAR, not Term code. The build generates the reader it describes and compiles THAT, so a
+// dialect is written once, as the grammar, instead of twice as a grammar and a hand-written reader that drifts from
+// it. Which is the whole point of feed-mill: the two cannot disagree if there is only one.
+//
+// The SUBSTRATE is inferred, never asked for. `byte`, `int` and `bytes` can only read a byte cursor and `char`,
+// `text`, `range` and `span` can only read a text one, and across @term/feed's readable grammars six are
+// byte-only, eight text-only, and none use both. A grammar with no leaf to infer from is REPORTED rather than
+// guessed at: guessing would emit a reader that compiles and reads the wrong cursor.
+//
+// A `mine.tree` under the `mill` role is a MILL grammar, checked as itself (compile/mill-check.ts), never a feed
+// grammar, so `role` is the file's role as the build reads it.
+export function buildable(
+  file: string,
+  source: string,
+  role?: string | null,
+):
+  | { text: string; generated: boolean; place: (diagnostic: Diagnostic) => BuildProblem }
+  | { faults: string[] } {
+  const read = role === 'mill' ? undefined : feedGrammarOf(file, source)
+
+  if (read && read.faults.length > 0) {
+    return { faults: read.faults }
+  }
+
+  if (read) {
+    const substrate = feedMineSubstrate(read.grammar)
+
+    if (!substrate) {
+      return {
+        faults: [
+          'cannot tell whether this grammar reads bytes or text. ' +
+            'Every rule in it is a combinator over rules with no body, so there is no leaf to infer from. ' +
+            'Write one of its leaf rules, or shelve the grammar with `mark draft` until it has one.',
+        ],
+      }
+    }
+
+    // the grammar's own `load` blocks come through verbatim: a `mine value` may call a real helper, and where that
+    // helper lives is a fact only the grammar knows. Its diagnostics are framed against the generated reader, the
+    // only text they have lines in
+    const generated = compileFeedMine(read.grammar, substrate, FEED_CURSOR, feedMineLoads(file, source))
+
+    return { text: generated, generated: true, place: diagnostic => ({ diagnostic, text: generated }) }
+  }
+
+  const unit = readable(source)
+
+  return { text: unit.text, generated: false, place: unit.place }
 }
 
 export function findTreeFiles(
@@ -625,25 +681,12 @@ export function compileProject(
     // a file carrying `test <phrase>` blocks is not plain Term until the test preprocessor has rewritten them into
     // tasks. `term test` does that before compiling; a plain build has to as well, or every test file in the project
     // fails here on a construct the compiler is never meant to see.
-    const source = readFileSync(file, 'utf8')
+    const unit = buildable(file, readFileSync(file, 'utf8'), roleOf(file))
 
-    // A `mine.tree` is a GRAMMAR, not Term code. The build generates the reader it describes and compiles THAT, so
-    // a dialect is written once, as the grammar, instead of twice as a grammar and a hand-written reader that
-    // drifts from it. Which is the whole point of feed-mill: the two cannot disagree if there is only one.
-    //
-    // The SUBSTRATE is inferred, never asked for. `byte`, `int` and `bytes` can only read a byte cursor and `char`,
-    // `text`, `range` and `span` can only read a text one, and across @term/feed's readable grammars six are
-    // byte-only, eight text-only, and none use both. A grammar with no leaf to infer from is REPORTED rather than
-    // guessed at: guessing would emit a reader that compiles and reads the wrong cursor.
-    const read = feedGrammarOf(file, source)
-    const grammar = read?.grammar
-    let text = source
-    let place: ReturnType<typeof readable>['place'] | undefined
-
-    if (read && read.faults.length > 0) {
+    if ('faults' in unit) {
       failed++
 
-      for (const fault of read.faults) {
+      for (const fault of unit.faults) {
         errors.push(`${path.relative(root, file)}: ${fault}`)
         faults.push(`${path.relative(root, file)}: ${fault}`)
       }
@@ -651,41 +694,11 @@ export function compileProject(
       continue
     }
 
-    if (grammar) {
-      const substrate = feedMineSubstrate(grammar)
-
-      if (!substrate) {
-        failed++
-        const fault =
-          `${path.relative(root, file)}: cannot tell whether this grammar reads bytes or text. ` +
-          `Every rule in it is a combinator over rules with no body, so there is no leaf to infer from. ` +
-          `Write one of its leaf rules, or shelve the grammar with \`mark draft\` until it has one.`
-        errors.push(fault)
-        faults.push(fault)
-        continue
-      }
-
-      // the grammar's own `load` blocks come through verbatim: a `mine value` may call a real helper, and where
-      // that helper lives is a fact only the grammar knows
-      text = compileFeedMine(
-        grammar,
-        substrate,
-        FEED_CURSOR,
-        feedMineLoads(file, source),
-      )
-    } else if (carriesTests(source)) {
-      // a file carrying `test <phrase>` blocks is not plain Term until the test preprocessor has rewritten them
-      // into tasks. `term test` does that before compiling; a plain build has to as well, or every test file in
-      // the project fails here on a construct the compiler is never meant to see. Its frames are moved back onto
-      // the lines as written
-      const unit = readable(source)
-      text = unit.text
-      place = unit.place
-    }
+    const { text, generated: grammar } = unit
 
     // a problem in this file, framed against what the person wrote
     const framed = (diagnostic: Diagnostic): BuildProblem =>
-      diagnostic.file !== file ? { diagnostic, text: undefined } : place ? place(diagnostic) : { diagnostic, text }
+      diagnostic.file !== file ? { diagnostic, text: undefined } : unit.place(diagnostic)
 
     const result = compile(
       { file, text },
@@ -711,9 +724,12 @@ export function compileProject(
     compiled++
 
     // only this file's: every entry's program holds its whole import closure, and the stdlib's warnings would be
-    // printed once per file that loads it
+    // printed once per file that loads it. A grammar's own compile is of the reader generated from it, whose capture
+    // names the generator chose (a rule answers its last capture, so each is bound): an unused one is about code the
+    // author never wrote, and it was printed at a line of the generated source, `mine.tree:37` in a 20-line grammar
+    // (guides: parsers/grammars, 2026-10-04)
     for (const warning of result.warnings) {
-      if (warning.file === file) {
+      if (warning.file === file && !(grammar && warning.name === 'unused-binding')) {
         const problem = framed(warning)
         warnings.push(renderDiagnostic(problem.diagnostic, problem.text))
         problems.push(problem)

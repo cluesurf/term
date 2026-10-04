@@ -656,7 +656,9 @@ export function stampRuntimeVersion({
   })
   mkdirSync(into, { recursive: true })
   writeFileSync(path.join(into, 'runtime-version'), `${version.hex}\n`)
-  report({ glyph: 'info', verb: 'stamp', subject: 'runtime version', facts: [version.tone] })
+  // the tone code is an identifier of 64 characters, a field value that wraps on its own line rather than a fact that
+  // leaves the clock alone on the facts line
+  report({ glyph: 'info', verb: 'stamp', subject: 'runtime version', fields: [field('version', version.tone)] })
 
   return version
 }

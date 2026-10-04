@@ -3,6 +3,10 @@
 // counter apart, and a `take` beside the `bind` lines names it. test/compile/guide-gaps.ts runs both samples on
 // TypeScript; this builds and runs them with rustc, swiftc and kotlinc. A backend whose toolchain is missing is
 // skipped, never failed.
+//
+// It also runs the `hook miss` arm of a `sift`, the catch-all (phase 2, language/matching, 2026-10-04): `corners`
+// lists `square` and answers every other shape through the miss arm, and `probe-shapes` folds three answers into one
+// number, 4 for a square, 0 for a circle and for a dot.
 // Run: npx tsx test/compile/walk-native.ts   (WN_ONLY=rust, swift or kotlin runs one)
 
 import { execFileSync, spawnSync } from 'node:child_process'
@@ -68,9 +72,43 @@ task sum-to
           read total
           read j
   send back, read total
+
+form shape
+  case circle
+    link r, like number
+  case square
+    link side, like number
+  case dot
+
+task corners
+  take s, like shape
+  like number
+  sift s
+    case square
+      send back, code 4
+    hook miss
+      send back, code 0
+
+task probe-shapes
+  like number
+  send back
+    call add
+      call multiply
+        call corners
+          make square
+            bind side, code 2
+        code 100
+      call add
+        call multiply
+          call corners
+            make circle
+              bind r, code 1
+          code 10
+        call corners
+          make dot
 `
 
-const EXPECTED = '16 10'
+const EXPECTED = '16 10 400'
 
 for (const target of ['rust', 'swift', 'kotlin'] as const) {
   if (only && only !== target) {
@@ -97,15 +135,15 @@ for (const target of ['rust', 'swift', 'kotlin'] as const) {
 
   try {
     if (target === 'rust') {
-      writeFileSync(`${stem}.rs`, `${prelude}\n${emitRust(built.program)}\nfn main() { println!("{} {}", grid(4), sum_to(5)); }\n`)
+      writeFileSync(`${stem}.rs`, `${prelude}\n${emitRust(built.program)}\nfn main() { println!("{} {} {}", grid(4), sum_to(5), probe_shapes()); }\n`)
       execFileSync('rustc', ['-A', 'warnings', `${stem}.rs`, '-o', stem], { stdio: ['ignore', 'pipe', 'pipe'] })
       got = execFileSync(stem, { timeout: 10_000 }).toString().trim()
     } else if (target === 'swift') {
-      writeFileSync(`${stem}.swift`, `${prelude}\n${emitSwift(built.program)}\nprint("\\(grid(4)) \\(sumTo(5))")\n`)
+      writeFileSync(`${stem}.swift`, `${prelude}\n${emitSwift(built.program)}\nprint("\\(grid(4)) \\(sumTo(5)) \\(probeShapes())")\n`)
       execFileSync('swiftc', ['-o', stem, `${stem}.swift`], { stdio: ['ignore', 'pipe', 'pipe'] })
       got = execFileSync(stem, { timeout: 10_000 }).toString().trim()
     } else {
-      writeFileSync(`${stem}.kt`, hoistKotlinImports(`${prelude}\n${emitKotlin(built.program)}\nfun main() { println("\${grid(4L)} \${sumTo(5L)}") }\n`))
+      writeFileSync(`${stem}.kt`, hoistKotlinImports(`${prelude}\n${emitKotlin(built.program)}\nfun main() { println("\${grid(4L)} \${sumTo(5L)} \${probeShapes()}") }\n`))
       execFileSync('kotlinc', [`${stem}.kt`, '-nowarn', '-include-runtime', '-d', `${stem}.jar`], { stdio: ['ignore', 'pipe', 'pipe'] })
       got = execFileSync('java', ['-jar', `${stem}.jar`], { timeout: 10_000 }).toString().trim()
     }
@@ -113,7 +151,7 @@ for (const target of ['rust', 'swift', 'kotlin'] as const) {
     got = String((error as { stderr?: Buffer }).stderr ?? error).slice(0, 600)
   }
 
-  ok(`${target}: both loops end, with grid(4) = 16 and sum-to(5) = 10`, got === EXPECTED, got)
+  ok(`${target}: both loops end (grid(4) = 16, sum-to(5) = 10), and a sift's miss arm answers every case it does not list (400)`, got === EXPECTED, got)
 }
 
 console.log(`\nwalk-native: ${pass} pass, ${fail} fail`)

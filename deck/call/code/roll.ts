@@ -9,10 +9,9 @@ import type { Roll } from '@term/make/code/compile/roll'
 import { projectDeckOf } from '@term/call/code/deck-of'
 import { projectRoleOf, projectLeanOf } from '@term/call/code/role-of'
 import { mergeRolls, showRoll } from '@term/make/code/compile/roll'
-import { findTreeFiles, projectResolver } from '@term/call/code/make'
+import { buildable, findTreeFiles, projectResolver } from '@term/call/code/make'
 import type { BuildProblem } from '@term/call/code/make'
 import { projectCache } from '@term/call/code/cache-store'
-import { readable } from '@term/call/code/test-preprocess'
 import { closeRun, count, field, openRun, printData, report, reportProblems } from '@term/call/code/output'
 
 export const ROLL_KINDS = ['deck', 'exception', 'task', 'dock', 'tell', 'kind', 'supervision']
@@ -41,7 +40,13 @@ export function projectRoll(root: string): {
   const problems: BuildProblem[] = []
 
   for (const file of files) {
-    const unit = readable(readFileSync(file, 'utf8'))
+    const unit = buildable(file, readFileSync(file, 'utf8'), roleOf(file))
+
+    if ('faults' in unit) {
+      failed.push(path.relative(root, file))
+      continue
+    }
+
     const result = compile(
       { file, text: unit.text },
       { resolve, cache, roll: true, deckOf, roleOf, leanOf },
@@ -123,11 +128,16 @@ export async function callRoll(input: {
       .map(d => d.name)
   }
 
-  // the roll is the answer the user asked for: data on stdout, as a tree or as the JSON `term make` writes
+  // what was asked for: one kind's entries after `--host` and `--private`, or the whole roll
+  const shown: Array<unknown> | undefined = input.kind ? ((roll as unknown as Record<string, unknown[]>)[input.kind] ?? []) : undefined
+
+  // the roll is the answer the user asked for: data on stdout, as a tree or as the JSON `term make` writes. The
+  // block alone, ended by one newline: the run's own blank lines already stand before and after it on a terminal,
+  // and a kind with no entries writes nothing, so its closing item's `0 routes` is the whole answer
   if (input.json) {
     printData(JSON.stringify(roll, null, 2) + '\n')
-  } else {
-    printData(`\n${showRoll(roll, input.kind, { path: input.path })}\n\n`)
+  } else if (!shown || shown.length > 0) {
+    printData(`${showRoll(roll, input.kind, { path: input.path })}\n`)
   }
 
   // a file that did not compile is not on the roll: its problems, then a ▲ item naming what is missing, so the
@@ -143,12 +153,32 @@ export async function callRoll(input: {
     })
   }
 
+  // one rule for the closing counts: they count what was printed. A kind counts its own entries, after `--host` and
+  // `--private`, so `roll task --host shop` says `4 tasks` and `roll dock` says `0 routes`. With no kind the three
+  // totals of the whole (filtered) roll, which is what the per-deck block adds up to
   closeRun({
     verdict: failed.length ? 'Rolled, with files missing' : 'Rolled',
-    counts: [
-      count(roll.exception.length, 'exceptions', 'exception'),
-      count(roll.task.length, 'tasks', 'task'),
-      count(roll.dock.length, 'routes', 'route'),
-    ],
+    counts: shown
+      ? [count(shown.length, ...rollNoun(input.kind as string))]
+      : [
+          count(roll.exception.length, 'exceptions', 'exception'),
+          count(roll.task.length, 'tasks', 'task'),
+          count(roll.dock.length, 'routes', 'route'),
+        ],
   })
+}
+
+// the noun a kind is counted in, plural then singular. A declared kind's entries are `entries`
+function rollNoun(kind: string): [string, string] {
+  const nouns: Record<string, [string, string]> = {
+    deck: ['decks', 'deck'],
+    exception: ['exceptions', 'exception'],
+    task: ['tasks', 'task'],
+    dock: ['routes', 'route'],
+    tell: ['tells', 'tell'],
+    kind: ['kinds', 'kind'],
+    supervision: ['supervisors', 'supervisor'],
+  }
+
+  return nouns[kind] ?? ['entries', 'entry']
 }

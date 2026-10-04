@@ -105,5 +105,7 @@ export async function callForm(input: {
           ? 'Printed as they would be formatted, nothing written'
           : `Formatted ${changed} file${changed === 1 ? '' : 's'}`,
     counts: counted,
+    // files rewritten is work done; `--list` only showed what it would write, and closes `·`
+    done: changed > 0 && !input.list,
   })
 }

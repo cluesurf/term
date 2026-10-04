@@ -124,7 +124,8 @@ export function callEmit(input: {
   target: string
   out?: string
 }): void {
-  openRun({ verb: 'make', root: input.root, subject: input.file, facts: ['--emit', input.target] })
+  // the project folder is the subject (section 3); the program and the backend are what this run is about, as facts
+  openRun({ verb: 'make', root: input.root, facts: ['--emit', input.target, ...(input.file ? [input.file] : [])] })
 
   // wrong usage, exit 2 (section 18)
   if (!isEmitTarget(input.target)) {

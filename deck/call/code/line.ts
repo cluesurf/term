@@ -1411,8 +1411,13 @@ async function main(): Promise<void> {
 // wrong command-line usage (section 18): a ✗ item saying what was not understood, a `next` field with what to run,
 // exit 2
 function usageFailure(message: string, next = 'term --hint'): number {
+  // yargs refuses before the middleware runs, so the version is set here for the opening item. The flags were not
+  // understood, so the run prints as the defaults say
+  setOutput({}, readVersion())
   openRun({ verb: 'term', root })
-  report({ glyph: 'failed', kind: 'problem', verb: 'term', subject: message })
+  // yargs writes some refusals over several lines: the first is the subject, the rest message lines
+  const [first = message, ...rest] = message.split('\n').map(line => line.trim()).filter(line => line !== '')
+  report({ glyph: 'failed', kind: 'problem', verb: 'term', subject: first.charAt(0).toUpperCase() + first.slice(1), message: rest })
 
   return closeRun({ verdict: 'The command line was not understood', next, failure: 'usage' })
 }

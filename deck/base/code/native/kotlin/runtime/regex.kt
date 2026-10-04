@@ -1,4 +1,4 @@
-// The one regex primitive over java.util.regex. The pattern arrives in the canonical dialect
+// The one regex primitive over java.util.regex. The pattern arrives in a form this engine reads as Term does
 // (base/code/regex/dialect.tree); this runs it and turns UTF-16 offsets into code point offsets.
 object regex {
     private val compiled = HashMap<String, java.util.regex.Pattern>()
@@ -8,7 +8,8 @@ object regex {
         val engine = compiled[pattern] ?: try {
             java.util.regex.Pattern.compile(pattern).also { compiled[pattern] = it }
         } catch (e: Throwable) {
-            return out
+            // an engine that refuses the pattern answers [-2], never "no match": Term answers it with its own tier
+            return mutableListOf(-2L)
         }
         val count = text.codePointCount(0, text.length)
         if (from < 0 || from > count) return out
@@ -36,7 +37,8 @@ object regex {
         val engine = compiled[pattern] ?: try {
             java.util.regex.Pattern.compile(pattern).also { compiled[pattern] = it }
         } catch (e: Throwable) {
-            return out
+            // an engine that refuses the pattern answers [-2], never "no match": Term answers it with its own tier
+            return mutableListOf(-2L)
         }
         val found = engine.matcher(text)
         // a cursor: the code point count at a UTF-16 offset, moved forwards only

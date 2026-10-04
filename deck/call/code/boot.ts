@@ -953,7 +953,8 @@ export async function callBoot(input: {
         subject: 'run.mjs, app.mjs and dock.mjs',
         fields: [location(showPath(path.dirname(runPath), cwd))],
       })
-      finish('Console built')
+      // the program's own name, the way the run closes for a command-line program that runs (`<bin> built`)
+      finish(`${binName} built, not run`)
 
       return
     }

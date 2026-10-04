@@ -72,7 +72,8 @@ export async function callWake(input: {
     project && project !== '.'
       ? path.resolve(input.root, project)
       : input.root
-  const label = project && project !== '.' ? project : path.basename(target)
+  // the deck's name is the folder's own name, never the path that reached it: `term wake ~/work/demo` names it `demo`
+  const label = path.basename(target)
 
   openRun({ verb: 'wake', root: input.root, subject: showPath(target) })
 
@@ -109,6 +110,7 @@ export async function callWake(input: {
       verdict: `${label} is ready`,
       counts: [count(written.length, 'files', 'file')],
       next: project && project !== '.' ? `cd ${project} && term boot` : 'term boot',
+      done: true,
     })
   } catch (error) {
     report({ glyph: 'failed', kind: 'problem', subject: 'The project could not be written', message: [error instanceof Error ? error.message : String(error)] })

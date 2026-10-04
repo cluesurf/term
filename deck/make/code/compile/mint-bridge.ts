@@ -333,8 +333,8 @@ function commaTrap(
     diagnose('unexpected-node', {
       file: bridge.file,
       span,
-      message: `\`${head}\` is a statement, and this line gives it more than it takes, so it was read as a call to a task named \`${head}\``,
-      hint: 'a comma after a closed call or a literal stays at its level, and one after a word pops only that word. Keep every argument inside its call (`back substring(one, 0, 1)`), or put the arguments on their own indented lines',
+      message: `\`${head}\` is a statement, and its grammar could not read this line, so it was read as a call to a task named \`${head}\``,
+      hint: `look for a word under it that \`${head}\` does not take, or a comma that put an argument in the wrong place: a comma after a closed call or a literal stays at its level, and one after a word pops only that word. Keep every argument inside its call (\`back substring(one, 0, 1)\`), or put the arguments on their own indented lines`,
     }),
   )
 
@@ -880,15 +880,18 @@ function expressionOf(
         return unhandled(bridge, value, 'an open call with no head')
       }
 
-      // THE COMMA TRAP. Under lean a bare head is a call, so a STATEMENT head whose own grammar rule refused
-      // the line arrives here as a callee and the failure is reported as `the name "fork" is not defined`,
-      // pointing at the whole line with nothing wrong on it. The cause is always the same: a comma popped out
-      // of an inline construction and left the statement head holding one argument too many.
-      if (
-        isLean(bridge, 'seed-call-open') &&
-        FLOW_HEADS.has(plainName(callee))
-      ) {
-        return commaTrap(bridge, value, plainName(callee), span)
+      // THE COMMA TRAP. A bare head is a call, so a STATEMENT head whose own grammar rule refused the line arrives
+      // here as a callee and the failure is reported as `the name "fork" is not defined`, pointing at the whole
+      // line with nothing wrong on it. Usually a comma popped out of an inline construction and left the statement
+      // head holding one argument too many. A statement word never names a task, so this holds in a longhand file
+      // as much as a lean one: there the whole statement cascaded into `the name "fork"`, `"test"`, `"back"` is
+      // not defined, one per word, and the one line the grammar could not read was not named (guides:
+      // language/syntax, 2026-10-04). `host` is the one statement word a task may also be named, and where the file
+      // has such a task, `host(routes, url)` is its call
+      const word = plainName(callee)
+
+      if (FLOW_HEADS.has(word) && !(word === 'host' && bridge.hostTask)) {
+        return commaTrap(bridge, value, word, span)
       }
 
       // A BUILTIN HAS NO PARAMETER NAMES, so a bare-head child under one is a nested call, never a label. It
@@ -2712,7 +2715,22 @@ function matchOf(bridge: Bridge, value: Form): Statement | undefined {
       .filter(Boolean)
     const body = scopedFlow(bridge, at(arm, 'flow'), binds)
 
+    // `hook miss` (lean: `miss`) is the arm for every case the others do not list, the catch-all. It arrives as the
+    // `hook` arm form a `fork test` uses, with a kind and no case name, so any other kind is a word a match does not
+    // take, and a second one is two answers for the same cases
     if (label === undefined) {
+      const kind = wordAt(arm, 'kind')
+
+      if (kind !== undefined && kind !== 'miss') {
+        refuse(
+          bridge,
+          arm,
+          `\`hook ${kind}\` is not an arm of a \`sift\`, whose arms are \`case <name>\` and one \`hook miss\` for every case they do not list`,
+        )
+      } else if (otherwise) {
+        refuse(bridge, arm, 'this match has two `hook miss` arms, and one answers every case the others do not list')
+      }
+
       otherwise = body
       continue
     }

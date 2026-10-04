@@ -1,5 +1,6 @@
 # swift regex primitive: the one search the public regex API is built on (regex.tree). Internal: reached only through
-# that API, which hands it a pattern already rewritten into the canonical dialect.
+# those APIs: regex.tree hands it a pattern in the canonical dialect, and pattern.tree any text this engine's
+# capability set admits (engine-features, pattern/feature.tree), the engine's own reading proven by the probe.
 
 load @term/base/text/unicode
   find rune-to-text
@@ -40,6 +41,42 @@ task engine-linear
 task engine-class-limit
   like number
   send back, code 557056
+
+# the engine, by name, for messages and tests
+task engine-name
+  like text
+  send back, text <ICU (NSRegularExpression)>
+
+# the features this engine runs with exactly Term's meaning (pattern/feature.tree, each held by a probe row in
+# test/compile/pattern.ts). Left out, each by the exploration probe (PATTERN_EXPLORE=1): a back reference to a group
+# that took no part fails here where Term matches the empty text (1 of 2 agree); a group in a repetition keeps an
+# earlier iteration's text (1 of 2); a repetition that can match empty differs (0 of 2); a lookbehind of unbounded
+# length, a reference inside a lookbehind and the empty class are refused
+task engine-features
+  like list
+    like text
+  save out, make list
+  call out/push(text(<look-ahead>))
+  call out/push(text(<look-behind>))
+  call out/push(text(<atomic>))
+  call out/push(text(<possessive>))
+  call out/push(text(<refer-set>))
+  call out/push(text(<word-edge>))
+  call out/push(text(<line-edge>))
+  call out/push(text(<look-capture>))
+  call out/push(text(<refer-fold>))
+  call out/push(text(<big-count>))
+  send back, read out
+
+# whether a line edge is written `(?m:^)` and `(?m:$)`, true only where the engine's line ends at a line feed alone
+task engine-line-inline
+  like boolean
+  send back, false
+
+# the scoped flags that make a back reference compare by case class: `i`
+task engine-fold-flags
+  like text
+  send back, text <i>
 
 # every match, left to right, none overlapping, in one pass over the text: the width of one match's slots first, then
 # each match's slots in code points, as engine-search gives them; [-1] when nothing matches. After an empty match the

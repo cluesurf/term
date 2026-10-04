@@ -11,6 +11,7 @@ import type {
   ViewNode,
 } from '@term/make/code/compile/node'
 import { egraphArith } from '@term/make/code/ir/egraph-arith'
+import { inlineStatements } from '@term/make/code/ir/inline-statements'
 import { expressionsEqual } from '@term/make/code/compile/expr-equal'
 import { RENDER } from '@term/make/code/compile/render-names'
 
@@ -1680,8 +1681,28 @@ function simplifyExpression(node: Expression): Expression {
 
     // a template's parts are expressions like any other: unvisited, a call inside one (`<{line}{char-at(alu, i)}>`) was
     // never folded nor inlined, so fasta called the stdlib's one-line `char-at` wrapper once per character it built
-    case 'template':
-      return { ...node, parts: node.parts.map(part => (typeof part === 'string' ? part : simplifyExpression(part))) }
+    // and a part that is itself a template (a small task answering one, inlined into another's) is spliced in, its parts
+    // read in the same order, so the text is built once: two `format!`s nested was clippy's format_in_format_args
+    case 'template': {
+      const parts: (typeof node.parts)[number][] = []
+
+      for (const part of node.parts) {
+        const simplified = typeof part === 'string' ? part : simplifyExpression(part)
+        const spliced = typeof simplified !== 'string' && simplified.form === 'template' ? simplified.parts : [simplified]
+
+        for (const piece of spliced) {
+          const last = parts.length - 1
+
+          if (typeof piece === 'string' && typeof parts[last] === 'string') {
+            parts[last] = `${parts[last]}${piece}`
+          } else {
+            parts.push(piece)
+          }
+        }
+      }
+
+      return { ...node, parts }
+    }
 
     default:
       return node
@@ -2465,5 +2486,14 @@ export function simplify(
   small = new Map()
   inlining = new Set()
 
-  return dropDeadFunctions(folded, droppable, roots)
+  // then the small tasks of statements over a recursive form, inlined where their call is a statement, a `let`'s value
+  // or an argument of such a call (ir/inline-statements.ts). One inlined everywhere is dropped like any task above, but
+  // only when the roots are known: without them anything may call it
+  const statements = inlineStatements(folded)
+
+  for (const name of roots ? statements.inlined : []) {
+    droppable.add(name)
+  }
+
+  return dropDeadFunctions(statements.program, droppable, roots)
 }

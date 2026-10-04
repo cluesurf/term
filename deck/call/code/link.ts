@@ -34,7 +34,7 @@ export async function callLink(input: {
         packageDir: input.root,
       })
       report({ glyph: 'added', kind: 'change', verb: 'add', subject: fullName, facts: ['global link'] })
-      closeRun({ verdict: `${fullName} is registered`, next: `term link ${fullName}, in the project that uses it` })
+      closeRun({ verdict: `${fullName} is registered`, next: `term link ${fullName}, in the project that uses it`, done: true })
     } catch (error) {
       refused(error, 'Not registered')
     }
@@ -53,7 +53,7 @@ export async function callLink(input: {
 
     if (consumed) {
       report({ glyph: 'added', kind: 'change', verb: 'add', subject: input.deck, facts: ['from the global registry'] })
-      closeRun({ verdict: `${input.deck} is linked` })
+      closeRun({ verdict: `${input.deck} is linked`, done: true })
 
       return
     }
@@ -80,7 +80,7 @@ export async function callLink(input: {
       packageDir,
     })
     report({ glyph: 'added', kind: 'change', verb: 'add', subject: input.deck, facts: [showPath(packageDir)] })
-    closeRun({ verdict: `${input.deck} is linked` })
+    closeRun({ verdict: `${input.deck} is linked`, done: true })
   } catch (error) {
     refused(error, 'Not linked')
   }
@@ -98,7 +98,7 @@ export async function callUnlink(input: {
       name: input.deck,
     })
     report({ glyph: 'removed', kind: 'change', verb: 'remove', subject: input.deck, facts: ['link'] })
-    closeRun({ verdict: `${input.deck} is unlinked` })
+    closeRun({ verdict: `${input.deck} is unlinked`, done: true })
   } catch (error) {
     refused(error, 'Not unlinked')
   }
