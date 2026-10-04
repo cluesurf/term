@@ -76,7 +76,9 @@ task make-whole
   save flipped, subtract(0, value)
   back subtract(0, divide(add(multiply(flipped, 2), 1), 2))
 
-# `top` over `bottom`, both whole and not negative, rounded half up. `divide` truncates on every backend
+# `top` over `bottom`, both whole and not negative, rounded half up. `divide` truncates on every backend. Rounded from
+# the remainder, never by adding half first: `top + bottom / 2` leaves the exact range when `top` is near it, and on
+# TypeScript that throws
 task divide-round
   take top, like number
   take bottom, like number
@@ -84,8 +86,12 @@ task divide-round
   fork test, is-maximum(bottom, 0)
     hold
       back 0
-  save half, divide(bottom, 2)
-  back divide(add(top, half), bottom)
+  save whole, divide(top, bottom)
+  save rest, subtract(top, multiply(whole, bottom))
+  fork test, is-minimum(rest, subtract(bottom, rest))
+    hold
+      back add(whole, 1)
+  back whole
 
 # `top` over `bottom`, whole, rounded down for the non-negative values it is used on
 task divide-whole
@@ -260,8 +266,12 @@ task format-size
     hook test, is-below(index, units/length)
     hook hold
       save unit, units/{index}
-      # one decimal under `whole-from` of the unit, so 99.95 kB is 100 kB, never 100.0 kB
-      save fraction, divide-round(multiply(value, scale), divisor)
+      # one decimal under `whole-from` of the unit, so 99.95 kB is 100 kB, never 100.0 kB. Divided by the step of one
+      # decimal rather than multiplied up first, so a size near the exact range never leaves it
+      save fraction, divide-round(value, divide(divisor, scale))
+      fork test, is-above(modulo(divisor, scale), 0)
+        hold
+          save fraction, divide-round(multiply(value, scale), divisor)
       fork test, is-below(fraction, multiply(rule/whole-from, scale))
         hold
           save whole, divide-whole(fraction, scale)
@@ -358,12 +368,28 @@ task modulo-floor
       back add(rest, base)
   back rest
 
-# epoch milliseconds moved to the display zone
+# epoch milliseconds moved to the display zone. The instant is held to the range a date has (±100,000,000 days, the
+# ECMAScript limit) and the offset to a day, so the sum stays exact on every backend
 task shift-clock
   take epoch, like number
   take offset, like number
   like number
-  back add(make-whole(epoch), multiply(make-whole(offset), 60000))
+  save limit, 8640000000000000
+  save instant, make-whole(epoch)
+  fork test, is-above(instant, limit)
+    hold
+      save instant, limit
+  fork test, is-below(instant, subtract(0, limit))
+    hold
+      save instant, subtract(0, limit)
+  save minutes, make-whole(offset)
+  fork test, is-above(minutes, 1440)
+    hold
+      save minutes, 1440
+  fork test, is-below(minutes, -1440)
+    hold
+      save minutes, -1440
+  back add(instant, multiply(minutes, 60000))
 
 # the clock of section 6: `HH:MM:SS.mmm`, 24-hour, in the zone `offset` minutes east of UTC
 task format-clock

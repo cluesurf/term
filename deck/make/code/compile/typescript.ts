@@ -1335,9 +1335,15 @@ function makeEmitter(
       case 'string':
         return JSON.stringify(node.value)
       case 'template':
-        // a template literal: chunks escaped for backticks and `${`, expressions interpolated
+        // a template literal: chunks escaped for backticks and `${`, expressions interpolated. A carriage return is
+        // written as `\r`, because ECMAScript reads a raw one inside a template as a line feed: a live region's
+        // `ESC[3A\r ESC[J` moved down a line on every redraw
         return `\`${node.parts
-          .map(part => (typeof part === 'string' ? part.replace(/[\\`]/g, '\\$&').replace(/\$\{/g, '\\${') : `\${${expression(part)}}`))
+          .map(part =>
+            typeof part === 'string'
+              ? part.replace(/[\\`]/g, '\\$&').replace(/\$\{/g, '\\${').replace(/\r/g, '\\r')
+              : `\${${expression(part)}}`,
+          )
           .join('')}\``
       case 'unit':
         return 'undefined'

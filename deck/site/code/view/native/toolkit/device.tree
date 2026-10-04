@@ -20,7 +20,6 @@
 
 dock load
   load <global:native-device>, name native-device
-  mark native
 
 task read-trait
   take name, like text

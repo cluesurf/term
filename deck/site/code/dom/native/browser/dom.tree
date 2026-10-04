@@ -36,7 +36,6 @@ dock load
   load <global:resize>, name resize
   load <global:position>, name position
   load <global:fontset>, name fontset
-  mark native
 
 task create-element
   take tag, like text

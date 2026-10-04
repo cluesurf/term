@@ -1,0 +1,155 @@
+# What every matcher reads while it runs: the input as code points, the word characters for \b, and the case table
+# for a back reference under `i`. Shared by the reference, the linear-time matcher and the backtracking one, so an
+# edge means the same thing in all three.
+
+mark stable
+
+load @term/base/boolean
+  find not
+
+load @term/base/pattern/node
+  find edge-text-start
+  find edge-text-end
+  find edge-line-start
+  find edge-line-end
+  find edge-word
+
+load @term/base/pattern/set
+  find number-at
+  find set-has
+
+load @term/base/pattern/unicode-read
+  find word-set
+  find fold-pairs
+
+form scene
+  link runes
+    like list
+      like number
+  link word
+    like list
+      like number
+  link folds
+    like list
+      like number
+
+# a scene over the input; the case table is decoded only when the pattern has a back reference under `i`
+task make-scene
+  take runes
+    like list
+      like number
+  take needs-folds, like boolean
+  like scene
+  send back
+    call make-scene-for(read(runes), true, read(needs-folds))
+
+# a scene that decodes only the tables the pattern reads: the word characters for \b and \B, the case table for a back
+# reference under `i`. Each is thousands of numbers, so a pattern without them pays for neither
+task make-scene-for
+  take runes
+    like list
+      like number
+  take needs-word, like boolean
+  take needs-folds, like boolean
+  like scene
+  save word, make list
+  fork test
+    hook test
+      read needs-word
+    hook hold
+      save word
+        call word-set
+  save folds, make list
+  fork test
+    hook test
+      read needs-folds
+    hook hold
+      save folds
+        call fold-pairs
+  send back
+    make scene
+      bind runes, read runes
+      bind word, read word
+      bind folds, read folds
+
+# whether the code point at `at` is a word character; outside the text it is not
+task is-word-at
+  take s, like scene
+  take at, like number
+  like boolean
+  fork test
+    hook test
+      call or
+        call is-below(read(at), code(0))
+        call is-minimum(read(at), read(s/runes/length))
+    hook hold
+      send back, false
+  send back
+    call set-has
+      read s/word
+      call number-at(read(s/runes), read(at), code(-1))
+
+task edge-holds
+  take s, like scene
+  take kind, like number
+  take at, like number
+  like boolean
+  save n, read s/runes/length
+  fork test
+    hook test
+      call is-equal(read(kind), read(edge-text-start))
+    hook hold
+      send back
+        call is-equal(read(at), code(0))
+    hook test
+      call is-equal(read(kind), read(edge-text-end))
+    hook hold
+      send back
+        call is-equal(read(at), read(n))
+    hook test
+      call is-equal(read(kind), read(edge-line-start))
+    hook hold
+      send back
+        call or
+          call is-equal(read(at), code(0))
+          call is-equal
+            call number-at(read(s/runes), call(subtract, read(at), code(1)), code(-1))
+            code 10
+    hook test
+      call is-equal(read(kind), read(edge-line-end))
+    hook hold
+      send back
+        call or
+          call is-equal(read(at), read(n))
+          call is-equal
+            call number-at(read(s/runes), read(at), code(-1))
+            code 10
+  save before
+    call is-word-at(read(s), call(subtract, read(at), code(1)))
+  save after
+    call is-word-at(read(s), read(at))
+  save boundary
+    call not(call(is-equal, read(before), read(after)))
+  fork test
+    hook test
+      call is-equal(read(kind), read(edge-word))
+    hook hold
+      send back, read boundary
+  send back
+    call not(read(boundary))
+
+# the code point a step reads from `at`: the one after it going forwards, the one before it going backwards, or -1
+# past either end
+task rune-from
+  take s, like scene
+  take at, like number
+  take backward, like boolean
+  like number
+  fork test
+    hook test
+      read backward
+    hook hold
+      send back
+        call number-at(read(s/runes), call(subtract, read(at), code(1)), code(-1))
+  send back
+    call number-at(read(s/runes), read(at), code(-1))

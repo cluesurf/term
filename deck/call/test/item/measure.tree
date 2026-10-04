@@ -1,0 +1,112 @@
+# Display width (section 8) by grapheme cluster and East Asian width, and the neutralizing that keeps somebody else's
+# text from moving the cursor, recoloring the screen or reordering a line.
+
+load @term/base/text
+  find contains
+
+load @term/base/text/unicode
+  find rune-to-text
+
+load ../../code/work/item/standard
+  find make-standard
+
+load ../../code/work/item/measure
+  find measure-text
+  find make-grains
+  find neutralize
+  find strip-escapes
+
+task count-grains
+  take value, like text
+  like number
+  save grains, make-grains(value)
+  back grains/length
+
+test <ASCII is one cell a character>
+  want hold, is-equal(measure-text(<hello>), 5)
+  want hold, is-equal(measure-text(<>), 0)
+
+test <CJK and fullwidth characters are two cells>
+  want hold, is-equal(measure-text(<漢字>), 4)
+  want hold, is-equal(measure-text(<a漢b>), 4)
+  want hold, is-equal(measure-text(<한국어>), 6)
+  want hold, is-equal(measure-text(<ＡＢ>), 4)
+  want hold, is-equal(measure-text(<こんにちは>), 10)
+
+test <an emoji ZWJ sequence is one cluster of two cells>
+  save family, <👨‍👩‍👧>
+  want hold, is-equal(measure-text(family), 2)
+  want hold, is-equal(count-grains(family), 1)
+  want hold, is-equal(measure-text(<🏳️‍🌈>), 2)
+
+test <a skin tone, a keycap and a flag are each one cluster of two cells>
+  want hold, is-equal(measure-text(<👍🏽>), 2)
+  want hold, is-equal(measure-text(<1️⃣>), 2)
+  want hold, is-equal(measure-text(<🇯🇵>), 2)
+  want hold, is-equal(count-grains(<🇯🇵🇫🇷>), 2)
+
+test <a text-presentation character with VS16 is two cells>
+  want hold, is-equal(measure-text(<❤️>), 2)
+  want hold, is-equal(measure-text(<❤>), 1)
+
+test <combining marks take no cell of their own>
+  save decomposed, <e{rune-to-text(0x0301)}>
+  want hold, is-equal(measure-text(decomposed), 1)
+  want hold, is-equal(count-grains(decomposed), 1)
+  want hold, is-equal(measure-text(<é>), 1)
+  want hold, is-equal(measure-text(<नमस्ते>), 4)
+
+test <a Hangul syllable written in jamo is one cluster of two cells>
+  save jamo, <{rune-to-text(0x1112)}{rune-to-text(0x1161)}{rune-to-text(0x11AB)}>
+  want hold, is-equal(measure-text(jamo), 2)
+  want hold, is-equal(count-grains(jamo), 1)
+
+test <the glyphs and drawings of the standard are one cell each>
+  want hold, is-equal(measure-text(<✓✗▲·○◐?+−~>), 10)
+  want hold, is-equal(measure-text(<│━─⋮…›→◉◯•❯×>), 12)
+
+test <a tab expands to the next tab stop>
+  save one, make-standard()
+  save shown, neutralize(<a\tb>, one, false)
+  want hold, is-equal(shown, <a       b>)
+  want hold, is-equal(measure-text(shown), 9)
+  want hold, is-equal(measure-text(neutralize(<abcdefgh\tx>, one, false)), 17)
+  want hold, is-equal(measure-text(neutralize(<\t>, one, false)), 8)
+
+test <a control character is shown, never obeyed>
+  save one, make-standard()
+  save escape, rune-to-text(27)
+  save shown, neutralize(<red{escape}[31mtext>, one, false)
+  want hold, is-equal(contains(shown, escape), false)
+  want hold, is-equal(shown, <red␛[31mtext>)
+  want hold, is-equal(neutralize(<a{rune-to-text(0x07)}b>, one, false), <a␇b>)
+  want hold, is-equal(neutralize(<a{rune-to-text(0x7F)}b>, one, false), <a␡b>)
+  want hold, is-equal(neutralize(<a{rune-to-text(0x9b)}b>, one, false), <a\\x9bb>)
+  want hold, is-equal(neutralize(<line\nbreak>, one, false), <line␊break>)
+
+test <in ASCII a control character is caret notation>
+  save one, make-standard()
+  save escape, rune-to-text(27)
+  want hold, is-equal(neutralize(<a{escape}b>, one, true), <a^[b>)
+  want hold, is-equal(neutralize(<a{rune-to-text(0x7F)}b>, one, true), <a^?b>)
+
+test <a bidirectional override is shown, so a name cannot reorder its line>
+  save one, make-standard()
+  save shown, neutralize(<invoice{rune-to-text(0x202E)}fdp.exe>, one, false)
+  want hold, is-equal(shown, <invoice\\u202efdp.exe>)
+  want hold, is-equal(contains(shown, rune-to-text(0x202E)), false)
+
+test <ASCII folds the typographic characters it has a spelling for>
+  save one, make-standard()
+  want hold, is-equal(neutralize(<multipy → multiply>, one, true), <multipy -\> multiply>)
+  want hold, is-equal(neutralize(<a › b … c — d>, one, true), <a \> b ... c -- d>)
+  want hold, is-equal(neutralize(<UTC−7>, one, true), <UTC-7>)
+
+test <escape sequences are removed from quoted output, whole>
+  save escape, rune-to-text(27)
+  save bell, rune-to-text(7)
+  want hold, is-equal(strip-escapes(<{escape}[1;31mred{escape}[0m>), <red>)
+  want hold, is-equal(strip-escapes(<{escape}]8;;https://x{escape}\\link{escape}]8;;{escape}\\>), <link>)
+  want hold, is-equal(strip-escapes(<{escape}]0;title{bell}after>), <after>)
+  want hold, is-equal(strip-escapes(<{escape}[2J{escape}[Hcleared>), <cleared>)
+  want hold, is-equal(strip-escapes(<plain>), <plain>)

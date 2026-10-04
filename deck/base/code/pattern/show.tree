@@ -1,0 +1,125 @@
+# A parsed pattern written out as text, for tests and for a person reading what the reader made of a pattern:
+#
+#   (chain (letter 97) (loop 0 -1 greedy (ranges 48-57)) (edge 1))
+
+mark stable
+
+load @term/base/list
+  find join
+
+load @term/base/boolean
+  find not
+
+load @term/base/pattern/set
+  find number-at
+
+load @term/base/pattern/node
+  find piece
+
+task show-set
+  take set
+    like list
+      like number
+  like text
+  save parts, make list
+  save i, code 0
+  walk test
+    down
+      call subtract(read(set/length), read(i))
+    hook test
+      call is-below
+        call add(read(i), code(1))
+        read set/length
+    hook step
+      save start
+        call number-at(read(set), read(i), code(0))
+      save end
+        call number-at(read(set), call(add, read(i), code(1)), code(0))
+      fork test
+        hook test
+          call is-equal(read(start), read(end))
+        hook hold
+          call parts/push(text(<{start}>))
+        hook miss
+          call parts/push(text(<{start}-{end}>))
+      save i
+        call add(read(i), code(2))
+  send back
+    call join(read(parts), text(< >))
+
+task show-parts
+  take parts
+    like list
+      like piece
+  like text
+  save shown, make list
+  walk list, read parts
+    hook next
+      take site, name part
+      call shown/push(call(show-piece, read(part)))
+  send back
+    call join(read(shown), text(< >))
+
+task show-piece
+  take p, like piece
+  like text
+  fork case, read p
+    case blank
+      send back, text <(blank)>
+    case letter
+      send back, text <(letter {point})>
+    case ranges
+      save written
+        call show-set(read(set))
+      send back, text <(ranges {written})>
+    case edge
+      send back, text <(edge {kind})>
+    case chain
+      save written
+        call show-parts(read(parts))
+      send back, text <(chain {written})>
+    case choice
+      save written
+        call show-parts(read(parts))
+      send back, text <(choice {written})>
+    case loop
+      save mode, text <greedy>
+      fork test
+        hook test
+          call not(read(greedy))
+        hook hold
+          save mode, text <lazy>
+      fork test
+        hook test
+          read possessive
+        hook hold
+          save mode, text <possessive>
+      save inner
+        call show-piece(read(body))
+      send back, text <(loop {least} {most} {mode} {inner})>
+    case group
+      save inner
+        call show-piece(read(body))
+      send back, text <(group {index} {label} {inner})>
+    case atom
+      save inner
+        call show-piece(read(body))
+      send back, text <(atom {inner})>
+    case look
+      save way, text <ahead>
+      fork test
+        hook test
+          read behind
+        hook hold
+          save way, text <behind>
+      save sense, text <>
+      fork test
+        hook test
+          read negate
+        hook hold
+          save sense, text < not>
+      save inner
+        call show-piece(read(body))
+      send back, text <(look {way}{sense} {inner})>
+    case refer
+      send back, text <(refer {index} {fold})>

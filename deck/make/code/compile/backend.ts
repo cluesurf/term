@@ -4279,13 +4279,16 @@ export function slotTakes(
         }
       }
 
-      // the arms of a branch are blocks of their own
+      // the arms of a branch are blocks of their own, and so is a loop's body for the names it declares (`lastReads`
+      // finds their last read there; the take is made at that read, so a turn that leaves early has taken nothing)
       if (s.form === 'if') {
         s.branches.forEach(b => block(b.body))
         if (s.otherwise) block(s.otherwise)
       } else if (s.form === 'match') {
         s.cases.forEach(c => block(c.body))
         if (s.otherwise) block(s.otherwise)
+      } else if (s.form === 'while' || s.form === 'for-each') {
+        block(s.body)
       }
     })
   }
@@ -4397,6 +4400,18 @@ export function lastReads(body: Statement[]): WeakSet<object> {
     }
   }
 
+  // how many times each name is declared in the task, so a name declared once inside a loop's body is that turn's own
+  const declared = new Map<string, number>()
+  const countLets = (value: unknown): void => {
+    if (typeof value !== 'object' || value === null) return
+    if (Array.isArray(value)) return value.forEach(countLets)
+    const node = value as Loose
+    if (node.form === 'let') declared.set(node.name as string, (declared.get(node.name as string) ?? 0) + 1)
+    for (const [key, child] of Object.entries(node)) if (key !== 'type' && key !== 'span') countLets(child)
+  }
+
+  countLets(body)
+
   const block = (stmts: Statement[], later: Set<string>): void => {
     const after = new Set(later)
 
@@ -4404,6 +4419,23 @@ export function lastReads(body: Statement[]): WeakSet<object> {
       const s = stmts[k]!
       const here = new Map<string, { nodes: object[]; held: boolean }>()
       mentions(s, here, false)
+
+      // a loop's body is a block of its own for the names it alone declares, each a new binding every turn, so its last
+      // read there is the last. Every other name the loop mentions is read again by the next turn, so is never last
+      if (s.form === 'while' || s.form === 'for-each') {
+        const own = new Set<string>()
+        const collectOwn = (value: unknown): void => {
+          if (typeof value !== 'object' || value === null) return
+          if (Array.isArray(value)) return value.forEach(collectOwn)
+          const node = value as Loose
+          if (node.form === 'let' && declared.get(node.name as string) === 1) own.add(node.name as string)
+          if (node.form === 'closure') return
+          for (const [key, child] of Object.entries(node)) if (key !== 'type' && key !== 'span') collectOwn(child)
+        }
+
+        collectOwn(s.body)
+        block(s.body, new Set([...after, ...[...here.keys()].filter(name => !own.has(name))]))
+      }
 
       if (s.form === 'if' || s.form === 'match') {
         // the conditions or the subject are read before any arm, so a name there is not last in an arm

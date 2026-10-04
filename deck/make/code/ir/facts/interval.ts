@@ -564,11 +564,20 @@ export function boundedArithmetic(
     }
   }
 
-  // what this round's walks put in each global, and what each expression evaluated to
+  // what this round's walks put in each global, and what each expression evaluated to (joined over every walk: a
+  // global only grows, so a later walk's value covers an earlier one's)
   let found = new Map<string, Value>()
-  let recorded = new WeakMap<object, Value>()
-  // the tasks that ran out of steps this round, and every key a node of theirs gives
-  let spent = new Set<Fn>()
+  const recorded = new WeakMap<object, Value>()
+  // the tasks that ran out of steps, and the globals each task's walk read, so a round re-walks only a task whose
+  // inputs changed
+  const spent = new Set<Fn>()
+  const reads = new Map<Fn, Set<string>>()
+  let reading = new Set<string>()
+  const read = (key: string): Value => {
+    reading.add(key)
+
+    return globals.get(key)!
+  }
   const put = (key: string, v: Value): void => {
     if (globals.has(key) && v !== null) {
       found.set(key, join(found.get(key) ?? null, v))
@@ -589,16 +598,16 @@ export function boundedArithmetic(
       }
     }
 
+    // a state is changed in place along a straight line, and copied where control splits (each branch, each turn, each
+    // case, a guard's body and handler), so an assignment costs one write, not a copy of every name
     const set = (state: Map<string, Value>, name: string, v: Value): Map<string, Value> => {
-      if (task.excluded.has(name)) {
-        return state
+      if (!task.excluded.has(name)) {
+        state.set(name, v)
       }
 
-      const next = new Map(state)
-      next.set(name, v)
-
-      return next
+      return state
     }
+    const copy = (state: State): State => (state === null ? null : new Map(state))
 
     const joinStates = (states: State[]): State => {
       const live = states.filter((s): s is Map<string, Value> => s !== null)
@@ -660,7 +669,8 @@ export function boundedArithmetic(
         return null
       }
 
-      let out: Map<string, Value> = state
+      // always a new state, so the caller may change it
+      const out = new Map(state)
 
       for (const fact of conditionFacts(cond, truth)) {
         if (!out.has(fact.name)) {
@@ -673,7 +683,7 @@ export function boundedArithmetic(
           return null
         }
 
-        out = set(out, fact.name, narrowed)
+        set(out, fact.name, narrowed)
       }
 
       return out
@@ -715,7 +725,7 @@ export function boundedArithmetic(
           value(e.target as Loose, state, quiet)
           value(e.index as Loose | undefined, state, quiet)
           const key = slot(e) ? pathKey(e.target as Loose) : fieldKey(e)
-          v = key ? globals.get(key)! : 'top'
+          v = key ? read(key) : 'top'
           break
         }
         case 'call': {
@@ -731,7 +741,7 @@ export function boundedArithmetic(
 
           v =
             callee.form === 'variable' && answers.has(callee.name as string) && (callee.binding as { kind?: string } | undefined)?.kind === 'function'
-              ? globals.get(`task:${callee.name as string}`)!
+              ? read(`task:${callee.name as string}`)
               : 'top'
           break
         }
@@ -822,7 +832,7 @@ export function boundedArithmetic(
 
       for (let turn = 0; ; turn++) {
         loops.push({ breaks: [], continues: [] })
-        const out = run(body, enter(head))
+        const out = run(body, copy(enter(head)))
         const loop = loops.pop()!
         breaks = loop.breaks
         const next = joinStates([head, out, ...loop.continues])
@@ -837,7 +847,7 @@ export function boundedArithmetic(
       // one narrowing turn from the fixpoint: the entry joined with what a turn gives back, which recovers a bound the
       // widening gave up (a counter under `i < 1000` back to at most 1000). Sound, since it starts from a post-fixpoint
       loops.push({ breaks: [], continues: [] })
-      const out = run(body, enter(head))
+      const out = run(body, copy(enter(head)))
       const loop = loops.pop()!
       const narrowed = joinStates([entry, out, ...loop.continues])
 
@@ -935,10 +945,10 @@ export function boundedArithmetic(
         }
         case 'match': {
           value(s.subject as Loose, state)
-          const outs = (s.cases as { body: Statement[] }[]).map(c => run(c.body, state))
+          const outs = (s.cases as { body: Statement[] }[]).map(c => run(c.body, copy(state)))
 
           if (s.otherwise) {
-            outs.push(run(s.otherwise as Statement[], state))
+            outs.push(run(s.otherwise as Statement[], copy(state)))
           } else if (!s.closed) {
             outs.push(state)
           }
@@ -946,12 +956,12 @@ export function boundedArithmetic(
           return joinStates(outs)
         }
         case 'guard': {
-          const done = run(s.body as Statement[], state)
+          const done = run(s.body as Statement[], copy(state))
           // the handler may follow any prefix of the body, so whatever the body assigns is unknown there
-          let caught: Map<string, Value> = state
+          const caught: Map<string, Value> = new Map(state)
 
           for (const name of assignedNames(s.body)) {
-            caught = set(caught, name, 'top')
+            set(caught, name, 'top')
           }
 
           const handler = s.catch as { body: Statement[] } | undefined
@@ -963,11 +973,12 @@ export function boundedArithmetic(
       }
     }
 
+    reading = new Set()
     const entry = new Map<string, Value>()
 
     task.fn.params.forEach((p, i) => {
       if (!task.excluded.has(p.name)) {
-        entry.set(p.name, closed.has(task.fn.name) ? globals.get(`param:${task.fn.name}:${i}`)! : 'top')
+        entry.set(p.name, closed.has(task.fn.name) ? read(`param:${task.fn.name}:${i}`) : 'top')
       }
     })
 
@@ -978,24 +989,8 @@ export function boundedArithmetic(
         throw thrown
       }
 
+      // a task that ran out of steps gives unknown to everything it reaches, and is not walked again
       spent.add(task.fn)
-    }
-  }
-
-  const grown = new Map<string, number>()
-  let settled = false
-
-  for (let round = 0; round < 100; round++) {
-    found = new Map()
-    recorded = new WeakMap()
-    spent = new Set()
-
-    for (const task of tasks) {
-      walk(task)
-    }
-
-    // a task that ran out of steps gives unknown to everything it reaches
-    for (const fn of spent) {
       const visit = (value: unknown): void => {
         if (typeof value !== 'object' || value === null) return
         if (Array.isArray(value)) return value.forEach(visit)
@@ -1003,14 +998,32 @@ export function boundedArithmetic(
         for (const [k, child] of Object.entries(value)) if (k !== 'type' && k !== 'span') visit(child)
       }
 
-      visit(fn.body)
+      visit(task.fn.body)
 
-      if (answers.has(fn.name)) {
-        put(`task:${fn.name}`, 'top')
+      if (answers.has(task.fn.name)) {
+        put(`task:${task.fn.name}`, 'top')
       }
     }
 
-    let changed = false
+    reads.set(task.fn, reading)
+  }
+
+  const grown = new Map<string, number>()
+  let settled = false
+
+  // the tasks a round walks: every one at first, then only those that read a global the last round changed
+  let due: Task[] = tasks
+
+  for (let round = 0; round < 100; round++) {
+    found = new Map()
+
+    for (const task of due) {
+      if (!spent.has(task.fn)) {
+        walk(task)
+      }
+    }
+
+    const changed = new Set<string>()
 
     for (const [key, before] of globals) {
       const after = join(before, found.get(key) ?? null)
@@ -1022,13 +1035,15 @@ export function boundedArithmetic(
       const times = (grown.get(key) ?? 0) + 1
       grown.set(key, times)
       globals.set(key, times > WIDEN ? widen(before, after) : after)
-      changed = true
+      changed.add(key)
     }
 
-    if (!changed) {
+    if (changed.size === 0) {
       settled = true
       break
     }
+
+    due = tasks.filter(task => [...(reads.get(task.fn) ?? [])].some(key => changed.has(key)))
   }
 
   // a fixpoint that does not settle proves nothing

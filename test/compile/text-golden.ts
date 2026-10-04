@@ -267,7 +267,15 @@ runToolkits(
     program,
     judge,
     ok,
-    shots: { macos: process.env.SNAPSHOT_GOLDEN, ios: process.env.SNAPSHOT_GOLDEN_IOS, android: process.env.SNAPSHOT_GOLDEN_ANDROID },
+    shots: {
+      macos: process.env.SNAPSHOT_GOLDEN,
+      ios: process.env.SNAPSHOT_GOLDEN_IOS,
+      android: process.env.SNAPSHOT_GOLDEN_ANDROID,
+      compose: process.env.SNAPSHOT_GOLDEN_COMPOSE,
+      'compose-android': process.env.SNAPSHOT_GOLDEN_COMPOSE_ANDROID,
+    },
+    compose: true,
+    composeAndroid: true,
   },
   process.env.GOLDEN_ONLY ?? '',
 )

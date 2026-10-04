@@ -16,7 +16,6 @@ load @term/site/view/reactive
 
 dock load
   load <global:native-view>, name native-view
-  mark native
 
 task use-styles
   take light, like text

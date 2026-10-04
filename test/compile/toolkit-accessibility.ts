@@ -1,10 +1,11 @@
 // The accessibility contract on the toolkit hosts (native-accessibility-0007): every vocabulary word placed on the
-// window of AppKit (macOS), UIKit (the iPhone simulator) and Android views (the emulator), with the props that name it,
-// and what each PLATFORM'S ACCESSIBILITY API reports for it read back (`accessibility-of`: AppKit's accessibilityRole and
-// label, UIKit's traits and label, the AccessibilityNodeInfo a view fills in on Android). Each role must be one the
-// contract's column for that platform names (note/term/view/11-vocabulary.md, "Accessibility"), and each named word must
-// carry its name. The dialog is presented by the platform rather than placed, and is not measured here.
-// A11Y_ONLY=macos (or ios, android) runs one platform. Run: npx tsx test/compile/toolkit-accessibility.ts
+// window of AppKit (macOS), UIKit (the iPhone simulator), Android views (the emulator), Compose on the desktop JVM and
+// Jetpack Compose (the emulator), with the props that name it, and what each PLATFORM'S ACCESSIBILITY API reports for it
+// read back (`accessibility-of`: AppKit's accessibilityRole and label, UIKit's traits and label, the
+// AccessibilityNodeInfo a view fills in on Android, Compose's semantics tree on both Compose legs). Each role must be
+// one the contract's column for that platform names (note/term/view/11-vocabulary.md, "Accessibility"), and each named
+// word must carry its name. The dialog is presented by the platform rather than placed, and is not measured here.
+// A11Y_ONLY=macos (or ios, android, compose, compose-android) runs one platform. Run: npx tsx test/compile/toolkit-accessibility.ts
 
 import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -195,10 +196,11 @@ const rows = new Map(
   table
     .split('\n')
     .map(line => line.split('|').slice(1, -1).map(cell => cell.trim()))
-    .filter(cells => cells.length === 9)
+    .filter(cells => cells.length === 10)
     .map(cells => [cells[0]!, cells] as const),
 )
-const COLUMN: Record<Leg, number> = { macos: 2, ios: 3, android: 4 }
+// both Compose legs read one column: Compose's semantics, from which each platform's bridge is made
+const COLUMN: Record<Leg, number> = { macos: 2, ios: 3, android: 4, compose: 5, 'compose-android': 5 }
 
 // the cell allows this role: every part of it named in backticks, `none` for an empty role, `hidden` for one out of the tree
 function allows(leg: Leg, word: string, role: string): boolean {
@@ -240,6 +242,8 @@ runToolkits(
     program,
     judge,
     ok,
+    compose: true,
+    composeAndroid: true,
     shots: {},
   },
   process.env.A11Y_ONLY ?? '',

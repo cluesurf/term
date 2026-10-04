@@ -1,0 +1,225 @@
+# The run (sections 3, 4, 12 and 18): the worst glyph, the exit codes and the closing glyph that must match them, the
+# flags that decide what prints, problems sorted, capped at 20 and hidden when caused by another, and the tool's own
+# bug.
+
+load @term/base/text
+  find contains
+
+load ../../code/work/item/standard
+  find make-standard
+
+load ../../code/work/item/event
+  find event
+  find plain-subject
+  find location
+
+load ../../code/work/item/run
+  find run-options
+  find session
+  find make-options
+  find open-session
+  find step-session
+  find close-session
+  find fail-session
+  find closing-glyph
+  find exit-code
+  find worst-glyph
+  find is-shown
+  find arrange-problems
+  find make-crash
+  find draw-run
+  find make-opening
+  find draw-command
+
+load ../../code/work/item/format
+  find spans-text
+
+load ../../code/work/item/layout
+  find line-text
+
+load ./kit
+  find kit-room
+  find kit-ascii-room
+  find kit-join
+  find kit-clock
+
+task make-glyph-event
+  take glyph, like text
+  like event
+  back make event, glyph(glyph), verb(<step>), subject(plain-subject(<a step>))
+
+# a session that has seen events with these glyphs
+task seen
+  take glyphs, like list, like text
+  take options, like run-options
+  like session
+  save one, open-session(<make>, options)
+  walk glyphs
+    take glyph
+    save step, step-session(one, make-glyph-event(glyph), kit-room(80), true)
+    save one, step/session
+  back one
+
+task glyphs-of
+  take a, like text
+  take b, like text
+  like list, like text
+  save out, make list
+  out/push a
+  out/push b
+  back out
+
+test <the closing glyph is the worst in the run, ranked ✗ › ▲ › ◐ › ✓ › ○ › ·>
+  save standard, make-standard()
+  want hold, is-equal(closing-glyph(seen(glyphs-of(<done>, <warning>), make-options()), standard), <warning>)
+  want hold, is-equal(closing-glyph(seen(glyphs-of(<failed>, <warning>), make-options()), standard), <failed>)
+  want hold, is-equal(closing-glyph(seen(glyphs-of(<running>, <done>), make-options()), standard), <running>)
+  want hold, is-equal(closing-glyph(seen(glyphs-of(<done>, <skipped>), make-options()), standard), <done>)
+  want hold, is-equal(closing-glyph(seen(glyphs-of(<skipped>, <info>), make-options()), standard), <skipped>)
+
+test <added, removed and changed are outside the order: a plan of changes closes with ·>
+  save standard, make-standard()
+  want hold, is-equal(closing-glyph(seen(glyphs-of(<added>, <removed>), make-options()), standard), <info>)
+
+test <exit 0 is success, warnings allowed>
+  save standard, make-standard()
+  save one, seen(glyphs-of(<done>, <warning>), make-options())
+  want hold, is-equal(exit-code(one, standard), 0)
+
+test <exit 1 is a problem in the input, with ✗>
+  save standard, make-standard()
+  save one, seen(glyphs-of(<done>, <failed>), make-options())
+  want hold, is-equal(exit-code(one, standard), 1)
+  want hold, is-equal(closing-glyph(one, standard), <failed>)
+
+test <exit 2, 3 and 70 are named failures, each with ✗>
+  save standard, make-standard()
+  save base, seen(glyphs-of(<done>, <done>), make-options())
+  save usage, fail-session(base, <usage>)
+  want hold, and(is-equal(exit-code(usage, standard), 2), is-equal(closing-glyph(usage, standard), <failed>))
+  save missing, fail-session(base, <environment>)
+  want hold, and(is-equal(exit-code(missing, standard), 3), is-equal(closing-glyph(missing, standard), <failed>))
+  save bug, fail-session(base, <bug>)
+  want hold, and(is-equal(exit-code(bug, standard), 70), is-equal(closing-glyph(bug, standard), <failed>))
+
+test <exit 130 is Ctrl-C, closing with ○ whatever the run saw>
+  save standard, make-standard()
+  save stopped, fail-session(seen(glyphs-of(<warning>, <done>), make-options()), <interrupted>)
+  want hold, is-equal(exit-code(stopped, standard), 130)
+  want hold, is-equal(closing-glyph(stopped, standard), <skipped>)
+
+test <under --strict a warning fails the run with exit 1 and ✗>
+  save standard, make-standard()
+  save options, make-options()
+  save options/strict, true
+  save one, seen(glyphs-of(<done>, <warning>), options)
+  want hold, is-equal(exit-code(one, standard), 1)
+  want hold, is-equal(closing-glyph(one, standard), <failed>)
+
+test <--quiet prints only failed items, and the run still sees the rest>
+  save options, make-options()
+  save options/quiet, true
+  want hold, is-equal(is-shown(make-glyph-event(<done>), options), false)
+  want hold, is-shown(make-glyph-event(<failed>), options)
+  save one, seen(glyphs-of(<warning>, <done>), options)
+  want hold, is-equal(closing-glyph(one, make-standard()), <warning>)
+
+test <debug items print with --verbose, trace items with --trace, neither by default>
+  save debug, make-glyph-event(<info>)
+  save debug/level, <debug>
+  save trace, make-glyph-event(<info>)
+  save trace/level, <trace>
+  save plain, make-options()
+  save verbose, make-options()
+  save verbose/verbose, true
+  save tracing, make-options()
+  save tracing/trace, true
+  want hold, is-equal(is-shown(debug, plain), false)
+  want hold, is-equal(is-shown(trace, plain), false)
+  want hold, is-shown(debug, verbose)
+  want hold, is-equal(is-shown(trace, verbose), false)
+  want hold, and(is-shown(debug, tracing), is-shown(trace, tracing))
+
+test <under --quiet the opening is left out and one blank line comes before the closing>
+  save options, make-options()
+  save options/quiet, true
+  save opening, make-opening(<make>, <~/shape>, kit-clock(14, 42, 0, 0), <term 2.5.22>)
+  save events, make list
+  events/push make-glyph-event(<done>)
+  save closing, make event, subject(plain-subject(<1 target built>)), clock(kit-clock(14, 42, 0, 700))
+  save closing/duration, 700
+  want hold, is-equal(kit-join(draw-run(opening, events, closing, kit-room(80), options, true)), <\n✓ make     1 target built\n           14:42:00.700 · 700 ms>)
+
+task make-problem
+  take path, like text
+  take line, like number
+  take column, like number
+  like event
+  save one, make event, glyph(<failed>), kind(<problem>), verb(<check>), subject(plain-subject(<{path}:{line}>))
+  save one/place, make location, path(path), line(line), column(column)
+  back one
+
+test <problems sort by path, then line, then column>
+  save problems, make list
+  problems/push make-problem(<b.tree>, 1, 1)
+  problems/push make-problem(<a.tree>, 9, 2)
+  problems/push make-problem(<a.tree>, 9, 1)
+  problems/push make-problem(<a.tree>, 2, 5)
+  save sorted, arrange-problems(problems, make-standard(), kit-room(80))
+  save first, sorted/0
+  save second, sorted/1
+  save third, sorted/2
+  save fourth, sorted/3
+  want hold, is-equal(first/place/line, 2)
+  want hold, and(is-equal(second/place/line, 9), is-equal(second/place/column, 1))
+  want hold, is-equal(third/place/column, 2)
+  want hold, is-equal(fourth/place/path, <b.tree>)
+
+test <after 20 problems, one · item says how many more and the flag that shows all>
+  save problems, make list
+  save at, 1
+  walk test
+    hook test, is-maximum(at, 25)
+    hook hold
+      problems/push make-problem(<code/area.tree>, at, 1)
+      save at, add(at, 1)
+  save shown, arrange-problems(problems, make-standard(), kit-room(80))
+  want hold, is-equal(shown/length, 21)
+  save last, shown/20
+  want hold, is-equal(last/glyph, <info>)
+  want hold, is-equal(spans-text(last/subject), <… 5 more problems>)
+  want hold, is-equal(last/facts/0, <--all>)
+
+test <a problem caused by an earlier one is hidden, the earlier gaining n hidden>
+  save cause, make-problem(<a.tree>, 1, 1)
+  save cause/id, <first>
+  save caused, make-problem(<a.tree>, 2, 1)
+  save caused/cause, <first>
+  save other, make-problem(<a.tree>, 3, 1)
+  save other/cause, <first>
+  save problems, make list
+  problems/push cause
+  problems/push caused
+  problems/push other
+  save shown, arrange-problems(problems, make-standard(), kit-room(80))
+  want hold, is-equal(shown/length, 1)
+  save kept, shown/0
+  save hidden, kept/tallies/0
+  want hold, and(is-equal(hidden/amount, 2), is-equal(hidden/noun, <hidden>))
+  want hold, is-equal(cause/tallies/length, 0)
+
+test <a bug in the tool says so, names its crash log, carries exit 70, and shows no stack>
+  save one, make-crash(<prove>, <Term crashed while checking code/area.tree>, <kernel/unify, unexpected meta ?17>, <.term/crash.log>, kit-clock(14, 42, 0, 205), make-standard())
+  want hold, is-equal(one/glyph, <failed>)
+  want hold, and(is-equal(one/status/kind, <exit>), is-equal(one/status/value, 70))
+  save first, one/fields/0
+  save second, one/fields/1
+  want hold, and(is-equal(first/key, <in>), is-equal(second/key, <log>))
+  want hold, is-equal(one/quote/length, 0)
+
+test <the echoed command is bold after the prompt, $ in ASCII>
+  save shown, draw-command(<term make>, kit-room(80))
+  want hold, is-equal(line-text(shown), <❯ term make>)
+  save command, shown/spans/2
+  want hold, command/strong
+  want hold, is-equal(line-text(draw-command(<term make>, kit-ascii-room(80))), <$ term make>)

@@ -1,0 +1,125 @@
+# The parsed pattern, which every tier reads: the reference interpreter walks it, the analysis decides a tier from
+# it, the compiler turns it into a program, and the native tier writes it back as an engine's syntax. One tree, so a
+# pattern means what ./syntax.tree read it as and nothing else (note/term/stdlib/regex-engine.md).
+#
+# A set of code points is a list of numbers, a start and an end (both included) per range, sorted, never overlapping
+# or touching: [48, 57, 97, 122] is 0-9 and a-z. The `i` flag is applied when the pattern is read, so a letter under
+# `i` is already the set of its case class and nothing later folds case, except a back reference, which compares
+# text it cannot know in advance.
+
+mark stable
+
+load @term/base/exception
+  find mismatch
+  find excess
+
+# one node of a pattern
+form piece
+  # matches the empty text
+  case blank
+  # one code point, exactly
+  case letter
+    link point, like number
+  # one code point in the set
+  case ranges
+    link set
+      like list
+        like number
+  # a zero-width test of the position: one of the edge kinds below
+  case edge
+    link kind, like number
+  # each part in turn
+  case chain
+    link parts
+      like list
+        like piece
+  # the first part that leads to a match, in order
+  case choice
+    link parts
+      like list
+        like piece
+  # the body repeated from `least` to `most` times (`most` -1 is unbounded). Greedy takes as many as it can first,
+  # lazy as few, and possessive takes as many as it can and never gives one back
+  case loop
+    link body, like piece
+    link least, like number
+    link most, like number
+    link greedy, like boolean
+    link possessive, like boolean
+  # a capturing group: `index` counts from 1 in the order the groups open, and `label` is the name, empty for an unnamed one
+  case group
+    link body, like piece
+    link index, like number
+    link label, like text
+  # an atomic group: the body's first match, never revisited
+  case atom
+    link body, like piece
+  # a lookaround: whether the body matches ahead of the position (or behind it), consuming nothing
+  case look
+    link body, like piece
+    link behind, like boolean
+    link negate, like boolean
+  # the text group `index` last captured, compared code point by code point, by case class when `fold` is set. A
+  # group that took no part matches the empty text
+  case refer
+    link index, like number
+    link fold, like boolean
+
+# the edge kinds
+host edge-text-start, code 0
+host edge-text-end, code 1
+host edge-line-start, code 2
+host edge-line-end, code 3
+host edge-word, code 4
+host edge-not-word, code 5
+
+# a pattern that cannot be read: where (in code points) and why
+form pattern-mismatch
+  like mismatch
+    bind note, <Not a pattern>
+    link at, like number
+    link reason, like text
+
+# a match that did more work than its budget allows. Only the backtracking tier can raise it, and only for a pattern
+# whose meaning has no known linear-time algorithm (a back reference, an atomic group the analysis could not rewrite)
+form pattern-budget
+  like excess
+    bind note, <Pattern work over its limit>
+    link at, like number
+
+# whether the piece is a test of the position alone, which a quantifier may not repeat
+task is-zero-width
+  take p, like piece
+  like boolean
+  fork case, read p
+    case blank
+      send back, true
+    case edge
+      send back, true
+    case look
+      send back, true
+    case letter
+      send back, false
+    case ranges
+      send back, false
+    case chain
+      send back, false
+    case choice
+      send back, false
+    case loop
+      send back, false
+    case group
+      send back, false
+    case atom
+      send back, false
+    case refer
+      send back, false
+
+task refuse-pattern
+  take at, like number
+  take reason, like text
+  like piece
+  halt pattern-mismatch
+    bind thing, text <pattern>
+    bind at, read at
+    bind reason, read reason

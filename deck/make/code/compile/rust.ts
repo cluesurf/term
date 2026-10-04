@@ -3461,9 +3461,21 @@ function emitRustPass(
           }
         }
 
-        return node.op === '='
-          ? `${expr(node.target)} = ${bare(owned(node.value))};`
-          : `${expr(node.target)} ${node.op} ${bare(expr(node.value))};`
+        if (node.op === '=') {
+          const target = expr(node.target)
+          const value = bare(owned(node.value))
+
+          // a list reassigned from a value that borrows it, `seen = merge(&seen.borrow(), ..)`: the `Ref` guard is a
+          // temporary that lives to the end of the statement, past the write (E0506). The value computes first, in its
+          // own statement, so the guard is gone by the write
+          if (node.target.form === 'variable' && new RegExp(`(^|[^\\w.])${target.replace(/[^\w]/g, '\\$&')}\\.borrow\\(\\)`).test(value)) {
+            return `{ let __assigned = ${value}; ${target} = __assigned; }`
+          }
+
+          return `${target} = ${value};`
+        }
+
+        return `${expr(node.target)} ${node.op} ${bare(expr(node.value))};`
       }
       case 'expression':
         // a push onto an owned list whose new length nothing reads is the Vec's `push`, as Rust writes it
@@ -3696,10 +3708,12 @@ function emitRustPass(
         // does. It iterated `.borrow().clone()` of the whole list until 2026-10-02 (note/term/codegen/rust.md, R1)
         if (node.iterable.type?.kind === 'array') {
           const index = node.index ? `let ${vname(node.index)} = __at as i64; ` : ''
-          // a `Copy` element is read out by value, anything else is cloned out of the borrow
-          const element = node.iterable.type.kind === 'array' && copyType(node.iterable.type.element) ? '*value' : 'value.clone()'
+          // a `Copy` element is read out by value, anything else is cloned out of the borrow. The iterator variable is
+          // `__item`, never a name a program can write: it was `value` until 2026-10-04, and a walk inside a task with
+          // its own local `value` read the element where the program meant its number (pattern/unicode-read.tree)
+          const element = node.iterable.type.kind === 'array' && copyType(node.iterable.type.element) ? '*__item' : '__item.clone()'
 
-          if (element !== '*value') {
+          if (element !== '*__item') {
             noteClone(elementOf(node.iterable.type))
           }
 
@@ -3725,10 +3739,10 @@ function emitRustPass(
 
           if (((lentAs === 'read' || untouched) && walkedName !== undefined) || path) {
             const source = walkedName !== undefined ? vname(walkedName) : memberPath(node.iterable)
-            const each = node.index ? `(__at, value) in ${source}.iter().enumerate()` : `value in ${source}.iter()`
+            const each = node.index ? `(__at, __item) in ${source}.iter().enumerate()` : `__item in ${source}.iter()`
             // an item only handed to tasks that take it borrowed, or read for a field, is the element by reference:
             // cloned out, a node holding its own lists (`ownedFields`) was copied whole per turn
-            const byRef = inner || (element !== '*value' && onlyBorrowed(node.body, node.item))
+            const byRef = inner || (element !== '*__item' && onlyBorrowed(node.body, node.item))
             // a reference passes on as it is (`borrowedNames`), where `&kid` would borrow it twice (clippy: needless_borrow)
             const outerBorrowed = borrowedNames
 
@@ -3740,13 +3754,13 @@ function emitRustPass(
             const walked = block(node.body, d + 1)
             borrowedNames = outerBorrowed
 
-            return `for ${each} {\n${pad(d + 1)}let ${vname(node.item)} = ${byRef ? 'value' : element}; ${index}\n${budget}${walked}\n${pad(d)}}`
+            return `for ${each} {\n${pad(d + 1)}let ${vname(node.item)} = ${byRef ? '__item' : element}; ${index}\n${budget}${walked}\n${pad(d)}}`
           }
 
           // the element at `__at` of a list's storage, copied or cloned out, each read its own statement so no borrow
           // outlives it. The length is read every turn: `loop` over `get(..)` with a `break` was clippy's
           // while_let_loop, and a `while let` would hold the borrow through a body that may push onto the list
-          const at = (storage: string): string => (element === '*value' ? `${storage}[__at]` : `${storage}[__at].clone()`)
+          const at = (storage: string): string => (element === '*__item' ?`${storage}[__at]` : `${storage}[__at].clone()`)
 
           // a list lent for writing is walked by position on the Vec itself, so the body may still write it
           if (lentAs === 'write' && walkedName !== undefined) {
@@ -5167,7 +5181,55 @@ fn __term_drain() {
   // the box reuse of each form an arm opened and a construction built (`reusable`); a form with only one of the two
   // keeps the plain allocation, written back where the calls were emitted
   const reuse: string[] = []
-  let assembled = body.join('\n\n')
+  // a task that both opens and builds a boxed form keeps the box it opened in a local spare and builds its next node in
+  // it, where the per-thread pool took two thread-local accesses per node: the box crosses no call, so nothing can
+  // tell. Towers' moves, once `pop-disk` and `push-disk` are inlined into them (ir/inline-statements.ts)
+  const localForms = [...reuseOpened].filter(form => reuseBuilt.has(form) && boxedForms.has(form))
+  const localUsed = new Set<string>()
+  // each call to `helper(` in a text with one more argument, `, extra`, inserted at its own closing parenthesis
+  const addArgument = (text: string, helper: string, renamed: string, extra: string): string => {
+    let out = ''
+    let at = 0
+
+    for (;;) {
+      const start = text.indexOf(`${helper}(`, at)
+
+      if (start < 0) {
+        return out + text.slice(at)
+      }
+
+      let depth = 0
+      let end = start + helper.length
+
+      for (; end < text.length; end++) {
+        if (text[end] === '(') depth++
+        if (text[end] === ')' && --depth === 0) break
+      }
+
+      out += `${text.slice(at, start)}${renamed}(${text.slice(start + helper.length + 1, end)}, ${extra})`
+      at = end + 1
+    }
+  }
+  const localBody = body.map(text => {
+    let out = text
+
+    for (const form of localForms) {
+      const name = snake(form)
+
+      if (!out.startsWith('fn ') && !out.startsWith('pub fn ')) continue
+      if (!out.includes(`term_open_${name}(`) || !out.includes(`term_box_${name}(`)) continue
+
+      const spare = `__spare_${name}`
+      out = addArgument(out, `term_open_${name}`, `term_open_local_${name}`, `&mut ${spare}`)
+      out = addArgument(out, `term_box_${name}`, `term_box_local_${name}`, `&mut ${spare}`)
+      const open = out.indexOf('{\n')
+      out = `${out.slice(0, open + 2)}    let mut ${spare}: Option<Box<${pascal(form)}>> = None;\n${out.slice(open + 2)}`
+      localUsed.add(form)
+    }
+
+    return out
+  })
+  let assembled = localBody.join('\n\n')
 
   for (const form of new Set([...reuseOpened, ...reuseBuilt])) {
     const type = pascal(form)
@@ -5246,7 +5308,30 @@ thread_local! { static ${pool}: TermPool${type} = const { TermPool${type} { spar
 #[inline]
 ${open}
 #[inline]
-${make}`)
+${make}${
+      localUsed.has(form)
+        ? `
+// the same, through a task's own spare first (\`localForms\`): a box opened is kept there, a box built takes it
+#[inline]
+fn term_open_local_${name}(mut held: ${holder}, spare: &mut Option<${holder}>) -> ${type} {
+    let value = std::mem::replace(&mut *held, ${empty});
+    if let Some(before) = spare.replace(held) {
+        ${pool}.with(|pool| pool.keep(before));
+    }
+    value
+}
+#[inline]
+fn term_box_local_${name}(value: ${type}, spare: &mut Option<${holder}>) -> ${holder} {
+    match spare.take() {
+        Some(mut held) => {
+            std::mem::forget(std::mem::replace(&mut *held, value));
+            held
+        }
+        None => term_box_${name}(value),
+    }
+}`
+        : ''
+    }`)
   }
 
   return [...uses, ...termMap, ...carrier, ...budget, ...spawnHelpers, ...reuse, ...(body.length ? [assembled] : []), ...rustFormWalk(fillSpecs, meltSpecs), ...wake].join('\n\n') + '\n'

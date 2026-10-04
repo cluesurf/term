@@ -1,0 +1,348 @@
+# The pattern engine (@term/base/pattern) on whatever backend runs the suite: each feature's meaning, which tier a
+# pattern lands on, the refusals, and the budget. The same file is the fixture set for every backend, so a backend
+# whose engine means something else fails here by name. note/term/stdlib/regex-engine.md.
+#
+# Run with: term test
+
+load @term/base/pattern
+  find pattern
+  find prepare
+  find pattern-tier
+  find matches
+  find find-match
+  find find-matches
+  find match-group
+  find match-named
+  find replace-matches
+  find rewrite-matches
+  find split-at-matches
+  find escape-pattern
+  find is-valid-pattern
+  find pattern-match
+
+load @term/base/pattern/node
+  find pattern-budget
+
+load @term/base/native/{platform}/regex
+  find engine-linear
+
+load @term/base/pattern/syntax
+  find parse-pattern
+
+load @term/base/pattern/program
+  find compile-pattern
+
+load @term/base/pattern/scene
+  find make-scene
+
+load @term/base/pattern/back
+  find back-search
+
+load @term/base/text/unicode
+  find to-runes
+  find rune-to-text
+
+load @term/base/boolean
+  find not
+
+load @term/base/list
+  find list
+  find join
+
+load @term/base/maybe
+  find unwrap-or
+
+# the first match as start:end:text|group|group, with ~ for a group that took no part, or `none`
+task describe
+  take source, like text
+  take input, like text
+  like text
+  save found
+    call find-match(make(pattern, read(source)), read(input))
+  fork case, read found
+    case some
+      link hit
+      save out, text <{hit/start}:{hit/end}:{hit/text}>
+      save k, code 1
+      walk test
+        hook test
+          call is-maximum(read(k), read(hit/groups/length))
+        hook step
+          save part
+            call unwrap-or(call(match-group, read(hit), read(k)), text(<~>))
+          save out, text <{out}|{part}>
+          save k
+            call add(read(k), code(1))
+      send back, read out
+    case none
+      send back, text <none>
+
+# every match's text, joined with commas
+task all-texts
+  take source, like text
+  take input, like text
+  like text
+  save texts, make list
+  walk list
+    call find-matches(make(pattern, read(source)), read(input))
+    hook next
+      take site, name hit
+      call texts/push(read(hit/text))
+  send back
+    call join(read(texts), text(<,>))
+
+task tier
+  take source, like text
+  like text
+  send back
+    call pattern-tier(make(pattern, read(source)))
+
+# `a*b` unanchored makes a backtracking engine try each start over the whole run of a: native only where the
+# platform's engine is linear (Rust's regex crate), tier B everywhere else
+task unanchored-tier
+  like text
+  fork test
+    hook test
+      call engine-linear
+    hook hold
+      send back, text <native>
+  send back, text <linear>
+
+task refuses
+  take source, like text
+  like boolean
+  send back
+    call not(call(is-valid-pattern, read(source)))
+
+test <make pattern takes the text as its one slot>
+  want hold
+    call and
+      call is-equal
+        call describe(text(<\d+>), text(<route 66>))
+        text <6:8:66>
+      call matches
+        make pattern
+          bind text, <[a-c]+>
+        text <xxbx>
+
+test <alternatives and repetition are ordered: the first way that leads to a match wins>
+  want hold
+    call and
+      call and
+        call is-equal
+          call describe(text(<a|ab>), text(<ab>))
+          text <0:1:a>
+        call is-equal
+          call describe(text(<(a|ab)(c|bcd)(d*)>), text(<abcd>))
+          text <0:4:abcd|a|bcd|>
+      call and
+        call is-equal
+          call describe(text(<a*?b>), text(<aaab>))
+          text <0:4:aaab>
+        call is-equal
+          call describe(text(<a\{2,3\}?>), text(<aaaa>))
+          text <0:2:aa>
+
+test <a group in a repetition reports its last iteration, or nothing>
+  want hold
+    call and
+      call and
+        call is-equal
+          call describe(text(<(z)((a+)?(b+)?(c))*>), text(<zaacbbbcac>))
+          text <0:10:zaacbbbcac|z|ac|a|~|c>
+        call is-equal
+          call describe(text(<(?:(a)|b)*>), text(<ab>))
+          text <0:2:ab|~>
+      call is-equal
+        call describe(text(<(a*)*>), text(<b>))
+        text <0:0:|~>
+
+test <lookahead and lookbehind of any length, with their groups>
+  want hold
+    call and
+      call and
+        call is-equal
+          call describe(text(<(?\<=\$)\d+(\.\d*)?>), text(<cost $10.53>))
+          text <6:11:10.53|.53>
+        call is-equal
+          call describe(text(<(?\<=(\d+)(\d+))$>), text(<1053>))
+          text <4:4:|1|053>
+      call and
+        call is-equal
+          call describe(text(<(?=(a+))>), text(<baaabac>))
+          text <1:1:|aaa>
+        call is-equal
+          call describe(text(<(?\<!\$)\d+>), text(<$10 20>))
+          text <2:3:0>
+
+test <back references, named groups, and a reference read backwards inside a lookbehind>
+  want hold
+    call and
+      call and
+        call is-equal
+          call describe(text(<(?<word>\w+) \k<word>>), text(<the the>))
+          text <0:7:the the|the>
+        call is-equal
+          call describe(text(<(.*?)a(?!(a+)b\2c)\2(.*)>), text(<baaabaac>))
+          text <0:8:baaabaac|ba|~|abaac>
+      call and
+        call is-equal
+          call describe(text(<(?\<=\1(a))b>), text(<aab>))
+          text <2:3:b|a>
+        call is-equal
+          call describe(text(<(?i)(a)\1>), text(<aA>))
+          text <0:2:aA|a>
+
+test <atomic groups and possessive repetition never give back>
+  want hold
+    call and
+      call and
+        call is-equal
+          call describe(text(<(?\>a|ab)c>), text(<abc>))
+          text <none>
+        call is-equal
+          call describe(text(<a++a>), text(<aaa>))
+          text <none>
+      call is-equal
+        call describe(text(<[a-z]*+b>), text(<aab>))
+        text <none>
+
+test <word boundaries are Unicode: letters, marks, numbers and connector punctuation>
+  want hold
+    call and
+      call and
+        call is-equal
+          call all-texts(text(<\b\w+\b>), text(<foo bar>))
+          text <foo,bar>
+        call is-equal
+          call describe(text(<\bé>), text(<café é>))
+          text <5:6:é>
+      call is-equal
+        call describe(text(<x\B>), text(<xé>))
+        text <0:1:x>
+
+test <Unicode properties, scripts and case folding mean the same on every backend>
+  want hold
+    call and
+      call and
+        call is-equal
+          call all-texts(text(<\p\{Lu\}+>), text(<abcÉCOLE x ΣΑ>))
+          text <ÉCOLE,ΣΑ>
+        call is-equal
+          call all-texts(text(<\p\{Script=Greek\}+>), text(<a αβγ b>))
+          text <αβγ>
+      call and
+        call is-equal
+          call describe(text(<(?i)k>), text(<K>))
+          text <0:1:K>
+        call is-equal
+          call describe(text(<(?i)ǆ+>), text(<ǄǅǆDž>))
+          text <0:3:Ǆǅǆ>
+
+test <flags: m for lines, s for dot, x for space and comments, and scoped flags>
+  want hold
+    call and
+      call and
+        call is-equal
+          call all-texts(text(<(?m)^\w$>), call(lines, text(<a>), text(<b>), text(<cc>)))
+          text <a,b>
+        call is-equal
+          call describe(text(<.>), call(lines, text(<>), text(<x>), text(<>)))
+          text <1:2:x>
+      call and
+        call is-equal
+          call describe(text(<(?x) a b # a comment>), text(<ab>))
+          text <0:2:ab>
+        call is-equal
+          call describe(text(<a(?i:b)c>), text(<aBc aBC>))
+          text <0:3:aBc>
+
+test <positions count code points>
+  want hold
+    call is-equal
+      call describe(text(<b(.)d>), text(<𝄞ab𝄞d>))
+      text <2:5:b𝄞d|𝄞>
+
+test <each pattern lands on the tier that can run it fastest without hanging>
+  want hold
+    call and
+      call and
+        call and
+          call is-equal(call(tier, text(<^a*b>)), text(<native>))
+          call is-equal(call(tier, text(<a*b>)), call(unanchored-tier))
+        call and
+          call is-equal(call(tier, text(<(a+)+$>)), text(<linear>))
+          call is-equal(call(tier, text(<(?\<=x)y>)), text(<linear>))
+      call and
+        call and
+          call is-equal(call(tier, text(<(a)\1>)), text(<native>))
+          call is-equal(call(tier, text(<(\w)\1>)), text(<backtrack>))
+        call is-equal(call(tier, text(<[a-z]++x>)), text(<linear>))
+
+test <a pattern that is not one is refused before any engine sees it>
+  want hold
+    call and
+      call and
+        call and
+          call refuses(text(<a\{3,1\}>))
+          call refuses(text(<*a>))
+        call and
+          call refuses(text(<\2(a)>))
+          call refuses(text(<\p\{Nope\}>))
+      call and
+        call refuses(text(<(?=a)*>))
+        call not(call(refuses, text(<(?\<=a+)b>)))
+
+test <the backtracking tier raises pattern-budget instead of hanging>
+  want hold
+    call is-equal(call(budget-outcome), text(<budget>))
+
+task budget-outcome
+  like text
+  save g
+    call compile-pattern(call(parse-pattern, text(<(\w+)*\1x>)))
+  save runes
+    call to-runes(text(<aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa>))
+  mark unsafe
+    call back-search(read(g), call(make-scene, read(runes), false), code(0), code(100000))
+    send back, text <finished>
+  halt take
+    take e
+    fork case, read e
+      case pattern-budget
+        send back, text <budget>
+    send back, text <other>
+
+test <replace, rewrite, split and escape>
+  want hold
+    call and
+      call and
+        call is-equal
+          call replace-matches(make(pattern, text(<a+>)), text(<caaandaab>), text(<_>))
+          text <c_nd_b>
+        call is-equal
+          call join(call(split-at-matches, make(pattern, text(<,\s*>)), text(<a, b,c>)), text(</>))
+          text <a/b/c>
+      call is-equal(call(escaped-start), code(1))
+
+# where the escaped text is found: an escaped pattern matches the text exactly and nothing else
+task escaped-start
+  like number
+  save found
+    call find-match(call(escape-pattern, text(<a.b*c>)), text(<xa.b*cx axbbc>))
+  fork case, read found
+    case some
+      link hit
+      send back, read hit/start
+    case none
+      send back, code -1
+
+# three lines joined by line feeds
+task lines
+  take a, like text
+  take b, like text
+  take c, like text
+  like text
+  save feed
+    call rune-to-text(code(10))
+  send back, text <{a}{feed}{b}{feed}{c}>

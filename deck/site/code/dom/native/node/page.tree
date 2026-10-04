@@ -4,7 +4,6 @@
 
 dock load
   load <global:html>, name doc
-  mark native
 
 # routing glue on the server: the path comes from the request (the server boot passes it), so this is a stub. A server
 # boot dispatches per request rather than reading globals; the same `route(host, path)` dispatcher is reused.

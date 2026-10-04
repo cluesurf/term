@@ -205,6 +205,51 @@ task make-ada
   send back, code 1
 `)
     ok('`mark deprecatd` is refused', !built.ok && /deprecatd/.test(built.messages), built.messages)
+
+    // a file's marks under a task were accepted and read by nothing
+    for (const word of ['draft', 'stable', 'unstable']) {
+      const filed = build(`task old-way
+  mark ${word}
+  like number
+  send back, code 1
+`)
+      ok(`\`mark ${word}\` under a task is refused as a file's mark`, !filed.ok && /marks a file/.test(filed.messages), filed.messages)
+    }
+
+    const exact = build(`task old-way
+  mark exact
+  like number
+  send back, code 1
+`)
+    ok('`mark exact`, which nothing reads yet, is refused', !exact.ok && /exact/.test(exact.messages), exact.messages)
+  }
+
+  // ---- language/notes: `mark native` under a `dock load` repeats what `dock` says ----
+  {
+    const marked = build(`dock load
+  load <node:path>, name path
+  mark native
+
+task base-name
+  take file, like text
+  like text
+  send back
+    call path/basename
+      read file
+`)
+    ok('`mark native` under `dock load` is refused, naming the dock', !marked.ok && /mark native.*dock load/.test(marked.messages), marked.messages)
+
+    const bare = build(`dock load
+  load <node:path>, name path
+
+task base-name
+  take file, like text
+  like text
+  send back
+    call path/basename
+      read file
+`)
+    ok('and the same dock without it builds', bare.ok, bare.messages)
   }
 
   // ---- language/forms and language/tasks: what is left out is refused, not filled ----

@@ -32,6 +32,7 @@ load ./layout
   find line
   find make-span
   find make-spaces
+  find restyle-span
 
 load ./measure
   find make-grains
@@ -65,13 +66,12 @@ task text-breaks
   like breaks
   back make breaks, tiers(standard/wraps/tiers), never(standard/wraps/never)
 
-# the breaks of a location (section 12): only after `/`
+# the breaks of a location (section 12): only after `/`, and between path, line and column only for a segment wider
+# than the line
 task place-breaks
   take standard, like standard
   like breaks
-  save tiers, make list
-  tiers/push standard/wraps/location-tier
-  back make breaks, tiers(tiers), never(standard/wraps/never)
+  back make breaks, tiers(standard/wraps/location-tiers), never(standard/wraps/never)
 
 # the pieces of every span, in order, each knowing its span
 task make-pieces
@@ -378,21 +378,12 @@ task draw-wrapped
         miss
           fork test, is-minimum(owner, 0)
             hold
-              built/push restyle(spans/{owner}, value)
+              built/push restyle-span(spans/{owner}, value)
           save owner, one/owner
           save value, shown
     fork test, is-minimum(owner, 0)
       hold
-        built/push restyle(spans/{owner}, value)
+        built/push restyle-span(spans/{owner}, value)
     out/push make line, spans(built)
     save row, add(row, 1)
   back out
-
-# a span's style around a new value
-task restyle
-  take one, like span
-  take value, like text
-  like span
-  save copy, one
-  save copy/value, value
-  back copy

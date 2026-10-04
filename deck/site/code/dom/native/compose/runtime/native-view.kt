@@ -19,6 +19,8 @@
 //   img                    Image, `src` a `data:` URI or a path, `alt` its content description
 //   hr                     Divider, vertical in a row
 //   scroll                 a Column that scrolls vertically
+//   composable             a registered composable in a slot, picked by `name`, its other attributes its input (the
+//                          Apple hosts' `swiftui` slot, here; `hostedComposables`)
 //   span a b i em strong   a Row (an inline run)
 //   anything else          a Column, or a Row under `flex-direction: row`
 //
@@ -37,8 +39,12 @@
 // class `Text` or `Range`, and a short import of Compose's would capture it. State is read and written through `.value`,
 // never a `by` delegate, for the same reason: the program declares its own `getValue` and `setValue`.
 //
-// Not on Compose yet, each failing by name rather than doing nothing: composed input (`compose`, `commit-composition`,
-// `composing-text`), registered fonts, the style table (`use-styles`, classes as styles), missing glyphs.
+// COMPOSED INPUT GOES THROUGH THE FIELD'S OWN TEXT INPUT SESSION. Each field is wrapped in Compose's
+// `InterceptPlatformTextInput`, which hands this file the request the field opens when it is focused, the same request
+// the platform's input method writes through: on the desktop its `editText` (what AWT's InputMethodEvent becomes in
+// Compose's own InputMethodSession), on Android the InputConnection it creates (what a keyboard is handed). The field
+// keeps a `TextFieldValue`, whose `composition` is the marked text, so the events are read off what Compose's own edit
+// processor made of the edit, never off what the test asked for.
 import androidx.compose.foundation.ScrollState as CxScrollState
 import androidx.compose.foundation.layout.Arrangement as CxArrangement
 import androidx.compose.foundation.layout.Box as CxBox
@@ -62,7 +68,14 @@ import androidx.compose.ui.input.key.KeyEventType as CxKeyEventType
 import androidx.compose.ui.input.key.key as cxKey
 import androidx.compose.ui.input.key.onPreviewKeyEvent as cxOnPreviewKeyEvent
 import androidx.compose.ui.input.key.type as cxType
+import androidx.compose.foundation.background as cxBackground
+import androidx.compose.foundation.border as cxBorder
+import androidx.compose.foundation.shape.RoundedCornerShape as CxRoundedCornerShape
 import androidx.compose.material.Button as CxButton
+import androidx.compose.material.ButtonDefaults as CxButtonDefaults
+import androidx.compose.ui.draw.alpha as cxAlpha
+import androidx.compose.ui.draw.clip as cxClip
+import androidx.compose.ui.text.font.FontWeight as CxFontWeight
 import androidx.compose.material.Divider as CxDivider
 import androidx.compose.material.DropdownMenu as CxDropdownMenu
 import androidx.compose.material.DropdownMenuItem as CxDropdownMenuItem
@@ -85,8 +98,11 @@ import androidx.compose.ui.semantics.contentDescription as cxContentDescription
 import androidx.compose.ui.semantics.getOrNull as cxGetOrNull
 import androidx.compose.ui.semantics.heading as cxHeading
 import androidx.compose.ui.semantics.invisibleToUser as cxInvisibleToUser
+import androidx.compose.ui.semantics.role as cxRole
 import androidx.compose.ui.semantics.semantics as cxSemantics
 import androidx.compose.ui.state.ToggleableState as CxToggleableState
+import androidx.compose.ui.text.TextRange as CxTextRange
+import androidx.compose.ui.text.input.TextFieldValue as CxTextFieldValue
 import androidx.compose.ui.unit.dp as cxDp
 import androidx.compose.ui.unit.sp as cxSp
 import androidx.compose.ui.window.Dialog as CxDialog
@@ -100,10 +116,11 @@ private val COMPOSE_GENERIC_FAMILIES = setOf("", "system-ui", "sans-serif", "ser
 // one node of the tree, as snapshot state: every field a composable reads is a MutableState or a state list, so a write
 // from Term recomposes exactly the nodes that read it
 class TermNode(val key: Long, val tag: String, text: String) {
-    enum class Kind { TEXT, CONTAINER, BUTTON, FIELD, TOGGLE, RANGE, CHOICE, SHEET, IMAGE, DIVIDER, SCROLL }
+    enum class Kind { TEXT, CONTAINER, BUTTON, FIELD, TOGGLE, RANGE, CHOICE, SHEET, IMAGE, DIVIDER, SCROLL, HOSTED }
 
     val kind: Kind = when {
         tag.isEmpty() -> Kind.TEXT
+        tag == "composable" -> Kind.HOSTED
         tag == "button" -> Kind.BUTTON
         tag == "switch" -> Kind.TOGGLE
         tag == "slider" -> Kind.RANGE
@@ -123,14 +140,33 @@ class TermNode(val key: Long, val tag: String, text: String) {
     val styles = cxStateList<Pair<String, String>>()
     val children = cxStateList<TermNode>()
     val classes = mutableListOf<String>()
+    // the properties set by `set-style` or a `style` attribute, which win over any class's row, as inline CSS does
+    val inline = mutableSetOf<String>()
+    // the properties the style table set from this node's classes, so a class removed takes its rows with it
+    var fromClass = setOf<String>()
     var parent: TermNode? = null
     val listeners = mutableListOf<Pair<String, () -> Unit>>()
     // whether a choice's menu is showing
     val expanded: CxMutableState<Boolean> = cxState(false)
     // an image's decoded picture
     val picture: CxMutableState<androidx.compose.ui.graphics.ImageBitmap?> = cxState(null)
+    // a field's text with its selection and its COMPOSITION, the marked text an input method has not committed, as
+    // Compose's edit processor last reported them. `value` is its text
+    val edit: CxMutableState<CxTextFieldValue> = cxState(CxTextFieldValue(""))
+    // whether a composition is under way, so its start and end are each reported once
+    var composing = false
+    // the text input request the focused field opened, which an input method writes through. Null while unfocused
+    @Volatile var request: androidx.compose.ui.platform.PlatformTextInputMethodRequest? = null
+    // a `composable` slot's registered name and the content made for it, null until `name` picks a registered one
+    var hostedName = ""
+    val hosted: CxMutableState<(@CxComposable () -> Unit)?> = cxState(null)
+    // what the hosted content can be made to do from outside it, by name, where there is no control to press
+    val actions = mutableMapOf<String, () -> Unit>()
 
     val testTag: String get() = "term-$key"
+
+    // the tag of a `composable` slot's content box, present only while the hosted content is composed
+    val hostedTag: String get() = "term-$key-hosted"
 
     // the text under this node, in order: what a button shows
     val textContent: String
@@ -147,12 +183,59 @@ class TermNode(val key: Long, val tag: String, text: String) {
     }
 }
 
+// a `composable` slot as its content sees it: the node's attributes, read inside a composable so a change recomposes
+// it, and the way it reports a change
+class TermSlot(val node: TermNode) {
+    fun attribute(name: String): String = node.attribute(name)
+
+    // an attribute as a number, or `fall` when it is absent or not one
+    fun number(name: String, fall: Double): Double = node.attribute(name).toDoubleOrNull() ?: fall
+
+    // what the content can be made to do from outside it, by name (`performHosted`)
+    val actions: MutableMap<String, () -> Unit> get() = node.actions
+
+    // the content reports a change: it becomes the node's value and the node fires `event`
+    fun send(event: String, value: String) {
+        node.value.value = value
+        node.fire(event)
+    }
+}
+
+// `progress`: Material's LinearProgressIndicator, `value` of `max` (1 when absent), titled by `label`, as the Apple
+// hosts' ProgressView is
+@CxComposable
+fun CxHostedProgress(slot: TermSlot) {
+    val total = Math.max(slot.number("max", 1.0), 0.000_001)
+    val done = Math.min(Math.max(slot.number("value", 0.0), 0.0), total)
+    CxColumn(verticalArrangement = CxArrangement.spacedBy(4.cxDp)) {
+        CxText(slot.attribute("label"))
+        androidx.compose.material.LinearProgressIndicator(progress = (done / total).toFloat(), modifier = CxModifier.cxWidth(200.cxDp))
+    }
+}
+
+// `stepper`: a decrement and an increment either side of its label and value, as the Apple hosts' Stepper is. Material
+// has no stepper of its own, so it is two of its buttons, each tagged by its action so a test presses the real one. A
+// press fires `change` with the next value; the program decides whether to take it, by writing `value` back
+@CxComposable
+fun CxHostedStepper(slot: TermSlot) {
+    CxRow(horizontalArrangement = CxArrangement.spacedBy(8.cxDp), verticalAlignment = CxAlignment.CenterVertically) {
+        CxButton(onClick = { slot.actions["decrement"]?.invoke() }, modifier = CxModifier.cxTestTag("${slot.node.testTag}-decrement")) {
+            CxText("−")
+        }
+        CxText("${slot.attribute("label")} ${slot.attribute("value").ifEmpty { "0" }}")
+        CxButton(onClick = { slot.actions["increment"]?.invoke() }, modifier = CxModifier.cxTestTag("${slot.node.testTag}-increment")) {
+            CxText("+")
+        }
+    }
+}
+
 object nativeView {
     var root: TermNode? = null
     private var title = ""
     private var width = 800
     private var height = 600
-    private val afterLaunch = mutableListOf<() -> Unit>()
+    // a body's answer is ignored: the emitter may type a body whose last call answers a value as `() -> Any`
+    private val afterLaunch = mutableListOf<() -> Any?>()
     private var backHandler: (() -> Boolean)? = null
     private var nextKey = 0L
 
@@ -167,8 +250,6 @@ object nativeView {
         made.add(java.lang.ref.WeakReference(node))
         return node
     }
-
-    private fun notYet(what: String): Nothing = error("nativeView: $what is not on Compose yet (compose-target)")
 
     fun liveNodes(): Long {
         repeat(2) {
@@ -200,8 +281,11 @@ object nativeView {
                 if (parts.size == 2 && parts[0].isNotEmpty()) setStyle(node, parts[0], parts[1])
             }
             "src" -> if (node.kind == TermNode.Kind.IMAGE) node.picture.value = loadPicture(value)
+            "name" -> if (node.kind == TermNode.Kind.HOSTED) installHosted(node, value)
             "value" -> if (node.kind == TermNode.Kind.RANGE) node.value.value = value
         }
+        // a state attribute a style row is keyed on (`data-state`, `disabled`): the node's rows are chosen again
+        if (styleRules.any { it.attribute == name }) restyle(node)
     }
 
     fun getAttribute(handle: Any, name: String): String = node(handle).attribute(name)
@@ -214,35 +298,154 @@ object nativeView {
         "min-width", "max-width", "min-height", "max-height",
     )
 
+    // the look words the toolkit hosts share (native-dom-0008): background, border and its parts, border-radius and
+    // opacity on the node, and color, font-size and font-weight INHERITED onto every text under it, as in CSS. Values
+    // arrive resolved (look-table.ts): hex colors and px lengths, which are dp here
+    private val LOOK_WORDS = setOf(
+        "background", "background-color", "border", "border-width", "border-color", "border-radius", "opacity",
+        "color", "font-size", "font-weight", "font-family",
+    )
+
     val unsupported = sortedSetOf<String>()
+
+    // whether a declaration is one this host draws: a layout word, or a look word whose value reads
+    private fun draws(property: String, value: String): Boolean = when (property) {
+        "display" -> value == "flex" || value == "block"
+        in LAYOUT_WORDS -> true
+        "background", "background-color", "border-color", "color" -> cxPaint(value) != null
+        "border" -> value.split(Regex("\\s+")).let { it.size == 3 && it[1] == "solid" && cxLength(it[0]) != null && cxPaint(it[2]) != null }
+        "border-width", "border-radius", "font-size" -> cxLength(value) != null
+        "opacity" -> value.toFloatOrNull() != null
+        "font-weight" -> value.toIntOrNull() != null
+        "font-family" -> cxFirstFamily(value).isNotEmpty()
+        else -> false
+    }
+
+    private fun putStyle(node: TermNode, property: String, value: String) {
+        val index = node.styles.indexOfFirst { it.first == property }
+        if (index >= 0) node.styles[index] = property to value else node.styles.add(property to value)
+    }
+
+    // one declaration onto the node, from `set-style` or from a style-table row, or recorded as one this host cannot draw
+    private fun applyStyle(node: TermNode, property: String, value: String) {
+        if (draws(property, value)) putStyle(node, property, value) else unsupported.add("$property: $value")
+    }
 
     fun setStyle(handle: Any, property: String, raw: String) {
         val node = node(handle)
-        val value = raw.trim()
-        if (property !in LAYOUT_WORDS || (property == "display" && value != "flex" && value != "block")) {
-            unsupported.add("$property: $value")
-            return
-        }
-        val index = node.styles.indexOfFirst { it.first == property }
-        if (index >= 0) node.styles[index] = property to value else node.styles.add(property to value)
+        node.inline.add(property)
+        applyStyle(node, property, raw.trim())
     }
 
     fun unsupportedStyles(): String = unsupported.joinToString("\n")
 
     fun addClass(handle: Any, name: String) {
         val node = node(handle)
-        if (name !in node.classes) node.classes.add(name)
+        if (name !in node.classes) {
+            node.classes.add(name)
+            styled.add(node)
+            restyle(node)
+        }
     }
 
     fun removeClass(handle: Any, name: String) {
-        node(handle).classes.remove(name)
+        val node = node(handle)
+        node.classes.remove(name)
+        restyle(node)
     }
 
-    fun useStyles(light: String, dark: String): Unit = notYet("the style table")
+    // ---- the style table (native-dom-0008): the same format and rules as the Android and Apple hosts. Rows joined by
+    // `;`, each `<class>|<state>|<property>: <value>`; plain rows first and state rows after, as CSS specificity orders
+    // `.c` and `.c[data-state=open]`; a later row wins within each; a property set inline wins over every row ----
 
-    fun useScheme(scheme: String): Unit = notYet("the style table")
+    private class StyleRule(val name: String, val attribute: String, val expected: String?, val property: String, val value: String)
 
-    fun styleOf(handle: Any, property: String): String = notYet("style-of")
+    private var styleRules = listOf<StyleRule>()
+    private var lightRules = listOf<StyleRule>()
+    private var darkRules = listOf<StyleRule>()
+    private var darkScheme = false
+    // every node a class was ever added to, held weakly, so a scheme change can restyle them all
+    private val styled = java.util.Collections.newSetFromMap(java.util.WeakHashMap<TermNode, Boolean>())
+
+    // the light table and the dark one. An empty dark table means the sheet has no dark scheme: light serves both
+    fun useStyles(light: String, dark: String) {
+        lightRules = rulesOf(light)
+        darkRules = if (dark.isEmpty()) lightRules else rulesOf(dark)
+        styleRules = if (darkScheme) darkRules else lightRules
+    }
+
+    // the device's color scheme, `dark` or anything else for light: every styled node takes its rows from that table
+    fun useScheme(scheme: String) {
+        val dark = scheme == "dark"
+        if (dark == darkScheme) return
+        darkScheme = dark
+        styleRules = if (dark) darkRules else lightRules
+        for (node in styled.toList()) restyle(node)
+    }
+
+    private fun rulesOf(table: String): List<StyleRule> =
+        table.split(";").mapNotNull { row ->
+            val fields = row.split("|", limit = 3)
+            if (fields.size != 3) return@mapNotNull null
+            val declaration = fields[2].split(":", limit = 2).map { it.trim() }
+            if (declaration.size != 2) return@mapNotNull null
+            val on = fields[1].split("=", limit = 2)
+            StyleRule(fields[0], on[0], on.getOrNull(1), declaration[0], declaration[1])
+        }
+
+    private fun selects(node: TermNode, rule: StyleRule): Boolean {
+        if (rule.name !in node.classes) return false
+        if (rule.attribute.isEmpty()) return true
+        val have = node.attribute(rule.attribute).takeIf { value -> node.attributes.any { it.first == rule.attribute } } ?: return false
+        return rule.expected?.let { have == it } ?: (have != "false")
+    }
+
+    // the node's rows chosen again: what its classes and states select, a row taken away erased, an inline one kept
+    private fun restyle(node: TermNode) {
+        if (styleRules.isEmpty()) return
+        val wanted = linkedMapOf<String, String>()
+        for (plain in listOf(true, false)) {
+            for (rule in styleRules) {
+                if (rule.attribute.isEmpty() == plain && selects(node, rule) && rule.property !in node.inline) {
+                    wanted[rule.property] = rule.value
+                }
+            }
+        }
+        for (property in node.fromClass) {
+            if (property !in wanted) node.styles.removeAll { it.first == property }
+        }
+        node.fromClass = wanted.keys.toSet()
+        for ((property, value) in wanted) {
+            if (node.style(property) != value) applyStyle(node, property, value)
+        }
+    }
+
+    // for tests: a look property as the node shows it. The BACKGROUND is read off the pixels Compose drew, at a point
+    // inside the node's corner and its edge, so a fill handed to Compose and never drawn reads back wrong. The rest is
+    // what Compose was handed for the node (its edge, corners, opacity) and the color and font its text inherits: Compose
+    // keeps no drawable to ask for them, so they are named as handed rather than passed off as read from the screen
+    fun styleOf(handle: Any, property: String): String {
+        val node = node(handle)
+        return when (property) {
+            "background" -> {
+                val edge = cxLength(cxEdge(node).first) ?: 0f
+                val corner = cxLength(node.style("border-radius")) ?: 0f
+                val inset = edge + corner * 0.3f + 2f
+                val drawn = composeHost.pixel(node.testTag, inset, inset) ?: return "none"
+                if (node.style("background").isEmpty() && node.style("background-color").isEmpty()) "none" else drawn
+            }
+            "border" -> cxEdge(node).let { (width, color) -> if (width.isEmpty()) "0px " else "${cxPlainNumber(cxLength(width) ?: 0f)}px $color" }
+            "border-radius" -> "${cxPlainNumber(cxLength(node.style("border-radius")) ?: 0f)}px"
+            "opacity" -> cxPlainNumber(node.style("opacity").toFloatOrNull() ?: 1f)
+            "color" -> cxInherited(node, "color") ?: "#000000"
+            "font-size" -> "${cxPlainNumber(cxLength(cxInherited(node, "font-size") ?: "17") ?: 17f)}px"
+            "font-weight" -> cxInherited(node, "font-weight") ?: "400"
+            // the family the text was handed: its `font-family`'s first name when that family can be drawn, else empty
+            // for the system face. Compose keeps no typeface to ask, as Android's cannot name itself either
+            "font-family" -> cxInherited(node, "font-family")?.let { cxFirstFamily(it) }?.takeIf { hasFont(it) } ?: ""
+            else -> ""
+        }
+    }
 
     // focus is the platform's to move; a request with nothing focusable is not an error on any host
     fun focus(handle: Any) {}
@@ -308,16 +511,93 @@ object nativeView {
 
     fun getValue(handle: Any): String = node(handle).value.value
 
+    // a field's text set from Term. The same text written back (the face input writes its signal back after every
+    // keystroke) changes nothing, so a composition under way and the caret are kept, as the web keeps them
     fun setValue(handle: Any, value: String) {
-        node(handle).value.value = value
+        val node = node(handle)
+        node.value.value = value
+        if (node.kind == TermNode.Kind.FIELD && node.edit.value.text != value) {
+            node.edit.value = CxTextFieldValue(value, CxTextRange(value.length))
+        }
     }
 
-    // a SwiftUI slot is Apple's (swiftui-target-0001); these test hooks answer as for one that hosts nothing
-    fun hostedName(handle: Any): String = ""
+    // a field's edit as Compose's edit processor reported it, turned into the web's events in its order: a
+    // `compositionstart` when marked text appears, a `compositionupdate` for each edit while it is there, a
+    // `compositionend` when it is committed or dropped, and `input` after each edit. A change of caret alone is no edit
+    fun edited(node: TermNode, edited: CxTextFieldValue) {
+        val before = node.edit.value
+        node.edit.value = edited
+        if (edited.text == before.text && edited.composition == before.composition) return
+        node.value.value = edited.text
+        if (edited.composition != null) {
+            if (!node.composing) {
+                node.composing = true
+                node.fire("compositionstart")
+            }
+            node.fire("compositionupdate")
+        } else if (node.composing) {
+            node.composing = false
+            node.fire("compositionend")
+        }
+        node.fire("input")
+    }
 
-    fun hostedAttribute(handle: Any, name: String): String = ""
+    // ---- a composable in a slot of the retained tree, the twin of the Apple hosts' SwiftUI slot (swiftui-target-0001,
+    // native-view.swift `hostedViews`). A `composable` node's `name` picks a registered composable; every other
+    // attribute is its input, state, so it recomposes when the program sets one; it answers with an event on the node,
+    // which the program's handler hears like any click. Two are built in, `progress` and `stepper`, and an app adds
+    // its own with `registerComposable` before it mounts ----
 
-    fun performHosted(handle: Any, action: String) {}
+    // each registered name's maker: handed the slot once, when it is installed, it may name actions there and answers
+    // the content to draw
+    val hostedComposables = mutableMapOf<String, (TermSlot) -> (@CxComposable () -> Unit)>(
+        "progress" to { slot -> { CxHostedProgress(slot) } },
+        "stepper" to { slot ->
+            val step = { by: Double ->
+                slot.send("change", cxPlainValue((slot.number("value", 0.0) + by * slot.number("step", 1.0)).toFloat()))
+            }
+            slot.actions["increment"] = { step(1.0) }
+            slot.actions["decrement"] = { step(-1.0) }
+            ({ CxHostedStepper(slot) })
+        },
+    )
+
+    fun registerComposable(name: String, make: (TermSlot) -> (@CxComposable () -> Unit)) {
+        hostedComposables[name] = make
+    }
+
+    // put the registered composable `name` in the node's slot, replacing what was there. An unknown name leaves it empty
+    private fun installHosted(node: TermNode, name: String) {
+        node.actions.clear()
+        val make = hostedComposables[name]
+        if (make == null) {
+            node.hostedName = ""
+            node.hosted.value = null
+            return
+        }
+        node.hostedName = name
+        node.hosted.value = make(TermSlot(node))
+    }
+
+    // for tests: the registered name of the composable a node hosts, READ OFF COMPOSE: only once its content is composed
+    // (the slot's content box is in the semantics tree), else empty text
+    fun hostedName(handle: Any): String {
+        val node = node(handle)
+        return if (node.hostedName.isNotEmpty() && composeHost.holds(node.hostedTag)) node.hostedName else ""
+    }
+
+    // for tests: what the hosted composable was handed for an attribute
+    fun hostedAttribute(handle: Any, name: String): String = node(handle).attribute(name)
+
+    // for tests: do what the hosted composable names, the way a person does: its control tagged `<node>-<action>` pressed
+    // through Compose's own input when it draws one, else the action it named
+    fun performHosted(handle: Any, action: String) {
+        val node = node(handle)
+        val control = "${node.testTag}-$action"
+        if (composeHost.holds(control) && composeHost.click(control)) return
+        node.actions[action]?.invoke()
+        composeHost.settle()
+    }
 
     // ---- keys: every key pressed, as KeyboardEvent.key names it ----
 
@@ -349,17 +629,62 @@ object nativeView {
 
     // ---- fonts and text ----
 
-    fun hasFont(family: String): Boolean = family in COMPOSE_GENERIC_FAMILIES
+    // ---- fonts (native-text-0002): a face registered from a file, a `data:` URI or (on Android) an APK asset, set by
+    // `font-family`. A family is AVAILABLE when it was registered here or is a generic one; text in one that is not
+    // draws in the system face, which is what `check-font` answering false says ahead of time ----
 
-    fun registerFont(family: String, source: String): Boolean = notYet("register-font")
+    // the registered families, by name. State, so a text set in a family registered after it was composed redraws
+    val fonts = androidx.compose.runtime.mutableStateMapOf<String, androidx.compose.ui.text.font.FontFamily>()
 
-    fun missingGlyphs(handle: Any): String = notYet("missing-glyphs")
+    fun hasFont(family: String): Boolean = fonts.containsKey(family) || family in COMPOSE_GENERIC_FAMILIES
 
-    fun composingText(handle: Any): String = notYet("composed input")
+    // register the face in `source` under `family`: a path, a `data:` URI, or `asset:<name>` where the platform carries
+    // assets. True when the family can now be drawn; registering one already registered is not a failure
+    fun registerFont(family: String, source: String): Boolean {
+        if (fonts.containsKey(family)) return true
+        val bytes = when {
+            source.startsWith("data:") -> {
+                val comma = source.indexOf(',')
+                if (comma < 0 || !source.substring(0, comma).endsWith(";base64")) return false
+                java.util.Base64.getDecoder().decode(source.substring(comma + 1))
+            }
+            else -> composeHost.readFile(source) ?: return false
+        }
+        val face = composeHost.fontOf(family, bytes) ?: return false
+        fonts[family] = face
+        return true
+    }
 
-    fun compose(handle: Any, text: String): Unit = notYet("composed input")
+    // the characters of a text node the platform draws as a box (native-text-0004), each once: asked of the face the
+    // text is drawn in, through the platform's own fallback (Skia's on the desktop, the Paint's on Android)
+    fun missingGlyphs(handle: Any): String {
+        val node = node(handle)
+        if (node.kind != TermNode.Kind.TEXT) return ""
+        val family = cxInherited(node, "font-family")?.let { cxFirstFamily(it) }?.takeIf { fonts.containsKey(it) }
+        return composeHost.missingGlyphs(node.text.value, family)
+    }
 
-    fun commitComposition(handle: Any, text: String): Unit = notYet("composed input")
+    // ---- composed input (native-text-0003): an input method's uncommitted text, reported as the web reports it ----
+
+    // the field's marked text, empty when it holds none: what a web handler reads as a composition event's `data`
+    fun composingText(handle: Any): String {
+        val edit = node(handle).edit.value
+        val marked = edit.composition ?: return ""
+        return edit.text.substring(marked.min, marked.max)
+    }
+
+    // for tests: what an input method does while a person composes, through the field's own text input session, so the
+    // field reports the edit exactly as it would for a real keyboard. `text` replaces whatever is marked
+    fun compose(handle: Any, text: String) {
+        val node = node(handle)
+        composeHost.inputMethod(node.testTag, { node.request }, text, commit = false)
+    }
+
+    // for tests: the input method commits, replacing the marked text with `text`
+    fun commitComposition(handle: Any, text: String) {
+        val node = node(handle)
+        composeHost.inputMethod(node.testTag, { node.request }, text, commit = true)
+    }
 
     // ---- the app around the tree ----
 
@@ -375,7 +700,10 @@ object nativeView {
 
     fun pageBody(): Any = root ?: make("main", "")
 
-    fun afterLaunch(body: () -> Unit) {
+    // the window's width in dp, as `open-root` asked for it: what the desktop's width class is read from
+    fun windowWidth(): Int = width
+
+    fun afterLaunch(body: () -> Any?) {
         afterLaunch.add(body)
     }
 
@@ -410,18 +738,24 @@ object nativeView {
         composeHost.exit(status)
     }
 
+    // the app's navigation takes the platform's back (native-navigation-0007): Android's back dispatcher on Jetpack
+    // Compose, the back chord on the desktop (CxTree). True when the navigation took it
     fun onBack(handler: () -> Boolean) {
         backHandler = handler
     }
 
+    fun takeBack(): Boolean = backHandler?.invoke() == true
+
+    // for tests: the platform's back the way a person gives it, through the host's own entry. Where the host has no
+    // input to inject (a window), the back is handed to the navigation as the platform would hand it
     fun pressBack() {
-        backHandler?.invoke()
+        if (!composeHost.pressBack()) takeBack()
     }
 
     // ---- what a test, or a person, does to the tree and sees of it ----
 
     // run `body` once the platform has had its turn: here, once Compose has drawn what the code before asked for
-    fun later(body: () -> Unit) {
+    fun later(body: () -> Any?) {
         composeHost.settle()
         body()
     }
@@ -520,6 +854,14 @@ object nativeView {
                 } ?: "0,0"
                 "<scroll extent=\"$extent\">${node.children.joinToString("") { serialize(it) }}</scroll>"
             }
+            // the hosted composable's name and the size Compose laid its content out to, in dp, read off the content
+            // box's semantics: a size above zero is Compose having drawn it, as the Apple hosts say a SwiftUI view's
+            TermNode.Kind.HOSTED -> {
+                val content = if (composeHost.holds(node.hostedTag)) composeHost.semantics(node.hostedTag, merged = false) else null
+                val density = composeHost.density()
+                val size = content?.size?.let { "${Math.round(it.width / density)},${Math.round(it.height / density)}" } ?: "0,0"
+                "<composable name=\"${hostedName(node)}\" size=\"$size\"></composable>"
+            }
         }
     }
 
@@ -550,22 +892,30 @@ object nativeView {
 
     fun measureWidth(handle: Any): Long = frameOf(handle).split(",")[2].toLong()
 
-    // what the semantics report for a node, `role|name`, the role in the contract's spelling
+    // what Compose's semantics report for a node (native-accessibility-0007), `role|name`, READ OFF THE SEMANTICS TREE
+    // that TalkBack's and the desktop's accessibility bridges are both built from, in Compose's own spelling as the
+    // contract's Compose column writes it: the `Role` the node carries (`Button`, `Switch`, `Image`, `DropdownList`),
+    // else the property that says what it is (`EditableText`, `ProgressBarRangeInfo`, `VerticalScrollAxisRange`,
+    // `Text`), with `+Heading` for a heading. A node marked invisible to the user, or under one (aria-hidden hides what
+    // it holds), is `hidden`. A node that carries none of these (a layout) is not one a reader lands on: none. The
+    // name is the content description, else the text the node merges
     fun accessibilityOf(handle: Any): String {
         val node = node(handle)
-        val semantics = semanticsOf(node, merged = true) ?: return "|"
+        val semantics = semanticsOf(node, merged = true) ?: return "hidden|"
+        var at: CxSemanticsNode? = semanticsOf(node, merged = false)
+        while (at != null) {
+            if (at.config.contains(CxSemanticsProperties.InvisibleToUser)) return "hidden|"
+            at = at.parent
+        }
         val config = semantics.config
-        if (config.contains(CxSemanticsProperties.InvisibleToUser)) return "hidden|"
-        val role = when {
-            config.contains(CxSemanticsProperties.ToggleableState) -> "switch"
-            config.contains(CxSemanticsProperties.ProgressBarRangeInfo) -> "slider"
-            config.contains(CxSemanticsProperties.EditableText) -> "textbox"
-            config.contains(CxSemanticsProperties.Heading) -> "heading"
-            config.cxGetOrNull(CxSemanticsProperties.Role)?.toString() == "Button" -> "button"
-            node.kind == TermNode.Kind.IMAGE -> "img"
-            node.kind == TermNode.Kind.TEXT -> "text"
+        val kind = config.cxGetOrNull(CxSemanticsProperties.Role)?.toString() ?: when {
+            config.contains(CxSemanticsProperties.EditableText) -> "EditableText"
+            config.contains(CxSemanticsProperties.ProgressBarRangeInfo) -> "ProgressBarRangeInfo"
+            config.contains(CxSemanticsProperties.VerticalScrollAxisRange) -> "VerticalScrollAxisRange"
+            config.contains(CxSemanticsProperties.Text) -> "Text"
             else -> ""
         }
+        val role = kind + if (config.contains(CxSemanticsProperties.Heading)) "+Heading" else ""
         val name = config.cxGetOrNull(CxSemanticsProperties.ContentDescription)?.joinToString("")
             ?: textsOf(semantics)
         return "$role|$name"
@@ -594,6 +944,65 @@ object nativeView {
 
 // a CSS length in px as dp, or null for one that is not a plain number of pixels
 private fun cxLength(value: String): Float? = value.trim().removeSuffix("px").toFloatOrNull()
+
+// a color as the style table writes it, `#rrggbb` or `#rrggbbaa`, or null for anything else
+private fun cxPaint(value: String): CxColor? {
+    val digits = value.trim().lowercase()
+    if (!digits.startsWith("#") || (digits.length != 7 && digits.length != 9)) return null
+    val number = digits.drop(1).toLongOrNull(16) ?: return null
+    val rgba = if (digits.length == 7) (number shl 8) or 0xffL else number
+    fun channel(shift: Int) = ((rgba shr shift) and 0xffL).toInt()
+    return CxColor(red = channel(24), green = channel(16), blue = channel(8), alpha = channel(0))
+}
+
+// the first family a CSS `font-family` list names, unquoted: `"Noto Sans", serif` is `Noto Sans`
+private fun cxFirstFamily(value: String): String = value.split(',').first().trim().trim('"', '\'')
+
+// the family a text is drawn in: its inherited `font-family`'s first name when registered, else the system's
+private fun cxFamilyOf(node: TermNode): androidx.compose.ui.text.font.FontFamily? =
+    cxInherited(node, "font-family")?.let { nativeView.fonts[cxFirstFamily(it)] }
+
+// a number the way CSS writes it: `1`, `0.5`
+private fun cxPlainNumber(number: Float): String {
+    val rounded = Math.round(number * 100) / 100.0
+    return if (rounded == Math.floor(rounded)) rounded.toLong().toString() else rounded.toString()
+}
+
+// a node's edge, width and color, from `border` or from `border-width` and `border-color`; an empty width for none
+private fun cxEdge(node: TermNode): Pair<String, String> {
+    val whole = node.style("border").split(Regex("\\s+")).takeIf { it.size == 3 }
+    val width = node.style("border-width").ifEmpty { whole?.get(0) ?: "" }
+    val color = node.style("border-color").ifEmpty { whole?.get(2) ?: "#000000" }
+    return width to color
+}
+
+// a text property's value at a node: its own, else the nearest ancestor's, which is CSS inheritance. Read inside a
+// composable it subscribes to every style list on the way up, so an ancestor restyled redraws its text
+private fun cxInherited(node: TermNode, property: String): String? {
+    var at: TermNode? = node
+    while (at != null) {
+        at.style(property).takeIf { it.isNotEmpty() }?.let { return it }
+        at = at.parent
+    }
+    return null
+}
+
+// a node's look on its modifier: the fill and the edge in its corner shape, then its opacity
+private fun cxLook(node: TermNode, start: CxModifier): CxModifier {
+    var modifier = start
+    val corner = (cxLength(node.style("border-radius")) ?: 0f).cxDp
+    val shape = CxRoundedCornerShape(corner)
+    val fill = cxPaint(node.style("background").ifEmpty { node.style("background-color") })
+
+    if (corner.value > 0f) modifier = modifier.cxClip(shape)
+    if (fill != null && node.kind != TermNode.Kind.BUTTON) modifier = modifier.cxBackground(fill, shape)
+    val (width, color) = cxEdge(node)
+    val edge = cxLength(width)
+    val ink = cxPaint(color)
+    if (edge != null && edge > 0f && ink != null) modifier = modifier.cxBorder(edge.cxDp, ink, shape)
+    node.style("opacity").toFloatOrNull()?.let { modifier = modifier.cxAlpha(it) }
+    return modifier
+}
 
 // the tag of the window's root box, which hears every key
 private const val COMPOSE_ROOT_TAG = "term-root"
@@ -632,7 +1041,11 @@ fun CxTree(root: TermNode) {
         CxModifier
             .cxTestTag(COMPOSE_ROOT_TAG)
             .cxOnPreviewKeyEvent { event ->
-                if (event.cxType == CxKeyEventType.KeyDown) nativeView.deliverKey(cxKeyName(event.cxKey))
+                if (event.cxType != CxKeyEventType.KeyDown) return@cxOnPreviewKeyEvent false
+                // the platform's back chord, where the platform's back is a key (the desktop's): the navigation takes
+                // it first, and a back it takes is not also a key
+                if (composeHost.isBackKey(event) && nativeView.takeBack()) return@cxOnPreviewKeyEvent true
+                nativeView.deliverKey(cxKeyName(event.cxKey))
                 false
             }
             .cxFocusRequester(focus)
@@ -643,6 +1056,18 @@ fun CxTree(root: TermNode) {
         CxNode(root, CxModifier)
     }
     androidx.compose.runtime.LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+}
+
+// what a reader is told of a node from its attributes, as semantics (native-accessibility-0007): `aria-label` its name,
+// the content description TalkBack speaks; `aria-hidden` true takes it out of what a reader is told, with what it holds
+private fun cxSpoken(node: TermNode, start: CxModifier): CxModifier {
+    val label = node.attribute("aria-label")
+    val hidden = node.attribute("aria-hidden") == "true"
+    if (label.isEmpty() && !hidden) return start
+    return start.cxSemantics {
+        if (label.isNotEmpty()) cxContentDescription = label
+        if (hidden) cxInvisibleToUser()
+    }
 }
 
 // a node's own size and padding, from its style rows, and what its parent gave it (a weight, a stretch). ORDER MATTERS:
@@ -680,35 +1105,76 @@ private fun cxSized(node: TermNode, given: CxModifier): CxModifier {
     // the tag INSIDE the node's own size and outside its padding, so its semantics report the node as it is: tagged
     // first, a 300 wide row on a narrower phone reported the 272 it gave way to rather than its own 300
     modifier = modifier.cxTestTag(node.testTag)
+    modifier = cxSpoken(node, modifier)
+    // the look inside the node's size, under its padding, so a fill paints the padding as CSS's does
+    modifier = cxLook(node, modifier)
     cxLength(node.style("padding"))?.let { modifier = modifier.cxPadding(it.cxDp) }
     return modifier
 }
 
+// a field's text input session, passed on to the platform unchanged, its request kept on the node while it lasts
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+class CxFieldInput(private val node: TermNode) : androidx.compose.ui.platform.PlatformTextInputInterceptor {
+    override suspend fun interceptStartInputMethod(
+        request: androidx.compose.ui.platform.PlatformTextInputMethodRequest,
+        nextHandler: androidx.compose.ui.platform.PlatformTextInputSession,
+    ): Nothing {
+        node.request = request
+        try {
+            nextHandler.startInputMethod(request)
+        } finally {
+            if (node.request === request) node.request = null
+        }
+    }
+}
+
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @CxComposable
 fun CxNode(node: TermNode, given: CxModifier) {
     when (node.kind) {
         TermNode.Kind.TEXT -> {
             val heading = node.parent?.tag?.let { Regex("h[1-6]").matches(it) } == true
+            // the color, size and weight its ancestors' rows set, inherited as CSS inherits them
             CxText(
                 node.text.value,
                 modifier = given.cxTestTag(node.testTag).cxSemantics { if (heading) cxHeading() },
-                fontSize = 17.cxSp,
-                color = CxColor.Black,
+                fontSize = (cxLength(cxInherited(node, "font-size") ?: "") ?: 17f).cxSp,
+                color = cxInherited(node, "color")?.let { cxPaint(it) } ?: CxColor.Black,
+                fontWeight = cxInherited(node, "font-weight")?.toIntOrNull()?.let { CxFontWeight(it) },
+                fontFamily = cxFamilyOf(node),
             )
         }
-        TermNode.Kind.BUTTON -> CxButton(onClick = { node.fire("click") }, modifier = cxSized(node, given)) {
-            CxText(node.textContent)
+        // a fill on a button is the button's own color: Material's button paints its surface over anything behind it
+        TermNode.Kind.BUTTON -> {
+            val fill = cxPaint(node.style("background").ifEmpty { node.style("background-color") })
+            val ink = cxInherited(node, "color")?.let { cxPaint(it) }
+            val colors = if (fill != null || ink != null) {
+                CxButtonDefaults.buttonColors(
+                    backgroundColor = fill ?: CxButtonDefaults.buttonColors().backgroundColor(true).value,
+                    contentColor = ink ?: CxColor.White,
+                )
+            } else {
+                CxButtonDefaults.buttonColors()
+            }
+            CxButton(onClick = { node.fire("click") }, modifier = cxSized(node, given), colors = colors) {
+                CxText(node.textContent)
+            }
         }
-        TermNode.Kind.FIELD -> CxTextField(
-            value = node.value.value,
-            onValueChange = {
-                node.value.value = it
-                node.fire("input")
-            },
-            modifier = cxSized(node, given),
-            placeholder = node.attribute("placeholder").takeIf { it.isNotEmpty() }?.let { hint -> { CxText(hint) } },
-            singleLine = node.tag == "input",
-        )
+        // the field over a TextFieldValue, so an edit says whether it left text marked. Its text input session is
+        // intercepted on the way to the platform and its request kept for as long as the session lasts, which is what
+        // `compose` and `commit-composition` write through
+        TermNode.Kind.FIELD -> {
+            val interceptor = cxRemember(node) { CxFieldInput(node) }
+            androidx.compose.ui.platform.InterceptPlatformTextInput(interceptor) {
+                CxTextField(
+                    value = node.edit.value,
+                    onValueChange = { nativeView.edited(node, it) },
+                    modifier = cxSized(node, given),
+                    placeholder = node.attribute("placeholder").takeIf { it.isNotEmpty() }?.let { hint -> { CxText(hint) } },
+                    singleLine = node.tag == "input",
+                )
+            }
+        }
         TermNode.Kind.TOGGLE -> CxSwitch(
             checked = node.attribute("aria-checked") == "true",
             onCheckedChange = { node.fire("click") },
@@ -731,9 +1197,13 @@ fun CxNode(node: TermNode, given: CxModifier) {
                 modifier = cxSized(node, given).cxWidth(200.cxDp),
             )
         }
-        // the tag is on the button, whose semantics merge the value it shows, which is what `serialize` reads
+        // the tag is on the button, whose semantics merge the value it shows, which is what `serialize` reads. It is a
+        // DropdownList to a reader, as Compose's own exposed dropdown says, not the plain button it is drawn as
         TermNode.Kind.CHOICE -> CxBox {
-            CxButton(onClick = { node.expanded.value = true }, modifier = cxSized(node, given)) { CxText(node.value.value) }
+            CxButton(
+                onClick = { node.expanded.value = true },
+                modifier = cxSized(node, given).cxSemantics { cxRole = androidx.compose.ui.semantics.Role.DropdownList },
+            ) { CxText(node.value.value) }
             CxDropdownMenu(expanded = node.expanded.value, onDismissRequest = { node.expanded.value = false }) {
                 for (option in node.attribute("options").split("\n").filter { it.isNotEmpty() }) {
                     CxDropdownMenuItem(onClick = {
@@ -778,6 +1248,10 @@ fun CxNode(node: TermNode, given: CxModifier) {
             }
         }
         TermNode.Kind.CONTAINER -> CxStack(node, given)
+        // the slot: the hosted content in a box of its own, tagged so a reader can tell it is composed
+        TermNode.Kind.HOSTED -> CxBox(cxSized(node, given)) {
+            node.hosted.value?.let { content -> CxBox(CxModifier.cxTestTag(node.hostedTag)) { content() } }
+        }
     }
 }
 

@@ -20,8 +20,9 @@ import {
   buildAndroidProgram,
   simulator,
 } from '@term/call/code/cask'
-import { buildCompose, runCompose } from './compose-build'
-import { buildComposeAndroid, runComposeAndroid } from './compose-android'
+import { buildCompose, buildComposeAndroid } from '@term/call/code/compose'
+import { runCompose } from './compose-build'
+import { runComposeAndroid } from './compose-android'
 
 // a macOS test app opens its window past the right edge of the screens and never takes focus (native-view.swift
 // windowAway), run from the gate or by hand alike
@@ -263,7 +264,14 @@ function runComposeLeg(run: ToolkitRun): void {
 function runComposeAndroidLeg(run: ToolkitRun): void {
   const shot = run.shots['compose-android'] ?? join(run.dir, 'compose-android.png')
   const identifier = `${run.androidIdentifier}.compose`
-  const built = buildComposeAndroid({ root: run.root, dir: run.dir, name: 'compose', text: run.program('compose-android', 'compose.png'), identifier })
+  const built = buildComposeAndroid({
+    root: run.root,
+    dir: run.dir,
+    name: 'compose',
+    text: run.program('compose-android', 'compose.png'),
+    identifier,
+    assets: run.assets,
+  })
 
   if (built.form === 'skipped') {
     console.log(`skip  compose-android  (${built.reason})`)

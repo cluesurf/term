@@ -3,16 +3,13 @@
   "name": "Term",
   "patterns": [
     {
-      "include": "#controls"
-    },
-    {
-      "include": "#metadata"
-    },
-    {
       "include": "#nestedtermsexternal"
     },
     {
-      "include": "#nestedterms"
+      "include": "#callterms"
+    },
+    {
+      "include": "#literals"
     },
     {
       "include": "#terms"
@@ -37,41 +34,6 @@
     }
   ],
   "repository": {
-    "controls": {
-      "patterns": [
-        {
-          "match": "^\\s*(sift|fork|case|walk|turn|halt|send|back|wait|tick|miss|next)(?=[ ,(]|$)",
-          "captures": {
-            "1": {
-              "name": "keyword.control.tree"
-            }
-          }
-        },
-        {
-          "match": "(?<=, )(tick)(?= )",
-          "captures": {
-            "1": {
-              "name": "keyword.control.tree"
-            }
-          }
-        }
-      ]
-    },
-    "metadata": {
-      "patterns": [
-        {
-          "match": "^\\s*(mark|note) (async|native|unsafe|stable|unstable|deprecated|feature|platform|keep|draft|open|private|roam|lean|shared|tag)(?=[ ,]|$)",
-          "captures": {
-            "1": {
-              "name": "storage.modifier.tree"
-            },
-            "2": {
-              "name": "storage.modifier.tree"
-            }
-          }
-        }
-      ]
-    },
     "comments": {
       "patterns": [
         {
@@ -95,7 +57,7 @@
     "nestedtermsexternal": {
       "patterns": [
         {
-          "begin": "([a-z][a-z0-9]*(?:-+[a-z0-9]+)*-*) ",
+          "begin": "^\\s*(?!(?:true|false|void)(?![a-z0-9-]))([a-z][a-z0-9]*(?:-+[a-z0-9]+)*-*)(?=[ ,(]|$)",
           "beginCaptures": {
             "1": {
               "name": "constant.language.tree"
@@ -109,10 +71,58 @@
           },
           "patterns": [
             {
-              "include": "#nestedtermsexternal"
+              "include": "#headbody"
+            }
+          ]
+        },
+        {
+          "begin": "(?!(?:true|false|void)(?![a-z0-9-]))([a-z][a-z0-9]*(?:-+[a-z0-9]+)*-*)(?=[ \\t]+[^\\s,])",
+          "beginCaptures": {
+            "1": {
+              "name": "constant.language.tree"
+            }
+          },
+          "end": "[,\n]",
+          "endCaptures": {
+            "0": {
+              "name": "variable.other.tree"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#headbody"
+            }
+          ]
+        }
+      ]
+    },
+    "parens": {
+      "patterns": [
+        {
+          "begin": "\\(",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.separator.parameter.tree"
+            }
+          },
+          "end": "\\)",
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.separator.parameter.tree"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#comments"
             },
             {
-              "include": "#nestedterms"
+              "include": "#callterms"
+            },
+            {
+              "include": "#parens"
+            },
+            {
+              "include": "#literals"
             },
             {
               "include": "#terms"
@@ -121,18 +131,43 @@
               "include": "#strings"
             },
             {
-              "include": "#interpolations"
-            },
-            {
               "include": "#numbers"
             },
             {
               "include": "#codes"
-            },
-            {
-              "include": "#comments"
             }
           ]
+        }
+      ]
+    },
+    "headbody": {
+      "patterns": [
+        {
+          "include": "#callterms"
+        },
+        {
+          "include": "#parens"
+        },
+        {
+          "include": "#literals"
+        },
+        {
+          "include": "#terms"
+        },
+        {
+          "include": "#strings"
+        },
+        {
+          "include": "#interpolations"
+        },
+        {
+          "include": "#numbers"
+        },
+        {
+          "include": "#codes"
+        },
+        {
+          "include": "#comments"
         }
       ]
     },
@@ -158,6 +193,58 @@
           "patterns": [
             {
               "include": "#comments"
+            },
+            {
+              "include": "#terms"
+            },
+            {
+              "include": "#strings"
+            },
+            {
+              "include": "#numbers"
+            },
+            {
+              "include": "#codes"
+            }
+          ]
+        }
+      ]
+    },
+    "literals": {
+      "patterns": [
+        {
+          "name": "entity.name.function.tree",
+          "match": "(?<![\\w-])(?:true|false|void)(?![\\w-])"
+        }
+      ]
+    },
+    "callterms": {
+      "patterns": [
+        {
+          "begin": "([a-z][a-z0-9]*(?:-+[a-z0-9]+)*-*)(\\()",
+          "beginCaptures": {
+            "1": {
+              "name": "string.quoted.single.tree"
+            },
+            "2": {
+              "name": "punctuation.separator.parameter.tree"
+            }
+          },
+          "end": "\\)",
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.separator.parameter.tree"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#comments"
+            },
+            {
+              "include": "#callterms"
+            },
+            {
+              "include": "#literals"
             },
             {
               "include": "#terms"
@@ -233,7 +320,7 @@
       },
       "patterns": [
         {
-          "include": "#nestedterms"
+          "include": "#callterms"
         },
         {
           "include": "#terms"

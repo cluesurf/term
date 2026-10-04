@@ -599,7 +599,8 @@ const cli = yargs(hideBin(process.argv))
         })
         .option('target', {
           type: 'string',
-          description: 'Build a native app cask for a platform (macos, ios, android, linux, windows)',
+          description:
+            'Build a native app cask for a platform (macos, ios, android, linux, windows), or a Compose app (compose: the desktop with its JVM, compose-android: an APK)',
         })
         .option('page', {
           type: 'string',
@@ -607,7 +608,7 @@ const cli = yargs(hideBin(process.argv))
         })
         .option('entry', {
           type: 'string',
-          description: 'The cask entry of the app (default cask.tree)',
+          description: 'The cask entry of the app (default cask.tree; app.tree for a Compose target)',
         })
         .option('url', {
           type: 'string',
@@ -639,6 +640,16 @@ const cli = yargs(hideBin(process.argv))
           target: argv.emit,
           out: argv.out,
         })
+
+        return
+      }
+
+      // a Compose app (compose-target-0004): its views drawn by Compose, no WebView, packaged for the desktop with its
+      // own JVM or as an APK
+      if (argv.target === 'compose' || argv.target === 'compose-android') {
+        const { makeCompose } = await import('@term/call/code/compose')
+
+        await makeCompose({ root, target: argv.target, entry: argv.entry })
 
         return
       }

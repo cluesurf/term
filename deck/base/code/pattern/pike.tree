@@ -1,0 +1,710 @@
+# Tier B: the linear-time matcher. A Pike VM over ./program.tree: every way the pattern could be matching at once,
+# held as threads in priority order, each step reading one code point. A thread that reaches an instruction another
+# thread of higher priority already reached at this position is dropped, so the work at each position is at most the
+# program's length, and a search is O(program size times input length).
+#
+# Lookarounds stay linear by being decided for every position BEFORE the search (the approach of Barrière and
+# Pit-Claudel, "Linear Matching of JavaScript Regular Expressions", PLDI 2024): a lookahead's body is run backwards
+# over the whole input from its end, starting a thread at every position, and the positions where a thread finishes
+# are where the lookahead holds; a lookbehind's body is run forwards the same way. Inner lookarounds first, so an
+# outer one reads their answers. The search then reads a table. The groups inside a positive lookaround are filled in
+# after the match: its LOOK wrote where it stood, and its body is matched there once more, anchored.
+#
+# Back references and atomic groups are not here: ./back.tree runs those, and the analysis never hands this matcher
+# a program that holds one.
+
+mark stable
+
+load @term/base/list
+  find list
+
+load @term/base/boolean
+  find not
+
+load @term/base/pattern/set
+  find put-number
+  find number-at
+  find set-has
+  find copy-numbers
+
+load @term/base/pattern/scene
+  find scene
+  find edge-holds
+  find rune-from
+
+load @term/base/pattern/program
+  find program
+  find slot-count
+  find op-match
+  find op-char
+  find op-set
+  find op-split
+  find op-jump
+  find op-save
+  find op-edge
+  find op-look
+  find op-clear
+  find op-mark
+  find op-check
+
+# a list of threads: each thread's instruction and its slots, in priority order
+form threads
+  link pcs
+    like list
+      like number
+  link slots
+    like list
+      like list
+        like number
+
+task make-threads
+  like threads
+  send back
+    make threads
+      bind pcs, make list
+      bind slots, make list
+
+task op-at
+  take g, like program
+  take pc, like number
+  like number
+  send back
+    call number-at(read(g/ops), read(pc), code(-1))
+
+task a-at
+  take g, like program
+  take pc, like number
+  like number
+  send back
+    call number-at(read(g/a), read(pc), code(0))
+
+task b-at
+  take g, like program
+  take pc, like number
+  like number
+  send back
+    call number-at(read(g/b), read(pc), code(0))
+
+# whether the lookaround `look` holds at `at`, from its table
+task look-holds
+  take g, like program
+  take tables
+    like list
+      like list
+        like number
+  take look, like number
+  take at, like number
+  like boolean
+  save table, make list
+  fork test
+    hook test
+      call and
+        call is-minimum(read(look), code(0))
+        call is-below(read(look), read(tables/length))
+    hook hold
+      save table, read tables/{look}
+  save holds
+    call is-equal(call(number-at, read(table), read(at), code(0)), code(1))
+  save negate
+    call is-equal
+      call number-at(read(g/looks), call(add, call(multiply, read(look), code(7)), code(3)), code(0))
+      code 1
+  fork test
+    hook test
+      read negate
+    hook hold
+      send back
+        call not(read(holds))
+  send back, read holds
+
+# whether the instruction at `pc` takes the code point `c`
+task takes-rune
+  take g, like program
+  take pc, like number
+  take c, like number
+  like boolean
+  fork test
+    hook test
+      call is-below(read(c), code(0))
+    hook hold
+      send back, false
+  save op
+    call op-at(read(g), read(pc))
+  fork test
+    hook test
+      call is-equal(read(op), read(op-char))
+    hook hold
+      send back
+        call is-equal(read(c), call(a-at, read(g), read(pc)))
+    hook test
+      call is-equal(read(op), read(op-set))
+    hook hold
+      save index
+        call a-at(read(g), read(pc))
+      fork test
+        hook test
+          call and
+            call is-minimum(read(index), code(0))
+            call is-below(read(index), read(g/sets/length))
+        hook hold
+          send back
+            call set-has(read(g/sets/{index}), read(c))
+  send back, false
+
+# add a thread at `pc` and everything it reaches without reading a code point, in priority order, to `into`.
+# `seen` marks the instructions already reached at this position with `stamp`. With `keep` false the slots are not
+# tracked (the lookaround tables only ask whether a part can finish)
+task follow
+  take g, like program
+  take s, like scene
+  take tables
+    like list
+      like list
+        like number
+  take into, like threads
+  take seen
+    like list
+      like number
+  take stamp, like number
+  take start, like number
+  take at, like number
+  take first
+    like list
+      like number
+  take keep, like boolean
+  like number
+  save stack-pc, make list
+  save stack-slots, make list
+  call stack-pc/push(read(start))
+  call stack-slots/push(read(first))
+  save added, code 0
+  save into-pcs, read into/pcs
+  save into-slots, read into/slots
+  # every instruction is entered at most once per position and pushes at most two more, so the stack empties within
+  # twice the program's length of turns; the count is what the prover sees end
+  save limit
+    call add(call(multiply, read(g/ops/length), code(2)), code(3))
+  save turns, code 0
+  walk test
+    down
+      call subtract(read(limit), read(turns))
+    hook test
+      call and
+        call is-above(read(stack-pc/length), code(0))
+        call is-below(read(turns), read(limit))
+    hook step
+      save turns
+        call add(read(turns), code(1))
+      save pc
+        call stack-pc/pop
+      save slots
+        call stack-slots/pop
+      fork test
+        hook test
+          call or
+            call is-below(read(pc), code(0))
+            call is-minimum(read(pc), read(seen/length))
+        hook hold
+          turn next
+      fork test
+        hook test
+          call is-equal(call(number-at, read(seen), read(pc), code(-1)), read(stamp))
+        hook hold
+          turn next
+      save op
+        call op-at(read(g), read(pc))
+      # a CHECK that refuses an empty iteration leaves the instruction open to a thread that reaches it otherwise
+      fork test
+        hook test
+          call is-equal(read(op), read(op-check))
+        hook hold
+          fork test
+            hook test
+              call and
+                read keep
+                call is-equal
+                  call number-at(read(slots), call(a-at, read(g), read(pc)), code(-2))
+                  read at
+            hook hold
+              turn next
+          call put-number(read(seen), read(pc), read(stamp))
+          call stack-pc/push(call(add, read(pc), code(1)))
+          call stack-slots/push(read(slots))
+          turn next
+      call put-number(read(seen), read(pc), read(stamp))
+      fork test
+        hook test
+          call is-equal(read(op), read(op-jump))
+        hook hold
+          call stack-pc/push(call(a-at, read(g), read(pc)))
+          call stack-slots/push(read(slots))
+        hook test
+          call is-equal(read(op), read(op-split))
+        hook hold
+          # the second choice goes on the stack first, so the first is taken first
+          call stack-pc/push(call(b-at, read(g), read(pc)))
+          call stack-slots/push(read(slots))
+          call stack-pc/push(call(a-at, read(g), read(pc)))
+          call stack-slots/push(read(slots))
+        hook test
+          call or
+            call is-equal(read(op), read(op-save))
+            call is-equal(read(op), read(op-mark))
+        hook hold
+          save next, read slots
+          fork test
+            hook test
+              read keep
+            hook hold
+              save next
+                call copy-numbers(read(slots))
+              # put-number guards the slot, so a slot outside the list is a no-op
+              call put-number(read(next), call(a-at, read(g), read(pc)), read(at))
+          call stack-pc/push(call(add, read(pc), code(1)))
+          call stack-slots/push(read(next))
+        hook test
+          call is-equal(read(op), read(op-clear))
+        hook hold
+          save next, read slots
+          fork test
+            hook test
+              read keep
+            hook hold
+              save next
+                call copy-numbers(read(slots))
+              save k
+                call a-at(read(g), read(pc))
+              save last
+                call b-at(read(g), read(pc))
+              walk test
+                down
+                  call subtract
+                    call add(read(last), code(1))
+                    read k
+                hook test
+                  call is-maximum(read(k), read(last))
+                hook step
+                  call put-number(read(next), read(k), code(-1))
+                  save k
+                    call add(read(k), code(1))
+          call stack-pc/push(call(add, read(pc), code(1)))
+          call stack-slots/push(read(next))
+        hook test
+          call is-equal(read(op), read(op-edge))
+        hook hold
+          fork test
+            hook test
+              call edge-holds(read(s), call(a-at, read(g), read(pc)), read(at))
+            hook hold
+              call stack-pc/push(call(add, read(pc), code(1)))
+              call stack-slots/push(read(slots))
+        hook test
+          call is-equal(read(op), read(op-look))
+        hook hold
+          fork test
+            hook test
+              call look-holds(read(g), read(tables), call(a-at, read(g), read(pc)), read(at))
+            hook hold
+              save next, read slots
+              save stamp-slot
+                call b-at(read(g), read(pc))
+              fork test
+                hook test
+                  read keep
+                hook hold
+                  save next
+                    call copy-numbers(read(slots))
+                  call put-number(read(next), read(stamp-slot), read(at))
+              call stack-pc/push(call(add, read(pc), code(1)))
+              call stack-slots/push(read(next))
+        hook miss
+          # MATCH, CHAR or SET: a thread waits here
+          call into-pcs/push(read(pc))
+          call into-slots/push(read(slots))
+          save added
+            call add(read(added), code(1))
+  send back, read added
+
+# the table of one lookaround: for each position 0 to n, 1 where its body can finish (a lookahead's run backwards from
+# the end, a lookbehind's forwards from the start), 0 where it cannot. Not yet negated: LOOK negates
+task look-table
+  take g, like program
+  take s, like scene
+  take tables
+    like list
+      like list
+        like number
+  take look, like number
+  like list
+    like number
+  save base
+    call multiply(read(look), code(7))
+  save behind
+    call is-equal(call(number-at, read(g/looks), call(add, read(base), code(2)), code(0)), code(1))
+  # a lookahead holds where the reversed body, run from the end, finishes; a lookbehind where the body run from the
+  # start does
+  save part
+    call number-at(read(g/looks), call(add, read(base), code(1)), code(0))
+  save backward, true
+  fork test
+    hook test
+      read behind
+    hook hold
+      save part
+        call number-at(read(g/looks), read(base), code(0))
+      save backward, false
+  save entry
+    call number-at(read(g/part-entry), read(part), code(0))
+  save n, read s/runes/length
+  save table, make list
+  save k, code 0
+  walk test
+    down
+      call subtract
+        call add(read(n), code(1))
+        read k
+    hook test
+      call is-maximum(read(k), read(n))
+    hook step
+      call table/push(code(0))
+      save k
+        call add(read(k), code(1))
+  save seen, make list
+  walk list, read g/ops
+    hook next
+      take site, name op
+      call seen/push(code(-1))
+  save none, make list
+  save current
+    call make-threads
+  save stamp, code 0
+  save at, read n
+  fork test
+    hook test
+      call not(read(backward))
+    hook hold
+      save at, code 0
+  save steps, code 0
+  walk test
+    down
+      call subtract
+        call add(read(n), code(1))
+        read steps
+    hook test
+      call is-maximum(read(steps), read(n))
+    hook step
+      call follow(read(g), read(s), read(tables), read(current), read(seen), read(stamp), read(entry), read(at), read(none), false)
+      save next
+        call make-threads
+      save stamp
+        call add(read(stamp), code(1))
+      save after, read at
+      fork test
+        hook test
+          read backward
+        hook hold
+          save after
+            call subtract(read(at), code(1))
+        hook miss
+          save after
+            call add(read(at), code(1))
+      save c
+        call rune-from(read(s), read(at), read(backward))
+      walk list, read current/pcs
+        hook next
+          take site, name pc
+          save op
+            call op-at(read(g), read(pc))
+          fork test
+            hook test
+              call is-equal(read(op), read(op-match))
+            hook hold
+              fork test
+                hook test
+                  call and
+                    call is-minimum(read(at), code(0))
+                    call is-below(read(at), read(table/length))
+                hook hold
+                  call put-number(read(table), read(at), code(1))
+            hook test
+              call takes-rune(read(g), read(pc), read(c))
+            hook hold
+              call follow(read(g), read(s), read(tables), read(next), read(seen), read(stamp), call(add, read(pc), code(1)), read(after), read(none), false)
+      save current, read next
+      save at, read after
+      save steps
+        call add(read(steps), code(1))
+  send back, read table
+
+# every lookaround's table, inner ones first (a lookaround's index is above every lookaround inside it)
+task look-tables
+  take g, like program
+  take s, like scene
+  like list
+    like list
+      like number
+  save tables, make list
+  save count
+    call divide(read(g/looks/length), code(7))
+  save k, code 0
+  walk test
+    down
+      call subtract(read(count), read(k))
+    hook test
+      call is-below(read(k), read(count))
+    hook step
+      call tables/push(call(look-table, read(g), read(s), read(tables), read(k)))
+      save k
+        call add(read(k), code(1))
+  send back, read tables
+
+# run one part from `start`, every thread in priority order, and answer the slots of the first thread to finish, or an
+# empty list. Unanchored (`anchored` false) starts a new thread at every position until one finishes, which is a
+# leftmost search. Positions move forwards, or backwards for a part that runs so
+task run-part
+  take g, like program
+  take s, like scene
+  take tables
+    like list
+      like list
+        like number
+  take part, like number
+  take start, like number
+  take first
+    like list
+      like number
+  take anchored, like boolean
+  like list
+    like number
+  save entry
+    call number-at(read(g/part-entry), read(part), code(0))
+  save backward
+    call is-equal(call(number-at, read(g/part-backward), read(part), code(0)), code(1))
+  save n, read s/runes/length
+  save seen, make list
+  walk list, read g/ops
+    hook next
+      take site, name op
+      call seen/push(code(-1))
+  save matched, make list
+  save found, false
+  save current
+    call make-threads
+  save stamp, code 0
+  save at, read start
+  save going, true
+  # each turn moves one position and the run stops past either end, so it takes at most n + 2 turns
+  save limit
+    call add(read(n), code(3))
+  save turns, code 0
+  walk test
+    down
+      call subtract(read(limit), read(turns))
+    hook test
+      call and
+        read going
+        call is-below(read(turns), read(limit))
+    hook step
+      save turns
+        call add(read(turns), code(1))
+      fork test
+        hook test
+          call and
+            call not(read(found))
+            call or
+              call not(read(anchored))
+              call is-equal(read(at), read(start))
+        hook hold
+          call follow(read(g), read(s), read(tables), read(current), read(seen), read(stamp), read(entry), read(at), call(copy-numbers, read(first)), true)
+      save next
+        call make-threads
+      save stamp
+        call add(read(stamp), code(1))
+      save after, read at
+      fork test
+        hook test
+          read backward
+        hook hold
+          save after
+            call subtract(read(at), code(1))
+        hook miss
+          save after
+            call add(read(at), code(1))
+      save c
+        call rune-from(read(s), read(at), read(backward))
+      save i, code 0
+      # the count read once: the calls below leave the prover unsure of every list's size
+      save waiting, read current/pcs/length
+      walk test
+        down
+          call subtract(read(waiting), read(i))
+        hook test
+          call is-below(read(i), read(waiting))
+        hook step
+          save pc
+            call number-at(read(current/pcs), read(i), code(-1))
+          save slots, make list
+          save waiting-slots, read current/slots
+          fork test
+            hook test
+              call and
+                call is-minimum(read(i), code(0))
+                call is-below(read(i), read(waiting-slots/length))
+            hook hold
+              save slots, read waiting-slots/{i}
+          fork test
+            hook test
+              call is-equal(call(op-at, read(g), read(pc)), read(op-match))
+            hook hold
+              # the first thread to finish wins; every thread after it has lower priority and is dropped
+              save matched, read slots
+              save found, true
+              save i, read waiting
+              turn next
+          fork test
+            hook test
+              call takes-rune(read(g), read(pc), read(c))
+            hook hold
+              call follow(read(g), read(s), read(tables), read(next), read(seen), read(stamp), call(add, read(pc), code(1)), read(after), read(slots), true)
+          save i
+            call add(read(i), code(1))
+      # stop past the end of the input, or once no thread is left and none can start
+      save edge-passed
+        call or
+          call is-below(read(after), code(0))
+          call is-above(read(after), read(n))
+      save idle
+        call and
+          call is-equal(read(next/pcs/length), code(0))
+          call or
+            read found
+            read anchored
+      fork test
+        hook test
+          call or
+            read edge-passed
+            read idle
+        hook hold
+          save going, false
+      save current, read next
+      save at, read after
+  send back, read matched
+
+# fill in the groups inside each positive lookaround the match passed through: its body matched once more where it
+# stood, anchored, outermost first so an inner lookaround's position is known when it is reached
+task fill-look-groups
+  take g, like program
+  take s, like scene
+  take tables
+    like list
+      like list
+        like number
+  take slots
+    like list
+      like number
+  like list
+    like number
+  save out, read slots
+  save k
+    call subtract(call(divide, read(g/looks/length), code(7)), code(1))
+  walk test
+    down
+      call add(read(k), code(1))
+    hook test
+      call is-minimum(read(k), code(0))
+    hook step
+      save base
+        call multiply(read(k), code(7))
+      save stamp
+        call number-at(read(g/looks), call(add, read(base), code(4)), code(-1))
+      save where
+        call number-at(read(out), read(stamp), code(-1))
+      fork test
+        hook test
+          call and
+            call is-minimum(read(stamp), code(0))
+            call is-minimum(read(where), code(0))
+        hook hold
+          save behind
+            call is-equal(call(number-at, read(g/looks), call(add, read(base), code(2)), code(0)), code(1))
+          # a lookahead's groups come from its body run forwards from where it stood, a lookbehind's from its body
+          # run backwards
+          save part
+            call number-at(read(g/looks), read(base), code(0))
+          fork test
+            hook test
+              read behind
+            hook hold
+              save part
+                call number-at(read(g/looks), call(add, read(base), code(1)), code(0))
+          save inner
+            call run-part(read(g), read(s), read(tables), read(part), read(where), read(out), true)
+          fork test
+            hook test
+              call is-above(read(inner/length), code(0))
+            hook hold
+              save out, read inner
+      save k
+        call subtract(read(k), code(1))
+  send back, read out
+
+# the first match at or after `from`, as the slots (group 0's start and end first, then each group's, -1 for a group
+# that took no part), or an empty list
+task pike-search
+  take g, like program
+  take s, like scene
+  take from, like number
+  like list
+    like number
+  send back
+    call pike-search-with(read(g), read(s), call(look-tables, read(g), read(s)), read(from))
+
+# the same, with the lookaround tables already computed for this input: a search for every match of one input
+# computes them once (`look-tables`), not once per match
+task pike-search-with
+  take g, like program
+  take s, like scene
+  take tables
+    like list
+      like list
+        like number
+  take from, like number
+  like list
+    like number
+  save first, make list
+  save k, code 0
+  save count
+    call slot-count(read(g))
+  walk test
+    down
+      call subtract(read(count), read(k))
+    hook test
+      call is-below(read(k), read(count))
+    hook step
+      call first/push(code(-1))
+      save k
+        call add(read(k), code(1))
+  save slots
+    call run-part(read(g), read(s), read(tables), code(0), read(from), read(first), false)
+  fork test
+    hook test
+      call is-equal(read(slots/length), code(0))
+    hook hold
+      send back, read slots
+  save filled
+    call fill-look-groups(read(g), read(s), read(tables), read(slots))
+  # the caller sees the groups only, not the registers after them
+  save width
+    call multiply(call(add, read(g/groups), code(1)), code(2))
+  save out, make list
+  save i, code 0
+  walk test
+    down
+      call subtract(read(width), read(i))
+    hook test
+      call is-below(read(i), read(width))
+    hook step
+      call out/push(call(number-at, read(filled), read(i), code(-1)))
+      save i
+        call add(read(i), code(1))
+  send back, read out

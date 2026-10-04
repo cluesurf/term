@@ -1,8 +1,613 @@
-mark draft
+# Patterns: one regular expression language that means the same thing on every backend, with lookaround of any
+# length, back references, named groups, atomic groups and possessive repetition, \b, \p{...}, and the i, m, s and x
+# flags (note/term/stdlib/regex-engine.md).
+#
+#   save digits, make pattern, <\d+>
+#   save found
+#     call find-match(read(digits), text(<route 66>))
+#
+# `make pattern, <...>` is short for `make pattern, bind text, <...>`. In a .tree file a pattern is a text literal, so
+# a `{` before a letter, and a `<` or `>` that does not pair, are escaped: <\p\{Lu\}+>, <(?\<=\$)\d+>. A pattern built
+# at run time needs nothing escaped.
+#
+# Each pattern runs on the fastest engine that computes exactly its meaning and cannot be made to hang:
+#   native     the target's own engine (V8, the Rust regex crate, java.util.regex, ICU), when the pattern uses only
+#              what every engine means alike and, on an engine that backtracks, cannot make it backtrack without end
+#   linear     Term's own linear-time matcher, for lookarounds, \b, multiline anchors and the rest
+#   backtrack  Term's own backtracking matcher, for back references and atomic groups, which raises `pattern-budget`
+#              rather than run past its limit
+# `pattern-tier` says which one a pattern runs on. Positions count code points, as everywhere in `text`.
 
-# SHELVED 2026-10-02 (base-v1-0019): an empty form; regex is the pattern surface. It declared tasks that bound nothing, so a call built clean and
-# threw `stub` at run time; out of the build until it has bodies.
+mark stable
 
+load @term/base/list
+  find list
 
+load @term/base/boolean
+  find not
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text/unicode
+  find to-runes
+  find from-runes
+
+load @term/base/native/{platform}/regex
+  find engine-search
+  find engine-search-all
+  find end-anchor
+  find engine-linear
+
+load @term/base/regex/dialect
+  find regex-literal
+
+load @term/base/pattern/node
+  find pattern-mismatch
+  find pattern-budget
+
+load @term/base/pattern/set
+  find number-at
+  find put-number
+
+load @term/base/pattern/syntax
+  find parse-pattern
+  find parsed
+
+load @term/base/pattern/program
+  find program
+  find compile-pattern
+  find uses-word-edge
+
+load @term/base/pattern/scene
+  find scene
+  find make-scene-for
+
+load @term/base/pattern/pike
+  find pike-search-with
+  find look-tables
+
+load @term/base/pattern/back
+  find back-search
+
+load @term/base/pattern/analyze
+  find analyze-pattern
+  find tier-native
+  find tier-linear
+  find tier-backtrack
+
+# a pattern: its text, read when it is first used
 form pattern
-  # Regular expression, or "string pattern", model.
+  slot text, like text
+
+# a pattern read, analyzed and compiled, ready to search with. `prepare` makes one; every search task takes a pattern
+# or a prepared one, and a prepared one does the reading once instead of on each call
+form prepared-pattern
+  link source, like text
+  link groups, like number
+  link names
+    like list
+      like text
+  link tier, like number
+  link native, like text
+  link program, like program
+  link folds, like boolean
+  link words, like boolean
+
+# one input being searched: its code points, the scene the matchers read, and the lookaround tables, computed the
+# first time a search needs them and kept for every later search of the same input
+form session
+  link input, like text
+  link runes
+    like list
+      like number
+  link scene, like scene
+  link tables
+    like list
+      like list
+        like number
+  link has-tables
+    like list
+      like number
+
+# one match: the text it covers, where it starts and ends (code points, end exclusive), and each capturing group's
+# text in order, the empty text for a group that took no part (`match-group` tells the two apart). `names` holds each
+# group's name in the same order, empty for a group without one
+form pattern-match
+  link text, like text
+  link start, like number
+  link end, like number
+  link groups
+    like list
+      like text
+  link spans
+    like list
+      like number
+  link names
+    like list
+      like text
+
+# the most instructions one search of the backtracking tier may run
+host pattern-step-limit, code 10000000
+
+task prepare
+  take value, like pattern
+  like prepared-pattern
+  save parsed
+    call parse-pattern(read(value/text))
+  save found
+    call analyze-pattern(read(parsed/root), call(end-anchor), call(engine-linear))
+  save rewritten
+    make parsed
+      bind root, read found/root
+      bind groups, read parsed/groups
+      bind names, read parsed/names
+  save program
+    call compile-pattern(read(rewritten))
+  send back
+    make prepared-pattern
+      bind source, read value/text
+      bind groups, read parsed/groups
+      bind names, read parsed/names
+      bind tier, read found/tier
+      bind native, read found/native
+      bind program, read program
+      bind folds, read found/folds
+      bind words, call(uses-word-edge, read(program))
+
+# which engine the pattern runs on here: native, linear or backtrack
+task pattern-tier
+  take value, like pattern
+  like text
+  save ready
+    call prepare(read(value))
+  fork test
+    hook test
+      call is-equal(read(ready/tier), read(tier-native))
+    hook hold
+      send back, text <native>
+    hook test
+      call is-equal(read(ready/tier), read(tier-linear))
+    hook hold
+      send back, text <linear>
+  send back, text <backtrack>
+
+# a session over one input, for a prepared pattern
+task open-session
+  take ready, like prepared-pattern
+  take input, like text
+  like session
+  save runes
+    call to-runes(read(input))
+  save no-tables, make list
+  save flag, make list
+  call flag/push(code(0))
+  send back
+    make session
+      bind input, read input
+      bind runes, read runes
+      bind scene, call(make-scene-for, read(runes), read(ready/words), read(ready/folds))
+      bind tables, read no-tables
+      bind has-tables, read flag
+
+# the lookaround tables for the session's input, computed on the first call and kept
+task session-tables
+  take ready, like prepared-pattern
+  take open, like session
+  like list
+    like list
+      like number
+  fork test
+    hook test
+      call is-equal(call(number-at, read(open/has-tables), code(0), code(0)), code(1))
+    hook hold
+      send back, read open/tables
+  save made
+    call look-tables(read(ready/program), read(open/scene))
+  save kept, read open/tables
+  walk list, read made
+    hook next
+      take site, name table
+      call kept/push(read(table))
+  call put-number(read(open/has-tables), code(0), code(1))
+  send back, read kept
+
+# the slots of the first match at or after `from`: start and end of the match, then of each group (-1 for a group
+# that took no part), all in code points; empty when nothing matches
+task search-slots
+  take ready, like prepared-pattern
+  take open, like session
+  take from, like number
+  like list
+    like number
+  fork test
+    hook test
+      call is-equal(read(ready/tier), read(tier-native))
+    hook hold
+      send back
+        call engine-search(read(ready/native), read(open/input), read(from))
+    hook test
+      call is-equal(read(ready/tier), read(tier-linear))
+    hook hold
+      send back
+        call pike-search-with(read(ready/program), read(open/scene), call(session-tables, read(ready), read(open)), read(from))
+  send back
+    call back-search(read(ready/program), read(open/scene), read(from), read(pattern-step-limit))
+
+task rune-slice
+  take runes
+    like list
+      like number
+  take from, like number
+  take to, like number
+  like text
+  save part, make list
+  save k, read from
+  fork test
+    hook test
+      call is-below(read(k), code(0))
+    hook hold
+      save k, code 0
+  walk test
+    hook test
+      call and
+        call is-below(read(k), read(to))
+        call is-below(read(k), read(runes/length))
+    hook step
+      call part/push(call(number-at, read(runes), read(k), code(0)))
+      save k
+        call add(read(k), code(1))
+  send back
+    call from-runes(read(part))
+
+# the match the slots describe
+task match-of
+  take ready, like prepared-pattern
+  take runes
+    like list
+      like number
+  take slots
+    like list
+      like number
+  like pattern-match
+  save start
+    call number-at(read(slots), code(0), code(0))
+  save end
+    call number-at(read(slots), code(1), code(0))
+  save groups, make list
+  save spans, make list
+  save k, code 2
+  walk test
+    hook test
+      call is-below
+        call add(read(k), code(1))
+        read slots/length
+    hook step
+      save a
+        call number-at(read(slots), read(k), code(-1))
+      save b
+        call number-at(read(slots), call(add, read(k), code(1)), code(-1))
+      call spans/push(read(a))
+      call spans/push(read(b))
+      fork test
+        hook test
+          call is-below(read(a), code(0))
+        hook hold
+          call groups/push(text(<>))
+        hook miss
+          call groups/push(call(rune-slice, read(runes), read(a), read(b)))
+      save k
+        call add(read(k), code(2))
+  send back
+    make pattern-match
+      bind text, call(rune-slice, read(runes), read(start), read(end))
+      bind start, read start
+      bind end, read end
+      bind groups, read groups
+      bind spans, read spans
+      bind names, read ready/names
+
+# whether the pattern matches anywhere in the input
+task matches
+  take value, like pattern
+  take input, like text
+  like boolean
+  send back
+    call matches-prepared(call(prepare, read(value)), read(input))
+
+task matches-prepared
+  take ready, like prepared-pattern
+  take input, like text
+  like boolean
+  save slots
+    call search-slots(read(ready), call(open-session, read(ready), read(input)), code(0))
+  send back
+    call is-above(read(slots/length), code(0))
+
+# the first match, or none
+task find-match
+  take value, like pattern
+  take input, like text
+  like maybe
+    head pattern-match
+  send back
+    call find-match-prepared(call(prepare, read(value)), read(input))
+
+task find-match-prepared
+  take ready, like prepared-pattern
+  take input, like text
+  like maybe
+    head pattern-match
+  save open
+    call open-session(read(ready), read(input))
+  save slots
+    call search-slots(read(ready), read(open), code(0))
+  fork test
+    hook test
+      call is-equal(read(slots/length), code(0))
+    hook hold
+      send back, make none
+  send back
+    make some
+      bind value
+        call match-of(read(ready), read(open/runes), read(slots))
+
+# every match, left to right, none overlapping. After an empty match the search moves on one code point, so a pattern
+# that can match nothing still ends
+task find-matches
+  take value, like pattern
+  take input, like text
+  like list
+    like pattern-match
+  send back
+    call find-matches-prepared(call(prepare, read(value)), read(input))
+
+task find-matches-prepared
+  take ready, like prepared-pattern
+  take input, like text
+  like list
+    like pattern-match
+  save open
+    call open-session(read(ready), read(input))
+  fork test
+    hook test
+      call is-equal(read(ready/tier), read(tier-native))
+    hook hold
+      # the native engine walks the text once for every match
+      send back
+        call matches-of-slots(read(ready), read(open/runes), call(engine-search-all, read(ready/native), read(input)))
+  save n, read open/runes/length
+  save out, make list
+  save at, code 0
+  walk test
+    hook test
+      call is-maximum(read(at), read(n))
+    hook step
+      save slots
+        call search-slots(read(ready), read(open), read(at))
+      fork test
+        hook test
+          call is-equal(read(slots/length), code(0))
+        hook hold
+          save at
+            call add(read(n), code(1))
+          turn next
+      save hit
+        call match-of(read(ready), read(open/runes), read(slots))
+      call out/push(read(hit))
+      save after, read hit/end
+      fork test
+        hook test
+          call is-equal(read(hit/end), read(hit/start))
+        hook hold
+          save after
+            call add(read(hit/end), code(1))
+      # a match never ends before where it was searched from; should one, the search still moves on
+      fork test
+        hook test
+          call is-above(read(after), read(at))
+        hook hold
+          save at, read after
+        hook miss
+          save at
+            call add(read(at), code(1))
+  send back, read out
+
+# the matches engine-search-all found: its first number is the width of one match's slots, then the slots of each
+task matches-of-slots
+  take ready, like prepared-pattern
+  take runes
+    like list
+      like number
+  take all
+    like list
+      like number
+  like list
+    like pattern-match
+  save out, make list
+  save width
+    call number-at(read(all), code(0), code(-1))
+  fork test
+    hook test
+      call is-below(read(width), code(2))
+    hook hold
+      send back, read out
+  save at, code 1
+  walk test
+    hook test
+      call is-maximum
+        call add(read(at), read(width))
+        read all/length
+    hook step
+      save slots, make list
+      save k, code 0
+      walk test
+        hook test
+          call is-below(read(k), read(width))
+        hook step
+          call slots/push(call(number-at, read(all), call(add, read(at), read(k)), code(-1)))
+          save k
+            call add(read(k), code(1))
+      call out/push(call(match-of, read(ready), read(runes), read(slots)))
+      save at
+        call add(read(at), read(width))
+  send back, read out
+
+# group `index` of a match (1 is the first group, 0 the whole match), or none when the group took no part
+task match-group
+  take match, like pattern-match
+  take index, like number
+  like maybe
+    head text
+  fork test
+    hook test
+      call is-equal(read(index), code(0))
+    hook hold
+      send back
+        make some
+          bind value, read match/text
+  save start
+    call number-at(read(match/spans), call(multiply, call(subtract, read(index), code(1)), code(2)), code(-1))
+  fork test
+    hook test
+      call or
+        call is-below(read(index), code(1))
+        call is-below(read(start), code(0))
+    hook hold
+      send back, make none
+  save at
+    call subtract(read(index), code(1))
+  fork test
+    hook test
+      call is-below(read(at), read(match/groups/length))
+    hook hold
+      send back
+        make some
+          bind value, read match/groups/{at}
+  send back, make none
+
+# the group a match holds under a name, or none when no group has the name or it took no part
+task match-named
+  take match, like pattern-match
+  take name, like text
+  like maybe
+    head text
+  save k, code 1
+  walk list, read match/names
+    hook next
+      take site, name each
+      fork test
+        hook test
+          call is-equal(read(each), read(name))
+        hook hold
+          send back
+            call match-group(read(match), read(k))
+      save k
+        call add(read(k), code(1))
+  send back, make none
+
+# the input with each match replaced by what `make` returns for it
+task rewrite-matches
+  take value, like pattern
+  take input, like text
+  take make
+    like task
+      take match, like pattern-match
+      like text
+  like text
+  save runes
+    call to-runes(read(input))
+  save out, text <>
+  save at, code 0
+  walk list
+    call find-matches(read(value), read(input))
+    hook next
+      take site, name hit
+      save before
+        call rune-slice(read(runes), read(at), read(hit/start))
+      save made
+        call make(read(hit))
+      save out, text <{out}{before}{made}>
+      save at, read hit/end
+  save rest
+    call rune-slice(read(runes), read(at), read(runes/length))
+  send back, text <{out}{rest}>
+
+# the input with every match replaced by the literal replacement. No $1 is read in it: build a replacement from the
+# match with `rewrite-matches`
+task replace-matches
+  take value, like pattern
+  take input, like text
+  take replacement, like text
+  like text
+  save runes
+    call to-runes(read(input))
+  save out, text <>
+  save at, code 0
+  walk list
+    call find-matches(read(value), read(input))
+    hook next
+      take site, name hit
+      save before
+        call rune-slice(read(runes), read(at), read(hit/start))
+      save out, text <{out}{before}{replacement}>
+      save at, read hit/end
+  save rest
+    call rune-slice(read(runes), read(at), read(runes/length))
+  send back, text <{out}{rest}>
+
+# the pieces of the input between matches. An empty match at the very start or end splits nothing off
+task split-at-matches
+  take value, like pattern
+  take input, like text
+  like list
+    like text
+  save runes
+    call to-runes(read(input))
+  save n, read runes/length
+  save out, make list
+  save at, code 0
+  walk list
+    call find-matches(read(value), read(input))
+    hook next
+      take site, name hit
+      fork test
+        hook test
+          call and
+            call is-equal(read(hit/start), read(hit/end))
+            call or
+              call is-equal(read(hit/start), code(0))
+              call is-equal(read(hit/start), read(n))
+        hook hold
+          turn next
+      call out/push(call(rune-slice, read(runes), read(at), read(hit/start)))
+      save at, read hit/end
+  call out/push(call(rune-slice, read(runes), read(at), read(n)))
+  send back, read out
+
+# a pattern that matches the text exactly, every syntax character escaped
+task escape-pattern
+  take value, like text
+  like pattern
+  save out, text <>
+  walk list
+    call to-runes(read(value))
+    hook next
+      take site, name c
+      save written
+        call regex-literal(read(c))
+      save out, text <{out}{written}>
+  send back
+    make pattern
+      bind text, read out
+
+# whether the text is a pattern
+task is-valid-pattern
+  take value, like text
+  like boolean
+  mark unsafe
+    call parse-pattern(read(value))
+    send back, true
+  halt take
+    take e
+    send back, false

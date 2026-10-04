@@ -18,7 +18,6 @@ load ../../view
 
 dock load
   load <global:native-view>, name native-view
-  mark native
 
 task create-element
   take tag, like text

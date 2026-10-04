@@ -1,0 +1,215 @@
+# Facts and values (section 6) at their edges: the duration and size boundaries where a unit or a precision changes,
+# the thousands separator, counts and totals, statuses with their roles, the clock and date in a zone, versions, the
+# dependency chain's collapse, paths, and the no-break space that keeps a number with its unit.
+
+load @term/base/text
+  find contains
+
+load @term/base/text/unicode
+  find rune-to-text
+
+load ../../code/work/item/standard
+  find make-standard
+
+load ../../code/work/item/format
+  find format-duration
+  find format-size
+  find format-tally
+  find format-status
+  find format-clock
+  find format-date
+  find format-instant
+  find format-zone
+  find format-change
+  find format-chain
+  find format-path
+  find format-place
+  find format-version
+  find spans-text
+  find group-number
+  find truncate-middle
+  find make-whole
+
+load ../../code/work/item/layout
+  find unglue-text
+
+load ./kit
+  find kit-room
+  find kit-clock
+
+task said-duration
+  take ms, like number
+  like text
+  back unglue-text(spans-text(format-duration(ms, make-standard(), <text>)))
+
+task said-size
+  take bytes, like number
+  like text
+  back unglue-text(spans-text(format-size(bytes, make-standard())))
+
+test <a duration under a second is whole milliseconds>
+  want hold, is-equal(said-duration(4), <4 ms>)
+  want hold, is-equal(said-duration(410), <410 ms>)
+  want hold, is-equal(said-duration(0), <0 ms>)
+
+test <the last millisecond figure is 999 ms and 1000 is 1.00 s>
+  want hold, is-equal(said-duration(999), <999 ms>)
+  want hold, is-equal(said-duration(1000), <1.00 s>)
+
+test <seconds keep three significant figures>
+  want hold, is-equal(said-duration(2900), <2.90 s>)
+  want hold, is-equal(said-duration(9994), <9.99 s>)
+  want hold, is-equal(said-duration(9995), <10.0 s>)
+  want hold, is-equal(said-duration(24100), <24.1 s>)
+
+test <the last second figure is 59.9 s and 59.95 s is 1m 00s>
+  want hold, is-equal(said-duration(59900), <59.9 s>)
+  want hold, is-equal(said-duration(59949), <59.9 s>)
+  want hold, is-equal(said-duration(59950), <1m 00s>)
+  want hold, is-equal(said-duration(60000), <1m 00s>)
+
+test <minutes carry zero-padded seconds and hours zero-padded minutes>
+  want hold, is-equal(said-duration(125000), <2m 05s>)
+  want hold, is-equal(said-duration(3599499), <59m 59s>)
+  want hold, is-equal(said-duration(3599500), <1h 00m>)
+  want hold, is-equal(said-duration(36720000), <10h 12m>)
+
+test <a negative duration reads as zero, never as a negative figure>
+  want hold, is-equal(said-duration(-5), <0 ms>)
+
+test <sizes are decimal with one decimal under 100 of a unit>
+  want hold, is-equal(said-size(84), <84 B>)
+  want hold, is-equal(said-size(999), <999 B>)
+  want hold, is-equal(said-size(1000), <1.0 kB>)
+  want hold, is-equal(said-size(3100), <3.1 kB>)
+  want hold, is-equal(said-size(18400000), <18.4 MB>)
+  want hold, is-equal(said-size(212000000), <212 MB>)
+
+test <the last decimal is 99.9 kB and 99.95 kB is 100 kB>
+  want hold, is-equal(said-size(99949), <99.9 kB>)
+  want hold, is-equal(said-size(99950), <100 kB>)
+
+test <half a kilobyte under a megabyte is 1.0 MB, never 1000 kB>
+  want hold, is-equal(said-size(999499), <999 kB>)
+  want hold, is-equal(said-size(999500), <1.0 MB>)
+
+test <a size past the exact range is held to it, in the last unit>
+  want hold, is-equal(said-size(9007199254740991), <9.0 PB>)
+  want hold, is-equal(said-size(5000000000000000000), <9.0 PB>)
+
+test <a number and its unit are joined by a no-break space>
+  save glue, rune-to-text(160)
+  save spoken, spans-text(format-duration(18, make-standard(), <text>))
+  want hold, contains(spoken, <18{glue}ms>)
+  save sized, spans-text(format-size(12400, make-standard()))
+  want hold, contains(sized, <12.4{glue}kB>)
+  save counted, spans-text(format-tally(318, <requests>, <>, -1, make-standard()))
+  want hold, contains(counted, <318{glue}requests>)
+
+test <numbers bright and units dim, the whole over budget in the warning color>
+  save spans, format-duration(18, make-standard(), <text>)
+  save number, spans/0
+  save unit, spans/2
+  want hold, and(is-equal(number/role, <text>), is-equal(unit/role, <dim>))
+  save over, format-duration(1800, make-standard(), <warning>)
+  save over-number, over/0
+  save over-unit, over/2
+  want hold, and(is-equal(over-number/role, <warning>), is-equal(over-unit/role, <warning>))
+
+test <thousands separators in the human view>
+  want hold, is-equal(group-number(31804, make-standard()), <31,804>)
+  want hold, is-equal(group-number(999, make-standard()), <999>)
+  want hold, is-equal(group-number(1000000, make-standard()), <1,000,000>)
+  want hold, is-equal(group-number(-1234, make-standard()), <-1,234>)
+
+test <counts take the singular for one and parts of a total>
+  save standard, make-standard()
+  want hold, is-equal(unglue-text(spans-text(format-tally(1, <errors>, <error>, -1, standard))), <1 error>)
+  want hold, is-equal(unglue-text(spans-text(format-tally(2, <errors>, <error>, -1, standard))), <2 errors>)
+  want hold, is-equal(unglue-text(spans-text(format-tally(31, <files>, <>, 46, standard))), <31/46 files>)
+  want hold, is-equal(unglue-text(spans-text(format-tally(1, <tries>, <try>, 3, standard))), <1/3 tries>)
+
+test <a status keeps its label, its number in the status color>
+  save standard, make-standard()
+  save ok-spans, format-status(<http>, 200, <>, standard)
+  save ok-number, ok-spans/2
+  want hold, and(is-equal(unglue-text(spans-text(ok-spans)), <HTTP 200>), is-equal(ok-number/role, <done>))
+  save missing, format-status(<http>, 404, <>, standard)
+  save missing-number, missing/2
+  want hold, is-equal(missing-number/role, <warning>)
+  save broken, format-status(<http>, 500, <>, standard)
+  save broken-number, broken/2
+  want hold, is-equal(broken-number/role, <failed>)
+  save moved, format-status(<http>, 301, <>, standard)
+  save moved-number, moved/2
+  want hold, is-equal(moved-number/role, <done>)
+  save exit-spans, format-status(<exit>, 1, <>, standard)
+  save exit-label, exit-spans/0
+  save exit-number, exit-spans/2
+  want hold, and(is-equal(exit-label/role, <dim>), is-equal(exit-number/role, <failed>))
+  save clean, format-status(<exit>, 0, <>, standard)
+  save clean-number, clean/2
+  want hold, is-equal(clean-number/role, <done>)
+  want hold, is-equal(unglue-text(spans-text(format-status(<signal>, 0, <TERM>, standard))), <signal TERM>)
+
+test <the clock is 24-hour local time with milliseconds>
+  save clock, kit-clock(14, 2, 7, 412)
+  want hold, is-equal(format-clock(clock, -420), <14:02:07.412>)
+  want hold, is-equal(format-clock(clock, 0), <21:02:07.412>)
+  want hold, is-equal(format-clock(clock, 330), <02:32:07.412>)
+
+test <the date and the RFC 3339 instant in the zone>
+  save clock, kit-clock(14, 2, 7, 412)
+  want hold, is-equal(format-date(clock, -420), <2026-10-03>)
+  want hold, is-equal(format-date(clock, 0), <2026-10-03>)
+  want hold, is-equal(format-instant(clock, -420, false), <2026-10-03T14:02:07.412-07:00>)
+  want hold, is-equal(format-instant(clock, 330, false), <2026-10-04T02:32:07.412+05:30>)
+  want hold, is-equal(format-instant(clock, -420, true), <2026-10-03T21:02:07.412Z>)
+
+test <a date before 1970 and a leap day are still exact>
+  want hold, is-equal(format-date(-86400000, 0), <1969-12-31>)
+  want hold, is-equal(format-date(951782400000, 0), <2000-02-29>)
+
+test <the zone fact names the zone once>
+  save room, kit-room(80)
+  want hold, is-equal(unglue-text(format-zone(<PDT>, -420, false, room)), <PDT, UTC−7>)
+  want hold, is-equal(unglue-text(format-zone(<IST>, 330, false, room)), <IST, UTC+5:30>)
+  want hold, is-equal(format-zone(<>, 0, false, room), <UTC>)
+  want hold, is-equal(format-zone(<PDT>, -420, true, room), <UTC>)
+
+test <versions as published, a change as old to new>
+  save room, kit-room(80)
+  want hold, is-equal(format-version(<v5.6.3>), <5.6.3>)
+  want hold, is-equal(format-version(<value>), <value>)
+  want hold, is-equal(format-change(<v5.6.3>, <5.9.2>, room), <5.6.3 → 5.9.2>)
+
+test <a dependency chain of four links is whole, more collapse the middle>
+  save room, kit-room(80)
+  save four
+    make list
+      <app>, <@shape/ui>, <react-dom 19.1.0>, <react 18.3.1>
+  want hold, is-equal(spans-text(format-chain(four, room)), <app › @shape/ui › react-dom 19.1.0 › react 18.3.1>)
+  save seven
+    make list
+      <app>, <@shape/charts>, <victory>, <d3>, <react-smooth>, <react-reconciler 0.29.0>, <react 18.3.1>
+  want hold, is-equal(spans-text(format-chain(seven, room)), <app › @shape/charts › … 3 more › react-reconciler 0.29.0 › react 18.3.1>)
+  save chained, format-chain(four, room)
+  save mark, chained/1
+  want hold, is-equal(mark/role, <dim>)
+
+test <paths relative to the working directory, ~ for home>
+  want hold, is-equal(format-path(</Users/me/shape/code/area.tree>, </Users/me/shape>, </Users/me>), <code/area.tree>)
+  want hold, is-equal(format-path(</Users/me/other/x.tree>, </Users/me/shape>, </Users/me>), <~/other/x.tree>)
+  want hold, is-equal(format-path(</etc/hosts>, </Users/me/shape>, </Users/me>), </etc/hosts>)
+  want hold, is-equal(format-place(<code/area.tree>, 14, 12), <code/area.tree:14:12>)
+  want hold, is-equal(format-place(<Dockerfile>, 6, 0), <Dockerfile:6>)
+
+test <a source wider than 12 cells is cut in the middle>
+  save room, kit-room(80)
+  want hold, is-equal(truncate-middle(<payments-reconciler>, 12, room), <paymen…ciler>)
+  want hold, is-equal(truncate-middle(<api:1>, 12, room), <api:1>)
+  want hold, is-equal(truncate-middle(<exactly-12ch>, 12, room), <exactly-12ch>)
+
+test <a number past the exact range is clamped, never thrown on>
+  want hold, is-equal(make-whole(9007199254740999), 9007199254740991)
+  want hold, is-equal(said-duration(9007199254740991), <2,501,999,792h 59m>)

@@ -1,0 +1,689 @@
+# The reference: what a pattern MEANS, written as directly as Term allows, and run only by tests. Every tier (the
+# native engines, the linear-time matcher, the backtracking one) is held to it on bounded inputs
+# (note/term/stdlib/regex-engine.md, "Tightened promises" 5). It is exponential on purpose: it lists every way a part
+# can match, in the order the semantics prefers them, and the first way the whole pattern matches is the answer.
+#
+# A state is a list of numbers: the position, then two slots per group (group 0 is the whole match), -1 for a slot
+# not set. The semantics are ECMAScript's, which is what Term chose:
+#   - alternatives and repetition are ordered: the first way that leads to a match wins (leftmost-first)
+#   - a repetition past its least count never takes an iteration that matches empty
+#   - each iteration starts with the groups inside it cleared, so a group reports its LAST iteration, or nothing
+#   - a lookaround is atomic: its body's first match is the one whose groups are kept, and a negative one keeps none
+#   - a lookbehind's body is matched backwards, right to left, from the position
+#   - a back reference to a group that took no part matches the empty text
+
+mark stable
+
+load @term/base/list
+  find list
+
+load @term/base/boolean
+  find not
+
+load @term/base/pattern/node
+  find piece
+  find edge-text-start
+  find edge-text-end
+  find edge-line-start
+  find edge-line-end
+  find edge-word
+  find edge-not-word
+
+load @term/base/pattern/set
+  find put-number
+  find number-at
+  find set-has
+  find copy-numbers
+
+load @term/base/pattern/unicode-read
+  find word-set
+  find fold-pairs
+  find fold-least
+
+load @term/base/pattern/scene
+  find scene
+  find make-scene
+  find edge-holds
+
+load @term/base/pattern/syntax
+  find parse-pattern
+  find parsed
+
+task position-of
+  take state
+    like list
+      like number
+  like number
+  send back
+    call number-at(read(state), code(0), code(0))
+
+task moved
+  take state
+    like list
+      like number
+  take to, like number
+  like list
+    like number
+  save next
+    call copy-numbers(read(state))
+  call put-number(read(next), code(0), read(to))
+  send back, read next
+
+task one
+  take state
+    like list
+      like number
+  like list
+    like list
+      like number
+  save out, make list
+  call out/push(read(state))
+  send back, read out
+
+task none
+  like list
+    like list
+      like number
+  save out, make list
+  send back, read out
+
+# whether the code point at `at` is a word character; outside the text it is not
+task groups-inside
+  take p, like piece
+  like list
+    like number
+  save out, make list
+  call out/push(code(0))
+  call out/push(code(-1))
+  call collect-groups(read(p), read(out))
+  send back, read out
+
+task collect-groups
+  take p, like piece
+  take out
+    like list
+      like number
+  like number
+  fork case, read p
+    case group
+      save low
+        call number-at(read(out), code(0), code(0))
+      save high
+        call number-at(read(out), code(1), code(-1))
+      fork test
+        hook test
+          call or
+            call is-below(read(high), code(0))
+            call is-below(read(index), read(low))
+        hook hold
+          call put-number(read(out), code(0), read(index))
+      fork test
+        hook test
+          call is-above(read(index), read(high))
+        hook hold
+          call put-number(read(out), code(1), read(index))
+      call collect-groups(read(body), read(out))
+    case chain
+      walk list, read parts
+        hook next
+          take site, name part
+          call collect-groups(read(part), read(out))
+    case choice
+      walk list, read parts
+        hook next
+          take site, name part
+          call collect-groups(read(part), read(out))
+    case loop
+      call collect-groups(read(body), read(out))
+    case atom
+      call collect-groups(read(body), read(out))
+    case look
+      call collect-groups(read(body), read(out))
+    case blank
+      send back, code 0
+    case letter
+      send back, code 0
+    case ranges
+      send back, code 0
+    case edge
+      send back, code 0
+    case refer
+      send back, code 0
+  send back, code 0
+
+# the state with the slots of groups `low` to `high` cleared
+task cleared
+  take state
+    like list
+      like number
+  take low, like number
+  take high, like number
+  like list
+    like number
+  save next
+    call copy-numbers(read(state))
+  save g, read low
+  walk test
+    down
+      call subtract
+        call add(read(high), code(1))
+        read g
+    hook test
+      call and
+        call is-minimum(read(g), code(1))
+        call is-maximum(read(g), read(high))
+    hook step
+      save slot
+        call add
+          call multiply(read(g), code(2))
+          code 1
+      fork test
+        hook test
+          call is-below
+            call add(read(slot), code(1))
+            read next/length
+        hook hold
+          call put-number(read(next), read(slot), code(-1))
+          call put-number(read(next), call(add, read(slot), code(1)), code(-1))
+      save g
+        call add(read(g), code(1))
+  send back, read next
+
+# every state the piece can end in from `state`, in the order the semantics prefers them
+task ends
+  take s, like scene
+  take p, like piece
+  take state
+    like list
+      like number
+  take backward, like boolean
+  like list
+    like list
+      like number
+  save at
+    call position-of(read(state))
+  fork case, read p
+    case blank
+      send back
+        call one(read(state))
+    case letter
+      save got
+        call rune-step(read(s), read(at), read(backward))
+      fork test
+        hook test
+          call is-equal(call(number-at, read(got), code(0), code(-1)), read(point))
+        hook hold
+          send back
+            call one
+              call moved(read(state), call(number-at, read(got), code(1), code(0)))
+      send back
+        call none
+    case ranges
+      save got
+        call rune-step(read(s), read(at), read(backward))
+      save c
+        call number-at(read(got), code(0), code(-1))
+      fork test
+        hook test
+          call and
+            call is-minimum(read(c), code(0))
+            call set-has(read(set), read(c))
+        hook hold
+          send back
+            call one
+              call moved(read(state), call(number-at, read(got), code(1), code(0)))
+      send back
+        call none
+    case edge
+      fork test
+        hook test
+          call edge-holds(read(s), read(kind), read(at))
+        hook hold
+          send back
+            call one(read(state))
+      send back
+        call none
+    case chain
+      save states
+        call one(read(state))
+      save count, read parts/length
+      save k, code 0
+      walk test
+        down
+          call subtract(read(count), read(k))
+        hook test
+          call is-below(read(k), read(count))
+        hook step
+          # backwards, the parts are matched right to left
+          save which, read k
+          fork test
+            hook test
+              read backward
+            hook hold
+              save which
+                call subtract
+                  call subtract(read(count), code(1))
+                  read k
+          save part
+            call part-at(read(parts), read(which))
+          save next, make list
+          walk list, read states
+            hook next
+              take site, name each
+              walk list
+                call ends(read(s), read(part), read(each), read(backward))
+                hook next
+                  take site, name e
+                  call next/push(read(e))
+          save states, read next
+          save k
+            call add(read(k), code(1))
+      send back, read states
+    case choice
+      save out, make list
+      walk list, read parts
+        hook next
+          take site, name part
+          walk list
+            call ends(read(s), read(part), read(state), read(backward))
+            hook next
+              take site, name e
+              call out/push(read(e))
+      send back, read out
+    case group
+      save out, make list
+      walk list
+        call ends(read(s), read(body), read(state), read(backward))
+        hook next
+          take site, name e
+          save next
+            call copy-numbers(read(e))
+          save end-at
+            call position-of(read(e))
+          save first, read at
+          save last, read end-at
+          fork test
+            hook test
+              read backward
+            hook hold
+              save first, read end-at
+              save last, read at
+          save slot
+            call multiply(read(index), code(2))
+          fork test
+            hook test
+              call is-below
+                call add(read(slot), code(2))
+                read next/length
+            hook hold
+              call put-number(read(next), call(add, read(slot), code(1)), read(first))
+              call put-number(read(next), call(add, read(slot), code(2)), read(last))
+          call out/push(read(next))
+      send back, read out
+    case loop
+      save inside
+        call groups-inside(read(body))
+      save all
+        call repeat-ends
+          read s
+          read body
+          read state
+          read least
+          read most
+          read greedy
+          read backward
+          call number-at(read(inside), code(0), code(0))
+          call number-at(read(inside), code(1), code(-1))
+      fork test
+        hook test
+          call and
+            read possessive
+            call is-above(read(all/length), code(0))
+        hook hold
+          send back
+            call one(call(first-state, read(all)))
+      send back, read all
+    case atom
+      save all
+        call ends(read(s), read(body), read(state), read(backward))
+      fork test
+        hook test
+          call is-above(read(all/length), code(0))
+        hook hold
+          send back
+            call one(call(first-state, read(all)))
+      send back
+        call none
+    case look
+      save all
+        call ends(read(s), read(body), read(state), read(behind))
+      save found
+        call is-above(read(all/length), code(0))
+      fork test
+        hook test
+          read negate
+        hook hold
+          fork test
+            hook test
+              read found
+            hook hold
+              send back
+                call none
+          send back
+            call one(read(state))
+      fork test
+        hook test
+          call not(read(found))
+        hook hold
+          send back
+            call none
+      # the first match's groups are kept; the position is where the lookaround stood
+      send back
+        call one
+          call moved(call(first-state, read(all)), read(at))
+    case refer
+      send back
+        call refer-ends(read(s), read(state), read(index), read(fold), read(backward))
+  send back
+    call none
+
+task part-at
+  take parts
+    like list
+      like piece
+  take k, like number
+  like piece
+  fork test
+    hook test
+      call and
+        call is-minimum(read(k), code(0))
+        call is-below(read(k), read(parts/length))
+    hook hold
+      send back, read parts/{k}
+  send back, make blank
+
+task first-state
+  take all
+    like list
+      like list
+        like number
+  like list
+    like number
+  fork test
+    hook test
+      call is-above(read(all/length), code(0))
+    hook hold
+      send back, read all/0
+  save empty, make list
+  send back, read empty
+
+# the code point a step reads from `at` and where the step ends: (code point, next position), (-1, at) at an edge
+task rune-step
+  take s, like scene
+  take at, like number
+  take backward, like boolean
+  like list
+    like number
+  save out, make list
+  fork test
+    hook test
+      read backward
+    hook hold
+      call out/push
+        call number-at(read(s/runes), call(subtract, read(at), code(1)), code(-1))
+      call out/push
+        call subtract(read(at), code(1))
+    hook miss
+      call out/push
+        call number-at(read(s/runes), read(at), code(-1))
+      call out/push
+        call add(read(at), code(1))
+  send back, read out
+
+# a repetition with `least` and `most` left (most -1 unbounded)
+task repeat-ends
+  take s, like scene
+  take body, like piece
+  take state
+    like list
+      like number
+  take least, like number
+  take most, like number
+  take greedy, like boolean
+  take backward, like boolean
+  take low, like number
+  take high, like number
+  like list
+    like list
+      like number
+  fork test
+    hook test
+      call is-equal(read(most), code(0))
+    hook hold
+      send back
+        call one(read(state))
+  save at
+    call position-of(read(state))
+  save next-least
+    call max-of(call(subtract, read(least), code(1)), code(0))
+  save next-most, read most
+  fork test
+    hook test
+      call is-above(read(most), code(0))
+    hook hold
+      save next-most
+        call subtract(read(most), code(1))
+  # one more iteration, then the rest of the repetition from wherever it ended
+  save again, make list
+  walk list
+    call ends(read(s), read(body), call(cleared, read(state), read(low), read(high)), read(backward))
+    hook next
+      take site, name e
+      # past the least count, an iteration that matched empty is not taken
+      fork test
+        hook test
+          call and
+            call is-equal(read(least), code(0))
+            call is-equal(call(position-of, read(e)), read(at))
+        hook hold
+          turn next
+      walk list
+        call repeat-ends
+          read s
+          read body
+          read e
+          read next-least
+          read next-most
+          read greedy
+          read backward
+          read low
+          read high
+        hook next
+          take site, name f
+          call again/push(read(f))
+  fork test
+    hook test
+      call is-above(read(least), code(0))
+    hook hold
+      send back, read again
+  save out, make list
+  fork test
+    hook test
+      read greedy
+    hook hold
+      walk list, read again
+        hook next
+          take site, name e
+          call out/push(read(e))
+      call out/push(read(state))
+    hook miss
+      call out/push(read(state))
+      walk list, read again
+        hook next
+          take site, name e
+          call out/push(read(e))
+  send back, read out
+
+task max-of
+  take a, like number
+  take b, like number
+  like number
+  fork test
+    hook test
+      call is-above(read(a), read(b))
+    hook hold
+      send back, read a
+  send back, read b
+
+# a back reference: the text the group holds, compared from the position
+task refer-ends
+  take s, like scene
+  take state
+    like list
+      like number
+  take index, like number
+  take fold, like boolean
+  take backward, like boolean
+  like list
+    like list
+      like number
+  save start
+    call number-at(read(state), call(add, call(multiply, read(index), code(2)), code(1)), code(-1))
+  save end
+    call number-at(read(state), call(add, call(multiply, read(index), code(2)), code(2)), code(-1))
+  fork test
+    hook test
+      call or
+        call is-below(read(start), code(0))
+        call is-below(read(end), code(0))
+    hook hold
+      send back
+        call one(read(state))
+  save size
+    call subtract(read(end), read(start))
+  save at
+    call position-of(read(state))
+  save from, read at
+  fork test
+    hook test
+      read backward
+    hook hold
+      save from
+        call subtract(read(at), read(size))
+  fork test
+    hook test
+      call or
+        call is-below(read(from), code(0))
+        call is-above
+          call add(read(from), read(size))
+          read s/runes/length
+    hook hold
+      send back
+        call none
+  save k, code 0
+  walk test
+    down
+      call subtract(read(size), read(k))
+    hook test
+      call is-below(read(k), read(size))
+    hook step
+      save a
+        call number-at(read(s/runes), call(add, read(start), read(k)), code(-1))
+      save b
+        call number-at(read(s/runes), call(add, read(from), read(k)), code(-2))
+      fork test
+        hook test
+          read fold
+        hook hold
+          save a
+            call fold-least(read(s/folds), read(a))
+          save b
+            call fold-least(read(s/folds), read(b))
+      fork test
+        hook test
+          call not(call(is-equal, read(a), read(b)))
+        hook hold
+          send back
+            call none
+      save k
+        call add(read(k), code(1))
+  fork test
+    hook test
+      read backward
+    hook hold
+      send back
+        call one(call(moved, read(state), read(from)))
+  send back
+    call one
+      call moved(read(state), call(add, read(at), read(size)))
+
+# the reference's answer: the first match at or after `from`, as the slots (start and end of each group, group 0
+# first, -1 for a group that took no part), or an empty list when nothing matches
+task reference-search
+  take source, like text
+  take runes
+    like list
+      like number
+  take from, like number
+  like list
+    like number
+  save parsed
+    call parse-pattern(read(source))
+  save s
+    call make-scene(read(runes), true)
+  save width
+    call add
+      call multiply
+        call add(read(parsed/groups), code(1))
+        code 2
+      code 1
+  save start, read from
+  # the length read once: the calls below leave the prover unsure of every list's size
+  save n, read runes/length
+  walk test
+    down
+      call subtract
+        call add(read(n), code(1))
+        read start
+    hook test
+      call is-maximum(read(start), read(n))
+    hook step
+      save state, make list
+      call state/push(read(start))
+      save k, code 1
+      walk test
+        down
+          call subtract(read(width), read(k))
+        hook test
+          call is-below(read(k), read(width))
+        hook step
+          call state/push(code(-1))
+          save k
+            call add(read(k), code(1))
+      save all
+        call ends(read(s), read(parsed/root), read(state), false)
+      fork test
+        hook test
+          call is-above(read(all/length), code(0))
+        hook hold
+          save best
+            call first-state(read(all))
+          save out, make list
+          call out/push(read(start))
+          call out/push(call(position-of, read(best)))
+          save g, code 3
+          save size, read best/length
+          walk test
+            down
+              call subtract(read(size), read(g))
+            hook test
+              call is-below(read(g), read(size))
+            hook step
+              call out/push(call(number-at, read(best), read(g), code(-1)))
+              save g
+                call add(read(g), code(1))
+          send back, read out
+      save start
+        call add(read(start), code(1))
+  save nothing, make list
+  send back, read nothing

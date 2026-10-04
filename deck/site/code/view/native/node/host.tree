@@ -7,7 +7,6 @@
 
 dock load
   load <global:assets>, name files
-  mark native
 
 load @term/site/dom/dom
   find view

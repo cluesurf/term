@@ -1,0 +1,154 @@
+load @term/base/list
+  find list
+  find push
+
+# small tasks of statements that open or build a recursive form, inlined into their callers (ir/inline-statements.ts):
+# one that writes a list slot, one that answers from its last arm and raises from another (caught by the caller, and
+# called once as a statement, its answer dropped), one that answers from every arm under names of its own, one whose
+# local is named like the caller's and that is inlinable only once its own callee was inlined into it, and a move whose
+# argument is itself an inlined call. One more writes a field of the record it was handed and must keep its call, so
+# the caller's record is untouched. Every answer must be what the calls gave
+
+form chain
+  case end
+  case link
+    link value, like number
+    link next, like chain
+
+form tally
+  link count, like number
+  link top, like chain
+
+task put
+  take xs, like list, like chain
+  take at, like number
+  take value, like number
+  save xs/{at}
+    make link
+      bind value, read value
+      bind next, read xs/{at}
+
+task take-top
+  take xs, like list, like chain
+  take at, like number
+  like number
+  host top, read xs/{at}
+  fork case, read top
+    case end
+      halt <empty>
+    case link
+      save xs/{at}, read next
+      send back, read value
+
+task peek
+  take c, like chain
+  like number
+  fork case, read c
+    case end
+      send back, code -1
+    case link
+      link v
+      link rest
+      send back, read v
+
+task shadow
+  take c, like chain
+  like number
+  host p, call peek(read(c))
+  host y
+    call multiply
+      read p
+      code 2
+  send back
+    call add
+      read y
+      code 1
+
+task try-take
+  take xs, like list, like chain
+  take at, like number
+  like text
+  mark unsafe
+    host got
+      call take-top
+        read xs
+        read at
+    send back, text <{got}>
+  halt take
+    take problem
+    send back, text <refused>
+
+task bump
+  take t, like tally
+  like number
+  save t/count
+    call add
+      read t/count
+      code 1
+  save t/top
+    make link
+      bind value, read t/count
+      bind next, read t/top
+  send back, read t/count
+
+task compute
+  like text
+  save xs
+    make list
+  walk size
+    bind base, code 0
+    bind head, code 3
+    hook next
+      take site, name k
+      call push
+        bind list, read xs
+        bind item
+          make end
+  call put
+    read xs
+    code 0
+    code 5
+  call put
+    read xs
+    code 0
+    code 7
+  call put
+    read xs
+    code 1
+    code 9
+  host a
+    call take-top
+      read xs
+      code 0
+  call put
+    read xs
+    code 2
+    call take-top
+      read xs
+      code 0
+  host y, code 10
+  host s, call shadow(read(xs/2))
+  host e, call peek(read(xs/0))
+  host good
+    call try-take
+      read xs
+      code 1
+  host bad
+    call try-take
+      read xs
+      code 1
+  call put
+    read xs
+    code 1
+    code 4
+  call take-top
+    read xs
+    code 1
+  host f, call peek(read(xs/1))
+  host t
+    make tally
+      bind count, code 3
+      bind top, read xs/2
+  host n, call bump(read(t))
+  host g, call peek(read(xs/2))
+  send back, text <{a}:{s}:{y}:{e}:{good}:{bad}:{f}:{n}:{t/count}:{g}>

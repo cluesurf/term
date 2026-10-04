@@ -1,7 +1,9 @@
 // Composed input on the toolkit hosts (native-text-0003): a field taking text from an input method, on AppKit (macOS),
-// UIKit (the iPhone simulator) and Android views (the emulator). Three scripts word.surf edits, each typed the way its
-// keyboard types it, in stages of MARKED text and then a commit, through the platform's own input method entry points
-// (setMarkedText and insertText on Apple, InputConnection.setComposingText and commitText on Android):
+// UIKit (the iPhone simulator), Android views (the emulator), Compose on the desktop JVM and Jetpack Compose (the
+// emulator). Three scripts word.surf edits, each typed the way its keyboard types it, in stages of MARKED text and then
+// a commit, through the platform's own input method entry points (setMarkedText and insertText on Apple,
+// InputConnection.setComposingText and commitText on Android and Jetpack Compose, the text input request's
+// setComposingText and commitText on the desktop, which is what Compose makes of an AWT InputMethodEvent):
 //
 //   korean     ㅎ  하  한        committed 한     Hangul: a syllable builds from its jamo
 //   japanese   か  かん  かんじ   committed 漢字   kana, then the conversion
@@ -10,7 +12,7 @@
 // Every composition event and every `input` the field fires says what it saw: the event, the composing text and the
 // field's value. The judge reads the web's order back out of that: `compositionstart`, a `compositionupdate` per marked
 // stage carrying that stage's text, `compositionend` at the commit, and the committed text in the value.
-// COMPOSE_ONLY=macos (or ios, android) runs one platform. Run: npx tsx test/compile/toolkit-compose.ts
+// COMPOSE_ONLY=macos (or ios, android, compose, compose-android) runs one platform. Run: npx tsx test/compile/toolkit-compose.ts
 
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -185,7 +187,15 @@ runToolkits(
     program,
     judge,
     ok,
-    shots: { macos: process.env.SNAPSHOT_COMPOSE, ios: process.env.SNAPSHOT_COMPOSE_IOS, android: process.env.SNAPSHOT_COMPOSE_ANDROID },
+    compose: true,
+    composeAndroid: true,
+    shots: {
+      macos: process.env.SNAPSHOT_COMPOSE,
+      ios: process.env.SNAPSHOT_COMPOSE_IOS,
+      android: process.env.SNAPSHOT_COMPOSE_ANDROID,
+      compose: process.env.SNAPSHOT_COMPOSE_DESKTOP,
+      'compose-android': process.env.SNAPSHOT_COMPOSE_JETPACK,
+    },
   },
   process.env.COMPOSE_ONLY ?? '',
 )

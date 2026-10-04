@@ -31,7 +31,7 @@ const FACE = resolve(process.cwd(), '../../../../mesh/site/word.surf/home/public
 const MISSING = 'No Such Face'
 
 // where each platform finds the file
-const source = (leg: Leg): string => (leg === 'android' ? 'asset:CrowMark.otf' : FACE)
+const source = (leg: Leg): string => (leg === 'android' || leg === 'compose-android' ? 'asset:CrowMark.otf' : FACE)
 
 const program = (leg: Leg, shot: string): string => `load @term/site/code/dom/dom
   find view
@@ -154,7 +154,7 @@ function after(output: string, marker: string): string {
 function judge(leg: Leg, toolkit: string, output: string): void {
   const fonts = after(output, 'fonts')
   // a Mac may have CrowMark installed by hand already; the platform's answer before is reported, not judged
-  ok(`${leg}: registering CrowMark from ${leg === 'android' ? 'the APK' : 'its file'} succeeds (${toolkit})`, fonts.includes('registered=true'), fonts)
+  ok(`${leg}: registering CrowMark from ${source(leg).startsWith('asset:') ? 'the APK' : 'its file'} succeeds (${toolkit})`, fonts.includes('registered=true'), fonts)
   ok(`${leg}: registering it again is not a failure`, fonts.includes('again=true'), fonts)
   ok(`${leg}: a file that does not exist is refused`, fonts.includes('unread=false'), fonts)
   ok(`${leg}: check-font says CrowMark is drawable once registered`, fonts.includes('after=true'), fonts)
@@ -191,7 +191,15 @@ if (!existsSync(FACE)) {
       judge,
       ok,
       assets: { 'CrowMark.otf': FACE },
-      shots: { macos: process.env.SNAPSHOT_FONT, ios: process.env.SNAPSHOT_FONT_IOS, android: process.env.SNAPSHOT_FONT_ANDROID },
+      shots: {
+        macos: process.env.SNAPSHOT_FONT,
+        ios: process.env.SNAPSHOT_FONT_IOS,
+        android: process.env.SNAPSHOT_FONT_ANDROID,
+        compose: process.env.SNAPSHOT_FONT_COMPOSE,
+        'compose-android': process.env.SNAPSHOT_FONT_COMPOSE_ANDROID,
+      },
+      compose: true,
+      composeAndroid: true,
     },
     process.env.FONT_ONLY ?? '',
   )

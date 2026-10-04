@@ -1,13 +1,15 @@
-// SwiftUI in a slot of the retained tree (swiftui-target-0001, native-view.swift `hostedViews`): a `swiftui` element
-// naming a registered SwiftUI view, on AppKit (macOS) and UIKit (the iPhone simulator). The program hosts SwiftUI's
-// Stepper and ProgressView beside a span showing a count it keeps in a signal, presses the stepper's increment twice
-// the way a tap would, and reads back:
+// A declarative view in a slot of the retained tree: SwiftUI's (swiftui-target-0001, native-view.swift `hostedViews`),
+// a `swiftui` element naming a registered SwiftUI view, on AppKit (macOS) and UIKit (the iPhone simulator), and its
+// Compose twin (compose-target, compose/runtime/native-view.kt `hostedComposables`), a `composable` element naming a
+// registered composable, on Compose's desktop and Jetpack Compose. The program hosts a stepper and a progress view
+// beside a span showing a count it keeps in a signal, presses the stepper's increment twice the way a tap would (on
+// Compose, a click on its real `+` button), and reads back:
 //
-//   - both hosting views are installed in the tree and laid out by SwiftUI to a size above zero
+//   - both hosted views are installed in the tree and laid out by their toolkit to a size above zero
 //   - each press reached the program's `change` handler, which wrote the count, so the span reads 2
-//   - the count went back into the SwiftUI view's input through its attribute (the slot holds `value` 2)
+//   - the count went back into the hosted view's input through its attribute (the slot holds `value` 2)
 //
-// SWIFTUI_ONLY=macos (or ios) runs one platform. Run: npx tsx test/compile/toolkit-swiftui.ts
+// SWIFTUI_ONLY=macos (or ios, compose, compose-android) runs one platform. Run: npx tsx test/compile/toolkit-swiftui.ts
 
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -28,7 +30,10 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-const program = (_leg: Leg, shot: string): string => `load @term/site/code/dom/dom
+// the slot element each platform hosts its own declarative views in: SwiftUI's on Apple, a composable's on Compose
+const slotOf = (leg: Leg): string => (leg.startsWith('compose') ? 'composable' : 'swiftui')
+
+const program = (leg: Leg, shot: string): string => `load @term/site/code/dom/dom
   find view
   find get-value
 
@@ -64,7 +69,7 @@ view board
   save count
     call make-signal
       bind value, text <0>
-  view swiftui
+  view ${slotOf(leg)}
     name stepper
     bind name, text <stepper>
     bind label, text <count>
@@ -77,7 +82,7 @@ view board
         bind value
           call get-value
             read stepper
-  view swiftui
+  view ${slotOf(leg)}
     bind name, text <progress>
     bind label, text <done>
     bind value, text <0.25>
@@ -149,9 +154,9 @@ function step(output: string, name: string): string {
   return line.slice(line.indexOf(`step ${name} `) + `step ${name} `.length).trim()
 }
 
-// every `<swiftui name=".." size="w,h">` the tree read back holds, with its size
+// every `<swiftui name=".." size="w,h">` (or `<composable ...>`) the tree read back holds, with its size
 function hosted(tree: string): { name: string; width: number; height: number }[] {
-  return [...tree.matchAll(/<swiftui name="([^"]*)" size="(\d+),(\d+)">/g)].map(m => ({ name: m[1]!, width: Number(m[2]), height: Number(m[3]) }))
+  return [...tree.matchAll(/<(?:swiftui|composable) name="([^"]*)" size="(\d+),(\d+)">/g)].map(m => ({ name: m[1]!, width: Number(m[2]), height: Number(m[3]) }))
 }
 
 function judge(leg: Leg, toolkit: string, output: string): void {
@@ -159,11 +164,12 @@ function judge(leg: Leg, toolkit: string, output: string): void {
     return
   }
 
+  const kind = leg.startsWith('compose') ? 'Compose' : 'SwiftUI'
   const start = step(output, 'start')
-  ok(`${leg}: both SwiftUI views are installed in the tree (${toolkit})`, start.startsWith('stepper progress '), start.slice(0, 200))
+  ok(`${leg}: both ${kind} views are installed in the tree (${toolkit})`, start.startsWith('stepper progress '), start.slice(0, 200))
   const views = hosted(start)
   ok(
-    `${leg}: SwiftUI laid each one out to a size above zero`,
+    `${leg}: ${kind} laid each one out to a size above zero`,
     views.length === 2 && views.every(v => v.width > 0 && v.height > 0) && views[0]!.name === 'stepper' && views[1]!.name === 'progress',
     JSON.stringify(views),
   )
@@ -172,8 +178,9 @@ function judge(leg: Leg, toolkit: string, output: string): void {
   ok(`${leg}: the span the program draws reads the count`, pressed.includes('2'), pressed)
 }
 
-// Apple only: on Android the slot is Compose's (compose-target)
-for (const leg of process.env.SWIFTUI_ONLY ? [process.env.SWIFTUI_ONLY] : ['macos', 'ios']) {
+// Apple's SwiftUI slot and Compose's composable slot. Android views has no declarative toolkit to host: its slot is
+// Jetpack Compose's leg
+for (const leg of process.env.SWIFTUI_ONLY ? [process.env.SWIFTUI_ONLY] : ['macos', 'ios', 'compose', 'compose-android']) {
   runToolkits(
     {
       root: process.cwd(),

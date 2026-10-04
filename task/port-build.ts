@@ -28,9 +28,18 @@ import { projectLeanOf } from '@term/call/code/role-of'
 // run from the Term package root, the way every script under task/ is
 const TERM = process.cwd()
 
-// the toolchain LIBRARIES whose ports TypeScript imports. `@term/call` is not here: its .tree is the console
-// (`line/base.tree`) and its verbs, which `term boot` builds as a program, and nothing imports them as a library.
-const DECKS = ['make', 'deck', 'flow', 'scan', 'test']
+// the toolchain LIBRARIES whose ports TypeScript imports, each with the code subtrees it ports. Of `@term/call` only
+// `code/work/item` is a library, the terminal output standard every command prints through (note/term/output/): the
+// rest of its .tree is the console (`line/base.tree`) and its verbs, which `term boot` builds as a program and
+// nothing imports as a library.
+const DECKS: Record<string, string[]> = {
+  make: ['code'],
+  deck: ['code'],
+  flow: ['code'],
+  scan: ['code'],
+  test: ['code'],
+  call: ['code/work/item'],
+}
 
 const check = process.argv.includes('--check')
 
@@ -67,11 +76,13 @@ function main(): void {
   let stale = 0
   let failed = 0
 
-  for (const deck of DECKS) {
+  for (const [deck, subtrees] of Object.entries(DECKS)) {
     const root = join(TERM, 'deck', deck)
     const files: string[] = []
 
-    trees(join(root, 'code'), files)
+    for (const subtree of subtrees) {
+      trees(join(root, subtree), files)
+    }
 
     if (files.length === 0) {
       continue

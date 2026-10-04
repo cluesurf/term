@@ -27,4 +27,42 @@ object regex {
         }
         return out
     }
+
+    // every match left to right, none overlapping, in one pass: the width of one match's slots first (two per group,
+    // group 0 the whole match), then each match's slots in code points. After an empty match the search moves on one
+    // code point, as the Term search does, so every engine iterates alike.
+    fun searchAll(pattern: String, text: String): MutableList<Long> {
+        val out = mutableListOf(-1L)
+        val engine = compiled[pattern] ?: try {
+            java.util.regex.Pattern.compile(pattern).also { compiled[pattern] = it }
+        } catch (e: Throwable) {
+            return out
+        }
+        val found = engine.matcher(text)
+        // a cursor: the code point count at a UTF-16 offset, moved forwards only
+        var cursorUnit = 0
+        var cursorPoint = 0L
+        var unit = 0
+        while (unit <= text.length) {
+            if (!found.find(unit)) break
+            val start = found.start()
+            val end = found.end()
+            val startPoint = cursorPoint + text.codePointCount(cursorUnit, start)
+            cursorUnit = start
+            cursorPoint = startPoint
+            out[0] = ((found.groupCount() + 1) * 2).toLong()
+            for (group in 0..found.groupCount()) {
+                val s = found.start(group)
+                if (s < 0) {
+                    out.add(-1L)
+                    out.add(-1L)
+                } else {
+                    out.add(startPoint + text.codePointCount(start, s))
+                    out.add(startPoint + text.codePointCount(start, found.end(group)))
+                }
+            }
+            unit = if (end > start) end else if (end < text.length) text.offsetByCodePoints(end, 1) else text.length + 1
+        }
+        return out
+    }
 }

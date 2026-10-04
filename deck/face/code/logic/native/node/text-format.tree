@@ -6,7 +6,6 @@
 
 dock load
   load <global:format>, name format
-  mark native
 
 task width-style
   take before, like text

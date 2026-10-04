@@ -91,11 +91,12 @@ form fact-rule
 
 # section 8's break tiers. Each tier is a text of the characters a long token may break AFTER; a token tries the first
 # tier, then the next, then the edge. `never` is the sequence nothing breaks inside. A location (section 12) breaks
-# only after the characters of `location-tier`
+# only after `/`; its second tier is the last resort for a single path segment wider than the whole line, where a
+# break somewhere else cannot be avoided, and it puts that break between the path, the line and the column
 form wrap-rule
   link tiers, like list, like text
   link never, like text
-  link location-tier, like text
+  link location-tiers, like list, like text
 
 # section 7's fields. `location-key` is drawn before the code frame, `action-keys` close the item, and the rest sit
 # between the frame and the quote, in the order given
@@ -181,14 +182,23 @@ form environment-rule
   link hyperlink-variables, like list, like text
   link program-variable, like text
   link background-variable, like text
+  # section 8's links: a value that starts with one of these schemes is its own link target, and a location is linked
+  # as the file scheme over the room's root
+  link link-schemes, like list, like text
+  link file-scheme, like text
 
 # one row of section 9's catalog: the kind, its verbs, the facts it may carry after the clock, and its detail blocks.
-# A verb list holding `*` takes any verb: the command's own, or an app logger's name
+# A verb list holding `*` takes any verb: the command's own, or an app logger's name. `order` is the kind's own fact
+# order where the spec gives one (the opening item, section 3: tool and version, zone, then counts), empty for the
+# general order of section 6
 form kind-rule
   link name, like text
   link verbs, like list, like text
   link facts, like list, like text
   link details, like list, like text
+  link order
+    like list, like text
+    fall make list
 
 # a log level word of section 15 and the glyph it becomes. `quiet` makes the item a debug item
 form level-rule
@@ -223,6 +233,19 @@ form key-rule
   link fields, like text
   link kind, like text
 
+# section 13's prompts: the verb, the hints a question shows while it waits, and the words of the failure when there
+# is no terminal to ask on
+form ask-rule
+  link verb, like text
+  link confirm-yes, like text
+  link confirm-no, like text
+  link many-hint, like text
+  link one-hint, like text
+  link yes-flag, like text
+  link yes-word, like text
+  link no-word, like text
+  link no-terminal, like text
+
 # section 20's sentences: the plain word of a size unit, singular and plural
 form unit-word
   link unit, like text
@@ -252,6 +275,7 @@ form standard
   link kinds, like list, like kind-rule
   link children, like child-rule
   link keys, like key-rule
+  link asks, like ask-rule
   link unit-words, like list, like unit-word
 
 # The standard as it is written, every value the spec states. A renderer is handed this unless a caller hands it
@@ -355,7 +379,7 @@ task make-standard
         make number-rule, group(<,>), group-digits(3), part(</>)
       facts
         make fact-rule
-          order <clock>, <duration>, <status>, <size>, <counts>, <rest>
+          order <clock>, <tool>, <zone>, <duration>, <status>, <size>, <counts>, <rest>
           http-label <HTTP>
           exit-label <exit>
           signal-label <signal>
@@ -363,7 +387,7 @@ task make-standard
         make wrap-rule
           tiers </?&>, <:.=->
           never <://>
-          location-tier </>
+          location-tiers </>, <:>
       fields
         make field-rule
           location-key <at>
@@ -424,20 +448,28 @@ task make-standard
           hyperlink-variables <WT_SESSION>, <KITTY_WINDOW_ID>, <KONSOLE_VERSION>, <DOMTERM>
           program-variable <TERM_PROGRAM>
           background-variable <COLORFGBG>
+          link-schemes <https://>, <http://>, <file://>
+          file-scheme <file://>
       kinds
-        make kind-rule, name(<open>), verbs(<*>), facts(<rest>, <counts>), details(<fields>)
+        make kind-rule, name(<open>), verbs(<*>), facts(<tool>, <zone>, <counts>, <rest>), details(<fields>, <data>)
         make kind-rule, name(<close>), verbs(<*>), facts(<duration>, <counts>, <rest>), details(<message>, <fields>)
         make kind-rule
           name <lifecycle>
-          verbs <start>, <reload>, <stop>, <exit>, <restart>, <rotate>, <watch>
-          facts <duration>, <status>, <size>, <counts>, <rest>
+          verbs <start>, <reload>, <stop>, <exit>, <restart>, <rotate>, <watch>, <up>
+          facts <duration>, <status>, <counts>, <size>, <rest>
           details <message>, <fields>
+          order <clock>, <duration>, <status>, <counts>, <size>, <rest>
         make kind-rule
           name <request>
           verbs <GET>, <POST>, <PUT>, <PATCH>, <DELETE>, <HEAD>, <OPTIONS>
           facts <duration>, <status>, <size>, <rest>
           details <message>, <fields>
-        make kind-rule, name(<job>), verbs(<job>), facts(<duration>, <counts>, <rest>), details(<message>, <fields>, <quote>)
+        make kind-rule
+          name <job>
+          verbs <job>
+          facts <duration>, <rest>, <counts>
+          details <message>, <fields>, <quote>
+          order <clock>, <duration>, <rest>, <counts>, <status>, <size>
         make kind-rule, name(<query>), verbs(<query>), facts(<duration>, <counts>), details(<quote>)
         make kind-rule, name(<health>), verbs(<health>), facts(<duration>, <size>, <counts>, <rest>), details(<fields>)
         make kind-rule
@@ -496,6 +528,17 @@ task make-standard
           message <message>
           fields <fields>
           kind <kind>
+      asks
+        make ask-rule
+          verb <ask>
+          confirm-yes <Y/n>
+          confirm-no <y/N>
+          many-hint <space picks, enter confirms>
+          one-hint <enter picks>
+          yes-flag <--yes>
+          yes-word <yes>
+          no-word <no>
+          no-terminal <needs answers, and this is not a terminal>
       unit-words
         make unit-word, unit(<B>), one(<byte>), many(<bytes>)
         make unit-word, unit(<kB>), one(<kilobyte>), many(<kilobytes>)

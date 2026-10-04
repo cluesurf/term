@@ -1,0 +1,291 @@
+# Long-running services (section 11): a stream of the same items, with the clock first on every one.
+#
+# A STREAM IS A VALUE, like a run. `stream-event` takes the stream and the next event and hands back the stream and
+# the events to print: a `date` item first when the local date changed (or when a stream read later starts on an
+# earlier day than today), and the event itself unless it collapsed into the one before. `--source` filters the
+# stream to one service, and the tags are then left out.
+#
+# COLLAPSING. Identical items within the standard's window collapse into the first, which gains `×n`. "Identical"
+# is everything but the clock and the duration. On a terminal the first item is still in the live region and is
+# redrawn with its count; through a pipe it is held back until a different item arrives or the window closes
+# (`flush-stream`), which is the one way to print it once, whole, with its count, and costs a held item at most the
+# window's length.
+
+load ./standard
+  find standard
+
+load ./layout
+  find span
+  find line
+  find room
+  find make-span
+  find indent-lines
+
+load ./event
+  find event
+  find tally
+  find plain-subject
+  find plain-field
+
+load ./format
+  find format-date
+  find day-of
+  find format-zone
+  find spans-text
+  find group-number
+
+load ./measure
+  find measure-text
+
+load ./data
+  find draw-rule
+
+load ./item
+  find draw-item
+
+form stream
+  # the source the stream is filtered to, empty for every source
+  link source, like text, fall <>
+  # the display zone, minutes east of UTC
+  link offset, like number, fall 0
+  # the local day of the last item printed, -1 before the first
+  link day, like number, fall -1
+  # the item held for collapsing, and whether there is one
+  link held, like event, fall make event
+  link holding, like boolean, fall false
+
+form streamed
+  link stream, like stream
+  link events
+    like list, like event
+    fall make list
+
+task make-stream
+  take source, like text
+  take offset, like number
+  like stream
+  back make stream, source(source), offset(offset)
+
+# does the event belong in the stream: every event, or only the filtered source's (the tool's own items, which have
+# no source, always do)
+task is-in-stream
+  take one, like stream
+  take event, like event
+  like boolean
+  fork test, or(is-equal(one/source, <>), is-equal(event/source, <>))
+    hold
+      back true
+  back is-equal(event/source, one/source)
+
+# the `date` item of section 11: the new date as its subject, no facts line
+task make-date-item
+  take clock, like number
+  take offset, like number
+  take standard, like standard
+  like event
+  save one, make event, glyph(<info>), kind(<date>), verb(standard/services/date-verb)
+  save one/subject, plain-subject(format-date(clock, offset))
+  back one
+
+# are two items the same but for their clock and duration. Field by field: `is-equal` on two records compares
+# references on TypeScript and values on Rust, so it cannot decide this the same way on both
+task is-repeat
+  take a, like event
+  take b, like event
+  like boolean
+  fork test, or(is-unequal(a/glyph, b/glyph), or(is-unequal(a/verb, b/verb), is-unequal(a/source, b/source)))
+    hold
+      back false
+  fork test, or(is-unequal(a/kind, b/kind), is-unequal(a/level, b/level))
+    hold
+      back false
+  fork test, is-unequal(spans-text(a/subject), spans-text(b/subject))
+    hold
+      back false
+  fork test, or(is-unequal(a/status/kind, b/status/kind), is-unequal(a/status/value, b/status/value))
+    hold
+      back false
+  fork test, is-unequal(a/bytes, b/bytes)
+    hold
+      back false
+  fork test, is-unequal(write-tallies(a), write-tallies(b))
+    hold
+      back false
+  fork test, is-unequal(write-texts(a/facts), write-texts(b/facts))
+    hold
+      back false
+  fork test, is-unequal(write-texts(a/message), write-texts(b/message))
+    hold
+      back false
+  fork test, is-unequal(write-fields(a), write-fields(b))
+    hold
+      back false
+  back true
+
+task write-texts
+  take values, like list, like text
+  like text
+  save out, <>
+  walk values
+    take one
+    save out, <{out}{one}\n>
+  back out
+
+task write-tallies
+  take one, like event
+  like text
+  save out, <>
+  walk one/tallies
+    take each
+    save out, <{out}{each/amount} {each/noun} {each/total}\n>
+  back out
+
+task write-fields
+  take one, like event
+  like text
+  save out, <>
+  walk one/fields
+    take each
+    save out, <{out}{each/key} {spans-text(each/value)}\n>
+  back out
+
+# the stream after an event, and the events to print now
+task stream-event
+  take one, like stream
+  take event, like event
+  take now, like number
+  take standard, like standard
+  like streamed
+  save next, one
+  save out, make list
+  fork test, is-in-stream(one, event)
+    miss
+      back make streamed, stream(next), events(out)
+  # a repeat of the held item within the window collapses into it
+  fork test, one/holding
+    hold
+      save window, standard/services/collapse-ms
+      save held, one/held
+      fork test, and(is-repeat(held, event), is-maximum(subtract(event/clock, held/clock), window))
+        hold
+          save count, held/repeat
+          fork test, is-below(count, 1)
+            hold
+              save count, 1
+          save held/repeat, add(count, 1)
+          save next/held, held
+          back make streamed, stream(next), events(out)
+      # a different item: the held one prints now
+      out/push held
+      save next/holding, false
+  # a date item when the local date changes
+  fork test, is-minimum(event/clock, 0)
+    hold
+      save day, day-of(event/clock, one/offset)
+      save before, one/day
+      fork test, is-below(before, 0)
+        hold
+          # a stream read later that starts on an earlier day than today says the date first
+          save before, day-of(now, one/offset)
+      fork test, is-unequal(day, before)
+        hold
+          out/push make-date-item(event/clock, one/offset, standard)
+      save next/day, day
+  save next/held, event
+  save next/holding, true
+  back make streamed, stream(next), events(out)
+
+# the held item, printed: when a different item arrives, when the window closes, and when the stream stops
+task flush-stream
+  take one, like stream
+  take now, like number
+  take force, like boolean
+  take standard, like standard
+  like streamed
+  save next, one
+  save out, make list
+  fork test, one/holding
+    miss
+      back make streamed, stream(next), events(out)
+  save held, one/held
+  fork test, or(force, is-above(subtract(now, held/clock), standard/services/collapse-ms))
+    hold
+      out/push held
+      save next/holding, false
+  back make streamed, stream(next), events(out)
+
+# the opening item of a service (section 11): the zone named once, the services counted, and every source listed in
+# full in a `sources` field when one is cut in the tags
+task make-service-opening
+  take verb, like text
+  take subject, like text
+  take clock, like number
+  take tool, like text
+  take zone, like text
+  take sources, like list, like text
+  take room, like room
+  like event
+  save one, make event, glyph(<info>), kind(<open>), verb(verb), subject(plain-subject(subject)), clock(clock)
+  fork test, is-unequal(tool, <>)
+    hold
+      one/tool/push tool
+  fork test, is-above(sources/length, 1)
+    hold
+      one/tallies/push make tally, amount(sources/length), noun(<services>), one(<service>)
+  save one/zone, zone
+  save cut, false
+  save listed, <>
+  walk sources
+    take each
+    fork test, is-above(measure-text(each), room/standard/services/tag-width)
+      hold
+        save cut, true
+    fork test, is-equal(listed, <>)
+      hold
+        save listed, each
+      miss
+        save listed, <{listed}, {each}>
+  fork test, cut
+    hold
+      one/fields/push plain-field(room/standard/fields/sources-key, listed)
+  back one
+
+# one source's `up` item for the status footer: its address, its tag, the clock and its uptime
+task make-up-item
+  take address, like text
+  take source, like text
+  take clock, like number
+  take uptime, like number
+  take restarts, like number
+  take standard, like standard
+  like event
+  save one, make event, glyph(<done>), kind(<lifecycle>), verb(standard/services/footer-verb), clock(clock)
+  save one/subject, plain-subject(address)
+  save one/source, source
+  save one/duration, uptime
+  save one/uptime, true
+  fork test, is-above(restarts, 0)
+    hold
+      one/tallies/push make tally, amount(restarts), noun(<restarts>), one(<restart>)
+  back one
+
+# the status footer (section 11): a faint rule, then one `up` item per source. It sits at the bottom of a live
+# terminal and is removed when the stream stops
+task draw-footer
+  take ups, like list, like event
+  take room, like room
+  take tagged, like boolean
+  like list, like line
+  save out, make list
+  fork test, is-equal(ups/length, 0)
+    hold
+      back out
+  walk draw-rule(room)
+    take each
+    out/push each
+  walk ups
+    take one
+    walk draw-item(one, room, tagged)
+      take each
+      out/push each
+  back out

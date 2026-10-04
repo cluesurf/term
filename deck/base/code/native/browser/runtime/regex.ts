@@ -39,4 +39,53 @@ const regex = {
     }
     return out
   },
+  // every match left to right, none overlapping, in one pass: the width of one match's slots first (two per group,
+  // group 0 the whole match), then each match's slots in code points. After an empty match the search moves on one
+  // code point, as the Term search does, so every engine iterates alike. One pass keeps the UTF-16 to code point
+  // count moving forwards, where a search per match would recount from the start each time.
+  searchAll: (pattern: string, text: string): Array<number> => {
+    let engine = regex.compiled.get(pattern)
+    if (engine === undefined) {
+      engine = new RegExp(pattern, 'gud')
+      regex.compiled.set(pattern, engine)
+    }
+    const out: Array<number> = [-1]
+    // a cursor: the code point count at a UTF-16 offset, moved forwards only
+    let cursorUnit = 0
+    let cursorPoint = 0
+    const pointAt = (at: number, fromUnit: number, fromPoint: number): number => {
+      let u = fromUnit
+      let p = fromPoint
+      while (u < at) {
+        u += (text.codePointAt(u) ?? 0) > 0xffff ? 2 : 1
+        p += 1
+      }
+      return p
+    }
+    let unit = 0
+    while (unit <= text.length) {
+      engine.lastIndex = unit
+      const found = engine.exec(text)
+      if (found === null || found.indices === undefined) break
+      const startUnit = found.indices[0]![0]
+      const endUnit = found.indices[0]![1]
+      const startPoint = pointAt(startUnit, cursorUnit, cursorPoint)
+      cursorUnit = startUnit
+      cursorPoint = startPoint
+      out[0] = found.indices.length * 2
+      for (const span of found.indices) {
+        if (span === undefined) {
+          out.push(-1, -1)
+        } else {
+          out.push(pointAt(span[0], startUnit, startPoint), pointAt(span[1], startUnit, startPoint))
+        }
+      }
+      if (endUnit > startUnit) {
+        unit = endUnit
+      } else {
+        unit = endUnit + ((text.codePointAt(endUnit) ?? 0) > 0xffff ? 2 : 1)
+      }
+    }
+    return out
+  },
 }

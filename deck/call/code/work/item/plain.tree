@@ -1,0 +1,139 @@
+# `--plain` (section 20): each item one sentence, for screen readers and transcripts. No box drawing, no bars, no
+# spinners, no color: `done: GET /shape, 18 ms, HTTP 200, 84 bytes`.
+#
+# THE SAME FACTS AS THE HUMAN VIEW, from the same formatters, joined as a sentence: the glyph's word, the verb and the
+# subject, then each fact in the standard's order. A size's unit is spelled out (`84 bytes`), because `B` read aloud
+# is a letter. The clock is left out, as the spec's own example leaves it out. Fields follow as `key value`, the
+# message after a period.
+
+load ./standard
+  find standard
+  find unit-word
+
+load ./layout
+  find span
+  find room
+  find find-glyph
+  find unglue-text
+
+load ./event
+  find event
+  find tally
+
+load ./format
+  find spans-text
+  find format-duration
+  find format-tally
+  find format-status
+  find format-size
+  find make-whole
+  find group-number
+
+load ./clean
+  find clean-text
+
+# a size with its unit spelled out: `84 bytes`, `3.1 kilobytes`
+task speak-size
+  take bytes, like number
+  take standard, like standard
+  like text
+  save spans, format-size(bytes, standard)
+  save number, <>
+  save unit, <>
+  save at, 0
+  walk spans
+    take one
+    fork test, is-equal(at, 0)
+      hold
+        save number, one/value
+    save unit, one/value
+    save at, add(at, 1)
+  walk standard/unit-words
+    take one
+    fork test, is-equal(one/unit, unit)
+      hold
+        fork test, is-equal(number, <1>)
+          hold
+            back <{number} {one/one}>
+        back <{number} {one/many}>
+  back <{number} {unit}>
+
+# the facts of an event as sentence parts, in the standard's order (the clock left out)
+task speak-facts
+  take event, like event
+  take room, like room
+  like list, like text
+  save out, make list
+  save standard, room/standard
+  walk standard/facts/order
+    take name
+    fork test, is-equal(name, <tool>)
+      hold
+        walk event/tool
+          take one
+          out/push clean-text(one, room)
+    fork test, and(is-equal(name, <zone>), is-unequal(event/zone, <>))
+      hold
+        out/push clean-text(event/zone, room)
+    fork test, and(is-equal(name, <duration>), is-minimum(event/duration, 0))
+      hold
+        save spoken, spans-text(format-duration(event/duration, standard, <text>))
+        fork test, event/uptime
+          hold
+            save word, standard/durations/uptime-word
+            save spoken, <{word} {spoken}>
+        out/push spoken
+    fork test, and(is-equal(name, <status>), is-unequal(event/status/kind, <>))
+      hold
+        out/push spans-text(format-status(event/status/kind, event/status/value, event/status/name, standard))
+    fork test, and(is-equal(name, <size>), is-minimum(event/bytes, 0))
+      hold
+        out/push speak-size(event/bytes, standard)
+    fork test, is-equal(name, <counts>)
+      hold
+        walk event/tallies
+          take one
+          out/push spans-text(format-tally(one/amount, one/noun, one/one, one/total, standard))
+    fork test, is-equal(name, <rest>)
+      hold
+        walk event/facts
+          take one
+          out/push clean-text(one, room)
+        fork test, is-above(event/repeat, 1)
+          hold
+            out/push <{group-number(event/repeat, standard)} times>
+  back out
+
+# one item as one sentence
+task speak-event
+  take event, like event
+  take room, like room
+  like text
+  save glyph, event/glyph
+  save verb, clean-text(event/verb, room)
+  save subject, clean-text(spans-text(event/subject), room)
+  save out, <{glyph}: {verb}>
+  fork test, is-unequal(subject, <>)
+    hold
+      save out, <{out} {subject}>
+  fork test, is-unequal(event/source, <>)
+    hold
+      save out, <{out} ({clean-text(event/source, room)})>
+  walk speak-facts(event, room)
+    take one
+    save out, <{out}, {one}>
+  walk event/message
+    take one
+    save out, <{out}. {clean-text(one, room)}>
+  walk event/fields
+    take one
+    save value, clean-text(spans-text(one/value), room)
+    save out, <{out}. {one/key} {value}>
+  # glyphs, rules and bars never reach a sentence: a progress item says its count instead
+  fork test, is-above(event/total, 0)
+    hold
+      save done, group-number(event/done, room/standard)
+      save total, group-number(event/total, room/standard)
+      save out, <{out}, {done} of {total}>
+  # a transcript is plain text: the no-break space that keeps a number with its unit on the screen is a space here
+  back unglue-text(out)

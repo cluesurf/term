@@ -221,6 +221,10 @@ const VARIANT_ARRAY_WANT = '3:1404:1:same:0:106:same:3009'
 // a variant case named like a stdlib form, `pair`: the stdlib's zip builds its form, this file builds its case
 const CASE_NAME = readFileSync(join(import.meta.dirname, 'meaning-native/case-name.tree'), 'utf8')
 const CASE_NAME_WANT = '73:11:9'
+// small tasks of statements over a recursive form inlined into their callers (ir/inline-statements.ts): a slot write, a
+// raise caught by the caller, an answer dropped, names of the callee's own, and a record field write that keeps its call
+const INLINE = readFileSync(join(import.meta.dirname, 'meaning-native/inline.tree'), 'utf8')
+const INLINE_WANT = '7:11:10:-1:9:refused:-1:4:3:5'
 const CURSOR = readFileSync(join(import.meta.dirname, 'meaning-native/cursor.tree'), 'utf8')
 const CURSOR_WANT =
   '6:757073106:çb😀€éa::-1:aé/aé€.é€/é€😀.€😀/€😀b.😀b/😀bç.bç/bç.ç/ç. 5:214865557:nialp::-1:pl/pla.la/lai.ai/ain.in/in.n/n. 6:757073106'
@@ -402,6 +406,7 @@ for (const backend of ['typescript', 'rust', 'swift', 'kotlin']) {
   run(backend, 'path-guard', PATH_GUARD, PATH_GUARD_WANT)
   run(backend, 'variant-array', VARIANT_ARRAY, VARIANT_ARRAY_WANT)
   run(backend, 'case-name', CASE_NAME, CASE_NAME_WANT)
+  run(backend, 'inline', INLINE, INLINE_WANT)
 }
 
 console.log(`\nmeaning-native: ${pass} pass, ${fail} fail, ${skip} skipped`)

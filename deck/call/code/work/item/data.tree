@@ -1,0 +1,326 @@
+# Plain data (section 14), the parts of a question (section 13) and the rule (section 11), each a component drawn
+# at its own left edge within its room.
+
+load ./standard
+  find standard
+
+load ./layout
+  find span
+  find line
+  find room
+  find make-span
+  find make-spaces
+  find repeat-text
+  find find-symbol
+
+load ./event
+  find column
+  find table-row
+  find tree-node
+  find list-entry
+  find choice
+
+load ./format
+  find group-number
+
+load ./measure
+  find measure-text
+
+load ./clean
+  find clean-text
+  find clean-spans
+  find measure-spans
+  find crop-spans
+  find pad-spans
+
+# a table (section 14): column names dim, numbers right-aligned, columns the standard's gap apart. A table wider than
+# the room drops columns from the right and says how many it dropped
+task draw-table
+  take columns, like list, like column
+  take rows, like list, like table-row
+  take room, like room
+  like list, like line
+  save out, make list
+  save gap, room/standard/layout/key-gap
+  save widths, make list
+  save at, 0
+  walk columns
+    take one
+    save wide, measure-text(clean-text(one/title, room))
+    walk rows
+      take row
+      fork test, is-below(at, row/entries/length)
+        hold
+          save entry, row/entries/{at}
+          save size, measure-text(clean-text(entry/value, room))
+          fork test, is-above(size, wide)
+            hold
+              save wide, size
+    widths/push wide
+    save at, add(at, 1)
+  # how many columns fit, from the left: at least one, which is cropped if it alone is too wide
+  save kept, 0
+  save used, 0
+  save at, 0
+  walk widths
+    take wide
+    save need, wide
+    fork test, is-above(at, 0)
+      hold
+        save need, add(wide, gap)
+    fork test, or(is-equal(at, 0), is-maximum(add(used, need), room/width))
+      hold
+        fork test, is-equal(kept, at)
+          hold
+            save used, add(used, need)
+            save kept, add(kept, 1)
+    save at, add(at, 1)
+  save dropped, subtract(columns/length, kept)
+  # the header
+  save header, make list
+  save at, 0
+  walk columns
+    take one
+    fork test, is-below(at, kept)
+      hold
+        save title, make list
+        title/push make-span(clean-text(one/title, room), <dim>)
+        push-entry(header, title, widths/{at}, one/numeric, is-equal(at, subtract(kept, 1)), gap)
+    save at, add(at, 1)
+  out/push make line, spans(crop-spans(header, room/width, room))
+  walk rows
+    take row
+    save spans, make list
+    save at, 0
+    walk columns
+      take one
+      fork test, is-below(at, kept)
+        hold
+          save entry, make list
+          fork test, is-below(at, row/entries/length)
+            hold
+              save given, row/entries/{at}
+              save shown, clean-spans(make-entry(given), room)
+              save entry, shown
+          push-entry(spans, entry, widths/{at}, one/numeric, is-equal(at, subtract(kept, 1)), gap)
+      save at, add(at, 1)
+    out/push make line, spans(crop-spans(spans, room/width, room))
+  fork test, is-above(dropped, 0)
+    hold
+      save more, find-symbol(room, <more>)
+      save word, room/standard/caps/dropped-word
+      save note, make list
+      note/push make-span(<{more} {dropped} {word}>, <dim>)
+      out/push make line, spans(note)
+  back out
+
+task make-entry
+  take one, like span
+  like list, like span
+  save spans, make list
+  spans/push one
+  back spans
+
+# one table entry into a row: right-aligned when numeric, left-aligned and unpadded when it is the last column
+task push-entry
+  take spans, like list, like span
+  take entry, like list, like span
+  take width, like number
+  take numeric, like boolean
+  take last, like boolean
+  take gap, like number
+  like void
+  save wide, measure-spans(entry)
+  save pad, subtract(width, wide)
+  fork test, is-below(pad, 0)
+    hold
+      save pad, 0
+  fork test, is-above(spans/length, 0)
+    hold
+      spans/push make-span(make-spaces(gap), <text>)
+  fork test, and(numeric, is-above(pad, 0))
+    hold
+      spans/push make-span(make-spaces(pad), <text>)
+  walk entry
+    take piece
+    spans/push piece
+  fork test, and(is-equal(numeric, false), and(is-equal(last, false), is-above(pad, 0)))
+    hold
+      spans/push make-span(make-spaces(pad), <text>)
+
+# a tree (section 14) drawn with dim `├─ └─ │`, a repeated subtree marked `deduped`
+task draw-tree
+  take nodes, like list, like tree-node
+  take room, like room
+  like list, like line
+  back draw-branch(nodes, <>, room)
+
+task draw-branch
+  take nodes, like list, like tree-node
+  take prefix, like text
+  take room, like room
+  like list, like line
+  save out, make list
+  save branch, find-symbol(room, <branch>)
+  save last-mark, find-symbol(room, <last>)
+  save stem, find-symbol(room, <stem>)
+  save count, nodes/length
+  save at, 0
+  walk nodes
+    take one
+    save last, is-equal(at, subtract(count, 1))
+    save mark, branch
+    fork test, last
+      hold
+        save mark, last-mark
+    save spans, make list
+    spans/push make-span(<{prefix}{mark}>, <dim>)
+    spans/push make-span(< {clean-text(one/label, room)}>, <text>)
+    save detail, clean-text(one/detail, room)
+    fork test, one/deduped
+      hold
+        save word, room/standard/caps/deduped-word
+        fork test, is-equal(detail, <>)
+          hold
+            save detail, word
+          miss
+            save detail, <{detail}, {word}>
+    fork test, is-unequal(detail, <>)
+      hold
+        spans/push make-span(<  {detail}>, <dim>)
+    out/push make line, spans(crop-spans(spans, room/width, room))
+    save below, <{prefix}{stem} >
+    fork test, last
+      hold
+        save blank, make-spaces(measure-text(stem))
+        save below, <{prefix}{blank} >
+    walk draw-branch(one/children, below, room)
+      take each
+      out/push each
+    save at, add(at, 1)
+  back out
+
+# a list (section 14): the standard's number of entries, then `… n more, --all lists them`. `total` is how many there
+# are in all, or -1 when `entries` is all of them
+task draw-list
+  take entries, like list, like list-entry
+  take total, like number
+  take room, like room
+  like list, like line
+  save out, make list
+  save cap, room/standard/caps/entries
+  save all, entries/length
+  fork test, is-minimum(total, 0)
+    hold
+      save all, total
+  save widest, 0
+  save at, 0
+  walk entries
+    take one
+    fork test, is-below(at, cap)
+      hold
+        save wide, measure-text(clean-text(one/label, room))
+        fork test, is-above(wide, widest)
+          hold
+            save widest, wide
+    save at, add(at, 1)
+  save gap, room/standard/layout/key-gap
+  save at, 0
+  walk entries
+    take one
+    fork test, is-below(at, cap)
+      hold
+        save spans, make list
+        save label, clean-text(one/label, room)
+        save detail, clean-text(one/detail, room)
+        fork test, is-equal(detail, <>)
+          hold
+            spans/push make-span(label, <text>)
+          miss
+            save pad, add(subtract(widest, measure-text(label)), gap)
+            spans/push make-span(<{label}{make-spaces(pad)}>, <text>)
+            spans/push make-span(detail, <dim>)
+        out/push make line, spans(crop-spans(spans, room/width, room))
+    save at, add(at, 1)
+  save shown, at
+  fork test, is-above(shown, cap)
+    hold
+      save shown, cap
+  fork test, is-above(all, shown)
+    hold
+      save more, find-symbol(room, <more>)
+      save rest, group-number(subtract(all, shown), room/standard)
+      save word, room/standard/caps/more-word
+      save flag, room/standard/caps/all-flag
+      save lists, room/standard/caps/lists-word
+      save note, make list
+      note/push make-span(<{more} {rest} {word}, {flag} {lists}>, <dim>)
+      out/push make line, spans(crop-spans(note, room/width, room))
+  back out
+
+# the choices of a question (section 13): `◉` picked, `◯` not, a hint dim beside. Focus is a background highlight on
+# the whole choice, never an extra glyph
+task draw-choices
+  take choices, like list, like choice
+  take room, like room
+  like list, like line
+  save out, make list
+  save picked, find-symbol(room, <picked>)
+  save unpicked, find-symbol(room, <unpicked>)
+  walk choices
+    take one
+    save spans, make list
+    save mark, unpicked
+    save mark-role, <text>
+    fork test, one/picked
+      hold
+        save mark, picked
+        save mark-role, <active>
+    save label, clean-text(one/label, room)
+    save hint, clean-text(one/hint, room)
+    fork test, one/focused
+      hold
+        save written, <{mark} {label}>
+        fork test, is-unequal(hint, <>)
+          hold
+            save written, <{written}  {hint}>
+        save lit, make-span(<{written} >, <text>)
+        save lit/focus, true
+        spans/push lit
+      miss
+        spans/push make-span(mark, mark-role)
+        spans/push make-span(< {label}>, <text>)
+        fork test, is-unequal(hint, <>)
+          hold
+            spans/push make-span(<  {hint}>, <dim>)
+    out/push make line, spans(crop-spans(spans, room/width, room))
+  back out
+
+# the answer being typed (section 13): as typed, or one `•` per character when it is secret
+task draw-input
+  take typed, like text
+  take secret, like boolean
+  take room, like room
+  like list, like line
+  save out, make list
+  save shown, clean-text(typed, room)
+  fork test, secret
+    hold
+      save dot, find-symbol(room, <secret>)
+      save shown, repeat-text(dot, measure-text(typed))
+  save spans, make list
+  fork test, is-unequal(shown, <>)
+    hold
+      spans/push make-span(shown, <text>)
+  out/push make line, spans(crop-spans(spans, room/width, room))
+  back out
+
+# a faint rule across the room (section 11's status footer sits under one)
+task draw-rule
+  take room, like room
+  like list, like line
+  save out, make list
+  save spans, make list
+  spans/push make-span(repeat-text(find-symbol(room, <rule>), room/width), <faint>)
+  out/push make line, spans(spans)
+  back out

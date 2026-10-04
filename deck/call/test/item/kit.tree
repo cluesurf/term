@@ -1,0 +1,102 @@
+# What every test file of the item library shares: rooms at a width, the mockups' clock, an item drawn as plain
+# lines, and the width invariant of section 8, `display_width(line) <= cols`. It holds no tests itself.
+
+load ../../code/work/item/standard
+  find make-standard
+  find standard
+
+load ../../code/work/item/layout
+  find make-room
+  find line-text
+  find room
+  find line
+
+load ../../code/work/item/measure
+  find measure-text
+
+load ../../code/work/item/item
+  find draw-item
+
+load ../../code/work/item/event
+  find event
+
+load ../../code/work/item/adapt
+  find count-days
+
+# a room at a width in the mockups' zone (PDT, 420 minutes west of UTC)
+task kit-room
+  take width, like number
+  like room
+  back make-room(width, make-standard(), false, -420, false)
+
+task kit-ascii-room
+  take width, like number
+  like room
+  back make-room(width, make-standard(), true, -420, false)
+
+# the mockups' day, 2026-10-03, at a local time, as epoch milliseconds
+task kit-clock
+  take hours, like number
+  take minutes, like number
+  take seconds, like number
+  take millis, like number
+  like number
+  save days, count-days(2026, 10, 3)
+  save local, add(multiply(days, 86400000), add(add(multiply(hours, 3600000), multiply(minutes, 60000)), add(multiply(seconds, 1000), millis)))
+  back add(local, multiply(420, 60000))
+
+task kit-texts
+  take lines, like list, like line
+  like list, like text
+  save out, make list
+  walk lines
+    take one
+    out/push line-text(one)
+  back out
+
+# lines as one text, a line feed between them: what a test compares
+task kit-join
+  take lines, like list, like line
+  like text
+  save out, <>
+  save at, 0
+  walk lines
+    take one
+    fork test, is-above(at, 0)
+      hold
+        save out, <{out}\n>
+    save out, <{out}{line-text(one)}>
+    save at, add(at, 1)
+  back out
+
+# an item drawn at a width, as one text
+task kit-draw
+  take one, like event
+  take width, like number
+  like text
+  back kit-join(draw-item(one, kit-room(width), true))
+
+# is every line within the width, in display cells
+task kit-within
+  take lines, like list, like line
+  take width, like number
+  like boolean
+  walk lines
+    take one
+    fork test, is-above(measure-text(line-text(one)), width)
+      hold
+        back false
+  back true
+
+# the widest line, in display cells
+task kit-widest
+  take lines, like list, like line
+  like number
+  save widest, 0
+  walk lines
+    take one
+    save wide, measure-text(line-text(one))
+    fork test, is-above(wide, widest)
+      hold
+        save widest, wide
+  back widest

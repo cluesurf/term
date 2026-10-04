@@ -9,6 +9,13 @@
 # the caller places them at a column with `indent-lines`. The charset is decided HERE, before anything is measured,
 # because `…` is one cell and `...` is three, and a line wrapped for one does not fit when drawn in the other.
 
+load @term/base/text
+  find contains
+  find replace-all
+
+load @term/base/text/unicode
+  find rune-to-text
+
 load ./standard
   find standard
   find symbol-rule
@@ -37,6 +44,9 @@ form room
   # the display zone of every clock: minutes east of UTC, and whether it is UTC
   link offset, like number, fall 0
   link utc, like boolean, fall false
+  # the absolute directory paths are relative to, which a location's link is made from (section 8). Empty: locations
+  # are not linked, since a relative path is not a URL
+  link root, like text, fall <>
 
 # a room as wide as the terminal, never narrower than the standard's least width (section 8)
 task make-room
@@ -74,6 +84,15 @@ task make-span
   take role, like text
   like span
   back make span, value(value), role(role)
+
+# a span's style around a new value
+task restyle-span
+  take one, like span
+  take value, like text
+  like span
+  save copy, one
+  save copy/value, value
+  back copy
 
 task make-line
   take spans, like list, like span
@@ -146,7 +165,7 @@ task join-lines
     out/push one
   back out
 
-# the plain text of a line, every span's value in order
+# the plain text of a line, every span's value in order, as the terminal shows it
 task line-text
   take one, like line
   like text
@@ -154,7 +173,18 @@ task line-text
   walk one/spans
     take piece
     save out, <{out}{piece/value}>
-  back out
+  back unglue-text(out)
+
+# a no-break space is the layout's way to keep a number with its unit; on the screen, and in anything copied off it,
+# it is a space
+task unglue-text
+  take value, like text
+  like text
+  save glue, rune-to-text(160)
+  fork test, contains(value, glue)
+    miss
+      back value
+  back replace-all(value, glue, < >)
 
 # a drawing of the standard's, in the room's charset: `…` or `...`
 task find-symbol
@@ -219,14 +249,15 @@ task find-role
         back one
   back make role-rule, name(name), dark(<>), light(<>), ansi(<>)
 
-# does a list of texts hold this one
+# does a list of texts hold this one. The parameter is not called `value`: the Rust emitter names the loop over
+# `values` with that word, and the comparison then read the loop's own item
 task holds-text
   take values, like list, like text
-  take value, like text
+  take wanted, like text
   like boolean
   walk values
     take one
-    fork test, is-equal(one, value)
+    fork test, is-equal(one, wanted)
       hold
         back true
   back false

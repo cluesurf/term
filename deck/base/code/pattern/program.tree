@@ -1,0 +1,698 @@
+# A parsed pattern compiled to a program both fast tiers run: ./pike.tree (linear time) and ./back.tree (backtracking
+# with a budget). One program, so the two cannot disagree about what was compiled.
+#
+# A program is PARTS: the pattern itself, and one more for each lookaround body (once forwards, once backwards) and
+# each atomic group. Each part is a run of instructions ending in MATCH. An instruction is three numbers, `op`, `a`
+# and `b`:
+#
+#   0 MATCH                 the part matched
+#   1 CHAR   a=code point   consume exactly it
+#   2 SET    a=set          consume one code point of sets[a]
+#   3 SPLIT  a, b           go on at a, and failing that at b (the order is the priority)
+#   4 JUMP   a              go on at a
+#   5 SAVE   a=slot         the slot takes the position
+#   6 EDGE   a=kind         the position passes the edge test (./node.tree's kinds)
+#   7 LOOK   a=look, b=slot the lookaround holds here; b, when not -1, takes the position, so the groups inside a
+#                           positive lookaround can be filled in once the match is known
+#   8 REFER  a=group, b=1 for `i`   consume the text the group holds
+#   9 ATOM   a=atom         the atomic group's part, its first match taken and never revisited
+#  10 CLEAR  a, b           slots a to b, both included, are unset (-1): the groups of a repetition's body
+#  11 MARK   a=slot         the slot takes the position, at the start of an iteration
+#  12 CHECK  a=slot         fail when the position is where the iteration started: an empty iteration is not taken
+#
+# A part runs forwards, or backwards (a lookbehind body, read right to left). Slots: two per group, group 0 the whole
+# match, then the registers MARK and LOOK write.
+
+mark stable
+
+load @term/base/list
+  find list
+
+load @term/base/boolean
+  find not
+
+load @term/base/pattern/node
+  find piece
+  find refuse-pattern
+
+load @term/base/pattern/set
+  find put-number
+  find number-at
+  find set-size
+
+load @term/base/pattern/syntax
+  find parsed
+
+form program
+  link ops
+    like list
+      like number
+  link a
+    like list
+      like number
+  link b
+    like list
+      like number
+  # each part's first instruction, and whether it runs backwards (1) or forwards (0)
+  link part-entry
+    like list
+      like number
+  link part-backward
+    like list
+      like number
+  link sets
+    like list
+      like list
+        like number
+  # per lookaround, seven numbers: its forward part, its backward part, behind (1/0), negate (1/0), the slot its
+  # LOOK writes (-1 for none), and the lowest and highest group inside it (0 and -1 for none)
+  link looks
+    like list
+      like number
+  # per atomic group, its part
+  link atoms
+    like list
+      like number
+  link groups, like number
+  # the next free slot; the program's slot count when compiling is done
+  link slots
+    like list
+      like number
+
+host op-match, code 0
+host op-char, code 1
+host op-set, code 2
+host op-split, code 3
+host op-jump, code 4
+host op-save, code 5
+host op-edge, code 6
+host op-look, code 7
+host op-refer, code 8
+host op-atom, code 9
+host op-clear, code 10
+host op-mark, code 11
+host op-check, code 12
+
+# the largest program a pattern may compile to; a counted repetition is written out, so {1000}{1000} would not fit
+host most-instructions, code 200000
+
+task emit
+  take g, like program
+  take op, like number
+  take a, like number
+  take b, like number
+  like number
+  save at, read g/ops/length
+  fork test
+    hook test
+      call is-minimum(read(at), read(most-instructions))
+    hook hold
+      call refuse-pattern(code(0), text(<the pattern compiles to more than 200000 instructions>))
+  save ops, read g/ops
+  save as, read g/a
+  save bs, read g/b
+  call ops/push(read(op))
+  call as/push(read(a))
+  call bs/push(read(b))
+  send back, read at
+
+task patch-a
+  take g, like program
+  take at, like number
+  take value, like number
+  like number
+  save as, read g/a
+  fork test
+    hook test
+      call and
+        call is-minimum(read(at), code(0))
+        call is-below(read(at), read(as/length))
+    hook hold
+      call put-number(read(as), read(at), read(value))
+  send back, read at
+
+task patch-b
+  take g, like program
+  take at, like number
+  take value, like number
+  like number
+  save bs, read g/b
+  fork test
+    hook test
+      call and
+        call is-minimum(read(at), code(0))
+        call is-below(read(at), read(bs/length))
+    hook hold
+      call put-number(read(bs), read(at), read(value))
+  send back, read at
+
+task here
+  take g, like program
+  like number
+  send back, read g/ops/length
+
+task new-slot
+  take g, like program
+  like number
+  save slots, read g/slots
+  save at
+    call number-at(read(slots), code(0), code(0))
+  call put-number(read(slots), code(0), call(add, read(at), code(1)))
+  send back, read at
+
+task slot-count
+  take g, like program
+  like number
+  send back
+    call number-at(read(g/slots), code(0), code(0))
+
+# whether a piece can match the empty text
+task can-be-empty
+  take p, like piece
+  like boolean
+  fork case, read p
+    case blank
+      send back, true
+    case letter
+      send back, false
+    case ranges
+      send back, false
+    case edge
+      send back, true
+    case chain
+      walk list, read parts
+        hook next
+          take site, name part
+          fork test
+            hook test
+              call not(call(can-be-empty, read(part)))
+            hook hold
+              send back, false
+      send back, true
+    case choice
+      walk list, read parts
+        hook next
+          take site, name part
+          fork test
+            hook test
+              call can-be-empty(read(part))
+            hook hold
+              send back, true
+      send back, false
+    case loop
+      fork test
+        hook test
+          call is-equal(read(least), code(0))
+        hook hold
+          send back, true
+      send back
+        call can-be-empty(read(body))
+    case group
+      send back
+        call can-be-empty(read(body))
+    case atom
+      send back
+        call can-be-empty(read(body))
+    case look
+      send back, true
+    case refer
+      send back, true
+
+# the lowest and highest group index inside a piece, (0, -1) for none
+task group-range
+  take p, like piece
+  like list
+    like number
+  save out, make list
+  call out/push(code(0))
+  call out/push(code(-1))
+  call widen-group-range(read(p), read(out))
+  send back, read out
+
+task widen-group-range
+  take p, like piece
+  take out
+    like list
+      like number
+  like number
+  fork case, read p
+    case group
+      save low
+        call number-at(read(out), code(0), code(0))
+      save high
+        call number-at(read(out), code(1), code(-1))
+      fork test
+        hook test
+          call or
+            call is-below(read(high), code(0))
+            call is-below(read(index), read(low))
+        hook hold
+          call put-number(read(out), code(0), read(index))
+      fork test
+        hook test
+          call is-above(read(index), read(high))
+        hook hold
+          call put-number(read(out), code(1), read(index))
+      call widen-group-range(read(body), read(out))
+    case chain
+      walk list, read parts
+        hook next
+          take site, name part
+          call widen-group-range(read(part), read(out))
+    case choice
+      walk list, read parts
+        hook next
+          take site, name part
+          call widen-group-range(read(part), read(out))
+    case loop
+      call widen-group-range(read(body), read(out))
+    case atom
+      call widen-group-range(read(body), read(out))
+    case look
+      call widen-group-range(read(body), read(out))
+    case blank
+      send back, code 0
+    case letter
+      send back, code 0
+    case ranges
+      send back, code 0
+    case edge
+      send back, code 0
+    case refer
+      send back, code 0
+  send back, code 0
+
+# whether the program tests a word boundary anywhere, so a matcher needs the word characters
+task uses-word-edge
+  take g, like program
+  like boolean
+  save k, code 0
+  walk test
+    hook test
+      call is-below(read(k), read(g/ops/length))
+    hook step
+      fork test
+        hook test
+          call and
+            call is-equal(call(number-at, read(g/ops), read(k), code(-1)), read(op-edge))
+            call is-minimum(call(number-at, read(g/a), read(k), code(0)), code(4))
+        hook hold
+          send back, true
+      save k
+        call add(read(k), code(1))
+  send back, false
+
+# compile a parsed pattern
+task compile-pattern
+  take source, like parsed
+  like program
+  save slots, make list
+  # group 0 and every group the pattern opens take two slots each; registers come after
+  call slots/push
+    call multiply
+      call add(read(source/groups), code(1))
+      code 2
+  save g
+    make program
+      bind ops, make list
+      bind a, make list
+      bind b, make list
+      bind part-entry, make list
+      bind part-backward, make list
+      bind sets, make list
+      bind looks, make list
+      bind atoms, make list
+      bind groups, read source/groups
+      bind slots, read slots
+  # part 0, the pattern: group 0 around it
+  save entries, read g/part-entry
+  save ways, read g/part-backward
+  call entries/push(code(0))
+  call ways/push(code(0))
+  call emit(read(g), read(op-save), code(0), code(0))
+  call compile-piece(read(g), read(source/root), false)
+  call emit(read(g), read(op-save), code(1), code(0))
+  call emit(read(g), read(op-match), code(0), code(0))
+  send back, read g
+
+# a piece compiled as a part of its own, in the direction given; answers the part's index
+task compile-part
+  take g, like program
+  take p, like piece
+  take backward, like boolean
+  like number
+  # a part is compiled after the instructions that jump into it, so it goes at the end and is reached only by index
+  save index, read g/part-entry/length
+  save entries, read g/part-entry
+  save ways, read g/part-backward
+  call entries/push(call(here, read(g)))
+  fork test
+    hook test
+      read backward
+    hook hold
+      call ways/push(code(1))
+    hook miss
+      call ways/push(code(0))
+  call compile-piece(read(g), read(p), read(backward))
+  call emit(read(g), read(op-match), code(0), code(0))
+  send back, read index
+
+# compile a piece into the current part. Parts referred to by a LOOK or ATOM cannot be compiled in the middle of the
+# current one, so they are compiled into a list of their own first and appended: see `compile-nested`
+task compile-piece
+  take g, like program
+  take p, like piece
+  take backward, like boolean
+  like number
+  fork case, read p
+    case blank
+      send back, code 0
+    case letter
+      call emit(read(g), read(op-char), read(point), code(0))
+    case ranges
+      save sets, read g/sets
+      save at, read sets/length
+      call sets/push(read(set))
+      call emit(read(g), read(op-set), read(at), code(0))
+    case edge
+      call emit(read(g), read(op-edge), read(kind), code(0))
+    case chain
+      save count, read parts/length
+      save k, code 0
+      walk test
+        down
+          call subtract(read(count), read(k))
+        hook test
+          call is-below(read(k), read(count))
+        hook step
+          save which, read k
+          fork test
+            hook test
+              read backward
+            hook hold
+              save which
+                call subtract
+                  call subtract(read(count), code(1))
+                  read k
+          call compile-piece(read(g), call(piece-at, read(parts), read(which)), read(backward))
+          save k
+            call add(read(k), code(1))
+    case choice
+      # SPLIT to each alternative in turn; each jumps past the rest when it is done
+      save jumps, make list
+      save count, read parts/length
+      save k, code 0
+      walk test
+        down
+          call subtract(read(count), read(k))
+        hook test
+          call is-below(read(k), read(count))
+        hook step
+          save part
+            call piece-at(read(parts), read(k))
+          fork test
+            hook test
+              call is-below(read(k), call(subtract, read(count), code(1)))
+            hook hold
+              save split
+                call emit(read(g), read(op-split), code(0), code(0))
+              call patch-a(read(g), read(split), call(here, read(g)))
+              call compile-piece(read(g), read(part), read(backward))
+              call jumps/push
+                call emit(read(g), read(op-jump), code(0), code(0))
+              call patch-b(read(g), read(split), call(here, read(g)))
+            hook miss
+              call compile-piece(read(g), read(part), read(backward))
+          save k
+            call add(read(k), code(1))
+      save end
+        call here(read(g))
+      walk list, read jumps
+        hook next
+          take site, name at
+          call patch-a(read(g), read(at), read(end))
+    case group
+      save first
+        call multiply(read(index), code(2))
+      save last
+        call add(read(first), code(1))
+      fork test
+        hook test
+          read backward
+        hook hold
+          call emit(read(g), read(op-save), read(last), code(0))
+          call compile-piece(read(g), read(body), read(backward))
+          call emit(read(g), read(op-save), read(first), code(0))
+        hook miss
+          call emit(read(g), read(op-save), read(first), code(0))
+          call compile-piece(read(g), read(body), read(backward))
+          call emit(read(g), read(op-save), read(last), code(0))
+    case loop
+      fork test
+        hook test
+          read possessive
+        hook hold
+          # possessive is an atomic group around the greedy repetition
+          send back
+            call compile-piece
+              read g
+              make atom
+                bind body
+                  make loop
+                    bind body, read body
+                    bind least, read least
+                    bind most, read most
+                    bind greedy, true
+                    bind possessive, false
+              read backward
+      call compile-loop(read(g), read(body), read(least), read(most), read(greedy), read(backward))
+    case atom
+      save part
+        call compile-nested(read(g), read(body), read(backward))
+      save atoms, read g/atoms
+      save at, read atoms/length
+      call atoms/push(read(part))
+      call emit(read(g), read(op-atom), read(at), code(0))
+    case look
+      save forward
+        call compile-nested(read(g), read(body), false)
+      save reverse
+        call compile-nested(read(g), read(body), true)
+      save range
+        call group-range(read(body))
+      save stamp, code -1
+      fork test
+        hook test
+          call and
+            call not(read(negate))
+            call is-minimum
+              call number-at(read(range), code(1), code(-1))
+              code 1
+        hook hold
+          save stamp
+            call new-slot(read(g))
+      save looks, read g/looks
+      save at
+        call divide(read(looks/length), code(7))
+      call looks/push(read(forward))
+      call looks/push(read(reverse))
+      fork test
+        hook test
+          read behind
+        hook hold
+          call looks/push(code(1))
+        hook miss
+          call looks/push(code(0))
+      fork test
+        hook test
+          read negate
+        hook hold
+          call looks/push(code(1))
+        hook miss
+          call looks/push(code(0))
+      call looks/push(read(stamp))
+      call looks/push(call(number-at, read(range), code(0), code(0)))
+      call looks/push(call(number-at, read(range), code(1), code(-1)))
+      call emit(read(g), read(op-look), read(at), read(stamp))
+    case refer
+      save folded, code 0
+      fork test
+        hook test
+          read fold
+        hook hold
+          save folded, code 1
+      call emit(read(g), read(op-refer), read(index), read(folded))
+  send back, code 0
+
+task piece-at
+  take parts
+    like list
+      like piece
+  take k, like number
+  like piece
+  fork test
+    hook test
+      call and
+        call is-minimum(read(k), code(0))
+        call is-below(read(k), read(parts/length))
+    hook hold
+      send back, read parts/{k}
+  send back, make blank
+
+# a body compiled as a part of its own, while the current part is in the middle of being written. The current part's
+# instructions continue after it, so it is jumped over: JUMP past, the part, then the current part goes on
+task compile-nested
+  take g, like program
+  take body, like piece
+  take backward, like boolean
+  like number
+  save over
+    call emit(read(g), read(op-jump), code(0), code(0))
+  save part
+    call compile-part(read(g), read(body), read(backward))
+  call patch-a(read(g), read(over), call(here, read(g)))
+  send back, read part
+
+# one iteration of a repetition: its groups cleared, and (when it may match empty and is not mandatory) the empty
+# iteration refused
+task compile-iteration
+  take g, like program
+  take body, like piece
+  take backward, like boolean
+  take optional, like boolean
+  take range
+    like list
+      like number
+  like number
+  save low
+    call number-at(read(range), code(0), code(0))
+  save high
+    call number-at(read(range), code(1), code(-1))
+  fork test
+    hook test
+      call is-minimum(read(high), code(1))
+    hook hold
+      call emit
+        read g
+        read op-clear
+        call multiply(read(low), code(2))
+        call add(call(multiply, read(high), code(2)), code(1))
+  save guard
+    call and
+      read optional
+      call can-be-empty(read(body))
+  save mark, code -1
+  fork test
+    hook test
+      read guard
+    hook hold
+      save mark
+        call new-slot(read(g))
+      call emit(read(g), read(op-mark), read(mark), code(0))
+  # the registers the body allocates are cleared too, so a lookaround's position from an earlier iteration is not
+  # taken for this one's
+  save registers-from
+    call slot-count(read(g))
+  save clear-at
+    call emit(read(g), read(op-jump), code(0), code(0))
+  call compile-piece(read(g), read(body), read(backward))
+  save registers-to
+    call slot-count(read(g))
+  fork test
+    hook test
+      call is-above(read(registers-to), read(registers-from))
+    hook hold
+      # the JUMP placeholder becomes the CLEAR of the body's registers
+      save ops, read g/ops
+      call put-number(read(ops), read(clear-at), read(op-clear))
+      call patch-a(read(g), read(clear-at), read(registers-from))
+      call patch-b(read(g), read(clear-at), call(subtract, read(registers-to), code(1)))
+    hook miss
+      call patch-a(read(g), read(clear-at), call(add, read(clear-at), code(1)))
+  fork test
+    hook test
+      read guard
+    hook hold
+      call emit(read(g), read(op-check), read(mark), code(0))
+  send back, code 0
+
+task compile-loop
+  take g, like program
+  take body, like piece
+  take least, like number
+  take most, like number
+  take greedy, like boolean
+  take backward, like boolean
+  like number
+  save range
+    call group-range(read(body))
+  save k, code 0
+  walk test
+    down
+      call subtract(read(least), read(k))
+    hook test
+      call is-below(read(k), read(least))
+    hook step
+      call compile-iteration(read(g), read(body), read(backward), false, read(range))
+      save k
+        call add(read(k), code(1))
+  fork test
+    hook test
+      call is-below(read(most), code(0))
+    hook hold
+      # unbounded: L: SPLIT body, exit / body / JUMP L
+      save top
+        call emit(read(g), read(op-split), code(0), code(0))
+      save inside
+        call here(read(g))
+      call compile-iteration(read(g), read(body), read(backward), true, read(range))
+      call emit(read(g), read(op-jump), read(top), code(0))
+      save exit
+        call here(read(g))
+      fork test
+        hook test
+          read greedy
+        hook hold
+          call patch-a(read(g), read(top), read(inside))
+          call patch-b(read(g), read(top), read(exit))
+        hook miss
+          call patch-a(read(g), read(top), read(exit))
+          call patch-b(read(g), read(top), read(inside))
+      send back, code 0
+  # bounded: each optional iteration is a SPLIT to it or to the common exit
+  save splits, make list
+  save k, read least
+  walk test
+    down
+      call subtract(read(most), read(k))
+    hook test
+      call is-below(read(k), read(most))
+    hook step
+      save split
+        call emit(read(g), read(op-split), code(0), code(0))
+      call splits/push(read(split))
+      save inside
+        call here(read(g))
+      fork test
+        hook test
+          read greedy
+        hook hold
+          call patch-a(read(g), read(split), read(inside))
+        hook miss
+          call patch-b(read(g), read(split), read(inside))
+      call compile-iteration(read(g), read(body), read(backward), true, read(range))
+      save k
+        call add(read(k), code(1))
+  save exit
+    call here(read(g))
+  walk list, read splits
+    hook next
+      take site, name split
+      fork test
+        hook test
+          read greedy
+        hook hold
+          call patch-b(read(g), read(split), read(exit))
+        hook miss
+          call patch-a(read(g), read(split), read(exit))
+  send back, code 0

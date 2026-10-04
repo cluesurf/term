@@ -34,12 +34,32 @@ abstract class TermComposeActivity : androidx.activity.ComponentActivity() {
     override fun onCreate(saved: android.os.Bundle?) {
         super.onCreate(saved)
         composeHost.activity = this
+        // the system back (the back gesture, the back key) reaches the dispatcher: the app's navigation takes it first,
+        // and only a back it refuses, at the first place, goes on to the platform and leaves the app, as Android's own
+        // does (native-navigation-0007)
+        onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (nativeView.takeBack()) return
+                isEnabled = false
+                onBackPressedDispatcher.onBackPressed()
+                isEnabled = true
+            }
+        })
         program()
+    }
+
+    // the manifest declares the device's trait changes as handled, so the Activity stays and says so here instead, to
+    // the device traits (view/native/toolkit/runtime/compose-android/native-device.kt)
+    override fun onConfigurationChanged(config: android.content.res.Configuration) {
+        super.onConfigurationChanged(config)
+        for (body in composeHost.configurationChanged.toList()) body()
     }
 }
 
 object composeHost {
     var activity: androidx.activity.ComponentActivity? = null
+    // called on every configuration change the Activity handles
+    val configurationChanged = mutableListOf<() -> Unit>()
     private val main = android.os.Handler(android.os.Looper.getMainLooper())
     // every Compose root the app has made, the content's and each dialog's, held weakly
     private val roots = mutableListOf<java.lang.ref.WeakReference<CxViewRootForTest>>()
@@ -85,10 +105,12 @@ object composeHost {
     }
 
     // Compose recomposes, lays out and builds semantics on its frames: a few frames, then every root measured and laid
-    // out, so what is read back is what the last write asked for. True: Android always has its roots to read through
+    // out, so what is read back is what the last write asked for. True: Android always has its roots to read through.
+    // ON THE MAIN THREAD (a handler a control called, saying what it saw) no frame can be waited for, because the main
+    // thread is the one that would draw it: each wait ran out its two seconds instead, so it lays out what it has
     fun settle(): Boolean {
         androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
-        repeat(3) { awaitFrame() }
+        if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) repeat(3) { awaitFrame() }
         onMain { for (root in liveRoots()) root.measureAndLayoutForTest() }
         return true
     }
@@ -132,6 +154,36 @@ object composeHost {
         settle()
     }
 
+    // the InputConnection each text input request made, the one a keyboard is handed, so every edit of one session goes
+    // through one connection as a keyboard's do
+    private val connections = java.util.WeakHashMap<Any, android.view.inputmethod.InputConnection>()
+
+    // an input method's edit to the field tagged `tag`: focused first, through the semantics action TalkBack performs,
+    // so it opens its text input session, then the edit written through the InputConnection that session's request
+    // creates, `setComposingText` for marked text and `commitText` for the commit, which is what a keyboard calls
+    fun inputMethod(
+        tag: String,
+        request: () -> androidx.compose.ui.platform.PlatformTextInputMethodRequest?,
+        text: String,
+        commit: Boolean,
+    ) {
+        settle()
+        if (request() == null) {
+            val node = find(tag, merged = true) ?: return
+            onMain {
+                node.config.cxHostGetOrNull(CxHostActions.RequestFocus)?.action?.invoke()
+                    ?: node.config.cxHostGetOrNull(CxHostActions.OnClick)?.action?.invoke()
+            }
+            settle()
+        }
+        val session = request() ?: error("composeHost: the field $tag opened no text input session when focused")
+        onMain {
+            val connection = connections.getOrPut(session) { session.createInputConnection(android.view.inputmethod.EditorInfo()) }
+            if (commit) connection.commitText(text, 1) else connection.setComposingText(text, 1)
+        }
+        settle()
+    }
+
     fun setProgress(tag: String, value: Float) {
         settle()
         val node = find(tag, merged = true) ?: return
@@ -152,7 +204,60 @@ object composeHost {
         return true
     }
 
+    // Android's back is the dispatcher's, never a key the tree hears
+    fun isBackKey(event: androidx.compose.ui.input.key.KeyEvent): Boolean = false
+
+    // the system back through the Activity's dispatcher, the entry the back gesture and the back key reach
+    fun pressBack(): Boolean {
+        val owner = activity ?: return false
+        settle()
+        onMain { owner.onBackPressedDispatcher.onBackPressed() }
+        settle()
+        return true
+    }
+
     fun density(): Float = activity?.resources?.displayMetrics?.density ?: 1f
+
+    // the color Compose drew at the node tagged `tag`, `dx` and `dy` dp in from its top left, as `#rrggbb`: the Compose
+    // root holding the node drawn into a bitmap, and the pixel read off it. A node below the screen is scrolled to first,
+    // through the page's own scroll action (the one TalkBack performs), as a person would scroll to look at it
+    fun pixel(tag: String, dx: Float, dy: Float): String? {
+        settle()
+        val first = sample(tag, dx, dy)
+        if (first != OFF_SCREEN) return first
+        val top = find(tag, merged = false)?.positionInRoot?.y ?: return null
+        val page = find("term-root", merged = false) ?: return null
+        onMain { page.config.cxHostGetOrNull(CxHostActions.ScrollBy)?.action?.invoke(0f, top - 200f * density()) }
+        settle()
+        return sample(tag, dx, dy).takeIf { it != OFF_SCREEN }
+    }
+
+    // a point outside the drawn window, told apart from a node that is not there at all
+    private const val OFF_SCREEN = "off-screen"
+
+    private fun sample(tag: String, dx: Float, dy: Float): String? =
+        onMain {
+            for (root in liveRoots()) {
+                val pending = ArrayDeque(listOf(root.semanticsOwner.unmergedRootSemanticsNode))
+                var found: androidx.compose.ui.semantics.SemanticsNode? = null
+                while (pending.isNotEmpty() && found == null) {
+                    val at = pending.removeFirst()
+                    if (at.config.cxHostGetOrNull(CxHostProperties.TestTag) == tag) found = at else pending.addAll(at.children)
+                }
+                val node = found ?: continue
+                val view = root.view
+                if (view.width <= 0 || view.height <= 0) return@onMain null
+                val bitmap = android.graphics.Bitmap.createBitmap(view.width, view.height, android.graphics.Bitmap.Config.ARGB_8888)
+                view.draw(android.graphics.Canvas(bitmap))
+                val scale = density()
+                val x = Math.round(node.positionInRoot.x + dx * scale)
+                val y = Math.round(node.positionInRoot.y + dy * scale)
+                if (x !in 0 until bitmap.width || y !in 0 until bitmap.height) return@onMain OFF_SCREEN
+                val color = bitmap.getPixel(x, y)
+                return@onMain "#%02x%02x%02x".format(android.graphics.Color.red(color), android.graphics.Color.green(color), android.graphics.Color.blue(color))
+            }
+            null
+        }
 
     // a PNG of the window, drawn from its views. A path that is not absolute lands in the app's external files
     // directory, which `adb` reads without a debuggable build
@@ -171,7 +276,44 @@ object composeHost {
     fun decodePicture(bytes: ByteArray): androidx.compose.ui.graphics.ImageBitmap? =
         android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.cxAsImageBitmap()
 
-    fun readFile(path: String): ByteArray? = java.io.File(path).takeIf { it.isFile }?.readBytes()
+    // a file's bytes; `asset:<name>` is a file the APK carries
+    fun readFile(path: String): ByteArray? {
+        if (path.startsWith("asset:")) {
+            return runCatching { activity?.assets?.open(path.removePrefix("asset:"))?.use { it.readBytes() } }.getOrNull()
+        }
+        return java.io.File(path).takeIf { it.isFile }?.readBytes()
+    }
+
+    // a face from its file's bytes, as a family Compose draws text in. Android makes a Typeface from a file, so the
+    // bytes are written to the cache first; a file that is not a font is refused here, as the other hosts refuse it
+    fun fontOf(family: String, bytes: ByteArray): androidx.compose.ui.text.font.FontFamily? {
+        val owner = activity ?: return null
+        return runCatching {
+            val file = java.io.File(owner.cacheDir, "term-font-${java.util.UUID.randomUUID()}")
+            file.writeBytes(bytes)
+            typefaces[family] = android.graphics.Typeface.createFromFile(file)
+            androidx.compose.ui.text.font.FontFamily(androidx.compose.ui.text.font.Font(file))
+        }.getOrNull()
+    }
+
+    // every registered face as a Typeface, by family, so a glyph can be asked of it
+    private val typefaces = mutableMapOf<String, android.graphics.Typeface>()
+
+    // the characters of `text` Android would draw as a box, each once in the order first met: asked of a Paint in the
+    // text's face (`family`, when registered, else the system's), whose `hasGlyph` follows the system's fallback chain
+    // as drawing does, the same question the Android views host asks of its TextView's paint
+    fun missingGlyphs(text: String, family: String?): String {
+        val paint = android.graphics.Paint()
+        paint.typeface = family?.let { typefaces[it] } ?: android.graphics.Typeface.DEFAULT
+        val missing = linkedSetOf<String>()
+        var at = 0
+        while (at < text.length) {
+            val character = String(Character.toChars(text.codePointAt(at)))
+            if (!paint.hasGlyph(character)) missing.add(character)
+            at += character.length
+        }
+        return missing.joinToString("")
+    }
 
     fun log(line: String) {
         android.util.Log.i(COMPOSE_LOG_TAG, line)

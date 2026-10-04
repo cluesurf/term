@@ -1,0 +1,517 @@
+# The Unicode tables of ./unicode-table.tree, decoded when a pattern asks for one. Each table is text: base-36 numbers
+# separated by commas, the rows of the binary table by semicolons, broken into chunks that are read as one text.
+# Decoding the category table is 12,000 numbers, which is why nothing decodes a table the pattern does not use.
+
+mark stable
+
+load @term/base/text/unicode
+  find to-runes
+  find from-runes
+
+load @term/base/list
+  find sort
+
+load @term/base/ordering
+  find from-numbers
+
+load @term/base/bit
+  find bitwise-and
+  find shift-left
+
+load @term/base/pattern/set
+  find number-at
+  find push-range
+  find merge-sets
+  find set-has
+
+load @term/base/pattern/unicode-table
+  find category-names
+  find category-masks
+  find category-table
+  find word-table
+  find script-names
+  find script-name-ids
+  find script-table
+  find binary-names
+  find binary-name-ids
+  find binary-table
+  find fold-table
+  find fold-classes
+
+# the value of one base-36 digit, or -1 for a separator
+task digit-value
+  take c, like number
+  like number
+  fork test
+    hook test
+      call and
+        call is-minimum(read(c), code(48))
+        call is-maximum(read(c), code(57))
+    hook hold
+      send back
+        call subtract(read(c), code(48))
+    hook test
+      call and
+        call is-minimum(read(c), code(97))
+        call is-maximum(read(c), code(122))
+    hook hold
+      send back
+        call subtract(read(c), code(87))
+  send back, code -1
+
+# the numbers of row `row` of a table (rows are separated by semicolons; a table of one row is row 0)
+task decode-row
+  take chunks
+    like list
+      like text
+  take row, like number
+  like list
+    like number
+  save out, make list
+  save value, code 0
+  save started, false
+  save at-row, code 0
+  walk list, read chunks
+    hook next
+      take site, name chunk
+      walk list
+        call to-runes(read(chunk))
+        hook next
+          take site, name c
+          save d
+            call digit-value(read(c))
+          fork test
+            hook test
+              call is-minimum(read(d), code(0))
+            hook hold
+              save value
+                call add
+                  call multiply(read(value), code(36))
+                  read d
+              save started, true
+            hook miss
+              fork test
+                hook test
+                  call and
+                    read started
+                    call is-equal(read(at-row), read(row))
+                hook hold
+                  call out/push(read(value))
+              save value, code 0
+              save started, false
+              fork test
+                hook test
+                  call is-equal(read(c), code(59))
+                hook hold
+                  save at-row
+                    call add(read(at-row), code(1))
+  fork test
+    hook test
+      call and
+        read started
+        call is-equal(read(at-row), read(row))
+    hook hold
+      call out/push(read(value))
+  send back, read out
+
+# the numbers of a table of one row
+task decode-numbers
+  take chunks
+    like list
+      like text
+  like list
+    like number
+  send back
+    call decode-row(read(chunks), code(0))
+
+# the names of a table, separated by commas
+task decode-names
+  take chunks
+    like list
+      like text
+  like list
+    like text
+  save out, make list
+  save name, make list
+  walk list, read chunks
+    hook next
+      take site, name chunk
+      walk list
+        call to-runes(read(chunk))
+        hook next
+          take site, name c
+          fork test
+            hook test
+              call is-equal(read(c), code(44))
+            hook hold
+              call out/push
+                call from-runes(read(name))
+              save name, make list
+            hook miss
+              call name/push(read(c))
+  fork test
+    hook test
+      call is-above(read(name/length), code(0))
+    hook hold
+      call out/push
+        call from-runes(read(name))
+  send back, read out
+
+# where a name is in a list of names, or -1
+task name-index
+  take names
+    like list
+      like text
+  take name, like text
+  like number
+  save i, code 0
+  walk list, read names
+    hook next
+      take site, name each
+      fork test
+        hook test
+          call is-equal(read(each), read(name))
+        hook hold
+          send back, read i
+      save i
+        call add(read(i), code(1))
+  send back, code -1
+
+# a covering table, (length - 1, value) per run from U+0000, as the set of the runs whose value passes `keep`
+task covering-set
+  take table
+    like list
+      like number
+  take keep
+    like task
+      take value, like number
+      like boolean
+  like list
+    like number
+  save out, make list
+  save start, code 0
+  save i, code 0
+  # the length read once: a call in the body leaves the prover unsure of every list's size
+  save count, read table/length
+  walk test
+    down
+      call subtract(read(count), read(i))
+    hook test
+      call is-below
+        call add(read(i), code(1))
+        read count
+    hook step
+      save size
+        call number-at(read(table), read(i), code(0))
+      save value
+        call number-at(read(table), call(add, read(i), code(1)), code(-1))
+      save end
+        call add(read(start), read(size))
+      fork test
+        hook test
+          call keep(read(value))
+        hook hold
+          call push-range(read(out), read(start), read(end))
+      save start
+        call add(read(end), code(1))
+      save i
+        call add(read(i), code(2))
+  send back, read out
+
+# a gapped table, (gap, length - 1) per run, as a set
+task gapped-set
+  take table
+    like list
+      like number
+  like list
+    like number
+  save out, make list
+  save next, code 0
+  save i, code 0
+  # the length read once: a call in the body leaves the prover unsure of every list's size
+  save count, read table/length
+  walk test
+    down
+      call subtract(read(count), read(i))
+    hook test
+      call is-below
+        call add(read(i), code(1))
+        read count
+    hook step
+      save start
+        call add
+          read next
+          call number-at(read(table), read(i), code(0))
+      save end
+        call add
+          read start
+          call number-at(read(table), call(add, read(i), code(1)), code(0))
+      call push-range(read(out), read(start), read(end))
+      save next
+        call add(read(end), code(1))
+      save i
+        call add(read(i), code(2))
+  send back, read out
+
+# the General_Category mask a name stands for (`Lu`, `Letter`, `L`, `LC` ...), or -1
+task category-mask
+  take name, like text
+  like number
+  save at
+    call name-index
+      call decode-names(read(category-names))
+      read name
+  fork test
+    hook test
+      call is-below(read(at), code(0))
+    hook hold
+      send back, code -1
+  send back
+    call number-at
+      call decode-numbers(read(category-masks))
+      read at
+      code -1
+
+# the code points whose General_Category is in the mask
+task category-set
+  take mask, like number
+  like list
+    like number
+  send back
+    call covering-set
+      call decode-numbers(read(category-table))
+      task keep
+        take value, like number
+        like boolean
+        send back
+          call is-above
+            call bitwise-and
+              read mask
+              call shift-left(code(1), read(value))
+            code 0
+
+# the id of the script a name or alias stands for, or -1
+task script-id
+  take name, like text
+  like number
+  save at
+    call name-index
+      call decode-names(read(script-names))
+      read name
+  fork test
+    hook test
+      call is-below(read(at), code(0))
+    hook hold
+      send back, code -1
+  send back
+    call number-at
+      call decode-numbers(read(script-name-ids))
+      read at
+      code -1
+
+# the code points of one script
+task script-set
+  take id, like number
+  like list
+    like number
+  send back
+    call covering-set
+      call decode-numbers(read(script-table))
+      task keep
+        take value, like number
+        like boolean
+        send back
+          call is-equal(read(value), read(id))
+
+# the row of the binary property a name or alias stands for, or -1
+task binary-row
+  take name, like text
+  like number
+  save at
+    call name-index
+      call decode-names(read(binary-names))
+      read name
+  fork test
+    hook test
+      call is-below(read(at), code(0))
+    hook hold
+      send back, code -1
+  send back
+    call number-at
+      call decode-numbers(read(binary-name-ids))
+      read at
+      code -1
+
+# the code points of one binary property
+task binary-set
+  take row, like number
+  like list
+    like number
+  send back
+    call gapped-set
+      call decode-row(read(binary-table), read(row))
+
+# the word characters, for `\b`: a letter, a mark, a number or connector punctuation
+task word-set
+  like list
+    like number
+  send back
+    call gapped-set
+      call decode-numbers(read(word-table))
+
+# the case table as (code point, least member of its class) pairs, ordered by code point
+task fold-pairs
+  like list
+    like number
+  save table
+    call decode-numbers(read(fold-table))
+  save out, make list
+  save c, code 0
+  save i, code 0
+  walk test
+    down
+      call subtract(read(table/length), read(i))
+    hook test
+      call is-below
+        call add(read(i), code(1))
+        read table/length
+    hook step
+      save c
+        call add
+          read c
+          call number-at(read(table), read(i), code(0))
+      call out/push(read(c))
+      call out/push
+        call subtract
+          read c
+          call number-at(read(table), call(add, read(i), code(1)), code(0))
+      save i
+        call add(read(i), code(2))
+  send back, read out
+
+# the least member of a code point's case class, which is the code point itself when it has no other case
+task fold-least
+  take pairs
+    like list
+      like number
+  take c, like number
+  like number
+  save low, code 0
+  save high
+    call divide(read(pairs/length), code(2))
+  # each turn halves high - low, so 64 turns cover any list a machine holds; the count is what the prover sees end
+  save turns, code 0
+  walk test
+    down
+      call subtract(code(64), read(turns))
+    hook test
+      call and
+        call is-below(read(low), read(high))
+        call is-below(read(turns), code(64))
+    hook step
+      save turns
+        call add(read(turns), code(1))
+      save middle
+        call divide
+          call add(read(low), read(high))
+          code 2
+      save key
+        call number-at(read(pairs), call(multiply, read(middle), code(2)), code(-1))
+      fork test
+        hook test
+          call is-below(read(c), read(key))
+        hook hold
+          save high, read middle
+        hook test
+          call is-above(read(c), read(key))
+        hook hold
+          save low
+            call add(read(middle), code(1))
+        hook miss
+          send back
+            call number-at
+              read pairs
+              call add
+                call multiply(read(middle), code(2))
+                code 1
+              read c
+  send back, read c
+
+# the set with every code point that shares a case class with one of its members added: what a set means under `i`
+task close-under-case
+  take set
+    like list
+      like number
+  like list
+    like number
+  save table
+    call decode-numbers(read(fold-classes))
+  save added, make list
+  save least, code 0
+  save i, code 0
+  # the length read once, and every turn moves `i` on by at least one, whatever the table holds
+  save size, read table/length
+  walk test
+    down
+      call subtract(read(size), read(i))
+    hook test
+      call is-below(read(i), read(size))
+    hook step
+      save count
+        call number-at(read(table), read(i), code(1))
+      fork test
+        hook test
+          call is-below(read(count), code(1))
+        hook hold
+          save count, code 1
+      save least
+        call add
+          read least
+          call number-at(read(table), call(add, read(i), code(1)), code(0))
+      save members, make list
+      call members/push(read(least))
+      save k, code 2
+      walk test
+        down
+          call subtract
+            call add(read(count), code(1))
+            read k
+        hook test
+          call is-maximum(read(k), read(count))
+        hook step
+          call members/push
+            call add
+              read least
+              call number-at(read(table), call(add, read(i), read(k)), code(0))
+          save k
+            call add(read(k), code(1))
+      save hit, false
+      walk list, read members
+        hook next
+          take site, name m
+          fork test
+            hook test
+              call set-has(read(set), read(m))
+            hook hold
+              save hit, true
+      fork test
+        hook test
+          read hit
+        hook hold
+          walk list, read members
+            hook next
+              take site, name m
+              call added/push(read(m))
+      save i
+        call add
+          read i
+          call add(read(count), code(1))
+  save sorted
+    call sort(read(added), read(from-numbers))
+  save extra, make list
+  walk list, read sorted
+    hook next
+      take site, name m
+      call push-range(read(extra), read(m), read(m))
+  send back
+    call merge-sets(read(set), read(extra))

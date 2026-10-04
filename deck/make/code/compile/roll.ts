@@ -106,7 +106,9 @@ export function buildRoll(
       f = f.slice(options.root.length + 1)
     }
 
-    return `${f}:${s.span.start.line}:${s.span.start.column}`
+    // counted from one, as every error frame counts (parser/diagnostic.ts). It printed the span's own zero-based
+    // numbers until 2026-10-04, so `store.tree:17:0` was line 18 (guides: commands/roll)
+    return `${f}:${s.span.start.line + 1}:${s.span.start.column + 1}`
   }
 
   const types = new Map<
@@ -202,7 +204,8 @@ export function buildRoll(
     const link: Record<string, string> = {}
 
     for (const f of props?.fields ?? []) {
-      link[f.name] = showType(f.type) + (f.optional ? '?' : '')
+      // an optional field as the source writes it, `need false`, not TypeScript's `?`
+      link[f.name] = showType(f.type) + (f.optional ? ', need false' : '')
     }
 
     const note = s.pins?.find(p => p.name === 'note')

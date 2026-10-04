@@ -1,0 +1,237 @@
+# The targets: a layout painted as the text a terminal receives (section 16 and 17).
+#
+# ONE FUNCTION PER TARGET OVER THE SAME LAYOUT. `none` is the plain text, the view through a pipe and the ASCII view
+# (ASCII is decided when the layout is drawn, because it changes widths). `ansi` is the 16-color fallback, each role
+# its SGR parameter from the standard. `truecolor` is the role's hex in the theme. A new target is one more branch
+# here over the same spans, and no component changes.
+#
+# THE TEXT ROLE IS THE TERMINAL'S OWN FOREGROUND unless the theme is known: an explicit near-white on a light terminal
+# would vanish, and an unknown theme is the common case. Every other role is colored in either theme.
+#
+# A SPAN WITH AN `href` IS AN OSC 8 LINK when the palette allows links, with an `id` derived from the URL, so a URL
+# wrapped across lines is one link and opens whole (section 8).
+#
+# ESC IS BUILT AT RUN TIME. A `\e` in a text literal emits `\u001b` on Rust, which rustc rejects, so every escape here
+# starts from `rune-to-text(27)`.
+
+load @term/base/text/unicode
+  find to-runes
+  find rune-to-text
+
+load ./standard
+  find standard
+
+load ./layout
+  find span
+  find line
+  find find-role
+  find restyle-span
+  find unglue-text
+
+# how a terminal is painted: `depth` is <none>, <ansi> or <truecolor>; `theme` is <dark>, <light> or <unknown>
+form palette
+  link depth, like text, fall <none>
+  link theme, like text, fall <unknown>
+  link links, like boolean, fall false
+
+task make-palette
+  take depth, like text
+  take theme, like text
+  take links, like boolean
+  like palette
+  back make palette, depth(depth), theme(theme), links(links)
+
+task make-escape
+  like text
+  back rune-to-text(27)
+
+# one hex digit's value, -1 for a character that is not one
+task read-hex-digit
+  take rune, like number
+  like number
+  fork test, and(is-minimum(rune, 48), is-maximum(rune, 57))
+    hold
+      back subtract(rune, 48)
+  fork test, and(is-minimum(rune, 65), is-maximum(rune, 70))
+    hold
+      back subtract(rune, 55)
+  fork test, and(is-minimum(rune, 97), is-maximum(rune, 102))
+    hold
+      back subtract(rune, 87)
+  back -1
+
+# `#8FCB9B` as the `r;g;b` an SGR takes, or empty for anything else
+task read-hex-color
+  take value, like text
+  like text
+  save runes, to-runes(value)
+  fork test, is-unequal(runes/length, 7)
+    hold
+      back <>
+  save parts, make list
+  save at, 1
+  walk test
+    hook test, is-below(at, 7)
+    hook hold
+      save next, add(at, 1)
+      save high, read-hex-digit(runes/{at})
+      save low, read-hex-digit(runes/{next})
+      fork test, or(is-below(high, 0), is-below(low, 0))
+        hold
+          back <>
+      parts/push add(multiply(high, 16), low)
+      save at, add(at, 2)
+  save r, parts/0
+  save g, parts/1
+  save b, parts/2
+  back <{r};{g};{b}>
+
+# the SGR parameters of a role's color in the palette, empty for the terminal's own foreground
+task color-codes
+  take role, like text
+  take palette, like palette
+  take standard, like standard
+  take background, like boolean
+  like text
+  save rule, find-role(standard, role)
+  fork test, is-equal(palette/depth, <ansi>)
+    hold
+      back rule/ansi
+  fork test, is-equal(palette/depth, <truecolor>)
+    hold
+      fork test, and(is-equal(role, <text>), is-equal(palette/theme, <unknown>))
+        hold
+          back <>
+      save hex, rule/dark
+      fork test, is-equal(palette/theme, <light>)
+        hold
+          save hex, rule/light
+      save rgb, read-hex-color(hex)
+      fork test, is-equal(rgb, <>)
+        hold
+          back <>
+      fork test, background
+        hold
+          back <48;2;{rgb}>
+      back <38;2;{rgb}>
+  back <>
+
+# a number for a URL, the same for the same URL: the `id` that joins the pieces of one wrapped link
+task digest-link
+  take value, like text
+  like number
+  save total, 7
+  walk to-runes(value)
+    take rune
+    save total, modulo(add(multiply(total, 31), rune), 1000000007)
+  back total
+
+# one span as the terminal receives it
+task paint-span
+  take one, like span
+  take palette, like palette
+  take standard, like standard
+  like text
+  fork test, is-equal(palette/depth, <none>)
+    hold
+      back one/value
+  save escape, make-escape()
+  save codes, <>
+  save color, color-codes(one/role, palette, standard, false)
+  fork test, is-unequal(color, <>)
+    hold
+      save codes, color
+  fork test, one/strong
+    hold
+      fork test, is-equal(codes, <>)
+        hold
+          save codes, <1>
+        miss
+          save codes, <1;{codes}>
+  fork test, one/focus
+    hold
+      save lit, <7>
+      fork test, is-equal(palette/depth, <truecolor>)
+        hold
+          save lit, color-codes(<focus>, palette, standard, true)
+      fork test, is-equal(codes, <>)
+        hold
+          save codes, lit
+        miss
+          save codes, <{codes};{lit}>
+  save painted, one/value
+  fork test, is-unequal(codes, <>)
+    hold
+      save painted, <{escape}[{codes}m{painted}{escape}[0m>
+  fork test, and(palette/links, is-unequal(one/href, <>))
+    hold
+      save id, digest-link(one/href)
+      save terminator, <{escape}\\>
+      save painted, <{escape}]8;id={id};{one/href}{terminator}{painted}{escape}]8;;{terminator}>
+  back painted
+
+# is a span spaces and nothing else: it needs no color, only a focus highlight shows on a space
+task is-blank-span
+  take one, like span
+  like boolean
+  fork test, or(one/focus, is-unequal(one/href, <>))
+    hold
+      back false
+  walk to-runes(one/value)
+    take rune
+    fork test, is-unequal(rune, 32)
+      hold
+        back false
+  back true
+
+task is-same-look
+  take a, like span
+  take b, like span
+  like boolean
+  back and(is-equal(a/role, b/role), and(is-equal(a/strong, b/strong), and(is-equal(a/focus, b/focus), is-equal(a/href, b/href))))
+
+# a line as the terminal receives it: neighbouring spans of one look painted as one, spaces left unpainted, so a
+# line carries one escape per change of color rather than one per span
+task paint-line
+  take one, like line
+  take palette, like palette
+  take standard, like standard
+  like text
+  save out, <>
+  save merged, make list
+  walk one/spans
+    take piece
+    save count, merged/length
+    fork test, is-above(count, 0)
+      hold
+        save last-at, subtract(count, 1)
+        save last, merged/{last-at}
+        fork test, is-same-look(last, piece)
+          hold
+            save joined, last
+            save joined/value, <{last/value}{piece/value}>
+            merged/pop()
+            merged/push joined
+            turn next
+    merged/push piece
+  walk merged
+    take piece
+    save shown, restyle-span(piece, unglue-text(piece/value))
+    fork test, is-blank-span(shown)
+      hold
+        save out, <{out}{shown/value}>
+      miss
+        save out, <{out}{paint-span(shown, palette, standard)}>
+  back out
+
+# lines as one text, a line feed after each
+task paint-lines
+  take lines, like list, like line
+  take palette, like palette
+  take standard, like standard
+  like text
+  save out, <>
+  walk lines
+    take one
+    save out, <{out}{paint-line(one, palette, standard)}\n>
+  back out

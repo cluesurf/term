@@ -6,8 +6,9 @@
 //   hook /users/:id        a parameter, read by the page's prop, and `seed load` giving the page its data
 //
 // TypeScript: `route` called straight onto the in-memory dom for each path. The toolkits (AppKit, UIKit, Android
-// views): an app whose `main` is only `boot`, which runs the toolkit host, moved to /users/42 through the navigation
-// contract, the window read back. ROUTE_ONLY=typescript (or macos, ios, android) runs one leg.
+// views, Compose on the desktop JVM, Jetpack Compose): an app whose `main` is only `boot`, which runs the toolkit host,
+// moved to /users/42 through the navigation contract, the window read back. ROUTE_ONLY=typescript (or macos, ios,
+// android, compose, compose-android) runs one leg.
 // Run: npx tsx test/compile/route-table.ts
 
 import { spawnSync } from 'node:child_process'
@@ -194,6 +195,8 @@ if (ONLY !== 'typescript') {
       program,
       judge,
       ok,
+      compose: true,
+      composeAndroid: true,
       shots: {},
     },
     ONLY,

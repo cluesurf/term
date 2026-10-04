@@ -1,0 +1,1771 @@
+# The pattern reader: pattern text into the tree of ./node.tree, or `pattern-mismatch` with the code point position
+# and the reason. One reader for every tier, so a pattern means one thing (note/term/stdlib/regex-engine.md).
+#
+#   literals         any code point; a backslash before punctuation makes it literal; \t \n \r \f \v \0
+#                    \xHH \x{H...} \uHHHH \u{H...}
+#   .                any code point but a line feed; any at all under `s`
+#   [abc] [^a-z]     ranges and escapes inside; [] matches nothing and [^] anything
+#   \d \w \s         ASCII digits, word characters and white space, and \D \W \S their complements
+#   \p{...} \P{...}  a General_Category (\p{Lu}, \p{Letter}, \p{gc=L}), a script (\p{Script=Greek}, \p{sc=Grek}),
+#                    or a binary property (\p{Alphabetic}); names are the ones ECMAScript defines, spelled exactly
+#   ^ $              the start and end of the text; of a line (a line feed ends one) under `m`
+#   \A \z            the start and end of the text, whatever the flags
+#   \b \B            a word boundary: a word character is a letter, a mark, a number or connector punctuation
+#   ( ) (?: )        a capturing group, and one that does not capture; (?<name> ) names one
+#   (?= ) (?! )      lookahead; (?<= ) (?<! ) lookbehind, of any length
+#   (?> )            an atomic group
+#   \1 \k<name>      a back reference
+#   a|b              either, the first that leads to a match
+#   * + ? {n} {n,} {n,m}   greedy; lazy with ? after, possessive with + after
+#   (?imsx) (?imsx-imsx) (?imsx: )   flags for the rest of the group, or for the group they open
+#
+# The `i` flag closes letters and bracketed classes under Unicode simple case folding when they are read. The escape
+# classes (\d \w \s \p{...}) mean the same with and without it. Under `x`, white space and `#` comments outside a
+# class are ignored.
+
+mark stable
+
+load @term/base/list
+  find list
+
+load @term/base/text/unicode
+  find to-runes
+  find from-runes
+
+load @term/base/boolean
+  find not
+
+load @term/base/pattern/node
+  find piece
+  find refuse-pattern
+  find is-zero-width
+  find edge-text-start
+  find edge-text-end
+  find edge-line-start
+  find edge-line-end
+  find edge-word
+  find edge-not-word
+
+load @term/base/pattern/set
+  find put-number
+  find number-at
+  find range-set
+  find merge-sets
+  find negate-set
+  find normalize-set
+  find set-size
+  find last-code-point
+
+load @term/base/pattern/unicode-read
+  find category-mask
+  find category-set
+  find script-id
+  find script-set
+  find binary-row
+  find binary-set
+  find close-under-case
+
+# a parsed pattern: the tree, how many capturing groups it opens, and each group's name in order (empty for one
+# without a name)
+form parsed
+  link root, like piece
+  link groups, like number
+  link names
+    like list
+      like text
+
+# the reader's state. A form is copied when it is passed, so each part that changes is a list, shared by the copies:
+# the position, the flags in force (i, m, s, x as 1 or 0), the next group's index
+form reading
+  link runes
+    like list
+      like number
+  link cursor
+    like list
+      like number
+  link flags
+    like list
+      like number
+  link next-group
+    like list
+      like number
+  link names
+    like list
+      like text
+  link total, like number
+
+# the largest repeat count a pattern may write
+host most-count, code 100000
+
+task flag-i
+  like number
+  send back, code 0
+
+task flag-m
+  like number
+  send back, code 1
+
+task flag-s
+  like number
+  send back, code 2
+
+task flag-x
+  like number
+  send back, code 3
+
+task position
+  take r, like reading
+  like number
+  send back
+    call number-at(read(r/cursor), code(0), code(0))
+
+# the code point `ahead` past the position, or -1 past the end
+task peek
+  take r, like reading
+  take ahead, like number
+  like number
+  send back
+    call number-at
+      read r/runes
+      call add(call(position, read(r)), read(ahead))
+      code -1
+
+task advance
+  take r, like reading
+  take count, like number
+  like number
+  save cursor, read r/cursor
+  save next
+    call add(call(position, read(r)), read(count))
+  call put-number(read(cursor), code(0), read(next))
+  send back, read next
+
+task has-flag
+  take r, like reading
+  take flag, like number
+  like boolean
+  send back
+    call is-equal
+      call number-at(read(r/flags), read(flag), code(0))
+      code 1
+
+task set-flag
+  take r, like reading
+  take flag, like number
+  take on, like boolean
+  like number
+  save flags, read r/flags
+  fork test
+    hook test
+      read on
+    hook hold
+      call put-number(read(flags), read(flag), code(1))
+    hook miss
+      call put-number(read(flags), read(flag), code(0))
+  send back, read flag
+
+task refuse-here
+  take r, like reading
+  take reason, like text
+  like piece
+  send back
+    call refuse-pattern(call(position, read(r)), read(reason))
+
+task is-ascii-digit
+  take c, like number
+  like boolean
+  send back
+    call and
+      call is-minimum(read(c), code(48))
+      call is-maximum(read(c), code(57))
+
+task is-ascii-letter
+  take c, like number
+  like boolean
+  send back
+    call or
+      call and
+        call is-minimum(read(c), code(65))
+        call is-maximum(read(c), code(90))
+      call and
+        call is-minimum(read(c), code(97))
+        call is-maximum(read(c), code(122))
+
+# a hex digit's value, or -1
+task hex-value
+  take c, like number
+  like number
+  fork test
+    hook test
+      call is-ascii-digit(read(c))
+    hook hold
+      send back
+        call subtract(read(c), code(48))
+    hook test
+      call and
+        call is-minimum(read(c), code(97))
+        call is-maximum(read(c), code(102))
+    hook hold
+      send back
+        call subtract(read(c), code(87))
+    hook test
+      call and
+        call is-minimum(read(c), code(65))
+        call is-maximum(read(c), code(70))
+    hook hold
+      send back
+        call subtract(read(c), code(55))
+  send back, code -1
+
+# skip white space and `#` comments under `x`
+task skip-extended
+  take r, like reading
+  like number
+  fork test
+    hook test
+      call not(call(has-flag, read(r), call(flag-x)))
+    hook hold
+      send back, code 0
+  save skipped, code 0
+  save going, true
+  save turns-l, code 0
+  save limit-l
+    call add(read(r/runes/length), code(3))
+  walk test
+    down
+      call subtract(read(limit-l), read(turns-l))
+    hook test
+      call and
+        call and
+          read going
+          call is-below
+            call position(read(r))
+            read r/runes/length
+        call is-below(read(turns-l), read(limit-l))
+    hook step
+      save turns-l
+        call add(read(turns-l), code(1))
+      save c
+        call peek(read(r), code(0))
+      fork test
+        hook test
+          call or
+            call is-equal(read(c), code(32))
+            call and
+              call is-minimum(read(c), code(9))
+              call is-maximum(read(c), code(13))
+        hook hold
+          call advance(read(r), code(1))
+          save skipped
+            call add(read(skipped), code(1))
+        hook test
+          call is-equal(read(c), code(35))
+        hook hold
+          # to the end of the line
+          save turns-k, code 0
+          save limit-k
+            call add(read(r/runes/length), code(3))
+          walk test
+            down
+              call subtract(read(limit-k), read(turns-k))
+            hook test
+              call and
+                call and
+                  call is-below
+                    call position(read(r))
+                    read r/runes/length
+                  call not
+                    call is-equal(call(peek, read(r), code(0)), code(10))
+                call is-below(read(turns-k), read(limit-k))
+            hook step
+              save turns-k
+                call add(read(turns-k), code(1))
+              call advance(read(r), code(1))
+          save skipped
+            call add(read(skipped), code(1))
+        hook miss
+          save going, false
+  send back, read skipped
+
+# count the capturing groups and collect their names, before reading, so `\12` and `\k<name>` can be told from a
+# literal and checked when they are read
+task scan-groups
+  take runes
+    like list
+      like number
+  take names
+    like list
+      like text
+  like number
+  save count, code 0
+  save i, code 0
+  save in-class, false
+  save turns-j, code 0
+  save limit-j
+    call add(read(runes/length), code(3))
+  walk test
+    down
+      call subtract(read(limit-j), read(turns-j))
+    hook test
+      call and
+        call is-below(read(i), read(runes/length))
+        call is-below(read(turns-j), read(limit-j))
+    hook step
+      save turns-j
+        call add(read(turns-j), code(1))
+      save c
+        call number-at(read(runes), read(i), code(-1))
+      save next
+        call number-at(read(runes), call(add, read(i), code(1)), code(-1))
+      fork test
+        hook test
+          call is-equal(read(c), code(92))
+        hook hold
+          save i
+            call add(read(i), code(2))
+          turn next
+      fork test
+        hook test
+          read in-class
+        hook hold
+          fork test
+            hook test
+              call is-equal(read(c), code(93))
+            hook hold
+              save in-class, false
+          save i
+            call add(read(i), code(1))
+          turn next
+      fork test
+        hook test
+          call is-equal(read(c), code(91))
+        hook hold
+          save in-class, true
+          # a `]` first in a class (or after `^`) is the empty class's end, as the reader reads it
+          save i
+            call add(read(i), code(1))
+          turn next
+      fork test
+        hook test
+          call is-equal(read(c), code(40))
+        hook hold
+          fork test
+            hook test
+              call not(call(is-equal, read(next), code(63)))
+            hook hold
+              save count
+                call add(read(count), code(1))
+              call names/push(text(<>))
+            hook miss
+              save after
+                call number-at(read(runes), call(add, read(i), code(2)), code(-1))
+              save beyond
+                call number-at(read(runes), call(add, read(i), code(3)), code(-1))
+              fork test
+                hook test
+                  call and
+                    call is-equal(read(after), code(60))
+                    call and
+                      call not(call(is-equal, read(beyond), code(61)))
+                      call not(call(is-equal, read(beyond), code(33)))
+                hook hold
+                  save count
+                    call add(read(count), code(1))
+                  save name, make list
+                  save k
+                    call add(read(i), code(3))
+                  walk test
+                    down
+                      call subtract(read(runes/length), read(k))
+                    hook test
+                      call and
+                        call is-below(read(k), read(runes/length))
+                        call not
+                          call is-equal
+                            call number-at(read(runes), read(k), code(-1))
+                            code 62
+                    hook step
+                      call name/push
+                        call number-at(read(runes), read(k), code(0))
+                      save k
+                        call add(read(k), code(1))
+                  call names/push
+                    call from-runes(read(name))
+      save i
+        call add(read(i), code(1))
+  send back, read count
+
+task parse-pattern
+  take source, like text
+  like parsed
+  save runes
+    call to-runes(read(source))
+  save names, make list
+  save total
+    call scan-groups(read(runes), read(names))
+  save cursor, make list
+  call cursor/push(code(0))
+  save flags, make list
+  call flags/push(code(0))
+  call flags/push(code(0))
+  call flags/push(code(0))
+  call flags/push(code(0))
+  save next-group, make list
+  call next-group/push(code(1))
+  save r
+    make reading
+      bind runes, read runes
+      bind cursor, read cursor
+      bind flags, read flags
+      bind next-group, read next-group
+      bind names, read names
+      bind total, read total
+  save root
+    call parse-choice(read(r))
+  fork test
+    hook test
+      call is-below
+        call position(read(r))
+        read runes/length
+    hook hold
+      call refuse-here(read(r), text(<a ) with no ( before it>))
+  send back
+    make parsed
+      bind root, read root
+      bind groups, read total
+      bind names, read names
+
+# a parsed pattern, with flags in force from the start (each of i, m, s, x on when it is in `flags`)
+task parse-pattern-with
+  take source, like text
+  take flags, like text
+  like parsed
+  save prefix, text <>
+  fork test
+    hook test
+      call is-above(call(size-of, read(flags)), code(0))
+    hook hold
+      save prefix, text <(?{flags})>
+  send back
+    call parse-pattern(text(<{prefix}{source}>))
+
+task size-of
+  take value, like text
+  like number
+  save runes
+    call to-runes(read(value))
+  send back, read runes/length
+
+# alternatives, separated by |
+task parse-choice
+  take r, like reading
+  like piece
+  save parts, make list
+  call parts/push(call(parse-chain, read(r)))
+  save turns-i, code 0
+  save limit-i
+    call add(read(r/runes/length), code(3))
+  walk test
+    down
+      call subtract(read(limit-i), read(turns-i))
+    hook test
+      call and
+        call is-equal(call(peek, read(r), code(0)), code(124))
+        call is-below(read(turns-i), read(limit-i))
+    hook step
+      save turns-i
+        call add(read(turns-i), code(1))
+      call advance(read(r), code(1))
+      call parts/push(call(parse-chain, read(r)))
+  fork test
+    hook test
+      call is-equal(read(parts/length), code(1))
+    hook hold
+      send back, read parts/0
+  send back
+    make choice
+      bind parts, read parts
+
+# a sequence, up to a | or ) or the end
+task parse-chain
+  take r, like reading
+  like piece
+  save parts, make list
+  save going, true
+  save turns-h, code 0
+  save limit-h
+    call add(read(r/runes/length), code(3))
+  walk test
+    down
+      call subtract(read(limit-h), read(turns-h))
+    hook test
+      call and
+        read going
+        call is-below(read(turns-h), read(limit-h))
+    hook step
+      save turns-h
+        call add(read(turns-h), code(1))
+      call skip-extended(read(r))
+      save c
+        call peek(read(r), code(0))
+      fork test
+        hook test
+          call or
+            call is-below(read(c), code(0))
+            call or
+              call is-equal(read(c), code(124))
+              call is-equal(read(c), code(41))
+        hook hold
+          save going, false
+          turn next
+      # a flag group with no colon changes the flags for the rest of the enclosing group, and is no part itself
+      fork test
+        hook test
+          call is-flag-switch(read(r))
+        hook hold
+          call read-flags(read(r))
+          turn next
+      save atom
+        call parse-atom(read(r))
+      call parts/push
+        call parse-quantifier(read(r), read(atom))
+  fork test
+    hook test
+      call is-equal(read(parts/length), code(1))
+    hook hold
+      send back, read parts/0
+  fork test
+    hook test
+      call is-equal(read(parts/length), code(0))
+    hook hold
+      send back, make blank
+  send back
+    make chain
+      bind parts, read parts
+
+# whether the position is at `(?` followed by flags and a `)`: `(?i)`, `(?m-s)`
+task is-flag-switch
+  take r, like reading
+  like boolean
+  fork test
+    hook test
+      call not
+        call and
+          call is-equal(call(peek, read(r), code(0)), code(40))
+          call is-equal(call(peek, read(r), code(1)), code(63))
+    hook hold
+      send back, false
+  save k, code 2
+  save going, true
+  save turns-g, code 0
+  save limit-g
+    call add(read(r/runes/length), code(3))
+  walk test
+    down
+      call subtract(read(limit-g), read(turns-g))
+    hook test
+      call and
+        read going
+        call is-below(read(turns-g), read(limit-g))
+    hook step
+      save turns-g
+        call add(read(turns-g), code(1))
+      save c
+        call peek(read(r), read(k))
+      fork test
+        hook test
+          call is-flag-letter(read(c))
+        hook hold
+          save k
+            call add(read(k), code(1))
+        hook test
+          call is-equal(read(c), code(45))
+        hook hold
+          save k
+            call add(read(k), code(1))
+        hook miss
+          save going, false
+  send back
+    call and
+      call is-above(read(k), code(2))
+      call is-equal(call(peek, read(r), read(k)), code(41))
+
+task is-flag-letter
+  take c, like number
+  like boolean
+  send back
+    call or
+      call or
+        call is-equal(read(c), code(105))
+        call is-equal(read(c), code(109))
+      call or
+        call is-equal(read(c), code(115))
+        call is-equal(read(c), code(120))
+
+task flag-of
+  take c, like number
+  like number
+  fork test
+    hook test
+      call is-equal(read(c), code(105))
+    hook hold
+      send back, call(flag-i)
+    hook test
+      call is-equal(read(c), code(109))
+    hook hold
+      send back, call(flag-m)
+    hook test
+      call is-equal(read(c), code(115))
+    hook hold
+      send back, call(flag-s)
+  send back, call(flag-x)
+
+# read `(?` flags up to `)` or `:` and apply them; the position is left after the `)` or `:`. Answers whether the group
+# goes on (a `:`)
+task read-flags
+  take r, like reading
+  like boolean
+  call advance(read(r), code(2))
+  save on, true
+  save seen, false
+  save turns-f, code 0
+  save limit-f
+    call add(read(r/runes/length), code(3))
+  walk test
+    down
+      call subtract(read(limit-f), read(turns-f))
+    hook test
+      call and
+        call is-below
+          call position(read(r))
+          read r/runes/length
+        call is-below(read(turns-f), read(limit-f))
+    hook step
+      save turns-f
+        call add(read(turns-f), code(1))
+      save c
+        call peek(read(r), code(0))
+      call advance(read(r), code(1))
+      fork test
+        hook test
+          call is-flag-letter(read(c))
+        hook hold
+          call set-flag(read(r), call(flag-of, read(c)), read(on))
+          save seen, true
+        hook test
+          call and
+            call is-equal(read(c), code(45))
+            read on
+        hook hold
+          save on, false
+        hook test
+          call is-equal(read(c), code(41))
+        hook hold
+          send back, false
+        hook test
+          call and
+            call is-equal(read(c), code(58))
+            read seen
+        hook hold
+          send back, true
+        hook miss
+          call refuse-here(read(r), text(<a flag group takes only i, m, s and x>))
+  call refuse-here(read(r), text(<a flag group with no )>))
+  send back, false
+
+# a quantifier after the atom, if there is one
+task parse-quantifier
+  take r, like reading
+  take atom, like piece
+  like piece
+  call skip-extended(read(r))
+  save c
+    call peek(read(r), code(0))
+  save least, code -1
+  save most, code -1
+  fork test
+    hook test
+      call is-equal(read(c), code(42))
+    hook hold
+      save least, code 0
+      save most, code -1
+      call advance(read(r), code(1))
+    hook test
+      call is-equal(read(c), code(43))
+    hook hold
+      save least, code 1
+      save most, code -1
+      call advance(read(r), code(1))
+    hook test
+      call is-equal(read(c), code(63))
+    hook hold
+      save least, code 0
+      save most, code 1
+      call advance(read(r), code(1))
+    hook test
+      call is-equal(read(c), code(123))
+    hook hold
+      save counts
+        call read-counts(read(r))
+      save least
+        call number-at(read(counts), code(0), code(0))
+      save most
+        call number-at(read(counts), code(1), code(-1))
+  fork test
+    hook test
+      call is-below(read(least), code(0))
+    hook hold
+      send back, read atom
+  # a zero-width part repeated is the same part, and an engine that allowed it would differ on what it captures
+  fork test
+    hook test
+      call is-zero-width(read(atom))
+    hook hold
+      call refuse-here(read(r), text(<nothing to repeat>))
+  save greedy, true
+  save possessive, false
+  save after
+    call peek(read(r), code(0))
+  fork test
+    hook test
+      call is-equal(read(after), code(63))
+    hook hold
+      save greedy, false
+      call advance(read(r), code(1))
+    hook test
+      call is-equal(read(after), code(43))
+    hook hold
+      save possessive, true
+      call advance(read(r), code(1))
+  # a quantifier straight after one is an error, not a second repeat
+  save then
+    call peek(read(r), code(0))
+  fork test
+    hook test
+      call or
+        call or
+          call is-equal(read(then), code(42))
+          call is-equal(read(then), code(43))
+        call or
+          call is-equal(read(then), code(63))
+          call is-equal(read(then), code(123))
+    hook hold
+      call refuse-here(read(r), text(<nothing to repeat>))
+  send back
+    make loop
+      bind body, read atom
+      bind least, read least
+      bind most, read most
+      bind greedy, read greedy
+      bind possessive, read possessive
+
+# `{n}`, `{n,}` or `{n,m}` at the position, as (least, most), most -1 when unbounded. A `{` that does not start one is
+# refused, as JavaScript's `u` mode refuses it: write `\{` for the character
+task read-counts
+  take r, like reading
+  like list
+    like number
+  save start
+    call position(read(r))
+  call advance(read(r), code(1))
+  save least
+    call read-decimal(read(r))
+  fork test
+    hook test
+      call is-below(read(least), code(0))
+    hook hold
+      call refuse-here(read(r), text(<a brace that is not a count: escape it with a backslash>))
+  save most, read least
+  fork test
+    hook test
+      call is-equal(call(peek, read(r), code(0)), code(44))
+    hook hold
+      call advance(read(r), code(1))
+      save most
+        call read-decimal(read(r))
+  fork test
+    hook test
+      call not(call(is-equal, call(peek, read(r), code(0)), code(125)))
+    hook hold
+      call refuse-here(read(r), text(<a brace that is not a count: escape it with a backslash>))
+  call advance(read(r), code(1))
+  fork test
+    hook test
+      call or
+        call is-above(read(least), read(most-count))
+        call is-above(read(most), read(most-count))
+    hook hold
+      call refuse-pattern(read(start), text(<a count above 100000>))
+  fork test
+    hook test
+      call and
+        call is-minimum(read(most), code(0))
+        call is-below(read(most), read(least))
+    hook hold
+      call refuse-pattern(read(start), text(<a count whose most is below its least>))
+  save out, make list
+  call out/push(read(least))
+  call out/push(read(most))
+  send back, read out
+
+# the decimal number at the position, or -1 when there is no digit there
+task read-decimal
+  take r, like reading
+  like number
+  save value, code -1
+  save turns-e, code 0
+  save limit-e
+    call add(read(r/runes/length), code(3))
+  walk test
+    down
+      call subtract(read(limit-e), read(turns-e))
+    hook test
+      call and
+        call is-ascii-digit(call(peek, read(r), code(0)))
+        call is-below(read(turns-e), read(limit-e))
+    hook step
+      save turns-e
+        call add(read(turns-e), code(1))
+      save value
+        call add
+          call multiply
+            call max-of(read(value), code(0))
+            code 10
+          call subtract(call(peek, read(r), code(0)), code(48))
+      # a count past the limit is refused by the caller; this only stops it growing without end
+      fork test
+        hook test
+          call is-above(read(value), code(10000000))
+        hook hold
+          save value, code 10000000
+      call advance(read(r), code(1))
+  send back, read value
+
+task max-of
+  take a, like number
+  take b, like number
+  like number
+  fork test
+    hook test
+      call is-above(read(a), read(b))
+    hook hold
+      send back, read a
+  send back, read b
+
+# the piece for one code point, closed under case when `i` is on
+task letter-piece
+  take r, like reading
+  take c, like number
+  like piece
+  fork test
+    hook test
+      call has-flag(read(r), call(flag-i))
+    hook hold
+      save closed
+        call close-under-case(call(range-set, read(c), read(c)))
+      fork test
+        hook test
+          call is-above(call(set-size, read(closed)), code(1))
+        hook hold
+          send back
+            make ranges
+              bind set, read closed
+  send back
+    make letter
+      bind point, read c
+
+task parse-atom
+  take r, like reading
+  like piece
+  save c
+    call peek(read(r), code(0))
+  fork test
+    hook test
+      call is-equal(read(c), code(40))
+    hook hold
+      send back
+        call parse-group(read(r))
+    hook test
+      call is-equal(read(c), code(91))
+    hook hold
+      send back
+        make ranges
+          bind set
+            call parse-class(read(r))
+    hook test
+      call is-equal(read(c), code(46))
+    hook hold
+      call advance(read(r), code(1))
+      fork test
+        hook test
+          call has-flag(read(r), call(flag-s))
+        hook hold
+          send back
+            make ranges
+              bind set
+                call range-set(code(0), read(last-code-point))
+      send back
+        make ranges
+          bind set
+            call negate-set(call(range-set, code(10), code(10)))
+    hook test
+      call is-equal(read(c), code(94))
+    hook hold
+      call advance(read(r), code(1))
+      fork test
+        hook test
+          call has-flag(read(r), call(flag-m))
+        hook hold
+          send back
+            make edge
+              bind kind, read edge-line-start
+      send back
+        make edge
+          bind kind, read edge-text-start
+    hook test
+      call is-equal(read(c), code(36))
+    hook hold
+      call advance(read(r), code(1))
+      fork test
+        hook test
+          call has-flag(read(r), call(flag-m))
+        hook hold
+          send back
+            make edge
+              bind kind, read edge-line-end
+      send back
+        make edge
+          bind kind, read edge-text-end
+    hook test
+      call is-equal(read(c), code(92))
+    hook hold
+      send back
+        call parse-escape(read(r))
+    hook test
+      call or
+        call or
+          call is-equal(read(c), code(42))
+          call is-equal(read(c), code(43))
+        call or
+          call is-equal(read(c), code(63))
+          call is-equal(read(c), code(123))
+    hook hold
+      send back
+        call refuse-here(read(r), text(<nothing to repeat>))
+    hook test
+      call or
+        call is-equal(read(c), code(125))
+        call is-equal(read(c), code(93))
+    hook hold
+      send back
+        call refuse-here(read(r), text(<a lone closing brace or bracket: escape it with a backslash>))
+  call advance(read(r), code(1))
+  send back
+    call letter-piece(read(r), read(c))
+
+# a group, from its ( to its )
+task parse-group
+  take r, like reading
+  like piece
+  save start
+    call position(read(r))
+  # the flags in force outside, put back when the group closes
+  save outer, make list
+  walk list, read r/flags
+    hook next
+      take site, name f
+      call outer/push(read(f))
+  save kind, code 0
+  save index, code 0
+  save name, text <>
+  save second
+    call peek(read(r), code(1))
+  fork test
+    hook test
+      call not(call(is-equal, read(second), code(63)))
+    hook hold
+      # a capturing group
+      save kind, code 1
+      save next-group, read r/next-group
+      save index
+        call number-at(read(next-group), code(0), code(1))
+      call put-number(read(next-group), code(0), call(add, read(index), code(1)))
+      call advance(read(r), code(1))
+    hook miss
+      save third
+        call peek(read(r), code(2))
+      save fourth
+        call peek(read(r), code(3))
+      fork test
+        hook test
+          call is-equal(read(third), code(58))
+        hook hold
+          save kind, code 2
+          call advance(read(r), code(3))
+        hook test
+          call is-equal(read(third), code(61))
+        hook hold
+          save kind, code 3
+          call advance(read(r), code(3))
+        hook test
+          call is-equal(read(third), code(33))
+        hook hold
+          save kind, code 4
+          call advance(read(r), code(3))
+        hook test
+          call and
+            call is-equal(read(third), code(60))
+            call is-equal(read(fourth), code(61))
+        hook hold
+          save kind, code 5
+          call advance(read(r), code(4))
+        hook test
+          call and
+            call is-equal(read(third), code(60))
+            call is-equal(read(fourth), code(33))
+        hook hold
+          save kind, code 6
+          call advance(read(r), code(4))
+        hook test
+          call is-equal(read(third), code(62))
+        hook hold
+          save kind, code 7
+          call advance(read(r), code(3))
+        hook test
+          call is-equal(read(third), code(60))
+        hook hold
+          # a named capturing group
+          save kind, code 1
+          call advance(read(r), code(3))
+          save name
+            call read-group-name(read(r))
+          save next-group, read r/next-group
+          save index
+            call number-at(read(next-group), code(0), code(1))
+          call put-number(read(next-group), code(0), call(add, read(index), code(1)))
+        hook miss
+          # flags scoped to the group: (?i: ...)
+          save goes-on
+            call read-flags(read(r))
+          fork test
+            hook test
+              call not(read(goes-on))
+            hook hold
+              call refuse-pattern(read(start), text(<a flag group here must open with : >))
+          save kind, code 2
+  save body
+    call parse-choice(read(r))
+  fork test
+    hook test
+      call not(call(is-equal, call(peek, read(r), code(0)), code(41)))
+    hook hold
+      call refuse-pattern(read(start), text(<a ( with no ) after it>))
+  call advance(read(r), code(1))
+  # the flags in force outside come back
+  save flags, read r/flags
+  save f, code 0
+  walk list, read outer
+    hook next
+      take site, name value
+      call put-number(read(flags), read(f), read(value))
+      save f
+        call add(read(f), code(1))
+  fork test
+    hook test
+      call is-equal(read(kind), code(1))
+    hook hold
+      send back
+        make group
+          bind body, read body
+          bind index, read index
+          bind label, read name
+    hook test
+      call is-equal(read(kind), code(3))
+    hook hold
+      send back
+        make look
+          bind body, read body
+          bind behind, false
+          bind negate, false
+    hook test
+      call is-equal(read(kind), code(4))
+    hook hold
+      send back
+        make look
+          bind body, read body
+          bind behind, false
+          bind negate, true
+    hook test
+      call is-equal(read(kind), code(5))
+    hook hold
+      send back
+        make look
+          bind body, read body
+          bind behind, true
+          bind negate, false
+    hook test
+      call is-equal(read(kind), code(6))
+    hook hold
+      send back
+        make look
+          bind body, read body
+          bind behind, true
+          bind negate, true
+    hook test
+      call is-equal(read(kind), code(7))
+    hook hold
+      send back
+        make atom
+          bind body, read body
+  send back, read body
+
+# a group name up to its `>`: a letter or _ then letters, digits and _
+task read-group-name
+  take r, like reading
+  like text
+  save name, make list
+  save turns-d, code 0
+  save limit-d
+    call add(read(r/runes/length), code(3))
+  walk test
+    down
+      call subtract(read(limit-d), read(turns-d))
+    hook test
+      call and
+        call and
+          call is-below
+            call position(read(r))
+            read r/runes/length
+          call not(call(is-equal, call(peek, read(r), code(0)), code(62)))
+        call is-below(read(turns-d), read(limit-d))
+    hook step
+      save turns-d
+        call add(read(turns-d), code(1))
+      save c
+        call peek(read(r), code(0))
+      save fits
+        call or
+          call or
+            call is-ascii-letter(read(c))
+            call is-equal(read(c), code(95))
+          call and
+            call is-ascii-digit(read(c))
+            call is-above(read(name/length), code(0))
+      fork test
+        hook test
+          call not(read(fits))
+        hook hold
+          call refuse-here(read(r), text(<a group name is a letter or _ then letters, digits and _>))
+      call name/push(read(c))
+      call advance(read(r), code(1))
+  fork test
+    hook test
+      call or
+        call is-equal(read(name/length), code(0))
+        call not(call(is-equal, call(peek, read(r), code(0)), code(62)))
+    hook hold
+      call refuse-here(read(r), text(<a group name, then a closing angle bracket>))
+  call advance(read(r), code(1))
+  save written
+    call from-runes(read(name))
+  # two groups of one name would make \k<name> ambiguous
+  save seen, code 0
+  walk list, read r/names
+    hook next
+      take site, name each
+      fork test
+        hook test
+          call is-equal(read(each), read(written))
+        hook hold
+          save seen
+            call add(read(seen), code(1))
+  fork test
+    hook test
+      call is-above(read(seen), code(1))
+    hook hold
+      call refuse-here(read(r), text(<two groups named {written}>))
+  send back, read written
+
+# the set an escape class stands for, or an empty list when `c` is not one: \d \D \w \W \s \S
+task escape-class
+  take c, like number
+  like list
+    like number
+  save digits
+    call range-set(code(48), code(57))
+  save word
+    call normalize-set
+      make list
+        code 48
+        code 57
+        code 65
+        code 90
+        code 95
+        code 95
+        code 97
+        code 122
+  save space
+    call normalize-set
+      make list
+        code 9
+        code 13
+        code 32
+        code 32
+  fork test
+    hook test
+      call is-equal(read(c), code(100))
+    hook hold
+      send back, read digits
+    hook test
+      call is-equal(read(c), code(68))
+    hook hold
+      send back, call(negate-set, read(digits))
+    hook test
+      call is-equal(read(c), code(119))
+    hook hold
+      send back, read word
+    hook test
+      call is-equal(read(c), code(87))
+    hook hold
+      send back, call(negate-set, read(word))
+    hook test
+      call is-equal(read(c), code(115))
+    hook hold
+      send back, read space
+    hook test
+      call is-equal(read(c), code(83))
+    hook hold
+      send back, call(negate-set, read(space))
+  save none, make list
+  send back, read none
+
+# `\p{...}` or `\P{...}` at the position (just past the backslash and the p), as a set
+task read-property
+  take r, like reading
+  take negate, like boolean
+  like list
+    like number
+  fork test
+    hook test
+      call not(call(is-equal, call(peek, read(r), code(0)), code(123)))
+    hook hold
+      call refuse-here(read(r), text(<a property escape takes a name in braces>))
+  call advance(read(r), code(1))
+  save key, make list
+  save value, make list
+  save in-value, false
+  save turns-c, code 0
+  save limit-c
+    call add(read(r/runes/length), code(3))
+  walk test
+    down
+      call subtract(read(limit-c), read(turns-c))
+    hook test
+      call and
+        call and
+          call is-below
+            call position(read(r))
+            read r/runes/length
+          call not(call(is-equal, call(peek, read(r), code(0)), code(125)))
+        call is-below(read(turns-c), read(limit-c))
+    hook step
+      save turns-c
+        call add(read(turns-c), code(1))
+      save c
+        call peek(read(r), code(0))
+      fork test
+        hook test
+          call and
+            call is-equal(read(c), code(61))
+            call not(read(in-value))
+        hook hold
+          save in-value, true
+        hook test
+          read in-value
+        hook hold
+          call value/push(read(c))
+        hook miss
+          call key/push(read(c))
+      call advance(read(r), code(1))
+  fork test
+    hook test
+      call not(call(is-equal, call(peek, read(r), code(0)), code(125)))
+    hook hold
+      call refuse-here(read(r), text(<a property name with no closing brace>))
+  call advance(read(r), code(1))
+  save k
+    call from-runes(read(key))
+  save v
+    call from-runes(read(value))
+  save set, make list
+  fork test
+    hook test
+      read in-value
+    hook hold
+      fork test
+        hook test
+          call or
+            call is-equal(read(k), text(<General_Category>))
+            call is-equal(read(k), text(<gc>))
+        hook hold
+          save mask
+            call category-mask(read(v))
+          fork test
+            hook test
+              call is-below(read(mask), code(0))
+            hook hold
+              call refuse-here(read(r), text(<no General_Category is named {v}>))
+          save set
+            call category-set(read(mask))
+        hook test
+          call or
+            call is-equal(read(k), text(<Script>))
+            call is-equal(read(k), text(<sc>))
+        hook hold
+          save id
+            call script-id(read(v))
+          fork test
+            hook test
+              call is-below(read(id), code(0))
+            hook hold
+              call refuse-here(read(r), text(<no script is named {v}>))
+          save set
+            call script-set(read(id))
+        hook miss
+          call refuse-here(read(r), text(<{k} is not a property this reader knows: General_Category, gc, Script and sc are>))
+    hook miss
+      save mask
+        call category-mask(read(k))
+      fork test
+        hook test
+          call is-minimum(read(mask), code(0))
+        hook hold
+          save set
+            call category-set(read(mask))
+        hook miss
+          save row
+            call binary-row(read(k))
+          fork test
+            hook test
+              call is-below(read(row), code(0))
+            hook hold
+              call refuse-here(read(r), text(<no property is named {k}>))
+          save set
+            call binary-set(read(row))
+  fork test
+    hook test
+      read negate
+    hook hold
+      send back
+        call negate-set(read(set))
+  send back, read set
+
+# a code point written as an escape, just past its backslash: \t \n \r \f \v \0 \xHH \x{...} \uHHHH \u{...} and an
+# escaped non-alphanumeric. -1 when the escape is not one of these (the caller decides what else it may be)
+task read-escaped-code
+  take r, like reading
+  like number
+  save c
+    call peek(read(r), code(0))
+  fork test
+    hook test
+      call is-equal(read(c), code(116))
+    hook hold
+      call advance(read(r), code(1))
+      send back, code 9
+    hook test
+      call is-equal(read(c), code(110))
+    hook hold
+      call advance(read(r), code(1))
+      send back, code 10
+    hook test
+      call is-equal(read(c), code(114))
+    hook hold
+      call advance(read(r), code(1))
+      send back, code 13
+    hook test
+      call is-equal(read(c), code(102))
+    hook hold
+      call advance(read(r), code(1))
+      send back, code 12
+    hook test
+      call is-equal(read(c), code(118))
+    hook hold
+      call advance(read(r), code(1))
+      send back, code 11
+    hook test
+      call is-equal(read(c), code(48))
+    hook hold
+      fork test
+        hook test
+          call is-ascii-digit(call(peek, read(r), code(1)))
+        hook hold
+          call refuse-here(read(r), text(<a zero escape followed by a digit: write the code point in hex>))
+      call advance(read(r), code(1))
+      send back, code 0
+    hook test
+      call or
+        call is-equal(read(c), code(120))
+        call is-equal(read(c), code(117))
+    hook hold
+      call advance(read(r), code(1))
+      fork test
+        hook test
+          call is-equal(call(peek, read(r), code(0)), code(123))
+        hook hold
+          call advance(read(r), code(1))
+          save value, code 0
+          save digits, code 0
+          save turns-b, code 0
+          save limit-b
+            call add(read(r/runes/length), code(3))
+          walk test
+            down
+              call subtract(read(limit-b), read(turns-b))
+            hook test
+              call and
+                call is-minimum(call(hex-value, call(peek, read(r), code(0))), code(0))
+                call is-below(read(turns-b), read(limit-b))
+            hook step
+              save turns-b
+                call add(read(turns-b), code(1))
+              save value
+                call add
+                  call multiply(read(value), code(16))
+                  call hex-value(call(peek, read(r), code(0)))
+              save digits
+                call add(read(digits), code(1))
+              fork test
+                hook test
+                  call is-above(read(value), read(last-code-point))
+                hook hold
+                  call refuse-here(read(r), text(<a code point above 10FFFF>))
+              call advance(read(r), code(1))
+          fork test
+            hook test
+              call or
+                call is-equal(read(digits), code(0))
+                call not(call(is-equal, call(peek, read(r), code(0)), code(125)))
+            hook hold
+              call refuse-here(read(r), text(<a code point escape takes hex digits, then a closing brace>))
+          call advance(read(r), code(1))
+          send back, read value
+      # \xHH or \uHHHH
+      save width, code 2
+      fork test
+        hook test
+          call is-equal(read(c), code(117))
+        hook hold
+          save width, code 4
+      save value, code 0
+      save k, code 0
+      walk test
+        down
+          call subtract(read(width), read(k))
+        hook test
+          call is-below(read(k), read(width))
+        hook step
+          save d
+            call hex-value(call(peek, read(r), code(0)))
+          fork test
+            hook test
+              call is-below(read(d), code(0))
+            hook hold
+              call refuse-here(read(r), text(<a hex escape takes two digits, a unicode escape four, or either takes a code point in braces>))
+          save value
+            call add
+              call multiply(read(value), code(16))
+              read d
+          call advance(read(r), code(1))
+          save k
+            call add(read(k), code(1))
+      send back, read value
+  fork test
+    hook test
+      call or
+        call or
+          call is-ascii-letter(read(c))
+          call is-ascii-digit(read(c))
+        call is-below(read(c), code(0))
+    hook hold
+      send back, code -1
+  call advance(read(r), code(1))
+  send back, read c
+
+# an escape outside a class, from its backslash
+task parse-escape
+  take r, like reading
+  like piece
+  call advance(read(r), code(1))
+  save c
+    call peek(read(r), code(0))
+  save class
+    call escape-class(read(c))
+  fork test
+    hook test
+      call is-above(read(class/length), code(0))
+    hook hold
+      call advance(read(r), code(1))
+      send back
+        make ranges
+          bind set, read class
+  fork test
+    hook test
+      call or
+        call is-equal(read(c), code(112))
+        call is-equal(read(c), code(80))
+    hook hold
+      call advance(read(r), code(1))
+      send back
+        make ranges
+          bind set
+            call read-property(read(r), call(is-equal, read(c), code(80)))
+    hook test
+      call is-equal(read(c), code(98))
+    hook hold
+      call advance(read(r), code(1))
+      send back
+        make edge
+          bind kind, read edge-word
+    hook test
+      call is-equal(read(c), code(66))
+    hook hold
+      call advance(read(r), code(1))
+      send back
+        make edge
+          bind kind, read edge-not-word
+    hook test
+      call is-equal(read(c), code(65))
+    hook hold
+      call advance(read(r), code(1))
+      send back
+        make edge
+          bind kind, read edge-text-start
+    hook test
+      call is-equal(read(c), code(122))
+    hook hold
+      call advance(read(r), code(1))
+      send back
+        make edge
+          bind kind, read edge-text-end
+    hook test
+      call is-equal(read(c), code(107))
+    hook hold
+      call advance(read(r), code(1))
+      fork test
+        hook test
+          call not(call(is-equal, call(peek, read(r), code(0)), code(60)))
+        hook hold
+          send back
+            call refuse-here(read(r), text(<a named back reference takes a group name in angle brackets>))
+      call advance(read(r), code(1))
+      save name
+        call read-group-name(read(r))
+      save index, code 0
+      save k, code 1
+      walk list, read r/names
+        hook next
+          take site, name each
+          fork test
+            hook test
+              call and
+                call is-equal(read(each), read(name))
+                call is-equal(read(index), code(0))
+            hook hold
+              save index, read k
+          save k
+            call add(read(k), code(1))
+      fork test
+        hook test
+          call is-equal(read(index), code(0))
+        hook hold
+          send back
+            call refuse-here(read(r), text(<no group is named {name}>))
+      send back
+        make refer
+          bind index, read index
+          bind fold
+            call has-flag(read(r), call(flag-i))
+    hook test
+      call and
+        call is-ascii-digit(read(c))
+        call not(call(is-equal, read(c), code(48)))
+    hook hold
+      save value
+        call read-decimal(read(r))
+      fork test
+        hook test
+          call is-above(read(value), read(r/total))
+        hook hold
+          send back
+            call refuse-here(read(r), text(<back reference {value} names a group the pattern does not have>))
+      send back
+        make refer
+          bind index, read value
+          bind fold
+            call has-flag(read(r), call(flag-i))
+  save code
+    call read-escaped-code(read(r))
+  fork test
+    hook test
+      call is-below(read(code), code(0))
+    hook hold
+      send back
+        call refuse-here(read(r), text(<an escape this reader does not know>))
+  send back
+    call letter-piece(read(r), read(code))
+
+# a bracketed class, from its [ to its ], as a set
+task parse-class
+  take r, like reading
+  like list
+    like number
+  save start
+    call position(read(r))
+  call advance(read(r), code(1))
+  save negate, false
+  fork test
+    hook test
+      call is-equal(call(peek, read(r), code(0)), code(94))
+    hook hold
+      save negate, true
+      call advance(read(r), code(1))
+  save ranges, make list
+  save first, true
+  save going, true
+  save turns-a, code 0
+  save limit-a
+    call add(read(r/runes/length), code(3))
+  walk test
+    down
+      call subtract(read(limit-a), read(turns-a))
+    hook test
+      call and
+        read going
+        call is-below(read(turns-a), read(limit-a))
+    hook step
+      save turns-a
+        call add(read(turns-a), code(1))
+      save c
+        call peek(read(r), code(0))
+      fork test
+        hook test
+          call is-below(read(c), code(0))
+        hook hold
+          call refuse-pattern(read(start), text(<a [ with no ] after it>))
+      fork test
+        hook test
+          call is-equal(read(c), code(93))
+        hook hold
+          call advance(read(r), code(1))
+          save going, false
+          turn next
+      # one member: a set from an escape class, or a code point that may start a range
+      save low
+        call class-member(read(r), read(ranges))
+      fork test
+        hook test
+          call is-below(read(low), code(0))
+        hook hold
+          turn next
+      fork test
+        hook test
+          call and
+            call is-equal(call(peek, read(r), code(0)), code(45))
+            call not(call(is-equal, call(peek, read(r), code(1)), code(93)))
+        hook hold
+          call advance(read(r), code(1))
+          save high
+            call class-member(read(r), read(ranges))
+          fork test
+            hook test
+              call is-below(read(high), code(0))
+            hook hold
+              call refuse-here(read(r), text(<a range in a class cannot end at a class escape>))
+          fork test
+            hook test
+              call is-below(read(high), read(low))
+            hook hold
+              call refuse-here(read(r), text(<a range whose end comes before its start>))
+          call ranges/push(read(low))
+          call ranges/push(read(high))
+        hook miss
+          call ranges/push(read(low))
+          call ranges/push(read(low))
+  save set
+    call normalize-set(read(ranges))
+  fork test
+    hook test
+      call has-flag(read(r), call(flag-i))
+    hook hold
+      save set
+        call close-under-case(read(set))
+  fork test
+    hook test
+      read negate
+    hook hold
+      send back
+        call negate-set(read(set))
+  send back, read set
+
+# one member of a class at the position. A code point is answered; an escape class is added to `ranges` and -1 is
+# answered, so it cannot be one end of a range
+task class-member
+  take r, like reading
+  take ranges
+    like list
+      like number
+  like number
+  save c
+    call peek(read(r), code(0))
+  fork test
+    hook test
+      call not(call(is-equal, read(c), code(92)))
+    hook hold
+      call advance(read(r), code(1))
+      send back, read c
+  call advance(read(r), code(1))
+  save e
+    call peek(read(r), code(0))
+  save class
+    call escape-class(read(e))
+  save set, make list
+  save was-class, false
+  fork test
+    hook test
+      call is-above(read(class/length), code(0))
+    hook hold
+      call advance(read(r), code(1))
+      save set, read class
+      save was-class, true
+    hook test
+      call or
+        call is-equal(read(e), code(112))
+        call is-equal(read(e), code(80))
+    hook hold
+      call advance(read(r), code(1))
+      save set
+        call read-property(read(r), call(is-equal, read(e), code(80)))
+      save was-class, true
+    hook test
+      call is-equal(read(e), code(45))
+    hook hold
+      call advance(read(r), code(1))
+      send back, code 45
+  fork test
+    hook test
+      read was-class
+    hook hold
+      walk list, read set
+        hook next
+          take site, name n
+          call ranges/push(read(n))
+      send back, code -1
+  save code
+    call read-escaped-code(read(r))
+  fork test
+    hook test
+      call is-below(read(code), code(0))
+    hook hold
+      call refuse-here(read(r), text(<an escape this reader does not know inside a class>))
+  send back, read code

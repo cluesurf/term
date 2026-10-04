@@ -3046,7 +3046,7 @@ const OWED: Record<HoldOrigin, string> = {
   down: 'this `down` measure is not shown to stay a natural number and fall',
   index: 'this read is not shown to be inside the list',
   zero: 'this division is not shown to be by something other than zero',
-  ends: 'this walk is not shown to end (give it a `down` measure, or note why it runs forever)',
+  ends: 'this walk is not shown to end (give it a `down` measure, or `mark roam` on a task meant to run forever)',
   given: 'a promised fact',
 }
 

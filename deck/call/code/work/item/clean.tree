@@ -1,0 +1,360 @@
+# What every component does to the text it is handed before it measures a cell of it: neutralize it (no control
+# character, escape or bidirectional override reaches the terminal), fold it to ASCII when the room is ASCII, and
+# crop or pad it by display width.
+
+load @term/base/text
+  find split
+  find trim-end
+  find contains
+  find starts-with
+
+load @term/base/text/unicode
+  find to-runes
+  find rune-to-text
+
+load ./standard
+  find standard
+
+load ./layout
+  find span
+  find line
+  find room
+  find make-span
+  find find-symbol
+  find make-spaces
+  find restyle-span
+  find holds-text
+
+load ./measure
+  find neutralize
+  find measure-text
+  find make-grains
+
+# one line of somebody else's text, safe to print in this room, with every number joined to its unit (section 8)
+task clean-text
+  take value, like text
+  take room, like room
+  like text
+  back glue-units(neutralize(value, room/standard, room/ascii), room/standard)
+
+# the unit words of the standard: a duration's and a size's
+task list-unit-words
+  take standard, like standard
+  like list, like text
+  save out, make list
+  save rule, standard/durations
+  out/push rule/millisecond-unit
+  out/push rule/second-unit
+  out/push rule/minute-unit
+  out/push rule/hour-unit
+  walk standard/sizes/units
+    take one
+    out/push one
+  back out
+
+# is a word a number as written: digits, with `.` `,` inside, a sign in front
+task is-number-word
+  take value, like text
+  like boolean
+  save digits, 0
+  save at, 0
+  walk to-runes(value)
+    take rune
+    save digit, and(is-minimum(rune, 48), is-maximum(rune, 57))
+    save mark, or(is-equal(rune, 46), is-equal(rune, 44))
+    save sign, and(is-equal(at, 0), or(is-equal(rune, 45), is-equal(rune, 43)))
+    fork test, or(digit, or(mark, sign))
+      miss
+        back false
+    fork test, digit
+      hold
+        save digits, add(digits, 1)
+    save at, add(at, 1)
+  back is-above(digits, 0)
+
+# a number and the unit after it joined by a no-break space: `100 ms`, `18.4 MB`, so a wrap never parts them. Words
+# that are not units (`31 rows`) stay apart, as the mockups wrap them
+task glue-units
+  take value, like text
+  take standard, like standard
+  like text
+  save words, split(value, < >)
+  fork test, is-below(words/length, 2)
+    hold
+      back value
+  save units, list-unit-words(standard)
+  save glue, rune-to-text(160)
+  save out, <>
+  save at, 0
+  save previous, <>
+  walk words
+    take word
+    fork test, is-above(at, 0)
+      hold
+        fork test, and(is-number-word(previous), holds-text(units, word))
+          hold
+            save out, <{out}{glue}>
+          miss
+            save out, <{out} >
+    save out, <{out}{word}>
+    save previous, word
+    save at, add(at, 1)
+  back out
+
+# spans whose values are cleaned, styles kept
+task clean-spans
+  take spans, like list, like span
+  take room, like room
+  like list, like span
+  save out, make list
+  walk spans
+    take one
+    out/push restyle-span(one, clean-text(one/value, room))
+  back out
+
+# section 8's links: a span that is a URL links to itself, and a location links to its file under the room's root. The
+# target rides on the span through wrapping, so a URL broken across lines still opens whole, and the paint target
+# decides whether it is emitted at all. A span that already names a target keeps it
+task link-spans
+  take spans, like list, like span
+  take location, like boolean
+  take room, like room
+  like list, like span
+  save out, make list
+  walk spans
+    take one
+    save copy, one
+    fork test, is-equal(one/href, <>)
+      hold
+        save copy/href, find-link(one/value, location, room)
+    out/push copy
+  back out
+
+# the link target of one value, or empty. A value holding a space is a phrase, not an address
+task find-link
+  take value, like text
+  take location, like boolean
+  take room, like room
+  like text
+  save rule, room/standard/environment
+  fork test, or(is-equal(value, <>), contains(value, < >))
+    hold
+      back <>
+  walk rule/link-schemes
+    take scheme
+    fork test, starts-with(value, scheme)
+      hold
+        back value
+  fork test, and(location, is-unequal(room/root, <>))
+    miss
+      back <>
+  save path, strip-place(value)
+  fork test, starts-with(path, </>)
+    hold
+      back <{rule/file-scheme}{path}>
+  back <{rule/file-scheme}{room/root}/{path}>
+
+# a location without its `:line` or `:line:col`, which a file URL has no place for
+task strip-place
+  take value, like text
+  like text
+  save parts, split(value, <:>)
+  save keep, parts/length
+  save dropped, 0
+  walk test
+    hook test, and(is-above(keep, 1), is-below(dropped, 2))
+    hook hold
+      save last-at, subtract(keep, 1)
+      fork test, is-digits(parts/{last-at})
+        miss
+          halt
+      save keep, last-at
+      save dropped, add(dropped, 1)
+  save out, <>
+  save at, 0
+  walk parts
+    take part
+    fork test, is-below(at, keep)
+      hold
+        fork test, is-above(at, 0)
+          hold
+            save out, <{out}:>
+        save out, <{out}{part}>
+    save at, add(at, 1)
+  back out
+
+# one or more decimal digits and nothing else
+task is-digits
+  take value, like text
+  like boolean
+  fork test, is-equal(value, <>)
+    hold
+      back false
+  walk to-runes(value)
+    take rune
+    fork test, and(is-minimum(rune, 48), is-maximum(rune, 57))
+      miss
+        back false
+  back true
+
+# spans whose roles all become one role: a debug item is dim from end to end
+task tint-spans
+  take spans, like list, like span
+  take role, like text
+  like list, like span
+  save out, make list
+  walk spans
+    take one
+    save copy, one
+    save copy/role, role
+    out/push copy
+  back out
+
+# the cells a list of spans takes
+task measure-spans
+  take spans, like list, like span
+  like number
+  save total, 0
+  walk spans
+    take one
+    save total, add(total, measure-text(one/value))
+  back total
+
+# the text split at its line breaks, each line on its own (section 7: a multi-line message keeps its breaks). A
+# carriage return before a line feed goes with it
+task split-lines
+  take value, like text
+  like list, like text
+  save out, make list
+  walk split(value, <\n>)
+    take one
+    out/push trim-return(one)
+  back out
+
+task trim-return
+  take value, like text
+  like text
+  save grains, make-grains(value)
+  save count, grains/length
+  fork test, is-equal(count, 0)
+    hold
+      back value
+  save last, subtract(count, 1)
+  save tail, grains/{last}
+  fork test, is-equal(tail/value, <\r>)
+    miss
+      back value
+  save out, <>
+  save at, 0
+  walk test
+    hook test, is-below(at, last)
+    hook hold
+      save one, grains/{at}
+      save out, <{out}{one/value}>
+      save at, add(at, 1)
+  back out
+
+# spans cut to `width` cells, ending in `…` when anything was cut. Never wrapped: a code frame, a table row and a
+# tree line are cropped (section 7)
+task crop-spans
+  take spans, like list, like span
+  take width, like number
+  take room, like room
+  like list, like span
+  fork test, is-maximum(measure-spans(spans), width)
+    hold
+      back spans
+  save more, find-symbol(room, <more>)
+  save limit, subtract(width, measure-text(more))
+  save out, make list
+  save used, 0
+  save role, <text>
+  walk spans
+    take one
+    save kept, <>
+    save full, true
+    walk make-grains(one/value)
+      take grain
+      fork test, is-maximum(add(used, grain/wide), limit)
+        hold
+          save kept, <{kept}{grain/value}>
+          save used, add(used, grain/wide)
+        miss
+          save full, false
+          halt
+    fork test, is-unequal(kept, <>)
+      hold
+        out/push restyle-span(one, kept)
+    save role, one/role
+    fork test, full
+      miss
+        halt
+  out/push make-span(more, <dim>)
+  back out
+
+# spans padded with spaces to `width` cells
+task pad-spans
+  take spans, like list, like span
+  take width, like number
+  like list, like span
+  save out, make list
+  walk spans
+    take one
+    out/push one
+  save gap, subtract(width, measure-spans(spans))
+  fork test, is-above(gap, 0)
+    hold
+      out/push make-span(make-spaces(gap), <text>)
+  back out
+
+# lines with no trailing spaces: a line ends at its last printed cell. A focused choice keeps its highlight's
+# trailing space, because the highlight is the whole choice (section 13)
+task trim-lines
+  take lines, like list, like line
+  like list, like line
+  save out, make list
+  walk lines
+    take one
+    out/push trim-line(one)
+  back out
+
+task trim-line
+  take one, like line
+  like line
+  save spans, make list
+  walk one/spans
+    take piece
+    spans/push piece
+  walk test
+    hook test, is-above(spans/length, 0)
+    hook hold
+      save last-at, subtract(spans/length, 1)
+      save last, spans/{last-at}
+      fork test, last/focus
+        hold
+          halt
+      save trimmed, trim-end(last/value)
+      fork test, is-equal(trimmed, last/value)
+        hold
+          halt
+      spans/pop()
+      fork test, is-unequal(trimmed, <>)
+        hold
+          spans/push restyle-span(last, trimmed)
+          halt
+  back make line, spans(spans)
+
+# a text cut to `width` cells with `…` at the end
+task crop-text
+  take value, like text
+  take width, like number
+  take room, like room
+  like text
+  save spans, make list
+  spans/push make-span(value, <text>)
+  save cut, crop-spans(spans, width, room)
+  save out, <>
+  walk cut
+    take one
+    save out, <{out}{one/value}>
+  back out

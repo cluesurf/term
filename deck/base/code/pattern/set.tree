@@ -1,0 +1,359 @@
+# Sets of code points, as ./node.tree writes them: a sorted list of (start, end) pairs, both ends included, never
+# overlapping or touching. Every set the reader builds goes through `merge-sets` or `normalize-set`, so the shape
+# holds everywhere else without being checked again.
+
+mark stable
+
+load @term/base/list
+  find list
+
+host last-code-point, code 1114111
+
+# the number at `index`, or `fallback` past either end. Every list read in the pattern engine goes through a guard
+# like this one, so each read is proven inside its list
+task number-at
+  take values
+    like list
+      like number
+  take index, like number
+  take fallback, like number
+  like number
+  fork test
+    hook test
+      call and
+        call is-minimum(read(index), code(0))
+        call is-below(read(index), read(values/length))
+    hook hold
+      send back, read values/{index}
+  send back, read fallback
+
+# write `value` at `index` when the index is inside the list; answers whether it was. Every list write in the pattern
+# engine goes through this, so each one is proven inside its list
+task put-number
+  take values
+    like list
+      like number
+  take index, like number
+  take value, like number
+  like boolean
+  fork test
+    hook test
+      call and
+        call is-minimum(read(index), code(0))
+        call is-below(read(index), read(values/length))
+    hook hold
+      save values/{index}, read value
+      send back, true
+  send back, false
+
+# a new list holding the same numbers
+task copy-numbers
+  take values
+    like list
+      like number
+  like list
+    like number
+  save out, make list
+  walk list, read values
+    hook next
+      take site, name value
+      call out/push(read(value))
+  send back, read out
+
+# whether the code point is in the set: a binary search over the ranges
+task set-has
+  take set
+    like list
+      like number
+  take code, like number
+  like boolean
+  save low, code 0
+  save high
+    call divide(read(set/length), code(2))
+  # each turn halves high - low, so 64 turns cover any list a machine holds; the count is what the prover sees end
+  save turns, code 0
+  walk test
+    down
+      call subtract(code(64), read(turns))
+    hook test
+      call and
+        call is-below(read(low), read(high))
+        call is-below(read(turns), code(64))
+    hook step
+      save turns
+        call add(read(turns), code(1))
+      save middle
+        call divide
+          call add(read(low), read(high))
+          code 2
+      save start
+        call number-at(read(set), call(multiply, read(middle), code(2)), code(0))
+      save end
+        call number-at
+          read set
+          call add
+            call multiply(read(middle), code(2))
+            code 1
+          code -1
+      fork test
+        hook test
+          call is-below(read(code), read(start))
+        hook hold
+          save high, read middle
+        hook test
+          call is-above(read(code), read(end))
+        hook hold
+          save low
+            call add(read(middle), code(1))
+        hook miss
+          send back, true
+  send back, false
+
+# the set holding one range
+task range-set
+  take start, like number
+  take end, like number
+  like list
+    like number
+  save out, make list
+  fork test
+    hook test
+      call is-maximum(read(start), read(end))
+    hook hold
+      call out/push(read(start))
+      call out/push(read(end))
+  send back, read out
+
+# append the range to `out`, joining it to the last range when they overlap or touch. The ranges must arrive in order
+# of their starts, which is what keeps every set this module builds in shape
+task push-range
+  take out
+    like list
+      like number
+  take start, like number
+  take end, like number
+  like number
+  save n, read out/length
+  fork test
+    hook test
+      call is-minimum(read(n), code(2))
+    hook hold
+      save last
+        call number-at(read(out), call(subtract, read(n), code(1)), code(-1))
+      fork test
+        hook test
+          call is-minimum
+            read last
+            call subtract(read(start), code(1))
+        hook hold
+          fork test
+            hook test
+              call is-above(read(end), read(last))
+            hook hold
+              call put-number(read(out), call(subtract, read(n), code(1)), read(end))
+          send back, read out/length
+  call out/push(read(start))
+  call out/push(read(end))
+  send back, read out/length
+
+# the union of two sets: a merge of the two lists of ranges by their starts
+task merge-sets
+  take a
+    like list
+      like number
+  take b
+    like list
+      like number
+  like list
+    like number
+  save out, make list
+  save i, code 0
+  save j, code 0
+  # each turn takes one range from one list, so the turns are at most the two lengths together
+  save limit
+    call add(call(add, read(a/length), read(b/length)), code(2))
+  save turns, code 0
+  walk test
+    down
+      call subtract(read(limit), read(turns))
+    hook test
+      call and
+        call or
+          call is-below(read(i), read(a/length))
+          call is-below(read(j), read(b/length))
+        call is-below(read(turns), read(limit))
+    hook step
+      save turns
+        call add(read(turns), code(1))
+      save a-start
+        call number-at(read(a), read(i), code(-1))
+      save b-start
+        call number-at(read(b), read(j), code(-1))
+      # take from `a` while it has ranges and its next one starts first
+      save from-a
+        call and
+          call is-below(read(i), read(a/length))
+          call or
+            call is-minimum(read(j), read(b/length))
+            call is-maximum(read(a-start), read(b-start))
+      fork test
+        hook test
+          call and
+            read from-a
+            call is-below(read(i), read(a/length))
+        hook hold
+          call push-range
+            read out
+            read a-start
+            call number-at(read(a), call(add, read(i), code(1)), code(-1))
+          save i
+            call add(read(i), code(2))
+        hook miss
+          call push-range
+            read out
+            read b-start
+            call number-at(read(b), call(add, read(j), code(1)), code(-1))
+          save j
+            call add(read(j), code(2))
+  send back, read out
+
+# every code point the set does not hold
+task negate-set
+  take set
+    like list
+      like number
+  like list
+    like number
+  save out, make list
+  save next, code 0
+  save i, code 0
+  walk test
+    down
+      call subtract(read(set/length), read(i))
+    hook test
+      call is-below(read(i), read(set/length))
+    hook step
+      save start
+        call number-at(read(set), read(i), code(0))
+      save end
+        call number-at(read(set), call(add, read(i), code(1)), code(-1))
+      fork test
+        hook test
+          call is-above(read(start), read(next))
+        hook hold
+          call out/push(read(next))
+          call out/push
+            call subtract(read(start), code(1))
+      save next
+        call add(read(end), code(1))
+      save i
+        call add(read(i), code(2))
+  fork test
+    hook test
+      call is-maximum(read(next), read(last-code-point))
+    hook hold
+      call out/push(read(next))
+      call out/push(read(last-code-point))
+  send back, read out
+
+# the code points in both sets
+task intersect-sets
+  take a
+    like list
+      like number
+  take b
+    like list
+      like number
+  like list
+    like number
+  send back
+    call negate-set
+      call merge-sets
+        call negate-set(read(a))
+        call negate-set(read(b))
+
+# the code points in `a` and not in `b`
+task subtract-sets
+  take a
+    like list
+      like number
+  take b
+    like list
+      like number
+  like list
+    like number
+  send back
+    call intersect-sets
+      read a
+      call negate-set(read(b))
+
+# whether two sets hold no code point in common
+task sets-are-apart
+  take a
+    like list
+      like number
+  take b
+    like list
+      like number
+  like boolean
+  save both
+    call intersect-sets(read(a), read(b))
+  send back
+    call is-equal(read(both/length), code(0))
+
+# a set's ranges added in any order, put in shape
+task normalize-set
+  take ranges
+    like list
+      like number
+  like list
+    like number
+  save out, make list
+  save i, code 0
+  walk test
+    down
+      call subtract(read(ranges/length), read(i))
+    hook test
+      call is-below
+        call add(read(i), code(1))
+        read ranges/length
+    hook step
+      save start
+        call number-at(read(ranges), read(i), code(0))
+      save end
+        call number-at(read(ranges), call(add, read(i), code(1)), code(-1))
+      save out
+        call merge-sets
+          read out
+          call range-set(read(start), read(end))
+      save i
+        call add(read(i), code(2))
+  send back, read out
+
+# how many code points the set holds
+task set-size
+  take set
+    like list
+      like number
+  like number
+  save total, code 0
+  save i, code 0
+  walk test
+    down
+      call subtract(read(set/length), read(i))
+    hook test
+      call is-below
+        call add(read(i), code(1))
+        read set/length
+    hook step
+      save total
+        call add
+          read total
+          call subtract
+            call add
+              call number-at(read(set), call(add, read(i), code(1)), code(0))
+              code 1
+            call number-at(read(set), read(i), code(0))
+      save i
+        call add(read(i), code(2))
+  send back, read total

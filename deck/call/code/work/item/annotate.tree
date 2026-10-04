@@ -1,0 +1,79 @@
+# CI annotations (section 17): under `CI`, a failed or warning item also becomes the CI system's annotation, the
+# GitHub Actions workflow command that every major CI reads: `::error file=code/area.tree,line=14,col=12::There is
+# no task named multipy`. A line on stdout beside the human view on stderr, so the human view is unchanged.
+#
+# ESCAPED as the workflow-command format requires: `%`, CR and LF in the message, and `,` and `:` in a property too,
+# so a subject cannot end the command early or forge a second one.
+
+load ./event
+  find event
+
+load ./format
+  find spans-text
+
+load @term/base/text/unicode
+  find to-runes
+  find rune-to-text
+
+task escape-annotation
+  take value, like text
+  take property, like boolean
+  like text
+  save out, <>
+  walk to-runes(value)
+    take rune
+    save piece, rune-to-text(rune)
+    fork test, is-equal(rune, 37)
+      hold
+        save piece, <%25>
+    fork test, is-equal(rune, 13)
+      hold
+        save piece, <%0D>
+    fork test, is-equal(rune, 10)
+      hold
+        save piece, <%0A>
+    fork test, and(property, is-equal(rune, 58))
+      hold
+        save piece, <%3A>
+    fork test, and(property, is-equal(rune, 44))
+      hold
+        save piece, <%2C>
+    save out, <{out}{piece}>
+  back out
+
+# the annotation line for an event, or the empty text when it gets none
+task annotate-event
+  take event, like event
+  like text
+  save level, <>
+  fork test, is-equal(event/glyph, <failed>)
+    hold
+      save level, <error>
+  fork test, is-equal(event/glyph, <warning>)
+    hold
+      save level, <warning>
+  fork test, is-equal(level, <>)
+    hold
+      back <>
+  save message, spans-text(event/subject)
+  walk event/message
+    take one
+    save message, <{message}\n{one}>
+  save where, <>
+  save place, event/place
+  fork test, is-unequal(place/path, <>)
+    hold
+      save path, escape-annotation(place/path, true)
+      save where, < file={path}>
+      fork test, is-above(place/line, 0)
+        hold
+          save where, <{where},line={place/line}>
+      fork test, is-above(place/column, 0)
+        hold
+          save where, <{where},col={place/column}>
+  save title, escape-annotation(event/verb, true)
+  save said, escape-annotation(message, false)
+  fork test, is-equal(where, <>)
+    hold
+      back <::{level} title={title}::{said}>
+  back <::{level}{where},title={title}::{said}>

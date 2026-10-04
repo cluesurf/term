@@ -56,7 +56,7 @@ type Ledger = {
   native: string[]
   axioms: string[]
   unending: string[]
-  // tasks marked `note roam`: meant to run forever, so their walks owe no termination
+  // tasks marked `mark roam`: meant to run forever, so their walks owe no termination
   roaming: string[]
 }
 
@@ -307,7 +307,7 @@ export async function callHold(input: {
     )
     console.log(
       fade(
-        `  trusted: ${ledger.native.length} impure task(s) (reach native code, are async, or have no body), ${ledger.axioms.length} axiom(s), ${ledger.unending.length} recursion(s) not shown to end, ${ledger.roaming.length} task(s) marked to run forever (note roam), and one assumption: native code handed only scalars reaches no Term value`,
+        `  trusted: ${ledger.native.length} impure task(s) (reach native code, are async, or have no body), ${ledger.axioms.length} axiom(s), ${ledger.unending.length} recursion(s) not shown to end, ${ledger.roaming.length} task(s) marked to run forever (mark roam), and one assumption: native code handed only scalars reaches no Term value`,
       ),
     )
     // the linear prover's refutations and the sum-of-squares provers' Gram matrices are replayed by a separate

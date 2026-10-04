@@ -1,0 +1,235 @@
+# The environment (section 17), decided: color or none, 16 colors or 24-bit, Unicode or ASCII, links or none, a live
+# region or plain lines, CI annotations or none.
+#
+# A PURE DECISION OVER WHAT IT IS HANDED: the variables, whether the human view's stream (stderr) is a terminal, the
+# `--color` flag and the platform. The names it reads are the standard's (`NO_COLOR`, `FORCE_COLOR`, ...), never a
+# literal here, and `emit.tree` is the one place that reads the real environment.
+#
+# THE ORDER, when two disagree: `--color` wins, then `FORCE_COLOR` (as node itself orders them: FORCE_COLOR overrides
+# NO_COLOR), then `NO_COLOR`, then whether the stream is a terminal. `FORCE_COLOR=0` and `=false` mean off.
+#
+# ASCII under `TERM=dumb`, or when the locale is not UTF-8: the first of `LC_ALL`, `LC_CTYPE`, `LANG` that is set
+# decides, and when none is set the locale is POSIX, which is not UTF-8. Windows does not use those variables and its
+# terminals take UTF-8, so the platform `windows` is Unicode unless `TERM=dumb`.
+
+load @term/base/text
+  find to-lower-case
+  find contains
+
+load @term/base/text/unicode
+  find to-runes
+  find rune-to-text
+
+load ./standard
+  find standard
+
+load ./layout
+  find holds-text
+
+form env-entry
+  link name, like text
+  link value, like text
+
+form style
+  # <none>, <ansi> or <truecolor>
+  link depth, like text
+  # <dark>, <light> or <unknown>
+  link theme, like text
+  link ascii, like boolean
+  link links, like boolean
+  # redraw in place: an interactive terminal
+  link live, like boolean
+  link annotate, like boolean
+
+# a variable's value, empty when it is not set
+task read-variable
+  take variables, like list, like env-entry
+  take name, like text
+  like text
+  walk variables
+    take one
+    fork test, is-equal(one/name, name)
+      hold
+        back one/value
+  back <>
+
+task has-variable-set
+  take variables, like list, like env-entry
+  take name, like text
+  like boolean
+  walk variables
+    take one
+    fork test, is-equal(one/name, name)
+      hold
+        back true
+  back false
+
+# a flag-like variable: set, and not `0` or `false`
+task is-on
+  take variables, like list, like env-entry
+  take name, like text
+  take standard, like standard
+  like boolean
+  fork test, has-variable-set(variables, name)
+    miss
+      back false
+  save value, to-lower-case(read-variable(variables, name))
+  back is-equal(holds-text(standard/environment/force-off-values, value), false)
+
+task decide-color
+  take variables, like list, like env-entry
+  take terminal, like boolean
+  take flag, like text
+  take standard, like standard
+  like boolean
+  save rule, standard/environment
+  fork test, is-equal(flag, <never>)
+    hold
+      back false
+  fork test, is-equal(flag, <always>)
+    hold
+      back true
+  fork test, has-variable-set(variables, rule/force-color)
+    hold
+      back is-on(variables, rule/force-color, standard)
+  # no-color.org: present and not empty
+  fork test, is-unequal(read-variable(variables, rule/no-color), <>)
+    hold
+      back false
+  back terminal
+
+task decide-ascii
+  take variables, like list, like env-entry
+  take platform, like text
+  take standard, like standard
+  like boolean
+  save rule, standard/environment
+  fork test, is-equal(read-variable(variables, rule/terminal), rule/dumb)
+    hold
+      back true
+  fork test, is-equal(platform, <windows>)
+    hold
+      back false
+  walk rule/locale-names
+    take name
+    save value, to-lower-case(read-variable(variables, name))
+    fork test, is-unequal(value, <>)
+      hold
+        walk rule/utf-markers
+          take marker
+          fork test, contains(value, marker)
+            hold
+              back false
+        back true
+  back true
+
+# the terminal's background, from `COLORFGBG` (`15;0` is light text on black): dark, light, or unknown
+task decide-theme
+  take variables, like list, like env-entry
+  take standard, like standard
+  like text
+  save value, read-variable(variables, standard/environment/background-variable)
+  fork test, is-equal(value, <>)
+    hold
+      back <unknown>
+  save parts, split-last(value)
+  save back-color, read-whole(parts)
+  fork test, or(is-equal(back-color, 7), is-equal(back-color, 15))
+    hold
+      back <light>
+  fork test, and(is-minimum(back-color, 0), is-maximum(back-color, 8))
+    hold
+      back <dark>
+  back <unknown>
+
+# a whole number written in decimal digits, or -1 for anything else. Never raises: a variable is somebody else's text
+task read-whole
+  take value, like text
+  like number
+  save total, 0
+  save seen, false
+  walk to-runes(value)
+    take rune
+    fork test, and(is-minimum(rune, 48), is-maximum(rune, 57))
+      miss
+        back -1
+    fork test, is-above(total, 100000000)
+      hold
+        back -1
+    save total, add(multiply(total, 10), subtract(rune, 48))
+    save seen, true
+  fork test, seen
+    miss
+      back -1
+  back total
+
+# the text after the last `;`
+task split-last
+  take value, like text
+  like text
+  save out, <>
+  walk to-runes-of(value)
+    take piece
+    fork test, is-equal(piece, <;>)
+      hold
+        save out, <>
+      miss
+        save out, <{out}{piece}>
+  back out
+
+task to-runes-of
+  take value, like text
+  like list, like text
+  save out, make list
+  save text-runes, to-runes(value)
+  walk text-runes
+    take rune
+    out/push rune-to-text(rune)
+  back out
+
+task decide-links
+  take variables, like list, like env-entry
+  take live, like boolean
+  take color, like boolean
+  take standard, like standard
+  like boolean
+  save rule, standard/environment
+  fork test, has-variable-set(variables, rule/force-hyperlink)
+    hold
+      back is-on(variables, rule/force-hyperlink, standard)
+  fork test, and(live, color)
+    miss
+      back false
+  fork test, holds-text(rule/hyperlink-programs, read-variable(variables, rule/program-variable))
+    hold
+      back true
+  walk rule/hyperlink-variables
+    take name
+    fork test, has-variable-set(variables, name)
+      hold
+        back true
+  back false
+
+# the whole decision
+task decide-style
+  take variables, like list, like env-entry
+  take terminal, like boolean
+  take flag, like text
+  take platform, like text
+  take standard, like standard
+  like style
+  save rule, standard/environment
+  save color, decide-color(variables, terminal, flag, standard)
+  save depth, <none>
+  fork test, color
+    hold
+      save depth, <ansi>
+      fork test, holds-text(rule/truecolor-values, to-lower-case(read-variable(variables, rule/color-term)))
+        hold
+          save depth, <truecolor>
+  save dumb, is-equal(read-variable(variables, rule/terminal), rule/dumb)
+  save live, and(terminal, is-equal(dumb, false))
+  save ascii, decide-ascii(variables, platform, standard)
+  save links, decide-links(variables, live, color, standard)
+  save annotate, is-on(variables, rule/ci, standard)
+  back make style, depth(depth), theme(decide-theme(variables, standard)), ascii(ascii), links(links), live(live), annotate(annotate)

@@ -1,0 +1,234 @@
+# The facts line (section 2 and 6): the clock first, then duration, status, size, counts and the rest, in the order
+# the standard lists them, joined by a dim `·`.
+#
+# A FACT IS A COMPONENT OF ITS OWN: `draw-fact` makes the spans of one fact by its name, and `draw-facts-line` puts
+# them in the standard's order, glues each separator to the fact before it (so a line can end in `·` and never start
+# with one, as the mockups wrap at 44 columns), and wraps the whole at the body column with a 2-cell hang.
+
+load ./standard
+  find standard
+
+load ./layout
+  find span
+  find line
+  find room
+  find make-span
+  find find-symbol
+  find indent-lines
+  find holds-text
+
+load ./event
+  find event
+  find tally
+
+load ./format
+  find format-clock
+  find format-duration
+  find format-size
+  find format-tally
+  find format-status
+  find group-number
+  find make-glue
+
+load ./clean
+  find clean-text
+  find tint-spans
+
+load ./wrap
+  find wrap-spans
+  find text-breaks
+
+# one fact's spans, by the standard's name for its position: `clock`, `duration`, `status`, `size`, `counts`,
+# `rest`. A fact the event does not have is an empty list. `counts` and `rest` hold several facts each, so they come
+# back as one list per fact from `list-facts`; this draws a single one
+form fact-spans
+  link spans, like list, like span
+
+# the clock in the display zone: dim, always first
+task draw-clock
+  take event, like event
+  take room, like room
+  like list, like span
+  save spans, make list
+  fork test, is-minimum(event/clock, 0)
+    hold
+      save shift, room/offset
+      fork test, room/utc
+        hold
+          save shift, 0
+      spans/push make-span(format-clock(event/clock, shift), <dim>)
+  back spans
+
+# the duration: numbers bright and units dim, the whole in the warning color over budget, `up` before an uptime
+task draw-duration
+  take event, like event
+  take room, like room
+  like list, like span
+  save spans, make list
+  fork test, is-minimum(event/duration, 0)
+    miss
+      back spans
+  save role, <text>
+  fork test, and(is-minimum(event/budget, 0), is-above(event/duration, event/budget))
+    hold
+      save role, <warning>
+  fork test, event/uptime
+    hold
+      spans/push make-span(room/standard/durations/uptime-word, <dim>)
+      spans/push make-span(make-glue(), <dim>)
+  walk format-duration(event/duration, room/standard, role)
+    take one
+    spans/push one
+  back spans
+
+task draw-status
+  take event, like event
+  take room, like room
+  like list, like span
+  save one, event/status
+  fork test, is-equal(one/kind, <>)
+    hold
+      back make list
+  back format-status(one/kind, one/value, clean-text(one/name, room), room/standard)
+
+task draw-size
+  take event, like event
+  take room, like room
+  like list, like span
+  fork test, is-minimum(event/bytes, 0)
+    miss
+      back make list
+  back format-size(event/bytes, room/standard)
+
+task draw-tally
+  take one, like tally
+  take room, like room
+  like list, like span
+  back format-tally(one/amount, clean-text(one/noun, room), clean-text(one/one, room), one/total, room/standard)
+
+# one of the rest: short words, dim
+task draw-rest
+  take value, like text
+  take room, like room
+  like list, like span
+  save spans, make list
+  spans/push make-span(clean-text(value, room), <dim>)
+  back spans
+
+# the order an event's facts take: its kind's own where the catalog gives one (a job's `#id` before its retries,
+# section 9), then any the kind's order leaves out in the general order of section 6, so no fact is ever dropped
+task fact-order
+  take event, like event
+  take standard, like standard
+  like list, like text
+  save general, standard/facts/order
+  walk standard/kinds
+    take one
+    fork test, and(is-equal(one/name, event/kind), is-above(one/order/length, 0))
+      hold
+        save out, make list
+        walk one/order
+          take name
+          out/push name
+        walk general
+          take name
+          fork test, holds-text(out, name)
+            miss
+              out/push name
+        back out
+  back general
+
+# the facts of an event in its order, each as its own spans
+task list-facts
+  take event, like event
+  take room, like room
+  like list, like fact-spans
+  save out, make list
+  walk fact-order(event, room/standard)
+    take name
+    fork test, is-equal(name, <clock>)
+      hold
+        push-fact(out, draw-clock(event, room))
+    fork test, is-equal(name, <tool>)
+      hold
+        walk event/tool
+          take one
+          push-fact(out, draw-rest(one, room))
+    fork test, and(is-equal(name, <zone>), is-unequal(event/zone, <>))
+      hold
+        push-fact(out, draw-rest(event/zone, room))
+    fork test, is-equal(name, <duration>)
+      hold
+        push-fact(out, draw-duration(event, room))
+    fork test, is-equal(name, <status>)
+      hold
+        push-fact(out, draw-status(event, room))
+    fork test, is-equal(name, <size>)
+      hold
+        push-fact(out, draw-size(event, room))
+    fork test, is-equal(name, <counts>)
+      hold
+        walk event/tallies
+          take one
+          push-fact(out, draw-tally(one, room))
+    fork test, is-equal(name, <rest>)
+      hold
+        walk event/facts
+          take one
+          push-fact(out, draw-rest(one, room))
+        # identical items collapsed into this one (section 11)
+        fork test, is-above(event/repeat, 1)
+          hold
+            save times, find-symbol(room, <times>)
+            save count, group-number(event/repeat, room/standard)
+            push-fact(out, draw-rest(<{times}{count}>, room))
+  back out
+
+task push-fact
+  take out, like list, like fact-spans
+  take spans, like list, like span
+  like void
+  fork test, is-above(spans/length, 0)
+    hold
+      out/push make fact-spans, spans(spans)
+
+# the facts as one run of spans: each fact, then a dim `·` glued to it with a no-break space, then a space to break at
+task join-facts
+  take facts, like list, like fact-spans
+  take room, like room
+  like list, like span
+  save out, make list
+  save mark, find-symbol(room, <separator>)
+  save glue, make-glue()
+  save at, 0
+  walk facts
+    take one
+    fork test, is-above(at, 0)
+      hold
+        out/push make-span(<{glue}{mark}>, <dim>)
+        out/push make-span(< >, <text>)
+    walk one/spans
+      take piece
+      out/push piece
+    save at, add(at, 1)
+  back out
+
+# the facts line of an item, at the body column, wrapped with a hang. No facts, no line. A debug item is dim from end
+# to end (section 9)
+task draw-facts-line
+  take event, like event
+  take room, like room
+  like list, like line
+  save facts, list-facts(event, room)
+  fork test, is-equal(facts/length, 0)
+    hold
+      back make list
+  save spans, join-facts(facts, room)
+  fork test, is-unequal(event/level, <>)
+    hold
+      save spans, tint-spans(spans, <dim>)
+  save body, room/standard/layout/body-column
+  save cells, subtract(room/width, body)
+  save hang, room/standard/layout/hang
+  save lines, wrap-spans(spans, cells, subtract(cells, hang), hang, text-breaks(room/standard), false)
+  back indent-lines(lines, body)

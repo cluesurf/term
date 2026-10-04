@@ -8,7 +8,6 @@
 
 dock load
   load <global:transport>, name runtime
-  mark native
 
 load ../../http
   find server

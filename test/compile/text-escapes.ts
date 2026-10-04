@@ -43,6 +43,21 @@ task backslash
 task angle
   like text
   send back, text <a\\<b\\>c>
+
+task carriage-template
+  take n, like text
+  like text
+  send back, text <{n}\\r{n}>
+
+task newline-template
+  take n, like text
+  like text
+  send back, text <{n}\\n{n}>
+
+task quote-template
+  take n, like text
+  like text
+  send back, text <{n}\`$\\{x\\}\\\\{n}>
 `
 
 async function main(): Promise<void> {
@@ -64,7 +79,7 @@ async function main(): Promise<void> {
 
   const m = (await import(pathToFileURL(f).href)) as Record<
     string,
-    () => string
+    (...values: string[]) => string
   >
 
   expect('newline escape', m.newline!(), 'a\nb')
@@ -72,6 +87,11 @@ async function main(): Promise<void> {
   expect('tab escape', m.tab!(), 'a\tb')
   expect('escaped backslash stays literal', m.backslash!(), 'a\\nb')
   expect('angle escapes', m.angle!(), 'a<b>c')
+  // an interpolated text is a template literal on TypeScript, where a raw carriage return reads as a line feed
+  expect('carriage return in a template', m.carriageTemplate!('x'), 'x\rx')
+  expect('no raw carriage return in the emitted TypeScript', r.typescript.includes('\r'), false)
+  expect('newline in a template', m.newlineTemplate!('x'), 'x\nx')
+  expect('backtick, ${ and backslash in a template', m.quoteTemplate!('x'), 'x`${x}\\x')
 
   console.log(`\ntext-escapes: ${pass} pass, ${fail} fail`)
 

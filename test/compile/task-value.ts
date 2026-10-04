@@ -103,7 +103,7 @@ task use
   like number
   send back, read n
 `)
-  ok('a text default for a number is refused', !text.ok && /the default of "n": expected number, found string/.test(text.said), text.said)
+  ok('a text default for a number is refused', !text.ok && /the default of "n": expected number, found text/.test(text.said), text.said)
 
   const task = build(`${BOX}
 task use

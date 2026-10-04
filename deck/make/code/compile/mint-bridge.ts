@@ -2406,9 +2406,14 @@ const WALK_MODES = new Set(['list', 'size', 'test'])
 const WALK_TEST_PARTS = new Set(['hook', 'must', 'down', 'bind', 'take'])
 
 // the marks a task takes, each read by something: `async`, `private` and `roam` here, `open` on a claim, `unsafe` as a
-// guard, `draft` by the build walk, `deprecated` by check/deprecated.ts, `stable` and `unstable` by the reference
-// tools (`term:base-marks`), `exact` reserved for opt-in overflow proofs (note/term/gaps/plan.md)
-const TASK_MARKS = new Set(['async', 'private', 'roam', 'open', 'unsafe', 'draft', 'deprecated', 'stable', 'unstable', 'exact'])
+// guard, `deprecated` by check/deprecated.ts. `exact`, the opt-in overflow proof (note/term/gaps/plan.md), joins when
+// something reads it.
+const TASK_MARKS = new Set(['async', 'private', 'roam', 'open', 'unsafe', 'deprecated'])
+
+// the marks that belong to a FILE, unindented at its top level: `draft` is read by the build walk before anything
+// parses (call/code/draft.ts), `stable` and `unstable` by `pnpm term:base-marks`. Under a task they were accepted and
+// read by nothing (guides: language/notes, 2026-10-04)
+const FILE_MARKS = new Set(['draft', 'stable', 'unstable'])
 
 // the width aliases of `number` whose range a literal argument is held to (check/literals.ts)
 const WIDTH_WORDS = new Set(['u8', 'u16', 'u32', 'u64', 'i8', 'i16', 'i32', 'i64'])
@@ -3123,16 +3128,27 @@ function functionOf(bridge: Bridge, value: Form): Statement | undefined {
   refuseNestedTasks(bridge, value)
 
   // every `mark` word on a task is one something reads. A word outside the list was accepted and read by nothing, so a
-  // misspelled `mark deprecatd` meant nothing and said so nowhere (guides: language/notes, 2026-10-03)
-  for (const mark of formsAt(value, 'mark')) {
-    const kind = wordAt(mark, 'kind')
+  // misspelled `mark deprecatd` meant nothing and said so nowhere (guides: language/notes, 2026-10-03). The metadata
+  // words the mill mints as a `note` (note/mine.tree `mark-note`) arrive under `note`, as a word: a text literal there
+  // is documentation (`note <A sentence.>`)
+  const marks = [
+    ...formsAt(value, 'mark').map(mark => ({ at: mark, kind: wordAt(mark, 'kind') })),
+    ...at(value, 'note').map(note => {
+      const word = firstAt(note, 'text')
 
-    if (kind !== undefined && !TASK_MARKS.has(kind)) {
+      return { at: note, kind: word?.kind === 'word' ? word.value : undefined }
+    }),
+  ]
+
+  for (const mark of marks) {
+    if (mark.kind !== undefined && !TASK_MARKS.has(mark.kind)) {
       bridge.diagnostics.push(
         diagnose('unexpected-node', {
           file: bridge.file,
-          span: spanOf(mark),
-          message: `\`mark ${kind}\` is not a mark a task takes. The marks are ${[...TASK_MARKS].join(', ')}`,
+          span: spanOf(mark.at),
+          message: FILE_MARKS.has(mark.kind)
+            ? `\`mark ${mark.kind}\` marks a file, not a task: write it unindented at the top level of the file`
+            : `\`mark ${mark.kind}\` is not a mark a task takes. The marks are ${[...TASK_MARKS].join(', ')}`,
         }),
       )
     }
@@ -4354,6 +4370,18 @@ function bindOf(bridge: Bridge, value: Form): Statement[] {
 // `dock load` binds a native module, `dock type` an opaque per-backend handle type. One statement per line.
 function nativeOf(bridge: Bridge, value: Form): Statement[] {
   const kind = wordAt(value, 'kind')
+
+  // `mark native` under a `dock load` was read by nothing: `dock` is what says a module is native, so the mark
+  // repeated it, and any other word there meant nothing at all (guides: language/notes, 2026-10-04)
+  for (const note of at(value, 'note')) {
+    bridge.diagnostics.push(
+      diagnose('unexpected-node', {
+        file: bridge.file,
+        span: spanOf(note),
+        message: `\`mark ${textOf(note) ?? wordAt(note, 'text') ?? ''}\` under \`dock ${kind ?? 'load'}\` is read by nothing: \`dock\` already says the module is native. Remove the line`,
+      }),
+    )
+  }
 
   return formsAt(value, 'line').flatMap(line => {
     const module = wordAt(line, 'path')

@@ -1,10 +1,11 @@
 // The routed app on the toolkit hosts (native-navigation-0007): a route table mounted by the toolkit `host`
-// (deck/site/code/view/native/toolkit/host.tree) on AppKit (macOS), UIKit (the iPhone simulator) and Android views (the
-// emulator), drawn from the navigation contract, and moved by the platform's own back. The program goes to /a and /b
-// through the contract, then back twice the way a person does (`press-back`: the Activity's back on Android, ⌘[ through
-// the menu bar on macOS, the edge swipe's action on iOS), and says what the WINDOW draws after each step, read off the
-// platform views.
-// NAVIGATION_ONLY=macos (or ios, android) runs one platform. Run: npx tsx test/compile/toolkit-navigation.ts
+// (deck/site/code/view/native/toolkit/host.tree) on AppKit (macOS), UIKit (the iPhone simulator), Android views (the
+// emulator), Compose on the desktop JVM and Jetpack Compose (the emulator), drawn from the navigation contract, and
+// moved by the platform's own back. The program goes to /a and /b through the contract, then back twice the way a
+// person does (`press-back`: the Activity's back on Android, its back dispatcher on Jetpack Compose, ⌘[ through the menu
+// bar on macOS, the ⌘[ chord as key events on Compose's desktop, the edge swipe's action on iOS), and says what the
+// WINDOW draws after each step, read off the platform views (on Compose, its semantics).
+// NAVIGATION_ONLY=macos (or ios, android, compose, compose-android) runs one platform. Run: npx tsx test/compile/toolkit-navigation.ts
 
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -135,6 +136,8 @@ runToolkits(
     program,
     judge,
     ok,
+    compose: true,
+    composeAndroid: true,
     shots: {},
   },
   process.env.NAVIGATION_ONLY ?? '',

@@ -1,0 +1,1379 @@
+# The analysis: which tier runs a pattern, and the rewrites that move a pattern to a cheaper one
+# (note/term/stdlib/regex-engine.md, "How a pattern runs: three tiers").
+#
+#   A  native     the target's own engine, given the pattern in the canonical dialect every engine reads alike
+#                 (./regex/dialect.tree's writers), when the pattern uses nothing else AND, on an engine that
+#                 backtracks, cannot make it backtrack without end
+#   B  linear     ./pike.tree, for any pattern with no back reference and no atomic group left after the rewrites
+#   C  backtrack  ./back.tree, with a budget, for the rest
+#
+# Rewrites, each exact:
+#   - a back reference to a group that always holds the same text is that text: `(ab)\1` is `(ab)ab`
+#   - a possessive or atomic repetition of one class is the greedy repetition followed by "not one more":
+#     `[a-z]*+` is `[a-z]*(?![a-z])`, and `x{2,4}+` is `(?:x{4}|x{2,3}(?!x))`, which the linear tier runs
+#
+# Safe on a backtracking engine means two things checked here. Every choice point is decided by the next code point:
+# a repetition's body cannot match empty, and the code points it can start with are not ones that can follow it, and
+# the alternatives of a choice start with code points apart from each other. That keeps one attempt linear. And no
+# attempt re-reads what an earlier one read: the pattern is anchored at the start, or none of the code points it can
+# start with can occur inside an unbounded repetition. A pattern that fails either goes to the linear tier, which
+# cannot be made slow.
+
+mark stable
+
+load @term/base/list
+  find list
+  find join
+
+load @term/base/boolean
+  find not
+
+load @term/base/text/unicode
+  find rune-to-text
+
+load @term/base/regex/dialect
+  find regex-literal
+  find regex-class-literal
+
+load @term/base/pattern/node
+  find piece
+  find edge-text-start
+  find edge-text-end
+
+load @term/base/pattern/set
+  find number-at
+  find merge-sets
+  find sets-are-apart
+  find set-size
+  find range-set
+  find last-code-point
+
+load @term/base/pattern/program
+  find can-be-empty
+  find group-range
+
+load @term/base/pattern/unicode-read
+  find close-under-case
+
+# which tier a pattern runs on
+host tier-native, code 0
+host tier-linear, code 1
+host tier-backtrack, code 2
+
+# what the analysis found
+form analysis
+  # the pattern after the rewrites
+  link root, like piece
+  link tier, like number
+  # the canonical dialect text for the native tier; empty when the pattern has no such text
+  link native, like text
+  link has-native, like boolean
+  # whether a back reference compares under `i`, so the matcher needs the case table
+  link folds, like boolean
+
+# the code points a piece can begin with. A lookaround, an edge or a back reference begins with nothing it consumes,
+# so they add nothing (the callers that need certainty also refuse those pieces)
+task first-set
+  take p, like piece
+  like list
+    like number
+  save none, make list
+  fork case, read p
+    case blank
+      send back, read none
+    case letter
+      send back
+        call range-set(read(point), read(point))
+    case ranges
+      send back, read set
+    case edge
+      send back, read none
+    case chain
+      save out, make list
+      walk list, read parts
+        hook next
+          take site, name part
+          save out
+            call merge-sets(read(out), call(first-set, read(part)))
+          fork test
+            hook test
+              call not(call(can-be-empty, read(part)))
+            hook hold
+              send back, read out
+      send back, read out
+    case choice
+      save out, make list
+      walk list, read parts
+        hook next
+          take site, name part
+          save out
+            call merge-sets(read(out), call(first-set, read(part)))
+      send back, read out
+    case loop
+      send back
+        call first-set(read(body))
+    case group
+      send back
+        call first-set(read(body))
+    case atom
+      send back
+        call first-set(read(body))
+    case look
+      send back, read none
+    case refer
+      send back
+        call range-set(code(0), read(last-code-point))
+
+# every code point a piece can consume anywhere in it
+task all-set
+  take p, like piece
+  like list
+    like number
+  save none, make list
+  fork case, read p
+    case letter
+      send back
+        call range-set(read(point), read(point))
+    case ranges
+      send back, read set
+    case chain
+      save out, make list
+      walk list, read parts
+        hook next
+          take site, name part
+          save out
+            call merge-sets(read(out), call(all-set, read(part)))
+      send back, read out
+    case choice
+      save out, make list
+      walk list, read parts
+        hook next
+          take site, name part
+          save out
+            call merge-sets(read(out), call(all-set, read(part)))
+      send back, read out
+    case loop
+      send back
+        call all-set(read(body))
+    case group
+      send back
+        call all-set(read(body))
+    case atom
+      send back
+        call all-set(read(body))
+    case look
+      send back
+        call all-set(read(body))
+    case refer
+      send back
+        call range-set(code(0), read(last-code-point))
+    case blank
+      send back, read none
+    case edge
+      send back, read none
+
+# whether every match of the piece must begin at the start of the text
+task is-anchored
+  take p, like piece
+  like boolean
+  fork case, read p
+    case edge
+      send back
+        call is-equal(read(kind), read(edge-text-start))
+    case chain
+      walk list, read parts
+        hook next
+          take site, name part
+          fork test
+            hook test
+              call is-anchored(read(part))
+            hook hold
+              send back, true
+          fork test
+            hook test
+              call not(call(can-be-empty, read(part)))
+            hook hold
+              send back, false
+      send back, false
+    case choice
+      walk list, read parts
+        hook next
+          take site, name part
+          fork test
+            hook test
+              call not(call(is-anchored, read(part)))
+            hook hold
+              send back, false
+      send back
+        call is-above(read(parts/length), code(0))
+    case group
+      send back
+        call is-anchored(read(body))
+    case blank
+      send back, false
+    case letter
+      send back, false
+    case ranges
+      send back, false
+    case loop
+      send back, false
+    case atom
+      send back, false
+    case look
+      send back, false
+    case refer
+      send back, false
+
+# whether every choice point in the piece is decided by the next code point, given the code points that can follow it
+task is-deterministic
+  take p, like piece
+  take follow
+    like list
+      like number
+  like boolean
+  fork case, read p
+    case chain
+      # right to left, each part's follow is what the parts after it can start with
+      save after, read follow
+      save k
+        call subtract(read(parts/length), code(1))
+      walk test
+        hook test
+          call is-minimum(read(k), code(0))
+        hook step
+          save part, make blank
+          fork test
+            hook test
+              call is-below(read(k), read(parts/length))
+            hook hold
+              save part, read parts/{k}
+          fork test
+            hook test
+              call not(call(is-deterministic, read(part), read(after)))
+            hook hold
+              send back, false
+          save starts
+            call first-set(read(part))
+          fork test
+            hook test
+              call can-be-empty(read(part))
+            hook hold
+              save after
+                call merge-sets(read(starts), read(after))
+            hook miss
+              save after, read starts
+          save k
+            call subtract(read(k), code(1))
+      send back, true
+    case choice
+      save seen, make list
+      walk list, read parts
+        hook next
+          take site, name part
+          fork test
+            hook test
+              call not(call(is-deterministic, read(part), read(follow)))
+            hook hold
+              send back, false
+          save starts
+            call first-set(read(part))
+          fork test
+            hook test
+              call can-be-empty(read(part))
+            hook hold
+              save starts
+                call merge-sets(read(starts), read(follow))
+          fork test
+            hook test
+              call not(call(sets-are-apart, read(seen), read(starts)))
+            hook hold
+              send back, false
+          save seen
+            call merge-sets(read(seen), read(starts))
+      send back, true
+    case loop
+      fork test
+        hook test
+          call can-be-empty(read(body))
+        hook hold
+          send back, false
+      save starts
+        call first-set(read(body))
+      # a repetition with a choice left (more than its least) is decided by the next code point only when the body
+      # cannot start with what follows
+      fork test
+        hook test
+          call and
+            call not(call(is-equal, read(most), read(least)))
+            call not(call(sets-are-apart, read(starts), read(follow)))
+        hook hold
+          send back, false
+      send back
+        call is-deterministic(read(body), call(merge-sets, read(starts), read(follow)))
+    case group
+      send back
+        call is-deterministic(read(body), read(follow))
+    case atom
+      send back, false
+    case look
+      send back, false
+    case refer
+      send back, false
+    case blank
+      send back, true
+    case letter
+      send back, true
+    case ranges
+      send back, true
+    case edge
+      send back, true
+
+# whether a backtracking engine runs the piece in time linear in the input
+task is-safe-to-backtrack
+  take p, like piece
+  like boolean
+  save none, make list
+  fork test
+    hook test
+      call not(call(is-deterministic, read(p), read(none)))
+    hook hold
+      send back, false
+  fork test
+    hook test
+      call is-anchored(read(p))
+    hook hold
+      send back, true
+  send back
+    call sets-are-apart(call(first-set, read(p)), call(risky-loop-set, read(p), false))
+
+# whether a piece can fail once it is reached: anything but text it can skip with nothing that tests the position
+task can-fail
+  take p, like piece
+  like boolean
+  fork case, read p
+    case blank
+      send back, false
+    case edge
+      send back, true
+    case look
+      send back, true
+    case refer
+      send back, true
+    case letter
+      send back, true
+    case ranges
+      send back, true
+    case chain
+      walk list, read parts
+        hook next
+          take site, name part
+          fork test
+            hook test
+              call can-fail(read(part))
+            hook hold
+              send back, true
+      send back, false
+    case choice
+      walk list, read parts
+        hook next
+          take site, name part
+          fork test
+            hook test
+              call not(call(can-fail, read(part)))
+            hook hold
+              send back, false
+      send back, true
+    case loop
+      fork test
+        hook test
+          call is-equal(read(least), code(0))
+        hook hold
+          send back
+            call has-test(read(body))
+      send back
+        call can-fail(read(body))
+    case group
+      send back
+        call can-fail(read(body))
+    case atom
+      send back
+        call can-fail(read(body))
+
+# whether a piece tests the position anywhere (an edge, a lookaround or a back reference), which can fail even where
+# it may be skipped
+task has-test
+  take p, like piece
+  like boolean
+  fork case, read p
+    case edge
+      send back, true
+    case look
+      send back, true
+    case refer
+      send back, true
+    case chain
+      walk list, read parts
+        hook next
+          take site, name part
+          fork test
+            hook test
+              call has-test(read(part))
+            hook hold
+              send back, true
+      send back, false
+    case choice
+      walk list, read parts
+        hook next
+          take site, name part
+          fork test
+            hook test
+              call has-test(read(part))
+            hook hold
+              send back, true
+      send back, false
+    case loop
+      send back
+        call has-test(read(body))
+    case group
+      send back
+        call has-test(read(body))
+    case atom
+      send back
+        call has-test(read(body))
+    case blank
+      send back, false
+    case letter
+      send back, false
+    case ranges
+      send back, false
+
+# the code points consumed by an unbounded repetition after which the match can still fail: the repetitions an attempt
+# can read to the end of and then give up on, so that the next attempt reads the same text again. `rest-fails` says
+# whether what follows the piece can fail
+task risky-loop-set
+  take p, like piece
+  take rest-fails, like boolean
+  like list
+    like number
+  save none, make list
+  fork case, read p
+    case loop
+      save inner
+        call risky-loop-set(read(body), true)
+      fork test
+        hook test
+          call and
+            read rest-fails
+            call is-below(read(most), code(0))
+        hook hold
+          send back
+            call merge-sets(call(all-set, read(body)), read(inner))
+      send back, read inner
+    case chain
+      save out, make list
+      save fails, read rest-fails
+      save k
+        call subtract(read(parts/length), code(1))
+      walk test
+        hook test
+          call is-minimum(read(k), code(0))
+        hook step
+          save part, make blank
+          fork test
+            hook test
+              call is-below(read(k), read(parts/length))
+            hook hold
+              save part, read parts/{k}
+          save out
+            call merge-sets(read(out), call(risky-loop-set, read(part), read(fails)))
+          fork test
+            hook test
+              call can-fail(read(part))
+            hook hold
+              save fails, true
+          save k
+            call subtract(read(k), code(1))
+      send back, read out
+    case choice
+      save out, make list
+      walk list, read parts
+        hook next
+          take site, name part
+          save out
+            call merge-sets(read(out), call(risky-loop-set, read(part), read(rest-fails)))
+      send back, read out
+    case group
+      send back
+        call risky-loop-set(read(body), read(rest-fails))
+    case atom
+      send back
+        call risky-loop-set(read(body), read(rest-fails))
+    case look
+      send back
+        call risky-loop-set(read(body), true)
+    case blank
+      send back, read none
+    case letter
+      send back, read none
+    case ranges
+      send back, read none
+    case edge
+      send back, read none
+    case refer
+      send back, read none
+
+# whether any group sits inside a repetition, or any repetition's body can match empty: the two places the engines
+# disagree about what a group remembers
+task has-loop-capture
+  take p, like piece
+  take inside, like boolean
+  like boolean
+  fork case, read p
+    case group
+      fork test
+        hook test
+          read inside
+        hook hold
+          send back, true
+      send back
+        call has-loop-capture(read(body), read(inside))
+    case loop
+      fork test
+        hook test
+          call can-be-empty(read(body))
+        hook hold
+          send back, true
+      send back
+        call has-loop-capture(read(body), true)
+    case chain
+      walk list, read parts
+        hook next
+          take site, name part
+          fork test
+            hook test
+              call has-loop-capture(read(part), read(inside))
+            hook hold
+              send back, true
+      send back, false
+    case choice
+      walk list, read parts
+        hook next
+          take site, name part
+          fork test
+            hook test
+              call has-loop-capture(read(part), read(inside))
+            hook hold
+              send back, true
+      send back, false
+    case atom
+      send back
+        call has-loop-capture(read(body), read(inside))
+    case look
+      send back
+        call has-loop-capture(read(body), read(inside))
+    case blank
+      send back, false
+    case letter
+      send back, false
+    case ranges
+      send back, false
+    case edge
+      send back, false
+    case refer
+      send back, false
+
+# a set written as a class body in the canonical dialect, the surrogate block left out (no input holds one)
+task class-text
+  take set
+    like list
+      like number
+  like text
+  save parts, make list
+  save i, code 0
+  # the length read once: the calls below leave the prover unsure of every list's size
+  save count, read set/length
+  walk test
+    down
+      call subtract(read(count), read(i))
+    hook test
+      call is-below
+        call add(read(i), code(1))
+        read count
+    hook step
+      save start
+        call number-at(read(set), read(i), code(0))
+      save end
+        call number-at(read(set), call(add, read(i), code(1)), code(0))
+      call push-range-text(read(parts), read(start), read(end))
+      save i
+        call add(read(i), code(2))
+  send back
+    call join(read(parts), text(<>))
+
+# one range, split around the surrogates, as class text
+task push-range-text
+  take parts
+    like list
+      like text
+  take start, like number
+  take end, like number
+  like number
+  fork test
+    hook test
+      call and
+        call is-below(read(start), code(55296))
+        call is-above(read(end), code(57343))
+    hook hold
+      call push-range-text(read(parts), read(start), code(55295))
+      send back
+        call push-range-text(read(parts), code(57344), read(end))
+  # a range wholly inside the surrogates has nothing to write
+  fork test
+    hook test
+      call and
+        call is-minimum(read(start), code(55296))
+        call is-maximum(read(end), code(57343))
+    hook hold
+      send back, code 0
+  save low, read start
+  save high, read end
+  fork test
+    hook test
+      call and
+        call is-minimum(read(low), code(55296))
+        call is-maximum(read(low), code(57343))
+    hook hold
+      save low, code 57344
+  fork test
+    hook test
+      call and
+        call is-minimum(read(high), code(55296))
+        call is-maximum(read(high), code(57343))
+    hook hold
+      save high, code 55295
+  save first
+    call regex-class-literal(read(low))
+  fork test
+    hook test
+      call is-equal(read(low), read(high))
+    hook hold
+      call parts/push(read(first))
+      send back, code 1
+  save last
+    call regex-class-literal(read(high))
+  call parts/push(text(<{first}-{last}>))
+  send back, code 1
+
+# the piece in the canonical dialect, or an empty list when it uses something outside it. `end` is how the engine
+# writes the end of the text
+task dialect-text
+  take p, like piece
+  take end, like text
+  like list
+    like text
+  save no, make list
+  fork case, read p
+    case blank
+      save out, make list
+      call out/push(text(<(?:)>))
+      send back, read out
+    case letter
+      save out, make list
+      call out/push(call(regex-literal, read(point)))
+      send back, read out
+    case ranges
+      fork test
+        hook test
+          call is-equal(call(set-size, read(set)), code(0))
+        hook hold
+          send back, read no
+      save body
+        call class-text(read(set))
+      save out, make list
+      call out/push(text(<[{body}]>))
+      send back, read out
+    case edge
+      save out, make list
+      fork test
+        hook test
+          call is-equal(read(kind), read(edge-text-start))
+        hook hold
+          call out/push(text(<^>))
+          send back, read out
+        hook test
+          call is-equal(read(kind), read(edge-text-end))
+        hook hold
+          call out/push(read(end))
+          send back, read out
+      send back, read no
+    case chain
+      save written, make list
+      walk list, read parts
+        hook next
+          take site, name part
+          save one
+            call dialect-text(read(part), read(end))
+          fork test
+            hook test
+              call is-equal(read(one/length), code(0))
+            hook hold
+              send back, read no
+          call written/push(read(one/0))
+      save joined
+        call join(read(written), text(<>))
+      save out, make list
+      call out/push(text(<(?:{joined})>))
+      send back, read out
+    case choice
+      save written, make list
+      walk list, read parts
+        hook next
+          take site, name part
+          save one
+            call dialect-text(read(part), read(end))
+          fork test
+            hook test
+              call is-equal(read(one/length), code(0))
+            hook hold
+              send back, read no
+          call written/push(read(one/0))
+      save joined
+        call join(read(written), text(<|>))
+      save out, make list
+      call out/push(text(<(?:{joined})>))
+      send back, read out
+    case group
+      save one
+        call dialect-text(read(body), read(end))
+      fork test
+        hook test
+          call is-equal(read(one/length), code(0))
+        hook hold
+          send back, read no
+      save out, make list
+      call out/push(text(<({one/0})>))
+      send back, read out
+    case loop
+      fork test
+        hook test
+          call or
+            read possessive
+            call or
+              call is-above(read(least), code(1000))
+              call is-above(read(most), code(1000))
+        hook hold
+          send back, read no
+      save one
+        call dialect-text(read(body), read(end))
+      fork test
+        hook test
+          call is-equal(read(one/length), code(0))
+        hook hold
+          send back, read no
+      save count, text <\{{least},{most}\}>
+      fork test
+        hook test
+          call is-below(read(most), code(0))
+        hook hold
+          save count, text <\{{least},\}>
+        hook test
+          call is-equal(read(least), read(most))
+        hook hold
+          save count, text <\{{least}\}>
+      fork test
+        hook test
+          call not(read(greedy))
+        hook hold
+          save count, text <{count}?>
+      save out, make list
+      call out/push(text(<(?:{one/0}){count}>))
+      send back, read out
+    case atom
+      send back, read no
+    case look
+      send back, read no
+    case refer
+      send back, read no
+
+# whether the piece holds a back reference that compares under `i`
+task has-folded-refer
+  take p, like piece
+  like boolean
+  fork case, read p
+    case refer
+      send back, read fold
+    case chain
+      walk list, read parts
+        hook next
+          take site, name part
+          fork test
+            hook test
+              call has-folded-refer(read(part))
+            hook hold
+              send back, true
+      send back, false
+    case choice
+      walk list, read parts
+        hook next
+          take site, name part
+          fork test
+            hook test
+              call has-folded-refer(read(part))
+            hook hold
+              send back, true
+      send back, false
+    case loop
+      send back
+        call has-folded-refer(read(body))
+    case group
+      send back
+        call has-folded-refer(read(body))
+    case atom
+      send back
+        call has-folded-refer(read(body))
+    case look
+      send back
+        call has-folded-refer(read(body))
+    case blank
+      send back, false
+    case letter
+      send back, false
+    case ranges
+      send back, false
+    case edge
+      send back, false
+
+# whether the piece needs the backtracking tier: a back reference or an atomic group
+task needs-backtracking
+  take p, like piece
+  like boolean
+  fork case, read p
+    case refer
+      send back, true
+    case atom
+      send back, true
+    case loop
+      fork test
+        hook test
+          read possessive
+        hook hold
+          send back, true
+      send back
+        call needs-backtracking(read(body))
+    case chain
+      walk list, read parts
+        hook next
+          take site, name part
+          fork test
+            hook test
+              call needs-backtracking(read(part))
+            hook hold
+              send back, true
+      send back, false
+    case choice
+      walk list, read parts
+        hook next
+          take site, name part
+          fork test
+            hook test
+              call needs-backtracking(read(part))
+            hook hold
+              send back, true
+      send back, false
+    case group
+      send back
+        call needs-backtracking(read(body))
+    case look
+      send back
+        call needs-backtracking(read(body))
+    case blank
+      send back, false
+    case letter
+      send back, false
+    case ranges
+      send back, false
+    case edge
+      send back, false
+
+# the one set a piece consumes when it is exactly one code point from a set, else an empty list
+task single-set
+  take p, like piece
+  like list
+    like number
+  save none, make list
+  fork case, read p
+    case letter
+      send back
+        call range-set(read(point), read(point))
+    case ranges
+      send back, read set
+    case group
+      send back, read none
+    case chain
+      fork test
+        hook test
+          call is-equal(read(parts/length), code(1))
+        hook hold
+          send back
+            call single-set(read(parts/0))
+      send back, read none
+    case blank
+      send back, read none
+    case edge
+      send back, read none
+    case choice
+      send back, read none
+    case loop
+      send back, read none
+    case atom
+      send back, read none
+    case look
+      send back, read none
+    case refer
+      send back, read none
+
+# the rewrites: possessive and atomic repetitions of one class, and back references to fixed text. `backward` is set
+# inside a lookbehind, whose body is matched right to left: there a reference is reached BEFORE the group it names, and
+# matches the empty text, so none is rewritten
+task rewrite
+  take p, like piece
+  take backward, like boolean
+  like piece
+  fork case, read p
+    case loop
+      save inner
+        call rewrite(read(body), read(backward))
+      fork test
+        hook test
+          read possessive
+        hook hold
+          save only
+            call single-set(read(inner))
+          fork test
+            hook test
+              call is-above(read(only/length), code(0))
+            hook hold
+              send back
+                call possessive-of-set(read(inner), read(only), read(least), read(most), read(backward))
+      send back
+        make loop
+          bind body, read inner
+          bind least, read least
+          bind most, read most
+          bind greedy, read greedy
+          bind possessive, read possessive
+    case atom
+      save inner
+        call rewrite(read(body), read(backward))
+      # an atomic group around a greedy repetition of one class is that repetition made possessive
+      fork case, read inner
+        case loop
+          save only
+            call single-set(read(body))
+          fork test
+            hook test
+              call and
+                read greedy
+                call is-above(read(only/length), code(0))
+            hook hold
+              send back
+                call possessive-of-set(read(body), read(only), read(least), read(most), read(backward))
+        case blank
+          send back, read inner
+        case letter
+          send back, read inner
+        case ranges
+          send back, read inner
+        case edge
+          send back, read inner
+        case chain
+          send back
+            make atom
+              bind body, read inner
+        case choice
+          send back
+            make atom
+              bind body, read inner
+        case group
+          send back
+            make atom
+              bind body, read inner
+        case atom
+          send back, read inner
+        case look
+          send back, read inner
+        case refer
+          send back
+            make atom
+              bind body, read inner
+      send back
+        make atom
+          bind body, read inner
+    case chain
+      # a back reference to a group earlier in this same chain, whose text is fixed, is that text: the group is a
+      # part of the chain, not repeated and not an alternative, so it has always matched when the reference is reached
+      save out, make list
+      save known-index, make list
+      save known-text, make list
+      walk list, read parts
+        hook next
+          take site, name part
+          save part-out
+            call rewrite(read(part), read(backward))
+          save group-index
+            call group-index-of(read(part-out))
+          fork test
+            hook test
+              call is-minimum(read(group-index), code(0))
+            hook hold
+              save literal
+                call fixed-text(call(group-body-of, read(part-out)))
+              fork test
+                hook test
+                  call is-above(read(literal/length), code(0))
+                hook hold
+                  call known-index/push(read(group-index))
+                  call known-text/push(read(literal))
+          fork test
+            hook test
+              read backward
+            hook hold
+              call out/push(read(part-out))
+            hook miss
+              call out/push(call(expand-refer, read(part-out), read(known-index), read(known-text)))
+      send back
+        make chain
+          bind parts, read out
+    case choice
+      save out, make list
+      walk list, read parts
+        hook next
+          take site, name part
+          call out/push(call(rewrite, read(part), read(backward)))
+      send back
+        make choice
+          bind parts, read out
+    case group
+      send back
+        make group
+          bind body, call(rewrite, read(body), read(backward))
+          bind index, read index
+          bind label, read label
+    case look
+      send back
+        make look
+          bind body, call(rewrite, read(body), read(behind))
+          bind behind, read behind
+          bind negate, read negate
+    case blank
+      send back, read p
+    case letter
+      send back, read p
+    case ranges
+      send back, read p
+    case edge
+      send back, read p
+    case refer
+      send back, read p
+
+# a group's index, or -1 for any other piece
+task group-index-of
+  take p, like piece
+  like number
+  fork case, read p
+    case group
+      send back, read index
+    case blank
+      send back, code -1
+    case letter
+      send back, code -1
+    case ranges
+      send back, code -1
+    case edge
+      send back, code -1
+    case chain
+      send back, code -1
+    case choice
+      send back, code -1
+    case loop
+      send back, code -1
+    case atom
+      send back, code -1
+    case look
+      send back, code -1
+    case refer
+      send back, code -1
+
+# a group's body, or the piece itself for any other
+task group-body-of
+  take p, like piece
+  like piece
+  fork case, read p
+    case group
+      send back, read body
+    case blank
+      send back, read p
+    case letter
+      send back, read p
+    case ranges
+      send back, read p
+    case edge
+      send back, read p
+    case chain
+      send back, read p
+    case choice
+      send back, read p
+    case loop
+      send back, read p
+    case atom
+      send back, read p
+    case look
+      send back, read p
+    case refer
+      send back, read p
+
+# the code points of a group body that always matches the same text: a chain of single code points, or one. Empty when
+# the body can match more than one text
+task fixed-text
+  take p, like piece
+  like list
+    like number
+  save none, make list
+  fork case, read p
+    case letter
+      save out, make list
+      call out/push(read(point))
+      send back, read out
+    case chain
+      save out, make list
+      walk list, read parts
+        hook next
+          take site, name part
+          fork case, read part
+            case letter
+              call out/push(read(point))
+            case blank
+              save skip, true
+            case ranges
+              send back, read none
+            case edge
+              send back, read none
+            case chain
+              send back, read none
+            case choice
+              send back, read none
+            case loop
+              send back, read none
+            case group
+              send back, read none
+            case atom
+              send back, read none
+            case look
+              send back, read none
+            case refer
+              send back, read none
+      send back, read out
+    case blank
+      send back, read none
+    case ranges
+      send back, read none
+    case edge
+      send back, read none
+    case choice
+      send back, read none
+    case loop
+      send back, read none
+    case group
+      send back, read none
+    case atom
+      send back, read none
+    case look
+      send back, read none
+    case refer
+      send back, read none
+
+# a back reference as the fixed text its group holds, when an earlier part of the same chain is that group and its text
+# is known (`known-index` and `known-text` in step); any other piece comes back as it is. Under `i` each code point
+# becomes its case class
+task expand-refer
+  take p, like piece
+  take known-index
+    like list
+      like number
+  take known-text
+    like list
+      like list
+        like number
+  like piece
+  fork case, read p
+    case refer
+      save k, code 0
+      walk list, read known-index
+        hook next
+          take site, name each
+          fork test
+            hook test
+              call and
+                call is-equal(read(each), read(index))
+                call is-below(read(k), read(known-text/length))
+            hook hold
+              save codes, read known-text/{k}
+              save parts, make list
+              walk list, read codes
+                hook next
+                  take site, name c
+                  fork test
+                    hook test
+                      read fold
+                    hook hold
+                      call parts/push
+                        make ranges
+                          bind set
+                            call close-under-case(call(range-set, read(c), read(c)))
+                    hook miss
+                      call parts/push
+                        make letter
+                          bind point, read c
+              send back
+                make chain
+                  bind parts, read parts
+          save k
+            call add(read(k), code(1))
+      send back, read p
+    case blank
+      send back, read p
+    case letter
+      send back, read p
+    case ranges
+      send back, read p
+    case edge
+      send back, read p
+    case chain
+      send back, read p
+    case choice
+      send back, read p
+    case loop
+      send back, read p
+    case group
+      send back, read p
+    case atom
+      send back, read p
+    case look
+      send back, read p
+
+# a possessive repetition of one set, least to most times, as a greedy one the linear tier runs: unbounded, the
+# greedy repetition and then not one more; bounded, all `most` when they are there, else as many as there are
+task possessive-of-set
+  take body, like piece
+  take set
+    like list
+      like number
+  take least, like number
+  take most, like number
+  take backward, like boolean
+  like piece
+  # "not one more" looks the way the repetition reads: behind, inside a lookbehind's body
+  save stop
+    make look
+      bind body
+        make ranges
+          bind set, read set
+      bind behind, read backward
+      bind negate, true
+  fork test
+    hook test
+      call is-below(read(most), code(0))
+    hook hold
+      send back
+        make chain
+          bind parts
+            make list
+              make loop
+                bind body, read body
+                bind least, read least
+                bind most, code -1
+                bind greedy, true
+                bind possessive, false
+              read stop
+  fork test
+    hook test
+      call is-equal(read(least), read(most))
+    hook hold
+      send back
+        make loop
+          bind body, read body
+          bind least, read least
+          bind most, read most
+          bind greedy, true
+          bind possessive, false
+  send back
+    make choice
+      bind parts
+        make list
+          make loop
+            bind body, read body
+            bind least, read most
+            bind most, read most
+            bind greedy, true
+            bind possessive, false
+          make chain
+            bind parts
+              make list
+                make loop
+                  bind body, read body
+                  bind least, read least
+                  bind most
+                    call subtract(read(most), code(1))
+                  bind greedy, true
+                  bind possessive, false
+                read stop
+
+# analyze a parsed pattern for an engine: `end` is how it writes the end of the text, `linear` whether it is linear on
+# everything it accepts
+task analyze-pattern
+  take root, like piece
+  take end, like text
+  take linear, like boolean
+  like analysis
+  save none, make list
+  save rewritten
+    call rewrite(read(root), false)
+  save folds
+    call has-folded-refer(read(rewritten))
+  save written, make list
+  fork test
+    hook test
+      call not(call(has-loop-capture, read(rewritten), false))
+    hook hold
+      save written
+        call dialect-text(read(rewritten), read(end))
+  save has-native
+    call is-above(read(written/length), code(0))
+  save native, text <>
+  fork test
+    hook test
+      call is-above(read(written/length), code(0))
+    hook hold
+      save native, read written/0
+  save tier, read tier-linear
+  fork test
+    hook test
+      call needs-backtracking(read(rewritten))
+    hook hold
+      save tier, read tier-backtrack
+  fork test
+    hook test
+      call and
+        read has-native
+        call or
+          read linear
+          call is-safe-to-backtrack(read(rewritten))
+    hook hold
+      save tier, read tier-native
+  send back
+    make analysis
+      bind root, read rewritten
+      bind tier, read tier
+      bind native, read native
+      bind has-native, read has-native
+      bind folds, read folds

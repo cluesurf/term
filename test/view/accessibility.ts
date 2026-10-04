@@ -245,7 +245,7 @@ const domCell = new Map(
   table
     .split('\n')
     .map(line => line.split('|').slice(1, -1).map(cell => cell.trim()))
-    .filter(cells => cells.length === 9)
+    .filter(cells => cells.length === 10)
     .map(cells => [cells[0]!, cells[1]!] as const),
 )
 

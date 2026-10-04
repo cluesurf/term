@@ -12,7 +12,6 @@ load @term/base/maybe
 
 dock load
   load <global:title>, name title
-  mark native
 
 # page-shell is a server (SSR) concern; on the client the body is already the page
 task page-shell

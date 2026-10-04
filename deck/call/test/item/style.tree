@@ -1,0 +1,201 @@
+# The environment (section 17) and color (section 16): truecolor under COLORTERM and the 16-color fallback otherwise,
+# NO_COLOR and FORCE_COLOR and --color, ASCII under TERM=dumb or a locale that is not UTF-8, links only where a
+# terminal takes them, CI annotations under CI, and the escapes each target writes, OSC 8 links included.
+
+load @term/base/text
+  find contains
+  find starts-with
+
+load @term/base/text/unicode
+  find rune-to-text
+
+load ../../code/work/item/standard
+  find make-standard
+
+load ../../code/work/item/setting
+  find env-entry
+  find decide-style
+
+load ../../code/work/item/layout
+  find span
+  find line
+  find make-span
+
+load ../../code/work/item/paint
+  find make-palette
+  find paint-lines
+  find paint-span
+
+task with
+  take name, like text
+  take value, like text
+  like list, like env-entry
+  save out, make list
+  out/push make env-entry, name(name), value(value)
+  back out
+
+task with-two
+  take a, like text
+  take b, like text
+  take c, like text
+  take d, like text
+  like list, like env-entry
+  save out, make list
+  out/push make env-entry, name(a), value(b)
+  out/push make env-entry, name(c), value(d)
+  back out
+
+task utf
+  like list, like env-entry
+  back with(<LANG>, <en_US.UTF-8>)
+
+# no variables at all. `decide-style(make list, true, ...)` put `true` inside the `make`, because a comma after a
+# multi-word part pops one level, so the call had no `terminal`
+task unset
+  like list, like env-entry
+  back make list
+
+test <a terminal gets color, 16 colors unless COLORTERM says truecolor>
+  save standard, make-standard()
+  save plain, decide-style(utf(), true, <auto>, <darwin>, standard)
+  want hold, is-equal(plain/depth, <ansi>)
+  save full, decide-style(with-two(<LANG>, <en_US.UTF-8>, <COLORTERM>, <truecolor>), true, <auto>, <darwin>, standard)
+  want hold, is-equal(full/depth, <truecolor>)
+  save also, decide-style(with-two(<LANG>, <en_US.UTF-8>, <COLORTERM>, <24bit>), true, <auto>, <darwin>, standard)
+  want hold, is-equal(also/depth, <truecolor>)
+
+test <a pipe or a file gets no color and no live region, the layout unchanged>
+  save one, decide-style(utf(), false, <auto>, <darwin>, make-standard())
+  want hold, and(is-equal(one/depth, <none>), is-equal(one/live, false))
+  want hold, is-equal(one/ascii, false)
+
+test <NO_COLOR turns color off, FORCE_COLOR on even without a terminal, and FORCE_COLOR wins>
+  save standard, make-standard()
+  save off, decide-style(with-two(<LANG>, <C.UTF-8>, <NO_COLOR>, <1>), true, <auto>, <linux>, standard)
+  want hold, is-equal(off/depth, <none>)
+  save empty, decide-style(with-two(<LANG>, <C.UTF-8>, <NO_COLOR>, <>), true, <auto>, <linux>, standard)
+  want hold, is-equal(empty/depth, <ansi>)
+  save forced, decide-style(with-two(<LANG>, <C.UTF-8>, <FORCE_COLOR>, <1>), false, <auto>, <linux>, standard)
+  want hold, and(is-equal(forced/depth, <ansi>), is-equal(forced/live, false))
+  save both, make list
+  both/push make env-entry, name(<NO_COLOR>), value(<1>)
+  both/push make env-entry, name(<FORCE_COLOR>), value(<1>)
+  save winner, decide-style(both, false, <auto>, <linux>, standard)
+  want hold, is-equal(winner/depth, <ansi>)
+  save zero, decide-style(with(<FORCE_COLOR>, <0>), true, <auto>, <linux>, standard)
+  want hold, is-equal(zero/depth, <none>)
+
+test <--color never and --color always win over everything>
+  save standard, make-standard()
+  save never, decide-style(with(<FORCE_COLOR>, <1>), true, <never>, <linux>, standard)
+  want hold, is-equal(never/depth, <none>)
+  save always, decide-style(with(<NO_COLOR>, <1>), false, <always>, <linux>, standard)
+  want hold, is-equal(always/depth, <ansi>)
+
+test <TERM=dumb is ASCII and no live region, a locale that is not UTF-8 is ASCII>
+  save standard, make-standard()
+  save dumb, decide-style(with-two(<LANG>, <en_US.UTF-8>, <TERM>, <dumb>), true, <auto>, <linux>, standard)
+  want hold, and(dumb/ascii, is-equal(dumb/live, false))
+  save latin, decide-style(with(<LANG>, <en_US.ISO-8859-1>), true, <auto>, <linux>, standard)
+  want hold, latin/ascii
+  save posix, decide-style(unset(), true, <auto>, <linux>, standard)
+  want hold, posix/ascii
+  save lower, decide-style(with(<LC_ALL>, <C.utf8>), true, <auto>, <linux>, standard)
+  want hold, is-equal(lower/ascii, false)
+  save windows, decide-style(unset(), true, <auto>, <windows>, standard)
+  want hold, is-equal(windows/ascii, false)
+
+test <LC_ALL decides before LANG>
+  save standard, make-standard()
+  save one, decide-style(with-two(<LC_ALL>, <C>, <LANG>, <en_US.UTF-8>), true, <auto>, <linux>, standard)
+  want hold, one/ascii
+
+test <links only where the terminal takes them, and FORCE_HYPERLINK decides outright>
+  save standard, make-standard()
+  save iterm, decide-style(with-two(<LANG>, <en_US.UTF-8>, <TERM_PROGRAM>, <iTerm.app>), true, <auto>, <darwin>, standard)
+  want hold, iterm/links
+  save apple, decide-style(with-two(<LANG>, <en_US.UTF-8>, <TERM_PROGRAM>, <Apple_Terminal>), true, <auto>, <darwin>, standard)
+  want hold, is-equal(apple/links, false)
+  save piped, decide-style(with-two(<LANG>, <en_US.UTF-8>, <TERM_PROGRAM>, <iTerm.app>), false, <auto>, <darwin>, standard)
+  want hold, is-equal(piped/links, false)
+  save forced, decide-style(with-two(<LANG>, <en_US.UTF-8>, <FORCE_HYPERLINK>, <1>), false, <auto>, <darwin>, standard)
+  want hold, forced/links
+
+test <CI set turns annotations on>
+  save standard, make-standard()
+  save on, decide-style(with(<CI>, <true>), false, <auto>, <linux>, standard)
+  want hold, on/annotate
+  save off, decide-style(with(<CI>, <false>), false, <auto>, <linux>, standard)
+  want hold, is-equal(off/annotate, false)
+  save unset, decide-style(utf(), false, <auto>, <linux>, standard)
+  want hold, is-equal(unset/annotate, false)
+
+test <the background decides the theme when the terminal says it>
+  save standard, make-standard()
+  save dark, decide-style(with(<COLORFGBG>, <15;0>), true, <auto>, <linux>, standard)
+  want hold, is-equal(dark/theme, <dark>)
+  save light, decide-style(with(<COLORFGBG>, <0;15>), true, <auto>, <linux>, standard)
+  want hold, is-equal(light/theme, <light>)
+  save unsaid, decide-style(utf(), true, <auto>, <linux>, standard)
+  want hold, is-equal(unsaid/theme, <unknown>)
+
+task one-line
+  take spans, like list, like span
+  like list, like line
+  save lines, make list
+  lines/push make line, spans(spans)
+  back lines
+
+test <truecolor writes each role's hex, 16 colors its SGR code, no color nothing>
+  save standard, make-standard()
+  save escape, rune-to-text(27)
+  save spans, make list
+  spans/push make-span(<✓>, <done>)
+  save lines, one-line(spans)
+  want hold, is-equal(paint-lines(lines, make-palette(<truecolor>, <dark>, false), standard), <{escape}[38;2;143;203;155m✓{escape}[0m\n>)
+  want hold, is-equal(paint-lines(lines, make-palette(<truecolor>, <light>, false), standard), <{escape}[38;2;46;125;69m✓{escape}[0m\n>)
+  want hold, is-equal(paint-lines(lines, make-palette(<ansi>, <unknown>, false), standard), <{escape}[32m✓{escape}[0m\n>)
+  want hold, is-equal(paint-lines(lines, make-palette(<none>, <unknown>, false), standard), <✓\n>)
+
+test <faint is 90 with SGR 2, bold is SGR 1, the text role is the terminal's own unless the theme is known>
+  save standard, make-standard()
+  save escape, rune-to-text(27)
+  want hold, is-equal(paint-span(make-span(<─>, <faint>), make-palette(<ansi>, <unknown>, false), standard), <{escape}[2;90m─{escape}[0m>)
+  save bold, make-span(<Build failed>, <text>)
+  save bold/strong, true
+  want hold, is-equal(paint-span(bold, make-palette(<ansi>, <unknown>, false), standard), <{escape}[1mBuild failed{escape}[0m>)
+  want hold, is-equal(paint-span(make-span(<x>, <text>), make-palette(<truecolor>, <unknown>, false), standard), <x>)
+  want hold, is-equal(paint-span(make-span(<x>, <text>), make-palette(<truecolor>, <dark>, false), standard), <{escape}[38;2;230;230;225mx{escape}[0m>)
+
+test <a focused choice is a background highlight: reverse in 16 colors, the focus hex in truecolor>
+  save standard, make-standard()
+  save escape, rune-to-text(27)
+  save lit, make-span(<◯ swift >, <text>)
+  save lit/focus, true
+  want hold, is-equal(paint-span(lit, make-palette(<ansi>, <unknown>, false), standard), <{escape}[7m◯ swift {escape}[0m>)
+  want hold, contains(paint-span(lit, make-palette(<truecolor>, <dark>, false), standard), <48;2;29;38;48>)
+
+test <a link is an OSC 8 hyperlink where the terminal takes them, with one id for its pieces>
+  save standard, make-standard()
+  save escape, rune-to-text(27)
+  save linked, make-span(<https://example.com/a>, <active>)
+  save linked/href, <https://example.com/a>
+  save painted, paint-span(linked, make-palette(<ansi>, <unknown>, true), standard)
+  want hold, starts-with(painted, <{escape}]8;id=>)
+  want hold, contains(painted, <;https://example.com/a{escape}\\{escape}[34mhttps://example.com/a{escape}[0m{escape}]8;;{escape}\\>)
+  save piece, make-span(<example.com/a>, <active>)
+  save piece/href, <https://example.com/a>
+  save other, paint-span(piece, make-palette(<ansi>, <unknown>, true), standard)
+  want hold, is-equal(contains(painted, <id=>), contains(other, <id=>))
+  want hold, is-equal(paint-span(linked, make-palette(<ansi>, <unknown>, false), standard), <{escape}[34mhttps://example.com/a{escape}[0m>)
+
+test <neighbouring spans of one look are painted once, and spaces are left plain>
+  save standard, make-standard()
+  save escape, rune-to-text(27)
+  save spans, make list
+  spans/push make-span(<14:02>, <dim>)
+  spans/push make-span(<:07>, <dim>)
+  spans/push make-span(<   >, <text>)
+  spans/push make-span(<18>, <text>)
+  save painted, paint-lines(one-line(spans), make-palette(<ansi>, <unknown>, false), standard)
+  want hold, is-equal(painted, <{escape}[90m14:02:07{escape}[0m   18\n>)

@@ -22,3 +22,22 @@ task engine-search
 task end-anchor
   like text
   send back, text <$>
+
+# whether this engine runs every pattern it accepts in time linear in the input: the browser engines backtrack. The pattern module sends a
+# pattern here only when this is true or the pattern cannot make it backtrack without end
+task engine-linear
+  like boolean
+  send back, false
+
+# every match, left to right, none overlapping, in one pass over the text: the width of one match's slots first, then
+# each match's slots in code points, as engine-search gives them; [-1] when nothing matches. After an empty match the
+# search moves on one code point
+task engine-search-all
+  take pattern, like text
+  take input, like text
+  like list
+    like number
+  send back
+    call regex/search-all
+      read pattern
+      read input

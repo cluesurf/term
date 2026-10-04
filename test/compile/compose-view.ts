@@ -16,9 +16,31 @@
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { buildCompose, runCompose } from './shared/compose-build'
-import { buildComposeAndroid, runComposeAndroid } from './shared/compose-android'
+import { buildCompose, buildComposeAndroid } from '@term/call/code/compose'
+import { runCompose } from './shared/compose-build'
+import { runComposeAndroid } from './shared/compose-android'
 import { LAYOUT_LABELS, LAYOUT_ROWS, judgeLayout } from './shared/layout-rows'
+
+// the style table (native-dom-0008's format, `<class>|<state>|<property>: <value>` rows joined by `;`), light and dark
+const STYLE_LIGHT = [
+  'panel||background: #f4f4f5',
+  'panel||border: 1px solid #d4d4d8',
+  'panel||border-radius: 8px',
+  'panel||color: #18181b',
+  'panel||padding: 12px',
+  'overlay||opacity: 0',
+  'overlay|data-state=open|opacity: 1',
+  'label||font-size: 14px',
+  'label||font-weight: 600',
+  'kbd||background: #e4e4e7',
+].join(';')
+const STYLE_DARK = STYLE_LIGHT.replace('#f4f4f5', '#09090b').replace('#18181b', '#f4f4f5').replace('#d4d4d8', '#27272a')
+
+// what the style run must read back, worked out from the table: the panel's fill (off the pixels), edge, corners and
+// the color its words inherit; the overlay hidden, then shown by its state; the label's size and weight; the inline
+// fill winning over the class's while the class's edge stays; the chip's fill, then none once its class is gone
+const WANT_STYLES = 'styles #f4f4f5 1px #d4d4d8 8px #18181b 0 1 14px 600 #102030 1px #d4d4d8 #e4e4e7 none'
+const WANT_DARK = 'styles dark #09090b #f4f4f5'
 
 // every layout row mounted on the root, then each one's frames said, for the one judge the web and every toolkit answer
 // to (./shared/layout-rows.ts)
@@ -125,6 +147,157 @@ load @term/site/code/dom/native/toolkit/dom
   find set-value
   find later
   find dismiss
+  find style-of
+  find add-class
+  find remove-class
+  find set-attribute
+  find set-style
+
+load @term/site/code/dom/style
+  find use-styles
+
+load @term/site/code/view/native/toolkit/device
+  find change-trait
+
+# the style table (compose-target): classes, a state attribute, an inline fill and the dark scheme, each read back
+# with style-of. Mounted on the root, since a fill is read off the pixels Compose drew
+task style-run
+  take root, like view
+  save panel
+    call create-element
+      bind tag, text <div>
+  call add-class
+    read panel
+    text <panel>
+  save words
+    call create-text
+      text <Styled by the table>
+  call append
+    read panel
+    read words
+  call append
+    read root
+    read panel
+  save fill
+    call style-of
+      read panel
+      text <background>
+  save edge
+    call style-of
+      read panel
+      text <border>
+  save corner
+    call style-of
+      read panel
+      text <border-radius>
+  save ink
+    call style-of
+      read words
+      text <color>
+  save overlay
+    call create-element
+      bind tag, text <div>
+  call add-class
+    read overlay
+    text <overlay>
+  call append
+    read root
+    read overlay
+  save hidden
+    call style-of
+      read overlay
+      text <opacity>
+  call set-attribute
+    read overlay
+    text <data-state>
+    text <open>
+  save shown
+    call style-of
+      read overlay
+      text <opacity>
+  save tag
+    call create-element
+      bind tag, text <span>
+  call add-class
+    read tag
+    text <label>
+  save tag-words
+    call create-text
+      text <Name>
+  call append
+    read tag
+    read tag-words
+  call append
+    read root
+    read tag
+  save size
+    call style-of
+      read tag-words
+      text <font-size>
+  save weight
+    call style-of
+      read tag-words
+      text <font-weight>
+  save pinned
+    call create-element
+      bind tag, text <div>
+  call set-style
+    read pinned
+    text <background>
+    text <#102030>
+  call add-class
+    read pinned
+    text <panel>
+  call append
+    read root
+    read pinned
+  save kept
+    call style-of
+      read pinned
+      text <background>
+  save kept-edge
+    call style-of
+      read pinned
+      text <border>
+  save chip
+    call create-element
+      bind tag, text <div>
+  call set-style
+    read chip
+    text <padding>
+    text <8px>
+  call add-class
+    read chip
+    text <kbd>
+  call append
+    read root
+    read chip
+  save chip-fill
+    call style-of
+      read chip
+      text <background>
+  call remove-class
+    read chip
+    text <kbd>
+  save cleared
+    call style-of
+      read chip
+      text <background>
+  call say
+    text <styles {fill} {edge} {corner} {ink} {hidden} {shown} {size} {weight} {kept} {kept-edge} {chip-fill} {cleared}>
+  call change-trait
+    text <color-scheme>
+    text <dark>
+  save dark-fill
+    call style-of
+      read panel
+      text <background>
+  save dark-ink
+    call style-of
+      read words
+      text <color>
+  call say
+    text <styles dark {dark-fill} {dark-ink}>
 
 view dialog-body
   take host, like view
@@ -352,6 +525,10 @@ task box-in
   send back, read box
 
 task main
+  # the style table goes to the host before anything is made, as an app's boot would hand it
+  call use-styles
+    text <${STYLE_LIGHT}>
+    text <${STYLE_DARK}>
   save root
     call open-root
       text <Term on Compose>
@@ -607,6 +784,12 @@ ${LAYOUT_CALLS}      save note-row
                   bind self, read asking
               call say
                 text <dialog dismissed {after-dismiss} {still-open}>
+              # light first, so a machine already in dark mode cannot decide the first reading
+              call change-trait
+                text <color-scheme>
+                text <light>
+              call style-run
+                read root
               call snapshot
                 text <${shot}>
               call exit-app
@@ -738,6 +921,10 @@ function judge(leg: string, said: string, shot: string): void {
     line('dialog dismissed ') === '<sheet open="false"><span>Sure?</span></sheet> false',
     String(line('dialog dismissed ')),
   )
+  // the style table: classes, a state, an inline fill, a class removed, then the dark scheme, the fill off the pixels
+  const styles = lines.find(one => one.startsWith('styles #') || one.startsWith('styles none'))
+  ok(`the style table drawn by Compose: ${WANT_STYLES}`, styles === WANT_STYLES, String(styles))
+  ok(`the scheme turned dark restyles the panel from the dark table: ${WANT_DARK}`, line('styles dark ') === WANT_DARK.slice('styles dark '.length), String(line('styles dark ')))
   ok('a PNG of what Compose drew was written', existsSync(shot) && readFileSync(shot).subarray(1, 4).toString() === 'PNG', shot)
 }
 

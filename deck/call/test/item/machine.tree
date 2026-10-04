@@ -1,0 +1,199 @@
+# The other views of the same events: `--log json` (section 19), `--plain` (section 20) and CI annotations (section
+# 17). The JSON is read back with the library's own ordered reader, so the keys are checked by name AND order, and
+# nothing outside section 19's table may appear.
+
+load @term/base/text
+  find contains
+  find starts-with
+
+load ../../code/work/item/standard
+  find make-standard
+
+load ../../code/work/item/event
+  find event
+  find plain-subject
+  find plain-field
+  find location
+
+load ../../code/work/item/json
+  find write-json-event
+  find write-json-run
+  find read-json
+  find json-node
+  find json-text-of
+
+load ../../code/work/item/run
+  find make-options
+  find make-opening
+
+load ../../code/work/item/plain
+  find speak-event
+
+load ../../code/work/item/annotate
+  find annotate-event
+
+load ./kit
+  find kit-room
+  find kit-clock
+
+# the keys of a JSON object line, in order, joined by spaces; empty when the line is not an object
+task keys-of
+  take value, like text
+  like text
+  save got, read-json(value)
+  fork test, got/failed
+    hold
+      back <>
+  save node, got/node
+  sift node
+    case json-object
+      save out, <>
+      walk keys
+        take key
+        fork test, is-equal(out, <>)
+          hold
+            save out, key
+          miss
+            save out, <{out} {key}>
+      back out
+    case json-array
+      back <>
+    case json-text
+      back <>
+    case json-number
+      back <>
+    case json-true
+      back <>
+    case json-false
+      back <>
+    case json-null
+      back <>
+
+# the text of one key of a JSON object line, as written (a number's digits, a text's characters)
+task value-of
+  take value, like text
+  take wanted, like text
+  like text
+  save got, read-json(value)
+  save node, got/node
+  sift node
+    case json-object
+      save at, 0
+      walk keys
+        take key
+        fork test, is-equal(key, wanted)
+          hold
+            save found, values/{at}
+            back json-text-of(found)
+        save at, add(at, 1)
+      back <>
+    case json-array
+      back <>
+    case json-text
+      back <>
+    case json-number
+      back <>
+    case json-true
+      back <>
+    case json-false
+      back <>
+    case json-null
+      back <>
+
+task make-request
+  like event
+  save one, make event, glyph(<done>), kind(<request>), verb(<GET>), subject(plain-subject(</shape>)), source(<api:1>)
+  save one/clock, kit-clock(14, 2, 7, 412)
+  save one/duration, 18
+  save one/status/kind, <http>
+  save one/status/value, 200
+  save one/bytes, 84
+  back one
+
+test <a request is one object with the section 19 keys in the table's order>
+  save line, write-json-event(make-request(), -420, false, make-standard())
+  want hold, is-equal(line, <\{"glyph":"done","verb":"GET","subject":"/shape","source":"api:1","time":"2026-10-03T14:02:07.412-07:00","ms":18,"status":200,"bytes":84,"kind":"request"\}>)
+  want hold, is-equal(keys-of(line), <glyph verb subject source time ms status bytes kind>)
+
+test <every key of section 19, and no other, in the table's order>
+  save one, make-request()
+  one/tallies/push make tally, amount(24), noun(<tests>)
+  one/facts/push <cached>
+  one/message/push <first line>
+  one/message/push <second line>
+  one/fields/push plain-field(<at>, <code/report.tree:8:14>)
+  save line, write-json-event(one, -420, false, make-standard())
+  want hold, is-equal(keys-of(line), <glyph verb subject source time ms status bytes counts facts message fields kind>)
+  want hold, is-equal(value-of(line, <message>), <first line\nsecond line>)
+
+test <numbers stay numbers: milliseconds, bytes and counts, never the human figure>
+  save one, make-request()
+  save one/duration, 2900
+  save one/bytes, 18400000
+  one/tallies/push make tally, amount(31), noun(<files>), total(46)
+  save line, write-json-event(one, -420, false, make-standard())
+  want hold, contains(line, <"ms":2900>)
+  want hold, contains(line, <"bytes":18400000>)
+  want hold, contains(line, <"counts":\{"files":31,"files_total":46\}>)
+  want hold, is-equal(contains(line, <2.90>), false)
+
+test <an exit status is text, an HTTP status a number>
+  save one, make event, glyph(<failed>), verb(<RUN>), subject(plain-subject(<pnpm build>))
+  save one/status/kind, <exit>
+  save one/status/value, 1
+  save line, write-json-event(one, -420, false, make-standard())
+  want hold, contains(line, <"status":"exit 1">)
+
+test <the subject is whole: unwrapped, untruncated, and its quotes escaped>
+  save one, make-request()
+  save one/subject, plain-subject(<a "quoted" path\\with a backslash and a very long tail that would wrap anywhere else>)
+  save line, write-json-event(one, -420, false, make-standard())
+  want hold, is-equal(value-of(line, <subject>), <a "quoted" path\\with a backslash and a very long tail that would wrap anywhere else>)
+
+test <under --utc the time is UTC>
+  save line, write-json-event(make-request(), -420, true, make-standard())
+  want hold, is-equal(value-of(line, <time>), <2026-10-03T21:02:07.412Z>)
+
+test <the first object is the opening item and the last the closing, with the run's glyph>
+  save opening, make-opening(<dev>, <~/shape>, kit-clock(14, 2, 4, 990), <term 2.5.22>)
+  save events, make list
+  events/push make-request()
+  save failed, make-request()
+  save failed/glyph, <failed>
+  save failed/level, <debug>
+  events/push failed
+  save closing, make event, subject(plain-subject(<Stopped>)), clock(kit-clock(14, 5, 1, 2))
+  save lines, write-json-run(opening, events, closing, make-options(), make-standard(), -420)
+  want hold, is-equal(lines/length, 4)
+  want hold, is-equal(value-of(lines/0, <kind>), <open>)
+  want hold, is-equal(value-of(lines/3, <kind>), <close>)
+  want hold, is-equal(value-of(lines/3, <glyph>), <failed>)
+  want hold, is-equal(value-of(lines/3, <verb>), <dev>)
+  want hold, is-equal(value-of(lines/2, <glyph>), <failed>)
+
+test <--plain says each item as one sentence>
+  want hold, is-equal(speak-event(make-request(), kit-room(80)), <done: GET /shape (api:1), 18 ms, HTTP 200, 84 bytes>)
+  save one, make event, glyph(<failed>), verb(<check>), subject(plain-subject(<There is no task named multipy>))
+  one/fields/push plain-field(<at>, <code/area.tree:14:12>)
+  want hold, is-equal(speak-event(one, kit-room(80)), <failed: check There is no task named multipy. at code/area.tree:14:12>)
+  save single, make-request()
+  save single/source, <>
+  save single/bytes, 1
+  want hold, is-equal(speak-event(single, kit-room(80)), <done: GET /shape, 18 ms, HTTP 200, 1 byte>)
+
+test <--plain has no box drawing, bars or spinners: a progress item says its count>
+  save one, make event, glyph(<running>), verb(<build>), subject(plain-subject(<rust>))
+  save one/done, 31
+  save one/total, 46
+  save sentence, speak-event(one, kit-room(80))
+  want hold, is-equal(sentence, <running: build rust, 31 of 46>)
+  want hold, is-equal(contains(sentence, <━>), false)
+
+test <under CI a failed item is an error annotation, a warning a warning, escaped>
+  save one, make event, glyph(<failed>), verb(<check>), subject(plain-subject(<There is no task named multipy>))
+  save one/place, make location, path(<code/area.tree>), line(14), column(12)
+  want hold, is-equal(annotate-event(one), <::error file=code/area.tree,line=14,col=12,title=check::There is no task named multipy>)
+  save warned, make event, glyph(<warning>), verb(<check>), subject(plain-subject(<100% of a:b, done>))
+  want hold, is-equal(annotate-event(warned), <::warning title=check::100%25 of a:b, done>)
+  save fine, make-request()
+  want hold, is-equal(annotate-event(fine), <>)

@@ -17,7 +17,6 @@ load ../../view
 
 dock load
   load <global:html>, name doc
-  mark native
 
 # one node of the tree, held by its parent's children list and by every view handle at once, so `note shared`
 form page-element

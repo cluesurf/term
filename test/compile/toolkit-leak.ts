@@ -1,9 +1,10 @@
 // Disposal frees native views (reactive-bridge-0005): a `show` swaps between a branch of five buttons, each with a click
-// listener, and a span, forty times, on AppKit (macOS), UIKit (the iPhone simulator) and Android views (the emulator).
-// The host counts the nodes still alive (`live-nodes`: Swift counts in `init` and `deinit`, Kotlin by weak references
-// after a collection). After two swaps the program has made both branches once; after forty it has made each twenty
-// times, so a branch whose views outlive their disposal shows as nineteen copies more. The count must stay flat.
-// LEAK_ONLY=macos (or ios, android) runs one platform. Run: npx tsx test/compile/toolkit-leak.ts
+// listener, and a span, forty times, on AppKit (macOS), UIKit (the iPhone simulator), Android views (the emulator),
+// Compose on the desktop JVM and Jetpack Compose (the emulator). The host counts the nodes still alive (`live-nodes`:
+// Swift counts in `init` and `deinit`, Kotlin by weak references after a collection, which on Compose also proves the
+// composition let go of every node it drew). After two swaps the program has made both branches once; after forty it
+// has made each twenty times, so a branch whose views outlive their disposal shows as nineteen copies more. The count
+// must stay flat. LEAK_ONLY=macos (or ios, android, compose, compose-android) runs one platform. Run: npx tsx test/compile/toolkit-leak.ts
 
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -166,6 +167,8 @@ runToolkits(
     program,
     judge,
     ok,
+    compose: true,
+    composeAndroid: true,
     shots: {},
   },
   process.env.LEAK_ONLY ?? '',

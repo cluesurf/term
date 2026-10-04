@@ -10,7 +10,7 @@ import type {
   Program,
   Statement,
 } from '@term/make/code/compile/node'
-import { showType } from '@term/make/code/compile/node'
+import { typeKey } from '@term/make/code/compile/node'
 import { diagnose } from '@term/make/code/parser/diagnostic'
 import type { Diagnostic, Span } from '@term/make/code/parser/diagnostic'
 import type { ImportScope } from '@term/make/code/compile/load'
@@ -33,7 +33,7 @@ type Definition = Extract<Statement, { form: 'function' }>
 // wildcard, so a per-environment shim that re-declares a task with a looser or tighter type is an OVERRIDE (the last
 // one wins, as before), never an overload.
 const shape = (d: Definition): (string | undefined)[] =>
-  d.params.map(p => (p.type && p.type.kind !== 'unknown' ? showType(p.type) : undefined))
+  d.params.map(p => (p.type && p.type.kind !== 'unknown' ? typeKey(p.type) : undefined))
 
 const differ = (a: Definition, b: Definition): boolean => {
   const sa = shape(a)

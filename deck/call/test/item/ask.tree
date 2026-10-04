@@ -1,0 +1,135 @@
+# Prompts (section 13): a waiting question is `?` with its hint, an answered one `✓` with its answer; choices at
+# column 11, focus a background highlight; y/N with the default capital; secret input echoed as `•`; and without a
+# terminal no prompt at all, but a ✗ item whose `pass` field answers every question, and `--yes` taking each default.
+
+load @term/base/text
+  find contains
+
+load ../../code/work/item/standard
+  find make-standard
+
+load ../../code/work/item/event
+  find event
+  find choice
+
+load ../../code/work/item/ask
+  find question
+  find press-key
+  find question-event
+  find answer-all
+  find pass-command
+  find fail-without-terminal
+
+load ../../code/work/item/format
+  find spans-text
+
+load ./kit
+  find kit-draw
+  find kit-clock
+
+task make-targets
+  like question
+  save choices, make list
+  choices/push make choice, label(<typescript>), value(<ts>), picked(true)
+  choices/push make choice, label(<rust>), picked(true)
+  choices/push make choice, label(<swift>), hint(<macOS, iOS simulator>)
+  choices/push make choice, label(<kotlin>)
+  back make question, kind(<pick-many>), label(<Targets>), flag(<--target>), choices(choices)
+
+test <a waiting question is ? with its hint and its choices at column 11>
+  save one, make-targets()
+  save one, press-key(one, <down>, make-standard())
+  save one, press-key(one, <down>, make-standard())
+  save item, question-event(one, kit-clock(14, 42, 0, 20), make-standard())
+  want hold, is-equal(kit-draw(item, 80), <? ask      Targets\n           14:42:00.020 · space picks, enter confirms\n           ◉ typescript\n           ◉ rust\n           ◯ swift  macOS, iOS simulator \n           ◯ kotlin>)
+  want hold, is-equal(item/glyph, <asking>)
+
+test <the focus moves with the keys and stays in the list>
+  save standard, make-standard()
+  save one, make-targets()
+  save one, press-key(one, <up>, standard)
+  want hold, is-equal(one/focus, 0)
+  save one, press-key(one, <down>, standard)
+  save one, press-key(one, <down>, standard)
+  save one, press-key(one, <down>, standard)
+  save one, press-key(one, <down>, standard)
+  want hold, is-equal(one/focus, 3)
+
+test <space picks, enter confirms, and the answer is the picked values>
+  save standard, make-standard()
+  save one, make-targets()
+  save one, press-key(one, <down>, standard)
+  save one, press-key(one, <space>, standard)
+  save one, press-key(one, <down>, standard)
+  save one, press-key(one, <space>, standard)
+  save one, press-key(one, <enter>, standard)
+  want hold, one/answered
+  want hold, is-equal(one/answer, <ts,swift>)
+  save item, question-event(one, kit-clock(14, 42, 0, 20), standard)
+  want hold, is-equal(kit-draw(item, 80), <✓ ask      Targets\n           14:42:00.020 · typescript, swift>)
+
+test <a yes/no default is the capital letter, and enter takes it>
+  save standard, make-standard()
+  save no, make question, kind(<confirm>), label(<Overwrite term.tree?>), default(<no>)
+  save waiting, question-event(no, kit-clock(14, 42, 0, 25), standard)
+  want hold, contains(kit-draw(waiting, 80), <14:42:00.025 · y/N>)
+  save yes, make question, kind(<confirm>), label(<Keep going?>), default(<yes>)
+  want hold, contains(kit-draw(question-event(yes, kit-clock(14, 42, 0, 25), standard), 80), <· Y/n>)
+  save taken, press-key(no, <enter>, standard)
+  want hold, is-equal(taken/answer, <no>)
+  save typed, press-key(press-key(no, <y>, standard), <enter>, standard)
+  want hold, is-equal(typed/answer, <yes>)
+
+test <a text answer is typed, mended with backspace, and the default when empty>
+  save standard, make-standard()
+  save one, make question, kind(<text>), label(<Name>), default(<shape>)
+  save one, press-key(one, <s>, standard)
+  save one, press-key(one, <x>, standard)
+  save one, press-key(one, <backspace>, standard)
+  save one, press-key(one, <q>, standard)
+  save done, press-key(one, <enter>, standard)
+  want hold, is-equal(done/answer, <sq>)
+  save empty, make question, kind(<text>), label(<Name>), default(<shape>)
+  save taken, press-key(empty, <enter>, standard)
+  want hold, is-equal(taken/answer, <shape>)
+
+test <secret input echoes one • per character, and the answer is never shown>
+  save standard, make-standard()
+  save one, make question, kind(<secret>), label(<Token>)
+  save one, press-key(one, <a>, standard)
+  save one, press-key(one, <b>, standard)
+  save one, press-key(one, <c>, standard)
+  save waiting, question-event(one, kit-clock(14, 42, 0, 30), standard)
+  want hold, is-equal(kit-draw(waiting, 80), <? ask      Token\n           14:42:00.030\n           •••>)
+  save done, press-key(one, <enter>, standard)
+  save answered, question-event(done, kit-clock(14, 42, 0, 31), standard)
+  want hold, is-equal(kit-draw(answered, 80), <✓ ask      Token\n           14:42:00.031>)
+
+test <--yes takes every default>
+  save standard, make-standard()
+  save questions, make list
+  questions/push make question, kind(<text>), label(<Name>), flag(<--name>), default(<shape>)
+  questions/push make-targets()
+  questions/push make question, kind(<confirm>), label(<Overwrite term.tree?>)
+  save answered, answer-all(questions, standard)
+  save name, answered/0
+  save targets, answered/1
+  save overwrite, answered/2
+  want hold, and(name/answered, is-equal(name/answer, <shape>))
+  want hold, is-equal(targets/answer, <ts,rust>)
+  want hold, is-equal(overwrite/answer, <no>)
+
+test <without a terminal there is no prompt: a ✗ item whose pass field answers everything>
+  save standard, make-standard()
+  save questions, make list
+  questions/push make question, kind(<text>), label(<Name>), flag(<--name>), default(<shape>)
+  questions/push make-targets()
+  questions/push make question, kind(<confirm>), label(<Overwrite term.tree?>), default(<no>)
+  want hold, is-equal(pass-command(<term init>, questions, standard), <term init --name shape --target ts,rust --yes>)
+  save failure, fail-without-terminal(<init>, <term init>, questions, kit-clock(14, 42, 0, 30), standard)
+  want hold, is-equal(kit-draw(failure, 80), <✗ init     term init needs answers, and this is not a terminal\n           14:42:00.030\n           pass  term init --name shape --target ts,rust --yes>)
+
+test <a question with no flag and no default names its own placeholder>
+  save questions, make list
+  questions/push make question, kind(<text>), label(<Name>), flag(<--name>)
+  want hold, is-equal(pass-command(<term init>, questions, make-standard()), <term init --name \<Name\>>)
