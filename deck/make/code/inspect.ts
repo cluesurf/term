@@ -8,8 +8,8 @@ import type { Resolver, Source } from '@term/make/code/compile/load'
 import { parse } from '@term/make/code/parser/tree'
 import { expandTemplates } from '@term/make/code/compile/template'
 import { mill } from '@term/make/code/compile/mill'
-import { showType } from '@term/make/code/compile/node'
 import { deckFromPath } from '@term/make/code/compile/roll'
+import { showType } from '@term/make/code/compile/type-text'
 
 export type FormSymbol = {
   kind: 'form'

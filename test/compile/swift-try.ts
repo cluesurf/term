@@ -85,7 +85,7 @@ check(
         read n
       code 2
 `,
-  /return \(\(try half\(n\)\) == 2\)/,
+  /return \(\(try half\(n: n\)\) == 2\)/,
 )
 
 // arithmetic over a raising call, inside a comparison
@@ -99,7 +99,7 @@ check(
           read n
       code 3
 `,
-  /return \(\(n \+ \(try half\(n\)\)\) > 3\)/,
+  /return \(\(n \+ \(try half\(n: n\)\)\) > 3\)/,
 )
 
 // `&&` with the raising call on its right, an autoclosure: the `try` in front of the whole

@@ -645,7 +645,9 @@ task use-later
     call later
       code 2
 `)
-    ok('a file calling a body-less task it declares itself builds: an uninterpreted constant', own.ok, own.messages)
+    // refused since 2026-10-05: every backend wrote the call to a stub that fails when it runs. A postulate, a body-less
+    // task answering an indexed family, still builds (test/check/circle.ts), and so does a proof file's
+    ok('a file calling a body-less task it declares itself is refused too, since the call could only reach a stub', !own.ok && /"later" is declared with no body/.test(own.messages), own.messages || 'built')
   }
 
   // ---- language/tasks: labels and duplicates ----

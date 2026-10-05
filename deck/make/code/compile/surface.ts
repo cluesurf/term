@@ -6,14 +6,14 @@
 
 import type { Type, BinaryOp } from '@term/make/code/compile/node'
 import {
-  NUMBER,
-  FLOAT,
-  BOOLEAN,
-  STRING,
-  UNIT,
-  UNKNOWN,
-  DYNAMIC,
-  BYTES,
+  numberType,
+  floatType,
+  booleanType,
+  stringType,
+  unitType,
+  unknownType,
+  dynamicType,
+  bytesType,
 } from '@term/make/code/compile/node'
 
 // a type word that is not a form: the primitive it names. A `form` whose NAME is one of these registers no
@@ -22,50 +22,50 @@ import {
 export const TYPE_NAME: Record<string, Type> = {
   // `size`: a count or a length, the number every backend already has (94 stdlib signatures said `like size` and
   // no form declared it, so each backend was handed a `Size` it never defined)
-  size: NUMBER,
-  u8: NUMBER,
-  u16: NUMBER,
-  u32: NUMBER,
-  u64: NUMBER,
-  u128: NUMBER,
-  i8: NUMBER,
-  i16: NUMBER,
-  i32: NUMBER,
-  i64: NUMBER,
-  i128: NUMBER,
-  'natural-number': NUMBER,
-  integer: NUMBER,
-  number: NUMBER,
+  size: numberType(),
+  u8: numberType(),
+  u16: numberType(),
+  u32: numberType(),
+  u64: numberType(),
+  u128: numberType(),
+  i8: numberType(),
+  i16: numberType(),
+  i32: numberType(),
+  i64: numberType(),
+  i128: numberType(),
+  'natural-number': numberType(),
+  integer: numberType(),
+  number: numberType(),
   // floating point: `decimal` / `float` and the sized floats are the distinct float type
-  decimal: FLOAT,
-  float: FLOAT,
-  f32: FLOAT,
-  f64: FLOAT,
+  decimal: floatType(),
+  float: floatType(),
+  f32: floatType(),
+  f64: floatType(),
   // the host's dynamic value (the opaque result of json parse)
-  dynamic: DYNAMIC,
-  json: DYNAMIC,
+  dynamic: dynamicType(),
+  json: dynamicType(),
   // a raw byte buffer (Uint8Array / Vec<u8> / Data / ByteArray), the zero-copy currency for crypto and IO
-  bytes: BYTES,
-  'byte-array': BYTES,
-  buffer: BYTES,
-  text: STRING,
-  boolean: BOOLEAN,
-  void: UNIT,
-  unit: UNIT,
+  bytes: bytesType(),
+  'byte-array': bytesType(),
+  buffer: bytesType(),
+  text: stringType(),
+  boolean: booleanType(),
+  void: unitType(),
+  unit: unitType(),
   // bind's native primitives ARE seed's primitives (a JS string is seed's `string`, etc.): map them to the same
   // surface type so a seed value passes to a bind method param and vice versa, with no subtyping needed.
-  'native-string': STRING,
-  'native-number': NUMBER,
-  'native-boolean': BOOLEAN,
-  'native-bigint': NUMBER,
-  'native-void': UNIT,
-  'native-null': UNIT,
-  'native-undefined': UNIT,
+  'native-string': stringType(),
+  'native-number': numberType(),
+  'native-boolean': booleanType(),
+  'native-bigint': numberType(),
+  'native-void': unitType(),
+  'native-null': unitType(),
+  'native-undefined': unitType(),
   // `any` is the gradual type: consistent with everything (an opaque bind type, a callback union, etc.), and
   // `unknown` is the same value spelled from the holder's side: a slot that carries anything (a hive entry's record).
   // Both lower to the boxed dynamic on the native backends (Rc<dyn Any> / Any), never to a number.
-  any: UNKNOWN,
-  unknown: UNKNOWN,
+  any: unknownType(),
+  unknown: unknownType(),
 }
 
 // arithmetic and comparison the emitter lowers to a BINARY operation. These have no definition to bind to and are

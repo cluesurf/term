@@ -122,7 +122,7 @@ task empty-node
   send back
     make node
       bind static
-        make find
+        make hash
       bind param
         make list
       bind param-name, text <>
@@ -130,7 +130,7 @@ task empty-node
         make list
       bind wildcard-name, text <>
       bind handlers
-        make find
+        make hash
 
 # is a segment a catch-all (`*` or `**...`)?
 task is-wildcard
@@ -523,7 +523,7 @@ task handle-request
         call bind-params
           read found/value/params
           read segments
-          make find
+          make hash
       send back
         call found/value/handle
           read request

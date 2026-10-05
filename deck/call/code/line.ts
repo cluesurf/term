@@ -623,9 +623,13 @@ const cli = yargs(hideBin(process.argv))
       yargs.option('toss', {
         type: 'boolean',
         description: 'Forget the term.surf token on this machine instead',
+      })
+      .option('again', {
+        type: 'boolean',
+        description: 'Log in again even while the saved token works',
       }),
     async argv => {
-      await callBind({ root, toss: argv.toss })
+      await callBind({ root, toss: argv.toss, again: argv.again })
     },
   )
   .command('self', 'The versions of term on this machine: list, find, load, pick, need, show, toss, wash, check, update, back', yargs =>
@@ -732,7 +736,12 @@ const cli = yargs(hideBin(process.argv))
         .option('separate', {
           type: 'boolean',
           description:
-            'Separate compilation: per-module artifacts, dependents check against interfaces (early cutoff)',
+            'Separate compilation, the default: each module checked once against its imports\' stubs and cached, per-module artifacts',
+        })
+        .option('merged', {
+          type: 'boolean',
+          description:
+            'One whole-program compile per file instead, optimized across modules (the build before separate compilation)',
         })
         .option('trees', {
           type: 'boolean',
@@ -846,7 +855,7 @@ const cli = yargs(hideBin(process.argv))
       await callMake({
         root,
         ride: argv.ride,
-        separate: argv.separate,
+        merged: argv.merged,
         trees: argv.trees,
       })
     },

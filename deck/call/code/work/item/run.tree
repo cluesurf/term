@@ -19,8 +19,16 @@
 # line between its opening and its closing, not two. Under `--quiet` the opening is
 # not printed and the blank before
 # the closing still is.
-load @term/base/text/unicode
-  find to-runes
+load @term/base/list
+  find sort
+
+load @term/base/ordering
+  find ordering
+  find from-numbers
+  find from-texts
+
+load @term/base/hash
+  find hash
 
 load ./standard
   find standard
@@ -413,38 +421,7 @@ task draw-command
   spans/push shown
   back make line, spans(spans)
 
-# -1, 0 or 1 as `a` sorts before, with, or after `b`, by code point
-task compare-text
-  take a, like text
-  take b, like text
-
-  like number
-
-  save left, to-runes(a)
-  save right, to-runes(b)
-  save at, 0
-
-  walk test
-    hook test, and(is-below(at, left/length), is-below(at, right/length))
-    hook hold
-      save x, left/{at}
-      save y, right/{at}
-      fork test, is-below(x, y)
-        hold
-          back -1
-      fork test, is-above(x, y)
-        hold
-          back 1
-      save at, add(at, 1)
-  fork test, is-below(left/length, right/length)
-    hold
-      back -1
-  fork test, is-above(left/length, right/length)
-    hold
-      back 1
-  back 0
-
-# does problem `a` sort before problem `b`: by path, then line, then column (section
+# where problem `a` sorts against problem `b`: by path, then line, then column (section
 # 12)
 # ✗ before ▲ before the rest: the cap cuts from the end, so an error sorted by place
 # alone could be cut behind twenty warnings, and a build reporting 12 errors showed
@@ -462,27 +439,33 @@ task problem-rank
       back 1
   back 2
 
-task is-problem-before
+# the path by code point (`from-texts`, the text's own compare). It turned both paths
+# into lists of runes on every comparison, which a build of 48,692 warnings made
+# 79% of `term make` on @term/bind (2026-10-05)
+task order-problems
   take a, like event
   take b, like event
 
-  like boolean
+  like ordering
 
   save rank-a, problem-rank(a/glyph)
   save rank-b, problem-rank(b/glyph)
 
   fork test, is-unequal(rank-a, rank-b)
     hold
-      back is-below(rank-a, rank-b)
-  save order, compare-text(a/place/path, b/place/path)
+      back from-numbers(rank-a, rank-b)
+  save order, from-texts(a/place/path, b/place/path)
 
-  fork test, is-unequal(order, 0)
-    hold
-      back is-below(order, 0)
-  fork test, is-unequal(a/place/line, b/place/line)
-    hold
-      back is-below(a/place/line, b/place/line)
-  back is-below(a/place/column, b/place/column)
+  sift order
+    case less
+      back order
+    case greater
+      back order
+    case equal
+      fork test, is-unequal(a/place/line, b/place/line)
+        hold
+          back from-numbers(a/place/line, b/place/line)
+      back from-numbers(a/place/column, b/place/column)
 
 # problems as section 12 prints them: one caused by an earlier one hidden, its cause
 # gaining `n hidden`; sorted by
@@ -496,28 +479,29 @@ task arrange-problems
 
   like list, like event
 
-  # the causes, and how many each hides
+  # the causes, and how many each hides, in one pass over the problems: every
+  # problem's id, and per id the problems it caused. Each problem walked all of them
+  # twice, which is 48,692 squared on @term/bind
+  save ids, make hash
+  save caused, make hash
+  walk problems
+    take one
+    fork test, is-unequal(one/id, <>)
+      hold
+        ids/set(one/id, true)
+    fork test, is-unequal(one/cause, <>)
+      hold
+        caused/set(one/cause, add(caused/get-or-default(one/cause, 0), 1))
   save kept, make list
   walk problems
     take one
-    save hidden, false
-    fork test, is-unequal(one/cause, <>)
-      hold
-        walk problems
-          take other
-          fork test, and(is-equal(other/id, one/cause), is-unequal(other/id, <>))
-            hold
-              save hidden, true
+    save hidden, and(is-unequal(one/cause, <>), ids/has(one/cause))
     fork test, hidden
       miss
         save count, 0
         fork test, is-unequal(one/id, <>)
           hold
-            walk problems
-              take other
-              fork test, is-equal(other/cause, one/id)
-                hold
-                  save count, add(count, 1)
+            save count, caused/get-or-default(one/id, 0)
         save copy, one
         fork test, is-above(count, 0)
           hold
@@ -531,23 +515,9 @@ task arrange-problems
             tallies/push make tally, amount(count), noun(word)
             save copy/tallies, tallies
         kept/push copy
-  # a stable insertion sort: a problem moves only past problems that sort after it
-  save sorted, make list
-  walk kept
-    take one
-    save placed, make list
-    save inserted, false
-    walk sorted
-      take other
-      fork test, and(is-equal(inserted, false), is-problem-before(one, other))
-        hold
-          placed/push one
-          save inserted, true
-      placed/push other
-    fork test, inserted
-      miss
-        placed/push one
-    save sorted, placed
+  # stable: problems that sort together keep the order they came in. A merge sort
+  # (`sort`), where an insertion sort rebuilt the whole list once per problem
+  save sorted, sort(kept, order-problems)
   save cap, standard/caps/problems
 
   fork test, or(is-maximum(sorted/length, cap), is-below(cap, 1))

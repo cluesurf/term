@@ -43,6 +43,7 @@ import {
 import { projectLeanOf, projectRoleOf } from '@term/call/code/role-of'
 import { projectDeckOf } from '@term/call/code/deck-of'
 import { projectResolver } from '@term/call/code/make'
+import { withNativeEnv } from '@term/make/code/compile/native'
 import { preprocessTests } from '@term/call/code/test-preprocess'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join, relative, resolve as resolvePath } from 'node:path'
@@ -71,7 +72,6 @@ import { declarationsOf, mentionAt, pathMentions, wordAt } from '@term/flow/code
 // a path on disk, as opposed to an in-memory name a test resolver hands back
 const isFilePath = (file: string): boolean => /^(?:[\\/]|[A-Za-z]:[\\/])/.test(file)
 import type { Program, Statement } from '@term/make/code/compile/node'
-import { showType } from '@term/make/code/compile/node'
 import {
   IDENTITY,
   applyChange,
@@ -86,6 +86,7 @@ import {
   canonical,
   outerSpan,
 } from '@term/flow/code/workspace'
+import { showType } from '@term/make/code/compile/type-text'
 
 type DeckOf = (file: string) => { name: string; root: string } | undefined
 
@@ -893,10 +894,12 @@ export class LanguageServer {
   private resolverFor(doc: Doc, root: string | undefined): Resolver | undefined {
     let base: Resolver | undefined = this.options.resolve
 
-    // a file outside every package, and a buffer with no file at all (`untitled:`), still resolve the stdlib
+    // a file outside every package, and a buffer with no file at all (`untitled:`), still resolve the stdlib, with its
+    // `{platform}` slots filled for node as `projectResolver` fills them. Unfilled, every module a test file's harness
+    // loads reported its native names (`generate-v4`, `bit-and`) as undefined
     if (!base) {
       try {
-        base = root ? projectResolver(root) : editorResolver(doc.path ?? '/')
+        base = root ? projectResolver(root) : withNativeEnv('node', editorResolver(doc.path ?? '/'))
       } catch {
         base = undefined
       }

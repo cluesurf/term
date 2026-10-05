@@ -81,7 +81,7 @@ task build
     like text
     like number
   save h
-    make find
+    make hash
   call set
     read h
     text <a>
@@ -116,7 +116,7 @@ task set-a
   save a
     make set
       bind items
-        make find
+        make hash
   call insert
     read a
     code 1
@@ -134,7 +134,7 @@ task set-b
   save b
     make set
       bind items
-        make find
+        make hash
   call insert
     read b
     code 2

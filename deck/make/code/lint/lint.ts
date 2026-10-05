@@ -153,8 +153,8 @@ function eachExpression(
       break
     case 'template':
       for (const part of expr.parts) {
-        if (typeof part !== 'string') {
-          eachExpression(part, visit)
+        if (part.form === 'value') {
+          eachExpression(part.value, visit)
         }
       }
 

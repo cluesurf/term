@@ -119,12 +119,15 @@ task outcome
     call job-result
       read self/dock
 
-# spawn `work` as a concurrent task and return its handle. `work` is started immediately; its result is collected with
-# `wait`. Use this when a task should outlive the current scope; use `gather` for structured fan-out / join.
+# spawn `work` as a concurrent task and return its handle. `work` starts at once and runs to its first wait, the way an
+# async function called on node does, and the caller goes on from there; its result is collected with `wait`. Two jobs
+# that each wait therefore wait at the same time, on every backend: one thread, interleaved at each wait. Use this when
+# a task should outlive the current scope; use `gather` for structured fan-out / join.
 task spawn
   head r
   take work
     like task
+      mark async
       like r
   like handle r
   # the shim takes a task answering the unknown, so the result is boxed here, in Term, where every backend already
@@ -134,6 +137,7 @@ task spawn
       bind dock
         call job-spawn
           task boxed
+            mark async
             like unknown
             send back
               call work
@@ -148,6 +152,7 @@ task gather
   take works
     like list
       like task
+        mark async
         like r
   like list
     like r

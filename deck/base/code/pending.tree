@@ -1,10 +1,11 @@
-
 # Work started without waiting (`tick f(x)`), run until none of it can go further. A program with its own loop calls
 # this between turns, the way a terminal app does after each key, so what a key started lands before the next paint.
 #
-# On node and in a browser the event loop already does this between turns, so it is nothing there. On Rust a
-# fire-and-forget call is queued rather than dropped, and this drains the queue (compile/rust.ts, `__term_drain`). On
-# Swift and Kotlin a `tick` is still the bare call it always was. True always.
+# Every backend starts a ticked call at once and runs it to its first wait, as an async function called on node does.
+# On node and in a browser the event loop finishes the rest between turns, so this is nothing there. On Rust what is
+# still waiting is queued and this drains the queue (compile/rust.ts, `__term_drain`), on Swift this waits for the work
+# still outstanding (compile/swift.ts, `__termDrain`), and on Kotlin it runs what the event loop holds (compile/kotlin.ts,
+# `termLoop`). True always. test/compile/tick-native.ts holds all four.
 
 mark unstable
 
@@ -17,6 +18,6 @@ bind run-pending
   case rust
     text <\{ __term_drain(); true \}>
   case swift
-    text <true>
+    text <__termDrain()>
   case kotlin
-    text <true>
+    text <run \{ termLoop.drain(); true \}>

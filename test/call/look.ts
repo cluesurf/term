@@ -7,9 +7,9 @@ import { dirname, join, resolve as resolvePath } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { fillInferred, inspectModule, toCsv, toJson, toTable } from '@term/make/code/inspect'
 import { compile } from '@term/make/code/compile/compile'
-import { showType } from '@term/make/code/compile/node'
 import { projectResolver } from '@term/call/code/make'
 import { projectDeckOf } from '@term/call/code/deck-of'
+import { showType } from '@term/make/code/compile/type-text'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const TERM = resolvePath(here, '..', '..')

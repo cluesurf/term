@@ -6,6 +6,7 @@
 // frame can show context. Color follows `chalk.level` (auto-disabled when output is not a TTY).
 
 import { readFileSync } from 'node:fs'
+import chalk from 'chalk'
 import { renderKink } from '@term/make/code/parser/diagnostic'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { reportProblem, reportProblems } from '@term/call/code/output'
@@ -29,7 +30,9 @@ export function renderDiagnostic(
   diagnostic: Diagnostic,
   text?: string,
 ): string {
-  return renderKink(diagnostic, sourceLines(diagnostic, text))
+  // colour is asked of chalk here: the renderer is Term (parser/diagnostic.tree) and takes it as a flag, `false`
+  // when left out
+  return renderKink(diagnostic, sourceLines(diagnostic, text), chalk.level > 0)
 }
 
 // print a diagnostic as a Problem item of the run in progress (section 12 of note/term/output/standard.md): its

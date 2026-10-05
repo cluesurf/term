@@ -805,6 +805,165 @@ task anything
     refused('looping-proof'),
   )
 
+  // and through a closure that calls the task by name: the closure's call is a call of the task, walked as one
+  expect(
+    'a claim filled by a loop through a closure that captures the task is refused',
+    `rule anything
+  take x, like number
+  like number
+
+task anything
+  take x
+  save again
+    task
+      take y
+      send back
+        call anything
+          read y
+  send back
+    call again
+      read x
+`,
+    refused('looping-proof'),
+  )
+
+  // NUMERIC descent needs a floor on the path to the call (check/totality.ts strictlyDecreases). Until 2026-10-05 each of
+  // these was a descent with no condition, so a proof that recursed at every step, and so never had a base case to type,
+  // was "terminating", and with `like equal a` as the result it proved any two values equal
+  for (const [what, step] of [
+    ['n % 2, which is n itself at 0 and 1', 'call modulo\n        read n\n        code 2'],
+    ['n / 2, which is 0 again at 0', 'call divide\n        read n\n        code 2'],
+    ['n - 1 with no floor, which runs down forever from 0', 'call subtract\n        read n\n        code 1'],
+  ] as const) {
+    expect(
+      `a claim filled by a recursion on ${what} is refused`,
+      `rule anything
+  take n, like number
+  like number
+
+task anything
+  take n
+  send back
+    call anything
+      ${step}
+`,
+      refused('looping-proof'),
+    )
+  }
+
+  expect(
+    'control: n - 1 past an early return at n <= 0 descends',
+    `rule count-down
+  take n, like number
+  like number
+
+task count-down
+  take n
+  fork test
+    hook test
+      call is-maximum
+        read n
+        code 0
+    hook hold
+      send back, code 0
+  send back
+    call count-down
+      call subtract
+        read n
+        code 1
+`,
+    proven,
+  )
+
+  // the termination verdict itself, on a plain task: a value fork's miss arm is reached when its test failed. (As a
+  // claim's proof this body is `unverified-proof`, because the kernel does not read a value fork as one term)
+  {
+    const result = compile({
+      file: 's.tree',
+      text: `task count-down
+  take n, like number
+  like number
+  send back
+    fork test
+      hook test
+        call is-maximum
+          read n
+          code 0
+      hook hold
+        code 0
+      hook miss
+        call count-down
+          call subtract
+            read n
+            code 1
+`,
+    })
+    const said = result.ok ? result.warnings.map(d => d.name) : result.diagnostics.map(d => d.name)
+
+    if (result.ok && !said.includes('non-terminating')) {
+      pass++
+      console.log('ok    control: n - 1 in the miss arm of a value fork on n <= 0 descends')
+    } else {
+      fail++
+      console.log(`FAIL  control: n - 1 in the miss arm of a value fork on n <= 0 descends  (ok=${result.ok}, ${said.join(',')})`)
+    }
+  }
+
+  expect(
+    'a REBOUND parameter carries no descent: n + 5 then n - 1 grows',
+    `rule grows
+  take n, like number
+  like number
+
+task grows
+  take n
+  save n
+    call add
+      read n
+      code 5
+  fork test
+    hook test
+      call is-maximum
+        read n
+        code 0
+    hook hold
+      send back, code 0
+  send back
+    call grows
+      call subtract
+        read n
+        code 1
+`,
+    refused('looping-proof'),
+  )
+
+  expect(
+    'a REBOUND field carries no descent: link prior, then save prior, read n',
+    `form nat
+  case zero
+  case succ
+    link prior, like nat
+
+rule shrinks
+  take n, like nat
+  like number
+
+task shrinks
+  take n
+  fork case, read n
+    case zero
+      send back
+        code 0
+    case succ
+      link prior
+      save prior, read n
+      send back
+        call shrinks
+          read prior
+`,
+    refused('looping-proof'),
+  )
+
   expect(
     'control: a task handed a DIFFERENT, non-recursive task as a value still ends',
     `task double

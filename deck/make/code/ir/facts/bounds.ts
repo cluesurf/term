@@ -21,7 +21,7 @@
 // The result maps a `while` node to its guard. Keyed by node identity, like every fact: an emitter that ignores it
 // stays correct. test/ir/facts/bounds.ts holds the shapes that must NOT get a guard.
 
-import type { Program, Statement } from '../../compile/node'
+import type { Program, Statement } from '@term/make/code/compile/node'
 
 type Loose = { form?: string; [key: string]: unknown }
 

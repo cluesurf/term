@@ -14,7 +14,7 @@ type Task = Extract<Statement, { form: 'function' }>
 
 // a parameter list as written, so two declarations compare equal only when every type is the same
 function signatureOf(task: Task): string {
-  const types = (task.declared?.params ?? task.params.map(p => p.type)).map((type: Type | undefined) =>
+  const types = (task.declared?.params.map(p => p.type) ?? task.params.map(p => p.type)).map((type: Type | undefined) =>
     JSON.stringify(type ?? null, (key, value) => (key === 'span' ? undefined : value)),
   )
 

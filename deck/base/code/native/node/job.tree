@@ -12,6 +12,7 @@ dock load
 task job-spawn
   take work
     like task
+      mark async
       like unknown
   like job-handle
   send back

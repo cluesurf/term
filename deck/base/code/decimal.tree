@@ -31,6 +31,8 @@ bind decimal-mantissa
     text <$value.replace(".", "")>
   case rust
     text <$value.replace(".", "")>
+  case swift
+    text <$value.replacingOccurrences(of: ".", with: "")>
   case kotlin
     text <$value.replace(".", "")>
 
@@ -44,6 +46,8 @@ bind decimal-scale
     text <($value.split(".")[1] || "").length>
   case rust
     text <$value.split('.').nth(1).map(|f| f.len() as i64).unwrap_or(0)>
+  case swift
+    text <($value.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false).dropFirst().first?.count ?? 0)>
   case kotlin
     text <($value.substringAfter(".", "")).length.toLong()>
 
@@ -58,6 +62,8 @@ bind decimal-format
     text <(function (s, sc) \{ if (sc === 0) return s; var neg = s.charAt(0) === "-"; var d = (neg ? s.slice(1) : s).padStart(sc + 1, "0"); var out = d.slice(0, d.length - sc) + "." + d.slice(d.length - sc); return (neg ? "-" : "") + out \})($digits, $scale)>
   case rust
     text <\{ let s: String = $digits; let sc = $scale as usize; if sc == 0 \{ s \} else \{ let neg = s.starts_with('-'); let d = if neg \{ &s[1..] \} else \{ &s[..] \}; let mut d = d.to_string(); while d.len() \< sc + 1 \{ d.insert(0, '0'); \} let split = d.len() - sc; let out = format!("\{\}.\{\}", &d[..split], &d[split..]); if neg \{ format!("-\{\}", out) \} else \{ out \} \} \}>
+  case swift
+    text <\{ () -\> String in let s: String = $digits; let sc: Int = $scale; if sc == 0 \{ return s \}; let neg = s.hasPrefix("-"); var d = neg ? String(s.dropFirst()) : s; while d.count \< sc + 1 \{ d = "0" + d \}; let split = d.index(d.endIndex, offsetBy: -sc); let out = String(d[..\<split]) + "." + String(d[split...]); return neg ? "-" + out : out \}()>
   case kotlin
     text <run \{ val s = $digits; val sc = ($scale).toInt(); if (sc == 0) s else \{ val neg = s.startsWith("-"); val d0 = if (neg) s.substring(1) else s; val d = d0.padStart(sc + 1, '0'); val out = d.substring(0, d.length - sc) + "." + d.substring(d.length - sc); if (neg) "-" + out else out \} \}>
 

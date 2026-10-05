@@ -470,8 +470,8 @@ function collectCallRefs(statements: Statement[]): Set<string> {
         break
       case 'template':
         for (const part of node.parts) {
-          if (typeof part !== 'string') {
-            expr(part)
+          if (part.form === 'value') {
+            expr(part.value)
           }
         }
 

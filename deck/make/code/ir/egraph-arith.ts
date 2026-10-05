@@ -51,8 +51,8 @@ function toExpr(
   leaves: Map<string, Expression>,
 ): Expr | undefined {
   if (node.form === 'integer') {
-    // a bigint or an out-of-safe-range literal would fold wrong in JS-number arithmetic
-    if (typeof node.value === 'bigint') {
+    // a literal past the safe range (it carries `digits`) would fold wrong in JS-number arithmetic
+    if (node.digits !== undefined) {
       return undefined
     }
 

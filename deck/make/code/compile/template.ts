@@ -246,15 +246,91 @@ function substituteText(
   return { kind: 'text', parts }
 }
 
-export type Template = { params: string[]; body: Node[] }
+// what a hole holds, when its `take` says: `like number` a number literal, `like text` a text literal, `like boolean`
+// `true` or `false`, `like name` one word. A hole with no `like` holds any one word or literal, as every hole did
+export type HoleKind = 'number' | 'text' | 'boolean' | 'name'
+const HOLE_KINDS = new Set<string>(['number', 'text', 'boolean', 'name'])
+
+// `holes` holds a `take` line's kind and its `fall` default where it wrote them; `sites` the `site <name>` places a
+// `beam` fills. `params` is the holes' names in order, which a positional argument fills
+export type Template = {
+  params: string[]
+  holes?: Map<string, { kind?: HoleKind; fallback?: Node }>
+  sites?: Set<string>
+  body: Node[]
+}
 type Beams = Map<string, Node[]>
+
+// a `fuse` that does not fit its template: a hole left out, a value too many, a name the template does not take, a
+// value of the wrong kind. Reported at the fuse, before anything of the expansion is read
+export type TemplateProblem = { code: 'unknown-name' | 'unexpected-node' | 'type-mismatch'; message: string; span: Span }
+
 // the expansion context threaded through a fuse body: the template registry, the enumerations, the current parameter
-// substitutions, and the beamed site contents
+// substitutions, the beamed site contents, and the problems the fuses found
 type Context = {
   templates: Map<string, Template>
   enums: Map<string, string[]>
   subs: Map<string, string>
   beams: Beams
+  problems: TemplateProblem[]
+}
+
+// the kind of value a fuse argument is: a literal's own, a bare word a name, and an argument read from an outer
+// template's parameter the kind of what it holds
+function kindOf(node: Node, subs: Map<string, string>): HoleKind | undefined {
+  switch (node.kind) {
+    case 'integer':
+    case 'decimal':
+      return 'number'
+    case 'text':
+      return 'text'
+    case 'group': {
+      const head = headName(node)
+      const args = rest(node)
+
+      if ((head === 'code' || head === 'text') && args[0]) {
+        return kindOf(args[0], subs)
+      }
+
+      if ((head === 'read' || head === 'loan' || head === 'move') && args[0]) {
+        const held = resolveValue(args[0], subs)
+
+        return isNumeric(held) ? 'number' : held === 'true' || held === 'false' ? 'boolean' : undefined
+      }
+
+      if (head && args.length === 0) {
+        return head === 'true' || head === 'false' ? 'boolean' : 'name'
+      }
+
+      return undefined
+    }
+    case 'name':
+      return 'name'
+    default:
+      return undefined
+  }
+}
+
+// the sites a body declares, so a `beam` that names none can be refused
+function sitesIn(nodes: Node[], into: Set<string>): Set<string> {
+  for (const node of nodes) {
+    if (node.kind !== 'group') {
+      continue
+    }
+
+    if (headName(node) === 'site') {
+      const named = rest(node)[0]
+      const name = named?.kind === 'group' ? headName(named) : named?.kind === 'name' ? nameText(named) : undefined
+
+      if (name) {
+        into.add(name)
+      }
+    }
+
+    sitesIn(node.nodes, into)
+  }
+
+  return into
 }
 
 // extract the `tree` template definitions from a parse tree. The body is the content of the template's hook (`hook
@@ -278,6 +354,7 @@ export function collectTemplates(
     }
 
     const params: string[] = []
+    const holes = new Map<string, { kind?: HoleKind; fallback?: Node }>()
 
     let body: Node[] = []
 
@@ -301,13 +378,38 @@ export function collectTemplates(
 
         if (pName) {
           params.push(pName)
+
+          // `take tag, like number, fall 0`: the hole's kind and its default, beside the name or under the `take`. A
+          // comma pops one level, so after `like number` the `fall` sits UNDER the `like`, beside its `number`
+          const hole: { kind?: HoleKind; fallback?: Node } = {}
+          const read = (parts: Node[]): void => {
+            for (const part of parts) {
+              if (part.kind !== 'group') {
+                continue
+              }
+
+              const said = headName(part)
+              const value = rest(part)[0]
+
+              if (said === 'like' && value?.kind === 'group' && HOLE_KINDS.has(headName(value) ?? '')) {
+                hole.kind = headName(value) as HoleKind
+                read([...rest(part).slice(1), ...rest(value)])
+              } else if (said === 'fall' && value) {
+                hole.fallback = value
+              }
+            }
+          }
+
+          read([...rest(node).slice(1), ...(p?.kind === 'group' ? rest(p) : [])])
+
+          holes.set(pName, hole)
         }
       } else if (head === 'hook') {
         body = rest(node).slice(1) // drop the hook variant marker (fuse / bind / ...), keep the body
       }
     }
 
-    templates.set(name, { params, body })
+    templates.set(name, { params, holes, sites: sitesIn(body, new Set()), body })
   }
 
   return templates
@@ -372,12 +474,40 @@ function expandFuse(group: GroupNode, ctx: Context): Node[] {
 
   const template = name ? ctx.templates.get(name) : undefined
 
+  // the expansion is code this fuse wrote, so a mistake in it is reported at the fuse: the line naming it, `fuse is-tag`
+  const fuseHead = group.nodes[0]
+  const at: Span = fuseHead
+    ? { start: spanOfWhole(fuseHead).start, end: spanOfWhole(group.nodes[1] ?? fuseHead).end }
+    : ZERO_SPAN
+
   if (!template) {
+    // a fuse of a template nothing defines wrote nothing, and said nothing, until 2026-10-05
+    if (name && !dynamic) {
+      ctx.problems.push({ code: 'unknown-name', message: `\`fuse ${name}\` names no template: no \`tree ${name}\` is defined here or in a module this file loads`, span: at })
+    }
+
     return []
   }
 
   const subs = new Map<string, string>()
   const beams: Beams = new Map()
+  const given = new Set<string>()
+  let extra = 0
+  // a value given to a hole, checked against the kind its `take` says
+  const fill = (param: string, node: Node | undefined): void => {
+    given.add(param)
+    subs.set(param, resolveValue(node, ctx.subs))
+    const kind = template.holes?.get(param)?.kind
+    const found = node ? kindOf(node, ctx.subs) : undefined
+
+    if (kind && found && found !== kind) {
+      ctx.problems.push({
+        code: 'type-mismatch',
+        message: `\`fuse ${name}\` gives \`${param}\` ${found === 'name' ? 'a name' : `a ${found}`}, and the template takes ${kind === 'name' ? 'a name' : `a ${kind}`} there (\`take ${param}, like ${kind}\`)`,
+        span: at,
+      })
+    }
+  }
 
   let positional = 0
 
@@ -400,7 +530,7 @@ function expandFuse(group: GroupNode, ctx: Context): Node[] {
       node.kind === 'group' &&
       rest(node).length > 0
     ) {
-      subs.set(head, resolveValue(rest(node)[0], ctx.subs))
+      fill(head, rest(node)[0])
       continue
     }
 
@@ -411,39 +541,72 @@ function expandFuse(group: GroupNode, ctx: Context): Node[] {
     ) {
       // a positional argument: a group (`size 8`, a bare name), or a bare literal (`8`, a number / text node). Both
       // resolve to their string value, so `fuse sized, 8, 255` binds size = "8", mask = "255".
-      subs.set(
-        template.params[positional]!,
-        resolveValue(node, ctx.subs),
-      )
+      fill(template.params[positional]!, node)
       positional++
     } else if (head === 'bind' && node.kind === 'group') {
       const inner = rest(node)
       const param =
         inner[0]?.kind === 'group' ? headName(inner[0]) : undefined
 
-      if (param) {
-        subs.set(param, resolveValue(inner[1], ctx.subs))
+      if (param && !template.params.includes(param)) {
+        ctx.problems.push({
+          code: 'unknown-name',
+          message: `\`fuse ${name}\` binds \`${param}\`, and the template takes ${template.params.length ? template.params.map(p => `\`${p}\``).join(', ') : 'nothing'}`,
+          span: at,
+        })
+      } else if (param) {
+        fill(param, inner[1])
       }
     } else if (head === 'beam' && node.kind === 'group') {
       const inner = rest(node)
       const beamName =
         inner[0]?.kind === 'group' ? headName(inner[0]) : undefined
 
-      if (beamName) {
+      if (beamName && template.sites && !template.sites.has(beamName)) {
+        ctx.problems.push({
+          code: 'unknown-name',
+          message: `\`fuse ${name}\` beams \`${beamName}\`, and the template has ${template.sites.size ? `the sites ${[...template.sites].map(s => `\`${s}\``).join(', ')}` : 'no site'}`,
+          span: at,
+        })
+      } else if (beamName) {
         beams.set(beamName, inner.slice(1))
       }
+    } else {
+      extra++
     }
   }
 
-  // the expansion is code this fuse wrote, so a mistake in it is reported at the fuse: the line naming it, `fuse is-tag`
-  const head = group.nodes[0]
-  const at: Span = head
-    ? { start: spanOfWhole(head).start, end: spanOfWhole(group.nodes[1] ?? head).end }
-    : ZERO_SPAN
+  // every hole is filled: by the fuse, or by its `fall`. A hole left out used to expand as its own name, and what that
+  // broke was found far from here, if at all (guides: language/templates)
+  for (const param of template.params) {
+    if (given.has(param)) {
+      continue
+    }
+
+    const fallback = template.holes?.get(param)?.fallback
+
+    if (fallback) {
+      fill(param, fallback)
+    } else {
+      ctx.problems.push({
+        code: 'unexpected-node',
+        message: `\`fuse ${name}\` leaves out \`${param}\`, which the template takes. Give it, or give the \`take\` a \`fall\``,
+        span: at,
+      })
+    }
+  }
+
+  if (extra > 0) {
+    ctx.problems.push({
+      code: 'unexpected-node',
+      message: `\`fuse ${name}\` gives ${positional + extra} values in order, and the template takes ${template.params.length}`,
+      span: at,
+    })
+  }
 
   const expanded = expandBody(
     template.body.map(node => atFuse(node, at, () => true)),
-    { templates: ctx.templates, enums: ctx.enums, subs, beams },
+    { templates: ctx.templates, enums: ctx.enums, subs, beams, problems: ctx.problems },
   )
 
   // what the substitution built (a filled hole, a `read`) carries no line of its own until it is given the fuse's
@@ -708,10 +871,12 @@ function expandTop(node: Node, ctx: Context, top = false): Node[] {
 
 // expand all templates in a parse tree. `externalTemplates` / `externalEnums` carry definitions from other loaded
 // modules, so a `fuse` (or a meta-loop) can use a template or enumeration an imported module defines.
+// `problems`, when given, collects every fuse that does not fit its template (`TemplateProblem`)
 export function expandTemplates(
   tree: RootNode,
   externalTemplates?: Map<string, Template>,
   externalEnums?: Map<string, string[]>,
+  problems: TemplateProblem[] = [],
 ): RootNode {
   const templates = new Map(externalTemplates)
 
@@ -730,6 +895,7 @@ export function expandTemplates(
     enums,
     subs: new Map(),
     beams: new Map(),
+    problems,
   }
 
   const nodes: GroupNode[] = []

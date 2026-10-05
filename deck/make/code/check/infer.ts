@@ -33,16 +33,8 @@ import type {
   Type,
   ViewNode,
 } from '@term/make/code/compile/node'
-import {
-  BOOLEAN,
-  DYNAMIC,
-  FLOAT,
-  NUMBER,
-  STRING,
-  UNIT,
-  UNKNOWN,
-  showType,
-} from '@term/make/code/compile/node'
+import { booleanType, dynamicType, floatType, numberType, stringType, unitType, unknownType } from '@term/make/code/compile/node'
+import { showType } from '@term/make/code/compile/type-text'
 
 // the members a native map and a native list answer THEMSELVES on every backend (camelCase, as a member call emits).
 // A member call of any other `hash` or `list` method dispatches to the Term method (`bindMemberMethod`)
@@ -135,6 +127,26 @@ export function check(
   // a syntax error in generated code pointing nowhere near the source. A nested `task` resets it, because a loop
   // outside the closure does not enclose the closure's body.
   let loopDepth = 0
+  // the names of the loops that enclose it, innermost last, `''` for an unnamed one: a `halt, name outer` must name
+  // one of them, and a loop may not take the name of one around it, which every backend's label would refuse
+  let loopLabels: string[] = []
+  const inLoop = (label: string | undefined, span: Span, check: () => void): void => {
+    if (label !== undefined && loopLabels.includes(label)) {
+      diagnostics.push(
+        diagnose('duplicate-definition', {
+          file: currentFile,
+          span,
+          message: `a loop inside the loop named "${label}" is named "${label}" too, so \`halt, name ${label}\` could mean either. Name it something else`,
+        }),
+      )
+    }
+
+    loopDepth += 1
+    loopLabels.push(label ?? '')
+    check()
+    loopLabels.pop()
+    loopDepth -= 1
+  }
   // a caught exception's raise set (the guarded body's), for the exhaustiveness of a `fork case` over it
   const caughtRaises = new Map<string, Set<string>>()
   let programRaises: Map<string, Set<string>> | undefined
@@ -167,10 +179,17 @@ export function check(
   const caseFields = new Map<string, Map<string, Type>>()
   // a form's generic parameter names, e.g. maybe -> ["t"], for parameterized named types (maybe<t>)
   const formGenerics = new Map<string, string[]>()
+  // a form with cases -> the field its tag is read as: `form`, or the name its `mark tag, name kind` gives. A read of
+  // it (`s/form`) is the case's name as text, on every backend (the member carries `tag`)
+  const unionTags = new Map<string, string>()
 
   for (const statement of program) {
     if (statement.form === 'record-type') {
       formGenerics.set(statement.name, statement.params)
+
+      if (statement.variants.length > 0 && !statement.text) {
+        unionTags.set(statement.name, statement.tag ?? 'form')
+      }
 
       const fields = new Map<string, Type>()
       const nicks = new Map<string, string>()
@@ -658,36 +677,36 @@ export function check(
 
     switch (node.form) {
       case 'integer':
-        type = NUMBER
+        type = numberType()
         break
       case 'float':
-        type = FLOAT
+        type = floatType()
         break
       case 'boolean':
-        type = BOOLEAN
+        type = booleanType()
         break
       case 'string':
-        type = STRING
+        type = stringType()
         break
       case 'template':
         // every interpolated expression is inferred (a name it reads must exist and be typed); the whole is a text
         for (const part of node.parts) {
-          if (typeof part !== 'string') {
-            inferExpression(part, env)
+          if (part.form === 'value') {
+            inferExpression(part.value, env)
           }
         }
 
-        type = STRING
+        type = stringType()
         break
       case 'unit':
-        type = UNIT
+        type = unitType()
         break
       case 'null':
         // the host null literal lives in the dynamic currency, consistent with any host value
-        type = DYNAMIC
+        type = dynamicType()
         break
       case 'hole':
-        type = UNKNOWN
+        type = unknownType()
         break
 
       case 'variable': {
@@ -697,7 +716,7 @@ export function check(
           type = instantiateScheme(local)
         } else if (docksByFile.get(currentFile)?.has(node.name)) {
           // a module this file docks: the host's own value, typed by nothing the program declares
-          type = UNKNOWN
+          type = unknownType()
         } else if (functions.has(node.name)) {
           // a task referenced as a first-class value: its (freshly instantiated) function type
           const signature = instantiate(functions.get(node.name)!, sub)
@@ -707,7 +726,7 @@ export function check(
             result: signature.result,
           }
         } else {
-          type = UNKNOWN
+          type = unknownType()
         }
 
         break
@@ -718,18 +737,18 @@ export function check(
           // negation preserves the operand's numeric kind (float stays float)
           const operand = inferExpression(node.operand, env)
           const numeric =
-            resolve(operand).kind === 'float' ? FLOAT : NUMBER
+            resolve(operand).kind === 'float' ? floatType() : numberType()
 
           expect(operand, numeric, node.span, 'negation operand')
           type = numeric
         } else {
           expect(
             inferExpression(node.operand, env),
-            BOOLEAN,
+            booleanType(),
             node.span,
             'not operand',
           )
-          type = BOOLEAN
+          type = booleanType()
         }
 
         break
@@ -741,16 +760,16 @@ export function check(
         const numeric =
           resolve(left).kind === 'float' ||
           resolve(right).kind === 'float'
-            ? FLOAT
-            : NUMBER
+            ? floatType()
+            : numberType()
 
         if (node.op === '&&' || node.op === '||') {
-          expect(left, BOOLEAN, node.left.span, 'logical operand')
-          expect(right, BOOLEAN, node.right.span, 'logical operand')
-          type = BOOLEAN
+          expect(left, booleanType(), node.left.span, 'logical operand')
+          expect(right, booleanType(), node.right.span, 'logical operand')
+          type = booleanType()
         } else if (node.op === '==' || node.op === '!=') {
           expect(right, left, node.right.span, 'comparison operands')
-          type = BOOLEAN
+          type = booleanType()
         } else if (
           node.op === '<' ||
           node.op === '<=' ||
@@ -759,11 +778,11 @@ export function check(
         ) {
           expect(left, numeric, node.left.span, 'comparison operand')
           expect(right, numeric, node.right.span, 'comparison operand')
-          type = BOOLEAN
+          type = booleanType()
         } else if (node.op === '+' && resolve(left).kind === 'string') {
           // `+` is string concatenation when its left operand is a string (otherwise numeric addition)
-          expect(right, STRING, node.right.span, 'string concatenation')
-          type = STRING
+          expect(right, stringType(), node.right.span, 'string concatenation')
+          type = stringType()
         } else {
           expect(left, numeric, node.left.span, 'arithmetic operand')
           expect(right, numeric, node.right.span, 'arithmetic operand')
@@ -956,7 +975,7 @@ export function check(
         for (const branch of node.branches) {
           expect(
             inferExpression(branch.cond, env),
-            BOOLEAN,
+            booleanType(),
             branch.cond.span,
             'conditional condition',
           )
@@ -991,7 +1010,7 @@ export function check(
 
           if (field) {
             const subject = resolve(
-              env.get(node.target.name)?.type ?? UNKNOWN,
+              env.get(node.target.name)?.type ?? unknownType(),
             )
 
             const params =
@@ -1013,7 +1032,31 @@ export function check(
 
         const target = resolve(inferExpression(node.target, env))
 
-        if (target.kind === 'named' && records.has(target.name)) {
+        // a field read off an OPAQUE host handle (`dock type / load <any>, name url-handle`): Term knows nothing of what
+        // it holds, so the read compiled to whatever each backend wrote, a property lookup on TypeScript and a field of
+        // `Rc<dyn Any>` on Rust that rustc refused (guides: language/native, `url/host`). A handle is read through a
+        // `bind` or a task of the module that made it. A `native/<backend>/` file knows its handle's concrete type
+        if (
+          target.kind === 'named' &&
+          opaqueTypes.has(target.name) &&
+          !records.has(target.name) &&
+          !node.index &&
+          !/\/native\/[a-z-]+\//.test(currentFile)
+        ) {
+          diagnostics.push(
+            diagnose('type-mismatch', {
+              file: currentFile,
+              span: node.span,
+              message: `"${node.name}" is read off a \`${target.name}\`, a host handle Term knows nothing inside, so no backend can be told what it is`,
+              hint: `read it through a \`bind\` with a case per backend, or a task of the module that made the handle`,
+            }),
+          )
+          type = unknownType()
+        } else if (target.kind === 'named' && unionTags.get(target.name) === node.name && !node.index && !records.get(target.name)?.has(node.name)) {
+          // the tag of a form with cases: which case the value is, as text
+          node.tag = target.name
+          type = stringType()
+        } else if (target.kind === 'named' && records.has(target.name)) {
           const field = records.get(target.name)!.get(node.name)
 
           if (field) {
@@ -1063,13 +1106,13 @@ export function check(
                   message: `"${target.name}" has no field "${node.name}"`,
                 }),
               )
-              type = UNKNOWN
+              type = unknownType()
             }
           }
         } else if (target.kind === 'array' && node.name === 'length') {
-          type = NUMBER
+          type = numberType()
         } else if (target.kind === 'map' && node.name === 'size') {
-          type = NUMBER
+          type = numberType()
         } else if (target.kind === 'array' && (node.index || /^\d+$/.test(node.name))) {
           // an element read, `read xs/{i}` or `read xs/0`, is the list's element: it was `unknown`, which every
           // backend then treated as a boxed dynamic (TypeScript's `any`, structural `__termEqual` on a number)
@@ -1098,9 +1141,9 @@ export function check(
               message,
             }),
           )
-          type = UNKNOWN
+          type = unknownType()
         } else {
-          type = UNKNOWN
+          type = unknownType()
         }
 
         break
@@ -1181,7 +1224,7 @@ export function check(
           node.callee.form === 'variable' &&
           !env.has(node.callee.name) &&
           methodNames.has(node.callee.name) &&
-          node.names?.some(name => typeof name === 'string')
+          node.names?.some(Boolean)
         ) {
           bindLabelledMethod(node, env)
         }
@@ -1503,7 +1546,7 @@ export function check(
             calleeType.kind === 'variable'
           ) {
             // gradual: an unknown callee, unless it is a native collection method whose result is known
-            type = nativeResult ?? UNKNOWN
+            type = nativeResult ?? unknownType()
           } else {
             diagnostics.push(
               diagnose('type-mismatch', {
@@ -1514,7 +1557,7 @@ export function check(
                 )})`,
               }),
             )
-            type = UNKNOWN
+            type = unknownType()
           }
         }
 
@@ -1524,7 +1567,7 @@ export function check(
       case 'closure': {
         // a function literal: check its body with the params in scope, and yield a function type
         const inner: Env = new Map(env)
-        const params = node.params.map(p => p.type ?? UNKNOWN)
+        const params = node.params.map(p => p.type ?? unknownType())
         node.params.forEach((p, i) =>
           inner.set(p.name, { vars: [], type: params[i]! }),
         )
@@ -1532,14 +1575,17 @@ export function check(
         // a closure is its own control-flow scope, exactly as a nested task is: a `walk` around the literal does
         // not make `turn next` legal inside it, and every backend lowers the body to a separate function
         const outerLoops = loopDepth
+        const outerLabels = loopLabels
         loopDepth = 0
-        checkBody(node.body, inner, node.result ?? UNKNOWN)
+        loopLabels = []
+        checkBody(node.body, inner, node.result ?? unknownType())
         loopDepth = outerLoops
+        loopLabels = outerLabels
 
         const fn: Type = {
           kind: 'function',
           params,
-          result: node.result ?? UNKNOWN,
+          result: node.result ?? unknownType(),
         }
 
         if (node.async) {
@@ -1614,6 +1660,19 @@ export function check(
       case 'assign': {
         const valueType = inferExpression(node.value, env)
         const targetType = inferExpression(node.target, env)
+
+        // a tag is which case the value is, so writing it alone would leave the fields of another case behind it
+        if (node.target.form === 'member' && node.target.tag) {
+          diagnostics.push(
+            diagnose('type-mismatch', {
+              file: currentFile,
+              span: node.span,
+              message: `"${node.target.name}" is the tag of "${node.target.tag}", which is read and never written. Build the case wanted with \`make\` instead`,
+            }),
+          )
+          break
+        }
+
         expect(valueType, targetType, node.span, 'assignment')
         break
       }
@@ -1632,26 +1691,24 @@ export function check(
         } else if (resolve(result).kind === 'variable') {
           // a bare `send back` in a task that declares no result: the result is unit (a typed backend needs to
           // know). A declared result is left to the declaration.
-          expect(UNIT, result, node.span, 'return value')
+          expect(unitType(), result, node.span, 'return value')
         }
 
         break
       case 'while':
         expect(
           inferExpression(node.cond, env),
-          BOOLEAN,
+          booleanType(),
           node.cond.span,
           'loop condition',
         )
-        loopDepth += 1
-        checkBody(node.body, env, result)
-        loopDepth -= 1
+        inLoop(node.label, node.span, () => checkBody(node.body, env, result))
         break
       case 'if':
         for (const branch of node.branches) {
           expect(
             inferExpression(branch.cond, env),
-            BOOLEAN,
+            booleanType(),
             branch.cond.span,
             'branch condition',
           )
@@ -1700,12 +1757,10 @@ export function check(
 
         // a second `take` binds the turn's index, which is a number on every backend. lean-0017
         if (node.index) {
-          inner.set(node.index, { vars: [], type: NUMBER })
+          inner.set(node.index, { vars: [], type: numberType() })
         }
 
-        loopDepth += 1
-        checkBody(node.body, inner, result)
-        loopDepth -= 1
+        inLoop(node.label, node.span, () => checkBody(node.body, inner, result))
         break
       }
 
@@ -1718,13 +1773,12 @@ export function check(
         // call, is pruned from a node build): it still matches by `form`, with only the shared fields, rather than
         // turning the whole match into a comparison of the caught value with text
         if (subjectType.kind === 'named' && subjectType.name === 'exception' && node.cases.some(c => exceptionProps.has(c.label))) {
-          node.exceptionArms = {}
-
-          for (const branch of node.cases) {
+          node.exceptionArms = node.cases.map(branch => {
             const props = exceptionProps.get(branch.label)
             const link = props ? [...(records.get(props)?.keys() ?? [])] : []
-            node.exceptionArms[branch.label] = { shared: EXCEPTION_SHARED, link }
-          }
+
+            return { label: branch.label, shared: EXCEPTION_SHARED, link }
+          })
 
           const caught = node.subject.form === 'variable' ? caughtRaises.get(node.subject.name) : undefined
 
@@ -1764,12 +1818,12 @@ export function check(
 
           for (const branch of node.cases) {
             const inner = new Map(env)
-            const arm = node.exceptionArms[branch.label]!
+            const arm = node.exceptionArms.find(one => one.label === branch.label)!
             const own = exceptionProps.get(branch.label)
             const linkFields = own ? records.get(own) : undefined
             const fields = new Map<string, Type>()
-            arm.shared.forEach(name => fields.set(name, records.get('exception')?.get(name) ?? STRING))
-            arm.link.forEach(name => fields.set(name, linkFields?.get(name) ?? STRING))
+            arm.shared.forEach(name => fields.set(name, records.get('exception')?.get(name) ?? stringType()))
+            arm.link.forEach(name => fields.set(name, linkFields?.get(name) ?? stringType()))
 
             for (const { field, local } of armLocals([...fields.keys()], branch.binds ?? [])) {
               inner.set(local, { vars: [], type: seedType(fields.get(field)!, new Map()) })
@@ -1995,7 +2049,7 @@ export function check(
       case 'hold':
         expect(
           inferExpression(node.expr, env),
-          BOOLEAN,
+          booleanType(),
           node.span,
           'hold condition',
         )
@@ -2010,6 +2064,21 @@ export function check(
         // message arrives in the wrong language pointing at generated code. `turn next` was written once in a
         // `case none` arm to mean "fall through to the rest of the task", which is a reading the surface does
         // not have.
+        // a named one must name a loop it is inside: `halt, name outer` with no `walk ..., name outer` around it
+        if (loopDepth > 0 && node.label !== undefined && !loopLabels.includes(node.label)) {
+          const word = node.form === 'break' ? 'halt' : 'turn next'
+          const named = loopLabels.filter(Boolean)
+
+          diagnostics.push(
+            diagnose('unknown-name', {
+              file: currentFile,
+              span: node.span,
+              message: `\`${word}, name ${node.label}\` names no loop around it${named.length > 0 ? ` (the loops around it are named ${named.join(', ')})` : ', and none around it has a name'}`,
+              hint: 'name the loop it means with `walk ..., name <loop>`',
+            }),
+          )
+        }
+
         if (loopDepth === 0) {
           const word = node.form === 'break' ? 'halt' : 'turn next'
 
@@ -2150,7 +2219,7 @@ export function check(
 
             if (
               labels.some(
-                one => typeof one === 'string' && one !== null && !declared(one),
+                one => !!one && !declared(one),
               )
             ) {
               break
@@ -2160,9 +2229,9 @@ export function check(
             const positional: Expression[] = []
 
             last.args.forEach((arg, at) => {
-              const label = labels[at]
+              const label = labels[at] ?? ''
 
-              if (typeof label === 'string' && label !== null) {
+              if (label !== '') {
                 carried.push({ name: label, value: arg })
               } else {
                 positional.push(arg)
@@ -2387,7 +2456,7 @@ export function check(
       node.args.unshift(member.target)
 
       if (node.names) {
-        node.names.unshift(undefined)
+        node.names.unshift('')
       }
 
       if (node.leanNames) {
@@ -2412,7 +2481,7 @@ export function check(
     node.args.unshift(member.target)
 
     if (node.names) {
-      node.names.unshift(undefined)
+      node.names.unshift('')
     }
 
     if (node.leanNames) {
@@ -2439,7 +2508,8 @@ export function check(
   ): void {
     const callee = node.callee as { name: string }
     const labels = node.names ?? []
-    const named = labels.filter((name): name is string => typeof name === 'string')
+    // `''` is a positional argument (compile/node.ts, `names`)
+    const named = labels.filter(name => !!name)
     const top = functions.get(callee.name)
 
     if (!named.includes('self') && top && named.every(name => top.names.includes(name))) {
@@ -2449,7 +2519,7 @@ export function check(
     let at = labels.indexOf('self')
 
     if (at < 0) {
-      at = node.args.findIndex((_, i) => typeof labels[i] !== 'string')
+      at = node.args.findIndex((_, i) => !labels[i])
     }
 
     const receiverNode = node.args[at]
@@ -2520,14 +2590,15 @@ export function check(
     // builds the `feature` case of whichever sum declares it, typed as that sum by the record case exactly as
     // `make feature` would be. A variant shared by several sums is left to the kernel there, the same as `make`.
     if (node.lean && construction) {
-      const names = node.names ?? node.args.map(() => undefined)
+      // `''` is a positional argument (compile/node.ts, `names`)
+      const names = node.names ?? node.args.map(() => '')
       const fields: { name: string; value: Expression }[] = []
       const positional: Expression[] = []
 
       node.args.forEach((arg, i) => {
-        const name = names[i]
+        const name = names[i] ?? ''
 
-        if (name === undefined || name === null) {
+        if (name === '') {
           positional.push(arg)
         } else {
           fields.push({ name, value: arg })
@@ -2597,7 +2668,7 @@ export function check(
 
       if (methodSignatures.length > 0) {
         ;(node.names ?? []).forEach((label, i) => {
-          if (typeof label !== 'string') {
+          if (!label) {
             return
           }
 
@@ -2630,7 +2701,8 @@ export function check(
     const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T
     // `let`, because the lean accumulation below drops the later heads of a repeated list label and `names` has
     // to stay index-aligned with `node.args`
-    let names = node.names ?? node.args.map(() => undefined)
+    // `''` is a positional argument (compile/node.ts, `names`)
+    let names = node.names ?? node.args.map(() => '')
 
     // THE LEAN SURFACE, two adjustments before the arguments are placed, both by the DECLARED type and never by
     // the count. A property built its children as an array; where the parameter is not a list, a one-item array
@@ -2654,16 +2726,16 @@ export function check(
         const singleHere = (name: string): boolean => {
           const at = signature.names.indexOf(name)
 
-          return at >= 0 && resolve(signature.params[at] ?? UNKNOWN).kind !== 'array'
+          return at >= 0 && resolve(signature.params[at] ?? unknownType()).kind !== 'array'
         }
 
         for (let i = 0; i < node.args.length; i++) {
           for (;;) {
-            const name = names[i]
+            const name = names[i] ?? ''
             const arg = node.args[i]!
 
             if (
-              typeof name !== 'string' ||
+              name === '' ||
               arg.form !== 'array' ||
               arg.items.length < 2 ||
               !singleHere(name)
@@ -2691,7 +2763,7 @@ export function check(
 
             if (
               labels.some(
-                one => typeof one === 'string' && one !== null && !declaredHere(one),
+                one => !!one && !declaredHere(one),
               )
             ) {
               break
@@ -2702,9 +2774,9 @@ export function check(
             const positional: Expression[] = []
 
             last.args.forEach((one, at) => {
-              const label = labels[at]
+              const label = labels[at] ?? ''
 
-              if (typeof label === 'string' && label !== null) {
+              if (label !== '') {
                 carriedNames.push(label)
                 carriedArgs.push(one)
               } else {
@@ -2733,7 +2805,7 @@ export function check(
         const byName = new Map<string, number[]>()
 
         names.forEach((name, i) => {
-          if (name === undefined || name === null) {
+          if (!name) {
             return
           }
 
@@ -2749,7 +2821,7 @@ export function check(
           }
 
           const index = signature.names.indexOf(name)
-          const param = resolve(signature.params[index] ?? UNKNOWN)
+          const param = resolve(signature.params[index] ?? unknownType())
           const every = at.map(i => node.args[i]!)
 
           if (
@@ -2778,10 +2850,10 @@ export function check(
       }
 
       for (let i = 0; i < node.args.length; i++) {
-        const name = names[i]
+        const name = names[i] ?? ''
         const arg = node.args[i]!
 
-        if (name === undefined || name === null) {
+        if (name === '') {
           // A FLAG IS AN UNBOUND WORD. A word the resolver bound is a VARIABLE, passed by value, however its name
           // reads: `do-serve-http2 port, host, handler, secure` passes the caller's `secure`, which may be false.
           // Without the binding test every such argument became `true`, a silent security downgrade in the stdlib's
@@ -2791,7 +2863,7 @@ export function check(
             !arg.binding &&
             signature.names.includes(arg.name) &&
             !seen.has(arg.name) &&
-            resolve(signature.params[signature.names.indexOf(arg.name)] ?? UNKNOWN).kind === 'boolean'
+            resolve(signature.params[signature.names.indexOf(arg.name)] ?? unknownType()).kind === 'boolean'
           ) {
             names[i] = arg.name
             node.args[i] = { form: 'boolean', value: true, span: arg.span }
@@ -2819,7 +2891,7 @@ export function check(
           continue
         }
 
-        const param = resolve(signature.params[index] ?? UNKNOWN)
+        const param = resolve(signature.params[index] ?? unknownType())
 
         if (param.kind === 'array') {
           // A LIST PARAMETER TAKES THE CHILDREN AS ITS ITEMS (`states <a>, <b>`), except when the one child is
@@ -2861,8 +2933,9 @@ export function check(
       const name = names[i]
       const arg = node.args[i]!
 
-      // a positional argument (`undefined` from the mill, `null` after a trip through the JSON compile cache)
-      if (name === undefined || name === null) {
+      // a positional argument: `''` from the mill (compile/node.ts, `names`), and `undefined` or `null` from a compile
+      // cache written before 2026-10-05, when the mill wrote `undefined` and JSON turned it to `null`
+      if (!name) {
         // a positional argument takes the next unfilled position
         while (at < ordered.length && ordered[at] !== undefined) {
           at++
@@ -2957,7 +3030,7 @@ export function check(
 
       // a `need false` collection or text left out between two given arguments is its empty value, as it is when
       // trailing below (`call fetch / read url / bind timeout, code 300` leaves out the header map)
-      const gapType = resolve(signature.params[i] ?? UNKNOWN)
+      const gapType = resolve(signature.params[i] ?? unknownType())
       const emptyGap =
         i < filled && signature.optional?.[i] === true
           ? gapType.kind === 'map'
@@ -2999,7 +3072,7 @@ export function check(
         continue
       }
 
-      const param = resolve(signature.params[i] ?? UNKNOWN)
+      const param = resolve(signature.params[i] ?? unknownType())
 
       if (signature.optional?.[i] !== true) {
         diagnostics.push(
@@ -3355,7 +3428,7 @@ export function check(
       continue
     }
 
-    checkStatement(statement, moduleEnv, UNKNOWN)
+    checkStatement(statement, moduleEnv, unknownType())
   }
 
   for (const statement of program) {
@@ -3386,7 +3459,7 @@ export function check(
 
       if (signature && resolve(signature.result).kind === 'variable') {
         currentFile = statement.span.file ?? file
-        expect(UNIT, signature.result, statement.span, 'result')
+        expect(unitType(), signature.result, statement.span, 'result')
       }
     }
   }
@@ -3415,7 +3488,7 @@ export function check(
         const slot = signature.params[i]
         param.type = slot
           ? zonkGeneric(slot, signature.genericNames)
-          : (param.type ?? UNKNOWN)
+          : (param.type ?? unknownType())
       })
       // deep-resolve every expression's inferred type, so later passes (monomorphization, native codegen) see
       // concrete types rather than unsolved inference variables. Free variables tied to a generic parameter resolve
@@ -3492,8 +3565,8 @@ export function check(
           break
         case 'template':
           for (const part of node.parts) {
-            if (typeof part !== 'string') {
-              visitExpression(part)
+            if (part.form === 'value') {
+              visitExpression(part.value)
             }
           }
 
@@ -3612,8 +3685,8 @@ function bodyRaises(body: Statement[], sets: Map<string, Set<string>>): Set<stri
         break
       case 'template':
         node.parts.forEach(p => {
-          if (typeof p !== 'string') {
-            expr(p)
+          if (p.form === 'value') {
+            expr(p.value)
           }
         })
         break

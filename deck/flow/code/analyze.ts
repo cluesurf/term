@@ -10,13 +10,13 @@ import type {
   Program,
   Statement,
 } from '@term/make/code/compile/node'
-import { showType } from '@term/make/code/compile/node'
 import type {
   Diagnostic,
   Position as SeedPosition,
   Severity,
   Span,
 } from '@term/make/code/parser/diagnostic'
+import { showType } from '@term/make/code/compile/type-text'
 
 // LSP geometry: 0-based line/character, exactly the compiler's own coordinates, so spans map across unchanged.
 export type LspPosition = { line: number; character: number }
@@ -238,8 +238,8 @@ function walkExpression(
       break
     case 'template':
       for (const part of node.parts) {
-        if (typeof part !== 'string') {
-          walkExpression(part, visit)
+        if (part.form === 'value') {
+          walkExpression(part.value, visit)
         }
       }
 

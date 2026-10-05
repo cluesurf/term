@@ -34,22 +34,51 @@ export type Type =
       effects?: string[]
       // the parameters' surface NAMES (positionally aligned with `params`), when written. Lets a DEPENDENT function type
       // resolve a later parameter that mentions an earlier one (`(m) -> lt m n -> acc` -- the second parameter refers to
-      // the first, `m`). Absent for an anonymous arrow.
-      paramNames?: (string | undefined)[]
+      // the first, `m`). Absent for an anonymous arrow, and `''` for one parameter with no name, as a call's `names`
+      paramNames?: string[]
     }
   | { kind: 'variable'; id: number }
 
-export const NUMBER: Type = { kind: 'number' }
-export const FLOAT: Type = { kind: 'float' }
-export const BOOLEAN: Type = { kind: 'boolean' }
-export const STRING: Type = { kind: 'string' }
-export const UNIT: Type = { kind: 'unit' }
-export const UNKNOWN: Type = { kind: 'unknown' }
+// The primitive types, each made fresh by a task: Term exports a task and never a module constant (the port contract,
+// note/term/self-host/04-the-port-switch.md), so these were the constants `NUMBER`, `STRING`, ... until 2026-10-05.
+// Nothing compared them by identity, and a fresh value cannot be mutated under another reader
+export function numberType(): Type {
+  return { kind: 'number' }
+}
+
+export function floatType(): Type {
+  return { kind: 'float' }
+}
+
+export function booleanType(): Type {
+  return { kind: 'boolean' }
+}
+
+export function stringType(): Type {
+  return { kind: 'string' }
+}
+
+export function unitType(): Type {
+  return { kind: 'unit' }
+}
+
+export function unknownType(): Type {
+  return { kind: 'unknown' }
+}
+
 // a slot the source left EMPTY (a bare `like list`'s element), as opposed to a spelled `like unknown`: the
 // checker seeds it as a fresh inference variable, so the concrete element is inferred from usage
-export const FREE_UNKNOWN: Type = { kind: 'unknown', free: true }
-export const DYNAMIC: Type = { kind: 'dynamic' }
-export const BYTES: Type = { kind: 'bytes' }
+export function freeUnknownType(): Type {
+  return { kind: 'unknown', free: true }
+}
+
+export function dynamicType(): Type {
+  return { kind: 'dynamic' }
+}
+
+export function bytesType(): Type {
+  return { kind: 'bytes' }
+}
 
 export type BinaryOp =
   | '+'
@@ -76,13 +105,17 @@ export type Binding =
   | { kind: 'deferred' }
 
 export type Expression =
-  | { form: 'integer'; value: number | bigint; span: Span; type?: Type }
+  // `value` is the number. A literal past 2^53 cannot be one exactly, so `digits` then holds its exact decimal text
+  // (sign included) and `value` the nearest number; read it exactly through `integerOf`. A `number | bigint` until
+  // 2026-10-05, which Term cannot spell (compile/node.tree)
+  | { form: 'integer'; value: number; digits?: string; span: Span; type?: Type }
   | { form: 'float'; value: number; span: Span; type?: Type }
   | { form: 'boolean'; value: boolean; span: Span; type?: Type }
   | { form: 'string'; value: string; span: Span; type?: Type }
   // runtime text interpolation, `text <a {{x}} b>`: the chunks as written and an expression per `{{...}}`, joined
   // into a text when the program runs (a template literal, `format!`, `"\\(x)"`, `"$x"`). book/language/templates.md.
-  | { form: 'template'; parts: (string | Expression)[]; span: Span; type?: Type }
+  // Each part says which it is (`TemplatePart`): a `(string | Expression)[]` until 2026-10-05, which Term cannot spell
+  | { form: 'template'; parts: TemplatePart[]; span: Span; type?: Type }
   | { form: 'unit'; span: Span; type?: Type }
   // the host null literal (`null`), for the `dynamic` / host boundary: JSON null, a JS `null` passed to an FFI, the
   // value `is-null` tests for. Distinct from `unit` (void / undefined). Typed `dynamic`; emitted as each host's null.
@@ -119,8 +152,10 @@ export type Expression =
       span: Span
       type?: Type
       // named arguments (`call f / bind a, 200 / bind b, 100`): one entry per arg, the label of a `bind` child or
-      // undefined for a positional one. The checker reorders `args` into the callee's declared order and drops this.
-      names?: (string | undefined)[]
+      // `''` for a positional one. The checker reorders `args` into the callee's declared order and drops this.
+      // A label is never empty, so `''` is no label: Term spells this list (compile/node.tree), and could not spell
+      // the `(string | undefined)[]` it was until 2026-10-05
+      names?: string[]
       // the call was read with the LEAN surface (its file's role carries `mark lean`), and every named argument
       // that came from a property head (`key <tense>`) was built as an ARRAY of that head's children. The checker
       // unwraps a one-item array where the parameter is not a list, by the declared type and never by the count,
@@ -133,8 +168,9 @@ export type Expression =
       leanNames?: boolean[]
       // aligned with `names`: the IMPORTED name where a lean label is an import alias (`find to-number, name
       // decimal-to-number`, then `big-of(decimal-to-number(x))`). The label keeps its written name, since it may still
-      // be a parameter of the callee. Where it is not, it is the nested call of this name (check/lean-nest.ts)
-      leanAliases?: (string | undefined)[]
+      // be a parameter of the callee. Where it is not, it is the nested call of this name (check/lean-nest.ts).
+      // `''` where the label is no alias, as in `names`
+      leanAliases?: string[]
       // `wait false`: a fire-and-forget call. It is made but never awaited, even when the callee is async, and it does
       // not make the caller async. Async resolution skips it; without this flag an async call is awaited by default.
       background?: boolean
@@ -181,6 +217,10 @@ export type Expression =
       // the member's foreign `name <...>` (e.g. a binding field's `COLOR_BUFFER_BIT`), set by the checker when the
       // accessed field declares one, so the emitter uses the exact native name instead of camelCasing the seed name.
       nick?: string
+      // the TAG of a form with cases, read as a field (`s/form`, or the name `mark tag, name kind` gives): set by the
+      // checker to the form's name. The value is the case's name as text. TypeScript reads the field its values carry,
+      // and a native backend calls the accessor it gives that form
+      tag?: string
       span: Span
       type?: Type
     }
@@ -214,6 +254,18 @@ export type Expression =
       deferred?: boolean
     }
 
+// one part of a run-time text: a chunk as written, or an expression whose value is shown in its place
+export type TemplatePart = { form: 'chunk'; value: string } | { form: 'value'; value: Expression }
+
+// a chunk of a template, or a value in it
+export function chunkPart(value: string): TemplatePart {
+  return { form: 'chunk', value }
+}
+
+export function valuePart(value: Expression): TemplatePart {
+  return { form: 'value', value }
+}
+
 // what a checker-written `hold` stands for. The contract kinds fail the build when unproven, because a programmer
 // wrote them. The tier-0 kinds are counted against a baseline, because nobody did. note/term/proof-by-default/.
 export type HoldOrigin =
@@ -242,6 +294,9 @@ export type Statement =
       span: Span
       type?: Type
       foreign?: string
+      // on a separate-compilation stub of a top-level constant: the name its own unit's module exports it by
+      // (compile/stub.ts), which a dependent that names it otherwise imports it as (compile/modules.ts)
+      stubExport?: string
     }
   | {
       form: 'assign'
@@ -266,6 +321,9 @@ export type Statement =
       // every turn. Read only by the checker (check/contract.ts); every backend ignores them.
       must?: Expression[]
       down?: Expression
+      // the loop's name (`walk xs, name outer`): a `halt` or `turn next` naming it leaves or continues this loop from
+      // inside one nested in it. Every backend writes a loop label (test/compile/loop-name-native.ts)
+      label?: string
     }
   // a pattern match on an enum value (fork case): each case is a variant label, with optional `binds` renaming the
   // variant's fields (in declaration order) so a nested match on the same enum can name both without collision
@@ -278,7 +336,9 @@ export type Statement =
       // filled by the checker when the subject is a caught exception and the labels are exception forms: per label,
       // the shared fields the arm binds off the carrier and the props it binds off the form's `link` record, so every
       // backend lowers the arm the same way (`form` is the discriminant). note/term/hive/11-native-exceptions.md
-      exceptionArms?: Record<string, { shared: string[]; link: string[] }>
+      // A LIST of arms, one per label, rather than a record keyed by label: a form Term can spell (compile/node.tree),
+      // and JSON-safe where a Map is not. Find an arm by its `label`
+      exceptionArms?: { label: string; shared: string[]; link: string[] }[]
       // FILLED BY THE CHECKER WHEN THE ARMS COVER EVERY VARIANT and there is no `otherwise`. The checker
       // already works this out to report `non-exhaustive`; saying so on the node lets a backend close the
       // chain with a plain `else` instead of a last `if`, which is what a host's own return analysis needs
@@ -296,9 +356,12 @@ export type Statement =
       span: Span
       // the walk's invariants (see `while`). A walk over a list ends by itself, so it takes no measure.
       must?: Expression[]
+      // the loop's name (see `while`)
+      label?: string
     }
-  | { form: 'break'; span: Span }
-  | { form: 'continue'; span: Span }
+  // `halt` and `turn next`, of the innermost loop, or of the loop whose `name` is `label` (`halt, name outer`)
+  | { form: 'break'; label?: string; span: Span }
+  | { form: 'continue'; label?: string; span: Span }
   | { form: 'return'; value?: Expression; span: Span }
   // stop the whole program (`halt flow`), lowered to each host's process exit
   | { form: 'exit'; span: Span }
@@ -371,6 +434,22 @@ export type Statement =
       // is empty and is neither checked nor emitted; dependents type-check against stubs instead of dependency
       // bodies, so a body-only edit in a dependency never re-checks its dependents. See code/compile/stub.ts.
       stub?: boolean
+      // WHAT A STUB'S BODY WAS SHOWN TO DO, by its owning unit, which had the body. Every whole-program analysis the
+      // merged build runs reads a callee's body (purity, termination, what it raises, the provers' one-line
+      // unfoldings), and a stub has none, so each read it as the worst case and a separately compiled module was
+      // refused what the merged build allowed. Each analysis reads these for a stub instead (check/facts.ts,
+      // check/totality.ts, check/effects.ts, check/unfold.ts), and the interface hash covers them, so a dependent is
+      // rebuilt when one changes. `stubFacts` names the sets the task is in: `clean` (no effect but the writes
+      // through `stubWrites`), `pure`, `state-free`, `length-keeping`, `returns-fresh`, `ends`
+      stubFacts?: string[]
+      // the parameter positions a `clean` task writes through (a list it is handed and pushes to)
+      stubWrites?: number[]
+      // the exceptions it can raise, guards honored, its callees' included
+      stubRaises?: string[]
+      // its one statement, when its body is one, for the analyses that recognize a task by its shape
+      stubShape?: Statement
+      // the name its own unit exported it by, which a dependent that renames it imports it as (compile/modules.ts)
+      stubExport?: string
       // a `rule` written as a SIGNATURE (`head` / `take` / `like`, no `show` goal): a CLAIM. It declares a name at
       // a type and owes a proof, which is a `task` of the same name. Until that task exists the name is declared
       // and not defined: `open-claim` refuses the book, and `open-claim-used` refuses code that calls it. `open`
@@ -410,7 +489,9 @@ export type Statement =
       // an inference variable), which is right for inference and for every backend and wrong for the kernel: it made
       // `equal a x y` read as `equal a`, so a claim about which two values are equal was checked as a claim about
       // nothing (proof-by-default-0031). The kernel reads these where seeding lost something.
-      declared?: { params: (Type | undefined)[]; result?: Type }
+      // One entry per parameter, its `type` absent where none was written: a list of `(Type | undefined)` until
+      // 2026-10-05, which Term cannot spell (compile/node.tree)
+      declared?: { params: { type?: Type }[]; result?: Type }
       span: Span
     }
   | {
@@ -438,7 +519,8 @@ export type Statement =
       }[]
       variants: {
         name: string
-        fields: { name: string; type: Type; nick?: string; identity?: boolean; span?: Span }[]
+        // `optional` is `need false` on a case's field, which the mill carries as it does on a form's
+        fields: { name: string; type: Type; nick?: string; identity?: boolean; optional?: boolean; span?: Span }[]
         // the output index expressions of this constructor (one per declared index, in order): `vnil` outputs `zero`,
         // `vcons` outputs `succ count`. Present only on an indexed family; the constructor's result type is
         // `T <params> <indexValues>`.
@@ -498,10 +580,12 @@ export type Statement =
       // true when no field's type is a function, so instances are pure data (a base `RecordNode` / JSON). The base
       // bridge lifts only function-free forms into records; a form with a function-typed field stays code.
       functionFree?: boolean
+      // on a separate-compilation stub: the name its own unit's module exports the type by (compile/stub.ts)
+      stubExport?: string
       span: Span
     }
   // a trait: a named set of method signatures (mask)
-  | { form: 'mask'; name: string; methods: string[]; span: Span }
+  | { form: 'mask'; name: string; methods: string[]; stubExport?: string; span: Span }
   // a trait implementation for a type: provides methods (wear on a form, or suit standalone)
   | {
       form: 'instance'
@@ -521,6 +605,9 @@ export type Statement =
       // concrete string in its type emitter and never emits an import for it. Absent / `'module'` is the ordinary FFI
       // module binding (`dock load`).
       kind?: 'module' | 'type'
+      // `mark async` under the load line: every function of the module returns a promise, so a call into it is
+      // awaited with no `wait` written (check/async-resolve.ts)
+      async?: boolean
       span: Span
       file?: string
     }
@@ -625,6 +712,11 @@ export type ViewNode =
 
 // ---- the dock (routing / CLI) AST ----
 export type DockArgument = { name: string; value: Expression }
+// a take's default, as written
+export type DockLiteral =
+  | { form: 'text'; value: string }
+  | { form: 'number'; value: number }
+  | { form: 'flag'; value: boolean }
 export type DockCall = {
   name: string
   args: DockArgument[]
@@ -643,8 +735,9 @@ export type DockTake = {
   masked?: boolean
   // help text for --help: `take glob / note <Directory to hunt>`
   note?: string
-  // a default value: `take runs, like number / bind 3000`. The literal as written.
-  fallback?: string | number | boolean
+  // a default value: `take runs, like number / bind 3000`. The literal as written, tagged by what it is: a case per
+  // member rather than `string | number | boolean`, which Term cannot spell (D9, compile/node.tree)
+  fallback?: DockLiteral
   // a variadic / rest positional: `take paths / many` collects the remaining positionals
   variadic?: boolean
   // an allowed-value set (enum / choices): `take tool / pick <trivy> / pick <grype>`
@@ -712,102 +805,4 @@ export type Twin = {
   trust: boolean
   body: Statement[]
   span: Span
-}
-
-// A type as a person reads it, in Term's own words: `text`, `void`, `list, like number`, `hash, like text, like
-// number`. Every diagnostic, `term roll`, `term look` and the language server print through this. It printed the
-// checker's internal names until 2026-10-04 (`string`, `unit`, `number[]`, `map<string, number>`), which a reader
-// had to translate back into what they wrote (guides: types, basics/tour, commands/roll).
-//
-// A type argument the checker has not solved is left off, the way `like list` with nothing after it leaves the
-// element open, so a list built in the call itself prints `list`, not `?2[]`. Alone it is `an unsolved type`.
-export function showType(type: Type): string {
-  return type.kind === 'variable' ? 'an unsolved type' : spell(type)
-}
-
-// one type in a `like` chain. A compound argument inside a task's parentheses is wrapped again, so its commas
-// cannot be read as the task's
-function spell(type: Type): string {
-  switch (type.kind) {
-    case 'string':
-      return 'text'
-    case 'unit':
-      return 'void'
-    case 'array':
-      return chain('list', [type.element])
-    case 'map':
-      return chain('hash', [type.key, type.value])
-    case 'named':
-      return chain(type.name, type.args ?? [])
-    case 'function': {
-      const params = type.params.map(p => {
-        const written = spell(p)
-
-        return written.includes(',') ? `(${written})` : written
-      })
-      const effects =
-        type.effects && type.effects.length > 0
-          ? ` !${type.effects.join(',')}`
-          : ''
-
-      return `task(${params.join(', ')}) -> ${spell(type.result)}${effects}`
-    }
-    case 'variable':
-      return 'unknown'
-    default:
-      return typeKey(type)
-  }
-}
-
-// `list, like text`: the head, then each SOLVED argument after a `like`
-function chain(head: string, args: Type[]): string {
-  const solved = args.every(a => a.kind !== 'variable') ? args : []
-
-  return [head, ...solved.map(a => `like ${spell(a)}`)].join(', ')
-}
-
-// A type as a KEY: exact and structural, so two types print alike only when they are alike. An unsolved variable
-// keeps its number here (`?3[]` and `?7[]` are two lists), which is what an overload's shape compares
-// (check/overload.ts). Never shown to a person: that is showType.
-export function typeKey(type: Type): string {
-  switch (type.kind) {
-    case 'number':
-      return 'number'
-    case 'float':
-      return 'float'
-    case 'dynamic':
-      return 'dynamic'
-    case 'bytes':
-      return 'bytes'
-    case 'boolean':
-      return 'boolean'
-    case 'string':
-      return 'string'
-    case 'unit':
-      return 'unit'
-    case 'unknown':
-      return 'unknown'
-    case 'array':
-      return `${typeKey(type.element)}[]`
-    case 'map':
-      return `map<${typeKey(type.key)}, ${typeKey(type.value)}>`
-    case 'named':
-      return type.args && type.args.length > 0
-        ? `${type.name}<${type.args.map(typeKey).join(', ')}>`
-        : type.name
-
-    case 'function': {
-      const effects =
-        type.effects && type.effects.length > 0
-          ? ` !${type.effects.join(',')}`
-          : ''
-
-      return `(${type.params.map(typeKey).join(', ')}) -> ${typeKey(
-        type.result,
-      )}${effects}`
-    }
-
-    case 'variable':
-      return `?${type.id}`
-  }
 }

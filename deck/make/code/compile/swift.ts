@@ -12,6 +12,7 @@ import { provenIncrements } from '@term/make/code/ir/facts/range'
 import { provenArithmetic, type Proven } from '@term/make/code/compile/proven'
 import { boundedLoops } from '@term/make/code/ir/facts/bounds'
 import { asciiTexts } from '@term/make/code/ir/facts/text'
+import { taggedForms, tagText } from '@term/make/code/compile/tag'
 import { privateForms, valuePlaces } from '@term/make/code/compile/place'
 import type { SlotLocal } from '@term/make/code/compile/place'
 import type {
@@ -64,6 +65,7 @@ import {
   bindImports,
   referencedBinds,
 } from '@term/make/code/compile/bind'
+import { integerText } from '@term/make/code/compile/type-text'
 
 // Swift reserved keywords. When one is used as an identifier (a function / parameter / member named `repeat`,
 // `default`, etc.) it must be backtick-escaped, in both the declaration and every reference.
@@ -177,7 +179,7 @@ function labeled(name: string, rest: string): string {
 function defaultOf(fallback: Expression | undefined): string {
   switch (fallback?.form) {
     case 'integer':
-      return ` = ${String(fallback.value)}`
+      return ` = ${integerText(fallback)}`
     case 'float':
       return Number.isFinite(fallback.value) ? ` = ${String(fallback.value).includes('.') || String(fallback.value).includes('e') ? String(fallback.value) : `${fallback.value}.0`}` : ''
     case 'boolean':
@@ -504,6 +506,22 @@ const SWIFT_TAKEN = new Set([
 const SWIFT_HELPERS = {
   text: SWIFT_TEXT,
   number: SWIFT_NUMBER,
+  // fire and forget (`tick f(x)`): the work starts NOW, on this thread, and runs to its first wait, as an async
+  // function called on TypeScript does and a coroutine started on Kotlin does (`Task.immediate`, SE-0472). What is still
+  // waiting then is counted, and `run-pending` (`__termDrain`) waits until none is. A `Task { }` started it later on
+  // another thread, and a terminal app's `run-pending` returned before a key's work had run (tick-native)
+  spawn: [
+    'let __termOutstanding = DispatchGroup()',
+    'func __termSpawn(_ work: @escaping () async -> Void) {',
+    '    __termOutstanding.enter()',
+    '    if #available(macOS 26, iOS 26, tvOS 26, watchOS 26, visionOS 26, *) {',
+    '        Task.immediate { await work(); __termOutstanding.leave() }',
+    '    } else {',
+    '        Task { await work(); __termOutstanding.leave() }',
+    '    }',
+    '}',
+    'func __termDrain() -> Bool { __termOutstanding.wait(); return true }',
+  ].join('\n'),
   // the one exception value of a Term program on this backend (note/term/hive/11-native-exceptions.md)
   exception: [
     'struct TermException: Error { let host: String; let form: String; let note: String; let code: String; let time: Int; let link: Any?; let base: Any? }',
@@ -516,8 +534,36 @@ const SWIFT_HELPERS = {
   // arrays beside an index, so a walk, `keys` and `values` allocate nothing while no entry has been removed. A
   // removal marks its slot dead, and the arrays are compacted once half the slots are dead.
   map: [
+    // the KEY rule, the one TypeScript keeps (__termKeyText): one NaN, `-0.0` the same key as `0.0`, and a record or
+    // a list by its parts under the same rule. A value compares by IEEE (`==`), so it cannot be the key rule, and
+    // the index below hashes and compares through `TermKeyBox` instead
+    'protocol TermKeyed { func termHash(into h: inout Hasher); func termEq(_ other: Any) -> Bool }',
+    'func termKeyHash<T: Hashable>(_ k: T, into h: inout Hasher) {',
+    '    if T.self == String.self || T.self == Int.self || T.self == Bool.self { h.combine(k); return }',
+    '    if let d = k as? Double { h.combine(d.isNaN ? Double.nan.bitPattern : d == 0 ? 0 : d.bitPattern); return }',
+    '    if let f = k as? Float { termKeyHash(Double(f), into: &h); return }',
+    '    if let t = k as? TermKeyed { t.termHash(into: &h); return }',
+    '    h.combine(k)',
+    '}',
+    'func termKeyEq<T: Hashable>(_ a: T, _ b: T) -> Bool {',
+    '    if T.self == String.self || T.self == Int.self || T.self == Bool.self { return a == b }',
+    '    if let x = a as? Double, let y = b as? Double { return (x.isNaN && y.isNaN) || x == y }',
+    '    if let x = a as? Float, let y = b as? Float { return (x.isNaN && y.isNaN) || x == y }',
+    '    if let t = a as? TermKeyed { return t.termEq(b) }',
+    '    return a == b',
+    '}',
+    'struct TermKeyBox<K: Hashable>: Hashable {',
+    '    let key: K',
+    '    init(_ key: K) { self.key = key }',
+    '    static func == (a: TermKeyBox<K>, b: TermKeyBox<K>) -> Bool { termKeyEq(a.key, b.key) }',
+    '    func hash(into h: inout Hasher) { termKeyHash(key, into: &h) }',
+    '}',
+    'extension Array: TermKeyed where Element: Hashable {',
+    '    func termHash(into h: inout Hasher) { h.combine(count); for x in self { termKeyHash(x, into: &h) } }',
+    '    func termEq(_ other: Any) -> Bool { guard let o = other as? [Element], o.count == count else { return false }; return zip(self, o).allSatisfy { termKeyEq($0, $1) } }',
+    '}',
     'struct SeedOrdered<K: Hashable, V>: Sequence {',
-    '    private var slot: [K: Int] = [:]',
+    '    private var slot: [TermKeyBox<K>: Int] = [:]',
     '    private var ks: [K] = []',
     '    private var vs: [V] = []',
     '    private var live: [Bool] = []',
@@ -527,7 +573,7 @@ const SWIFT_HELPERS = {
     '    var count: Int { slot.count }',
     '    var isEmpty: Bool { slot.isEmpty }',
     '    subscript(key: K) -> V? {',
-    '        get { if let i = slot[key] { return vs[i] }; return nil }',
+    '        get { if let i = slot[TermKeyBox(key)] { return vs[i] }; return nil }',
     '        set {',
     '            guard let value = newValue else { removeValue(forKey: key); return }',
     '            vs[place(key, value)] = value',
@@ -538,14 +584,14 @@ const SWIFT_HELPERS = {
     '    mutating func place(_ key: K, _ fallback: V) -> Int {',
     '        let n = ks.count',
     '        var fresh = false',
-    '        let i = { (at: inout Int) -> Int in if at < 0 { at = n; fresh = true }; return at }(&slot[key, default: -1])',
+    '        let i = { (at: inout Int) -> Int in if at < 0 { at = n; fresh = true }; return at }(&slot[TermKeyBox(key), default: -1])',
     '        if fresh { ks.append(key); vs.append(fallback); live.append(true) }',
     '        return i',
     '    }',
     '    // a value changed from itself in one probe (backend.ts, mapUpdate)',
     '    mutating func update(_ key: K, _ fallback: V, _ change: (V) -> V) { let i = place(key, fallback); vs[i] = change(vs[i]) }',
     '    @discardableResult mutating func removeValue(forKey key: K) -> V? {',
-    '        guard let i = slot.removeValue(forKey: key) else { return nil }',
+    '        guard let i = slot.removeValue(forKey: TermKeyBox(key)) else { return nil }',
     '        let out = vs[i]',
     '        live[i] = false',
     '        dead += 1',
@@ -555,7 +601,7 @@ const SWIFT_HELPERS = {
     '    private mutating func compact() {',
     '        var k2: [K] = []; var v2: [V] = []',
     '        k2.reserveCapacity(slot.count); v2.reserveCapacity(slot.count)',
-    '        for i in 0..<ks.count where live[i] { slot[ks[i]] = k2.count; k2.append(ks[i]); v2.append(vs[i]) }',
+    '        for i in 0..<ks.count where live[i] { slot[TermKeyBox(ks[i])] = k2.count; k2.append(ks[i]); v2.append(vs[i]) }',
     '        ks = k2; vs = v2; live = Array(repeating: true, count: k2.count); dead = 0',
     '    }',
     '    var keys: [K] { dead == 0 ? ks : ks.indices.compactMap { live[$0] ? ks[$0] : nil } }',
@@ -580,6 +626,14 @@ const SWIFT_HELPERS = {
     "// two maps are equal when they hold the same keys with equal values, in any order (Kotlin's Map.equals)",
     'extension SeedMap: Equatable where V: Equatable {',
     '    static func == (a: SeedMap<K, V>, b: SeedMap<K, V>) -> Bool { a.data.count == b.data.count && a.data.allSatisfy { b.data[$0.key] == $0.value } }',
+    '}',
+    // a map as a key, or a field of one: by its entries in any order, so its hash is the sum of each entry's own
+    'extension SeedMap: Hashable where V: Hashable {',
+    '    func hash(into h: inout Hasher) { var sum = 0; for (k, v) in data { var one = Hasher(); termKeyHash(k, into: &one); termKeyHash(v, into: &one); sum = sum &+ one.finalize() }; h.combine(data.count); h.combine(sum) }',
+    '}',
+    'extension SeedMap: TermKeyed where V: Hashable {',
+    '    func termHash(into h: inout Hasher) { hash(into: &h) }',
+    '    func termEq(_ other: Any) -> Bool { guard let o = other as? SeedMap<K, V>, o.data.count == data.count else { return false }; return data.allSatisfy { e in o.data[e.key].map { termKeyEq($0, e.value) } ?? false } }',
     '}',
   ].join('\n'),
   // the reference wrapper for lists (a class so an in-place `push` persists across a copy)
@@ -715,6 +769,106 @@ function recursiveEnums(program: Program): Set<string> {
   }
 
   return new Set([...forms].filter(([name, node]) => node.variants.length > 0 && reaches(name)).map(([name]) => name))
+}
+
+// `TermKeyed` for every hashable form that can hold a float, so a map keyed by one follows the key rule (see the map
+// runtime): each field hashed and compared by `termKeyHash` / `termKeyEq`, an enum's case first
+function swiftKeyConformances(
+  formDecls: Map<string, Extract<Program[number], { form: 'record-type' }>>,
+  declaredForms: Set<string>,
+  hashableForms: Set<string>,
+  equatableForms: Set<string>,
+  nodeClasses: Map<string, { label: string; name: string; fields: { name: string; type: Type }[] }>,
+): string[] {
+  const floaty = new Set<string>()
+  const holdsFloat = (type: Type, params: Set<string>): boolean => {
+    switch (type.kind) {
+      case 'float':
+      case 'array':
+      case 'map':
+        return true
+      case 'named':
+        return (
+          type.name === 'decimal' ||
+          type.name === 'float' ||
+          type.name === 'list' ||
+          type.name === 'hash' ||
+          params.has(type.name) ||
+          floaty.has(type.name) ||
+          (type.args ?? []).some(a => holdsFloat(a, params))
+        )
+      default:
+        return false
+    }
+  }
+  let changed = true
+
+  while (changed) {
+    changed = false
+
+    for (const [name, node] of formDecls) {
+      const params = new Set(node.params)
+
+      if (!floaty.has(name) && [...node.fields, ...node.variants.flatMap(v => v.fields)].some(f => holdsFloat(f.type, params))) {
+        floaty.add(name)
+        changed = true
+      }
+    }
+  }
+
+  const out: string[] = []
+  const hashOf = (value: string): string => `termKeyHash(${value}, into: &h)`
+  const eqOf = (a: string, b: string): string => `termKeyEq(${a}, ${b})`
+
+  for (const name of floaty) {
+    const node = formDecls.get(name)!
+
+    if (!declaredForms.has(name) || !hashableForms.has(name) || !equatableForms.has(name) || node.shared) {
+      continue
+    }
+
+    const where = node.params.length ? ` where ${node.params.map(p => `${p.toUpperCase()}: Hashable`).join(', ')}` : ''
+    const held = nodeClasses.get(name)
+
+    if (node.variants.length === 0) {
+      const fields = node.fields.map(f => camel(f.name))
+
+      out.push(
+        `extension ${pascal(name)}: TermKeyed${where} {\n  func termHash(into h: inout Hasher) { ${fields.map(f => hashOf(f)).join('; ')} }\n  func termEq(_ other: Any) -> Bool { guard let o = other as? Self else { return false }; return ${fields.map(f => eqOf(f, `o.${f}`)).join(' && ') || 'true'} }\n}`,
+      )
+
+      continue
+    }
+
+    // one payload per field, or the node class alone for the case it holds
+    const payload = (v: (typeof node.variants)[number]): number => (held && v.name === held.label ? 1 : v.fields.length)
+    const bound = (prefix: string, n: number): string => (n > 0 ? `(${Array.from({ length: n }, (_, i) => `let ${prefix}${i}`).join(', ')})` : '')
+    const hashArms = node.variants.map((v, at) => {
+      const n = payload(v)
+
+      return `case .${camel(v.name)}${bound('a', n)}: h.combine(${at})${Array.from({ length: n }, (_, i) => `; ${hashOf(`a${i}`)}`).join('')}`
+    })
+    const eqArms = node.variants.map(v => {
+      const n = payload(v)
+      const test = Array.from({ length: n }, (_, i) => eqOf(`a${i}`, `b${i}`)).join(' && ') || 'true'
+
+      return `case (.${camel(v.name)}${bound('a', n)}, .${camel(v.name)}${bound('b', n)}): return ${test}`
+    })
+
+    out.push(
+      `extension ${pascal(name)}: TermKeyed${where} {\n  func termHash(into h: inout Hasher) { switch self { ${hashArms.join('; ')} } }\n  func termEq(_ other: Any) -> Bool { guard let o = other as? Self else { return false }; switch (self, o) { ${eqArms.join('; ')}${node.variants.length > 1 ? '; default: return false' : ''} } }\n}`,
+    )
+
+    if (held) {
+      const fields = held.fields.map(f => camel(f.name))
+
+      out.push(
+        `extension ${held.name}: TermKeyed {\n  func termHash(into h: inout Hasher) { ${fields.map(f => hashOf(f)).join('; ')} }\n  func termEq(_ other: Any) -> Bool { guard let o = other as? ${held.name} else { return false }; return self === o || (${fields.map(f => eqOf(f, `o.${f}`)).join(' && ') || 'true'}) }\n}`,
+      )
+    }
+  }
+
+  return out
 }
 
 function pascal(name: string): string {
@@ -1109,9 +1263,10 @@ export function emitSwift(
   // the labels of the loops being emitted, innermost last: `break` and `continue` name theirs
   const loopLabels: string[] = []
   let loopCount = 0
-  const openLoop = (): string => {
+  // a named walk (`walk ..., name outer`) is labeled by its name, which a `halt, name outer` gives
+  const openLoop = (name?: string): string => {
     loopCount += 1
-    const label = `loop${loopCount}`
+    const label = name ? camel(name) : `loop${loopCount}`
     loopLabels.push(label)
 
     return label
@@ -1804,7 +1959,7 @@ export function emitSwift(
 
     switch (node.form) {
       case 'integer':
-        return String(node.value)
+        return integerText(node)
       case 'float':
         // a float literal needs a decimal point so it is a Double, not an Int
         // (JavaScript writes 1e21 and past as `1e+21`, already a float literal, which a `.0` would break)
@@ -1818,19 +1973,21 @@ export function emitSwift(
       case 'template':
         // one text value alone is that value, where the interpolation built a copy of it. Not a bare name, which
         // costs nothing to copy and would make `save t, text <{t}>` the self-assignment swiftc refuses
-        if (node.parts.length === 1 && typeof node.parts[0] !== 'string' && node.parts[0]!.form !== 'variable' && textValued(node.parts[0]!)) {
-          return expr(node.parts[0]!, bind)
+        const alone = node.parts.length === 1 && node.parts[0]!.form === 'value' ? node.parts[0]!.value : undefined
+
+        if (alone && alone.form !== 'variable' && textValued(alone)) {
+          return expr(alone, bind)
         }
 
         // `"a\\(x)b"`: chunks escaped as a Swift string, expressions interpolated
         // a float interpolates as `termNumber` lays it out, the same text as every other backend
         return `"${node.parts
           .map(part =>
-            typeof part === 'string'
-              ? JSON.stringify(part).slice(1, -1)
-              : part.type?.kind === 'float'
-                ? need('number', `\\(termNumber(${expr(part, bind)}))`)
-                : `\\(${expr(part, bind)})`,
+            part.form === 'chunk'
+              ? JSON.stringify(part.value).slice(1, -1)
+              : part.value.type?.kind === 'float'
+                ? need('number', `\\(termNumber(${expr(part.value, bind)}))`)
+                : `\\(${expr(part.value, bind)})`,
           )
           .join('')}"`
       case 'unit':
@@ -2163,8 +2320,9 @@ export function emitSwift(
           !awaited
         ) {
           const raise = throwingFns.has(node.callee.name) ? 'try! ' : ''
+          needs.add('spawn')
 
-          return `Task { ${raise}await ${callee}(${renderedArgs.join(', ')}) }`
+          return `__termSpawn { ${raise}await ${callee}(${renderedArgs.join(', ')}) }`
         }
 
         // a call to a throwing function is `try!`: fatal on error (there is no catch construct), and the caller's own
@@ -2186,10 +2344,11 @@ export function emitSwift(
         // A list of a UNION's cases is named too: `SeedList([.int, .int])` is "reference to member 'int' cannot be
         // resolved without a contextual type", since a case written `.int` needs its enum, and the cases of a call
         // inlined in place reach here bare (deck/test/test/property-check.tree's shapes, 2026-10-05)
-        const element = node.type?.kind === 'array' ? node.type.element : undefined
+        const listType = node.type?.kind === 'array' ? node.type : undefined
+        const element = listType?.element
         const arg =
-          element && (node.items.length === 0 || (element.kind === 'named' && unionForms.has(element.name)))
-            ? `<${swiftElement(node.type!)}>`
+          listType && element && (node.items.length === 0 || (element.kind === 'named' && unionForms.has(element.name)))
+            ? `<${swiftElement(listType)}>`
             : ''
 
         return `SeedList${arg}([${node.items
@@ -2361,6 +2520,11 @@ export function emitSwift(
       }
 
       case 'member': {
+        // a form's tag read as a field (`s/form`): its case's name, from the property the enum is given (`termTag`)
+        if (node.tag) {
+          return `${expr(node.target, bind)}.termTag`
+        }
+
         // a field of a slot local is read off its slot (`valuePlaces`)
         const slot = node.target.form === 'variable' && !node.index ? slotNames.get(node.target.name) : undefined
 
@@ -2933,7 +3097,7 @@ export function emitSwift(
         needs.add('exception')
 
         const tellPart = hasHiveTell
-          ? '; hiveTell(HiveEntry(host: told.host, kind: "exception", name: told.form, site: "", base: told))'
+          ? '; hiveTell(entry: HiveEntry(host: told.host, kind: "exception", name: told.form, site: "", base: told))'
           : ''
 
         // an interpolated text (a `template` node) is a text too, and raises `failure` like a plain one
@@ -2955,7 +3119,7 @@ export function emitSwift(
         // guard true running a copy that calls the task's wrapping copy (`aValueFast`). Only the call limits are asked
         const guard = loopGuards.get(node)
         const loop = (depth: number): string => {
-          const label = openLoop()
+          const label = openLoop(node.label)
           const body = block(node.body, depth + 1, bind)
           loopLabels.pop()
 
@@ -3024,7 +3188,7 @@ export function emitSwift(
         // walked a copy of the array taken at the start and missed them (meaning-native `grow`)
         if (node.iterable.type?.kind === 'array' && node.iterable.form === 'variable' && namesIn(node.body).has(node.iterable.name)) {
           const at = `__at${walkCount++}`
-          const label = openLoop()
+          const label = openLoop(node.label)
           const body = block(node.body, d + 1, bind)
           loopLabels.pop()
           const index = node.index ? ` let ${vname(node.index)} = ${at};` : ''
@@ -3035,7 +3199,7 @@ export function emitSwift(
         // a walk that names its INDEX enumerates, lazily: the offset is an `Int`, which is what a Term number is here.
         // It mapped every pair into an array of `(Int64, T)` first, an allocation per walk and a second integer type.
         // lean-0017
-        const label = openLoop()
+        const label = openLoop(node.label)
         const body = block(node.body, d + 1, bind)
         loopLabels.pop()
 
@@ -3051,7 +3215,7 @@ export function emitSwift(
         // a fork case over a caught TermException: switch on `form`, the record recovered from `base` by its form
         if (node.exceptionArms) {
           const arms = node.cases.map(b => {
-            const arm = node.exceptionArms![b.label]!
+            const arm = node.exceptionArms!.find(one => one.label === b.label)!
             const bodyText = armBlock(b.body, d + 2, bind)
             // only the fields the arm READS, asked of the program and not of the emitted text: `time` matched inside
             // an inlined `time.now()`, bound the caught exception's `time` and shadowed the clock module
@@ -3250,10 +3414,11 @@ export function emitSwift(
 
       // labelled, because a bare `break` inside a `switch` arm leaves the switch and not the loop, so a walk that
       // stopped on `none` went round forever
+      // a named one (`halt, name outer`) names its walk's label
       case 'break':
-        return loopLabels.length > 0 ? `break ${loopLabels[loopLabels.length - 1]}` : 'break'
+        return node.label ? `break ${camel(node.label)}` : loopLabels.length > 0 ? `break ${loopLabels[loopLabels.length - 1]}` : 'break'
       case 'continue':
-        return loopLabels.length > 0 ? `continue ${loopLabels[loopLabels.length - 1]}` : 'continue'
+        return node.label ? `continue ${camel(node.label)}` : loopLabels.length > 0 ? `continue ${loopLabels[loopLabels.length - 1]}` : 'continue'
       case 'exit':
         return 'exit(0)'
       case 'debug':
@@ -3762,8 +3927,9 @@ export function emitSwift(
         return true
       case 'array':
         return fieldTypeQualifies(type.element, params, forms, hash)
+      // a map hashes by its entries in any order (`SeedMap: Hashable`), so it may sit in a key
       case 'map':
-        return !hash && fieldTypeQualifies(type.value, params, forms, false)
+        return fieldTypeQualifies(type.value, params, forms, hash)
       case 'named': {
         const args = type.args ?? []
 
@@ -3776,7 +3942,7 @@ export function emitSwift(
         }
 
         if (type.name === 'hash') {
-          return !hash && (args[1] === undefined || fieldTypeQualifies(args[1], params, forms, false))
+          return args[1] === undefined || fieldTypeQualifies(args[1], params, forms, hash)
         }
 
         if (params.has(type.name)) {
@@ -3873,7 +4039,37 @@ export function emitSwift(
     )
   }
 
+  // the key rule for a record (`TermKeyed`, in the map runtime): a map index hashes and compares a key by it, so a
+  // record holding a float is one key with NaN in it however often it is set, and `-0.0` is `0.0`. Only a form that
+  // can hold a float somewhere (a decimal, a list, a generic, or such a form) gets one, since every other key's own
+  // `==` already is the rule
+  if (needs.has('map')) {
+    conformances.push(...swiftKeyConformances(formDecls, declaredForms, hashableForms, equatableForms, nodeClasses))
+
+    if (needs.has('list')) {
+      conformances.push(
+        'extension SeedList: TermKeyed where T: Hashable {\n  func termHash(into h: inout Hasher) { data.termHash(into: &h) }\n  func termEq(_ other: Any) -> Bool { guard let o = other as? SeedList<T> else { return false }; return data.termEq(o.data) }\n}',
+      )
+    }
+  }
+
+  // the tag, for a form whose tag the program reads as a field: the case's name as text (compile/tag.ts)
+  for (const name of taggedForms(program)) {
+    const node = formDecls.get(name)
+
+    if (node && declaredForms.has(name) && node.variants.length > 0) {
+      conformances.push(
+        `extension ${pascal(name)} {\n  var termTag: String { switch self { ${node.variants.map(v => `case .${camel(v.name)}: return ${JSON.stringify(tagText(v.name))}`).join('; ')} } }\n}`,
+      )
+    }
+  }
+
   body.push(...conformances)
+
+  // `run-pending` drains through the spawn runtime, written by its binding (deck/base/code/pending.tree)
+  if (body.some(line => line.includes('__termDrain('))) {
+    needs.add('spawn')
+  }
 
   const prelude = (Object.keys(SWIFT_HELPERS) as SwiftHelper[]).filter(h => needs.has(h)).map(h => SWIFT_HELPERS[h])
 
@@ -3899,7 +4095,7 @@ export function emitSwift(
     const calls = options.wake
       .map(
         group =>
-          `  hiveWake(${JSON.stringify(group.deck)}, SeedList<HiveEntry>([${group.entries.map(entryText).join(', ')}]))`,
+          `  hiveWake(name: ${JSON.stringify(group.deck)}, roll: SeedList<HiveEntry>([${group.entries.map(entryText).join(', ')}]))`,
       )
       .join('\n')
 

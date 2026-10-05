@@ -135,7 +135,7 @@ rule false-square
       read a
       code 1
 ${SQUARE_GOAL}`,
-  'cite square-bound: its hypothesis 1 does not follow',
+  'cite square-bound: its hypothesis a >= 2 does not follow',
 )
 
 expect(
@@ -448,7 +448,7 @@ ${SQUARE_GOAL}`
   const refused = build(1)
   const messages = refused.ok ? [] : refused.diagnostics.map(d => d.message)
 
-  if (!refused.ok && messages.some(m => m.includes('cite square-bound: its hypothesis 1 does not follow'))) {
+  if (!refused.ok && messages.some(m => m.includes('cite square-bound: its hypothesis a >= 2 does not follow'))) {
     pass++
     console.log('ok    a rule in another file is cited: its hypothesis is checked here (a >= 1 is refused)')
   } else {

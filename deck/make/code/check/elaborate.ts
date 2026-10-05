@@ -77,6 +77,7 @@ import {
   volatileNames,
   writtenNames,
 } from '@term/make/code/check/facts'
+import { integerText } from '@term/make/code/compile/type-text'
 
 // ---- term builders ----
 const constant = (name: string): Term => ({ tag: 'const', name })
@@ -347,7 +348,7 @@ function indexTermAt(
     }
 
     case 'integer':
-      return constant(numberLiteralConstant(String(expr.value)))
+      return constant(numberLiteralConstant(integerText(expr)))
 
     case 'record': {
       // a constructor application `make <ctor> / bind <field> <value>` -> the constructor constant applied to its field
@@ -798,8 +799,13 @@ export function elaborate(
 function kindsApart(program: Program): Program {
   const tasks = new Set(program.flatMap(s => (s.form === 'function' && !s.method ? [s.name] : [])))
   const params = new Set(program.flatMap(s => (s.form === 'function' ? s.params.map(p => p.name) : [])))
+  // and a form named `type` is the same collision with the kernel's UNIVERSE, which `like type` names when no form
+  // does: the compiler's own AST declares one (compile/node.tree), and every task answering it failed as `kernel: type
+  // mismatch` (2026-10-05, test/check/form-named-type.ts)
   const shared = new Set(
-    program.flatMap(s => (s.form === 'record-type' && (tasks.has(s.name) || params.has(s.name)) ? [s.name] : [])),
+    program.flatMap(s =>
+      s.form === 'record-type' && (tasks.has(s.name) || params.has(s.name) || s.name === 'type') ? [s.name] : [],
+    ),
   )
   const kernelNames = new Set(BASE_SIGNATURE.map(entry => entry.name))
   const clashing = new Set([...tasks].filter(name => kernelNames.has(name)))
@@ -1894,7 +1900,7 @@ export function elaborateReport(
 
     const paramTypes = statement.params.map((p, i) =>
       kernelTypeAt(
-        faithful(statement.declared?.params[i], p.type),
+        faithful(statement.declared?.params[i]?.type, p.type),
         statement.generics.length + i,
         generics,
         namedTypes,
@@ -1999,6 +2005,7 @@ export function elaborateReport(
   ): Term | null {
     switch (node.form) {
       case 'integer':
+        return constant(numberLiteralConstant(integerText(node)))
       case 'float':
         return constant(numberLiteralConstant(String(node.value)))
       case 'string':
@@ -2416,6 +2423,14 @@ export function elaborateReport(
 
           const declared =
             variantFieldInfo.get(ctorKey(enumName, node.name)) ?? []
+
+          // a construction that leaves a declared field out (a `need false` field, which the surface checker allows):
+          // the constructor takes every field, so applied to fewer it is a function, and checking it as the case was
+          // `expected form, found (many x0 : Boolean) -> form` (`make unknown` beside `link free / need false`,
+          // compile/node.tree, 2026-10-05). Decline it, as an unresolved name is
+          if (declared.some(d => !node.fields.some(field => field.name === d.name))) {
+            return null
+          }
 
           const fieldValues: Term[] = []
 

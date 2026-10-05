@@ -19,9 +19,9 @@
 // Run: npx tsx test/compile/build-time.ts
 
 import { execFileSync } from 'node:child_process'
-import { cpSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { cpSync, realpathSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { runDir } from './run-dir'
 
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
@@ -51,8 +51,10 @@ function build(project: string, cacheHome: string): number {
   return (Date.now() - started) / 1000
 }
 
-// a throwaway copy of the stdlib, with its own empty caches
-const project = mkdtempSync(join(tmpdir(), 'term-buildtime-'))
+// a throwaway copy of the stdlib, with its own empty caches, removed when the run ends (run-dir.ts). It was made with
+// `mkdtempSync` and never removed: 1.7 GB a run once both builds wrote their caches, and about 150 runs had left about
+// 250 GB in the system temp by 2026-10-05
+const project = runDir('term-buildtime-')
 const cacheHome = join(project, 'store')
 
 cpSync(join(SEED, 'code'), join(project, 'code'), { recursive: true })

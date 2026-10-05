@@ -180,11 +180,13 @@ form self-wash-ask
 form bind-ask
   link root, like text
   link toss, like boolean
+  link again, like boolean
 
 # `term bind`: log this machine in to term.surf with Google, so `term host` credits what it publishes
 task bind
   mark async
   take toss, like boolean
+  take again, like boolean
 
   like void
 
@@ -195,6 +197,7 @@ task bind
       make bind-ask
         bind root, read root
         bind toss, read toss
+        bind again, read again
       wait true
   halt take
     take error

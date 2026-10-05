@@ -37,29 +37,11 @@ host utf-8-decoding-table
     1, 3, 1, 1, 1, 1, 1, 3, 1, 3, 1, 1, 1, 1, 1, 1, 1, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
 
 
-task allocate-utf-8
-  take size
-  free text, like text-utf-8-hold
-
+# The buffer alone. `allocate-utf-8` and fourteen methods (the case changes, the trims, `split`, `replace`) were
+# declared here with no body, and nothing called them: a call could only have reached a stub. They were removed on
+# 2026-10-05, when a task with no body anywhere in the build became an error. The text work is `@term/base/text`'s.
 form text-utf-8-hold
   link list
     like list
       like u8
     mark private
-
-  task make-upper-case
-  task make-lower-case
-  task make-snake-case
-  task make-kebab-case
-  task make-camel-case
-  task make-capital-case
-  task make-swap-case
-  task make-title-case
-
-  task trim-whitespace
-  task trim-whitespace-start
-  task trim-whitespace-end
-
-  task split
-
-  task replace

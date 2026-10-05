@@ -76,8 +76,11 @@ function calledNames(e: Expression, into: Set<string>): void {
 function unfoldableBody(
   fn: Fn,
 ): { params: string[]; body: Expression } | null {
-  // a claim (a `rule` with no `show`) and a separate-compilation stub declare a name without defining it
-  if (fn.claim || fn.stub || !Array.isArray(fn.body) || fn.body.length !== 1) {
+  // a claim (a `rule` with no `show`) declares a name without defining it. A separate-compilation stub carries its
+  // one statement as `stubShape` when its body was one, which is all an unfolding reads
+  const body = fn.stub ? (fn.stubShape ? [fn.stubShape] : []) : fn.body
+
+  if (fn.claim || !Array.isArray(body) || body.length !== 1) {
     return null
   }
 
@@ -85,7 +88,7 @@ function unfoldableBody(
     return null
   }
 
-  const only = fn.body[0]!
+  const only = body[0]!
 
   if (only.form !== 'return' || !only.value) {
     return null

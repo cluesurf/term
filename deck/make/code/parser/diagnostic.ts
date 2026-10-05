@@ -430,6 +430,12 @@ export const CATALOG = {
 
 export type DiagnosticName = keyof typeof CATALOG
 
+// every name, in catalog order: the port (parser/diagnostic.tree) exports the same, where a text form cannot list its
+// own cases, so a caller written against this works against either
+export function diagnosticNames(): DiagnosticName[] {
+  return Object.keys(CATALOG) as DiagnosticName[]
+}
+
 export type DiagnosticInput = {
   file: string
   span: Span

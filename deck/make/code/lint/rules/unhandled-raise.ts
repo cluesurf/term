@@ -97,8 +97,8 @@ export const unhandledRaise: Rule = {
           break
         case 'template':
           node.parts.forEach(p => {
-            if (typeof p !== 'string') {
-              visitExpression(p, guarded)
+            if (p.form === 'value') {
+              visitExpression(p.value, guarded)
             }
           })
           break

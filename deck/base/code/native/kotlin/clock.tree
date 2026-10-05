@@ -8,9 +8,17 @@ task current-time
   send back
     call clock/current-time
 
+# a wait that blocks nothing: the coroutine is suspended and resumed on the program's event loop when the time is up
+# (compile/kotlin.ts, `termSleep`), so two jobs that each wait wait at the same time. It was `Thread.sleep`, which held
+# the thread
+bind wait-for
+  take ms, like number
+  like void
+  case kotlin
+    text <termSleep($ms)>
+
 task delay
   mark async
   take ms, like number
   like void
-  call clock/sleep
-    read ms
+  call wait-for(ms)

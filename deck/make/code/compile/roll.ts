@@ -8,9 +8,9 @@ import type {
   Program,
   Statement,
 } from '@term/make/code/compile/node'
-import { showType } from '@term/make/code/compile/node'
 import { raiseSets } from '@term/make/code/check/effects'
 import { EXCEPTION_FORM, GENERIC_EXCEPTIONS } from '@term/make/code/check/extend'
+import { showType } from '@term/make/code/compile/type-text'
 
 export type RollEntry = {
   host: string

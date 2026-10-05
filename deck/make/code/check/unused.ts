@@ -26,8 +26,8 @@ function collectReads(expr: Expression, read: Set<string>): void {
       break
     case 'template':
       for (const part of expr.parts) {
-        if (typeof part !== 'string') {
-          collectReads(part, read)
+        if (part.form === 'value') {
+          collectReads(part.value, read)
         }
       }
 

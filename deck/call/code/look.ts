@@ -8,7 +8,6 @@ import {
   toTable,
 } from '@term/make/code/inspect'
 import { compile } from '@term/make/code/compile/compile'
-import { showType } from '@term/make/code/compile/node'
 import { projectLeanOf, projectRoleOf } from '@term/call/code/role-of'
 import type { Source } from '@term/make/code/compile/load'
 import { projectResolver } from '@term/call/code/make'
@@ -21,6 +20,7 @@ import {
   toJsonValue,
 } from '@term/make/code/compile/host'
 import { closeRun, count, field, openRun, printData, report, reportProblems } from '@term/call/code/output'
+import { showType } from '@term/make/code/compile/type-text'
 
 // `term look <module>` -- inspect what a module exposes (forms + tasks with signatures), following its load/bear
 // graph. The target is a package path (`@cluesurf/bind/code/browser/dom`) or a `.tree` file. Output: table (default),

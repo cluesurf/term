@@ -173,7 +173,7 @@ task to-hash
     like text
     like data
   save out
-    make find
+    make hash
   fork case, read value
     case hash
       link list

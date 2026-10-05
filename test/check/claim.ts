@@ -191,9 +191,11 @@ task unrelated
         read a
 `)
 
+  // since 2026-10-05 it is REFUTED rather than unreached: a search of small values finds a = 1, b = 0, where the goal
+  // is false, and the message says so (check/explain.ts)
   ok(
-    'a false non-linear law is refused',
-    out.refused && out.errors.includes('unchecked-hold'),
+    'a false non-linear law is refused, and shown false at values',
+    out.refused && out.errors.includes('unproven'),
     `refused=${out.refused} ${out.errors.join(',')}`,
   )
 }

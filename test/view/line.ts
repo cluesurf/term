@@ -5,7 +5,7 @@
 // with a span and a named message. The save path and the editor call the same implementation, so this is the one
 // place the three cannot drift.
 
-import { execFileSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -55,32 +55,29 @@ view page
 
 writeFileSync(join(root, 'page/bad.tree'), 'view page\n  task main\n')
 
-function run(args: string[]): { out: string; code: number } {
-  try {
-    return {
-      out: execFileSync('node', [LINE, ...args], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }),
-      code: 0,
-    }
-  } catch (error) {
-    const shape = error as { stdout?: string; stderr?: string; status?: number }
+// `out` is stdout alone (the manifest and the JSON are data there), `all` both streams (what a document uses is a
+// `read` item of the run, on stderr with the rest of the human view)
+function run(args: string[]): { out: string; all: string; code: number } {
+  const done = spawnSync('node', [LINE, ...args], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
 
-    return { out: `${shape.stdout ?? ''}${shape.stderr ?? ''}`, code: shape.status ?? 1 }
-  }
+  return { out: done.status === 0 ? done.stdout : `${done.stdout}${done.stderr}`, all: `${done.stdout}${done.stderr}`, code: done.status ?? 1 }
 }
 
 const plain = run(['view', 'page/quenya.tree'])
 
-ok('the verb exists and a document reads', plain.code === 0, plain.out)
+ok('the verb exists and a document reads', plain.code === 0, plain.all)
 // The EXACT line, not a substring. `includes` passed happily against `sound/chart>, <text/heading>, <text/item`
-// when the CLI was regexing the serialized manifest and getting the delimiters back with the names.
+// when the CLI was regexing the serialized manifest and getting the delimiters back with the names. Since 2026-10-05
+// each is a field of the document's `read` item, at the body column
+ok('it is a read item for the document', /^✓ read {5}page\/quenya\.tree$/m.test(plain.all), plain.all)
 ok(
   'it prints every component placed, and only the names',
-  /^ {2}view {4}sound\/chart {2}text\/heading$/m.test(plain.out),
-  plain.out,
+  /^ {11}view sound\/chart, text\/heading$/m.test(plain.all),
+  plain.all,
 )
-ok('it prints the query', /^ {2}find {4}filter:phoneme$/m.test(plain.out), plain.out)
-ok('it prints the operator', /^ {2}call {4}titlecase$/m.test(plain.out), plain.out)
-ok('it prints the node count and depth', /node\s+\d/.test(plain.out) && /deep\s+\d/.test(plain.out))
+ok('it prints the query', /^ {11}find filter:phoneme$/m.test(plain.all), plain.all)
+ok('it prints the operator', /^ {11}call titlecase$/m.test(plain.all), plain.all)
+ok('it prints the node count and depth', /^ {11}node \d+$/m.test(plain.all) && /^ {11}deep \d+$/m.test(plain.all), plain.all)
 
 const manifest = run(['view', 'page/quenya.tree', '--find'])
 

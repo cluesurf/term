@@ -1,0 +1,955 @@
+# The diagnostic system: every phase of the compiler reports through it. See
+# note/research/vibe/computation/plans/02-diagnostics.md.
+#
+# Ported from parser/diagnostic.ts (self-hosting, 2026-10-05), the compiler's second shared type after compile/node.
+# The decisions:
+#   - the catalog is a text form, `diagnostic-name`, and `entry-of`. On TypeScript a name IS its text, so a caller still
+#     writes `diagnose('type-mismatch', ...)` and a misspelt name still fails to typecheck. The checker holds `entry-of`
+#     to every name, which is what `satisfies Record<string, CatalogEntry>` did. A text form cannot list its own cases,
+#     so `diagnostic-names` lists them for the parser fixture, which walked `Object.keys(CATALOG)`
+#   - colour is written as the escapes chalk wrote, close codes and all (`\e[39m` after a colour, `\e[22m` after bold
+#     and dim), with chalk's two rules: an empty text stays empty, and a line break closes the style and opens it again
+#     after. chalk is an npm package and a native compiler cannot have one
+#   - `color` is a parameter that falls to `false`. It fell to `chalk.level > 0`, which asks the terminal, and the one
+#     caller that left it out (call/code/report.ts) now asks chalk itself
+#   - `hint`, `message` and `markers` on a `diagnostic-input` are maybes (D10), so a hint given as `<>` is kept rather
+#     than replaced by the catalog's fix, as `??` kept it
+#   - `toJson` and `DiagnosticError` are not ported: nothing imported either
+#   - a line's width is its `length`, which is UTF-16 units on TypeScript as it was. A column is in the parser's units
+#     on every backend
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/math
+  find maximum
+  find minimum
+
+load @term/base/text
+  find char-at
+  find pad-left
+  find split
+  find ends-with
+  find contains
+  find replace-all
+
+load @term/base/text/string
+  find slice
+  find repeat
+
+# ---- positions ----
+
+# a position in the source: zero-based line and column
+form position
+  link line, like number
+  link column, like number
+
+# a range from a start to an end. `file` is the module the span is IN, absent for most spans, which never leave the
+# file being read. It matters once modules merge: `compileProgram` receives one flat program built from every reachable
+# unit, so a span alone would blame the entry file for an error three imports away. It replaced a
+# `WeakMap<Statement, string>` threaded through nine files, which Term cannot express (self-hosting-0002)
+form span
+  link start, like position
+  link end, like position
+  link file
+    like text
+    need false
+
+# ---- diagnostics ----
+
+form severity
+  mark text
+  case error
+  case warning
+  case info
+
+# one labelled range inside a diagnostic, which can point at several places at once
+form marker
+  link span, like span
+  link label
+    like text
+    need false
+
+form diagnostic
+  link code, like number
+  # a lint finding's own rule code, `L023`, printed in place of `code`. Lint codes are decimal and the compiler's are
+  # hexadecimal, so printing a lint code as a compiler code showed L023 as `0017` (guides: commands/lint). A maybe, so a
+  # diagnostic built here leaves it out, as the original did
+  link rule
+    like maybe, like text
+    need false
+  link name, like text
+  link message, like text
+  link file, like text
+  link span, like span
+  link markers, like list, like marker
+  link hint
+    like text
+    need false
+  link severity, like severity
+
+form catalog-entry
+  link code, like number
+  link message, like text
+  link severity, like severity
+  link fix, like text
+
+form diagnostic-input
+  link file, like text
+  link span, like span
+  link hint
+    like maybe, like text
+    need false
+  link message
+    like maybe, like text
+    need false
+  link markers
+    like maybe, like list, like marker
+    need false
+
+task error-entry
+  take code, like number
+  take message, like text
+  take fix, like text
+  like catalog-entry
+  mark private
+
+  back
+    make catalog-entry
+      bind code, code
+      bind message, message
+      bind severity, make error
+      bind fix, fix
+
+task warning-entry
+  take code, like number
+  take message, like text
+  take fix, like text
+  like catalog-entry
+  mark private
+
+  back
+    make catalog-entry
+      bind code, code
+      bind message, message
+      bind severity, make warning
+      bind fix, fix
+
+# a maybe's text, else the fallback
+task text-or
+  take value, like maybe, like text
+  take fallback, like text
+  like text
+  mark private
+
+  sift value
+    case some
+      link given
+      back given
+    case none
+      back fallback
+
+# Build a diagnostic from a catalog name. Cheap: just a record, rendered when it is shown
+task diagnose
+  take name, like diagnostic-name
+  take input, like diagnostic-input
+  like diagnostic
+
+  save entry, entry-of(name)
+  save markers, make list
+  sift input/markers
+    case some
+      link given
+      save markers, given
+    case none
+      save one
+        make marker
+          bind span, input/span
+      push(markers, one)
+
+  back
+    make diagnostic
+      bind code, entry/code
+      bind name, to-text(name)
+      bind message, text-or(input/message, entry/message)
+      bind file, input/file
+      bind span, input/span
+      bind markers, markers
+      # a specific hint if given, otherwise the catalog's default fix, so every diagnostic suggests a remedy
+      bind hint, text-or(input/hint, entry/fix)
+      bind severity, entry/severity
+
+# ---- rendering ----
+
+# the 16 digits, in JavaScript's order
+host hex-digits, text <0123456789abcdef>
+
+# a non-negative integer in hexadecimal, digit by digit as term/hash.tree writes base 36
+task hex-of
+  take value, like number
+  like text
+  mark private
+
+  fork test, is-equal(value, 0)
+    hold
+      back <0>
+  save digits, <>
+  save rest, value
+  walk test
+    hook test, is-above(rest, 0)
+    hook hold
+      save digit, modulo(rest, 16)
+      save digits, <{char-at(hex-digits, digit)}{digits}>
+      save rest, divide(subtract(rest, digit), 16)
+
+  back digits
+
+# the code a frame prints: a lint rule's own (`L023`), else the compiler's catalog code in hexadecimal (`0007`)
+task code-of
+  take diagnostic, like diagnostic
+  like text
+  mark private
+
+  sift diagnostic/rule
+    case some
+      link rule
+      back rule
+    case none
+      back pad-left(hex-of(diagnostic/code), 4, <0>)
+
+# a line of the source, or empty past either end
+task line-at
+  take lines, like list, like text
+  take at, like number
+  like text
+  mark private
+
+  fork test, and(is-minimum(at, 0), is-below(at, lines/length))
+    hold
+      back get(lines, at)
+  back <>
+
+# the text from `start` up to `stop`, empty when the stop is not after the start. The stdlib's `slice` swaps the two, and
+# a span whose end column is before its start (a backwards span, or one cut short by an edit) underlined the text
+# between them where JavaScript's `slice` gave nothing
+task cut
+  take value, like text
+  take start, like number
+  take stop, like number
+  like text
+  mark private
+
+  fork test, is-maximum(stop, start)
+    hold
+      back <>
+  back slice(value, start, stop)
+
+# chalk's line rule: every line break closes the style and opens it again after, `\r\n` kept whole
+task encase-lines
+  take value, like text
+  take close, like text
+  take open, like text
+  like text
+  mark private
+
+  fork test, is-equal(contains(value, <\n>), false)
+    hold
+      back value
+  save parts, split(value, <\n>)
+  save out, <>
+  walk parts
+    take part
+    take at
+    fork test, is-equal(at, subtract(parts/length, 1))
+      hold
+        save out, <{out}{part}>
+      miss
+        fork test, ends-with(part, <\r>)
+          hold
+            save out, <{out}{slice(part, 0, subtract(part/length, 1))}{close}\r\n{open}>
+          miss
+            save out, <{out}{part}{close}\n{open}>
+  back out
+
+# one style, as chalk applies it: nothing when colour is off or the text is empty, a style already inside re-opened
+# where it closed, and the line rule
+task tint
+  take on, like boolean
+  take open, like text
+  take close, like text
+  take value, like text
+  like text
+  mark private
+
+  fork test, or(is-equal(on, false), is-equal(value, <>))
+    hold
+      back value
+  save inner, value
+  fork test, contains(inner, <\e>)
+    hold
+      save inner, replace-all(inner, close, <{close}{open}>)
+  back <{open}{encase-lines(inner, close, open)}{close}>
+
+task red
+  take on, like boolean
+  take value, like text
+  like text
+  mark private
+
+  back tint(on, <\e[31m>, <\e[39m>, value)
+
+task yellow
+  take on, like boolean
+  take value, like text
+  like text
+  mark private
+
+  back tint(on, <\e[33m>, <\e[39m>, value)
+
+task cyan
+  take on, like boolean
+  take value, like text
+  like text
+  mark private
+
+  back tint(on, <\e[36m>, <\e[39m>, value)
+
+task white
+  take on, like boolean
+  take value, like text
+  like text
+  mark private
+
+  back tint(on, <\e[37m>, <\e[39m>, value)
+
+task bright
+  take on, like boolean
+  take value, like text
+  like text
+  mark private
+
+  back tint(on, <\e[97m>, <\e[39m>, value)
+
+task dim
+  take on, like boolean
+  take value, like text
+  like text
+  mark private
+
+  back tint(on, <\e[2m>, <\e[22m>, value)
+
+task bold
+  take on, like boolean
+  take value, like text
+  like text
+  mark private
+
+  back tint(on, <\e[1m>, <\e[22m>, value)
+
+task is-warning
+  take severity, like severity
+  like boolean
+  mark private
+
+  sift severity
+    case warning
+      back true
+    case error
+      back false
+    case info
+      back false
+
+# a warning is yellow, anything else red
+task accent
+  take severity, like severity
+  take on, like boolean
+  take value, like text
+  like text
+  mark private
+
+  fork test, is-warning(severity)
+    hold
+      back yellow(on, value)
+  back red(on, value)
+
+# where a span starts, as `file:line:column`, one-based
+task where-of
+  take file, like text
+  take span, like span
+  like text
+  mark private
+
+  back <{file}:{add(span/start/line, 1)}:{add(span/start/column, 1)}>
+
+# Render a diagnostic against the source lines: a gutter, the offending line, a red range, a caret underline, a few
+# context lines, and an optional hint
+task render
+  take diagnostic, like diagnostic
+  take lines, like list, like text
+  take color, like(boolean), fall false
+  like text
+
+  save on, color
+  save severity, diagnostic/severity
+  save span, diagnostic/span
+  save out, make list
+
+  # the readable name and the stable code, `error[type-mismatch 0007]`
+  save heading, <{to-text(severity)}[{diagnostic/name} {code-of(diagnostic)}]>
+  push(out, <{bold(on, accent(severity, on, heading))}: {bold(on, diagnostic/message)}>)
+  push(out, <  {dim(on, <--\>>)} {where-of(diagnostic/file, span)}>)
+
+  save first, maximum(0, subtract(span/start/line, 2))
+  save last, minimum(subtract(lines/length, 1), add(span/end/line, 2))
+  save last-number, <{add(last, 1)}>
+  save width, last-number/length
+  save rail, <{repeat(< >, width)} {dim(on, <|>)}>
+  push(out, rail)
+
+  save at, first
+  walk test
+    hook test, is-maximum(at, last)
+    hook hold
+      save text, line-at(lines, at)
+      save number, pad-left(<{add(at, 1)}>, width, < >)
+      fork test, is-equal(at, span/start/line)
+        hold
+          save stop, text/length
+          fork test, is-equal(span/end/line, span/start/line)
+            hold
+              save stop, span/end/column
+          save before, cut(text, 0, span/start/column)
+          save middle, cut(text, span/start/column, stop)
+          save after, cut(text, stop, text/length)
+          push(out, <{dim(on, number)} {dim(on, <|>)} {bright(on, before)}{accent(severity, on, middle)}{bright(on, after)}>)
+          save carets, <{repeat(< >, span/start/column)}{repeat(<^>, maximum(1, subtract(stop, span/start/column)))}>
+          save label, <>
+          fork test, is-above(diagnostic/markers/length, 0)
+            hold
+              save first-marker, get(diagnostic/markers, 0)
+              save first-label, first-marker/label
+              fork test, is-unequal(first-label, <>)
+                hold
+                  save label, < {first-label}>
+          push(out, <{repeat(< >, width)} {dim(on, <|>)} {accent(severity, on, <{carets}{label}>)}>)
+        miss
+          push(out, <{dim(on, number)} {dim(on, <|>)} {dim(on, text)}>)
+      save at, add(at, 1)
+
+  push(out, rail)
+
+  # related markers: other relevant places, such as where a type was first fixed
+  walk diagnostic/markers
+    take marker
+    take index
+    fork test, is-above(index, 0)
+      hold
+        save labelled, <>
+        fork test, is-unequal(marker/label, <>)
+          hold
+            save labelled, <: {dim(on, marker/label)}>
+        push(out, <  {dim(on, <--\>>)} {where-of(diagnostic/file, marker/span)}{labelled}>)
+
+  fork test, is-unequal(diagnostic/hint, <>)
+    hold
+      push(out, < {bold(on, <hint>)}: {diagnostic/hint}>)
+
+  back join(out, <\n>)
+
+# the inline source snippet for a span: a gutter, the offending line, and a caret underline, indented
+task source-snippet
+  take lines, like list, like text
+  take span, like span
+  take severity, like severity
+  take on, like boolean
+  take indent, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  save first, maximum(0, subtract(span/start/line, 1))
+  save last, minimum(subtract(lines/length, 1), add(span/end/line, 1))
+  save last-number, <{add(last, 1)}>
+  save width, last-number/length
+
+  save at, first
+  walk test
+    hook test, is-maximum(at, last)
+    hook hold
+      save text, line-at(lines, at)
+      save number, pad-left(<{add(at, 1)}>, width, < >)
+      fork test, is-equal(at, span/start/line)
+        hold
+          save stop, text/length
+          fork test, is-equal(span/end/line, span/start/line)
+            hold
+              save stop, span/end/column
+          push(out, <{indent}{dim(on, <{number} |>)} {bright(on, cut(text, 0, span/start/column))}{accent(severity, on, cut(text, span/start/column, stop))}{bright(on, cut(text, stop, text/length))}>)
+          save carets, <{repeat(< >, span/start/column)}{repeat(<^>, maximum(1, subtract(stop, span/start/column)))}>
+          push(out, <{indent}{dim(on, <{repeat(< >, width)} |>)} {accent(severity, on, carets)}>)
+        miss
+          push(out, <{indent}{dim(on, <{number} |>)} {dim(on, text)}>)
+      save at, add(at, 1)
+
+  back out
+
+# a value in `<...>`, the brackets dim
+task wrapped
+  take on, like boolean
+  take value, like text
+  like text
+  mark private
+
+  back <{dim(on, <\<>)}{value}{dim(on, <\>>)}>
+
+# The structured renderer, in the kink style: a titled error, then site and call frames, each followed by its inline
+# source snippet, then the note, the name and the code. Keywords are bare words and values sit in `<...>`
+task render-kink
+  take diagnostic, like diagnostic
+  take lines, like list, like text
+  take color, like(boolean), fall false
+  like text
+
+  save on, color
+  save severity, diagnostic/severity
+  save out, make list
+
+  save word, <kink>
+  fork test, is-warning(severity)
+    hold
+      save word, <warn>
+  push(out, <{accent(severity, on, word)} {wrapped(on, accent(severity, on, bold(on, diagnostic/message)))}>)
+
+  walk diagnostic/markers
+    take marker
+    take index
+    push(out, <  {dim(on, <site>)} {wrapped(on, bright(on, where-of(diagnostic/file, marker/span)))}>)
+    fork test, is-unequal(marker/label, <>)
+      hold
+        push(out, <    {dim(on, <call>)} {wrapped(on, white(on, marker/label))}>)
+      miss
+        fork test, is-above(index, 0)
+          hold
+            push(out, <    {dim(on, <call>)} {wrapped(on, white(on, <related>))}>)
+    walk source-snippet(lines, marker/span, severity, on, <    >)
+      take line
+      push(out, line)
+
+  fork test, is-unequal(diagnostic/hint, <>)
+    hold
+      push(out, <  {dim(on, <note>)} {wrapped(on, dim(on, diagnostic/hint))}>)
+  push(out, <  {dim(on, <name>)} {wrapped(on, dim(on, diagnostic/name))}>)
+  push(out, <  {dim(on, <code>)} {wrapped(on, cyan(on, code-of(diagnostic)))}>)
+
+  back join(out, <\n>)
+
+# Render a whole batch of diagnostics with a summary count: the one thing to call to show problems to a person
+task report
+  take diagnostics, like list, like diagnostic
+  take lines, like list, like text
+  take color, like(boolean), fall false
+  like text
+
+  fork test, is-equal(diagnostics/length, 0)
+    hold
+      back <no problems found>
+
+  save errors, 0
+  save warnings, 0
+  save bodies, make list
+  walk diagnostics
+    take one
+    push(bodies, render-kink(one, lines, color))
+    sift one/severity
+      case error
+        save errors, add(errors, 1)
+      case warning
+        save warnings, add(warnings, 1)
+      case info
+        turn next
+
+  save parts, make list
+  fork test, is-above(errors, 0)
+    hold
+      fork test, is-equal(errors, 1)
+        hold
+          push(parts, <1 error>)
+        miss
+          push(parts, <{errors} errors>)
+  fork test, is-above(warnings, 0)
+    hold
+      fork test, is-equal(warnings, 1)
+        hold
+          push(parts, <1 warning>)
+        miss
+          push(parts, <{warnings} warnings>)
+
+  back <{join(bodies, <\n\n>)}\n\n{join(parts, <, >)}>
+
+# did-you-mean: the nearest known name by edit distance, within a small threshold, else empty. It was `undefined` for
+# none, and every caller tests it for truth, which an empty text answers the same
+task nearest
+  take name, like text
+  take known, like list, like text
+  like text
+
+  save best, <>
+  save found, false
+  save best-distance, 0
+  walk known
+    take candidate
+    save distance, edit-distance(name, candidate)
+    fork test, or(is-equal(found, false), is-below(distance, best-distance))
+      hold
+        save best, candidate
+        save best-distance, distance
+        save found, true
+
+  save threshold, maximum(2, divide(subtract(name/length, modulo(name/length, 3)), 3))
+  fork test, and(found, is-maximum(best-distance, threshold))
+    hold
+      back best
+  back <>
+
+# Levenshtein distance over one flat row-major grid
+task edit-distance
+  take a, like text
+  take b, like text
+  like number
+  mark private
+
+  save rows, add(a/length, 1)
+  save cols, add(b/length, 1)
+  save grid, make list
+  save i, 0
+  walk test
+    hook test, is-below(i, multiply(rows, cols))
+    hook hold
+      push(grid, 0)
+      save i, add(i, 1)
+
+  save i, 0
+  walk test
+    hook test, is-below(i, rows)
+    hook hold
+      save grid/{multiply(i, cols)}, i
+      save i, add(i, 1)
+  save j, 0
+  walk test
+    hook test, is-below(j, cols)
+    hook hold
+      save grid/{j}, j
+      save j, add(j, 1)
+
+  save i, 1
+  walk test
+    hook test, is-below(i, rows)
+    hook hold
+      save j, 1
+      walk test
+        hook test, is-below(j, cols)
+        hook hold
+          save cost, 1
+          fork test, is-equal(slice(a, subtract(i, 1), i), slice(b, subtract(j, 1), j))
+            hold
+              save cost, 0
+          save up, add(get(grid, add(multiply(subtract(i, 1), cols), j)), 1)
+          save left, add(get(grid, add(multiply(i, cols), subtract(j, 1))), 1)
+          save corner, add(get(grid, add(multiply(subtract(i, 1), cols), subtract(j, 1))), cost)
+          save grid/{add(multiply(i, cols), j)}, minimum(up, minimum(left, corner))
+          save j, add(j, 1)
+      save i, add(i, 1)
+
+  back get(grid, subtract(multiply(rows, cols), 1))
+
+# ---- the catalog ----
+
+# Every name a compiler diagnostic has. Names and codes are permanent. The text IS the name, so on TypeScript
+# this is the union of the names, and a caller passing a name the catalog lacks fails to typecheck
+form diagnostic-name
+  mark text
+  case syntax-error, text <syntax-error>
+  case invalid-nesting, text <invalid-nesting>
+  case invalid-indentation, text <invalid-indentation>
+  case not-implemented, text <not-implemented>
+  case unknown-name, text <unknown-name>
+  case unexpected-node, text <unexpected-node>
+  case type-mismatch, text <type-mismatch>
+  case unproven, text <unproven>
+  case incomplete-instance, text <incomplete-instance>
+  case unknown-type, text <unknown-type>
+  case unused-binding, text <unused-binding>
+  case non-exhaustive, text <non-exhaustive>
+  case no-instance, text <no-instance>
+  case non-positive, text <non-positive>
+  case non-terminating, text <non-terminating>
+  case unchecked-hold, text <unchecked-hold>
+  case duplicate-instance, text <duplicate-instance>
+  case duplicate-definition, text <duplicate-definition>
+  case effect-error, text <effect-error>
+  case invalid-proof, text <invalid-proof>
+  case open-claim, text <open-claim>
+  case open-claim-used, text <open-claim-used>
+  case unverified-proof, text <unverified-proof>
+  case looping-proof, text <looping-proof>
+  case impure-proof, text <impure-proof>
+  case twin-unknown, text <twin-unknown>
+  case twin-of-impure, text <twin-of-impure>
+  case twin-impure, text <twin-impure>
+  case twin-signature, text <twin-signature>
+  case twin-loops, text <twin-loops>
+  case twin-cycle, text <twin-cycle>
+  case guard-impure, text <guard-impure>
+  case twin-choice, text <twin-choice>
+  case ease-unknown, text <ease-unknown>
+  case dead-restart, text <dead-restart>
+  case private-name, text <private-name>
+  case note-private, text <note-private>
+  case async-outside-task, text <async-outside-task>
+  case note-metadata, text <note-metadata>
+  case missing-back, text <missing-back>
+  case pattern-mismatch, text <pattern-mismatch>
+  case pattern-backtracks, text <pattern-backtracks>
+  case raise-bound, text <raise-bound>
+  case document-refused, text <document-refused>
+  case thin-catch-all, text <thin-catch-all>
+  case arm-shadow, text <arm-shadow>
+  case stale-tell, text <stale-tell>
+  case unresolved-load, text <unresolved-load>
+  case async-argument, text <async-argument>
+  case dock-shadow, text <dock-shadow>
+  case builtin-shadow, text <builtin-shadow>
+  case keyword-import, text <keyword-import>
+  case look-tint, text <look-tint>
+
+# a name's catalog entry. `fix` is the default actionable hint, so every error says how to resolve it
+task entry-of
+  take name, like diagnostic-name
+  like catalog-entry
+
+  sift name
+    case syntax-error
+      back error-entry(0x1, <error in the structure of the tree>, <check the brackets, the two-space indentation, and the commas on this line>)
+    case invalid-nesting
+      back error-entry(0x2, <the tree has invalid nesting>, <a number is a value: it cannot have children or be the head of a line>)
+    case invalid-indentation
+      back error-entry(0x3, <the tree has invalid indentation>, <indent exactly one level (two spaces) deeper than the parent line>)
+    case not-implemented
+      back error-entry(0x4, <this feature is not implemented yet>, <this construct is recognized but not yet compiled>)
+    case unknown-name
+      back error-entry(0x5, <this name is not defined>, <define it, import it, or check the spelling>)
+    case unexpected-node
+      back error-entry(0x6, <this node is not valid here>, <this term is not allowed in this position>)
+    case type-mismatch
+      back error-entry(0x7, <the types do not match>, <make the value match the expected type, or adjust the annotation>)
+    case unproven
+      back error-entry(0x8, <this hold could not be proven>, <add the assumption it needs (e.g. a natural-number bound), or weaken the claim>)
+    case incomplete-instance
+      back error-entry(0x9, <this trait implementation is missing methods>, <implement every method the trait declares>)
+    # a `like <name>` naming no form, enum, primitive, generic, mask, alias or opaque native type: it used to compile
+    # clean and emit a type the target language has never heard of
+    case unknown-type
+      back warning-entry(0x14, <this type name is not defined>, <declare the form, import it, or check the spelling>)
+    case unused-binding
+      back warning-entry(0xa, <this binding is never used>, <remove it, or use it>)
+    case non-exhaustive
+      back error-entry(0xb, <this match does not cover every case>, <add the missing cases, or one `hook miss` arm for every case not listed>)
+    case no-instance
+      back error-entry(0xc, <no trait instance for this type>, <implement the trait for this type with `wear` or `suit`>)
+    case non-positive
+      back error-entry(0xd, <this type occurs in a non-positive position in its own definition>, <a type cannot appear to the left of an arrow within its own fields; restructure the definition>)
+    case non-terminating
+      back warning-entry(0xe, <this recursion could not be shown to terminate>, <make a recursive call decrease an argument (e.g. a structurally smaller value), or add a base case>)
+    # NOT PROVEN IS NOT PROVEN. This was a warning until 2026-09-18, which meant a claim the prover could not
+    # reach compiled green: `a * b == a * a` over two naturals, and `secret a == a` where `secret` adds one, both
+    # passed with nothing but a warning (tmp probe, law-proof-gate-0002). A claim nobody checked and a claim
+    # somebody checked are not the same thing, and a gate that cannot tell them apart is not a gate. The stdlib
+    # emitted zero of these across 534 files, so the change costs nothing and closes the hole.
+    case unchecked-hold
+      back error-entry(0xf, <this hold is outside the decidable linear fragment: it was neither proven nor refuted, and may still be true>, <rewrite it as a linear comparison (\<, \<=, \>, \>=, ==), prove it in the dependent kernel with `calm` / `fold` / `cite`, or state it as a claim (a `rule` with no `show`) and `mark open` that, to leave it open and counted>)
+    case duplicate-instance
+      back error-entry(0x10, <this trait is implemented more than once for the same type>, <remove the overlapping implementation; a type may implement a trait only once (coherence)>)
+    case duplicate-definition
+      back error-entry(0x13, <this name is defined more than once>, <rename one of the definitions; a top-level task or form name must be unique within the program>)
+    case effect-error
+      back error-entry(0x11, <an effect is used inconsistently>, <mark the task async, await the asynchronous call, or only await asynchronous tasks>)
+    case invalid-proof
+      back error-entry(0x12, <this proof does not establish the proposition>, <check the tactic and its argument; `melt` needs both sides to compute equal, `cite` needs a proven lemma of the same statement>)
+    # A `rule` states a claim. A `task` of the same name fills it. Between the two the name is DECLARED and not
+    # DEFINED, and nothing may use it as though it were proven. An unfilled claim used to compile silently, which
+    # made a rule a comment with a type on it.
+    case open-claim
+      back error-entry(0x15, <this claim has no proof>, <write a `task` of the same name whose body proves it, or mark the rule `mark open` to leave it open and counted>)
+    # Using a claim that nobody has proven yet. The claim is a promise, and code that runs cannot be built on one.
+    case open-claim-used
+      back error-entry(0x16, <this name is an open claim, not a proven one>, <prove it with a `task` of the same name, or stop calling it>)
+    # A proof is a task, and a task the kernel never checked proves nothing. Until 2026-10-02 a claim was filled by
+    # ANY task of its name: one that recursed forever proved `any x equals any y` with a warning (proof-by-default-0003),
+    # and one whose type did not resolve proved a gradual nothing. A fill must be verified by the kernel, terminate,
+    # and touch nothing outside itself, or it is not a proof.
+    case unverified-proof
+      back error-entry(0x17, <this proof was not verified by the kernel>, <state the claim at types the kernel can read (load the forms it names), and write the proof in the pure fragment: no loops, no mutation, no native calls>)
+    case looping-proof
+      back error-entry(0x18, <this proof is not shown to terminate>, <a proof that never ends proves anything, so recurse only on a structurally smaller argument>)
+    case impure-proof
+      back error-entry(0x19, <this proof calls something impure>, <a proof may call only pure tasks: no native calls, no async, no writes through a record it did not make>)
+    # A `twin` is another implementation of a task, which the compiler may choose in its place, so it must be able to
+    # agree with it (note/term/optimize/admission.md). Each of these is a twin that could not.
+    case twin-unknown
+      back error-entry(0x1a, <this twin names no task>, <a twin is written `twin \<task\>, name \<label\>` beside a task this module can see>)
+    case twin-of-impure
+      back error-entry(0x1b, <this twin is of a task that is not pure>, <only a pure task can be computed another way: one that reaches native code, is async, or writes what it did not make has an order of effects a twin would have to repeat>)
+    case twin-impure
+      back error-entry(0x1c, <this twin is not pure>, <a twin of a pure task must be pure itself, or say `mark trust` to be admitted as trusted>)
+    case twin-signature
+      back error-entry(0x1d, <this twin's parameters are not its task's>, <name the task's parameters, in the task's order, with no types: a twin takes them from its task>)
+    case twin-loops
+      back error-entry(0x1e, <this twin is not shown to end where its task is>, <a twin that loops where its task returns is a wrong answer, not a faster one>)
+    case twin-cycle
+      back error-entry(0x1f, <these twins call each other in a cycle>, <break the cycle: a twin of one task may call another task, but not one whose twin calls back>)
+    case guard-impure
+      back error-entry(0x20, <this twin's run-time check is not pure>, <a `hook test` decides which implementation runs, so it may not change anything or call native code>)
+    case twin-choice
+      back error-entry(0x22, <this choice of implementation cannot be made>, <choose a twin the task has, eligible on this target, whose conditions the selection pass can honor>)
+    case ease-unknown
+      back error-entry(0x21, <this relaxation is not one Term defines>, <the relaxations are `float-order` and `float-fused` (note/term/optimize/words.md)>)
+    # A supervision tree OTP would start and then misbehave: a `transient` worker restarts only when it raises, so one
+    # whose work can raise nothing never restarts, and is a `temporary` under a misleading name (check/supervise.ts)
+    case dead-restart
+      back error-entry(0x23, <this transient worker can never restart>, <make it `temporary` if it is meant to run once, or let its work raise the failure it should restart on>)
+    # `mark private` on a task makes it visible only inside the file that defines it. Until 2026-10-02 the mark was
+    # read and nothing held anyone to it: names are package-global, so another file could call the task, or `find`
+    # it in a `load`, and the output exported it (check/private.ts).
+    case private-name
+      back error-entry(0x24, <this name is private to another file>, <remove `mark private` from the definition, or use it only from the file that defines it>)
+    # `note private` is the old spelling. Still honored, so code written before the change keeps building.
+    case note-private
+      back warning-entry(0x25, <`note private` is the old spelling of `mark private`>, <write `mark private`: privacy is a mark the compiler enforces, and a `note` is documentation>)
+    # a call to an async task OUTSIDE every task (a top-level `host`, a component's body, a closure in either that is
+    # not async), where nothing can wait for it: it hands back a pending value. `tick` says that is meant. Behind
+    # the await switch (check/effects.ts, `setAwaitOutsideTasks`). note/term/plan/await-by-default-and-mark-metadata.md
+    case async-outside-task
+      back error-entry(0x27, <a call to an async task outside any task, where nothing waits for it>, <move the call into a task, or write `tick` before it to start it without waiting>)
+    # `note async`, `note unsafe`, `note draft` ...: metadata is `mark` since 2026-10-02, and `note <word>` is the
+    # old spelling. Still read the same (the mill mints both as one form), so code written before keeps building.
+    # note/term/plan/await-by-default-and-mark-metadata.md, section 4
+    case note-metadata
+      back warning-entry(0x26, <`note` is the old spelling of metadata, which is `mark`>, <write `mark` for the `note`: `term lint --fix` rewrites it, and `note` is left for documentation>)
+    # A task that promises a value and has a path that ends without `back`. It built, and the TypeScript it emitted fell
+    # out of the bottom with `undefined` where the type said a value (guides: language/branching, check/returns.ts)
+    case missing-back
+      back error-entry(0x28, <a path through this task ends without sending a value back>, <end every path with `back`, or add a `hook miss` that does>)
+    # a `make pattern, <...>` literal that @term/base/pattern's reader refuses: it built, and the program raised
+    # `pattern-mismatch` the first time it ran the pattern (check/patterns.ts)
+    case pattern-mismatch
+      back error-entry(0x29, <this pattern literal is not a pattern>, <correct the pattern at the position named, or build the text at run time and handle `pattern-mismatch`>)
+    # a `make pattern, <...>` literal that needs a backtracking matcher: tier C wherever the platform's engine cannot run
+    # it safely, the one tier whose work can grow faster than its input, held to a budget proportional to the input and
+    # raising `pattern-budget` past it (note/term/stdlib/regex-engine.md)
+    case pattern-backtracks
+      back warning-entry(0x2a, <this pattern needs a backtracking matcher>, <rewrite it without the part named, or handle `pattern-budget` where it is searched>)
+    # The `halt <form>` lines on a task's signature do not match what it raises: a name that is no exception, one the
+    # body never raises, or a raise the lines leave out (a broken promise). All three were `type-mismatch`, and the
+    # second said `"absence" is not an exception form`, because the build drops an exception nothing raises (guides:
+    # language/errors, library/exceptions, 2026-10-04)
+    case raise-bound
+      back error-entry(0x2b, <this task's raise bound does not match what it can raise>, <bound exactly what the body can raise. `term roll task` lists what each task raises>)
+    # A `view` document that uses what a document may not: code, a macro it cannot reach, a fuse cycle, too large an
+    # expansion. Each message says what is allowed instead, and the generic bracket-and-indentation note under it was
+    # advice about a different problem (guides: commands/view, 2026-10-04)
+    case document-refused
+      back error-entry(0x2d, <this document uses something a document may not>, <write what the message names. A document places views and reads data, and code goes in a file of the `code` role>)
+    # A `hook miss` arm that answers one case of the match or none: listing the case says more, and a case added
+    # later goes to the arm without a word (note/term/gaps/decisions.md, the catch-all)
+    case thin-catch-all
+      back warning-entry(0x2e, <this `hook miss` arm answers one case or none>, <list the case it answers, or remove the arm>)
+    # A match arm's field named like a variable already in scope, which it hides for the whole arm without a word
+    # (guides: language/matching, 2026-10-04)
+    case arm-shadow
+      back warning-entry(0x2f, <this arm's field hides a variable already in scope>, <rename the field with a `link` under the case, or rename the outer variable>)
+    # A `tell` for an exception no task in the build can raise: the stale customer wording the roll exists to catch.
+    # It was `type-mismatch` (guides: language/errors, commands/roll, 2026-10-04)
+    case stale-tell
+      back error-entry(0x2c, <this tell is for an exception nothing in the build raises>, <remove the tell, or raise the exception where it is meant. `term roll exception` lists what each task raises>)
+    # An async task handed to a parameter whose type is a task that is not: the callee calls it without waiting, and
+    # reads the pending value as the result. TypeScript printed `[object Promise]` (guides: language/async, 2026-10-04)
+    # A `load` of another deck's module that nothing answers: the deck is not in `link/`. It built no message of its
+    # own, and the first use of an imported name failed as `unknown-name`, far from the cause (guides:
+    # packages/install, 2026-10-04)
+    case unresolved-load
+      back error-entry(0x31, <this load names a deck that is not installed>, <run `term load`, or `term link \<path\>` for a working copy>)
+    case async-argument
+      back error-entry(0x30, <an async task is passed where the parameter takes a task that is not async>, <write `mark async` under the parameter's `like task`, so the calls to it are awaited>)
+    case dock-shadow
+      back warning-entry(0x33, <a local named like a docked module hides it>, <rename the local, so `name/...` reaches the module>)
+    case builtin-shadow
+      back warning-entry(0x34, <a task named like one of the compiler's own words is never reached by that name>, <give the task a name of its own, such as `multiply-both`>)
+    case keyword-import
+      back warning-entry(0x35, <an import named like one of Term's own words is never reached by that name>, <give it another name: `find read, name read-file`>)
+    case look-tint
+      back error-entry(0x32, <this tint is not a CSS color>, <give the color space its values: `tint rgb, 24, 24, 27`, or `tint hex, \<fafafa\>`>)
+
+# every name, in catalog order, for a tool that walks them all (a text form cannot list its cases)
+task diagnostic-names
+  like list, like diagnostic-name
+
+  back
+    make list
+      make syntax-error
+      make invalid-nesting
+      make invalid-indentation
+      make not-implemented
+      make unknown-name
+      make unexpected-node
+      make type-mismatch
+      make unproven
+      make incomplete-instance
+      make unknown-type
+      make unused-binding
+      make non-exhaustive
+      make no-instance
+      make non-positive
+      make non-terminating
+      make unchecked-hold
+      make duplicate-instance
+      make duplicate-definition
+      make effect-error
+      make invalid-proof
+      make open-claim
+      make open-claim-used
+      make unverified-proof
+      make looping-proof
+      make impure-proof
+      make twin-unknown
+      make twin-of-impure
+      make twin-impure
+      make twin-signature
+      make twin-loops
+      make twin-cycle
+      make guard-impure
+      make twin-choice
+      make ease-unknown
+      make dead-restart
+      make private-name
+      make note-private
+      make async-outside-task
+      make note-metadata
+      make missing-back
+      make pattern-mismatch
+      make pattern-backtracks
+      make raise-bound
+      make document-refused
+      make thin-catch-all
+      make arm-shadow
+      make stale-tell
+      make unresolved-load
+      make async-argument
+      make dock-shadow
+      make builtin-shadow
+      make keyword-import
+      make look-tint

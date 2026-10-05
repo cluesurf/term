@@ -29,7 +29,7 @@ form point
 
 test <keys come back in the order they were first set>
   save m
-    make find
+    make hash
   call set
     read m
     text <zebra>
@@ -52,7 +52,7 @@ test <keys come back in the order they were first set>
 
 test <setting an existing key keeps its place>
   save m
-    make find
+    make hash
   call set
     read m
     text <b>
@@ -75,7 +75,7 @@ test <setting an existing key keeps its place>
 
 test <removing a key and setting it again moves it to the end>
   save m
-    make find
+    make hash
   call set
     read m
     text <b>
@@ -101,7 +101,7 @@ test <removing a key and setting it again moves it to the end>
 
 test <values follow the key order>
   save m
-    make find
+    make hash
   call set
     read m
     text <z>
@@ -120,7 +120,7 @@ test <values follow the key order>
 
 test <many keys keep their order>
   save m
-    make find
+    make hash
   save i, code 0
   walk test
     hook test
@@ -148,7 +148,7 @@ test <many keys keep their order>
 
 test <a record key is found by an equal record>
   save m
-    make find
+    make hash
   call set
     read m
     make point
@@ -180,7 +180,7 @@ task doubled
 
 test <entries come back in key order>
   save m
-    make find
+    make hash
   call set
     read m
     text <b>
@@ -217,7 +217,7 @@ test <entries come back in key order>
 
 test <change counts into a missing key and an existing one>
   save m
-    make find
+    make hash
   call change
     read m
     text <x>
@@ -238,7 +238,7 @@ test <change counts into a missing key and an existing one>
 
 test <map-values keeps the keys and their order>
   save m
-    make find
+    make hash
   call set
     read m
     text <z>

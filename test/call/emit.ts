@@ -99,7 +99,7 @@ const WANT = '5050 hello ada'
 const MAIN: Record<string, string> = {
   node: `console.log(\`\${sumTo(100)} \${greet('ada')}\`)\n`,
   rust: `fn main() { println!("{} {}", sum_to(100), greet("ada".to_string())); }\n`,
-  swift: `print("\\(sumTo(100)) \\(greet("ada"))")\n`,
+  swift: `print("\\(sumTo(size: 100)) \\(greet(name: "ada"))")\n`,
   kotlin: `fun main() { println("\${sumTo(100L)} \${greet("ada")}") }\n`,
 }
 

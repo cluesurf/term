@@ -8,7 +8,7 @@ import type {
   Span,
 } from '@term/make/code/parser/diagnostic'
 import type { Type } from '@term/make/code/compile/node'
-import { showType } from '@term/make/code/compile/node'
+import { showType } from '@term/make/code/compile/type-text'
 
 export type Expect = (
   actual: Type,

@@ -1,0 +1,8 @@
+mark draft
+
+# SHELVED 2026-10-05. `8.tree` through `128.tree` each wrote `form u8` (and so on) over `fuse integer` with `self-type`,
+# `actual-type`, `signed-type`, `bits` and `bits-minus-one`, and loaded no template: the one they were written for is
+# `integer` in `native/<backend>/integer.tree`, which takes `self-type` and `unsigned-type`. So each fuse built nothing,
+# and each module was an empty form. That went unsaid until a fuse was required to name a template the build has
+# (compile/template.ts). Nothing loads these modules. The unsigned widths the library builds are in `../unsigned.tree`,
+# from the template in `n.tree`.

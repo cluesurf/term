@@ -59,8 +59,11 @@ function walkExpr(
 ): void {
   switch (expr.form) {
     case 'variable':
-      // only a reference to a top-level function needs a value import (locals / params / builtins do not)
-      if (expr.binding?.kind === 'function') {
+      // a reference to a top-level function needs a value import, and so may a module's constant, which the resolver
+      // binds as `local` at module scope, the way it binds a task's own. So every such name is gathered, and imported
+      // only where another module defines it at top level and this one does not: a local of the same name shadows the
+      // import inside its task, and the import is then unused, never wrong. Parameters and builtins never import
+      if (expr.binding?.kind !== 'parameter' && expr.binding?.kind !== 'builtin') {
         values.add(expr.name)
       }
 
@@ -97,8 +100,8 @@ function walkExpr(
       break
     case 'template':
       for (const part of expr.parts) {
-        if (typeof part !== 'string') {
-          walkExpr(part, values, types)
+        if (part.form === 'value') {
+          walkExpr(part.value, values, types)
         }
       }
 
@@ -227,14 +230,42 @@ function walkStatement(
 // dedup), which for native delegation resolves a name to its concrete impl, loaded after the abstract signature.
 function definedNames(
   program: Program,
-): { values: Map<string, string>; types: Map<string, string> } {
+): {
+  values: Map<string, string>
+  types: Map<string, string>
+  exported: Map<string, string>
+  typeExported: Map<string, string>
+} {
   const values = new Map<string, string>()
   const types = new Map<string, string>()
+  // the same for a form or mask a dependent names otherwise
+  const typeExported = new Map<string, string>()
+  // the name a separately compiled task's own module exports it by, where this program calls it something else: a
+  // name two files define is split apart per program (`name__in<g>_<k>`), and the split a dependent makes is not the
+  // one the task's own unit made (compile/stub.ts `stubExport`)
+  const exported = new Map<string, string>()
 
   for (const statement of program) {
     const file = statement.span.file ?? ENTRY
 
-    if (statement.form === 'function' || statement.form === 'view') {
+    if (
+      (statement.form === 'function' || statement.form === 'let') &&
+      statement.stubExport !== undefined &&
+      statement.stubExport !== statement.name
+    ) {
+      exported.set(statement.name, statement.stubExport)
+    }
+
+    if (
+      (statement.form === 'record-type' || statement.form === 'mask') &&
+      statement.stubExport !== undefined &&
+      statement.stubExport !== statement.name
+    ) {
+      typeExported.set(statement.name, statement.stubExport)
+    }
+
+    // a top-level constant is a value another module may read, exported in per-module mode (`exportConstants`)
+    if (statement.form === 'function' || statement.form === 'view' || statement.form === 'let') {
       values.set(statement.name, file)
     } else if (
       statement.form === 'record-type' ||
@@ -244,7 +275,7 @@ function definedNames(
     }
   }
 
-  return { values, types }
+  return { values, types, exported, typeExported }
 }
 
 // one emitted module: its JS (well, TS) code, the source files it imports (the dependency edges the dev server's
@@ -327,6 +358,24 @@ export function emitModules(
   }
 
   const defined = definedNames(program)
+
+  // A BIND IS WRITTEN INTO ITS CALLER, so a module calling another module's bind needs the bind itself, and the native
+  // modules the bind's own file docks, since its text may name one (zone's bitwarden binds call `vault`). The module
+  // was handed its own statements alone, so the call came out as a bare `joinText(...)` naming nothing, and zone's
+  // seal failed at run time on the first separate build (2026-10-05). A bind emits nothing where it is declared, so
+  // giving it to every module that calls it costs nothing there
+  const binds = new Map<string, Extract<Statement, { form: 'bind' }>>()
+  const docks = new Map<string, Extract<Statement, { form: 'native' }>[]>()
+
+  for (const statement of program) {
+    if (statement.form === 'bind') {
+      binds.set(statement.name, statement)
+    } else if (statement.form === 'native' && statement.kind !== 'type') {
+      const file = statement.span.file ?? ENTRY
+      docks.set(file, [...(docks.get(file) ?? []), statement])
+    }
+  }
+
   // every enum variant name across all modules, so a module building `make some` emits the `form` discriminant even
   // when the enum (`maybe`) is defined in another module
   const variants = new Set<string>()
@@ -360,19 +409,26 @@ export function emitModules(
     const valueImports = new Map<string, Set<string>>()
     const typeImports = new Map<string, Set<string>>()
 
+    // what this module declares at top level itself, which an import of the same name would collide with
+    const own = new Set(statements.flatMap(s => ('name' in s && typeof s.name === 'string' ? [s.name] : [])))
+
     for (const name of values) {
       const from = defined.values.get(name)
 
-      if (from && from !== file) {
-        groupAdd(valueImports, from, toCamel(name))
+      if (from && from !== file && !own.has(name)) {
+        const export_ = defined.exported.get(name)
+
+        groupAdd(valueImports, from, export_ === undefined ? toCamel(name) : `${toCamel(export_)} as ${toCamel(name)}`)
       }
     }
 
     for (const name of types) {
       const from = defined.types.get(name)
 
-      if (from && from !== file) {
-        groupAdd(typeImports, from, toPascal(name))
+      if (from && from !== file && !own.has(name)) {
+        const export_ = defined.typeExported.get(name)
+
+        groupAdd(typeImports, from, export_ === undefined ? toPascal(name) : `${toPascal(export_)} as ${toPascal(name)}`)
       }
     }
 
@@ -392,8 +448,30 @@ export function emitModules(
       )
     }
 
+    // the binds this module calls from other modules, each with the native modules its own file docks (see `binds`)
+    const borrowed: Statement[] = []
+    const docked = new Set(statements.flatMap(s => (s.form === 'native' ? [s.alias] : [])))
+
+    for (const name of values) {
+      const bind = binds.get(name)
+
+      if (bind === undefined || (bind.span.file ?? ENTRY) === file || own.has(name)) {
+        continue
+      }
+
+      for (const dock of docks.get(bind.span.file ?? ENTRY) ?? []) {
+        if (!docked.has(dock.alias)) {
+          docked.add(dock.alias)
+          borrowed.push(dock)
+        }
+      }
+
+      borrowed.push(bind)
+    }
+
     // zone modules emit HMR-aware component bodies (signals seeded from the kept snapshot, instances registered)
-    const body = emitTypeScript(statements, { hmr: isZone, variants })
+    // the whole program as context: a `case` here on a form another module defines needs its fields (`context`)
+    const body = emitTypeScript([...borrowed, ...statements], { hmr: isZone, variants, exportConstants: true, context: program })
     const depFiles = new Set<string>([
       ...valueImports.keys(),
       ...typeImports.keys(),

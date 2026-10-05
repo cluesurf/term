@@ -86,40 +86,77 @@ load ./annotate
 load ./format
   find format-zone
 
+# Every bind here has a case for each backend (check/binds.ts refuses one that leaves a backend out). A page has no
+# terminal and no stderr, so the browser's cases write to the console and answer what a non-terminal answers.
 bind error-is-terminal, like boolean
   case node
     text <(process.stderr.isTTY === true)>
+  case browser
+    text <false>
   case rust
     text <std::io::IsTerminal::is_terminal(&std::io::stderr())>
+  case swift
+    load <Foundation>
+    text <(isatty(STDERR_FILENO) != 0)>
+  case kotlin
+    text <(System.console() != null)>
 
 bind write-error-text, take value, like text
   like boolean
   case node
     text <(process.getBuiltinModule('node:fs').writeSync(2, $value), true)>
+  case browser
+    text <(console.error($value), true)>
   case rust
     text <\{ use std::io::Write; let __term_text: String = $value; let mut __term_err = std::io::stderr(); __term_err.write_all(__term_text.as_bytes()).is_ok() && __term_err.flush().is_ok() \}>
+  case swift
+    load <Foundation>
+    text <\{ () -\> Bool in let __term_bytes = Array(($value).utf8); let __term_wrote = __term_bytes.withUnsafeBufferPointer \{ __term_buffer in write(2, __term_buffer.baseAddress, __term_buffer.count) \}; return __term_wrote == __term_bytes.count \}()>
+  case kotlin
+    text <run \{ System.err.print($value); System.err.flush(); true \}>
 
 bind write-data-text, take value, like text
   like boolean
   case node
     text <(process.getBuiltinModule('node:fs').writeSync(1, $value), true)>
+  case browser
+    text <(console.log($value), true)>
   case rust
     text <\{ use std::io::Write; let __term_text: String = $value; let mut __term_out = std::io::stdout(); __term_out.write_all(__term_text.as_bytes()).is_ok() && __term_out.flush().is_ok() \}>
+  case swift
+    load <Foundation>
+    text <\{ () -\> Bool in let __term_bytes = Array(($value).utf8); let __term_wrote = __term_bytes.withUnsafeBufferPointer \{ __term_buffer in write(1, __term_buffer.baseAddress, __term_buffer.count) \}; return __term_wrote == __term_bytes.count \}()>
+  case kotlin
+    text <run \{ print($value); System.out.flush(); true \}>
 
 # the width of the terminal stderr is on, 0 when it is not one
 bind error-columns, like number
   case node
     text <(process.stderr.columns ?? 0)>
+  case browser
+    text <0>
   case rust
     text <std::process::Command::new("stty").arg("size").stdin(std::process::Stdio::inherit()).output().ok().and_then(|out| String::from_utf8(out.stdout).ok()).and_then(|size| size.split_whitespace().nth(1).and_then(|cells| cells.parse::\<i64\>().ok())).unwrap_or(0)>
+  case swift
+    load <Foundation>
+    text <\{ () -\> Int in var __term_size = winsize(); return ioctl(STDERR_FILENO, TIOCGWINSZ, &__term_size) == 0 ? Int(__term_size.ws_col) : 0 \}()>
+  case kotlin
+    text <run \{ try \{ ProcessBuilder("stty", "size").redirectInput(ProcessBuilder.Redirect.INHERIT).start().inputStream.bufferedReader().readText().trim().split(" ").getOrNull(1)?.toLongOrNull() ?: 0L \} catch (__term_failed: Exception) \{ 0L \} \}>
 
 # the local zone's offset from UTC in minutes at an instant, east positive
 bind local-offset, take epoch, like number
   like number
   case node
     text <(-(new Date($epoch).getTimezoneOffset()))>
+  case browser
+    text <(-(new Date($epoch).getTimezoneOffset()))>
   case rust
     text <std::process::Command::new("date").arg("+%z").output().ok().and_then(|out| String::from_utf8(out.stdout).ok()).map(|zone| \{ let zone = zone.trim(); let sign: i64 = if zone.starts_with('-') \{ -1 \} else \{ 1 \}; let digits: String = zone.chars().filter(|c| c.is_ascii_digit()).collect(); if digits.len() == 4 \{ sign * (digits[0..2].parse::\<i64\>().unwrap_or(0) * 60 + digits[2..4].parse::\<i64\>().unwrap_or(0)) \} else \{ 0 \} \}).unwrap_or(0)>
+  case swift
+    load <Foundation>
+    text <(TimeZone.current.secondsFromGMT(for: Date(timeIntervalSince1970: Double($epoch) / 1000)) / 60)>
+  case kotlin
+    text <(java.util.TimeZone.getDefault().getOffset($epoch) / 60000).toLong()>
 
 # the local zone's short name at an instant (`PDT`), empty when the platform has
 # none
@@ -127,14 +164,29 @@ bind local-zone-name, take epoch, like number
   like text
   case node
     text <(new Intl.DateTimeFormat('en-US', \{ timeZoneName: 'short' \}).formatToParts(new Date($epoch)).find(part =\> part.type === 'timeZoneName')?.value ?? '')>
+  case browser
+    text <(new Intl.DateTimeFormat('en-US', \{ timeZoneName: 'short' \}).formatToParts(new Date($epoch)).find(part =\> part.type === 'timeZoneName')?.value ?? '')>
   case rust
     text <std::process::Command::new("date").arg("+%Z").output().ok().and_then(|out| String::from_utf8(out.stdout).ok()).map(|zone| zone.trim().to_string()).unwrap_or_default()>
+  case swift
+    load <Foundation>
+    text <(TimeZone.current.abbreviation(for: Date(timeIntervalSince1970: Double($epoch) / 1000)) ?? "")>
+  case kotlin
+    text <java.util.TimeZone.getDefault().getDisplayName(java.util.TimeZone.getDefault().inDaylightTime(java.util.Date($epoch)), java.util.TimeZone.SHORT)>
 
+# the operating system, by Rust's names where node's differ: `macos`, `linux`, `windows`
 bind platform-name, like text
   case node
     text <(process.platform === 'win32' ? 'windows' : process.platform)>
+  case browser
+    text <"browser">
   case rust
     text <std::env::consts::OS.to_string()>
+  case swift
+    load <Foundation>
+    text <\{ () -\> String in var __term_name = utsname(); uname(&__term_name); let __term_system = withUnsafeBytes(of: &__term_name.sysname) \{ __term_bytes in String(decoding: __term_bytes.prefix(while: \{ __term_byte in __term_byte != 0 \}), as: UTF8.self) \}.lowercased(); return __term_system == "darwin" ? "macos" : __term_system \}()>
+  case kotlin
+    text <System.getProperty("os.name").lowercase().let \{ __term_name -\> if (__term_name.startsWith("mac")) "macos" else if (__term_name.startsWith("windows")) "windows" else __term_name \}>
 
 # the variables the standard's environment rule names, read once
 task read-variables

@@ -11,6 +11,7 @@ import type {
   Statement,
   Type,
 } from '@term/make/code/compile/node'
+import { valuePart } from '@term/make/code/compile/node'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
 
@@ -18,6 +19,7 @@ type Fn = Extract<Statement, { form: 'function' }>
 
 export function resolveAsync(program: Program): void {
   const functions = functionsOf(program)
+  asyncDocks = asyncDocksOf(program)
   const asyncSet = asyncSetOf(functions)
 
   // apply: mark each async function, and wrap every default (non-background, not-yet-awaited) call to an async function
@@ -110,7 +112,19 @@ export function checkAsyncArguments(program: Program, file: string): Diagnostic[
 // The tasks of a program that are async, marked or inferred, without changing the program: what `resolveAsync`
 // would mark. The lint rule that finds a redundant `wait true` (L054) and the effect check read it.
 export function asyncNames(program: Program): Set<string> {
+  asyncDocks = asyncDocksOf(program)
+
   return asyncSetOf(functionsOf(program))
+}
+
+// The `dock load` modules marked `mark async`: every function of one returns a promise, so a call into it
+// (`fs-promise/read-file(...)`) is awaited with no `wait` written, and makes its caller async, the same as a call to
+// an async task. Their names seed the async set, which is what lets a local of the same name shadow one. Until
+// 2026-10-05 the build could not be told, and every such call needed its own `wait`
+let asyncDocks = new Set<string>()
+
+export function asyncDocksOf(program: Program): Set<string> {
+  return new Set(program.flatMap(n => (n.form === 'native' && n.async ? [n.alias] : [])))
 }
 
 function functionsOf(program: Program): Map<string, Fn> {
@@ -126,8 +140,9 @@ function functionsOf(program: Program): Map<string, Fn> {
 }
 
 function asyncSetOf(functions: Map<string, Fn>): Set<string> {
-  // seed: a function is async if it is marked async (task-level) or already awaits something (a call-level `wait true`)
-  const asyncSet = new Set<string>()
+  // seed: a function is async if it is marked async (task-level) or already awaits something (a call-level `wait true`),
+  // and an async dock is async from the start
+  const asyncSet = new Set<string>(asyncDocks)
 
   for (const [name, fn] of functions) {
     if (fn.async || bodyAwaits(fn.body)) {
@@ -370,6 +385,17 @@ function callsAsync(node: Extract<Expression, { form: 'call' }>, asyncSet: Set<s
     return asyncSet.has(node.callee.name)
   }
 
+  // a call into an async dock, however deep the member chain under the module, unless a local shadows its name
+  let root: Expression = node.callee
+
+  while (root.form === 'member') {
+    root = root.target
+  }
+
+  if (root.form === 'variable' && asyncDocks.has(root.name) && asyncSet.has(root.name)) {
+    return true
+  }
+
   const type = node.callee.type
 
   return type?.kind === 'function' && Boolean(type.effects?.includes('async'))
@@ -414,7 +440,7 @@ function expr(node: Expression, asyncSet: Set<string>): Expression {
     case 'template':
       return {
         ...node,
-        parts: node.parts.map(part => (typeof part === 'string' ? part : expr(part, asyncSet))),
+        parts: node.parts.map(part => (part.form === 'value' ? valuePart(expr(part.value, asyncSet)) : part)),
       }
     case 'map':
       return {
@@ -470,8 +496,8 @@ function walkExpr(
       break
     case 'template':
       for (const part of node.parts) {
-        if (typeof part !== 'string') {
-          visit(part)
+        if (part.form === 'value') {
+          visit(part.value)
         }
       }
 

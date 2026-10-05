@@ -135,7 +135,7 @@ task compute
           make handle
             bind id, code 1
   save keyed
-    make find
+    make hash
   call set
     read keyed
     read handle-a
@@ -150,7 +150,7 @@ task compute
       make handle
         bind id, code 1
   save m
-    make find
+    make hash
   call set
     read m
     read a

@@ -279,7 +279,7 @@ export function dispatch(
 
     // default value when nothing was provided
     if (args[take.name] === undefined && take.fallback !== undefined) {
-      args[take.name] = take.fallback
+      args[take.name] = take.fallback.value
     }
   }
 
@@ -319,7 +319,7 @@ export function renderHelp(
       }
 
       if (take.fallback !== undefined) {
-        meta.push(`default ${JSON.stringify(take.fallback)}`)
+        meta.push(`default ${JSON.stringify(take.fallback.value)}`)
       }
 
       if (take.choices) {

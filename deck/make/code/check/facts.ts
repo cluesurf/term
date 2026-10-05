@@ -214,9 +214,29 @@ function recentPrograms<T>(size = 4): {
 
 // the answer per program array: the kernel, both hold walks and the claim wall each ask, after the last pass that
 // rewrites a body (async resolution runs before the kernel), so one answer serves them all
-const PURE = recentPrograms<Set<string>>()
+const PURE = recentPrograms<Purity>()
+
+// purity's whole answer: the pure tasks, the tasks with an effect beyond writing through a parameter, and the parameter
+// positions each task writes through. A separately compiled stub carries the last two (`stubFacts` `clean`,
+// `stubWrites`), so a dependent decides a caller's purity at its call sites as the merged build does
+export type Purity = { pure: Set<string>; impure: Set<string>; writes: Map<string, Set<number>> }
+
+// A task's only statement, when its body is one statement: what the analyses that recognize a task by its SHAPE read
+// (a list's push or pop, `max` and `min`, a one-line unfolding). A separately compiled stub has no body and carries
+// that statement as `stubShape`
+export function onlyStatement(fn: Fn): Statement | undefined {
+  if (fn.stub) {
+    return fn.stubShape
+  }
+
+  return fn.body.length === 1 ? fn.body[0] : undefined
+}
 
 export function pureFunctions(program: Program): Set<string> {
+  return purity(program).pure
+}
+
+export function purity(program: Program): Purity {
   const known = PURE.get(program)
 
   if (known) {
@@ -229,7 +249,7 @@ export function pureFunctions(program: Program): Set<string> {
   return answer
 }
 
-function computePure(program: Program): Set<string> {
+function computePure(program: Program): Purity {
   const functions = new Map<string, Fn>()
   const mutableGlobals = new Set<string>()
 
@@ -262,6 +282,19 @@ function computePure(program: Program): Set<string> {
       root === undefined ? -1 : fn.params.findIndex(p => p.name === root)
 
     if (fn.claim) {
+      continue
+    }
+
+    // a separately compiled task: what its own unit showed, with its body (`stubFacts`)
+    if (fn.stub && fn.stubFacts) {
+      if (fn.stubFacts.includes('clean')) {
+        for (const i of fn.stubWrites ?? []) {
+          written.add(i)
+        }
+      } else {
+        impure.add(name)
+      }
+
       continue
     }
 
@@ -444,7 +477,7 @@ function computePure(program: Program): Set<string> {
     }
   }
 
-  return pure
+  return { pure, impure, writes }
 }
 
 // A method call on a NATIVE list or map, by the receiver's checked type, that touches nothing the caller can see.
@@ -454,7 +487,7 @@ function computePure(program: Program): Set<string> {
 //
 //   a READ (get, has, keys, includes, ...) is pure on any list or map: it changes nothing
 //   a WRITE (push, set, delete, ...) is pure only on a local this task bound to a list or map it MADE (`make list`,
-//   `make find`, a literal) and never bound to anything else, so no other name can be holding the same one
+//   `make hash`, a literal) and never bound to anything else, so no other name can be holding the same one
 //
 // Anything else (a method on a form, an unknown receiver, a write to a parameter or to a local that may be one) stays
 // impure, as it was.
@@ -497,7 +530,7 @@ function isCollection(type: Expression['type']): boolean {
   )
 }
 
-// is every binding and assignment of `name` in the body a fresh list or map (`make list`, `make find`, `make hash`, a
+// is every binding and assignment of `name` in the body a fresh list or map (`make list`, `make hash`, a
 // list or map literal)? Then the value it holds was made by this task and no other name shares it
 function madeHere(body: Statement[], name: string): boolean {
   let bound = 0
@@ -509,7 +542,7 @@ function madeHere(body: Statement[], name: string): boolean {
     return (
       v?.form === 'array' ||
       v?.form === 'map' ||
-      (v?.form === 'record' && (v.name === 'list' || v.name === 'hash' || v.name === 'find') && (v.fields?.length ?? 0) === 0)
+      (v?.form === 'record' && (v.name === 'list' || v.name === 'hash') && (v.fields?.length ?? 0) === 0)
     )
   }
 
@@ -605,6 +638,13 @@ export function stateFreeFunctions(program: Program): Set<string> {
   const needs = new Map<string, Set<string>>()
 
   for (const [name, fn] of functions) {
+    // a separately compiled task is state-free when its own unit found it so, with nothing left for it to need
+    if (fn.stub && fn.stubFacts?.includes('state-free') && !pure.has(name)) {
+      candidates.add(name)
+      needs.set(name, new Set())
+      continue
+    }
+
     if (pure.has(name) || fn.async || fn.stub || fn.claim || fn.body.length === 0) {
       continue
     }
@@ -790,9 +830,13 @@ export function returnsFreshFunctions(program: Program): Set<string> {
   }
 
   const functions = new Map<string, Fn>()
+  // a separately compiled task its own unit found returns only what it made: a candidate with nothing to re-check
+  const settled = new Set<string>()
 
   for (const statement of program) {
-    if (
+    if (statement.form === 'function' && statement.stub && statement.stubFacts?.includes('returns-fresh')) {
+      settled.add(statement.name)
+    } else if (
       statement.form === 'function' &&
       !statement.async &&
       !statement.stub &&
@@ -802,13 +846,17 @@ export function returnsFreshFunctions(program: Program): Set<string> {
     }
   }
 
-  const candidates = new Set(functions.keys())
+  const candidates = new Set([...functions.keys(), ...settled])
   let changed = true
 
   while (changed) {
     changed = false
 
     for (const name of [...candidates]) {
+      if (settled.has(name)) {
+        continue
+      }
+
       const fn = functions.get(name)!
       const fresh = freshNames(fn, candidates)
       let ok = true
@@ -876,7 +924,7 @@ export function lengthKeepingFunctions(program: Program): Set<string> {
   const needs = new Map<string, Set<string>>()
 
   for (const [name, fn] of functions) {
-    if (pure.has(name) || stateFree.has(name)) {
+    if (pure.has(name) || stateFree.has(name) || (fn.stub && fn.stubFacts?.includes('length-keeping'))) {
       candidates.add(name)
       needs.set(name, new Set())
       continue

@@ -15,6 +15,7 @@ import type {
 import type { Span } from '@term/make/code/parser/diagnostic'
 import { monomorphize } from '@term/make/code/ir/monomorphize'
 import { experimentalBanner } from '@term/make/code/compile/backend-registry'
+import { integerText } from '@term/make/code/compile/type-text'
 
 const NOWHERE: Span = {
   start: { line: 0, column: 0 },
@@ -64,7 +65,7 @@ export function emitHvm(input: Program): string {
   const expr = (node: Expression): string => {
     switch (node.form) {
       case 'integer':
-        return String(node.value)
+        return integerText(node)
       case 'float':
         return String(node.value)
       case 'boolean':

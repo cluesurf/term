@@ -5,7 +5,7 @@
 // See note/seed/plan/compilation-performance.md (Tier 2).
 
 import type { Type } from '@term/make/code/compile/node'
-import { UNKNOWN } from '@term/make/code/compile/node'
+import { unknownType } from '@term/make/code/compile/node'
 import type { Substitution } from '@term/make/code/check/substitution'
 
 export type SeedType = (
@@ -81,7 +81,7 @@ export function makeSeedType(
       // genuinely accepts any Term value declares (`deep-equal` narrows its args with a runtime shape test), and is
       // distinct from `dynamic`, which is the host's `any` at the FFI boundary.
       if (type.name === 'unknown') {
-        return UNKNOWN
+        return unknownType()
       }
 
       // `type` is the UNIVERSE (the type of types): kept named, so a function may take or return one (`El : U -> type`,

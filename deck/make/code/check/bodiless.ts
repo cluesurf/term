@@ -8,9 +8,11 @@
 // native declaration) and that ANOTHER file declares. That call could only ever reach the stub, and nothing in the
 // calling file says so.
 //
-// A file that declares a body-less task and calls it itself is left alone: its author can see there is no body, and
-// it is how a proof states an uninterpreted constant (a higher inductive type's path constructor, `loop` in
-// test/check/circle.ts) and how the soundness suite models a call the prover may assume nothing about.
+// A call from the declaring file itself is refused too, since 2026-10-05: every backend wrote the call to a stub that
+// fails when it runs (`throw new Error("stub: ...")`, `unimplemented!`, `fatalError`, `TODO`), and the build said
+// nothing (guides: language/native). Left alone is a PROOF file, one holding a theorem, a claim, an axiom or a `hold`:
+// there a body-less task is a postulate, an uninterpreted constant (a higher inductive type's path constructor, `loop`
+// in test/check/circle.ts) or a call the prover may assume nothing about, and a proof is checked, never run.
 
 import type { Program, Statement } from '@term/make/code/compile/node'
 import type { Span } from '@term/make/code/parser/diagnostic'
@@ -32,7 +34,7 @@ export function checkBodilessCalls(program: Program, file: string): Diagnostic[]
         bodied.add(s.name)
       } else {
         declared.add(s.name)
-        declaredIn.set(s.name, (declaredIn.get(s.name) ?? new Set()).add(s.span.file))
+        declaredIn.set(s.name, (declaredIn.get(s.name) ?? new Set()).add(s.span.file ?? ''))
       }
     }
 
@@ -45,9 +47,48 @@ export function checkBodilessCalls(program: Program, file: string): Diagnostic[]
     }
   }
 
-  const unfilled = new Set([...declared].filter(name => !bodied.has(name) && !declaredIn.get(name)?.has(file)))
+  // a body-less task that answers an INDEXED family (a form with value indices, `path a b`) states a proposition's
+  // inhabitant: a postulate, as `loop : base = base` is the circle's path constructor (test/check/circle.ts). It is
+  // checked, never run, wherever it is called from
+  const families = new Set(program.flatMap(s => (s.form === 'record-type' && s.indices?.length ? [s.name] : [])))
+  const postulates = new Set(
+    program.flatMap(s =>
+      s.form === 'function' && s.body.length === 0 && s.result?.kind === 'named' && families.has(s.result.name) ? [s.name] : [],
+    ),
+  )
+  const unfilled = new Set([...declared].filter(name => !bodied.has(name) && !postulates.has(name)))
 
   if (unfilled.size === 0) {
+    return []
+  }
+
+  // the files that state proofs, where a body-less task is a postulate
+  const proofFiles = new Set<string>()
+  const holds = (node: unknown): boolean => {
+    if (Array.isArray(node)) {
+      return node.some(holds)
+    }
+
+    if (node === null || typeof node !== 'object') {
+      return false
+    }
+
+    const record = node as Record<string, unknown>
+
+    return record.form === 'hold' || Object.entries(record).some(([key, child]) => key !== 'span' && key !== 'type' && holds(child))
+  }
+
+  for (const s of program) {
+    if (s.form === 'function' && (s.theorem || s.claim || s.axiom || holds(s.body)) && s.span.file) {
+      proofFiles.add(s.span.file)
+    }
+
+    if (s.form === 'hold' && s.span.file) {
+      proofFiles.add(s.span.file)
+    }
+  }
+
+  if (proofFiles.has(file)) {
     return []
   }
 

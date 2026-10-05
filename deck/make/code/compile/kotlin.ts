@@ -11,6 +11,7 @@ import { provenIncrements } from '@term/make/code/ir/facts/range'
 import { provenArithmetic, type Proven } from '@term/make/code/compile/proven'
 import { boundedLoops, listKey } from '@term/make/code/ir/facts/bounds'
 import { asciiTexts } from '@term/make/code/ir/facts/text'
+import { taggedForms, tagText } from '@term/make/code/compile/tag'
 import type {
   Expression,
   Program,
@@ -50,6 +51,7 @@ import {
   bindImports,
   referencedBinds,
 } from '@term/make/code/compile/bind'
+import { integerText } from '@term/make/code/compile/type-text'
 
 // Kotlin hard keywords: one used as an identifier (a local named `continue`, a param named `object`) is
 // backtick-escaped, in the declaration and every reference alike
@@ -485,9 +487,58 @@ const KOTLIN_HELPERS = {
   ].join('\n\n'),
   // an async call nothing awaits, started as a coroutine of its own. A raise in it is thrown where it ends, as an
   // unhandled raise ends the program anywhere else
+  // THE EVENT LOOP: every coroutine of the program runs on one thread, interleaved only where each one waits, which is
+  // node's model. A wait that is not done resumes by posting to the loop's queue (a timer from its own daemon thread),
+  // and whatever drives the program, `termLoop.block` for an asynchronous entry or `run-pending` between turns, runs
+  // what was posted. kotlinx is not a dependency, so this is the standard library's coroutine machinery alone
   start: [
     'import kotlin.coroutines.startCoroutine',
+    'import kotlin.coroutines.suspendCoroutine',
+    'import kotlin.coroutines.resume',
     'fun termStart(body: suspend () -> Unit) {\n    body.startCoroutine(object : kotlin.coroutines.Continuation<Unit> {\n        override val context: kotlin.coroutines.CoroutineContext = kotlin.coroutines.EmptyCoroutineContext\n        override fun resumeWith(result: Result<Unit>) {\n            result.getOrThrow()\n        }\n    })\n}',
+    [
+      'object termLoop {',
+      '    private val queue = java.util.concurrent.LinkedBlockingQueue<() -> Unit>()',
+      '    private val timers = java.util.concurrent.atomic.AtomicInteger()',
+      '    private val clock = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r -> Thread(r).apply { isDaemon = true } }',
+      '    fun post(work: () -> Unit) { queue.put(work) }',
+      '    // `work` on the loop once `ms` have passed',
+      '    fun after(ms: Long, work: () -> Unit) {',
+      '        timers.incrementAndGet()',
+      '        clock.schedule({ post { timers.decrementAndGet(); work() } }, maxOf(ms, 0L), java.util.concurrent.TimeUnit.MILLISECONDS)',
+      '    }',
+      '    // run an asynchronous entry to its answer on this thread, running what is posted meanwhile. With nothing posted',
+      '    // and no timer due, the program waits on work that nothing can finish, and it stops rather than hanging',
+      '    fun <T> block(body: suspend () -> T): T {',
+      '        var outcome: Result<T>? = null',
+      '        body.startCoroutine(object : kotlin.coroutines.Continuation<T> {',
+      '            override val context: kotlin.coroutines.CoroutineContext = kotlin.coroutines.EmptyCoroutineContext',
+      '            override fun resumeWith(result: Result<T>) { outcome = result }',
+      '        })',
+      '        while (outcome == null) {',
+      '            val work = queue.poll() ?: if (timers.get() == 0) error("defect: the program waits on work that nothing can finish") else queue.take()',
+      '            work()',
+      '        }',
+      '        return outcome!!.getOrThrow()',
+      '    }',
+      '    // run what is posted until nothing is (`run-pending`)',
+      '    fun drain() { while (true) { val work = queue.poll() ?: return; work() } }',
+      '}',
+    ].join('\n'),
+    '// a wait that blocks nothing: the coroutine resumes on the loop once `ms` have passed\nsuspend fun termSleep(ms: Long) { suspendCoroutine<Unit> { waiting -> termLoop.after(ms) { waiting.resume(Unit) } } }',
+  ].join('\n\n'),
+  // the two equalities a float needs told apart, as TypeScript tells them (`__termEqual`, `__termKeyText`). A KEY
+  // has one NaN and `-0.0` is `0.0`: a record that holds a float compares and hashes by it (its `equals`), and a
+  // float key is folded by `termKey` where a map is read or written. A VALUE compares by IEEE, NaN unequal to itself:
+  // `is-equal` over anything holding a float is `termEqual`, which a record answers through `TermValued`. Kotlin's
+  // own `Double.equals` is neither, NaN equal and the two zeros apart
+  key: [
+    'interface TermValued { fun termValueEq(other: Any?): Boolean }',
+    'fun termFolds(v: Any?): Boolean = when (v) {\n    is Double -> { val d: Double = v; d == 0.0 && 1.0 / d < 0.0 }\n    is List<*> -> v.any { termFolds(it) }\n    else -> false\n}',
+    '@Suppress("UNCHECKED_CAST")\nfun <T> termKey(v: T): T = when (v) {\n    is Double -> { val d: Double = v; (if (d == 0.0) 0.0 else d) as T }\n    is List<*> -> if (v.any { termFolds(it) }) v.map { termKey(it) }.toMutableList() as T else v\n    else -> v\n}',
+    'fun termKeyEq(a: Any?, b: Any?): Boolean = when {\n    a is Double && b is Double -> { val x: Double = a; val y: Double = b; x == y || (x.isNaN() && y.isNaN()) }\n    a is DoubleArray && b is DoubleArray -> a.size == b.size && a.indices.all { termKeyEq(a[it], b[it]) }\n    a is Array<*> && b is Array<*> -> a.size == b.size && a.indices.all { termKeyEq(a[it], b[it]) }\n    a is List<*> && b is List<*> -> a.size == b.size && a.indices.all { termKeyEq(a[it], b[it]) }\n    a is LongArray && b is LongArray -> a.contentEquals(b)\n    else -> a == b\n}',
+    'fun termKeyHash(a: Any?): Int = when (a) {\n    null -> 0\n    is Double -> { val d: Double = a; if (d == 0.0) 0 else d.hashCode() }\n    is DoubleArray -> a.fold(1) { h, x -> 31 * h + termKeyHash(x) }\n    is Array<*> -> a.fold(1) { h, x -> 31 * h + termKeyHash(x) }\n    is List<*> -> a.fold(1) { h, x -> 31 * h + termKeyHash(x) }\n    is LongArray -> a.contentHashCode()\n    else -> a.hashCode()\n}',
+    'fun termEqual(a: Any?, b: Any?): Boolean = when {\n    a is Double && b is Double -> { val x: Double = a; val y: Double = b; x == y }\n    a is DoubleArray && b is DoubleArray -> a.size == b.size && a.indices.all { val x: Double = a[it]; val y: Double = b[it]; x == y }\n    a is Array<*> && b is Array<*> -> a.size == b.size && a.indices.all { termEqual(a[it], b[it]) }\n    a is List<*> && b is List<*> -> a.size == b.size && a.indices.all { termEqual(a[it], b[it]) }\n    a is Map<*, *> && b is Map<*, *> -> a.size == b.size && a.all { (k, v) -> b.containsKey(k) && termEqual(v, b[k]) }\n    a is LongArray && b is LongArray -> a.contentEquals(b)\n    a is TermValued -> a.termValueEq(b)\n    else -> a == b\n}',
   ].join('\n\n'),
 } as const
 
@@ -628,6 +679,8 @@ export function emitKotlin(
   )
 
   // how many type parameters each generic form declares, for a reference that names the form without them
+  // the forms whose tag the program reads as a field, each given `termTag`
+  const taggedNames = taggedForms(program)
   const genericArity = new Map<string, number>(
     program
       .filter((n): n is Extract<Statement, { form: 'record-type' }> => n.form === 'record-type')
@@ -687,6 +740,67 @@ export function emitKotlin(
   const sharedForms = new Set(program.flatMap(n => (n.form === 'record-type' && n.shared ? [n.name] : [])))
   // the forms with cases: a list literal of them names its element (the `array` case)
   const unionForms = new Set(program.flatMap(n => (n.form === 'record-type' && n.variants.length > 0 ? [n.name] : [])))
+  // the forms that can hold a float, through a field, a list, a generic or another such form: each compares as a key
+  // by the key rule and as a value by IEEE (the `key` helper), where a data class's own `equals` is neither
+  const floatForms = new Set<string>()
+  const holdsFloat = (type: Type | undefined, params: ReadonlySet<string> = new Set()): boolean => {
+    switch (type?.kind) {
+      case 'float':
+        return true
+      case 'array':
+        return holdsFloat(type.element, params)
+      case 'map':
+        return holdsFloat(type.key, params) || holdsFloat(type.value, params)
+      case 'named':
+        return (
+          type.name === 'decimal' ||
+          type.name === 'float' ||
+          params.has(type.name) ||
+          floatForms.has(type.name) ||
+          (type.args ?? []).some(a => holdsFloat(a, params))
+        )
+      default:
+        return false
+    }
+  }
+
+  for (let grew = true; grew; ) {
+    grew = false
+
+    for (const n of program) {
+      if (n.form === 'record-type' && !n.shared && !floatForms.has(n.name)) {
+        const params = new Set(n.params)
+
+        if ([...n.fields, ...n.variants.flatMap(v => v.fields)].some(f => holdsFloat(f.type, params))) {
+          floatForms.add(n.name)
+          grew = true
+        }
+      }
+    }
+  }
+
+  // a key whose own `equals` keeps `-0.0` apart from `0.0`: a float, or a list of them. A record folds in its `equals`
+  const foldsKey = (type: Type | undefined): boolean =>
+    type?.kind === 'float' ||
+    (type?.kind === 'named' && (type.name === 'decimal' || type.name === 'float')) ||
+    (type?.kind === 'array' && foldsKey(type.element)) ||
+    (type?.kind === 'named' && type.name === 'list' && foldsKey(type.args?.[0]))
+  const keyOf = (type: Type | undefined): Type | undefined =>
+    type?.kind === 'map' ? type.key : type?.kind === 'named' && type.name === 'hash' ? type.args?.[0] : undefined
+  // a generic key (`hash_set` in the standard library) may be a float when the program runs, so it folds too
+  const keyText = (type: Type | undefined, text: string): string =>
+    foldsKey(keyOf(type)) || genericLetter(keyOf(type)) ? need('key', `termKey(${text})`) : text
+  // a data class's members for a form that holds a float: `equals` and `hashCode` by the key rule, `termValueEq` by
+  // IEEE for `is-equal`
+  const floatMembers = (cls: string, fields: string[], d: number): string[] => {
+    needs.add('key')
+
+    return [
+      `${pad(d + 1)}override fun equals(other: Any?): Boolean = other is ${cls} && ${fields.map(f => `termKeyEq(${f}, other.${f})`).join(' && ') || 'true'}`,
+      `${pad(d + 1)}override fun hashCode(): Int = ${fields.map(f => `termKeyHash(${f})`).reduce((sum, h) => `31 * (${sum}) + ${h}`, '17')}`,
+      `${pad(d + 1)}override fun termValueEq(other: Any?): Boolean = other is ${cls} && ${fields.map(f => `termEqual(${f}, other.${f})`).join(' && ') || 'true'}`,
+    ]
+  }
 
   // a generic type parameter (`like t`), as opposed to a form the program declares
   const genericLetter = (type: Type | undefined): boolean =>
@@ -1545,7 +1659,7 @@ export function emitKotlin(
   const expr = (node: Expression): string => {
     switch (node.form) {
       case 'integer':
-        return `${node.value}L`
+        return `${integerText(node)}L`
       case 'float':
         // a float literal needs a decimal point so it is a Double, not a Long
         // (JavaScript writes 1e21 and past as `1e+21`, already a float literal, which a `.0` would break)
@@ -1560,19 +1674,21 @@ export function emitKotlin(
       case 'template':
         // one text value alone is that value, where the interpolation built a copy of it. Not a bare name, which
         // costs nothing to copy and would make `save t, text <{t}>` the self-assignment swiftc refuses
-        if (node.parts.length === 1 && typeof node.parts[0] !== 'string' && node.parts[0]!.form !== 'variable' && textValued(node.parts[0]!)) {
-          return expr(node.parts[0]!)
+        const alone = node.parts.length === 1 && node.parts[0]!.form === 'value' ? node.parts[0]!.value : undefined
+
+        if (alone && alone.form !== 'variable' && textValued(alone)) {
+          return expr(alone)
         }
 
         // `"a${x}b"`: chunks escaped as a Kotlin string with `$` escaped, expressions interpolated
         // a float interpolates as `termNumber` lays it out, the same text as every other backend
         return `"${node.parts
           .map(part =>
-            typeof part === 'string'
-              ? JSON.stringify(part).slice(1, -1).replace(/\$/g, '\\$')
-              : part.type?.kind === 'float'
-                ? need('number', `\${termNumber(${expr(part)})}`)
-                : `\${${expr(part)}}`,
+            part.form === 'chunk'
+              ? JSON.stringify(part.value).slice(1, -1).replace(/\$/g, '\\$')
+              : part.value.type?.kind === 'float'
+                ? need('number', `\${termNumber(${expr(part.value)})}`)
+                : `\${${expr(part.value)}}`,
           )
           .join('')}"`
       case 'unit':
@@ -1628,6 +1744,12 @@ export function emitKotlin(
           isText(node.right.type)
         ) {
           return need('text', `(TermText.compare(${expr(node.left)}, ${expr(node.right)}) ${OP[node.op]} 0L)`)
+        }
+
+        // two values that hold a float compare by IEEE (`termEqual`), where a data class or a list compares through
+        // `Double.equals`, NaN equal to itself. A bare float is typed `Double`, and `==` on it is already IEEE
+        if ((node.op === '==' || node.op === '!=') && node.left.type?.kind !== 'float' && holdsFloat(node.left.type)) {
+          return need('key', `${node.op === '!=' ? '!' : ''}termEqual(${expr(node.left)}, ${expr(node.right)})`)
         }
 
         return `(${expr(node.left)} ${OP[node.op]} ${expr(node.right)})`
@@ -1895,7 +2017,7 @@ export function emitKotlin(
             : ''
 
         return `mutableMapOf${args}(${node.entries
-          .map(e => `${expr(e.key)} to ${expr(e.value)}`)
+          .map(e => `${keyText(node.type, expr(e.key))} to ${expr(e.value)}`)
           .join(', ')})`
       }
 
@@ -2089,6 +2211,11 @@ export function emitKotlin(
       }
 
       case 'member': {
+        // a form's tag read as a field (`s/form`): its case's name, from the property the sealed class is given
+        if (node.tag) {
+          return `${expr(node.target)}.termTag`
+        }
+
         // the kept field of a carrier that holds it alone (compile/place.ts, `recordReuse`)
         if (node.target.form === 'variable' && node.index === undefined && carrierLocals.get(node.target.name) === node.name) {
           return camel(node.target.name)
@@ -2253,17 +2380,20 @@ export function emitKotlin(
     const copy = (of: string): string => (longs ? need('longs', `mutableLongListOf(${of})`) : `${of}.toMutableList()`)
 
     if (op.kind === 'map') {
+      // a float key folded to the one key it is (`termKey`): `-0.0` is `0.0`
+      const key = arg[0] === undefined ? '' : keyText(op.target.type, arg[0])
+
       switch (op.op) {
         case 'has':
-          return `${target}.containsKey(${arg[0]})`
+          return `${target}.containsKey(${key})`
         case 'get':
-          return `${target}.getValue(${arg[0]})`
+          return `${target}.getValue(${key})`
         case 'set':
           // `also` with a named parameter, never `apply`: inside `apply` the map is the receiver, so a program variable
           // named `values`, `keys` or `size` read the MAP's member instead (render-native, device trait, 2026-10-02)
-          return `${target}.also { __m -> __m.put(${arg[0]}, ${arg[1]}) }`
+          return `${target}.also { __m -> __m.put(${key}, ${arg[1]}) }`
         case 'delete':
-          return `(${target}.remove(${arg[0]}) != null)`
+          return `(${target}.remove(${key}) != null)`
         case 'keys':
           return `${target}.keys.toMutableList()`
         case 'values':
@@ -2657,7 +2787,7 @@ export function emitKotlin(
           const old = `(__v ?: ${expr(update.fallback)})`
           const sum = update.map.type.value.kind === 'number' ? `Math.addExact(${old}, ${expr(update.step)})` : `${old} + ${expr(update.step)}`
 
-          return `${expr(update.map)}.compute(${expr(update.key)}) { _, __v -> ${sum} }`
+          return `${expr(update.map)}.compute(${keyText(update.map.type, expr(update.key))}) { _, __v -> ${sum} }`
         }
 
         return expr(node.expr)
@@ -2709,7 +2839,9 @@ export function emitKotlin(
         // guard true running a copy that calls the task's unchecked copy. Only the call limits are asked: the list
         // checks stay, since stripping them measured nothing on Kotlin (codegen-performance-0030)
         const guard = loopGuards.get(node)
-        const loop = (): string => `while (${expr(node.cond)}) {\n${block(node.body, d + 2)}\n${pad(d + 1)}}`
+        // a named walk's label (`outer@ while`), on both copies of a guarded one, each in its own block
+        const named = node.label ? `${camel(node.label)}@ ` : ''
+        const loop = (): string => `${named}while (${expr(node.cond)}) {\n${block(node.body, d + 2)}\n${pad(d + 1)}}`
 
         // the list checks too: in the copy a guarded list's index narrows with `toInt()`, not `toIntExact`
         if (guard && (guard.fast?.length || guard.checks.length)) {
@@ -2762,7 +2894,7 @@ export function emitKotlin(
           return `if (${test}) {\n${pad(d + 1)}${fast}\n${pad(d)}} else {\n${pad(d + 1)}${loop()}\n${pad(d)}}`
         }
 
-        return `while (${expr(node.cond)}) {\n${block(
+        return `${named}while (${expr(node.cond)}) {\n${block(
           node.body,
           d + 1,
         )}\n${pad(d)}}`
@@ -2817,7 +2949,7 @@ export function emitKotlin(
               `val ${walked} = ${expr(node.iterable)}`,
               ...(longs ? [`${pad(d)}${need('longs', `val ${walked}Longs = ${walked} as? TermLongs`)}`] : []),
               `${pad(d)}var ${at} = 0`,
-              `${pad(d)}while (${at} < ${walked}.size) {`,
+              `${pad(d)}${node.label ? `${camel(node.label)}@ ` : ''}while (${at} < ${walked}.size) {`,
               `${pad(d + 1)}val ${camel(node.item)} = ${read}${index}`,
               `${pad(d + 1)}${at}++`,
               block(node.body, d + 1),
@@ -2828,13 +2960,13 @@ export function emitKotlin(
 
         // a walk that names its INDEX uses withIndex; `toLong` because that is what a Term number is. lean-0017
         return node.index
-          ? `for ((__at, ${camel(node.item)}) in ${expr(
+          ? `${node.label ? `${camel(node.label)}@ ` : ''}for ((__at, ${camel(node.item)}) in ${expr(
               node.iterable,
             )}.withIndex()) {\n${pad(d + 1)}val ${camel(node.index)} = __at.toLong()\n${block(
               node.body,
               d + 1,
             )}\n${pad(d)}}`
-          : `for (${camel(node.item)} in ${expr(
+          : `${node.label ? `${camel(node.label)}@ ` : ''}for (${camel(node.item)} in ${expr(
               node.iterable,
             )}) {\n${block(node.body, d + 1)}\n${pad(d)}}`
 
@@ -2845,7 +2977,7 @@ export function emitKotlin(
         if (node.exceptionArms) {
           const carrier = expr(node.subject)
           const arms = node.cases.map(b => {
-            const arm = node.exceptionArms![b.label]!
+            const arm = node.exceptionArms!.find(one => one.label === b.label)!
             const bodyText = block(b.body, d + 2)
             // only the fields the arm READS, asked of the program and not of the emitted text (swift.ts says why)
             const read = namesIn(b.body)
@@ -2999,9 +3131,9 @@ export function emitKotlin(
       }
 
       case 'break':
-        return 'break'
+        return node.label ? `break@${camel(node.label)}` : 'break'
       case 'continue':
-        return 'continue'
+        return node.label ? `continue@${camel(node.label)}` : 'continue'
       case 'exit':
         return 'kotlin.system.exitProcess(0)'
       case 'debug':
@@ -3219,7 +3351,15 @@ export function emitKotlin(
                 .join(', ')
               // a primitive array field (`variantArrays`) compares, hashes and prints by its contents, as the list it
               // stands for does: a data class would compare the arrays by reference
-              const body = v.fields.some(arrayOf)
+              // a case that holds a float compares by the key rule and answers `is-equal` by IEEE (`floatMembers`),
+              // its arrays included
+              const floatCase = v.fields.some(f => holdsFloat(f.type, new Set(node.params)))
+              const printed = `${pad(1)}override fun toString(): String = "${cls}(${v.fields
+                .map(f => `${camel(f.name)}=\${${arrayOf(f) ? `${camel(f.name)}.contentToString()` : camel(f.name)}}`)
+                .join(', ')})"`
+              const body = floatCase
+                ? ` {\n${[...floatMembers(`${cls}${ownGenerics.length ? `<${ownGenerics.map(() => '*').join(', ')}>` : ''}`, v.fields.map(f => camel(f.name)), 0), ...(v.fields.some(arrayOf) ? [printed] : [])].join('\n')}\n}`
+                : v.fields.some(arrayOf)
                 ? ` {\n${pad(1)}override fun equals(other: Any?): Boolean = other is ${cls} && ${v.fields
                     .map(f => (arrayOf(f) ? `${camel(f.name)}.contentEquals(other.${camel(f.name)})` : `${camel(f.name)} == other.${camel(f.name)}`))
                     .join(' && ')}\n${pad(1)}override fun hashCode(): Int = ${v.fields
@@ -3231,7 +3371,7 @@ export function emitKotlin(
 
               return `data class ${cls}${genericDecl}(${fields}) : ${pascal(
                 node.name,
-              )}${superArgs}()${body}`
+              )}${superArgs}()${floatCase ? ', TermValued' : ''}${body}`
             }
 
             const objectSuper = node.params.length
@@ -3243,7 +3383,21 @@ export function emitKotlin(
             )}${objectSuper}()`
           })
 
-          return [`${head}`, ...subclasses].join('\n')
+          // the tag, when the program reads it as a field: the case's name as text (compile/tag.ts)
+          const tagProperty = taggedNames.has(node.name)
+            ? [
+                `val ${pascal(node.name)}${node.params.length ? `<${node.params.map(() => '*').join(', ')}>` : ''}.termTag: String\n${pad(1)}get() = when (this) {\n${node.variants
+                  .map(v => {
+                    const cls = variantClassOf.get(v.name)?.get(node.name) ?? `${pascal(node.name)}${pascal(v.name)}`
+                    const own = node.params.filter(p => v.fields.some(f => mentions(f.type, p)))
+
+                    return `${pad(2)}is ${cls}${v.fields.length > 0 && own.length ? `<${own.map(() => '*').join(', ')}>` : ''} -> ${JSON.stringify(tagText(v.name))}`
+                  })
+                  .join('\n')}\n${pad(1)}}`,
+              ]
+            : []
+
+          return [`${head}`, ...subclasses, ...tagProperty].join('\n')
         }
 
         // a field nothing in the program reassigns is a `val`: the class says what the program does, and a form used
@@ -3279,14 +3433,22 @@ export function emitKotlin(
           `${pad(d + 1)}override fun equals(other: Any?): Boolean = other is ${pascal(node.name)}${node.params.length ? `<${node.params.map(() => '*').join(', ')}>` : ''}`,
           `${pad(d + 1)}override fun hashCode(): Int = ${JSON.stringify(node.name)}.hashCode()`,
         ]
+        // a form that holds a float compares by the key rule and answers `is-equal` by IEEE (`floatMembers`)
+        const floaty = floatForms.has(node.name) && node.fields.length > 0 && !node.shared
+        const star = node.params.length ? `<${node.params.map(() => '*').join(', ')}>` : ''
+        const floatEquality = floaty ? floatMembers(`${pascal(node.name)}${star}`, node.fields.map(f => camel(f.name)), d) : []
         // a form that implements traits declares them on the data class with overrides delegating to the free functions
         const impls = conformances.get(node.name) ?? []
 
         if (impls.length === 0) {
-          return fieldless ? `${decl} {\n${fieldlessEquality.join('\n')}\n${pad(d)}}` : decl
+          return fieldless
+            ? `${decl} {\n${fieldlessEquality.join('\n')}\n${pad(d)}}`
+            : floaty
+              ? `${decl} : TermValued {\n${floatEquality.join('\n')}\n${pad(d)}}`
+              : decl
         }
 
-        const supers = impls.map(i => pascal(i.mask)).join(', ')
+        const supers = [...impls.map(i => pascal(i.mask)), ...(floaty ? ['TermValued'] : [])].join(', ')
         const overrides = impls.flatMap(i =>
           i.methods
             .map(m =>
@@ -3300,7 +3462,7 @@ export function emitKotlin(
             .map(line => `${pad(d + 1)}${line}`),
         )
 
-        return `${decl} : ${supers} {\n${[...(fieldless ? fieldlessEquality : []), ...overrides].join('\n')}\n${pad(d)}}`
+        return `${decl} : ${supers} {\n${[...(fieldless ? fieldlessEquality : []), ...floatEquality, ...overrides].join('\n')}\n${pad(d)}}`
       }
 
       case 'mask': {
@@ -3542,6 +3704,12 @@ export function emitKotlin(
   // the form walkers raise SeedError on a mismatch
   if (fillSpecs.size > 0 || meltSpecs.size > 0) {
     needs.add('error')
+  }
+
+  // the event loop, for a program that waits (`termSleep`, from a binding), drains (`run-pending`), spawns a job (the
+  // job runtime posts to the loop), or has a suspending task an entry may drive (`termLoop.block`)
+  if (body.some(line => /termSleep\(|termLoop\b|\bjob\.spawn\(|\bsuspend fun\b/.test(line))) {
+    needs.add('start')
   }
 
   const prelude = (Object.keys(KOTLIN_HELPERS) as KotlinHelper[]).filter(h => needs.has(h)).map(h => KOTLIN_HELPERS[h])

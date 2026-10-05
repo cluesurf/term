@@ -200,7 +200,7 @@ for (const target of ['rust', 'swift', 'kotlin'] as const) {
       execFileSync('rustc', ['-A', 'warnings', `${stem}.rs`, '-o', stem], { stdio: ['ignore', 'pipe', 'pipe'] })
       got = execFileSync(stem, { timeout: 10_000 }).toString().trim()
     } else if (target === 'swift') {
-      writeFileSync(`${stem}.swift`, `${prelude}\n${emitSwift(built.program)}\nprint("\\(grid(4)) \\(sumTo(5)) \\(probeShapes()) \\(evens(7)) \\(down(3)) \\(skipOdd(6))")\n`)
+      writeFileSync(`${stem}.swift`, `${prelude}\n${emitSwift(built.program)}\nprint("\\(grid(n: 4)) \\(sumTo(n: 5)) \\(probeShapes()) \\(evens(n: 7)) \\(down(n: 3)) \\(skipOdd(n: 6))")\n`)
       execFileSync('swiftc', ['-o', stem, `${stem}.swift`], { stdio: ['ignore', 'pipe', 'pipe'] })
       got = execFileSync(stem, { timeout: 10_000 }).toString().trim()
     } else {

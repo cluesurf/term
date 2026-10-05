@@ -49,6 +49,14 @@ mine dock-bind-line
       mine term, term name
         mine term
           site name
+    # `mark async` under the line: every function of the module returns a promise, so a call into it is awaited
+    # with no `wait` written. Any other word is refused by the bridge
+    mine list
+      mine any
+        mine form, like mark-note
+          site note
+        mine form, like note
+          site note
 
 # RETIRED, and matched so the reader can say so. `dock` was a routing form as well as the native FFI binding,
 # and a URL route is `hook </path>` now. Its path is a text literal, which is what a route path needs.

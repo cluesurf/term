@@ -1,0 +1,7 @@
+mark draft
+
+# SHELVED 2026-10-05. The template here fuses `free-result`, `is-below-or-return-error` and four more that no file
+# defines, and `n.tree` loads `@term/base/code/javascript/integer/8`, a path that is not one. Each of those fuses built
+# nothing until a fuse was required to name a template the build has (compile/template.ts). Nothing loads these
+# modules: no `{platform}/integer` load exists. The widths the library builds are `@term/base/integer/8` and its
+# siblings, from `n.tree`.

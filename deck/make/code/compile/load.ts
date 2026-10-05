@@ -264,10 +264,14 @@ export function collectModules(
   // where a module's import scan comes from: the build cache's (`CompileCache.scanned`), so a module whose text is
   // unchanged is not parsed to find its loads. Omitted, it is computed here
   scanOf: (source: Source, compute: () => ImportScan) => ImportScan = (_source, compute) => compute(),
-): { sources: Source[]; diagnostics: Diagnostic[]; scope: ImportScope } {
+): { sources: Source[]; diagnostics: Diagnostic[]; scope: ImportScope; edges: Map<string, string[]> } {
   const diagnostics: Diagnostic[] = []
   const ordered: Source[] = []
   const scope: ImportScope = new Map()
+  // each module and the modules it depends on, as this walk resolved them: the written loads and the runtimes a
+  // module is given without writing them (the render and route runtimes above). Separate compilation's units are cut
+  // from this, so a unit sees every module its program will hold (compile/separate.ts)
+  const edges = new Map<string, string[]>()
   const done = new Set<string>()
   const active = new Set<string>()
 
@@ -341,6 +345,10 @@ export function collectModules(
           })
         }
 
+        if (dependency.file !== source.file) {
+          edges.set(source.file, [...(edges.get(source.file) ?? []), dependency.file])
+        }
+
         visit(dependency)
       } else if (thirdParty(path) && base === undefined) {
         // (a load with `base` that resolves to nothing has the more exact cause the bridge names: a `base` that is
@@ -369,5 +377,5 @@ export function collectModules(
 
   visit(entry)
 
-  return { sources: ordered, diagnostics, scope }
+  return { sources: ordered, diagnostics, scope, edges }
 }

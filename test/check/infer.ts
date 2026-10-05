@@ -209,7 +209,7 @@ task good
     'consistent map literal type-checks',
     `task scores
   host table
-    make find
+    make hash
       save alice, code 1
       save bob, code 2
   send back table
@@ -219,7 +219,7 @@ task good
     'inconsistent map values are caught',
     `task bad
   host table
-    make find
+    make hash
       save alice, code 1
       save bob, true
   send back table

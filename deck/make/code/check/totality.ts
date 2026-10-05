@@ -13,7 +13,9 @@
 
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
-import { localNames } from '@term/make/code/check/facts'
+import { EVERYTHING, localNames, writtenNames } from '@term/make/code/check/facts'
+import { atLeast, linear, proves } from '@term/make/code/check/refine'
+import type { Linear } from '@term/make/code/check/refine'
 import type {
   Expression,
   Program,
@@ -111,6 +113,8 @@ function strictlyDecreases(
   arg: Expression,
   paramName: string,
   memberOf: Map<string, string>,
+  // the conditions known true on the path to this call (walkCalls): what a NUMERIC descent needs to be well-founded
+  guards: Expression[] = [],
 ): boolean {
   // a field bound by matching the parameter is structurally smaller than it (this is what makes a recursive function
   // over an inductive type, like `plus` recursing on `succ`'s predecessor, provably terminating). The relation is
@@ -156,33 +160,178 @@ function strictlyDecreases(
     }
   }
 
+  // NUMERIC descent is well-founded only above a floor, and the floor must hold on the path to the call. Until
+  // 2026-10-05 `n - 1`, `n / 2` and `n % k` were each a descent with no condition at all, so a proof that recursed on
+  // one at every step and never reached a base case was "terminating", and proved any claim (test/check/soundness.ts):
+  //   n - c   (c > 0)   needs n - c >= 0, so n is a natural number that falls by at least 1 each step
+  //   n / k   (k > 1)   needs n >= 1, so n at least halves each step and stops below 1
+  //   n % k   (k >= 1)  needs n >= k, so the result, below k, is below n
   if (
     arg.form === 'binary' &&
     arg.left.form === 'variable' &&
-    arg.left.name === paramName
+    arg.left.name === paramName &&
+    arg.right.form === 'integer'
   ) {
-    if (
-      arg.op === '-' &&
-      arg.right.form === 'integer' &&
-      Number(arg.right.value) > 0
-    ) {
-      return true
+    const by = Number(arg.right.value)
+    const n = linear({ [paramName]: 1 })
+    const facts = guardFacts(guards)
+
+    if (arg.op === '-' && by > 0) {
+      return proves(facts, atLeast(n, linear({}, by)))
     }
 
-    if (
-      arg.op === '/' &&
-      arg.right.form === 'integer' &&
-      Number(arg.right.value) > 1
-    ) {
-      return true
+    if (arg.op === '/' && by > 1) {
+      return proves(facts, atLeast(n, linear({}, 1)))
     }
 
-    if (arg.op === '%') {
-      return true
+    if (arg.op === '%' && by >= 1) {
+      return proves(facts, atLeast(n, linear({}, by)))
     }
   }
 
   return false
+}
+
+// ---- path conditions, for numeric descent ----
+
+// a linear expression over variables and integer literals, or null
+function linearOf(e: Expression): Linear | null {
+  switch (e.form) {
+    case 'variable':
+      return linear({ [e.name]: 1 })
+    case 'integer':
+      return linear({}, Number(e.value))
+    case 'unary': {
+      const inner = e.op === '-' ? linearOf(e.operand) : null
+
+      return inner && { terms: new Map([...inner.terms].map(([k, c]) => [k, -c])), constant: -inner.constant }
+    }
+    case 'binary': {
+      const left = linearOf(e.left)
+      const right = linearOf(e.right)
+
+      if (!left || !right) {
+        return null
+      }
+
+      if (e.op === '+' || e.op === '-') {
+        const sign = e.op === '+' ? 1 : -1
+        const terms = new Map(left.terms)
+
+        for (const [k, c] of right.terms) {
+          terms.set(k, (terms.get(k) ?? 0) + sign * c)
+        }
+
+        return { terms, constant: left.constant + sign * right.constant }
+      }
+
+      if (e.op === '*' && (left.terms.size === 0 || right.terms.size === 0)) {
+        const [k, v] = left.terms.size === 0 ? [left.constant, right] : [right.constant, left]
+
+        return { terms: new Map([...v.terms].map(([name, c]) => [name, k * c])), constant: k * v.constant }
+      }
+
+      return null
+    }
+    default:
+      return null
+  }
+}
+
+type Guard = ReturnType<typeof atLeast>
+
+// what a condition says, or its negation says, as linear facts. A condition it cannot read says nothing
+function conditionFacts(cond: Expression, negated: boolean): Guard[] {
+  if (cond.form === 'unary' && cond.op === '!') {
+    return conditionFacts(cond.operand, !negated)
+  }
+
+  if (cond.form !== 'binary') {
+    return []
+  }
+
+  if ((cond.op === '&&' && !negated) || (cond.op === '||' && negated)) {
+    return [...conditionFacts(cond.left, negated), ...conditionFacts(cond.right, negated)]
+  }
+
+  const left = linearOf(cond.left)
+  const right = linearOf(cond.right)
+
+  if (!left || !right) {
+    return []
+  }
+
+  // integers: a strict comparison is a non-strict one shifted by 1
+  const op = negated
+    ? ({ '<': '>=', '<=': '>', '>': '<=', '>=': '<', '==': '!=', '!=': '==' } as Record<string, string>)[cond.op]
+    : cond.op
+  const plus = (l: Linear, c: number): Linear => ({ terms: l.terms, constant: l.constant + c })
+
+  switch (op) {
+    case '>=':
+      return [atLeast(left, right)]
+    case '>':
+      return [atLeast(left, plus(right, 1))]
+    case '<=':
+      return [atLeast(right, left)]
+    case '<':
+      return [atLeast(right, plus(left, 1))]
+    case '==':
+      return [atLeast(left, right), atLeast(right, left)]
+    default:
+      return []
+  }
+}
+
+function guardFacts(guards: Expression[]): Guard[] {
+  return guards.flatMap(g => conditionFacts(g, false))
+}
+
+// does an expression read the name?
+function mentions(e: Expression, name: string): boolean {
+  switch (e.form) {
+    case 'variable':
+      return e.name === name
+    case 'binary':
+      return mentions(e.left, name) || mentions(e.right, name)
+    case 'unary':
+      return mentions(e.operand, name)
+    case 'call':
+      return mentions(e.callee, name) || e.args.some(a => mentions(a, name))
+    case 'member':
+      return mentions(e.target, name)
+    default:
+      return true
+  }
+}
+
+// the guards that still speak of the same values once `names` are rebound
+function without(guards: Expression[], names: Iterable<string>): Expression[] {
+  const gone = [...names]
+
+  return gone.length === 0 ? guards : guards.filter(g => !gone.some(name => mentions(g, name)))
+}
+
+function not(cond: Expression): Expression {
+  return { form: 'unary', op: '!', operand: cond, span: cond.span } as Expression
+}
+
+// a body that always leaves (returns or raises) at its end
+function exits(body: Statement[]): boolean {
+  const last = body[body.length - 1]
+
+  return last !== undefined && (last.form === 'return' || last.form === 'throw' || last.form === 'exit')
+}
+
+// a task's parameter names, with every one the body REBINDS replaced by a name nothing can match. A rebound
+// parameter is a different value under the same name, so neither `n - 1` nor a field of `n` is smaller than what the
+// task was called with: `save n, n + 5` then `call f(n - 1)` grows. Such a position carries no descent
+const REBOUND = '\u0000rebound'
+
+function steadyParams(statement: Extract<Statement, { form: 'function' }>): string[] {
+  const written = writtenNames(statement.body)
+
+  return statement.params.map(p => (written.has(p.name) || written.has(EVERYTHING) ? REBOUND : p.name))
 }
 
 // a function is terminating if it is non-recursive, or its direct recursion strictly decreases some argument on
@@ -276,6 +425,12 @@ function terminationVerdict(program: Program): Map<string, boolean> {
   const verdict = new Map<string, boolean>()
 
   for (const [name, statement] of functions) {
+    // a separately compiled task: its own unit, which had the body, judged it (`stubFacts`)
+    if (statement.stub && statement.stubFacts) {
+      verdict.set(name, statement.stubFacts.includes('ends'))
+      continue
+    }
+
     if (!reaches(name).has(name)) {
       verdict.set(name, true) // not recursive: trivially terminating
       continue
@@ -292,17 +447,17 @@ function terminationVerdict(program: Program): Map<string, boolean> {
 
     // DIRECT recursion (the primary, pre-existing check): some single argument position strictly decreases on every
     // SELF-call. Tried first, so a function verified this way keeps its prior verdict exactly (no regression).
-    const paramNames = statement.params.map(p => p.name)
+    const paramNames = steadyParams(statement)
     const selfCalls: SelfCall[] = []
     collectSelfCalls(statement.body, name, selfCalls, variantFields)
 
     let positions = new Set<number>(paramNames.map((_, i) => i))
 
-    for (const { args, memberOf } of selfCalls) {
+    for (const { args, memberOf, guards } of selfCalls) {
       const decreasing = new Set<number>()
 
       for (let i = 0; i < paramNames.length && i < args.length; i++) {
-        if (strictlyDecreases(args[i]!, paramNames[i]!, memberOf)) {
+        if (strictlyDecreases(args[i]!, paramNames[i]!, memberOf, guards)) {
           decreasing.add(i)
         }
       }
@@ -335,18 +490,19 @@ function terminationVerdict(program: Program): Map<string, boolean> {
       callerParams: string[]
       args: Expression[]
       memberOf: Map<string, string>
+      guards: Expression[]
     }
 
     const groupCalls: GroupCall[] = []
 
     for (const member of scc) {
       const memberStatement = functions.get(member)!
-      const memberParams = memberStatement.params.map(p => p.name)
+      const memberParams = steadyParams(memberStatement)
       const calls: SelfCall[] = []
       collectGroupCalls(memberStatement.body, scc, calls, variantFields)
 
-      for (const { args, memberOf } of calls) {
-        groupCalls.push({ callerParams: memberParams, args, memberOf })
+      for (const { args, memberOf, guards } of calls) {
+        groupCalls.push({ callerParams: memberParams, args, memberOf, guards })
       }
     }
 
@@ -365,6 +521,7 @@ function terminationVerdict(program: Program): Map<string, boolean> {
             call.args[p]!,
             call.callerParams[p]!,
             call.memberOf,
+            call.guards,
           ),
       )
 
@@ -458,7 +615,7 @@ function collectCalledNames(
 
 // the argument lists of every call to `name` within the body (direct self-recursion)
 // a self-call with the field-origin context (which variables are destructured fields of which subject) at the call site
-type SelfCall = { args: Expression[]; memberOf: Map<string, string> }
+type SelfCall = { args: Expression[]; memberOf: Map<string, string>; guards: Expression[] }
 
 function collectSelfCalls(
   body: Statement[],
@@ -468,9 +625,9 @@ function collectSelfCalls(
 ): void {
   walkCalls(
     body,
-    (callee, args, memberOf) => {
+    (callee, args, memberOf, guards) => {
       if (callee === name) {
-        out.push({ args, memberOf })
+        out.push({ args, memberOf, guards })
       }
     },
     variantFields,
@@ -498,7 +655,7 @@ function lexicographicallyDescends(
       return '?'
     }
 
-    if (strictlyDecreases(arg, paramNames[p]!, call.memberOf)) {
+    if (strictlyDecreases(arg, paramNames[p]!, call.memberOf, call.guards)) {
       return '<'
     }
 
@@ -551,9 +708,9 @@ function collectGroupCalls(
 ): void {
   walkCalls(
     body,
-    (callee, args, memberOf) => {
+    (callee, args, memberOf, guards) => {
       if (group.has(callee)) {
-        out.push({ args, memberOf })
+        out.push({ args, memberOf, guards })
       }
     },
     variantFields,
@@ -571,13 +728,21 @@ function collectAllCalls(
 
 // walk a statement body, invoking `visit` for every call expression with a variable callee. `memberOf` tracks, within
 // a `case <variant>` branch, each bound field's origin subject variable, so a recursion on a destructured field is seen
-// as structural descent.
+// as structural descent. `guards` are the conditions true on the path to each call (an enclosing branch, or an earlier
+// branch that returned), which a NUMERIC descent needs (strictlyDecreases).
+//
+// A NAME IS A VALUE ONLY UNTIL IT IS REBOUND. A `save`, an assignment, a closure's or a walk's parameter, or a field of
+// a match on something other than a plain variable, gives a name a new value, so from there on it is no longer the field
+// it was (`link prior` then `save prior, read n` made `prior` be `n` itself, and `call f(prior)` read as a descent until
+// 2026-10-05), and no guard about its old value holds. Each walk keeps its own copy of both, so a rebinding is seen by
+// what follows it and by the bodies nested in it, and never by a sibling.
 function walkCalls(
   body: Statement[],
   visit: (
     callee: string,
     args: Expression[],
     memberOf: Map<string, string>,
+    guards: Expression[],
   ) => void,
   // both maps default so a malformed / partially-built AST can never deref an
   // undefined map here (a missing map degrades to "no structural info", at worst
@@ -586,8 +751,31 @@ function walkCalls(
   memberOf = new Map<string, string>(),
   // every name read as a VALUE, not called: a task handed on as a function may be called with any argument
   onValue?: (name: string) => void,
+  guards: Expression[] = [],
 ): void {
-  const visitExpression = (node: Expression): void => {
+  const members = new Map(memberOf)
+  let path = [...guards]
+
+  const forget = (names: Iterable<string>): void => {
+    for (const name of names) {
+      members.delete(name)
+    }
+
+    path = without(path, names)
+  }
+
+  // the members a nested body sees once `names` are bound afresh in it
+  const membersWithout = (names: Iterable<string>): Map<string, string> => {
+    const out = new Map(members)
+
+    for (const name of names) {
+      out.delete(name)
+    }
+
+    return out
+  }
+
+  const visitExpression = (node: Expression, at: Expression[] = path): void => {
     switch (node.form) {
       case 'variable':
         onValue?.(node.name)
@@ -595,63 +783,72 @@ function walkCalls(
       case 'call':
         // a named callee is a call, not a value: `visit` has it, and reading it as a value would count every call twice
         if (node.callee.form === 'variable') {
-          visit(node.callee.name, node.args, memberOf)
+          visit(node.callee.name, node.args, members, at)
         } else {
-          visitExpression(node.callee)
+          visitExpression(node.callee, at)
         }
 
-        node.args.forEach(visitExpression)
+        node.args.forEach(arg => visitExpression(arg, at))
         break
       case 'binary':
-        visitExpression(node.left)
-        visitExpression(node.right)
+        visitExpression(node.left, at)
+        visitExpression(node.right, at)
         break
       case 'unary':
-        visitExpression(node.operand)
+        visitExpression(node.operand, at)
         break
       case 'member':
-        visitExpression(node.target)
+        visitExpression(node.target, at)
         break
       case 'await':
-        visitExpression(node.expr)
+        visitExpression(node.expr, at)
         break
       case 'template':
         for (const part of node.parts) {
-          if (typeof part !== 'string') {
-            visitExpression(part)
+          if (part.form === 'value') {
+            visitExpression(part.value, at)
           }
         }
 
         break
       case 'array':
-        node.items.forEach(visitExpression)
+        node.items.forEach(item => visitExpression(item, at))
         break
       case 'map':
         node.entries.forEach(entry => {
-          visitExpression(entry.key)
-          visitExpression(entry.value)
+          visitExpression(entry.key, at)
+          visitExpression(entry.value, at)
         })
         break
       case 'record':
-        node.fields.forEach(field => visitExpression(field.value))
+        node.fields.forEach(field => visitExpression(field.value, at))
         break
-      case 'conditional':
+      case 'conditional': {
+        // a branch's value is reached when its condition holds and every earlier one failed
+        const failed: Expression[] = []
+
         node.branches.forEach(branch => {
-          visitExpression(branch.cond)
-          visitExpression(branch.value)
+          visitExpression(branch.cond, [...at, ...failed])
+          visitExpression(branch.value, [...at, ...failed, branch.cond])
+          failed.push(not(branch.cond))
         })
 
         if (node.otherwise) {
-          visitExpression(node.otherwise)
+          visitExpression(node.otherwise, [...at, ...failed])
         }
 
         break
-      case 'closure':
+      }
+      case 'closure': {
         // a self-call inside an inline function value (the continuation of a well-founded recursor, `\y pf. wf-rec f y
-        // (step y pf)`) is still a recursion. Walk the closure body with the SAME `memberOf`, so a field destructured in
-        // the enclosing match (`step` from `mkacc step`) is still seen as the parameter's child at the recursive call.
-        walkCalls(node.body, visit, variantFields, memberOf, onValue)
+        // (step y pf)`) is still a recursion. Walk the closure body with the SAME members, so a field destructured in
+        // the enclosing match (`step` from `mkacc step`) is still seen as the parameter's child at the recursive call,
+        // less the names its own parameters rebind. A closure may run long after the path that made it, so it carries
+        // no guard
+        const params = node.params.map(param => param.name)
+        walkCalls(node.body, visit, variantFields, membersWithout(params), onValue, [])
         break
+      }
       default:
         break
     }
@@ -661,11 +858,14 @@ function walkCalls(
     switch (node.form) {
       case 'let':
         visitExpression(node.init)
+        forget([node.name])
         break
-      case 'assign':
+      case 'assign': {
         visitExpression(node.target)
         visitExpression(node.value)
+        forget(writtenNames(node))
         break
+      }
       case 'expression':
         visitExpression(node.expr)
         break
@@ -681,33 +881,60 @@ function walkCalls(
       case 'hold':
         visitExpression(node.expr)
         break
-      case 'while':
-        visitExpression(node.cond)
-        walkCalls(node.body, visit, variantFields, memberOf, onValue)
+      case 'while': {
+        // a later turn sees what an earlier one wrote, so neither a member nor a guard about a name the loop writes
+        // holds inside it, beyond the condition each turn tests
+        const written = writtenNames(node.body)
+        visitExpression(node.cond, without(path, written))
+        walkCalls(node.body, visit, variantFields, membersWithout(written), onValue, [...without(path, written), node.cond])
+        forget(written)
         break
+      }
       case 'guard':
-        walkCalls(node.body, visit, variantFields, memberOf, onValue)
+        walkCalls(node.body, visit, variantFields, members, onValue, path)
 
         if (node.catch) {
-          walkCalls(node.catch.body, visit, variantFields, memberOf, onValue)
+          walkCalls(node.catch.body, visit, variantFields, membersWithout([node.catch.name]), onValue, without(path, [node.catch.name]))
         }
 
+        forget(writtenNames(node))
         break
-      case 'for-each':
+      case 'for-each': {
         visitExpression(node.iterable)
-        walkCalls(node.body, visit, variantFields, memberOf, onValue)
+
+        const bound = [node.item, ...(node.index ? [node.index] : []), ...writtenNames(node.body)]
+        walkCalls(node.body, visit, variantFields, membersWithout(bound), onValue, without(path, bound))
+        forget(writtenNames(node.body))
         break
-      case 'if':
+      }
+      case 'if': {
+        const failed: Expression[] = []
+
         for (const branch of node.branches) {
-          visitExpression(branch.cond)
-          walkCalls(branch.body, visit, variantFields, memberOf, onValue)
+          visitExpression(branch.cond, [...path, ...failed])
+          walkCalls(branch.body, visit, variantFields, members, onValue, [...path, ...failed, branch.cond])
+          failed.push(not(branch.cond))
         }
 
         if (node.otherwise) {
-          walkCalls(node.otherwise, visit, variantFields, memberOf, onValue)
+          walkCalls(node.otherwise, visit, variantFields, members, onValue, [...path, ...failed])
+        }
+
+        // what a branch wrote is a new value after the `if`
+        forget(writtenNames(node))
+
+        // AN EARLY RETURN: past an `if` whose first branches all leave, none of their conditions held. (Only a
+        // leading run: past a branch that does not leave, a later one's condition may have held after all)
+        for (const branch of node.branches) {
+          if (!exits(branch.body)) {
+            break
+          }
+
+          path = [...path, not(branch.cond)]
         }
 
         break
+      }
 
       case 'match': {
         visitExpression(node.subject)
@@ -719,26 +946,26 @@ function walkCalls(
             : undefined
 
         for (const branch of node.cases) {
-          let branchMembers = memberOf
+          const fields = branch.binds ?? variantFields?.get(branch.label) ?? []
+          // the fields are bound afresh in the branch: members of the subject when it is a plain variable, and of
+          // nothing a parameter is when it is not (a field of `g(x)` named `prior` is not the `prior` of an outer match)
+          const branchMembers = membersWithout(fields)
 
           if (subjectVar) {
-            branchMembers = new Map(memberOf)
-
             // honor a `binds` field-rename so a recursion on the renamed field is still seen as structural descent
-            for (const fieldName of branch.binds ??
-              variantFields?.get(branch.label) ??
-              []) {
+            for (const fieldName of fields) {
               branchMembers.set(fieldName, subjectVar)
             }
           }
 
-          walkCalls(branch.body, visit, variantFields, branchMembers, onValue)
+          walkCalls(branch.body, visit, variantFields, branchMembers, onValue, without(path, fields))
         }
 
         if (node.otherwise) {
-          walkCalls(node.otherwise, visit, variantFields, memberOf, onValue)
+          walkCalls(node.otherwise, visit, variantFields, members, onValue, path)
         }
 
+        forget(writtenNames(node))
         break
       }
 

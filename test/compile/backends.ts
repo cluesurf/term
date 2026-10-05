@@ -68,7 +68,8 @@ function main(): void {
   const swift = emitSwift(program)
   ok(
     'swift: function signature',
-    swift.includes('func fibonacci(_ n: Int) -> Int'),
+    // a task's inputs are labeled by name on Swift, and every call passes the label (compile/swift.ts `label`)
+    swift.includes('func fibonacci(n: Int) -> Int') && swift.includes('fibonacci(n: (n - 1))'),
     swift,
   )
   ok(

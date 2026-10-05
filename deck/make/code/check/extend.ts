@@ -665,8 +665,8 @@ export function extendForms(
         break
       case 'template':
         for (const part of node.parts) {
-          if (typeof part !== 'string') {
-            walkExpression(s, part)
+          if (part.form === 'value') {
+            walkExpression(s, part.value)
           }
         }
 

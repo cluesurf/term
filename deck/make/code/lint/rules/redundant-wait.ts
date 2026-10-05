@@ -3,7 +3,8 @@
 // and the fix removes it: the whole line when it stands alone, `, wait true` when it closes a call's line.
 //
 // ONLY WHERE THE CALLEE IS KNOWN ASYNC. A call into a `dock load` module is not a task the build can see, and its
-// `wait true` is the only thing that awaits it, so it is never reported. Neither is a callee a parameter or a local
+// `wait true` is the only thing that awaits it, so it is not reported, unless the module's load line says
+// `mark async`, which awaits every call into it. Neither is a callee a parameter or a local
 // shadows, nor a `wait true` on a task DEFINITION (the older spelling of `mark async`, which says something).
 //
 // What this rule can know is what the file it is linting declares: the program it reads is the file's own, milled
@@ -11,7 +12,7 @@
 // those across the repository, compiling each file with its imports and proving the output unchanged.
 
 import type { Rule } from '@term/make/code/lint/rule'
-import { asyncNames } from '@term/make/code/check/async-resolve'
+import { asyncDocksOf, asyncNames } from '@term/make/code/check/async-resolve'
 import { waitTrueSites } from '@term/make/code/check/note-metadata'
 
 export const redundantWait: Rule = {
@@ -23,15 +24,22 @@ export const redundantWait: Rule = {
   check() {},
   checkSource(tree, context) {
     const known = asyncNames(context.program)
+    const docks = asyncDocksOf(context.program)
     const bound = boundNames(context.program)
 
     for (const site of waitTrueSites(tree, context.source)) {
-      if (site.definition || !known.has(site.callee) || bound.has(site.callee)) {
+      // a call into a `dock load` module marked `mark async` is awaited the same way (`fs-promise/read-file`)
+      const module = site.callee.includes('/') ? site.callee.slice(0, site.callee.indexOf('/')) : undefined
+      const docked = module !== undefined && docks.has(module) && !bound.has(module)
+
+      if (site.definition || (!docked && (!known.has(site.callee) || bound.has(site.callee)))) {
         continue
       }
 
       context.report({
-        message: `\`wait true\` is redundant: "${site.callee}" is async, so the call is awaited with nothing written`,
+        message: docked
+          ? `\`wait true\` is redundant: "${module}" is docked \`mark async\`, so the call is awaited with nothing written`
+          : `\`wait true\` is redundant: "${site.callee}" is async, so the call is awaited with nothing written`,
         span: site.span,
         fix: { span: site.remove, text: '' },
       })

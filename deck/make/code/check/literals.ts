@@ -66,15 +66,17 @@ function checkWidths(program: Program, file: string): Diagnostic[] {
 
       args.forEach((arg, i) => {
         const label = names[i]
-        const index = typeof label === 'string' ? target.names.indexOf(label) : position++
+        // `''` is a positional argument (compile/node.ts, `names`)
+        const index = label ? target.names.indexOf(label) : position++
         const width = target.widths[index]
 
         if (!width || arg.form !== 'integer') {
           return
         }
 
-        const raw = arg.value as number | bigint
-        const value = typeof raw === 'bigint' ? raw : BigInt(Math.trunc(raw))
+        // exact, past 2^53 too (compile/node.ts, `digits`)
+        const digits = arg.digits as string | undefined
+        const value = digits !== undefined ? BigInt(digits) : BigInt(Math.trunc(arg.value as number))
         const [low, high] = WIDTHS[width]!
 
         if (value < low || value > high) {
@@ -127,8 +129,10 @@ export function checkLiterals(program: Program, file: string): { errors: Diagnos
     const record = node as Record<string, unknown>
 
     if (record.form === 'integer') {
-      const raw = record.value as number | bigint
-      const value = typeof raw === 'bigint' ? raw : Number.isSafeInteger(raw) ? BigInt(raw) : undefined
+      // exact, past 2^53 too (compile/node.ts, `digits`)
+      const raw = record.value as number
+      const digits = record.digits as string | undefined
+      const value = digits !== undefined ? BigInt(digits) : Number.isSafeInteger(raw) ? BigInt(raw) : undefined
       const span = record.span as Diagnostic['span']
 
       if (value === undefined) {

@@ -11,6 +11,7 @@ import type {
   Expression,
   Statement,
 } from '@term/make/code/compile/node'
+import { integerText } from '@term/make/code/compile/type-text'
 
 export function expressionsEqual(
   a: Expression,
@@ -22,8 +23,8 @@ export function expressionsEqual(
 
   switch (a.form) {
     case 'integer':
-      // value is number | bigint; compare by string so 5 and 5n match
-      return String(a.value) === String((b as typeof a).value)
+      // by the exact text, so two literals past 2^53 that round to one number still differ (compile/node.ts, `digits`)
+      return integerText(a) === integerText(b as typeof a)
     case 'float':
       return a.value === (b as typeof a).value
     case 'boolean':

@@ -105,7 +105,11 @@ export function buildOn({ backend, program, resolve, dir, name }: Program): Buil
 
   if (backend === 'rust') {
     const rust = emitRust(result.program)
-    writeFileSync(`${stem}.rs`, [nativePrelude(result.program, env, readRuntime, rust), rust, 'fn main() { print!("{}", run()); }', ''].join('\n'))
+    // an asynchronous `run` is driven to its answer by the program's executor, and a raising one ends with its raise
+    const signature = /(async )?fn run\(\)( -> std::result::Result)?/.exec(rust)
+    const called = signature?.[1] ? '__term_block_on(run())' : 'run()'
+    const answered = signature?.[2] ? `${called}.unwrap_or_else(|e| { eprintln!("{}", e); std::process::exit(1) })` : called
+    writeFileSync(`${stem}.rs`, [nativePrelude(result.program, env, readRuntime, rust), rust, `fn main() { print!("{}", ${answered}); }`, ''].join('\n'))
 
     // edition 2021: rustc's default is 2015, which has no `async`, and the fire-and-forget executor is async blocks
     return fail(toolchain(['rustc', '--edition', '2021', '-A', 'warnings', '-o', stem, `${stem}.rs`]), [stem])
@@ -113,13 +117,18 @@ export function buildOn({ backend, program, resolve, dir, name }: Program): Buil
 
   if (backend === 'swift') {
     const swift = emitSwift(result.program)
-    writeFileSync(`${stem}.swift`, ['import Foundation', nativePrelude(result.program, env, readRuntime, swift), swift, 'print(run(), terminator: "")', ''].join('\n'))
+    // an asynchronous `run` is awaited at the top level, which a program's main file may do
+    const signature = /func run\(\)( async)?( throws)?/.exec(swift)
+    const called = `${signature?.[2] ? 'try ' : ''}${signature?.[1] ? 'await ' : ''}run()`
+    writeFileSync(`${stem}.swift`, ['import Foundation', nativePrelude(result.program, env, readRuntime, swift), swift, `print(${called}, terminator: "")`, ''].join('\n'))
 
     return fail(toolchain(['swiftc', '-o', stem, `${stem}.swift`]), [stem])
   }
 
   const kotlin = emitKotlin(result.program)
-  writeFileSync(`${stem}.kt`, `${hoistKotlinImports([nativePrelude(result.program, env, readRuntime, kotlin), kotlin, 'fun main() { print(run()) }'].join('\n'))}\n`)
+  // a suspending `run` is driven to its answer on the program's event loop (`termLoop`)
+  const called = /suspend fun run\(\)/.test(kotlin) ? 'termLoop.block { run() }' : 'run()'
+  writeFileSync(`${stem}.kt`, `${hoistKotlinImports([nativePrelude(result.program, env, readRuntime, kotlin), kotlin, `fun main() { print(${called}) }`].join('\n'))}\n`)
 
   return fail(toolchain(['kotlinc', `${stem}.kt`, '-include-runtime', '-nowarn', '-d', `${stem}.jar`]), ['java', '-jar', `${stem}.jar`])
 }

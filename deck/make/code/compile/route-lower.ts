@@ -18,7 +18,7 @@ import type {
   Expression,
 } from '@term/make/code/compile/node'
 import type { Span } from '@term/make/code/parser/diagnostic'
-import { NUMBER, STRING } from '@term/make/code/compile/node'
+import { numberType, stringType } from '@term/make/code/compile/node'
 
 type RouteStatement = Extract<Statement, { form: 'dock' }>
 
@@ -212,7 +212,7 @@ export function lowerRoutes(program: Program, env = 'node'): Program {
     name: 'route',
     params: [
       { name: 'host', type: named('view') },
-      { name: 'path', type: STRING },
+      { name: 'path', type: stringType() },
     ],
     // a path no hook matches is a page that is not there: 404, where every unknown path answered 200 with an empty page
     // until 2026-10-04 (guides: applications/web/routes)
@@ -232,8 +232,8 @@ export function lowerRoutes(program: Program, env = 'node'): Program {
     form: 'function',
     name: 'boot',
     params: [
-      { name: 'url', type: STRING },
-      { name: 'port', type: NUMBER },
+      { name: 'url', type: stringType() },
+      { name: 'port', type: numberType() },
     ],
     body: [
       {

@@ -2,27 +2,11 @@
 load @term/base/list
   find list
 
-task allocate-utf-16
-  take size
-  like text-utf-16
-
+# The buffer alone. `allocate-utf-16` and ten methods (`get-size`, the case changes, the trims, `split`, `replace`)
+# were declared here with no body, and nothing called them: a call could only have reached a stub. They were removed on
+# 2026-10-05, when a task with no body anywhere in the build became an error. The text work is `@term/base/text`'s.
 form text-utf-16
   link list
     like list
       like u16
     mark private
-
-  task get-size, like size
-
-  task transform-to-upper-case
-  task transform-to-lower-case
-  task transform-to-snake-case
-  task transform-to-kebab-case
-
-  task trim-whitespace
-  task trim-whitespace-start
-  task trim-whitespace-end
-
-  task split
-
-  task replace

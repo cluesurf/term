@@ -83,7 +83,7 @@ form set
     save result
       make set
         bind items
-          make find
+          make hash
     walk list
       call to-list
         read self
@@ -112,7 +112,7 @@ form set
     save result
       make set
         bind items
-          make find
+          make hash
     walk list
       call to-list
         read self
@@ -139,7 +139,7 @@ form set
     save result
       make set
         bind items
-          make find
+          make hash
     walk list
       call to-list
         read self

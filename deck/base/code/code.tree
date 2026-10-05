@@ -1,3 +1,8 @@
+mark draft
+
+# SHELVED 2026-10-05. A form with no fields and one method, `cycle`, with no body, which nothing loads or calls. A
+# task with no body anywhere in the build is an error since then.
+
 mark unstable
 
 form code

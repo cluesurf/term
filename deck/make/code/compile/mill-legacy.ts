@@ -52,20 +52,23 @@ import type {
   Program,
   Proof,
   Statement,
+  TemplatePart,
   Type,
   ViewAttribute,
   ViewNode,
 } from '@term/make/code/compile/node'
 import {
-  BOOLEAN,
-  BYTES,
-  DYNAMIC,
-  FLOAT,
-  NUMBER,
-  STRING,
-  UNIT,
-  FREE_UNKNOWN,
-  UNKNOWN,
+  booleanType,
+  bytesType,
+  dynamicType,
+  floatType,
+  numberType,
+  stringType,
+  unitType,
+  freeUnknownType,
+  unknownType,
+  chunkPart,
+  valuePart,
 } from '@term/make/code/compile/node'
 
 // like-type names to surface types
@@ -258,13 +261,13 @@ function isAnnotation(node: Node, name: string): boolean {
 // a `like <type>` node to a surface type
 function parseType(node: Node): Type {
   if (node.kind !== 'group') {
-    return UNKNOWN
+    return unknownType()
   }
 
   const name = headName(node)
 
   if (!name) {
-    return UNKNOWN
+    return unknownType()
   }
 
   // `list` is the native array; an inner `like <t>` gives the element type, else it is unconstrained
@@ -276,7 +279,7 @@ function parseType(node: Node): Type {
 
     return {
       kind: 'array',
-      element: elementLike ? parseLikeType(elementLike) : FREE_UNKNOWN,
+      element: elementLike ? parseLikeType(elementLike) : freeUnknownType(),
     }
   }
 
@@ -289,8 +292,8 @@ function parseType(node: Node): Type {
 
     return {
       kind: 'map',
-      key: likes[0] ? parseLikeType(likes[0]) : FREE_UNKNOWN,
-      value: likes[1] ? parseLikeType(likes[1]) : FREE_UNKNOWN,
+      key: likes[0] ? parseLikeType(likes[0]) : freeUnknownType(),
+      value: likes[1] ? parseLikeType(likes[1]) : freeUnknownType(),
     }
   }
 
@@ -460,7 +463,7 @@ function parseLikeType(likeGroup: GroupNode): Type {
           n.kind === 'group' && headName(n) === 'like',
       )
 
-      const paramType = inner ? parseLikeType(inner) : UNKNOWN
+      const paramType = inner ? parseLikeType(inner) : unknownType()
 
       // value-index `head <...>` siblings of this param's `like` group
       const heads = rest(take).filter(
@@ -473,12 +476,13 @@ function parseLikeType(likeGroup: GroupNode): Type {
 
     // the parameters' surface names, so a DEPENDENT function type (`(m) -> lt m n -> acc`) can resolve a later
     // parameter that references an earlier one.
+    // `''` for a parameter with no name (compile/node.ts, `paramNames`)
     const paramNames = takes.map(take => {
       const nameNode = rest(take)[0]
 
       return nameNode?.kind === 'group'
-        ? headName(nameNode)
-        : undefined
+        ? (headName(nameNode) ?? '')
+        : ''
     })
 
     const resultLike = children.find(
@@ -488,7 +492,7 @@ function parseLikeType(likeGroup: GroupNode): Type {
 
     // the result type's own `head` children (the indented `like vecnat / head / read b` form) are attached by the
     // recursive `parseLikeType(resultLike)` itself (the named-type path below), so no second attachment is needed here.
-    const result = resultLike ? parseLikeType(resultLike) : UNIT
+    const result = resultLike ? parseLikeType(resultLike) : unitType()
     // effect annotations on the callback: `wait true` marks it async, `bust` marks it throwing
     const effects: string[] = []
 
@@ -510,7 +514,7 @@ function parseLikeType(likeGroup: GroupNode): Type {
 
     const type: Type = { kind: 'function', params, result }
 
-    if (paramNames.some(n => n !== undefined)) {
+    if (paramNames.some(Boolean)) {
       type.paramNames = paramNames
     }
 
@@ -537,7 +541,7 @@ function parseLikeType(likeGroup: GroupNode): Type {
 
     return {
       kind: 'array',
-      element: elementLike ? parseLikeType(elementLike) : FREE_UNKNOWN,
+      element: elementLike ? parseLikeType(elementLike) : freeUnknownType(),
     }
   }
 
@@ -552,8 +556,8 @@ function parseLikeType(likeGroup: GroupNode): Type {
 
     return {
       kind: 'map',
-      key: likes[0] ? parseLikeType(likes[0]) : FREE_UNKNOWN,
-      value: likes[1] ? parseLikeType(likes[1]) : FREE_UNKNOWN,
+      key: likes[0] ? parseLikeType(likes[0]) : freeUnknownType(),
+      value: likes[1] ? parseLikeType(likes[1]) : freeUnknownType(),
     }
   }
 
@@ -592,7 +596,7 @@ function parseLikeType(likeGroup: GroupNode): Type {
     return base
   }
 
-  return first ? parseType(first) : UNKNOWN
+  return first ? parseType(first) : unknownType()
 }
 
 
@@ -722,18 +726,20 @@ export function millByHand(
 
         // `{{x}}` (depth two) is runtime interpolation: the text is a template of chunks and expressions
         if (braced && braced.depth >= 2) {
-          const parts: (string | Expression)[] = []
+          const parts: TemplatePart[] = []
 
           for (const part of node.parts) {
             if (part.kind === 'chunk') {
-              parts.push(unescapeText(part.text))
+              parts.push(chunkPart(unescapeText(part.text)))
             } else if (part.group) {
               // `{{e/form}}` reads a path; `{{x}}` a name; anything else is the expression the braces hold
               const head = headName(part.group)
               parts.push(
-                head && head.includes('/') && rest(part.group).length === 0
-                  ? pathExpression(head, span)
-                  : toExpression(part.group, scope),
+                valuePart(
+                  head && head.includes('/') && rest(part.group).length === 0
+                    ? pathExpression(head, span)
+                    : toExpression(part.group, scope),
+                ),
               )
             }
           }
@@ -1283,9 +1289,10 @@ export function millByHand(
       return toExpression(a, scope)
     })
 
+    // `''` for a positional argument (compile/node.ts, `names`)
     const names = argNodes.some(isNamed)
       ? argNodes.map(a =>
-          isNamed(a) ? headName(rest(a)[0] as GroupNode) : undefined,
+          isNamed(a) ? (headName(rest(a)[0] as GroupNode) ?? '') : '',
         )
       : undefined
 
@@ -2908,7 +2915,7 @@ export function millByHand(
                   n.kind === 'group' && headName(n) === 'like',
               )
 
-              return inner ? parseLikeType(inner) : UNKNOWN
+              return inner ? parseLikeType(inner) : unknownType()
             })
 
           const resultLike = siblings.find(n => headName(n) === 'like')
@@ -3620,7 +3627,7 @@ export function millByHand(
 
         const likeGroup = inner[1]
 
-        let type: Type = UNKNOWN
+        let type: Type = unknownType()
 
         // parse the field type with the function-aware parser so `like task` fields are callable function types and
         // `like list` fields are native arrays, not opaque named types
@@ -3647,7 +3654,7 @@ export function millByHand(
             element:
               elementNode?.kind === 'group'
                 ? parseType(elementNode)
-                : UNKNOWN,
+                : unknownType(),
           }
         }
 
@@ -3709,7 +3716,7 @@ export function millByHand(
                   n.kind === 'group' && headName(n) === 'like',
               )
 
-              return innerLike ? parseLikeType(innerLike) : UNKNOWN
+              return innerLike ? parseLikeType(innerLike) : unknownType()
             })
 
           const resultLike = siblings.find(n => headName(n) === 'like')
@@ -4263,18 +4270,21 @@ export function millByHand(
         if (bindGroup) {
           const valNode = rest(bindGroup)[0]
 
+          // tagged by what it is (compile/node.ts, `DockLiteral`)
           if (valNode?.kind === 'integer') {
-            take.fallback = valNode.value
+            take.fallback = { form: 'number', value: valNode.value }
           } else if (valNode?.kind === 'text') {
-            take.fallback = textOf(valNode)
+            take.fallback = { form: 'text', value: textOf(valNode) }
           } else if (valNode?.kind === 'group') {
             const word = headName(valNode)
 
             if (word === 'true' || word === 'false') {
-              take.fallback = word === 'true'
+              take.fallback = { form: 'flag', value: word === 'true' }
             } else if (word === 'code') {
-              take.fallback =
-                headName(rest(valNode)[0] as GroupNode) === 'true'
+              take.fallback = {
+                form: 'flag',
+                value: headName(rest(valNode)[0] as GroupNode) === 'true',
+              }
             }
           }
         }

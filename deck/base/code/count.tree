@@ -46,7 +46,7 @@ task tally
     like number
     like number
   save counts
-    make find
+    make hash
   walk list, read values
     hook next
       take site, name value

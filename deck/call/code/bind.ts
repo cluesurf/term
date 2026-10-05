@@ -14,6 +14,12 @@
 // THE GOOGLE CLIENT SECRET NEVER REACHES THIS MACHINE. term.surf holds it and does the swap, so the CLI knows only
 // the URL it was handed. PKCE is what keeps the code useless to anything else on this machine that sees it.
 //
+// A LOGIN IS REMEMBERED. The token lasts a year, and `term bind` asks term.surf whether the one it saved still works
+// (`/sessions/terminal/select!`) before it opens anything: a good one is reported and kept, with no browser. Only a
+// token term.surf refuses (revoked, expired) starts a new login, and `--again` starts one on purpose. A token that
+// could not be CHECKED (offline, an API without the route) is kept too: a network blip must not put the account
+// chooser in front of a person. Before this, every `term bind` opened Google with a year-long token on disk.
+//
 // THE TOKEN IS AN ORDINARY ONE. It is listed at term.surf/settings/tokens, named after this machine, and revoked
 // there like any other. `--toss` forgets it locally and does not revoke it, and says so.
 //
@@ -22,7 +28,7 @@
 
 import { createHash, randomBytes } from 'node:crypto'
 import { execFile } from 'node:child_process'
-import { chmod, mkdir, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
@@ -51,6 +57,13 @@ const REFUSED = 'The login did not finish. Go back to the terminal for the reaso
 
 type Landing = { code: string } | { error: string }
 
+// what term.surf says about the token this machine holds
+type Held = {
+  name?: string | null
+  expires_at?: string | null
+  user?: { email?: string | null; slug?: string | null }
+}
+
 type Verified = {
   token: string
   name?: string
@@ -62,6 +75,8 @@ export async function callBind(input: {
   root: string
   // forget the local token instead of logging in
   toss?: boolean
+  // log in again even while the saved token works
+  again?: boolean
 }): Promise<void> {
   openRun({ verb: 'bind', root: input.root, subject: 'term.surf' })
 
@@ -79,6 +94,10 @@ export async function callBind(input: {
     report({ glyph: 'failed', kind: 'problem', verb: 'check', subject: `${base} is not https, so no token is fetched from it` })
     closeRun({ verdict: 'Not logged in', failure: 'usage' })
 
+    return
+  }
+
+  if (!input.again && (await keepsLogin({ base, file }))) {
     return
   }
 
@@ -143,6 +162,46 @@ export async function callBind(input: {
   } finally {
     listener.close()
   }
+}
+
+// The saved token, asked about before any browser opens. True when the run is over: the token works, or could not be
+// checked and is kept. False when there is none, or term.surf refused it, and a login must follow
+async function keepsLogin(input: { base: string; file: string }): Promise<boolean> {
+  let token = ''
+
+  try {
+    token = existsSync(input.file) ? (await readFile(input.file, 'utf8')).trim() : ''
+  } catch {
+    // unreadable is the same as absent: log in
+  }
+
+  if (!token) {
+    return false
+  }
+
+  const held = await post<Held>({ base: input.base, path: '/sessions/terminal/select!', body: {}, token })
+
+  if (held.ok) {
+    const who = held.value.user?.slug ? `@${held.value.user.slug}` : (held.value.user?.email ?? 'your account')
+    const fields = [field('token', showPath(input.file)), ...(held.value.expires_at ? [field('expires', held.value.expires_at)] : [])]
+
+    report({ glyph: 'done', verb: 'check', subject: `this machine is logged in as ${who}`, fields })
+    closeRun({ verdict: `Logged in as ${who}`, next: 'term bind --again, to log in as someone else' })
+
+    return true
+  }
+
+  if (held.status === 401) {
+    report({ glyph: 'info', verb: 'check', subject: 'the saved token no longer works, so this logs in again', fields: [field('token', showPath(input.file))] })
+
+    return false
+  }
+
+  // offline, or an API that does not answer this yet: the token stays, and nothing opens
+  report({ glyph: 'warning', verb: 'check', subject: 'the saved token could not be checked, and is kept', message: [held.reason], fields: [field('token', showPath(input.file))] })
+  closeRun({ verdict: 'Logged in, unchecked', next: 'term bind --again, to log in anew' })
+
+  return true
 }
 
 // forget the token on this machine. Revoking it is term.surf's, and the message says where
@@ -233,19 +292,29 @@ function readLanding(input: { url: URL; state: string }): Landing {
   return code ? { code } : { error: 'The browser came back without a code' }
 }
 
-// POST JSON to term.surf and read the `{ result }` envelope, or the reason in its `{ note }`
-async function post<T>(input: { base: string; path: string; body: Record<string, string> }): Promise<{ ok: true; value: T } | { ok: false; reason: string }> {
+// POST JSON to term.surf and read the `{ result }` envelope, or the reason in its `{ note }` and the status. A `token`
+// rides as a Bearer header, which `isSafe` has already limited to https
+async function post<T>(input: {
+  base: string
+  path: string
+  body: Record<string, string>
+  token?: string
+}): Promise<{ ok: true; value: T } | { ok: false; reason: string; status?: number }> {
   try {
     const response = await fetch(`${input.base}${input.path}`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', 'user-agent': 'term' },
+      headers: {
+        'content-type': 'application/json',
+        'user-agent': 'term',
+        ...(input.token ? { authorization: `Bearer ${input.token}` } : {}),
+      },
       body: JSON.stringify(input.body),
       signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
     })
     const answer = (await response.json().catch(() => ({}))) as { result?: T; note?: string }
 
     if (!response.ok) {
-      return { ok: false, reason: answer.note ?? `${response.status} from ${input.base}${input.path}` }
+      return { ok: false, reason: answer.note ?? `${response.status} from ${input.base}${input.path}`, status: response.status }
     }
 
     return answer.result ? { ok: true, value: answer.result } : { ok: false, reason: `${input.base}${input.path} answered without a result` }

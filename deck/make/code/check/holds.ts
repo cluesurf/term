@@ -21,6 +21,7 @@ import {
   IMMUTABLE,
   lengthKeepingFunctions,
   localNames,
+  onlyStatement,
   pureFunctions,
   READ_ONLY_LIST_METHODS,
   returnsFreshFunctions,
@@ -42,6 +43,7 @@ import {
   proves,
 } from '@term/make/code/check/refine'
 import { checkGram, gramKey } from '@term/make/code/check/certificate'
+import { counterexample, printAssignment, printExpression } from '@term/make/code/check/explain'
 import type { Fact } from '@term/make/code/check/product'
 import { budgetSpent, fromNumbers, openBudget, productProfile, productProves, workSpent } from '@term/make/code/check/product'
 import {
@@ -106,7 +108,7 @@ function extremaOf(program: Program): Map<string, 'max' | 'min'> {
   // twice, so a task over a task recognized in the first pass (`minimum` over the native-backed `min`) is found
   for (let pass = 0; pass < 2; pass++) {
     for (const [name, fn] of defined) {
-      const only = fn.body.length === 1 ? fn.body[0] : undefined
+      const only = onlyStatement(fn)
 
       if (
         table.has(name) ||
@@ -2711,6 +2713,61 @@ export function provenRules(): ReadonlyMap<string, 'field' | 'integer'> {
   return provenTheorems
 }
 
+// what a rule that did not hold was asked, `(goal: ..., given: ...)`, and, when small values of its marks satisfy every
+// hypothesis and break the goal, the sentence saying it is false there. A rule with universal hypotheses or a `find` is
+// not searched (the search would ignore what they assume), and is only described
+function explainRule(
+  name: string,
+  goal: Expression,
+): { asked: string; false?: string; hint?: string } | undefined {
+  const rule = theorems.get(name)
+
+  if (!rule) {
+    return undefined
+  }
+
+  const parts = theoremParts(rule)
+  const hypotheses = parts?.hypotheses ?? []
+  const facts = [
+    ...hypotheses.map(h => printExpression(h)),
+    ...(rule.universals ?? []).map(u => `for every ${u.binders.join(', ')}: ${printExpression(u.expr)}`),
+  ]
+  const given = facts.length > 0 ? `, given: ${facts.join(', ')}` : ''
+  const asked = ` (goal: ${printExpression(goal)}${given})`
+  // a mark whose type is a FORM: a goal about it usually stops at that unknown value, and `fold` on it is the next step
+  const formMark = rule.params.find(p => p.type?.kind === 'named')
+  // a hypothesis FOR EVERY value is used at the terms the goal names, a bounded number of times. A goal that needs it
+  // over and over, x(n) from x(0), needs induction on the count
+  const countMark = rule.params.find(p => p.type?.kind === 'number' || p.refine === 'natural')
+  const hint = formMark
+    ? `a goal about \`${formMark.name}\`, a ${(formMark.type as { name: string }).name}, stops where its value is unknown. \`fold ${formMark.name}\` under the \`show\` proves it one case at a time (/guides/proofs/induction)`
+    : (rule.universals?.length ?? 0) > 0 && countMark
+      ? `a hypothesis for every value is used a few times, at the terms the goal names. If the goal needs it ${countMark.name} times over, \`fold ${countMark.name}\` under the \`show\` proves it by induction on ${countMark.name} (/guides/proofs/inequalities)`
+      : undefined
+
+  if (!parts || (rule.universals?.length ?? 0) > 0) {
+    return { asked, ...(hint ? { hint } : {}) }
+  }
+
+  const names = rule.params
+    .filter(p => p.type?.kind === 'number' || p.refine === 'natural')
+    .map(p => ({ name: p.name, natural: p.refine === 'natural' }))
+
+  // every mark must be one the search can give a value to, or a hypothesis about the others could be ignored
+  if (names.length !== rule.params.length) {
+    return { asked, ...(hint ? { hint } : {}) }
+  }
+
+  const at = counterexample(names, hypotheses, goal)
+
+  return at
+    ? {
+        asked,
+        false: `this rule is FALSE: at ${printAssignment(at)} ${hypotheses.length > 0 ? 'every hypothesis holds and the goal does not' : 'the goal does not hold'}${asked}`,
+      }
+    : { asked }
+}
+
 // the facts `cite <name>` contributes at this point, or none with a diagnostic saying why
 function citedFacts(
   name: string,
@@ -2791,7 +2848,7 @@ function citedFacts(
       return refuse(
         at < naturals.length
           ? `${rule.params.filter(mark => mark.refine === 'natural')[at]!.name} >= 0, which its natural-number mark assumes, does not follow here`
-          : `its hypothesis ${at - naturals.length + 1} does not follow from what is known here`,
+          : `its hypothesis ${printExpression(hypothesis)} does not follow from what is known here`,
       )
     }
   }
@@ -4523,16 +4580,35 @@ function walkHolds(
           }
         }
 
-        if (verdict === null) {
+        // A RULE THAT DID NOT HOLD says what it was asked, and whether it is false (check/explain.ts)
+        const told = theorem && verdict !== true ? explainRule(walk.task!, statement.expr) : undefined
+
+        if (told?.false) {
+          report.push(
+            diagnose('unproven', {
+              file,
+              span: statement.span,
+              message: told.false,
+              hint: 'the values are where it fails: correct the statement, or add a `have` that rules them out',
+            }),
+          )
+        } else if (verdict === null) {
           report.push(
             diagnose('unchecked-hold', {
               file,
               span: statement.span,
               message: stopped
-                ? `${owed ? `${owed}: it` : 'this hold'} was not proven within the proof budget (${budget} units of exact search): the search stopped, so it may still be true. Split it into rules and cite them, or raise TERM_PROOF_BUDGET for one run`
+                ? `${owed ? `${owed}: it` : 'this hold'} was not proven within the proof budget (${budget} units of exact search): the search stopped, so it may still be true${told?.asked ?? ''}`
                 : owed
                   ? `${owed}, and it is outside what the provers decide`
-                  : 'this hold is outside the decidable linear fragment: it was neither proven nor refuted, and may still be true',
+                  : told?.hint
+                    ? `this rule is not proven: computing its two sides stops at a value that is not known, so it was neither proven nor refuted${told.asked}`
+                    : `this hold is outside the decidable linear fragment: it was neither proven nor refuted, and may still be true${told?.asked ?? ''}`,
+              ...(stopped
+                ? { hint: 'split it into smaller rules and `cite` them, or run once with TERM_PROOF_BUDGET=Infinity to search without a limit' }
+                : told?.hint
+                  ? { hint: told.hint }
+                  : {}),
             }),
           )
         } else if (verdict === false) {
@@ -4541,10 +4617,15 @@ function walkHolds(
               file,
               span: statement.span,
               message: stopped
-                ? `${owed ? `${owed}: it` : 'this hold'} was not proven within the proof budget (${budget} units of exact search): the search stopped, so it may still be true. Split it into rules and cite them, or raise TERM_PROOF_BUDGET for one run`
+                ? `${owed ? `${owed}: it` : 'this hold'} was not proven within the proof budget (${budget} units of exact search): the search stopped, so it may still be true${told?.asked ?? ''}`
                 : owed
                   ? `${owed}: it does not follow from what is known here`
-                  : 'this hold does not follow from what is known here: it is false for some value the facts allow, or it needs a fact the code does not state',
+                  : `this hold does not follow from what is known here: it is false for some value the facts allow, or it needs a fact the code does not state${told?.asked ?? ''}`,
+              ...(stopped
+                ? { hint: 'split it into smaller rules and `cite` them, or run once with TERM_PROOF_BUDGET=Infinity to search without a limit' }
+                : told?.hint
+                  ? { hint: told.hint }
+                  : {}),
             }),
           )
         }
@@ -5829,11 +5910,12 @@ function listPushesOf(program: Program): Set<string> {
   const out = new Set<string>()
 
   for (const statement of program) {
-    if (statement.form !== 'function' || statement.params.length !== 2 || statement.body.length !== 1) {
+    const only = statement.form === 'function' && statement.params.length === 2 ? onlyStatement(statement) : undefined
+
+    if (statement.form !== 'function' || only === undefined) {
       continue
     }
 
-    const only = statement.body[0]!
     const value = only.form === 'return' ? only.value : undefined
     const [list, item] = statement.params
 
@@ -5862,11 +5944,12 @@ function listPopsOf(program: Program): Set<string> {
   const out = new Set<string>()
 
   for (const statement of program) {
-    if (statement.form !== 'function' || statement.params.length !== 1 || statement.body.length !== 1) {
+    const only = statement.form === 'function' && statement.params.length === 1 ? onlyStatement(statement) : undefined
+
+    if (statement.form !== 'function' || only === undefined) {
       continue
     }
 
-    const only = statement.body[0]!
     const value = only.form === 'return' ? only.value : undefined
 
     if (

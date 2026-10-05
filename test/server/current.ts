@@ -135,9 +135,11 @@ const term = process.cwd()
   const forkMine = pathToFileURL(join(fork, 'mine.tree')).href
   const outCode = await open(asCode, forkMine, readFileSync(join(fork, 'mine.tree'), 'utf8'))
   const codeErrors = errors(published(outCode, forkMine))
+  // which error comes first is the code reader's business: an undefined name, or since 2026-10-05 the `fuse hook`
+  // the grammar it loads writes, refused at the fuse as a template given too little (compile/template.ts)
   ok(
     'roles: read as code instead, fork/mine.tree fails (the defect the role closes)',
-    codeErrors.length > 0 && codeErrors.some(d => /is not defined/.test(d.message)),
+    codeErrors.length > 0 && codeErrors.some(d => /is not defined|leaves out/.test(d.message)),
     JSON.stringify(codeErrors.slice(0, 2)),
   )
 

@@ -6,8 +6,9 @@
 //
 //   emitting for an env      every bind the program calls has a case for it (or one it borrows through the fallback
 //                            chain, `ios` reaching `swift`), or the build is refused naming the bind and the env
-//   `term make`, no env      a bind written outside a `native/<env>/` file that leaves out any of the five backends
-//                            is a warning naming the ones it leaves out. A native file's bind is for its own env
+//   `term make`, no env      a bind written outside a `native/<env>/` file with two to four of the five backends is
+//                            an error naming the ones it leaves out. A native file's bind is for its own env, and
+//                            so is a bind with one case
 //
 // Only the file being compiled is warned about. Every call is read, wherever it is, since the emit is the program.
 
@@ -86,15 +87,20 @@ export function checkBindTargets(
 
     const missing = BACKENDS.filter(backend => !bindTarget(bind as never, backend))
 
-    if (missing.length > 0) {
-      warnings.push({
-        ...diagnose('unknown-name', {
+    // an ERROR since 2026-10-05: as a warning the bind built for the backends it had, and a program calling it failed
+    // only once it was built for another, far from the bind. Every shared bind in the standard library covers all five.
+    // A bind with ONE case is written for that platform, the way a `native/<env>/` file's is (zone's `case node`
+    // tools): a call to it from a program built elsewhere is refused by the half above. Two to four cases is a bind
+    // meant to be portable that left backends out, which is what this refuses
+    if (missing.length > 0 && missing.length < BACKENDS.length - 1) {
+      errors.push(
+        diagnose('unknown-name', {
           file,
           span: bind.span,
           message: `the bind \`${bind.name}\` has no case for ${missing.join(', ')}, so a program that calls it does not build there`,
+          hint: `give it a \`case\` for each, or move it into the \`native/<backend>/\` files of the backends that have it`,
         }),
-        severity: 'warning',
-      })
+      )
     }
   }
 

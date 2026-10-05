@@ -11,9 +11,89 @@ import type {
   Program,
   Statement,
 } from '@term/make/code/compile/node'
+import {
+  lengthKeepingFunctions,
+  purity,
+  returnsFreshFunctions,
+  stateFreeFunctions,
+} from '@term/make/code/check/facts'
+import { terminatingFunctions } from '@term/make/code/check/totality'
+import { raiseSets } from '@term/make/code/check/effects'
+import { EXCEPTION_FORM } from '@term/make/code/check/extend'
+import { hashText } from '@term/make/code/term/hash'
+
+// What the whole-program analyses found about each task of a checked unit, with every body in hand. A stub carries
+// its own task's share (`stubFacts`, `stubWrites`, `stubRaises`), because a dependent has the stub and not the body,
+// and every one of these analyses reads a callee's body: without them a separately compiled caller was refused what
+// the merged build allowed (a twin of a task calling `count-each` read as impure, a guard's arm naming an exception
+// a stdlib callee raises read as unreachable, a `have` the provers proved through a callee's purity left unproven)
+export type StubKnown = {
+  clean: Set<string>
+  writes: Map<string, Set<number>>
+  stateFree: Set<string>
+  lengthKeeping: Set<string>
+  returnsFresh: Set<string>
+  ends: Set<string>
+  raises: Map<string, Set<string>>
+  native: Set<string>
+}
+
+export function stubKnown(program: Program): StubKnown {
+  const pure = purity(program)
+  const exceptions = new Set<string>()
+
+  for (const s of program) {
+    if (s.form === 'record-type' && s.chain?.includes(EXCEPTION_FORM)) {
+      exceptions.add(s.name)
+    }
+  }
+
+  const sets = raiseSets(program, exceptions)
+  const clean = new Set<string>()
+
+  for (const s of program) {
+    if (s.form === 'function' && !pure.impure.has(s.name)) {
+      clean.add(s.name)
+    }
+  }
+
+  return {
+    clean,
+    writes: pure.writes,
+    stateFree: stateFreeFunctions(program),
+    lengthKeeping: lengthKeepingFunctions(program),
+    returnsFresh: returnsFreshFunctions(program),
+    ends: terminatingFunctions(program),
+    raises: sets.raises,
+    native: sets.native,
+  }
+}
+
+// THE FINGERPRINT OF A UNIT'S SURFACE: its stubs, everything in them but where they were written. The stubs are the
+// whole of what a dependent reads of this unit, so a dependent's cached build is valid exactly while this is
+// unchanged. It was `interfaceHash`, a summary of names and types, which left out a task's contracts (`have`, `must`),
+// its signature's raise bounds, a parameter's default, a constant's value (folded into a dependent's text at compile
+// time) and the facts above, so an edit to any of them replayed a dependent built against the old one
+export function surfaceHash(surface: Program): string {
+  return hashText(JSON.stringify(surface, (key, value) => (key === 'span' ? undefined : typeof value === 'bigint' ? `${value}n` : value)))
+}
+
+// one task's share of what its unit found
+function factsOf(name: string, known: StubKnown): string[] {
+  const facts: [string, Set<string>][] = [
+    ['clean', known.clean],
+    ['state-free', known.stateFree],
+    ['length-keeping', known.lengthKeeping],
+    ['returns-fresh', known.returnsFresh],
+    ['ends', known.ends],
+    ['native', known.native],
+  ]
+
+  return facts.filter(([, set]) => set.has(name)).map(([fact]) => fact)
+}
 
 // the stub of one checked program: its public, body-less surface, in original order
-export function stubProgram(program: Program): Program {
+export function stubProgram(program: Program, known?: StubKnown): Program {
   const out: Program = []
 
   for (const statement of program) {
@@ -23,12 +103,31 @@ export function stubProgram(program: Program): Program {
           break
         }
 
+        // a one-statement body that sends a value back is what the shape readers recognize (check/facts.ts
+        // `onlyStatement`). Nothing longer is carried, so an edit inside a longer body still cuts off at the stub
+        const only = statement.body.length === 1 && statement.body[0]!.form === 'return' ? statement.body[0] : undefined
+
         out.push({
           ...statement,
+          // only a task that HAD a body carries facts: a declaration with none stays a declaration, which its
+          // implementation overrides (check/overload.ts `bindByImport`), and a stub with facts stands for a definition
+          ...(known && statement.body.length > 0 && !statement.claim
+            ? {
+                stubFacts: factsOf(statement.name, known),
+                stubWrites: [...(known.writes.get(statement.name) ?? [])].sort((a, b) => a - b),
+                stubRaises: [...(known.raises.get(statement.name) ?? [])].sort(),
+              }
+            : {}),
+          ...(known && only ? { stubShape: only } : {}),
           // arity-overload mangling (`name__<arity>`, code/check/overload.ts) is undone: the DEPENDENT unit runs its
           // own disambiguation over these stubs plus its calls, which re-derives the identical mangled names, so the
           // emitted imports line up with the owning unit's exports
-          name: statement.name.replace(/__\d+$/, ''),
+          // A same-arity TYPED overload carries two suffixes (`sleep__1__0`, `sleep__1__1`) and a task two files define
+          // is split first (`name__in<g>_<k>`), so the whole chain comes off: stripping one suffix left `sleep__1`, a
+          // name nothing imports, and `sleep` was undefined in every dependent
+          name: statement.name.replace(/(__in\d+_\d+)?(__\d+)*$/, ''),
+          // and the name this unit's module exports it by, which a dependent naming it otherwise imports it as
+          stubExport: statement.name,
           body: [],
           stub: true,
         })
@@ -41,13 +140,22 @@ export function stubProgram(program: Program): Program {
       case 'instance':
       case 'bind':
       case 'native':
-      case 'view':
         out.push(statement)
         break
 
-      // a top-level let is observable (its name and type resolve in dependents)
+      // a component's surface is its name and its props. Its body, as its own unit's checker left it, is a shape
+      // nothing reads twice (a view's `call` becomes `{ form: 'call', value }`), and a dependent that walked it again
+      // read a call with no callee (face's layout-slot)
+      case 'view':
+        out.push({ ...statement, body: [] })
+        break
+
+      // a top-level let is observable (its name and type resolve in dependents). Under the name it was WRITTEN with:
+      // a constant a task elsewhere shares its name with is renamed apart in its own unit (`focus__value0`,
+      // check/overload.ts `bindValuesApart`), and a dependent whose `find focus` reached it found only the task. The
+      // dependent splits the two again by its own imports
       case 'let':
-        out.push(statement)
+        out.push({ ...statement, name: statement.name.replace(/__value\d+$/, ''), stubExport: statement.name })
         break
 
       // proof obligations, top-level expressions, and everything else belong to the owning unit
@@ -56,5 +164,109 @@ export function stubProgram(program: Program): Program {
     }
   }
 
-  return out
+  return out.map(statement => written(freed(structuredClone(statement))))
+}
+
+// a form's name as its own unit's checker left it: split from another form of the name (`pair__in0_1`, check/scope.ts)
+// or from a case of the name (`view__form`)
+const RENAMED_FORM = /(__in\d+_\d+|__form)+$/
+
+// EVERY FORM IN A STUB UNDER THE NAME IT WAS WRITTEN WITH, and every type that names one. A form a unit renamed apart
+// (`view__form`, beside a case named `view` elsewhere) reached a dependent under that name, so the type `view` its
+// route dispatcher names was undefined there (site's route test). The dependent splits the names again by its own
+// imports. A form or mask keeps the name its module exports it by as `stubExport`
+function written<T>(statement: T): T {
+  const record = statement as Record<string, unknown>
+
+  if ((record.form === 'record-type' || record.form === 'mask') && typeof record.name === 'string' && RENAMED_FORM.test(record.name)) {
+    record.stubExport = record.name
+    record.name = record.name.replace(RENAMED_FORM, '')
+  }
+
+  if (record.form === 'instance') {
+    record.mask = String(record.mask).replace(RENAMED_FORM, '')
+    record.target = String(record.target).replace(RENAMED_FORM, '')
+  }
+
+  if (record.form === 'record-type') {
+    if (Array.isArray(record.chain)) {
+      record.chain = (record.chain as string[]).map(name => name.replace(RENAMED_FORM, ''))
+    }
+
+    if (typeof record.props === 'string') {
+      record.props = record.props.replace(RENAMED_FORM, '')
+    }
+  }
+
+  const method = record.method as { form?: string } | undefined
+
+  if (record.form === 'function' && typeof method?.form === 'string') {
+    record.method = { ...method, form: method.form.replace(RENAMED_FORM, '') }
+  }
+
+  const walk = (node: unknown): void => {
+    if (node === null || typeof node !== 'object') {
+      return
+    }
+
+    if (Array.isArray(node)) {
+      node.forEach(walk)
+
+      return
+    }
+
+    const each = node as Record<string, unknown>
+
+    if (each.kind === 'named' && typeof each.name === 'string') {
+      each.name = each.name.replace(RENAMED_FORM, '')
+    }
+
+    for (const [key, value] of Object.entries(each)) {
+      if (key !== 'span') {
+        walk(value)
+      }
+    }
+  }
+
+  walk(record)
+
+  return statement
+}
+
+// An inference variable the owning unit's checker left unsolved (a bare `like list`'s element, a parameter no use
+// pinned) is a number in THAT checker's table. Carried into a dependent, it is read in the dependent's own table,
+// where the same number is some other variable: zone's `read-hold-many` returned `list <113>`, and 113 was bound to
+// `hold` in the unit reading it, so every batch it returned was refused as a `hold` with no field `bind`. The stub
+// carries it as the mill writes an element nobody named, `unknown` and free, which the dependent fills from its own
+// use, as the merged build does
+function freed<T>(value: T): T {
+  const walk = (node: unknown): unknown => {
+    if (node === null || typeof node !== 'object') {
+      return node
+    }
+
+    if (Array.isArray(node)) {
+      for (let i = 0; i < node.length; i++) {
+        node[i] = walk(node[i])
+      }
+
+      return node
+    }
+
+    const record = node as Record<string, unknown>
+
+    if (record.kind === 'variable' && typeof record.id === 'number' && Object.keys(record).length === 2) {
+      return { kind: 'unknown', free: true }
+    }
+
+    for (const key of Object.keys(record)) {
+      if (key !== 'span') {
+        record[key] = walk(record[key])
+      }
+    }
+
+    return record
+  }
+
+  return walk(value) as T
 }

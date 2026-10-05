@@ -10,12 +10,12 @@ import type {
   Program,
   Statement,
 } from '@term/make/code/compile/node'
-import { typeKey } from '@term/make/code/compile/node'
 import { diagnose } from '@term/make/code/parser/diagnostic'
 import type { Diagnostic, Span } from '@term/make/code/parser/diagnostic'
 import type { ImportScope } from '@term/make/code/compile/load'
 import { nestLeanCalls } from '@term/make/code/check/lean-nest'
 import { HTML_TAGS } from '@term/make/code/compile/view-lower'
+import { typeKey } from '@term/make/code/compile/type-text'
 
 // same-name, same-arity overloads: the first candidate's (mangled) name -> every candidate's name. Filled here,
 // read by the checker, which picks the candidate whose parameter types fit the arguments (check/infer.ts,
@@ -171,6 +171,17 @@ function boundIn(node: unknown, into = new Set<string>()): Set<string> {
 // A call is a reference, and so is a task passed as a value (a `variable` that is no local). A signature with no body
 // (an abstract declaration, a stub, a claim) is never a candidate, so it is still overridden by its implementation,
 // which the env chain relies on. Without a scope (one file, no resolver) only the arity can tell.
+// A task that DEFINES its name, rather than declaring it for something else to fill: one with a body, or the stub of
+// one compiled in another unit (compile/stub.ts gives a stub `stubFacts` only when its task had a body). An abstract
+// signature, a claim and a form's method do not
+function defines(d: Extract<Statement, { form: 'function' }>): boolean {
+  if (d.claim || d.method) {
+    return false
+  }
+
+  return d.stub ? d.stubFacts !== undefined : d.body.length > 0
+}
+
 function bindByImport(program: Program, scope: ImportScope | undefined, entry?: string): Diagnostic[] {
   // a task, or a component (module-scope-0004): both are called, both are placed or passed, both are split by file
   type Bindable = Definition | Extract<Statement, { form: 'view' }>
@@ -200,7 +211,7 @@ function bindByImport(program: Program, scope: ImportScope | undefined, entry?: 
   }
 
   for (const [name, list] of bindable) {
-    const defs = list.filter(d => d.span.file && (d.form === 'view' || (d.body.length > 0 && !d.stub && !d.claim && !d.method)))
+    const defs = list.filter(d => d.span.file && (d.form === 'view' || defines(d)))
     const byFile = new Map<string, Bindable[]>()
 
     for (const d of defs) {
@@ -459,7 +470,7 @@ function bindNativesApart(program: Program, scope: ImportScope | undefined): voi
   for (const s of program) {
     // a task with a BODY, as bindByImport counts them: an abstract signature (no body, a stub, a claim) is what an env
     // module's binding fills, the env chain, and must keep reaching it by name
-    const bodied = s.form === 'view' || (s.form === 'function' && s.body.length > 0 && !s.stub && !s.claim && !s.method)
+    const bodied = s.form === 'view' || (s.form === 'function' && defines(s))
 
     if (bodied && s.span.file) {
       tasks.set(s.name, (tasks.get(s.name) ?? new Set()).add(s.span.file))
@@ -1013,8 +1024,8 @@ export function disambiguateOverloads(program: Program, scope?: ImportScope, ent
         break
       case 'template':
         for (const part of node.parts) {
-          if (typeof part !== 'string') {
-            expr(part)
+          if (part.form === 'value') {
+            expr(part.value)
           }
         }
 

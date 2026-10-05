@@ -249,7 +249,7 @@ task parse
       like text
   like parsed-command
   save flags
-    make find
+    make hash
   save positional
     make list
   save errors

@@ -657,14 +657,14 @@ function main(): void {
 
   // L036: a map literal with a duplicate key
   {
-    const dup = `save m\n  make find\n    save a, code 1\n    save b, code 2\n    save a, code 3\n`
+    const dup = `save m\n  make hash\n    save a, code 1\n    save b, code 2\n    save a, code 3\n`
     ok(
       'L036 flags a duplicated map key',
       findings(dup).filter(f => f.code === 'L036').length === 1,
       JSON.stringify(findings(dup)),
     )
 
-    const distinct = `save m\n  make find\n    save a, code 1\n    save b, code 2\n`
+    const distinct = `save m\n  make hash\n    save a, code 1\n    save b, code 2\n`
     ok(
       'L036 leaves distinct keys alone',
       findings(distinct).filter(f => f.code === 'L036').length === 0,

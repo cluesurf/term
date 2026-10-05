@@ -141,9 +141,12 @@ mint bust
 mint turn
   case term
     site term
+  case name
+    site name
   hook make
     make turn
       bind term, read term
+      bind name, read name
 
 mint move
   case name

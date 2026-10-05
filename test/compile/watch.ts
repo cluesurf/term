@@ -54,7 +54,9 @@ expect(
 )
 expect('unchanged recompile is a hit', again === first, true)
 
-// 3. edit the entry but not the helper: the helper's parse+mill is reused (a hit), only the entry + new graph miss
+// 3. edit the entry but not the helper: the helper's scan, parse and mill are reused (hits), and only the entry's
+// import scan, the entry's mill and the new graph key miss. The scan has had its own entry since the import scan was
+// cached per (file, text) (CompileCache.scanned), which is the third
 const hitsBeforeEdit = compiler.stats.hits
 const missesBeforeEdit = compiler.stats.misses
 const edited = compiler.compile(entry(9))
@@ -65,9 +67,9 @@ expect(
   true,
 )
 expect(
-  'only the entry + the new graph key miss',
+  'only the entry (its scan and its mill) and the new graph key miss',
   compiler.stats.misses - missesBeforeEdit,
-  2,
+  3,
 )
 
 // 4. edit the helper itself: now the helper re-mills (a miss), the entry text is unchanged so it is reused

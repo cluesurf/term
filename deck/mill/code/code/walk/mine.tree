@@ -42,6 +42,8 @@ mine walk
     # no `bind` and no `take`, so a bind child is a bound, a take child is the item, and the rest is the body.
     # `must` (invariant) and `down` (measure) are matched here and in the trailing list, before `flow`, whose value
     # fallback would read either as a call. See must/mine.tree.
+    # `name outer` names the loop, so a `turn next` or a `halt` inside a loop nested in it can say which loop it means
+    # (`turn next, name outer`). Matched beside the arms, before `flow`, whose value fallback would read it as a call
     mine list
       mine any
         mine form, like hook
@@ -54,6 +56,9 @@ mine walk
           site must
         mine form, like down
           site down
+        mine term, term name
+          mine term
+            site name
     mine maybe
       mine form, like seed
         site seed
@@ -69,6 +74,9 @@ mine walk
           site must
         mine form, like down
           site down
+        mine term, term name
+          mine term
+            site name
         mine form, like flow
           site flow
 

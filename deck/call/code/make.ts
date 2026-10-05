@@ -16,6 +16,9 @@ import {
   isLookStylesheet,
 } from '@term/make/code/compile/compile'
 import { compileSeparate } from '@term/make/code/compile/separate'
+import type { UnitMemo } from '@term/make/code/compile/separate'
+import { isDataFile } from '@term/make/code/compile/host'
+import { toCamel, toPascal } from '@term/make/code/compile/typescript'
 import { CompileCache } from '@term/make/code/compile/cache'
 import { makeParseMemo } from '@term/make/code/compile/load'
 import { projectCache } from '@term/call/code/cache-store'
@@ -359,6 +362,27 @@ function isWithin(child: string, parent: string): boolean {
   return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel)
 }
 
+// A resolver that answers each (load, file it is in, `base`) once for the life of one build. Every entry's import walk
+// asks the same questions of the same modules, and the project resolver answers each one on the filesystem: on
+// @term/bind, 3,091 entries each walking the standard library, that walk was 42 s of a 147 s warm build
+// (2026-10-05). Files do not change during a build, so the answer does not either. A watch makes one per rebuild
+export function buildResolver(base: Resolver): Resolver {
+  const answers = new Map<string, Source | undefined>()
+
+  return (importPath, fromFile, how) => {
+    const key = `${importPath}\u0000${fromFile}\u0000${how?.base ?? ''}`
+
+    if (answers.has(key)) {
+      return answers.get(key)
+    }
+
+    const found = base(importPath, fromFile, how)
+    answers.set(key, found)
+
+    return found
+  }
+}
+
 export function projectResolver(
   root: string,
   env: NativeEnv = 'node',
@@ -671,7 +695,7 @@ export function compileProject(
 } {
   const files = findTreeFiles(root, [], platform)
   const obligations: Owed = { total: 0, proven: 0 }
-  const resolve = projectResolver(root)
+  const resolve = buildResolver(projectResolver(root))
   const deckOf = projectDeckOf()
   const roleOf = projectRoleOf(root)
   // `mark lean` on a role rule, read off the same role files: which units take the lean surface
@@ -866,20 +890,35 @@ function appShadowFindings(root: string, resolve: Resolver): ContractFinding[] {
 export function compileProjectSeparate(
   root: string,
   cache: CompileCache = projectCache(root),
+  platform = 'node',
+  // one answer per unit for the whole run: the standard library's units are reached by every entry, and are read
+  // once rather than once per entry. A watch passes its own, kept across rebuilds
+  units: UnitMemo = new Map(),
 ): {
   compiled: number
   written: number
   failed: number
   errors: string[]
+  warnings: string[]
   problems: BuildProblem[]
   faults: string[]
+  open: string[]
+  obligations: Owed
   built: number
   reused: number
 } {
-  const files = findTreeFiles(root, [], 'node')
-  const resolve = projectResolver(root)
+  const files = findTreeFiles(root, [], platform)
+  const resolve = buildResolver(projectResolver(root))
+  const deckOf = projectDeckOf()
+  const roleOf = projectRoleOf(root)
+  const leanOf = projectLeanOf(root)
+  // one parse per module for the whole run
+  const parsed = makeParseMemo()
   const problems: BuildProblem[] = []
   const faults: string[] = []
+  const warnings: string[] = []
+  const open = new Set<string>()
+  const obligations: Owed = { total: 0, proven: 0 }
 
   // stable, flat artifact name per source module. Project files key by their root-relative path; imported modules
   // living outside the root (stdlib / linked decks) key by their path with separators flattened.
@@ -930,35 +969,59 @@ export function compileProjectSeparate(
   }
 
   for (const file of files) {
-    const text = readFileSync(file, 'utf8')
+    // a file of `test` blocks, or a feed grammar, is built as compileProject builds it (`buildable`)
+    const unit = buildable(file, readFileSync(file, 'utf8'), roleOf(file))
 
-    // a look stylesheet has no module graph: route it through the merged path's CSS backend as before
-    if (isLookStylesheet({ file, text })) {
-      const sheet = compile({ file, text }, { resolve, cache })
+    if ('faults' in unit) {
+      failed++
 
-      if (sheet.ok && typeof sheet.css === 'string') {
-        compiled++
-        writeArtifact(
-          path.join(
-            root,
-            'host',
-            path.relative(root, file).replace(/\.tree$/, '.css'),
-          ),
-          sheet.css,
-        )
+      for (const fault of unit.faults) {
+        errors.push(`${path.relative(root, file)}: ${fault}`)
+        faults.push(`${path.relative(root, file)}: ${fault}`)
+      }
 
-        // and its style tables, light and dark, for a host with no CSS engine (native-dom-0008, 0048)
-        for (const [extension, table] of [['.style', sheet.style], ['.dark.style', sheet.styleDark]] as const) {
-          if (table !== undefined) {
-            writeArtifact(
-              path.join(
-                root,
-                'host',
-                path.relative(root, file).replace(/\.tree$/, extension),
-              ),
-              table,
-            )
-          }
+      continue
+    }
+
+    const { text, generated: grammar } = unit
+    const framed = (diagnostic: Diagnostic): BuildProblem =>
+      diagnostic.file !== file ? { diagnostic, text: undefined } : unit.place(diagnostic)
+
+    // a file that is not a program has no module graph to split: a look stylesheet (CSS), a data file (a JSON
+    // module) and a mill definition (checked, never built). Each goes through compile() exactly as the merged build
+    // sends it, and is written where the merged build writes it
+    const role = roleOf(file)
+    const whole = role === 'mill' || role === 'host' || (!role && isDataFile({ file, text })) || isLookStylesheet({ file, text })
+
+    if (whole) {
+      const one = compile({ file, text }, { resolve, cache, parsed, deckOf, roleOf, leanOf })
+
+      if (!one.ok) {
+        failed++
+
+        for (const problem of one.diagnostics.map(framed)) {
+          errors.push(renderDiagnostic(problem.diagnostic, problem.text))
+          problems.push(problem)
+        }
+
+        continue
+      }
+
+      compiled++
+
+      if (role === 'mill') {
+        continue
+      }
+
+      const isCss = typeof one.css === 'string'
+      const outPath = path.join(root, 'host', path.relative(root, file).replace(/\.tree$/, isCss ? '.css' : '.ts'))
+
+      writeArtifact(outPath, isCss ? one.css! : one.typescript)
+
+      // and its style tables, light and dark, for a host with no CSS engine (native-dom-0008, 0048)
+      for (const [extension, table] of [['.style', one.style], ['.dark.style', one.styleDark]] as const) {
+        if (isCss && table !== undefined) {
+          writeArtifact(outPath.replace(/\.css$/, extension), table)
         }
       }
 
@@ -973,22 +1036,20 @@ export function compileProjectSeparate(
         resolve,
         cache,
         modules: f => `./${slug(f)}`,
-        roleOf: projectRoleOf(root),
-        leanOf: projectLeanOf(root),
+        roleOf,
+        leanOf,
+        deckOf,
+        parsed,
+        units,
       },
     )
 
     if (!result.ok) {
       failed++
 
-      for (const diagnostic of result.diagnostics) {
-        errors.push(
-          renderDiagnostic(
-            diagnostic,
-            diagnostic.file === file ? text : undefined,
-          ),
-        )
-        problems.push({ diagnostic, text: diagnostic.file === file ? text : undefined })
+      for (const problem of result.diagnostics.map(framed)) {
+        errors.push(renderDiagnostic(problem.diagnostic, problem.text))
+        problems.push(problem)
       }
 
       continue
@@ -998,6 +1059,22 @@ export function compileProjectSeparate(
     built += result.built.length
     reused += result.reused.length
 
+    // only this file's warnings, as compileProject reports them: a grammar's own compile is of the reader generated
+    // from it, whose unused captures are about code nobody wrote
+    for (const warning of result.warnings) {
+      if (warning.file === file && !(grammar && warning.name === 'unused-binding')) {
+        const problem = framed(warning)
+        warnings.push(renderDiagnostic(problem.diagnostic, problem.text))
+        problems.push(problem)
+      }
+    }
+
+    for (const claim of result.openClaims ?? []) {
+      open.add(claim)
+    }
+
+    addOwed(obligations, result.obligations)
+
     for (const [mfile, emit] of result.modules) {
       writeArtifact(
         path.join(root, 'host', '.unit', `${slug(mfile)}.ts`),
@@ -1005,44 +1082,84 @@ export function compileProjectSeparate(
       )
     }
 
-    // the entry shim: the classic host/<path>.ts artifact re-exports the entry's own module, so downstream
-    // consumers keep their import paths
+    // the entry shim: the classic host/<path>.ts artifact exports what the merged build's artifact exported, every
+    // public task, constant and type of the entry's closure (`exports`), each from the module that defines it, so a
+    // TypeScript importer keeps its import path and its names. Only the entry's own module was re-exported at first,
+    // and zone's test helper read `tonePack`, a standard library task, off `seal/base` and got undefined
     const outPath = path.join(
       root,
       'host',
       path.relative(root, file).replace(/\.tree$/, '.ts'),
     )
 
-    const toUnit = path
-      .relative(
-        path.dirname(outPath),
-        path.join(root, 'host', '.unit', slug(file)),
-      )
-      .split(path.sep)
-      .join('/')
+    const unitOf = (module: string): string => {
+      const relative = path
+        .relative(path.dirname(outPath), path.join(root, 'host', '.unit', slug(module)))
+        .split(path.sep)
+        .join('/')
 
-    writeArtifact(
-      outPath,
-      `export * from '${toUnit.startsWith('.') ? toUnit : `./${toUnit}`}'\n`,
-    )
+      return relative.startsWith('.') ? relative : `./${relative}`
+    }
+
+    const values = new Map<string, string[]>()
+    const types = new Map<string, string[]>()
+
+    for (const one of result.exports) {
+      const spell = one.type ? toPascal : toCamel
+      const local = spell(one.name)
+      const remote = spell(one.exported)
+      const into = one.type ? types : values
+
+      into.set(one.file, [...(into.get(one.file) ?? []), remote === local ? local : `${remote} as ${local}`])
+    }
+
+    const lines = [
+      ...[...values].map(([module, names]) => `export { ${names.join(', ')} } from '${unitOf(module)}'`),
+      ...[...types].map(([module, names]) => `export type { ${names.join(', ')} } from '${unitOf(module)}'`),
+    ]
+
+    writeArtifact(outPath, `${lines.join('\n')}\n`)
   }
 
-  return { compiled, written, failed, errors, problems, faults, built, reused }
+  // an app's shadows of face's platform implementations take exactly face's contract, as compileProject holds them
+  for (const finding of appShadowFindings(root, resolve)) {
+    failed++
+    const fault = `${path.relative(root, finding.file)}: shadows face's ${finding.component} on ${finding.rung} and ${finding.problem}`
+    errors.push(fault)
+    faults.push(fault)
+  }
+
+  return {
+    compiled,
+    written,
+    failed,
+    errors,
+    warnings,
+    problems,
+    faults,
+    open: [...open].sort(),
+    obligations,
+    built,
+    reused,
+  }
 }
 
 // watch the project's .tree files and recompile incrementally on change (a shared cache reuses unchanged modules).
 // Debounced so a burst of saves triggers one rebuild. Runs until the process is killed.
-export function watchProject(root: string): void {
+export function watchProject(root: string, merged = false): void {
   const cache = projectCache(root)
+  // the unit answers of every rebuild, kept for the life of the watch: a unit's key is its own text and its imports'
+  // surfaces, so an edit misses exactly the units it changed and every other is answered from memory
+  const units: UnitMemo = new Map()
 
-  openRun({ verb: 'make', root, facts: ['watching'] })
+  openRun({ verb: 'make', root, facts: ['watching', ...(merged ? ['merged'] : [])] })
   stopOnInterrupt()
 
   // one `build` item per build, its problems before it, the file that changed as its subject. The run never closes
   // until ctrl-c: it is a stream (section 11)
   const build = (changed: string): void => {
     const started = Date.now()
-    const result = compileProject(root, cache)
+    const result = merged ? compileProject(root, cache) : compileProjectSeparate(root, cache, 'node', units)
     reportProblems(result.problems, root, result.faults)
     report({
       glyph: result.failed > 0 ? 'failed' : 'done',
@@ -1141,9 +1258,11 @@ function watchScript(root: string): void {
 export async function callMake(input: {
   root: string
   ride?: boolean
-  // separate compilation: per-module artifacts + cross-boundary early cutoff (opt-in while the differential
-  // harness matures; see compileProjectSeparate)
-  separate?: boolean
+  // the whole-program build instead of separate compilation, which is the default since 2026-10-05 (compileProjectSeparate).
+  // Separate checks each module once per run against its imports' stubs and caches it by its own text and theirs, so
+  // an edit rebuilds the edited module and what reads it. It agreed with this build on every file of every package
+  // before the switch (`pnpm term:separate-diff`, test/compile/separate.ts)
+  merged?: boolean
   // compile the .tree files even when package.json carries a `make` script.
   //
   // A package.json `make` script normally REPLACES the .tree build entirely, which is right when the script IS the
@@ -1191,7 +1310,7 @@ export async function callMake(input: {
     }
 
     if (input.ride) {
-      watchProject(input.root) // runs until interrupted
+      watchProject(input.root, input.merged) // runs until interrupted
 
       return
     }
@@ -1205,8 +1324,9 @@ export async function callMake(input: {
     openRun({ verb: 'make', root: input.root, counts: [count(fileCount, 'files', 'file')], facts: hasMakeScript ? ['--trees'] : [] })
 
     {
+      const separate = !input.merged
       const parallel =
-        !input.separate && fileCount >= 16 && cpus().length > 2
+        !separate && fileCount >= 16 && cpus().length > 2
 
       let result: {
         compiled: number
@@ -1224,10 +1344,10 @@ export async function callMake(input: {
       // the separate path's own counts, units built against units replayed from the cache
       let units: { built: number; reused: number } | undefined
 
-      if (input.separate) {
-        const separate = compileProjectSeparate(input.root)
-        result = separate
-        units = { built: separate.built, reused: separate.reused }
+      if (separate) {
+        const built = compileProjectSeparate(input.root)
+        result = built
+        units = { built: built.built, reused: built.reused }
       } else if (parallel) {
         try {
           const { compileProjectParallel } = await import(
@@ -1242,8 +1362,7 @@ export async function callMake(input: {
       }
 
       const { compiled, failed } = result
-      // present only on the merged path, which is the one that sees a whole program; the separate path checks
-      // unit by unit and does not, so it reports nothing rather than reporting a zero it did not measure
+      // each entry's own open claims, which both paths report: the separate path carries the entry unit's
       const openClaims =
         'open' in result && Array.isArray(result.open)
           ? (result.open as string[])
@@ -1256,8 +1375,9 @@ export async function callMake(input: {
 
       const facts: string[] = []
 
-      if (units) {
-        facts.push('separate')
+      // the default says nothing; the whole-program build says which it was
+      if (!units) {
+        facts.push('merged')
       }
 
       report({

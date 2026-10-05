@@ -12,6 +12,12 @@ load @term/mill/code/tool/flow/mine
 
 mine halt
   mine term, term halt
+    # `halt, name outer` breaks out of the loop named `outer` (`walk ..., name outer`), not the innermost one. Matched
+    # before the mode, which takes any first term
+    mine maybe
+      mine term, term name
+        mine term
+          site name
     mine maybe
       mine term
         site mode

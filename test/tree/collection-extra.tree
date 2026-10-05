@@ -21,7 +21,7 @@ load @term/base/code/list
 
 test <get-or-default returns the fallback for a missing key>
   save m
-    make find
+    make hash
   want hold
     call is-equal
       call get-or-default
@@ -32,7 +32,7 @@ test <get-or-default returns the fallback for a missing key>
 
 test <get-or-default returns the stored value when present>
   save m
-    make find
+    make hash
   call set
     read m
     text <a>
@@ -47,7 +47,7 @@ test <get-or-default returns the stored value when present>
 
 test <clear empties the map>
   save m
-    make find
+    make hash
   call set
     read m
     text <a>
@@ -62,13 +62,13 @@ test <clear empties the map>
 
 test <merge copies entries from another map>
   save a
-    make find
+    make hash
   call set
     read a
     text <x>
     code 1
   save b
-    make find
+    make hash
   call set
     read b
     text <y>
@@ -88,7 +88,7 @@ test <intersection keeps shared items>
   save a
     make set
       bind items
-        make find
+        make hash
   call insert
     read a
     code 1
@@ -98,7 +98,7 @@ test <intersection keeps shared items>
   save b
     make set
       bind items
-        make find
+        make hash
   call insert
     read b
     code 2
@@ -117,7 +117,7 @@ test <symmetric-difference keeps items in exactly one set>
   save a
     make set
       bind items
-        make find
+        make hash
   call insert
     read a
     code 1
@@ -127,7 +127,7 @@ test <symmetric-difference keeps items in exactly one set>
   save b
     make set
       bind items
-        make find
+        make hash
   call insert
     read b
     code 2
@@ -146,14 +146,14 @@ test <is-subset holds when every item is contained>
   save a
     make set
       bind items
-        make find
+        make hash
   call insert
     read a
     code 1
   save b
     make set
       bind items
-        make find
+        make hash
   call insert
     read b
     code 1
@@ -169,7 +169,7 @@ test <is-superset is the converse of is-subset>
   save a
     make set
       bind items
-        make find
+        make hash
   call insert
     read a
     code 1
@@ -179,7 +179,7 @@ test <is-superset is the converse of is-subset>
   save b
     make set
       bind items
-        make find
+        make hash
   call insert
     read b
     code 1

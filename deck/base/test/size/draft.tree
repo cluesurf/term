@@ -1,0 +1,7 @@
+mark draft
+
+# SHELVED 2026-10-05. `8.tree` and `32.tree` fuse `size-test`, and `n.tree` defines `size` and `checked-add`, so neither
+# fuse found its template and each built nothing: these tests never tested anything. That went unsaid until a fuse was
+# required to name a template the build has (compile/template.ts). Bringing them back is more than the name: `size`
+# takes a `list` of cases its fuses do not pass, and its body walks with `walk hash, read list/rise`, a spelling the
+# reader no longer has. The fixed-width integers are tested by `../integer-32.tree` and the gate's integer suites.

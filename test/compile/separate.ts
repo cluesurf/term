@@ -28,7 +28,44 @@ function expect(name: string, got: unknown, want: unknown): void {
   }
 }
 
+// TWO statements: a body of one `send back` is part of the surface, since the provers unfold it in a caller
+// (compile/stub.ts `stubShape`), so it is the longer body whose edit must not reach a dependent
 const DEP = `task double
+  take value, like number
+  like number
+  save twice
+    call add
+      read value
+      read value
+  send back, read twice
+`
+
+// same signature, different body (associativity shuffle): the surface must not move
+const DEP_BODY_EDIT = `task double
+  take value, like number
+  like number
+  save twice
+    call add
+      call add
+        read value
+        code 0
+      read value
+  send back, read twice
+`
+
+// a signature edit: the parameter is renamed, which changes the observable interface
+const DEP_SIGNATURE_EDIT = `task double
+  take amount, like number
+  like number
+  save twice
+    call add
+      read amount
+      read amount
+  send back, read twice
+`
+
+// a ONE-LINE body and an edit of it: the dependent is rebuilt, because what the provers read of `double` changed
+const DEP_LINE = `task double
   take value, like number
   like number
   send back
@@ -37,8 +74,7 @@ const DEP = `task double
       read value
 `
 
-// same signature, different body (associativity shuffle): the interface hash must not move
-const DEP_BODY_EDIT = `task double
+const DEP_LINE_EDIT = `task double
   take value, like number
   like number
   send back
@@ -47,16 +83,6 @@ const DEP_BODY_EDIT = `task double
         read value
         code 0
       read value
-`
-
-// a signature edit: the parameter is renamed, which changes the observable interface
-const DEP_SIGNATURE_EDIT = `task double
-  take amount, like number
-  like number
-  send back
-    call add
-      read amount
-      read amount
 `
 
 const ENTRY = `load ./dep
@@ -185,6 +211,112 @@ task run
   )
 
   expect('interface violation is still a type error', bad.ok, false)
+
+  // a one-line body is surface: its edit rebuilds the dependent
+  compileSeparate({ file: 'entry.tree', text: ENTRY }, options(DEP_LINE))
+  const lineEdit = compileSeparate({ file: 'entry.tree', text: ENTRY }, options(DEP_LINE_EDIT))
+
+  expect('one-line body edit: the dependent rebuilt too', lineEdit.ok ? lineEdit.built.join(',') : 'failed', 'dep.tree,entry.tree')
+
+  // a name both files define: the entry's own keeps its name, the dependency's is imported under the name its own
+  // module exported it by, whichever entry compiled that module first
+  const SHARED_DEP = `task double
+  take value, like number
+  like number
+  save twice
+    call add
+      read value
+      read value
+  send back, read twice
+
+task label
+  like text
+  back <dep>
+`
+  const SHARED_ENTRY = `load ./dep
+  find double
+
+task label
+  like text
+  back <entry>
+
+task run
+  like number
+  send back
+    call double
+      code 21
+`
+  const shared = compileSeparate({ file: 'entry.tree', text: SHARED_ENTRY }, options(SHARED_DEP))
+
+  expect('a name two files define builds', shared.ok, true)
+
+  if (shared.ok) {
+    const dir4 = mkdtempSync(join(tmpdir(), 'seed-separate-'))
+    expect('and runs', await runEmitted(shared.modules, dir4), 42)
+  }
+
+  // a constant of the dependency, read by the entry: its module exports it, and the entry imports it
+  const CONSTANT_DEP = `host base, code 21
+
+task double
+  take value, like number
+  like number
+  save twice
+    call add
+      read value
+      read value
+  send back, read twice
+`
+  const CONSTANT_ENTRY = `load ./dep
+  find double
+  find base
+
+task run
+  like number
+  send back
+    call double
+      read base
+`
+  const constant = compileSeparate({ file: 'entry.tree', text: CONSTANT_ENTRY }, options(CONSTANT_DEP))
+
+  expect('a constant another module defines builds', constant.ok, true)
+
+  if (constant.ok) {
+    const dir5 = mkdtempSync(join(tmpdir(), 'seed-separate-'))
+    const ran = await runEmitted(constant.modules, dir5).catch(e => String(e))
+
+    expect('and runs, the constant imported', ran, 42)
+
+    if (ran !== 42) {
+      for (const [file, emit] of constant.modules) {
+        console.log(`---- ${file}\n${emit.code.slice(0, 1200)}`)
+      }
+    }
+  }
+
+  // a bind of the dependency, called by the entry: a bind is written into its caller, so the entry's module needs it
+  const BIND_DEP = `bind add-one, take n, like number
+  like number
+  case node
+    <$n + 1>
+`
+  const BIND_ENTRY = `load ./dep
+  find add-one
+
+task run
+  like number
+  send back
+    call add-one
+      code 41
+`
+  const bound = compileSeparate({ file: 'entry.tree', text: BIND_ENTRY }, options(BIND_DEP))
+
+  expect('a bind another module declares builds', bound.ok, true)
+
+  if (bound.ok) {
+    const dir6 = mkdtempSync(join(tmpdir(), 'seed-separate-'))
+    expect('and runs, written into its caller', await runEmitted(bound.modules, dir6).catch(e => String(e)), 42)
+  }
 
   console.log(`\nseparate: ${pass} pass, ${fail} fail`)
 

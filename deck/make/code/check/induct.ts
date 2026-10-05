@@ -17,6 +17,11 @@ import type {
   Statement,
 } from '@term/make/code/compile/node'
 import type { Span } from '@term/make/code/parser/diagnostic'
+
+// an integer literal's exact value: its digits past 2^53, else its number (compile/node.ts, `digits`)
+function integerOf(node: { value: number; digits?: string }): bigint {
+  return node.digits !== undefined ? BigInt(node.digits) : BigInt(node.value)
+}
 import { ringEqual } from '@term/make/code/check/ring'
 import type { Fact, Polynomial } from '@term/make/code/check/product'
 import { multiply as multiplyPolynomial, productProves, rational } from '@term/make/code/check/product'
@@ -384,7 +389,8 @@ function instantiate(rec: Recurrence, body: Expression, args: Expression[]): Exp
 function polynomialOf(e: Expression): Polynomial | null {
   switch (e.form) {
     case 'integer': {
-      const n = typeof e.value === 'bigint' ? e.value : Number.isSafeInteger(e.value) ? BigInt(e.value) : null
+      // exact, past 2^53 too (compile/node.ts, `digits`)
+      const n = e.digits !== undefined || Number.isSafeInteger(e.value) ? integerOf(e) : null
 
       return n === null ? null : new Map(n === 0n ? [] : [['', rational(n)]])
     }

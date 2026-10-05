@@ -145,7 +145,10 @@ mint dock-bind-line
     site path
   case name
     site name
+  case note
+    site note
   hook make
     make dock-bind-line
       bind path, read path
       bind name, read name
+      bind note, read note

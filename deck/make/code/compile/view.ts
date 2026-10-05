@@ -2640,8 +2640,9 @@ function lowerSeed(seed: Seed, fold: Map<string, Seed>): Expression {
           ...seed.value.slot.map(one => lowerSeed(one, fold)),
           ...seed.value.bind.map(one => lowerSeed(one.bond, fold)),
         ],
+        // `''` for a positional argument (compile/node.ts, `names`)
         names: [
-          ...seed.value.slot.map(() => undefined),
+          ...seed.value.slot.map(() => ''),
           ...seed.value.bind.map(one => one.term),
         ],
         span: seed.span,

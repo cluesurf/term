@@ -129,8 +129,9 @@ task paint-always
 #
 # Raw mode goes through `stty`, the same command on macOS and Linux, run with the terminal as its input so it changes
 # the terminal the program sits in. On node that keeps `process.stdin` untouched: opening it as a stream switches the
-# descriptor to non-blocking, and `read-input` is a blocking read of it. Node and Rust only: a terminal is not where
-# Swift or Kotlin earn their place (note/term/project/terminal-target.md, out of scope).
+# descriptor to non-blocking, and `read-input` is a blocking read of it. Every backend has a case, so a program that
+# owns the terminal builds everywhere: Swift through `Process` and `ioctl`, Kotlin through `ProcessBuilder` and
+# `System.in`. A page has no terminal, so the browser's cases answer what each says it answers without one.
 
 # turn raw mode on (keys arrive one at a time, unechoed, ctrl-c as a byte) or back off. True when the terminal took it,
 # false when input is not a terminal
@@ -141,6 +142,13 @@ bind set-raw
     text <(process.getBuiltinModule('node:child_process').spawnSync('stty', $on ? ['raw', '-echo'] : ['sane'], \{ stdio: ['inherit', 'ignore', 'ignore'] \}).status === 0)>
   case rust
     text <std::process::Command::new("stty").args(if $on \{ vec!["raw", "-echo"] \} else \{ vec!["sane"] \}).stdin(std::process::Stdio::inherit()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status().map(|status| status.success()).unwrap_or(false)>
+  case browser
+    text <false>
+  case swift
+    load <Foundation>
+    text <\{ () -\> Bool in let __term_stty = Process(); __term_stty.executableURL = URL(fileURLWithPath: "/bin/stty"); __term_stty.arguments = $on ? ["raw", "-echo"] : ["sane"]; __term_stty.standardInput = FileHandle.standardInput; __term_stty.standardOutput = FileHandle.nullDevice; __term_stty.standardError = FileHandle.nullDevice; do \{ try __term_stty.run(); __term_stty.waitUntilExit(); return __term_stty.terminationStatus == 0 \} catch \{ return false \} \}()>
+  case kotlin
+    text <run \{ try \{ ProcessBuilder(if ($on) listOf("stty", "raw", "-echo") else listOf("stty", "sane")).redirectInput(ProcessBuilder.Redirect.INHERIT).start().waitFor() == 0 \} catch (__term_failed: Exception) \{ false \} \}>
 
 # the terminal's width in cells, 80 when output is not a terminal
 bind terminal-columns
@@ -149,6 +157,13 @@ bind terminal-columns
     text <(process.stdout.columns ?? 80)>
   case rust
     text <std::process::Command::new("stty").arg("size").stdin(std::process::Stdio::inherit()).output().ok().and_then(|out| String::from_utf8(out.stdout).ok()).and_then(|size| size.split_whitespace().nth(1).and_then(|cells| cells.parse::\<i64\>().ok())).unwrap_or(80)>
+  case browser
+    text <80>
+  case swift
+    load <Foundation>
+    text <\{ () -\> Int in var __term_size = winsize(); return ioctl(STDOUT_FILENO, TIOCGWINSZ, &__term_size) == 0 && __term_size.ws_col \> 0 ? Int(__term_size.ws_col) : 80 \}()>
+  case kotlin
+    text <run \{ try \{ ProcessBuilder("stty", "size").redirectInput(ProcessBuilder.Redirect.INHERIT).start().inputStream.bufferedReader().readText().trim().split(" ").getOrNull(1)?.toLongOrNull() ?: 80L \} catch (__term_failed: Exception) \{ 80L \} \}>
 
 # the terminal's height in rows, 24 when output is not a terminal
 bind terminal-rows
@@ -157,6 +172,13 @@ bind terminal-rows
     text <(process.stdout.rows ?? 24)>
   case rust
     text <std::process::Command::new("stty").arg("size").stdin(std::process::Stdio::inherit()).output().ok().and_then(|out| String::from_utf8(out.stdout).ok()).and_then(|size| size.split_whitespace().nth(0).and_then(|rows| rows.parse::\<i64\>().ok())).unwrap_or(24)>
+  case browser
+    text <24>
+  case swift
+    load <Foundation>
+    text <\{ () -\> Int in var __term_size = winsize(); return ioctl(STDOUT_FILENO, TIOCGWINSZ, &__term_size) == 0 && __term_size.ws_row \> 0 ? Int(__term_size.ws_row) : 24 \}()>
+  case kotlin
+    text <run \{ try \{ ProcessBuilder("stty", "size").redirectInput(ProcessBuilder.Redirect.INHERIT).start().inputStream.bufferedReader().readText().trim().split(" ").getOrNull(0)?.toLongOrNull() ?: 24L \} catch (__term_failed: Exception) \{ 24L \} \}>
 
 # what the terminal has sent, waiting until it sends something: the bytes of one read, decoded as UTF-8. Empty text
 # when input has ended
@@ -166,6 +188,13 @@ bind read-input
     text <(function () \{ const fs = process.getBuiltinModule('node:fs'); const bytes = Buffer.alloc(256); for (;;) \{ try \{ const count = fs.readSync(0, bytes, 0, 256, null); return bytes.toString('utf8', 0, count) \} catch (error) \{ if (error.code !== 'EAGAIN') return '' \} \} \})()>
   case rust
     text <\{ use std::io::Read; let mut bytes = [0u8; 256]; let count = std::io::stdin().read(&mut bytes).unwrap_or(0); String::from_utf8_lossy(&bytes[..count]).to_string() \}>
+  case browser
+    text <"">
+  case swift
+    load <Foundation>
+    text <\{ () -\> String in var __term_bytes = [UInt8](repeating: 0, count: 256); let __term_count = read(0, &__term_bytes, 256); return __term_count \> 0 ? String(decoding: __term_bytes[0..\<__term_count], as: UTF8.self) : "" \}()>
+  case kotlin
+    text <run \{ val __term_bytes = ByteArray(256); val __term_count = System.`in`.read(__term_bytes); if (__term_count \> 0) String(__term_bytes, 0, __term_count, Charsets.UTF_8) else "" \}>
 
 # The signals such a program answers (a resize, SIGTERM, SIGHUP) are ./native/{platform}/signal.
 
@@ -175,8 +204,15 @@ bind write-output
   like boolean
   case node
     text <(process.getBuiltinModule('node:fs').writeSync(1, $value), true)>
+  case browser
+    text <false>
   case rust
     text <\{ use std::io::Write; let __term_text: String = $value; let mut __term_stdout = std::io::stdout(); __term_stdout.write_all(__term_text.as_bytes()).is_ok() && __term_stdout.flush().is_ok() \}>
+  case swift
+    load <Foundation>
+    text <\{ () -\> Bool in let __term_bytes = Array(($value).utf8); let __term_wrote = __term_bytes.withUnsafeBufferPointer \{ __term_buffer in write(1, __term_buffer.baseAddress, __term_buffer.count) \}; return __term_wrote == __term_bytes.count \}()>
+  case kotlin
+    text <run \{ print($value); System.out.flush(); true \}>
 
 # `value` in the color when output takes color (`uses-color`), and as it is otherwise
 task paint

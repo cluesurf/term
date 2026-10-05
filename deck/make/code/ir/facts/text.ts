@@ -17,7 +17,7 @@
 // The answer is every text-typed expression node proven ASCII, keyed by identity like every fact: an emitter that
 // ignores it stays correct.
 
-import type { Program, Statement } from '../../compile/node'
+import type { Program, Statement } from '@term/make/code/compile/node'
 
 type Loose = { form?: string; [key: string]: unknown }
 type Fn = Extract<Statement, { form: 'function' }>
@@ -138,8 +138,11 @@ export function asciiTexts(program: Program): WeakSet<object> {
       case 'string':
         return ASCII.test(e.value as string)
       case 'template':
-        return (e.parts as (string | Loose)[]).every(part =>
-          typeof part === 'string' ? ASCII.test(part) : printsAscii(part.type) || ascii(part, fn, vars),
+        // each part says which it is (compile/node.ts, `TemplatePart`)
+        return (e.parts as { form: string; value: unknown }[]).every(part =>
+          part.form === 'chunk'
+            ? ASCII.test(part.value as string)
+            : printsAscii((part.value as Loose).type) || ascii(part.value as Loose, fn, vars),
         )
       case 'variable':
         return vars.has(e.name as string)

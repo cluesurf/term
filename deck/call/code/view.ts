@@ -7,8 +7,9 @@
 // Reports by default and writes nothing. `--find` prints the query manifest, which is the `host` dialect, so it
 // pipes into `term mold --json` for a route loader that wants it that way. See note/term/view/08-package-and-cli.md.
 //
-// What a document uses, the manifest and the JSON are DATA on stdout, byte for byte as before: word.surf's guide
-// save gate reads `--find` from stdout (mesh/deck/back/code/tool/guide.ts). A document that does not read is a
+// The manifest and the JSON are DATA on stdout, byte for byte as before: word.surf's guide save gate reads `--find`
+// from stdout (mesh/deck/back/code/tool/guide.ts). What a document uses is a `read` item per document, its uses as
+// fields. A document that does not read is a
 // Problem item per diagnostic, with its `at` and frame, in the human view on stderr (code/output.ts).
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
@@ -21,7 +22,8 @@ import {
   type ViewNode,
 } from '@term/make/code/compile/view'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
-import { closeRun, count, openRun, printData, report as reportItem, reportProblems } from '@term/call/code/output'
+import { closeRun, count, field, openRun, printData, report as reportItem, reportProblems } from '@term/call/code/output'
+import type { ItemField } from '@term/call/code/work/item/event'
 import { projectRoleOf } from '@term/call/code/role-of'
 
 export type ViewCall = {
@@ -136,7 +138,11 @@ export async function callView(input: ViewCall): Promise<void> {
       )}\n`,
     )
   } else {
-    printData(looks.map(say).join(''))
+    // what each document uses is an item of the run, its uses as fields at the body column: printed as data it sat
+    // at column 0 between the run's items, with its own hand-padded columns (guides: commands/view, 2026-10-05)
+    for (const one of looks) {
+      reportItem({ glyph: 'done', verb: 'read', subject: one.file, fields: uses(one) })
+    }
   }
 
   closeRun({
@@ -226,24 +232,25 @@ function look(file: string, read: ViewFile): Look {
   }
 }
 
-// what one document uses, the lines it has always printed
-function say(one: Look): string {
-  const lines = [one.file]
+// what one document uses, as fields: the views it places, the queries it finds, the operators it calls and the
+// modules it loads (each left out when it has none), then how many nodes it has and how deep they go
+function uses(one: Look): ItemField[] {
+  const fields: ItemField[] = []
 
-  const row = (name: string, values: string[]): void => {
+  for (const [key, values] of [
+    ['view', one.view],
+    ['find', one.find],
+    ['call', one.call],
+    ['load', one.load],
+  ] as const) {
     if (values.length > 0) {
-      lines.push(`  ${name.padEnd(7)} ${values.join('  ')}`)
+      fields.push(field(key, values.join(', ')))
     }
   }
 
-  row('view', one.view)
-  row('find', one.find)
-  row('call', one.call)
-  row('load', one.load)
-  lines.push(`  ${'node'.padEnd(7)} ${one.node}`)
-  lines.push(`  ${'deep'.padEnd(7)} ${one.deep}`)
+  fields.push(field('node', String(one.node)), field('deep', String(one.deep)))
 
-  return `${lines.join('\n')}\n`
+  return fields
 }
 
 function walk(dir: string, into: string[] = []): string[] {

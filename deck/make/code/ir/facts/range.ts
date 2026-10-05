@@ -23,7 +23,7 @@
 // The result is the set of `+` nodes an emitter may write as a plain `+`. It is keyed by node identity, the way twins
 // are: nothing in the program changes, and an emitter that ignores it stays correct.
 
-import type { Expression, Program } from '../../compile/node'
+import type { Expression, Program } from '@term/make/code/compile/node'
 
 type Loose = { form?: string; [key: string]: unknown }
 

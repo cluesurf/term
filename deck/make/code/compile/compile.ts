@@ -13,7 +13,7 @@ import {
   expandTemplates,
   collectTemplates,
 } from '@term/make/code/compile/template'
-import type { Template } from '@term/make/code/compile/template'
+import type { Template, TemplateProblem } from '@term/make/code/compile/template'
 import { mill } from '@term/make/code/compile/mill'
 import { checkView, lowerView } from '@term/make/code/compile/view'
 import { checkMillDefinition } from '@term/make/code/compile/mill-check'
@@ -21,6 +21,8 @@ import { resolve } from '@term/make/code/check/resolve'
 import { citedRules } from '@term/make/code/check/cite-roots'
 import { check } from '@term/make/code/check/infer'
 import { checkAsyncArguments, resolveAsync } from '@term/make/code/check/async-resolve'
+import { pendingValues } from '@term/make/code/check/pending'
+import { asyncSlots } from '@term/make/code/check/async-slots'
 import { checkDockShadow } from '@term/make/code/check/dock-shadow'
 import { checkBuiltinShadow } from '@term/make/code/check/builtin-shadow'
 import {
@@ -241,6 +243,8 @@ export function compile(
     entryPoints?: string[]
     // build the roll of the closure (every deck, exception, task, route and tell) and return it as `roll`
     roll?: boolean
+    // with `roll`: answer the roll and the diagnostics only, cached on their own (the program and TypeScript left out)
+    rollOnly?: boolean
     // the deck a source file belongs to (name and root), from its nearest `deck.tree`. Names the `host` of every
     // raise and roll entry. The CLI supplies it; without it the deck is read off the path
     deckOf?: (file: string) => { name: string; root: string } | undefined
@@ -376,29 +380,7 @@ export function compile(
     // gather `tree` template definitions from every loaded module first, so a module's `fuse` can instantiate a
     // template that an imported module defines. The fingerprint of the template-bearing sources joins the mill cache
     // key, so editing a template correctly invalidates the modules that expand against it.
-    const templates = new Map<string, Template>()
-
-    let templateText = ''
-
-    for (const unit of sources) {
-      if (!/(^|\n)tree\s/.test(unit.text)) {
-        continue
-      }
-
-      const tree = parsed(unit)
-
-      if (!tree.ok) {
-        continue
-      }
-
-      templateText += unit.text
-
-      for (const [name, template] of collectTemplates(tree.tree)) {
-        templates.set(name, template)
-      }
-    }
-
-    const templateKey = templates.size ? hashText(templateText) : ''
+    const { templates, templateKey } = graphTemplates(sources, parsed)
 
     const program: Program = []
     const twins: Twin[] = []
@@ -411,28 +393,14 @@ export function compile(
       // mill cache: reuse a module's parse + expand + mill when its text (and the template set) is unchanged
       // the role a project's `role.tree` gives this module. A `view` file is the sandboxed document dialect and is
       // read by compile/view.ts, not by the code mill. See note/term/view/06-mill.md.
-      const unitRole = options?.roleOf?.(unit.file) ?? undefined
-      // `mark lean` on the matched role rule: this unit's bare heads are calls and its property heads are named
-      // arguments. IN THE CACHE KEY BELOW, because it changes what the unit mills to. Left out, a file that gains
-      // the mark keeps its old AST until its text changes, and the bug reads as the feature not working at all.
-      // Prefixed rather than appended, so it cannot be confused with a role whose name ends in the same letters.
-      const unitLean = options?.leanOf?.(unit.file) ?? false
-      const leanKey = unitLean ? 'lean:' : ''
-
-      // THE TEMPLATE SET JOINS ONLY THE KEY OF A UNIT THAT CAN USE IT: one with a `fuse` (or a document, which
-      // `checkView` hands the templates). Expansion reads another module's templates at a `fuse` and nowhere else
-      // (compile/template.ts, `expandFuse`). It was in every unit's key, so editing any file that defines a `tree`
-      // missed the mill entry of every module in the closure, and one standard library module had as many keys as
-      // there are closures it sits in, which fragmented the machine-wide mill cache
-      const usesTemplates = unitRole === 'view' || /\bfuse\b/.test(unit.text)
-
-      const milled = cache
-        ? cache.milledUnit(
-            `${leanKey}${unit.file}\u0000${usesTemplates ? templateKey : ''}\u0000${unitRole ?? ''}`,
-            unit.text,
-            () => millUnit(unit, parsed, templates, unitRole, unitLean),
-          )
-        : millUnit(unit, parsed, templates, unitRole, unitLean)
+      const milled = milledModule(unit, {
+        parsed,
+        templates,
+        templateKey,
+        cache,
+        role: options?.roleOf?.(unit.file) ?? undefined,
+        lean: options?.leanOf?.(unit.file) ?? false,
+      })
 
       if (!milled.ok) {
         return { ok: false, diagnostics: milled.diagnostics }
@@ -499,36 +467,7 @@ export function compile(
       options?.library,
     )
 
-    // `note <word>` written as metadata in the ENTRY file: the old spelling of `mark <word>`, read the same and warned
-    // about (check/note-metadata.ts). Only the entry's own, the way `note-private` is, so a build does not repeat
-    // every imported module's. `note private` keeps its own older warning
-    const entryTree = parsed(source)
-    const spelled =
-      compiled.ok && entryTree.ok
-        ? noteMetadataSites(entryTree.tree, source.text)
-            .filter(site => site.word !== 'private')
-            .map(site =>
-              diagnose('note-metadata', {
-                file: source.file,
-                span: { ...site.span, file: source.file },
-                message: `\`note ${site.word}\` is the old spelling of \`mark ${site.word}\``,
-              }),
-            )
-            // and a `find read` with no `name`, which `read(path)` never reaches (check/keyword-import.ts). Only a TASK by
-            // that name in a module the entry loads: `find text` for `like text` imports a form, which is reached. Read
-            // off the modules' trees, because the program has already dropped a task nothing reaches
-            .concat(
-              keywordImports(entryTree.tree, word =>
-                sources.some(unit => unit.file !== source.file && definesTask(parsed(unit), word)),
-              ).map(site =>
-                diagnose('keyword-import', {
-                  file: source.file,
-                  span: { ...site.span, file: source.file },
-                  message: `\`find ${site.word}\` is never reached by that name: \`${site.word}(...)\` is Term's own word, read before any import`,
-                }),
-              ),
-            )
-        : []
+    const spelled = compiled.ok ? entryWarnings(source, sources, parsed) : []
     const warned: CompileResult =
       compiled.ok && spelled.length > 0 ? { ...compiled, warnings: [...compiled.warnings, ...spelled] } : compiled
 
@@ -541,6 +480,21 @@ export function compile(
     const refused = checkTwins(program, twins, source.file)
 
     return refused.length > 0 ? { ok: false, diagnostics: refused } : { ...warned, twins }
+  }
+
+  // THE ROLL ALONE, for a caller that reads nothing else (`term make`'s roll pass, call/code/roll.ts). It cached the
+  // whole result, program and TypeScript, to read one field of it back, so each warm entry of @term/bind's 3,091 was
+  // unzipped and parsed whole: 64 s of a 147 s warm build (2026-10-05). Its own small entry, beside the full one
+  if (options?.rollOnly) {
+    const rollOf = (): CompileResult => {
+      const full = build()
+
+      return full.ok
+        ? { ok: true, program: [], typescript: '', warnings: [], ...(full.roll ? { roll: full.roll } : {}) }
+        : full
+    }
+
+    return cache ? cache.output(`${graphKey}|roll-only`, rollOf) : rollOf()
   }
 
   // the output cache stores a JSON-serialized result, which cannot hold the per-module `Map`. So in per-module mode we
@@ -575,6 +529,115 @@ function compileData(source: { file: string; text: string }, lean = false): Comp
   }
 }
 
+// Every `tree` template the graph defines, gathered before any module mills, so a module's `fuse` can instantiate one
+// an import defines, and the fingerprint of the modules that define them (`templateKey`, '' when none does), which
+// joins the mill key of a module that can expand one. Shared by `compile` and compile/separate.ts
+export function graphTemplates(
+  sources: { file: string; text: string }[],
+  parsed: ParseMemo,
+): { templates: Map<string, Template>; templateKey: string } {
+  const templates = new Map<string, Template>()
+
+  let templateText = ''
+
+  for (const unit of sources) {
+    if (!/(^|\n)tree\s/.test(unit.text)) {
+      continue
+    }
+
+    const tree = parsed(unit)
+
+    if (!tree.ok) {
+      continue
+    }
+
+    templateText += unit.text
+
+    for (const [name, template] of collectTemplates(tree.tree)) {
+      templates.set(name, template)
+    }
+  }
+
+  return { templates, templateKey: templates.size ? hashText(templateText) : '' }
+}
+
+// The warnings about the ENTRY file's own spelling, which a build gives once, for the file it was asked to build.
+// `note <word>` written as metadata: the old spelling of `mark <word>`, read the same and warned about
+// (check/note-metadata.ts). Only the entry's own, the way `note-private` is, so a build does not repeat every imported
+// module's. `note private` keeps its own older warning. Shared by `compile` and compile/separate.ts
+export function entryWarnings(
+  source: { file: string; text: string },
+  sources: { file: string; text: string }[],
+  parsed: ParseMemo,
+): Diagnostic[] {
+  const entryTree = parsed(source)
+
+  if (!entryTree.ok) {
+    return []
+  }
+
+  return noteMetadataSites(entryTree.tree, source.text)
+    .filter(site => site.word !== 'private')
+    .map(site =>
+      diagnose('note-metadata', {
+        file: source.file,
+        span: { ...site.span, file: source.file },
+        message: `\`note ${site.word}\` is the old spelling of \`mark ${site.word}\``,
+      }),
+    )
+    // and a `find read` with no `name`, which `read(path)` never reaches (check/keyword-import.ts). Only a TASK by
+    // that name in a module the entry loads: `find text` for `like text` imports a form, which is reached. Read
+    // off the modules' trees, because the program has already dropped a task nothing reaches
+    .concat(
+      keywordImports(entryTree.tree, word =>
+        sources.some(unit => unit.file !== source.file && definesTask(parsed(unit), word)),
+      ).map(site =>
+        diagnose('keyword-import', {
+          file: source.file,
+          span: { ...site.span, file: source.file },
+          message: `\`find ${site.word}\` is never reached by that name: \`${site.word}(...)\` is Term's own word, read before any import`,
+        }),
+      ),
+    )
+}
+
+// One module milled, through the mill cache when there is one. The merged build (`compile`) and the separate one
+// (compile/separate.ts) both mill here, so a module is one cache entry whichever path asked for it.
+export function milledModule(
+  unit: { file: string; text: string },
+  options: {
+    parsed: ParseMemo
+    templates: Map<string, Template>
+    // the fingerprint of every template-bearing module in the graph, '' when there is none
+    templateKey: string
+    cache?: CompileCache
+    role?: string
+    lean: boolean
+  },
+): ReturnType<typeof millUnit> {
+  const { parsed, templates, templateKey, cache, role, lean } = options
+  // `mark lean` on the matched role rule: this unit's bare heads are calls and its property heads are named
+  // arguments. IN THE CACHE KEY BELOW, because it changes what the unit mills to. Left out, a file that gains
+  // the mark keeps its old AST until its text changes, and the bug reads as the feature not working at all.
+  // Prefixed rather than appended, so it cannot be confused with a role whose name ends in the same letters.
+  const leanKey = lean ? 'lean:' : ''
+
+  // THE TEMPLATE SET JOINS ONLY THE KEY OF A UNIT THAT CAN USE IT: one with a `fuse` (or a document, which
+  // `checkView` hands the templates). Expansion reads another module's templates at a `fuse` and nowhere else
+  // (compile/template.ts, `expandFuse`). It was in every unit's key, so editing any file that defines a `tree`
+  // missed the mill entry of every module in the closure, and one standard library module had as many keys as
+  // there are closures it sits in, which fragmented the machine-wide mill cache
+  const usesTemplates = role === 'view' || /\bfuse\b/.test(unit.text)
+
+  return cache
+    ? cache.milledUnit(
+        `${leanKey}${unit.file}\u0000${usesTemplates ? templateKey : ''}\u0000${role ?? ''}`,
+        unit.text,
+        () => millUnit(unit, parsed, templates, role, lean),
+      )
+    : millUnit(unit, parsed, templates, role, lean)
+}
+
 // parse, expand templates, and mill one module into a program (or the diagnostics that stopped it)
 function millUnit(
   unit: { file: string; text: string },
@@ -607,7 +670,14 @@ function millUnit(
     return { ok: true, program: lowerView(read.file) }
   }
 
-  const expanded = expandTemplates(parsed.tree, templates)
+  // a fuse that does not fit its template is refused at the fuse: a hole left out, a value too many, a name the
+  // template does not take, a value of the wrong kind (compile/template.ts)
+  const fuseProblems: TemplateProblem[] = []
+  const expanded = expandTemplates(parsed.tree, templates, undefined, fuseProblems)
+
+  if (fuseProblems.length) {
+    return { ok: false, diagnostics: fuseProblems.map(p => diagnose(p.code, { file: unit.file, span: p.span, message: p.message })) }
+  }
 
   return mill(expanded, unit.file, role, lean)
 }
@@ -631,13 +701,17 @@ export function compileProgram(
   selected?: { twins: Twin[]; choices: TwinChoices; expose?: boolean },
   // a library host code also builds values of (compile's `library`)
   library?: boolean,
+  // the file whose names are kept where two files define one, when that is not `file`. Separate compilation names a
+  // unit the same way whichever entry reached it, so the module it writes exports the same names every time
+  // (compile/separate.ts); everywhere else it is `file`
+  naming?: string,
 ): CompileResult {
   // the certificate checker's refusals so far, so this compile can report its own
   const uncertifiedBefore = uncertifiedCount()
 
   // module scope for forms: a form two files define is split by file, and every reference bound by its file's import,
   // before anything below reads a form by name (module-scope-0003, check/scope.ts)
-  const formScope = bindFormsByImport(program, scope, file)
+  const formScope = bindFormsByImport(program, scope, naming ?? file)
 
   if (formScope.length) {
     return { ok: false, diagnostics: formScope }
@@ -703,9 +777,13 @@ export function compileProgram(
     return { ok: false, diagnostics: constantDiagnostics }
   }
 
-  // a shared bind says which backends it leaves out (check/binds.ts). Whether a called bind has a case for the backend
-  // being emitted is asked of the program actually emitted, after dead code is gone (call/code/emit.ts)
+  // a shared bind has a case for every backend, or the build stops at the bind (check/binds.ts). Whether a called bind
+  // has a case for the backend being emitted is asked again of the program actually emitted (call/code/emit.ts)
   const bindChecks = checkBindTargets(program, file, undefined)
+
+  if (bindChecks.errors.length) {
+    return { ok: false, diagnostics: bindChecks.errors }
+  }
 
   // a call reaches a task something in the build defines, not only a declaration (check/bodiless.ts)
   const bodilessCalls = checkBodilessCalls(program, file)
@@ -739,7 +817,15 @@ export function compileProgram(
     return { ok: false, diagnostics: duplicateTasks }
   }
 
-  const ambiguities = disambiguateOverloads(program, scope, file)
+  // a ticked call used as a value is the pending job: `spawn` of the call, a `handle` of its answer (check/pending.ts).
+  // Before overloads and names are bound, so the inserted `spawn` binds as a written one does
+  const pendingDiagnostics = pendingValues(program, file)
+
+  if (pendingDiagnostics.length) {
+    return { ok: false, diagnostics: pendingDiagnostics }
+  }
+
+  const ambiguities = disambiguateOverloads(program, scope, naming ?? file)
 
   if (ambiguities.length) {
     return { ok: false, diagnostics: ambiguities }
@@ -834,7 +920,7 @@ export function compileProgram(
     if (statement.form === 'function') {
       statement.declared = {
         params: statement.params.map(p =>
-          p.type ? structuredClone(p.type) : undefined,
+          p.type ? { type: structuredClone(p.type) } : {},
         ),
         ...(statement.result
           ? { result: structuredClone(statement.result) }
@@ -851,7 +937,22 @@ export function compileProgram(
   const checkDiagnostics = check(program, file, merged)
   // the checker's warnings (an unknown type name) ride with the build's other warnings; only its errors stop it
   const checkErrors = checkDiagnostics.filter(d => d.severity !== 'warning')
-  const checkWarnings = checkDiagnostics.filter(d => d.severity === 'warning')
+  // an unknown type name the type-name pass already reported (as a warning, in a deck that describes a host) is said
+  // once: the checker's `unknown-type` for the same name was a second line about one problem. It also made the two
+  // builds disagree, since the merged one prunes a task nothing reaches before the checker runs and the separate one
+  // checks every task (@term/bind's methods, 549 lines, 2026-10-05)
+  const namedAlready = new Set(
+    typeNameDiagnostics.flatMap(d => {
+      const named = /the type "([^"]+)" is not defined/.exec(d.message)
+
+      return named ? [named[1]!] : []
+    }),
+  )
+  const checkWarnings = checkDiagnostics.filter(d => {
+    const named = d.name === 'unknown-type' ? /^"([^"]+)" is not a type/.exec(d.message) : null
+
+    return d.severity === 'warning' && !(named && namedAlready.has(named[1]!))
+  })
 
   if (checkErrors.length) {
     return { ok: false, diagnostics: checkErrors }
@@ -866,6 +967,9 @@ export function compileProgram(
   // async resolution: infer which functions are async from the call graph and await async calls by default, so callers
   // need no per-call `wait true`. Runs before the effect check so the inserted awaits satisfy the discipline. See
   // note/seed/compiler/async-inference.md.
+  // a task written in place where an async task is taken is async itself, so each backend builds the function its slot
+  // takes (check/async-slots.ts)
+  asyncSlots(program)
   resolveAsync(program)
 
   // elaboration: lower the now-typed surface into the sound dependent kernel and let it verify. The kernel is the
@@ -1173,10 +1277,9 @@ export function compileProgram(
     ? lowerViews(tsOptimized)
     : loweredProgram
 
-  return {
-    ok: true,
+  const result = {
+    ok: true as const,
     program: loweredProgram,
-    typescript: emitTypeScript(loweredTs, { env, wake, ...(library ? { library: true } : {}) }),
     warnings,
     ...(claims.open.length ? { openClaims: claims.open } : {}),
     obligations,
@@ -1184,6 +1287,20 @@ export function compileProgram(
     uncertified: uncertifiedCount() - uncertifiedBefore,
     ...(roll ? { roll } : {}),
   }
+
+  // THE TYPESCRIPT IS BUILT WHEN IT IS FIRST READ. A Rust, Swift or Kotlin build emits from `program` and never reads
+  // it, and it was a quarter of every native compile: `emitTypeScript` and its arithmetic facts, 1,241 ms of 5,408
+  // compiling the idiom gate's 48 programs to Rust twice (`tmp/prof-compile.ts`, 2026-10-05). It reads the program and
+  // writes nothing back, which `tmp/ts-lazy-check.ts` holds: every native emission is the same whether the TypeScript
+  // was built before it or not at all. Enumerable, so a spread or `JSON.stringify` of the result still carries it
+  let typescript: string | undefined
+
+  Object.defineProperty(result, 'typescript', {
+    enumerable: true,
+    get: () => (typescript ??= emitTypeScript(loweredTs, { env, wake, ...(library ? { library: true } : {}) })),
+  })
+
+  return result as typeof result & { typescript: string }
 }
 
 // the roll grouped by deck, in the shape `hiveWake` takes: exceptions and tells only, so the wake chain stays small

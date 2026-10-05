@@ -1,0 +1,7 @@
+mark draft
+
+# SHELVED 2026-10-05. The 23 color spaces here are scaffolds: each `form` has no fields, four `fuse access` lines, and a
+# `convert-to-rgb` with no body. Every one of those fuses gave `access` one value, `term r`, where it takes a name and a
+# type, so it built `get-term` and `set-term` with no body over a type it never named. That expanded without a word
+# until a fuse was required to fill its template's holes (compile/template.ts), and then refused 92 of them. Nothing
+# loads these modules. The working color forms are the ones beside this folder: `rgb`, `hsl`, `hsv` and `hex`.

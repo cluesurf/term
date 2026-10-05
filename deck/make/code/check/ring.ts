@@ -146,8 +146,9 @@ function mulPoly(a: Poly, b: Poly): Poly {
 function toPoly(expr: Expression): Poly | null {
   switch (expr.form) {
     case 'integer': {
-      // a bigint literal beyond the safe range would round in Number(): decline it rather than read a different number
-      if (typeof expr.value === 'bigint' && (expr.value > BigInt(Number.MAX_SAFE_INTEGER) || expr.value < -BigInt(Number.MAX_SAFE_INTEGER))) {
+      // a literal beyond the safe range carries its digits, and its `value` is rounded: decline it rather than read a
+      // different number
+      if (expr.digits !== undefined) {
         return null
       }
 

@@ -24,10 +24,12 @@ import type {
 import type { Diagnostic, Span } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
 import type {
+  DockLiteral,
   Expression,
   Program,
   Proof,
   Statement,
+  TemplatePart,
   Twin,
   Type,
   ViewAttribute,
@@ -67,10 +69,23 @@ import {
   unescapeText,
 } from '@term/make/code/compile/surface'
 import {
-  FREE_UNKNOWN,
-  UNKNOWN,
-  UNIT,
+  freeUnknownType,
+  unknownType,
+  unitType,
+  chunkPart,
+  valuePart,
 } from '@term/make/code/compile/node'
+
+// an integer literal of any size the parser read: past 2^53 it carries its exact digits (compile/node.ts, `digits`)
+function integerLiteral(value: number | bigint, span: Span): Expression {
+  if (typeof value === 'bigint') {
+    return Number.isSafeInteger(Number(value))
+      ? { form: 'integer', value: Number(value), span }
+      : { form: 'integer', value: Number(value), digits: value.toString(), span }
+  }
+
+  return { form: 'integer', value, span }
+}
 import { baseRefusal } from '@term/make/code/deck/resolve'
 
 export type MillResult =
@@ -396,11 +411,11 @@ function textExpression(
     return { form: 'string', value: textOf(value) ?? '', span }
   }
 
-  const parts: (string | Expression)[] = []
+  const parts: TemplatePart[] = []
 
   for (const part of node.parts) {
     if (part.kind === 'chunk') {
-      parts.push(unescapeText(part.text))
+      parts.push(chunkPart(unescapeText(part.text)))
       continue
     }
 
@@ -419,7 +434,7 @@ function textExpression(
       (head !== undefined && head.includes('/') && part.group.nodes.length === 1 ? readPath(head, span) : undefined)
 
     if (inner) {
-      parts.push(inner)
+      parts.push(valuePart(inner))
     }
   }
 
@@ -469,7 +484,7 @@ function typeOf(
   // the native collections: their parts are nested `like` lines, and a bare one leaves its part FREE, which is
   // a fresh inference variable rather than the boxed dynamic (a spelled `like unknown` is the dynamic)
   if (name === 'list') {
-    return { kind: 'array', element: children[0] ?? FREE_UNKNOWN }
+    return { kind: 'array', element: children[0] ?? freeUnknownType() }
   }
 
   if (name === 'hash') {
@@ -484,26 +499,27 @@ function typeOf(
     const spilled = only && isForm(only) ? at(only, 'child') : []
 
     if (keyBase && keyBase.kind !== 'named' && spilled.length === 1) {
-      return { kind: 'map', key: keyBase, value: typeOf(bridge, spilled[0]) ?? FREE_UNKNOWN }
+      return { kind: 'map', key: keyBase, value: typeOf(bridge, spilled[0]) ?? freeUnknownType() }
     }
 
     return {
       kind: 'map',
-      key: children[0] ?? FREE_UNKNOWN,
-      value: children[1] ?? FREE_UNKNOWN,
+      key: children[0] ?? freeUnknownType(),
+      value: children[1] ?? freeUnknownType(),
     }
   }
 
   if (name === 'task') {
     const params: Type[] = []
-    const paramNames: (string | undefined)[] = []
+    // `''` for a parameter with no name (compile/node.ts, `paramNames`)
+    const paramNames: string[] = []
 
     for (const take of formsAt(value, 'take')) {
       params.push(
         withHeadArgs(bridge, typeOf(bridge, firstAt(take, 'like')), take) ??
-          UNKNOWN,
+          unknownType(),
       )
-      paramNames.push(wordAt(take, 'name'))
+      paramNames.push(wordAt(take, 'name') ?? '')
     }
 
     // EFFECTS on a callback type: `mark async` makes it async (`wait true` is the older spelling), and a bare `halt`
@@ -521,8 +537,8 @@ function typeOf(
     return {
       kind: 'function',
       params,
-      result: children[0] ?? UNIT,
-      ...(paramNames.some(n => n !== undefined) ? { paramNames } : {}),
+      result: children[0] ?? unitType(),
+      ...(paramNames.some(Boolean) ? { paramNames } : {}),
       ...(effects.length > 0 ? { effects } : {}),
     }
   }
@@ -629,7 +645,7 @@ function withOuterTakes(
   // it, the reader takes each one's `like` and nothing else, so a `head` sibling of one of THOSE is not part of
   // its type. The nested spelling does fold them, and `typeOf` does that.
   const params = takes.map(
-    take => typeOf(bridge, firstAt(take, 'like')) ?? UNKNOWN,
+    take => typeOf(bridge, firstAt(take, 'like')) ?? unknownType(),
   )
 
   // The RESULT comes with them. A SECOND `like` beside the first is the function's return type
@@ -676,7 +692,7 @@ function expressionOf(
     case 'number':
       return value.decimal
         ? { form: 'float', value: Number(value.value), span }
-        : { form: 'integer', value: value.value, span }
+        : integerLiteral(value.value, span)
     case 'word':
       // a bare word in value position is `true`, `false`, `void`, or a name
       if (value.value === 'true' || value.value === 'false') {
@@ -787,7 +803,7 @@ function expressionOf(
       if (literal?.kind === 'number') {
         return literal.decimal
           ? { form: 'float', value: Number(literal.value), span: spanOf(literal) }
-          : { form: 'integer', value: literal.value, span: spanOf(literal) }
+          : integerLiteral(literal.value, spanOf(literal))
       }
 
       // `code false` / `code true`: the boolean written with the literal head
@@ -992,7 +1008,8 @@ function expressionOf(
           ...leanArguments(bridge, value, order),
         ].sort((a, b) => a.at - b.at)
         const args = written.map(entry => entry.expr)
-        const names = written.map(entry => entry.name)
+        // `''` for a positional argument (compile/node.ts, `names`)
+        const names = written.map(entry => entry.name ?? '')
         const leanNames = written.map(entry => entry.lean === true)
 
         const folded = foldBuiltin(plainName(callee), args, span)
@@ -1058,7 +1075,7 @@ function expressionOf(
 
       const sorted = loose.sort((a, b) => a.at - b.at)
       const args = sorted.map(entry => entry.expr)
-      const looseNames = sorted.map(entry => entry.name)
+      const looseNames = sorted.map(entry => entry.name ?? '')
 
       // the arithmetic, comparison and boolean builtins fold to an operator here as they do under `call`:
       // `and a, b` is `a && b`, not a call to something named `and`. Probed 2026-09-12 that it was not
@@ -1173,13 +1190,21 @@ function recordOf(bridge: Bridge, value: Form): Expression | undefined {
     }
   }
 
-  // `make list` is the native array and `make find` the native map. `make hash` is NOT: it constructs the
-  // stdlib's hash FORM, which is a record.
+  // `make list` is the native array and `make hash` the native map, its entries `save <key>, <value>` lines. A
+  // `make hash` with entries dropped them until 2026-10-05: it built the map empty, typed by nothing, while the same
+  // lines under `make find` built them. `make find` was a second spelling of the same map, and is refused by name
   if (name === 'list' && fields.length === 0) {
     return { form: 'array', items: positional, span: spanOf(value) }
   }
 
   if (name === 'find') {
+    return refuse(bridge, value, '`make find` is the older spelling of `make hash`. Write `make hash`, with the same `save <key>, <value>` lines under it')
+  }
+
+  // A `bind` under `make hash` builds a program's OWN `hash`: @term/host's `data` has `case hash / link list`. With
+  // no form or case of that name it is refused where every such `make` is (check/type-names.ts), so the native map
+  // takes only `save` entries
+  if (name === 'hash' && fields.length === 0) {
     const entries = formsAt(value, 'save').map(entry => ({
       key: {
         form: 'string' as const,
@@ -1397,19 +1422,16 @@ function dynamicPath(bridge: Bridge, value: Minted, span: Span): Expression | un
       continue
     }
 
-    const inner = wordOf(part.group)
+    // the segment's WHOLE value, as the root above reads it. It was the group's first word as a variable, so
+    // `grid/{multiply(i, 2)}` indexed by the task `multiply` itself, which every check accepted as a value, and the
+    // call was dropped in silence (pair-diagnostic, test/compile/computed-key.ts, 2026-10-05)
+    const index = expressionFromNode(bridge, part.group, spanOfWhole(part.group))
 
-    built = {
-      form: 'member',
-      target: built,
-      name: '',
-      index: {
-        form: 'variable',
-        name: inner ?? '',
-        span: spanOfWhole(part.group),
-      },
-      span,
+    if (!index) {
+      return undefined
     }
+
+    built = { form: 'member', target: built, name: '', index, span }
   }
 
   return built
@@ -1825,7 +1847,8 @@ function callOf(bridge: Bridge, value: Form): Expression | undefined {
   written.sort((a, b) => a.at - b.at)
 
   const args = written.map(entry => entry.expr)
-  const names = written.map(entry => entry.name)
+  // `''` for a positional argument (compile/node.ts, `names`)
+  const names = written.map(entry => entry.name ?? '')
   // which labels came from a PROPERTY HEAD rather than a `bind`, exactly as the bare-head call records it. Without
   // this an explicit `call` under lean had labels the checker could not tell apart from `bind`s, so one on a
   // native callee (`call diagnostic-module/renderKink`) was dropped as documentation, in silence
@@ -2241,9 +2264,14 @@ function statementOf(
       if (name.includes('/') || bridge.declared.has(name)) {
         // the target carries the STATEMENT's span, the way the mill writes it: `save x, <v>` is one construct
         // and the assignment it lowers to points at the whole of it
+        // a braced segment (`save grid/{at}`) is read from the target's own parts, as a read of it is: through
+        // `readPath` it was the segment's text as a variable name, so `save grid/{multiply(i, 2)}` wrote to
+        // `grid[multiply]` (test/compile/computed-key.ts)
+        const target = (name.includes('{') ? dynamicPath(bridge, value, span) : undefined) ?? readPath(name, span)
+
         return {
           form: 'assign',
-          target: readPath(name, span),
+          target,
           op: '=',
           value: init,
           span,
@@ -2373,8 +2401,12 @@ function statementOf(
     case 'fork-test':
       return conditionOf(bridge, value)
 
-    case 'turn':
-      return { form: 'continue', span }
+    case 'turn': {
+      // `turn next, name outer` continues the loop named `outer`
+      const label = wordAt(value, 'name')
+
+      return { form: 'continue', ...(label ? { label } : {}), span }
+    }
 
     case 'halt':
       return haltOf(bridge, value)
@@ -2480,14 +2512,19 @@ function holdOf(bridge: Bridge, value: Form): Statement | undefined {
 function haltOf(bridge: Bridge, value: Form): Statement | undefined {
   const span = spanOf(value)
   const mode = wordAt(value, 'mode')
+  // `halt, name outer` breaks out of the loop named `outer`
+  const label = wordAt(value, 'name')
 
+  if (label !== undefined && (mode !== undefined || firstAt(value, 'seed') !== undefined)) {
+    return refuse(bridge, value, '`halt, name <loop>` breaks out of a named loop and takes nothing else. Raise with `halt <form>` on its own line')
+  }
 
   if (mode === undefined) {
     const raised = expressionOf(bridge, firstAt(value, 'seed'))
 
     return raised
       ? { form: 'throw', value: raised, span }
-      : { form: 'break', span }
+      : { form: 'break', ...(label ? { label } : {}), span }
   }
 
   switch (mode) {
@@ -2602,9 +2639,12 @@ function loopOf(
   }
 
   const { must, down } = contractOf(bridge, value)
+  // `walk ..., name outer`: the loop's name, for a `turn next` or `halt` in a nested loop to mean this one
+  const label = wordAt(value, 'name')
   const contract = {
     ...(must ? { must } : {}),
     ...(down ? { down } : {}),
+    ...(label ? { label } : {}),
   }
 
   // The mode is a closed set, so anything outside it is the SEQUENCE: `walk one/stem` is `walk list, ...`.
@@ -2664,6 +2704,7 @@ function loopOf(
       iterable,
       body,
       ...(must ? { must } : {}),
+      ...(label ? { label } : {}),
       span,
     }
   }
@@ -2842,7 +2883,7 @@ function loopOf(
       {
       form: 'while',
       cond,
-      body: [...advancedBeforeContinue(name === item ? flow : renameLocal(flow, item, name), advance), advance],
+      body: [...advancedBeforeContinue(name === item ? flow : renameLocal(flow, item, name), advance, label), advance],
       ...contract,
       span,
       },
@@ -2861,37 +2902,44 @@ function loopOf(
 
 // A counted walk is a `while` whose last statement steps the counter, and `turn next` is a `continue`, which jumps
 // past that step: a walk that turned next on any turn counted the same number forever (guides: language/loops,
-// 2026-10-04). Every `continue` that belongs to THIS loop steps the counter first. One inside a nested loop belongs to
-// that loop and is left alone.
-function advancedBeforeContinue(body: Statement[], advance: Statement): Statement[] {
+// 2026-10-04). Every `continue` that belongs to THIS loop steps the counter first: an unnamed one in its own body, and
+// one naming this loop (`turn next, name outer`) from however deep a nested loop it sits in. An unnamed one inside a
+// nested loop belongs to that loop and is left alone.
+function advancedBeforeContinue(body: Statement[], advance: Statement, label?: string, nested = false): Statement[] {
+  const inner = (statements: Statement[], deeper = nested): Statement[] => advancedBeforeContinue(statements, advance, label, deeper)
+
   return body.flatMap((statement): Statement[] => {
     switch (statement.form) {
       case 'continue':
-        return [structuredClone(advance), statement]
+        return (statement.label === undefined ? !nested : statement.label === label) ? [structuredClone(advance), statement] : [statement]
       case 'if':
         return [
           {
             ...statement,
-            branches: statement.branches.map(b => ({ ...b, body: advancedBeforeContinue(b.body, advance) })),
-            ...(statement.otherwise ? { otherwise: advancedBeforeContinue(statement.otherwise, advance) } : {}),
+            branches: statement.branches.map(b => ({ ...b, body: inner(b.body) })),
+            ...(statement.otherwise ? { otherwise: inner(statement.otherwise) } : {}),
           },
         ]
       case 'match':
         return [
           {
             ...statement,
-            cases: statement.cases.map(c => ({ ...c, body: advancedBeforeContinue(c.body, advance) })),
-            ...(statement.otherwise ? { otherwise: advancedBeforeContinue(statement.otherwise, advance) } : {}),
+            cases: statement.cases.map(c => ({ ...c, body: inner(c.body) })),
+            ...(statement.otherwise ? { otherwise: inner(statement.otherwise) } : {}),
           },
         ]
       case 'guard':
         return [
           {
             ...statement,
-            body: advancedBeforeContinue(statement.body, advance),
-            ...(statement.catch ? { catch: { ...statement.catch, body: advancedBeforeContinue(statement.catch.body, advance) } } : {}),
+            body: inner(statement.body),
+            ...(statement.catch ? { catch: { ...statement.catch, body: inner(statement.catch.body) } } : {}),
           },
         ]
+      // a nested loop: only a `continue` naming this one is this loop's
+      case 'while':
+      case 'for-each':
+        return label === undefined ? [statement] : [{ ...statement, body: inner(statement.body, true) }]
       default:
         return [statement]
     }
@@ -4393,13 +4441,13 @@ function routeOf(
     const literal = fallbackValue
       ? (expressionOf(bridge, fallbackValue) ?? undefined)
       : undefined
-    const fallback =
+    const fallback: DockLiteral | undefined =
       literal?.form === 'integer' || literal?.form === 'float'
-        ? Number(literal.value)
+        ? { form: 'number', value: Number(literal.value) }
         : literal?.form === 'string'
-          ? literal.value
+          ? { form: 'text', value: literal.value }
           : literal?.form === 'boolean'
-            ? literal.value
+            ? { form: 'flag', value: literal.value }
             : undefined
 
     return {
@@ -4641,12 +4689,35 @@ function nativeOf(bridge: Bridge, value: Form): Statement[] {
       return []
     }
 
+    // `mark async` under the line is the one word read there: the module's functions return promises
+    let async = false
+
+    for (const note of at(line, 'note')) {
+      const word = textOf(note) ?? wordAt(note, 'text') ?? ''
+
+      if (word === 'async' && kind !== 'type') {
+        async = true
+        continue
+      }
+
+      bridge.diagnostics.push(
+        diagnose('unexpected-node', {
+          file: bridge.file,
+          span: spanOf(note),
+          message: kind === 'type'
+            ? `\`mark ${word}\` under a \`dock type\` line is read by nothing: a handle type is not called. Remove the line`
+            : `\`mark ${word}\` under a \`dock load\` line is read by nothing: \`mark async\` is the one word read there. Remove the line`,
+        }),
+      )
+    }
+
     return [
       {
         form: 'native' as const,
         alias,
         module,
         kind: kind === 'type' ? ('type' as const) : ('module' as const),
+        ...(async ? { async: true } : {}),
         // the span is the LOAD line, not the whole dock block: each line is its own statement
         span: spanOf(line),
         file: bridge.file,
@@ -4682,7 +4753,7 @@ function fieldOf(
     declared ??
     (element !== undefined
       ? { kind: 'array', element: named(element) }
-      : UNKNOWN)
+      : unknownType())
   const need = needWord(link) ?? needWord(like)
   const fallback = expressionOf(
     bridge,
@@ -5054,10 +5125,11 @@ function applyAliases(
       record.name = aliases.get(record.name)!
     } else if (record.form === 'call' && record.lean && Array.isArray(record.names)) {
       // a lean label that is an alias may be a nested call of the import: noted beside the label, left as written
-      const names = record.names as (string | undefined)[]
+      // `''` is no label, and no alias (compile/node.ts)
+      const names = record.names as string[]
 
-      if (names.some(name => name !== undefined && aliases.has(name))) {
-        record.leanAliases = names.map(name => (name === undefined ? undefined : aliases.get(name)))
+      if (names.some(name => name !== '' && aliases.has(name))) {
+        record.leanAliases = names.map(name => (name === '' ? '' : (aliases.get(name) ?? '')))
       }
     } else if (
       record.kind === 'named' &&

@@ -1,6 +1,6 @@
-// L036: a map literal (`make find`) that sets the same key twice. As with a duplicate record field, the later value
+// L036: a map literal (`make hash`) that sets the same key twice. As with a duplicate record field, the later value
 // silently wins, so the earlier entry is dead -- almost always a copy-paste or a typo. The record-literal analog is
-// no-duplicate-keys (L015); this covers the map (`make find`) literal, whose keys are constant strings. Report only:
+// no-duplicate-keys (L015); this covers the map (`make hash`) literal, whose keys are constant strings. Report only:
 // the author decides which entry to keep.
 
 import type { Rule } from '@term/make/code/lint/rule'

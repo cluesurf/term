@@ -11,6 +11,8 @@
 // Run: npx tsx test/compile/await-mark.ts
 
 import { compile } from '@term/make/code/compile/compile'
+import { stdlibResolver } from '@term/make/code/resolve'
+import { withNativeEnv } from '@term/make/code/compile/native'
 import { emitRust } from '@term/make/code/compile/rust'
 import { emitSwift } from '@term/make/code/compile/swift'
 import { emitKotlin } from '@term/make/code/compile/kotlin'
@@ -39,6 +41,14 @@ type Built =
   | { ok: false; why: string }
 
 const FILE = '/gate/code/await.tree'
+
+// TypeScript only, with the standard library resolved, for a program that loads a module of it (the task module a
+// ticked value needs)
+function buildWithBase(text: string): { ok: true; ts: string } | { ok: false; why: string } {
+  const out = compile({ file: FILE, text }, { resolve: withNativeEnv('node', stdlibResolver()!) })
+
+  return out.ok ? { ok: true, ts: out.typescript } : { ok: false, why: out.diagnostics.map(d => d.message).join(' | ') }
+}
 
 function build(text: string, lean = false): Built {
   const out = compile({ file: FILE, text }, { leanOf: () => lean })
@@ -119,7 +129,7 @@ task read-both
   same('1. a call to an async task with nothing written emits what `wait true` emits', plain, marked)
   ok('1. ...and TypeScript awaits it, the caller async', plain.ok && /async function readBoth/.test(plain.ts) && /= await fetchPage\(a\)/.test(plain.ts), plain.ok ? plain.ts : plain.why)
   ok('1. ...Rust awaits it with `.await`', plain.ok && /fetch_page\(a\)\.await/.test(plain.rs), plain.ok ? plain.rs.slice(-600) : '')
-  ok('1. ...Swift with a prefix `await`', plain.ok && /await fetchPage\(a\)/.test(plain.swift))
+  ok('1. ...Swift with a prefix `await`', plain.ok && /await fetchPage\(url: a\)/.test(plain.swift))
   ok('1. ...Kotlin through `suspend`', plain.ok && /suspend fun readBoth/.test(plain.kotlin))
 }
 
@@ -157,7 +167,12 @@ task log-visit
 
   same('2. `tick f` over its arguments is the same call as `tick f(x)`', ticked, stacked)
 
-  const pending = build(`${FETCH}
+  // in a value position a tick is the pending JOB, `spawn` of the call, a `handle` of its answer (check/pending.ts). It
+  // was a Promise on TypeScript with the binding left to inference, and nothing at all natively, until 2026-10-05
+  const pending = buildWithBase(`load @term/base/task
+  find spawn
+
+${FETCH}
 task start
   take url, like text
   like unknown
@@ -165,7 +180,17 @@ task start
   send back, read work
 `)
 
-  ok('2. in a value position `tick` yields the pending value, left to inference (a Promise on TypeScript)', pending.ok && /const work = fetchPage\(url\)/.test(pending.ts) && !/await fetchPage/.test(pending.ts), pending.ok ? pending.ts : pending.why)
+  ok('2. in a value position `tick` is the pending job, a `handle` of the answer', pending.ok && /const work: Handle<string> = spawn\(async \(\) => \(await fetchPage\(url\)\)\)/.test(pending.ts), pending.ok ? pending.ts : pending.why)
+
+  const unloaded = build(`${FETCH}
+task start
+  take url, like text
+  like unknown
+  save work, tick fetch-page(read url)
+  send back, read work
+`)
+
+  ok('2. ...and without the task module it is refused, naming what to load', !unloaded.ok && /load @term\/base\/task and find spawn/.test(unloaded.why), unloaded.ok ? 'built' : unloaded.why)
 
   const lean = build(`${FETCH}
 task log-visit
@@ -217,18 +242,18 @@ host page, call fetch-page(<home>)
   const old = build(outside)
   setAwaitOutsideTasks(true)
   const now = build(outside)
-  const fixed = build(`${FETCH}
+  const fixed = buildWithBase(`load @term/base/task
+  find spawn
+
+${FETCH}
 host page, tick fetch-page(<home>)
-`)
-  setAwaitOutsideTasks(false)
-  const fixedOld = build(`${FETCH}
-host page, call fetch-page(<home>)
 `)
   setAwaitOutsideTasks(before)
 
   ok('3. with the switch off, an async call in a top-level `host` builds, un-awaited (the old rule)', old.ok && /const page[^=]*= fetchPage\("home"\)/.test(old.ts), old.ok ? old.ts : old.why)
   ok('3. with it on, the same call is an error naming `tick`', !now.ok && /outside any task/.test(now.why) && /tick fetch-page/.test(now.why), now.ok ? 'built' : now.why)
-  ok('3. ...and `tick` there builds, emitting what the old rule emitted for the plain call', fixed.ok && fixedOld.ok && fixed.ts.replace('const page = ', 'const page: string = ') === fixedOld.ts, fixed.ok && fixedOld.ok ? `${fixed.ts}\n---\n${fixedOld.ts}` : '')
+  // a ticked `host` is a value, so it is the pending job too, started where the module loads
+  ok('3. ...and `tick` there builds, the host holding the pending job', fixed.ok && /const page: Handle<string> = spawn\(async \(\) => \(await fetchPage\("home"\)\)\)/.test(fixed.ts), fixed.ok ? fixed.ts : fixed.why)
 
   const insideTask = build(`${FETCH}
 task caller
@@ -489,7 +514,7 @@ task shown
   if (built.ok) {
     ok('and is awaited in the TypeScript', /\$\{await later\(3\)\}/.test(built.ts), built.ts.slice(-300))
     ok('and in the Rust', /later\(3\)\.await/.test(built.rs), built.rs.slice(-400))
-    ok('and in the Swift', /await later\(3\)/.test(built.swift), built.swift.slice(-400))
+    ok('and in the Swift', /await later\(n: 3\)/.test(built.swift), built.swift.slice(-400))
     ok('and the task holding it is async in the Kotlin', /suspend fun shown/.test(built.kotlin), built.kotlin.slice(-400))
   }
 }

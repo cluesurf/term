@@ -1,0 +1,1103 @@
+# The compile-time AST: the records the mills mint, carried through resolution and type checking down to codegen.
+# Distinct from the engine AST (the runtime interpreter's): these nodes carry a source span, an optional inferred type,
+# and may contain holes (unresolved references). See note/research/vibe/computation/plans/11-elaboration.md.
+#
+# Ported from compile/node.ts (self-hosting, 2026-10-05), the first of the compiler's SHARED TYPES
+# (note/term/self-host/04-the-port-switch.md, "Shared types first"). Before the port, node.ts was reshaped in
+# TypeScript to what Term can spell, every caller moved and every suite green at each step:
+#   - a `Record` of exception arms is a list of arms, each naming its label
+#   - `(string | undefined)[]` is `string[]` with `''` for none (a call's `names` and `leanAliases`, a function
+#     type's `paramNames`), and `(Type | undefined)[]` is a list of `declared-param`, its type optional
+#   - an integer literal's `number | bigint` is its number, with `digits` holding the exact text past 2^53
+#   - a template's `(string | Expression)[]` is a list of `template-part`, a case per member
+#   - a dock take's `string | number | boolean` default is a `dock-literal`, a case per member
+#   - the exported constants (`NUMBER`, `STRING`, ...) are tasks (`number-type`, ...), a Term module exporting
+#     tasks and never constants
+#   - the type and literal printers (`showType`, `typeKey`, `integerText`) moved to compile/type-text.ts: they read
+#     optional fields, which Term has no settled reading of yet (log.md)
+# A record inside a node (a map entry, a branch, a parameter) is a form of its own, named for what it is.
+#
+# `span` and `position` are parser/diagnostic.tree's.
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+load ../parser/diagnostic
+  find position
+  find span
+
+# ---- surface types ----
+
+# `unknown` is the gradual any, `variable` an inference metavariable (a type hole)
+form type
+  mark tag, name kind
+  case number
+  # a 64-bit floating-point number, distinct from the integer `number`
+  case float
+  case boolean
+  case string
+  case unit
+  case unknown
+    link free
+      like boolean
+      need false
+  # the host's dynamic value: a JS `any`, a rust `serde_json::Value`, a swift / kotlin `Any`
+  case dynamic
+  # a raw byte buffer backed by the platform's native octet type
+  case bytes
+  case array
+    link element, like type
+  case map
+    link key, like type
+    link value, like type
+  # a named type, optionally applied to TYPE arguments and VALUE-INDEX arguments (`vec a n`)
+  case named
+    link name, like text
+    link args
+      like list, like type
+      need false
+    link value-args
+      like list, like expression
+      need false
+  case function
+    link params, like list, like type
+    link result, like type
+    link effects
+      like list, like text
+      need false
+    # the parameters' surface names, `''` for one with no name
+    link param-names
+      like list, like text
+      need false
+  case variable
+    link id, like number
+
+# The primitive types, each made fresh
+task number-type
+  like type
+
+  back make number
+
+task float-type
+  like type
+
+  back make float
+
+task boolean-type
+  like type
+
+  back make boolean
+
+task string-type
+  like type
+
+  back make string
+
+task unit-type
+  like type
+
+  back make unit
+
+task unknown-type
+  like type
+
+  back make unknown
+
+# a slot the source left EMPTY (a bare `like list`'s element), seeded as a fresh inference variable
+task free-unknown-type
+  like type
+
+  back
+    make unknown
+      bind free, true
+
+task dynamic-type
+  like type
+
+  back make dynamic
+
+task bytes-type
+  like type
+
+  back make bytes
+
+form binary-op
+  mark text
+  case plus, text <+>
+  case minus, text <->
+  case times, text <*>
+  case divide, text </>
+  case remainder, text <%>
+  case equal, text <==>
+  case unequal, text <!=>
+  case below, text <\<>
+  case at-most, text <\<=>
+  case above, text <\>>
+  case at-least, text <\>=>
+  case both, text <&&>
+  case either, text <||>
+
+form unary-op
+  mark text
+  case negate, text <->
+  case not, text <!>
+
+form assign-op
+  mark text
+  case set, text <=>
+  case add, text <+=>
+  case subtract, text <-=>
+  case multiply, text <*=>
+  case divide, text </=>
+
+form binding
+  mark tag, name kind
+  case parameter
+  case local
+  case function
+    link arity, like number
+  case builtin
+  case deferred
+
+# ---- expressions ----
+
+# one part of a run-time text: a chunk as written, or an expression whose value is shown in its place
+form template-part
+  case chunk
+    link value, like text
+  case value
+    link value, like expression
+
+task chunk-part
+  take value, like text
+  like template-part
+
+  back
+    make chunk
+      bind value, value
+
+task value-part
+  take value, like expression
+  like template-part
+
+  back
+    make value
+      bind value, value
+
+form map-entry
+  link key, like expression
+  link value, like expression
+
+form field-value
+  link name, like text
+  link value, like expression
+
+form closure-param
+  link name, like text
+  link type
+    like maybe, like type
+    need false
+
+form value-branch
+  link cond, like expression
+  link value, like expression
+
+form expression
+  # `value` the number, and `digits` its exact text past 2^53
+  case integer
+    link value, like number
+    link digits
+      like text
+      need false
+    link span, like span
+    link type
+      like maybe, like type
+      need false
+  case float
+    link value, like decimal
+    link span, like span
+    link type
+      like maybe, like type
+      need false
+  case boolean
+    link value, like boolean
+    link span, like span
+    link type
+      like maybe, like type
+      need false
+  case string
+    link value, like text
+    link span, like span
+    link type
+      like maybe, like type
+      need false
+  # run-time text interpolation: the chunks as written and an expression per `{{...}}`
+  case template
+    link parts, like list, like template-part
+    link span, like span
+    link type
+      like maybe, like type
+      need false
+  case unit
+    link span, like span
+    link type
+      like maybe, like type
+      need false
+  # the host null literal, for the dynamic boundary
+  case null
+    link span, like span
+    link type
+      like maybe, like type
+      need false
+  case variable
+    link name, like text
+    link span, like span
+    link type
+      like maybe, like type
+      need false
+    link binding
+      like maybe, like binding
+      need false
+    # the alias the reference was written as, meaning the IMPORT
+    link alias
+      like text
+      need false
+  case binary
+    link op, like binary-op
+    link left, like expression
+    link right, like expression
+    link span, like span
+    link type
+      like maybe, like type
+      need false
+  case unary
+    link op, like unary-op
+    link operand, like expression
+    link span, like span
+    link type
+      like maybe, like type
+      need false
+  case call
+    link callee, like expression
+    link args, like list, like expression
+    link span, like span
+    link type
+      like maybe, like type
+      need false
+    # named arguments, one per argument, `''` for a positional one
+    link names
+      like list, like text
+      need false
+    link lean
+      like boolean
+      need false
+    link lean-names
+      like list, like boolean
+      need false
+    link lean-aliases
+      like list, like text
+      need false
+    # `tick` / `wait false`: made and never awaited
+    link background
+      like boolean
+      need false
+    # the form a `fill` fills or a `melt` melts
+    link into
+      like maybe, like type
+      need false
+    # `halt kink`: pass the callee's exception on
+    link propagate
+      like boolean
+      need false
+  case array
+    link items, like list, like expression
+    link span, like span
+    link type
+      like maybe, like type
+      need false
+  case map
+    link entries, like list, like map-entry
+    link span, like span
+    link type
+      like maybe, like type
+      need false
+  case record
+    link name, like text
+    link fields, like list, like field-value
+    link span, like span
+    link type
+      like maybe, like type
+      need false
+    link positional
+      like list, like expression
+      need false
+    link function-free
+      like boolean
+      need false
+    link lean
+      like boolean
+      need false
+  case member
+    link target, like expression
+    link name, like text
+    # a DYNAMIC segment, `read table/{key}`
+    link index
+      like maybe, like expression
+      need false
+    # the member's foreign `name <...>`
+    link nick
+      like text
+      need false
+    # the TAG of a form with cases, read as a field: set by the checker to the form's name
+    link tag
+      like text
+      need false
+    link span, like span
+    link type
+      like maybe, like type
+      need false
+  case await
+    link expr, like expression
+    link span, like span
+    link type
+      like maybe, like type
+      need false
+  # a function literal used as a value
+  case closure
+    link params, like list, like closure-param
+    link body, like list, like statement
+    link result
+      like maybe, like type
+      need false
+    link async
+      like boolean
+      need false
+    link span, like span
+    link type
+      like maybe, like type
+      need false
+  # a conditional in value position, each branch a (cond, value) pair
+  case conditional
+    link branches, like list, like value-branch
+    link otherwise
+      like maybe, like expression
+      need false
+    link span, like span
+    link type
+      like maybe, like type
+      need false
+  # an unresolved reference, which may be deferred to run time
+  case hole
+    link name, like text
+    link span, like span
+    link type
+      like maybe, like type
+      need false
+    link deferred
+      like boolean
+      need false
+
+# ---- statements ----
+
+# what a checker-written `hold` stands for: the contract kinds fail the build when unproven, the tier-0 kinds are counted
+form hold-origin
+  mark text
+  case must
+  case need
+  case keep-entry, text <keep-entry>
+  case keep-turn, text <keep-turn>
+  case down
+  case index
+  case zero
+  case ends
+  case given
+
+form statement-branch
+  link cond, like expression
+  link body, like list, like statement
+
+form match-case
+  link label, like text
+  link body, like list, like statement
+  link binds
+    like list, like text
+    need false
+
+# the shared fields and the props an arm over a caught exception binds
+form exception-arm
+  link label, like text
+  link shared, like list, like text
+  link link, like list, like text
+
+form catch-clause
+  link name, like text
+  link body, like list, like statement
+  link span, like span
+
+form refinement
+  mark text
+  case natural
+
+form function-param
+  link name, like text
+  link type
+    like maybe, like type
+    need false
+  link refine
+    like maybe, like refinement
+    need false
+  link optional
+    like boolean
+    need false
+  # `fall <value>`: the value an omitted argument gets
+  link fallback
+    like maybe, like expression
+    need false
+  # `slot <name>`: positional only
+  link positional
+    like boolean
+    need false
+  # `like u8` and the other width aliases
+  link width
+    like text
+    need false
+  link span
+    like maybe, like span
+    need false
+
+form generic-param
+  link name, like text
+  link need
+    like text
+    need false
+
+form universal
+  link name, like text
+  link binders, like list, like text
+  link expr, like expression
+
+form method-of
+  link form, like text
+  link name, like text
+
+# a parameter's type as written, absent where none was
+form declared-param
+  link type
+    like maybe, like type
+    need false
+
+form declared-signature
+  link params, like list, like declared-param
+  link result
+    like maybe, like type
+    need false
+
+form type-index
+  link name, like text
+  link type, like type
+
+form form-field
+  link name, like text
+  link type, like type
+  link nick
+    like text
+    need false
+  link identity
+    like boolean
+    need false
+  link optional
+    like boolean
+    need false
+  link fallback
+    like maybe, like expression
+    need false
+  link positional
+    like boolean
+    need false
+  link span
+    like maybe, like span
+    need false
+
+form variant-field
+  link name, like text
+  link type, like type
+  link nick
+    like text
+    need false
+  link identity
+    like boolean
+    need false
+  # `need false`: the field may be absent
+  link optional
+    like boolean
+    need false
+  link span
+    like maybe, like span
+    need false
+
+form form-variant
+  link name, like text
+  link fields, like list, like variant-field
+  link index-values
+    like list, like expression
+    need false
+  # the case's text in a `mark text` form
+  link text
+    like text
+    need false
+
+form head-link
+  link name, like text
+  link type, like type
+
+form extend-head
+  link name, like text
+  link type
+    like maybe, like type
+    need false
+  link links
+    like list, like head-link
+    need false
+  link span, like span
+
+form extend-link
+  link name, like text
+  link type, like type
+  link nick
+    like text
+    need false
+  link identity
+    like boolean
+    need false
+  link optional
+    like boolean
+    need false
+  link fallback
+    like maybe, like expression
+    need false
+
+form form-extend
+  link base, like type
+  link heads, like list, like extend-head
+  link links, like list, like extend-link
+  link pins, like list, like field-value
+  link span, like span
+
+form native-kind
+  mark text
+  case module
+  case type
+
+form bind-param
+  link name, like text
+  link type
+    like maybe, like type
+    need false
+  link refine
+    like maybe, like refinement
+    need false
+  link optional
+    like boolean
+    need false
+
+form bind-import
+  link module, like text
+  link alias
+    like text
+    need false
+
+form bind-target
+  link env, like text
+  link expression, like text
+  link imports, like list, like bind-import
+
+form statement
+  # `foreign` is the host name an ambient binding maps to
+  case let
+    link name, like text
+    link init, like expression
+    link mutable, like boolean
+    link span, like span
+    link type
+      like maybe, like type
+      need false
+    link foreign
+      like text
+      need false
+    # on a separate-compilation stub: the name its own unit's module exports it by
+    link stub-export
+      like text
+      need false
+  case assign
+    link target, like expression
+    link op, like assign-op
+    link value, like expression
+    link span, like span
+  case expression
+    link expr, like expression
+    link span, like span
+  case if
+    link branches, like list, like statement-branch
+    link otherwise
+      like list, like statement
+      need false
+    link span, like span
+  case while
+    link cond, like expression
+    link body, like list, like statement
+    link span, like span
+    link must
+      like list, like expression
+      need false
+    link down
+      like maybe, like expression
+      need false
+    # the loop's name (`walk xs, name outer`)
+    link label
+      like text
+      need false
+  # a pattern match on an enum value
+  case match
+    link subject, like expression
+    link cases, like list, like match-case
+    link otherwise
+      like list, like statement
+      need false
+    link span, like span
+    link exception-arms
+      like list, like exception-arm
+      need false
+    # filled by the checker when the arms cover every variant
+    link closed
+      like boolean
+      need false
+  case for-each
+    link item, like text
+    link index
+      like text
+      need false
+    link iterable, like expression
+    link body, like list, like statement
+    link span, like span
+    link must
+      like list, like expression
+      need false
+    link label
+      like text
+      need false
+  # `halt` and `turn next`, of the innermost loop or of the loop named `label`
+  case break
+    link label
+      like text
+      need false
+    link span, like span
+  case continue
+    link label
+      like text
+      need false
+    link span, like span
+  case return
+    link value
+      like maybe, like expression
+      need false
+    link span, like span
+  # stop the whole program
+  case exit
+    link span, like span
+  # a debugger breakpoint
+  case debug
+    link span, like span
+  # a guarded body and its handler
+  case guard
+    link body, like list, like statement
+    link catch
+      like maybe, like catch-clause
+      need false
+    link span, like span
+  case throw
+    link value, like expression
+    link span, like span
+    link raise
+      like text
+      need false
+  # a verification condition
+  case hold
+    link expr, like expression
+    link name
+      like text
+      need false
+    link proof
+      like list, like proof
+      need false
+    link span, like span
+    link origin
+      like maybe, like hold-origin
+      need false
+  case function
+    link name, like text
+    link params, like list, like function-param
+    link body, like list, like statement
+    link result
+      like maybe, like type
+      need false
+    link generics, like list, like generic-param
+    link async
+      like boolean
+      need false
+    link private
+      like boolean
+      need false
+    link internal
+      like boolean
+      need false
+    link private-note
+      like maybe, like span
+      need false
+    link stub
+      like boolean
+      need false
+    # what a stub's body was shown to do, by its owning unit (compile/stub.ts)
+    link stub-facts
+      like list, like text
+      need false
+    link stub-writes
+      like list, like number
+      need false
+    link stub-raises
+      like list, like text
+      need false
+    link stub-shape
+      like maybe, like statement
+      need false
+    link stub-export
+      like text
+      need false
+    link claim
+      like boolean
+      need false
+    link open
+      like boolean
+      need false
+    link grounded
+      like boolean
+      need false
+    link axiom
+      like boolean
+      need false
+    link theorem
+      like boolean
+      need false
+    link universals
+      like list, like universal
+      need false
+    link roam
+      like boolean
+      need false
+    link deprecated
+      like boolean
+      need false
+    link method
+      like maybe, like method-of
+      need false
+    link raises
+      like list, like text
+      need false
+    link have
+      like list, like expression
+      need false
+    link must
+      like list, like expression
+      need false
+    link down
+      like maybe, like expression
+      need false
+    # the parameter and result types as written, for the kernel
+    link declared
+      like maybe, like declared-signature
+      need false
+    link span, like span
+  case record-type
+    link name, like text
+    link params, like list, like text
+    link indices
+      like list, like type-index
+      need false
+    link fields, like list, like form-field
+    link variants, like list, like form-variant
+    link alias
+      like maybe, like type
+      need false
+    # `mark tag, name kind`: the field a union discriminates on
+    link tag
+      like text
+      need false
+    # `mark text`: a closed set of texts
+    link text
+      like boolean
+      need false
+    link extend
+      like maybe, like form-extend
+      need false
+    link pins
+      like list, like field-value
+      need false
+    link chain
+      like list, like text
+      need false
+    link props
+      like text
+      need false
+    link truncation
+      like boolean
+      need false
+    link shared
+      like boolean
+      need false
+    link function-free
+      like boolean
+      need false
+    link stub-export
+      like text
+      need false
+    link span, like span
+  # a trait: a named set of method signatures
+  case mask
+    link name, like text
+    link methods, like list, like text
+    link stub-export
+      like text
+      need false
+    link span, like span
+  # a trait implementation for a type
+  case instance
+    link mask, like text
+    link target, like text
+    link methods, like list, like text
+    link span, like span
+  # a native module binding
+  case native
+    link alias, like text
+    link module, like text
+    link kind
+      like maybe, like native-kind
+      need false
+    # `mark async` under the load line: every function of the module returns a promise
+    link async
+      like boolean
+      need false
+    link span, like span
+    link file
+      like text
+      need false
+  # one stdlib name, a native expression template per environment
+  case bind
+    link name, like text
+    link params, like list, like bind-param
+    link result
+      like maybe, like type
+      need false
+    link targets, like list, like bind-target
+    link span, like span
+  # a component definition
+  case view
+    link name, like text
+    link params, like list, like closure-param
+    link body, like list, like view-node
+    link span, like span
+  # a routing / CLI dock
+  case dock
+    link route, like dock-route
+    link span, like span
+  # a kind a deck declares
+  case roll
+    link name, like text
+    link like, like text
+    link span, like span
+  # the app's decision about one exception
+  case tell
+    link name, like text
+    link note
+      like text
+      need false
+    link hint
+      like text
+      need false
+    link links, like list, like text
+    link alias
+      like text
+      need false
+    link span, like span
+
+# ---- the view (component) AST ----
+
+form view-attribute
+  link name, like text
+  link value, like expression
+  link event, like boolean
+  link span, like span
+
+form view-branch
+  link cond, like expression
+  link body, like list, like view-node
+
+form view-node
+  case element
+    link name, like text
+    link attributes, like list, like view-attribute
+    link props, like list, like field-value
+    link children, like list, like view-node
+    link ref
+      like text
+      need false
+    link forced
+      like boolean
+      need false
+    link span, like span
+  case text
+    link value, like text
+    link span, like span
+  case read
+    link value, like expression
+    link span, like span
+  case slot
+    link name
+      like text
+      need false
+    link span, like span
+  case fork
+    link branches, like list, like view-branch
+    link otherwise
+      like list, like view-node
+      need false
+    link span, like span
+  case walk
+    link iterable, like expression
+    link item, like text
+    link body, like list, like view-node
+    link span, like span
+  case save
+    link name, like text
+    link value, like expression
+    link span, like span
+  case call
+    link value, like expression
+    link span, like span
+
+# ---- the dock (routing / CLI) AST ----
+
+form dock-argument
+  link name, like text
+  link value, like expression
+
+# a take's default, as written
+form dock-literal
+  case text
+    link value, like text
+  case number
+    link value, like number
+  case flag
+    link value, like boolean
+
+form dock-call
+  link name, like text
+  link args, like list, like dock-argument
+  link params
+    like list, like text
+    need false
+  link span, like span
+
+form dock-take
+  link name, like text
+  link type
+    like maybe, like type
+    need false
+  link required, like boolean
+  link short
+    like text
+    need false
+  link masked
+    like boolean
+    need false
+  link note
+    like text
+    need false
+  link fallback
+    like maybe, like dock-literal
+    need false
+  link variadic
+    like boolean
+    need false
+  link choices
+    like list, like text
+    need false
+  link span, like span
+
+form dock-send
+  link name, like text
+  link value
+    like maybe, like expression
+    need false
+
+form dock-method
+  link name, like text
+  link takes, like list, like dock-take
+  link calls, like list, like dock-call
+  link sends, like list, like dock-send
+  link span, like span
+
+form dock-component
+  link name, like text
+  link props, like list, like dock-argument
+
+form dock-hook
+  link name, like text
+  link calls, like list, like dock-call
+
+form dock-route
+  link path, like text
+  link note
+    like text
+    need false
+  link takes, like list, like dock-take
+  link methods, like list, like dock-method
+  link calls, like list, like dock-call
+  link component
+    like maybe, like dock-component
+    need false
+  link directives, like list, like dock-send
+  link sends, like list, like dock-send
+  link hooks, like list, like dock-hook
+  link children, like list, like dock-route
+  link span, like span
+
+# a node in an explicit proof tree
+form proof
+  link head, like text
+  link arg
+    like text
+    need false
+  link children, like list, like proof
+  link span, like span
+
+form program
+  like list, like statement
+
+# another implementation of a named task, read from a `twin` declaration
+form twin
+  link of, like text
+  link name, like text
+  link params, like list, like text
+  link have, like list, like expression
+  link test, like list, like expression
+  link ease, like list, like text
+  link cost
+    like maybe, like expression
+    need false
+  link knobs, like list, like closure-param
+  link platform, like list, like text
+  link trust, like boolean
+  link body, like list, like statement
+  link span, like span

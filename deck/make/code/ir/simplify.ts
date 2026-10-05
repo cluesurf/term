@@ -7,9 +7,11 @@ import type {
   Expression,
   Program,
   Statement,
+  TemplatePart,
   Type,
   ViewNode,
 } from '@term/make/code/compile/node'
+import { chunkPart, valuePart } from '@term/make/code/compile/node'
 import { egraphArith } from '@term/make/code/ir/egraph-arith'
 import { inlineStatements } from '@term/make/code/ir/inline-statements'
 import { expressionsEqual } from '@term/make/code/compile/expr-equal'
@@ -139,7 +141,7 @@ function printedAlike(node: Expression): string | undefined {
     case 'boolean':
       return String(node.value)
     case 'integer':
-      return Number.isSafeInteger(Number(node.value)) ? String(Number(node.value)) : undefined
+      return node.digits === undefined && Number.isSafeInteger(node.value) ? String(node.value) : undefined
     case 'float': {
       const value = Number(node.value)
 
@@ -211,18 +213,18 @@ function fillTemplate(
   const printed: string[] = []
 
   for (const part of node.parts) {
-    if (typeof part === 'string') {
-      printed.push(part)
+    if (part.form === 'chunk') {
+      printed.push(part.value)
       continue
     }
 
-    const read = [...namesRead(part)]
+    const read = [...namesRead(part.value)]
 
     if (read.some(name => bound.has(name) || !constants.has(name))) {
       return node
     }
 
-    const text = printedAlike(simplifyExpression(substituteExpr(structuredClone(part), constants)))
+    const text = printedAlike(simplifyExpression(substituteExpr(structuredClone(part.value), constants)))
 
     if (text === undefined) {
       return node
@@ -831,8 +833,8 @@ function collectReadNames(
       break
     case 'template':
       for (const part of node.parts) {
-        if (typeof part !== 'string') {
-          collectReadNames(part, into)
+        if (part.form === 'value') {
+          collectReadNames(part.value, into)
         }
       }
 
@@ -1140,7 +1142,7 @@ function substituteExpr(
     case 'await':
       return { ...node, expr: substituteExpr(node.expr, subst) }
     case 'template':
-      return { ...node, parts: node.parts.map(part => (typeof part === 'string' ? part : substituteExpr(part, subst))) }
+      return { ...node, parts: node.parts.map(part => (part.form === 'value' ? valuePart(substituteExpr(part.value, subst)) : part)) }
     case 'conditional':
       return {
         ...node,
@@ -1686,17 +1688,19 @@ function simplifyExpression(node: Expression): Expression {
     // and a part that is itself a template (a small task answering one, inlined into another's) is spliced in, its parts
     // read in the same order, so the text is built once: two `format!`s nested was clippy's format_in_format_args
     case 'template': {
-      const parts: (typeof node.parts)[number][] = []
+      const parts: TemplatePart[] = []
 
       for (const part of node.parts) {
-        const simplified = typeof part === 'string' ? part : simplifyExpression(part)
-        const spliced = typeof simplified !== 'string' && simplified.form === 'template' ? simplified.parts : [simplified]
+        const simplified = part.form === 'value' ? simplifyExpression(part.value) : undefined
+        const spliced =
+          simplified === undefined ? [part] : simplified.form === 'template' ? simplified.parts : [valuePart(simplified)]
 
         for (const piece of spliced) {
-          const last = parts.length - 1
+          const previous = parts[parts.length - 1]
 
-          if (typeof piece === 'string' && typeof parts[last] === 'string') {
-            parts[last] = `${parts[last]}${piece}`
+          // two chunks side by side are one
+          if (piece.form === 'chunk' && previous?.form === 'chunk') {
+            parts[parts.length - 1] = chunkPart(`${previous.value}${piece.value}`)
           } else {
             parts.push(piece)
           }
@@ -1948,7 +1952,7 @@ function rewriteExpression(
     case 'await':
       return { ...node, expr: rewriteExpression(node.expr, forwarders) }
     case 'template':
-      return { ...node, parts: node.parts.map(part => (typeof part === 'string' ? part : rewriteExpression(part, forwarders))) }
+      return { ...node, parts: node.parts.map(part => (part.form === 'value' ? valuePart(rewriteExpression(part.value, forwarders)) : part)) }
     case 'closure':
       return {
         ...node,
@@ -2094,8 +2098,8 @@ function countReferences(
       break
     case 'template':
       for (const part of node.parts) {
-        if (typeof part !== 'string') {
-          countReferences(part, counts)
+        if (part.form === 'value') {
+          countReferences(part.value, counts)
         }
       }
 
@@ -2307,13 +2311,14 @@ function boundNames(fn: Extract<Statement, { form: 'function' }>): Set<string> {
     // field and prop by name: an inlined `time.now()` (the stdlib's `exception-time`) inside an arm that binds the
     // caught exception's `time` read the number, on Swift and Kotlin (2026-10-04)
     if (record.form === 'match' && Array.isArray(record.cases)) {
-      const arms = record.exceptionArms as Record<string, { shared: string[]; link: string[] }> | undefined
+      const arms = record.exceptionArms as { label: string; shared: string[]; link: string[] }[] | undefined
 
       for (const c of record.cases as { label: string; binds?: string[] }[]) {
         // an arm's `link` lines name what it binds; without them it binds the case's fields by their own names
         const own = c.binds?.length ? [] : [...(caseFields.get(c.label) ?? [])]
+        const arm = arms?.find(one => one.label === c.label)
 
-        for (const name of [...(c.binds ?? []), ...own, ...(arms?.[c.label]?.shared ?? []), ...(arms?.[c.label]?.link ?? [])]) {
+        for (const name of [...(c.binds ?? []), ...own, ...(arm?.shared ?? []), ...(arm?.link ?? [])]) {
           names.add(name)
         }
       }

@@ -14,11 +14,11 @@ import type {
   Program,
   Statement,
 } from '@term/make/code/compile/node'
-import { showType } from '@term/make/code/compile/node'
 import type { Span } from '@term/make/code/parser/diagnostic'
 import { importFindsOf, makeParseMemo } from '@term/make/code/compile/load'
 import type { LspPosition } from '@term/flow/code/analyze'
 import { within } from '@term/flow/code/analyze'
+import { showType } from '@term/make/code/compile/type-text'
 
 export type SymbolKind =
   | 'function'
@@ -278,8 +278,8 @@ export function buildIndex(program: Program, text?: string): SymbolIndex {
         break
       case 'template':
         for (const part of node.parts) {
-          if (typeof part !== 'string') {
-            expr(part, locals)
+          if (part.form === 'value') {
+            expr(part.value, locals)
           }
         }
 
@@ -663,7 +663,7 @@ export function forEachCall(
         })
         break
       case 'template':
-        node.parts.forEach(p => (typeof p === 'string' ? undefined : expr(p)))
+        node.parts.forEach(p => (p.form === 'value' ? expr(p.value) : undefined))
         break
       case 'closure':
         walk(node.body)

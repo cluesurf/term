@@ -470,7 +470,7 @@ const HASH = `load @term/base/code/hash
 task set-and-get
   like number
   save m
-    make find
+    make hash
   save m
     call set
       read m
@@ -486,7 +486,7 @@ task set-and-get
 task get-missing
   like number
   save m
-    make find
+    make hash
   send back
     call unwrap-or
       call get
@@ -497,7 +497,7 @@ task get-missing
 task has-key
   like boolean
   save m
-    make find
+    make hash
   save m
     call set
       read m
@@ -511,7 +511,7 @@ task has-key
 task entry-count
   like number
   save m
-    make find
+    make hash
   save m
     call set
       read m
@@ -530,7 +530,7 @@ task entry-count
 task entry-count-verb
   like number
   save m
-    make find
+    make hash
   save m
     call set
       read m
@@ -611,7 +611,7 @@ task add-has
   save s
     make set
       bind items
-        make find
+        make hash
   save s
     call insert
       read s
@@ -626,7 +626,7 @@ task missing
   save s
     make set
       bind items
-        make find
+        make hash
   send back
     call has
       read s
@@ -637,7 +637,7 @@ task unique-size
   save s
     make set
       bind items
-        make find
+        make hash
   save s
     call insert
       read s
@@ -660,7 +660,7 @@ task unique-count
   save s
     make set
       bind items
-        make find
+        make hash
   save s
     call insert
       read s

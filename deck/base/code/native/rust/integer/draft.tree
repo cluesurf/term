@@ -1,0 +1,6 @@
+mark draft
+
+# SHELVED 2026-10-05. Each width here fuses `integer` with `bits` and `bits-minus-one`, which `../integer.tree`'s
+# template does not take, and nothing loads these modules or that template: no `{platform}/integer` load exists. A
+# fuse with a name its template does not take is refused since a fuse was required to fit its template
+# (compile/template.ts). The widths the library builds are `@term/base/integer/8` and its siblings, from `n.tree`.

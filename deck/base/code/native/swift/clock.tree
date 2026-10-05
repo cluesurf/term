@@ -8,9 +8,16 @@ task current-time
   send back
     call clock/current-time
 
+# a wait that blocks nothing: the task is suspended and its thread runs other work meanwhile, so two jobs that each wait
+# wait at the same time. It was `Thread.sleep`, which held the thread
+bind wait-for
+  take ms, like number
+  like void
+  case swift
+    text <(try? await Task.sleep(nanoseconds: UInt64(max($ms, 0)) * 1_000_000)) ?? ()>
+
 task delay
   mark async
   take ms, like number
   like void
-  call clock/sleep
-    read ms
+  call wait-for(ms)

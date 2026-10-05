@@ -139,11 +139,11 @@ export function checkTypeNames(program: Program, file: string): Diagnostic[] {
     if (s.form === 'function' && !s.stub) {
       // a method sees its form's type parameters as well as its own
       const owner = s.method ? forms.get(s.method.form) : undefined
-      const declared = s.declared ?? { params: s.params.map(p => p.type), result: s.result }
+      const declared = s.declared ?? { params: s.params.map(p => ({ type: p.type })), result: s.result }
       // and a TYPE FAMILY is a parameter that is a task to `type`, used as a type (`take p / like task / ... / like
       // type`, then `like p / head / read x`): the proof library's substitution and its convoy are built on one
       const families = s.params.filter((p, i) => {
-        const type = declared.params[i] ?? p.type
+        const type = declared.params[i]?.type ?? p.type
 
         return type?.kind === 'function' && type.result.kind === 'named' && type.result.name === 'type'
       })
@@ -155,7 +155,7 @@ export function checkTypeNames(program: Program, file: string): Diagnostic[] {
       const where = `in \`${s.method?.name ?? s.name}\``
 
       // each parameter at its own `take` line, the result at the task
-      declared.params.forEach((type, i) => check([type], generics, s.params[i]?.span ?? s.span, where))
+      declared.params.forEach((param, i) => check([param.type], generics, s.params[i]?.span ?? s.span, where))
       check([declared.result], generics, s.span, where)
     }
 
@@ -190,9 +190,13 @@ export function checkTypeNames(program: Program, file: string): Diagnostic[] {
   // `make hash` / `make list`. `make list(1, 2)` and its kin are the native collections too. `make void` is the
   // language's empty value: `@term/base/void` declares the form, and the program carries it as the primitive
   const constructible = new Set<string>(['hash', 'list', 'void'])
+  // a `make hash` reaches here as a record only when it has `bind` fields: the native map takes `save` entries and is
+  // built as a map by the mill. So a record `hash` is the program's own form or case, or a mistake
+  let ownHash = false
 
   for (const s of program) {
     if (s.form === 'record-type') {
+      ownHash ||= s.name === 'hash' || s.variants.some(v => v.name === 'hash')
       constructible.add(s.name)
 
       // a form named like a case of another (`expression`, beside `statement`'s case `expression`) is renamed
@@ -214,6 +218,19 @@ export function checkTypeNames(program: Program, file: string): Diagnostic[] {
     }
 
     eachConstruction(s.body, node => {
+      if (node.name === 'hash' && !ownHash) {
+        out.push(
+          diagnose('unknown-name', {
+            file,
+            span: node.span ?? s.span,
+            message: `a \`make hash\` entry is a \`save <key>, <value>\` line, not a \`bind\` (in \`${s.method?.name ?? s.name}\`)`,
+            hint: 'write each entry as `save <key>, <value>` under `make hash`',
+          }),
+        )
+
+        return
+      }
+
       if (!constructible.has(node.name)) {
         out.push(
           diagnose('unknown-name', {

@@ -4,7 +4,6 @@
 // Run: npx tsx test/check/diagnostics.ts
 
 import { compile } from '@term/make/code/compile/compile'
-import { showType } from '@term/make/code/compile/node'
 import { renderKink } from '@term/make/code/parser/diagnostic'
 import { describeOwed } from '@term/make/code/check/holds'
 import type { Owed } from '@term/make/code/check/holds'
@@ -12,6 +11,7 @@ import { readable } from '@term/call/code/test-preprocess'
 import { projectResolver } from '@term/call/code/make'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { showType } from '@term/make/code/compile/type-text'
 
 const TERM = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 

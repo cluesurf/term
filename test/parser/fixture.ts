@@ -15,7 +15,7 @@
 import { readdirSync, readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { parse, printTree } from '@term/make/code/parser/tree'
-import { CATALOG } from '@term/make/code/parser/diagnostic'
+import { diagnosticNames } from '@term/make/code/parser/diagnostic'
 
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const DIR = join(HERE, 'file')
@@ -157,7 +157,7 @@ const parserSource = ['tree.ts', 'token.ts', 'event.ts']
   })
   .join('\n')
 
-for (const name of Object.keys(CATALOG)) {
+for (const name of diagnosticNames()) {
   if (!new RegExp(`['"\`]${name}['"\`]`).test(parserSource)) {
     continue
   }

@@ -342,7 +342,7 @@ export function resolve(
           // the call would receive the label's value as one more positional array. lean.md names that as the one
           // way the lean surface can fail with no message, so it gets one.
           if (node.callee.form !== 'variable' && node.leanNames?.some(Boolean)) {
-            const left = (node.names ?? []).filter((name, i) => typeof name === 'string' && node.leanNames?.[i])
+            const left = (node.names ?? []).filter((name, i) => !!name && node.leanNames?.[i])
 
             diagnostics.push(
               diagnose('type-mismatch', {
@@ -460,8 +460,8 @@ export function resolve(
         break
       case 'template':
         for (const part of node.parts) {
-          if (typeof part !== 'string') {
-            resolveExpression(part)
+          if (part.form === 'value') {
+            resolveExpression(part.value)
           }
         }
 

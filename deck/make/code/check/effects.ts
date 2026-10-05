@@ -195,8 +195,8 @@ function calledNames(
         break
       case 'template':
         for (const part of node.parts) {
-          if (typeof part !== 'string') {
-            expr(part)
+          if (part.form === 'value') {
+            expr(part.value)
           }
         }
 
@@ -912,6 +912,20 @@ export function raiseSets(
   }
 
   for (const [name, statement] of functions) {
+    // a separately compiled task: the set its own unit closed over its body and callees (`stubRaises`)
+    if (statement.stub && statement.stubRaises) {
+      const known = new Set(statement.stubRaises)
+
+      if (statement.stubFacts?.includes('native')) {
+        nativeShims.add(name)
+      }
+
+      raises.set(name, known)
+      via.set(name, new Map([...known].map(d => [d, undefined])))
+      calls.set(name, new Set())
+      continue
+    }
+
     const direct = new Set<string>()
     const called = new Set<string>()
     sawNative = false

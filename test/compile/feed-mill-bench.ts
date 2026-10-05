@@ -155,21 +155,21 @@ const NATIVE = [
     build: (src: string, exe: string) => ['-O', '-suppress-warnings', src, '-o', exe],
     main: `let input = String(repeating: "deadbeefcafef00d", count: 64)
 let runs = 200
-let a = try! runGenerated(input)
-let b = try! runHand(input)
+let a = try! runGenerated(input: input)
+let b = try! runHand(input: input)
 
 if a != b {
     print("{\\"agree\\":false,\\"a\\":\\(a),\\"b\\":\\(b)}")
     exit(0)
 }
 
-for _ in 0..<20 { _ = try! runGenerated(input); _ = try! runHand(input) }
+for _ in 0..<20 { _ = try! runGenerated(input: input); _ = try! runHand(input: input) }
 
 let t0 = Date()
-for _ in 0..<runs { _ = try! runGenerated(input) }
+for _ in 0..<runs { _ = try! runGenerated(input: input) }
 let g = Date().timeIntervalSince(t0) * 1000
 let t1 = Date()
-for _ in 0..<runs { _ = try! runHand(input) }
+for _ in 0..<runs { _ = try! runHand(input: input) }
 let h = Date().timeIntervalSince(t1) * 1000
 
 print("{\\"agree\\":true,\\"bytes\\":\\(a),\\"generated\\":\\(g),\\"hand\\":\\(h)}")

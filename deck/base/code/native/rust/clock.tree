@@ -8,9 +8,17 @@ task current-time
   send back
     call clock/current-time
 
+# a wait that blocks nothing: a timer on the program's executor (compile/rust.ts, `__term_sleep`), so a job that waits
+# lets every other job run meanwhile. It was `std::thread::sleep`, which held the one thread and made two jobs that
+# each waited take the sum of their waits
+bind wait-for
+  take ms, like number
+  like void
+  case rust
+    text <__term_sleep($ms).await>
+
 task delay
   mark async
   take ms, like number
   like void
-  call clock/sleep
-    read ms
+  call wait-for(ms)

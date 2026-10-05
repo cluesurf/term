@@ -15,6 +15,7 @@ import { mill } from '@term/make/code/compile/mill'
 import { resolve as resolveNames } from '@term/make/code/check/resolve'
 import { check } from '@term/make/code/check/infer'
 import { resolveAsync } from '@term/make/code/check/async-resolve'
+import { asyncSlots } from '@term/make/code/check/async-slots'
 import { simplify } from '@term/make/code/ir/simplify'
 import { collectModules } from '@term/make/code/compile/load'
 import { bindModules, stampModule } from '@term/make/code/check/bind-modules'
@@ -165,6 +166,10 @@ function frontEnd(
   bindModules(program, scope, 'main.tree')
   resolveNames(program, 'main.tree')
   check(program, 'main.tree')
+  // async, as compile() settles it after the check: a task written where an async task is taken is async itself
+  // (`spawn`'s and `gather`'s work, check/async-slots.ts), and every call to an async task is awaited
+  asyncSlots(program)
+  resolveAsync(program)
 
   // the same IR pass the compile() driver runs before emit: forwarder inlining, constant folding, and (added here)
   // constant-selector specialization, so every backend consumes the specialized AST.
@@ -678,9 +683,10 @@ function runSwiftIo(
 
   const path = join(dir, 'seed_swift_io.txt')
   const file = join(dir, `${name.replace(/\W/g, '')}.swift`)
-  const main = `\nwriteDemo(${JSON.stringify(path)}, ${JSON.stringify(
+  // Swift calls a Term task by its inputs' labels
+  const main = `\nwriteDemo(path: ${JSON.stringify(path)}, data: ${JSON.stringify(
     want,
-  )})\nprint(readDemo(${JSON.stringify(path)}), terminator: "")\n`
+  )})\nprint(readDemo(path: ${JSON.stringify(path)}), terminator: "")\n`
 
   writeFileSync(
     file,
@@ -2491,7 +2497,7 @@ task compute
   save a
     make set
       bind items
-        make find
+        make hash
   call insert
     read a
     code 1
@@ -2504,7 +2510,7 @@ task compute
   save b
     make set
       bind items
-        make find
+        make hash
   call insert
     read b
     code 2
@@ -3050,7 +3056,7 @@ async function main(): Promise<void> {
   runSwift(
     'swift: a closure mutating a captured variable',
     mutateCapture,
-    'compute(0)',
+    'compute(start: 0)',
     12,
   )
   runKotlin(
@@ -3086,7 +3092,7 @@ async function main(): Promise<void> {
   runSwift(
     'swift: iterative fibonacci',
     fib,
-    'findFibonacciViaLoop(10)',
+    'findFibonacciViaLoop(n: 10)',
     55,
   )
   runKotlin(
@@ -3107,7 +3113,7 @@ async function main(): Promise<void> {
   runSwiftAsync(
     'swift: async closure (await + capture)',
     asyncClosure,
-    'run(3)',
+    'run(seed: 3)',
     10,
   )
   runKotlinAsync(
@@ -3156,7 +3162,7 @@ async function main(): Promise<void> {
   runSwift(
     'swift: higher-order closure param',
     closure,
-    'compute(10)',
+    'compute(seed: 10)',
     40,
   )
   runKotlin(
@@ -3170,7 +3176,7 @@ async function main(): Promise<void> {
   runSwift(
     'swift: a closure stored in a struct field',
     handler,
-    'compute(6)',
+    'compute(seed: 6)',
     18,
   )
   runKotlin(

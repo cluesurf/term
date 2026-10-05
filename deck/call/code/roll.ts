@@ -9,7 +9,8 @@ import type { Roll } from '@term/make/code/compile/roll'
 import { projectDeckOf } from '@term/call/code/deck-of'
 import { projectRoleOf, projectLeanOf } from '@term/call/code/role-of'
 import { mergeRolls, showRoll } from '@term/make/code/compile/roll'
-import { buildable, findTreeFiles, projectResolver } from '@term/call/code/make'
+import { buildable, buildResolver, findTreeFiles, projectResolver } from '@term/call/code/make'
+import { makeParseMemo } from '@term/make/code/compile/load'
 import type { BuildProblem } from '@term/call/code/make'
 import { projectCache } from '@term/call/code/cache-store'
 import { closeRun, count, field, openRun, printData, report, reportProblems } from '@term/call/code/output'
@@ -27,7 +28,9 @@ export function projectRoll(root: string): {
   const link = path.join(root, 'link') + path.sep
   // the same walk `term make` does for node: other platforms' native trees are not compiled here either
   const files = findTreeFiles(root, [], 'node').filter(f => !f.startsWith(link))
-  const resolve = projectResolver(root)
+  // one answer per load for the whole pass, and one parse per module (call/code/make.ts `buildResolver`)
+  const resolve = buildResolver(projectResolver(root))
+  const parsed = makeParseMemo()
   const cache = projectCache(root)
   const deckOf = projectDeckOf()
   // the role and lean readers, the same ones `term make` compiles with. The roll is a SECOND compile of every
@@ -49,7 +52,8 @@ export function projectRoll(root: string): {
 
     const result = compile(
       { file, text: unit.text },
-      { resolve, cache, roll: true, deckOf, roleOf, leanOf },
+      // the roll and the diagnostics are all this reads, so only they are cached (compile's `rollOnly`)
+      { resolve, cache, parsed, roll: true, rollOnly: true, deckOf, roleOf, leanOf },
     )
 
     if (!result.ok) {

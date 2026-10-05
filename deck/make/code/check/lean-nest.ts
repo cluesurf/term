@@ -68,7 +68,7 @@ function leanLabelOf(item: Expression): { name: string; imported?: string; value
     !item.lean ||
     item.callee.form !== 'variable' ||
     item.callee.name.includes('/') ||
-    (item.names ?? []).some(one => typeof one === 'string')
+    (item.names ?? []).some(Boolean)
   ) {
     return undefined
   }
@@ -94,20 +94,21 @@ export function nestLeanCalls(
     return 0
   }
 
-  const names = node.names ?? node.args.map(() => undefined)
+  // `''` is no label and no alias (compile/node.ts, `names`)
+  const names = node.names ?? node.args.map(() => '')
   const leanNames = node.leanNames
   let rewritten = 0
 
   node.args = node.args.map((arg, i) => {
-    const written = names[i]
+    const written = names[i] ?? ''
     // an import alias is a parameter by its written name and a call by the name it imported (compile/node.ts)
-    const imported = node.leanAliases?.[i]
-    const name = imported ?? written
+    const imported = node.leanAliases?.[i] ?? ''
+    const name = imported || written
 
     if (
       !leanNames[i] ||
-      typeof written !== 'string' ||
-      typeof name !== 'string' ||
+      !written ||
+      !name ||
       arg.form !== 'array' ||
       isParameter(written) ||
       !isCallable(name)
@@ -116,10 +117,10 @@ export function nestLeanCalls(
     }
 
     if (node.leanAliases) {
-      node.leanAliases[i] = undefined
+      node.leanAliases[i] = ''
     }
 
-    names[i] = undefined
+    names[i] = ''
     leanNames[i] = false
     rewritten++
 
@@ -130,8 +131,8 @@ export function nestLeanCalls(
     }
 
     const inner = arg.items.map(item => leanLabelOf(item))
-    const innerNames = inner.map(one => one?.name)
-    const innerAliases = inner.map(one => one?.imported)
+    const innerNames = inner.map(one => one?.name ?? '')
+    const innerAliases = inner.map(one => one?.imported ?? '')
 
     return {
       form: 'call',

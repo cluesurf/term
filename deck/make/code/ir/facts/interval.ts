@@ -38,7 +38,7 @@
 // Measured first on Particle (ours): every coordinate is `(old * 31 + i + step) % 1000`, written back into the record's
 // own list. TypeScript 286 ms to 212 with those checks gone (`tmp/ts-particle-ab.ts`), the hand version 135.
 
-import type { Expression, Program, Statement } from '../../compile/node'
+import type { Expression, Program, Statement } from '@term/make/code/compile/node'
 
 type Loose = Record<string, unknown> & { form?: string; name?: string }
 // a side past the safe integers is infinite, which is unknown on that side only: `[0, Infinity)` is "not negative"
@@ -778,8 +778,9 @@ export function boundedArithmetic(
           ;((e.positional as Loose[] | undefined) ?? []).forEach(p => value(p, state, quiet))
           break
         case 'template':
-          ;(e.parts as unknown[]).forEach(p => {
-            if (typeof p === 'object') value(p as Loose, state, quiet)
+          // each part says which it is (compile/node.ts, `TemplatePart`)
+          ;(e.parts as { form: string; value: unknown }[]).forEach(p => {
+            if (p.form === 'value') value(p.value as Loose, state, quiet)
           })
           break
         case 'await':

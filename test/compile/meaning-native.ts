@@ -76,7 +76,7 @@ const ORDER = `load @term/base/code/hash
 task compute
   like text
   save m
-    make find
+    make hash
 ${KEYS.map(
   (key, i) => `  call set
     read m

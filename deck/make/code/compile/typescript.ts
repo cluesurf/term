@@ -47,6 +47,7 @@ import { recordPlaces, recordReuse } from '@term/make/code/compile/place'
 import type { Reuse } from '@term/make/code/compile/place'
 import { asciiTexts } from '@term/make/code/ir/facts/text'
 import type { PlaceWrite } from '@term/make/code/compile/place'
+import { integerText } from '@term/make/code/compile/type-text'
 
 const guardStart = (text: string): string =>
   /^[([`]/.test(text) ? `;${text}` : text
@@ -337,6 +338,60 @@ export function tsEmptyOf(type: Type | undefined): string {
   }
 }
 
+// D10 (decided 2026-10-05): a `need false` field typed `maybe T` is `f?: T` on TypeScript, the shape a TypeScript
+// caller writes and tests (`node.type?: Type`), and `maybe T` everywhere else. So a READ of it is a maybe here
+// (`__termMaybe(x.f)`, none where the field is absent), and a WRITE unwraps one (`__termSome(m)`, the field left
+// undefined for none). A plain `need false` field keeps its type's empty value. Natively nothing changes: the field
+// is the maybe it is declared. test/compile/maybe-field.ts. Answers the inner type, or undefined for any other field
+export function optionalMaybe(field: { type: Type; optional?: boolean } | undefined): Type | undefined {
+  if (!field?.optional || field.type.kind !== 'named' || field.type.name !== 'maybe') {
+    return undefined
+  }
+
+  return field.type.args?.[0] ?? { kind: 'unknown' }
+}
+
+// the declared field `name` of a value of type `owner`: a struct's, else the one any case of a union declares
+function declaredField(owner: Type | undefined, name: string): { name: string; type: Type; optional?: boolean } | undefined {
+  if (owner?.kind !== 'named') {
+    return undefined
+  }
+
+  const own = tsRecordFields.get(owner.name)?.find(f => f.name === name)
+
+  if (own) {
+    return own
+  }
+
+  for (const fields of tsVariantFieldsByOwner.get(owner.name)?.values() ?? []) {
+    const found = fields.find(f => f.name === name)
+
+    if (found) {
+      return found
+    }
+  }
+
+  return undefined
+}
+
+// is a type's empty value a collection, which a write may go through and which a left-out field therefore STORES
+function emptyStored(type: Type): boolean {
+  return (
+    type.kind === 'array' ||
+    type.kind === 'map' ||
+    type.kind === 'bytes' ||
+    (type.kind === 'named' && (type.name === 'list' || type.name === 'hash'))
+  )
+}
+
+// the helpers a maybe field's read and write call (D10)
+const MAYBE_FIELD_PRELUDE = `function __termMaybe<T>(value: T | undefined): { form: "some"; value: T } | { form: "none" } {
+  return value === undefined ? { form: "none" } : { form: "some", value }
+}
+function __termSome<T>(maybe: { form: "some"; value: T } | { form: "none" }): T | undefined {
+  return maybe.form === "some" ? maybe.value : undefined
+}`
+
 // The declared fields of one VARIANT, resolved through the enum the construction was typed as. A variant name
 // alone is ambiguous (two sums may each declare a case called `any`), so an overloaded name with no resolved
 // type fills NOTHING rather than guessing: an under-filled literal is a type error a reader can act on, and a
@@ -455,6 +510,12 @@ let tsVariantFieldsByOwner = new Map<
 let tsRecordFields = new Map<string, { name: string; type: Type; optional?: boolean }[]>()
 // did this module lower a `fill` or `melt` with a form? Then the walk rides in its prelude
 let tsFormWalkUsed = false
+// did a host value meet a declared type (`save body, like text, wait fs/read-file(...)`)? Then `__termHost` rides along
+let tsHostUsed = false
+// set when a `need false` maybe field is read or written (D10), so `__termMaybe` and `__termSome` ride in front
+let tsMaybeFieldUsed = false
+// the Term names of the program's `dock load` modules: a call rooted at one returns the host's own value
+let tsDockNames = new Set<string>()
 // set when an emitted `+`, `-` or `*` on two numbers is range-checked (__termInt), so the helper rides in front
 let tsIntUsed = false
 // set when an `is-equal` compares by structure (__termEqual) or a map key is interned (__termKey)
@@ -1081,6 +1142,16 @@ function __termSplice<T>(a: T[], s: number, d: number, ...items: T[]): T[] {
   return a.splice(x, Math.min(Math.max(d, 0), a.length - x), ...items)
 }`
 
+// a host value where the program names a type for it (`save body, like text, wait fs/read-file(...)`): the value as it
+// is when it is that type, and `data-mismatch` naming the binding and what came back when it is not. A host value is the
+// host's `any`, so nothing else checks it, and a wrong one surfaced far from the call as `undefined` read off it
+const HOST_VALUE_PRELUDE = `function __termHost<T>(value: unknown, kind: "string" | "number" | "boolean", name: string): T {
+  if (typeof value === kind) return value as T
+  const found = value === null ? "null" : Array.isArray(value) ? "a list" : typeof value === "object" ? "an object" : typeof value === "string" ? "a text" : typeof value
+  const wanted = kind === "string" ? "a text" : kind === "number" ? "a number" : "a boolean"
+  throw new ${EXCEPTION_CLASS}({ host: "@term/host", form: "data-mismatch", code: "", time: Date.now(), note: "Data does not fit the shape", link: { thing: "host value", path: name, reason: "is " + found + " where " + wanted + " belongs" } } as never)
+}`
+
 // the walk, in the prelude of a module that lowers a `fill` or `melt` with a form. `data` is the value the
 // package's reader gives (`{ form: "hash", list: [{ name, base }] }`, `{ form: "array", list }`, a scalar with
 // `value`, `{ form: "blank" }`). A value that does not fit raises `data-mismatch`, the package's own exception,
@@ -1197,8 +1268,10 @@ function tsType(type: Type | undefined): string {
       }
 
       // `like type` is the UNIVERSE (the type of types): the host has no spelling for it, so a signature that
-      // carries one emits `any` rather than a `Type` no module defines
-      if (type.name === 'type') {
+      // carries one emits `any` rather than a `Type` no module defines. Unless the program declares a `form type`
+      // (the compiler's own AST, compile/node.tree): then it is that form, as a local `form text` is (below), and a
+      // field typed by it was `any` where it should have been `Type` (2026-10-05, test/compile/form-named-type.ts)
+      if (type.name === 'type' && !tsRecordFields.has('type') && !tsVariantFieldsByOwner.has('type')) {
         return 'any'
       }
 
@@ -1442,6 +1515,19 @@ function makeEmitter(
   // the lists reached through a path that the loop copy being emitted read once before it, each by its key, and the
   // count for their locals' names
   let hoisted = new Map<string, string>()
+  // set while an assignment renders its target, so a `need false` maybe field there is written, not read (D10)
+  let writingTarget = false
+
+  // the value an assignment writes: a `need false` maybe field holds the value inside the maybe, or nothing (D10)
+  const writtenValue = (target: Expression, value: Expression): string => {
+    if (target.form === 'member' && !target.index && optionalMaybe(declaredField(target.target.type, target.name))) {
+      tsMaybeFieldUsed = true
+
+      return `__termSome(${expression(value)})`
+    }
+
+    return expression(value)
+  }
   let pathCount = 0
   // the calls in that copy that may call their task's unchecked copy (`LoopGuard.fast`), the tasks some such call
   // reached (each emitted once more, unchecked, behind the program), and whether the body being emitted is one
@@ -1504,7 +1590,7 @@ function makeEmitter(
   ): string => {
     switch (node.form) {
       case 'integer':
-        return String(node.value)
+        return integerText(node)
       case 'float':
         return String(node.value)
       case 'boolean':
@@ -1517,9 +1603,9 @@ function makeEmitter(
         // `ESC[3A\r ESC[J` moved down a line on every redraw
         return `\`${node.parts
           .map(part =>
-            typeof part === 'string'
-              ? part.replace(/[\\`]/g, '\\$&').replace(/\$\{/g, '\\${').replace(/\r/g, '\\r')
-              : `\${${expression(part)}}`,
+            part.form === 'chunk'
+              ? part.value.replace(/[\\`]/g, '\\$&').replace(/\$\{/g, '\\${').replace(/\r/g, '\\r')
+              : `\${${expression(part.value)}}`,
           )
           .join('')}\``
       case 'unit':
@@ -1850,9 +1936,17 @@ function makeEmitter(
           return toCamel(reusing.param)
         }
 
-        const fields = node.fields.map(
-          f => `${toMember(f.name)}: ${expression(f.value)}`,
-        )
+        // a `need false` maybe field holds the value inside the maybe, or nothing (D10)
+        const declaredHere = variants.has(node.name) ? variantCase(node.name, node.type) : (tsRecordFields.get(node.name) ?? [])
+        const fields = node.fields.map(f => {
+          if (optionalMaybe(declaredHere.find(d => d.name === f.name))) {
+            tsMaybeFieldUsed = true
+
+            return `${toMember(f.name)}: __termSome(${expression(f.value)})`
+          }
+
+          return `${toMember(f.name)}: ${expression(f.value)}`
+        })
 
         // `make hash` / `make list` build the native map / array (what a `like hash` / `like list` is)
         if (node.name === 'hash' && fields.length === 0) {
@@ -1913,7 +2007,11 @@ function makeEmitter(
         return made
       }
 
-      case 'member':
+      case 'member': {
+        // is this member the target an assignment writes? Only this one: what it is read through is read (D10)
+        const writing = writingTarget
+        writingTarget = false
+
         // a list reached through a path that this loop copy read once before it
         if (hoisted.size > 0 && node.index === undefined && node.type?.kind === 'array') {
           const local = hoisted.get(listKey(node) ?? '')
@@ -1960,7 +2058,29 @@ function makeEmitter(
           return toCamel(node.target.name)
         }
 
+        // a `need false` maybe field reads as a maybe (D10). Never under an assignment, which writes the field itself
+        const field = writing ? undefined : declaredField(node.target.type, node.name)
+
+        if (optionalMaybe(field)) {
+          tsMaybeFieldUsed = true
+
+          return `__termMaybe(${expression(node.target)}.${node.nick ?? toMember(node.name)})`
+        }
+
+        // and a plain `need false` field reads as its type's empty value where a TypeScript caller left it out, as it
+        // is natively. A collection is PUT in the record (`??=`), so a write through the read (`push`) is kept, as the
+        // native field holds it
+        if (field?.optional) {
+          const empty = tsEmptyOf(field.type)
+          const member = `${expression(node.target)}.${node.nick ?? toMember(node.name)}`
+
+          if (!empty.startsWith('undefined')) {
+            return emptyStored(field.type) ? `(${member} ??= ${empty})` : `(${member} ?? ${empty})`
+          }
+        }
+
         return `${expression(node.target)}.${node.nick ?? toMember(node.name)}`
+      }
       case 'await':
         return `await ${expression(node.expr)}`
 
@@ -2432,7 +2552,33 @@ function makeEmitter(
 
         // a second name for a record one of the two is written through: its own copy (D1, `recordCopies`)
         const alias = copies.lets.get(node)
-        const init = alias === undefined ? expression(node.init) : copyRecord(expression(node.init), alias)
+        // a HOST value given a type here is checked here (`__termHost`): the host's own value is the dynamic, which
+        // unifies with anything without binding it, so a primitive type on this binding is one the program wrote
+        const hostKind = ((): string | undefined => {
+          const value = node.init.form === 'await' ? node.init.expr : node.init
+          const primitive = node.type?.kind === 'string' ? 'string' : node.type?.kind === 'number' || node.type?.kind === 'float' ? 'number' : node.type?.kind === 'boolean' ? 'boolean' : undefined
+
+          if (!primitive || value.form !== 'call') {
+            return undefined
+          }
+
+          // a call into a `dock load` module (`path/join(...)`), however deep the member chain under the module
+          let root: Expression = value.callee
+          while (root.form === 'member') {
+            root = root.target
+          }
+
+          const docked = root.form === 'variable' && tsDockNames.has(root.name)
+
+          return value.type?.kind === 'dynamic' || docked ? primitive : undefined
+        })()
+
+        if (hostKind) {
+          tsHostUsed = true
+        }
+
+        const written = alias === undefined ? expression(node.init) : copyRecord(expression(node.init), alias)
+        const init = hostKind ? `__termHost(${written}, "${hostKind}", ${JSON.stringify(node.name)})` : written
         const tested = alias === undefined ? testedInPlace(init) : undefined
 
         return tested
@@ -2520,7 +2666,7 @@ function makeEmitter(
 
           if (rebuild && segments.length > 1) {
             const at = (k: number): string => `${expression(base)}.${segments.slice(0, k).map(toCamel).join('.')}`
-            let value = expression(node.value)
+            let value = writtenValue(node.target, node.value)
 
             for (let k = segments.length - 1; k >= 1; k--) {
               value = `{ ...${at(k)}, ${toCamel(segments[k]!)}: ${value} }`
@@ -2530,10 +2676,12 @@ function makeEmitter(
           }
         }
 
+        writingTarget = true
         const target = expression(node.target)
+        writingTarget = false
 
         if (node.op === '=') {
-          const value = expression(node.value)
+          const value = writtenValue(node.target, node.value)
           const tested = node.target.form === 'variable' ? testedInPlace(value) : undefined
 
           return tested ? `${tested.lines}; ${target} = ${tested.name}` : `${target} = ${value}`
@@ -2627,9 +2775,11 @@ function makeEmitter(
         // true runs it with no bounds checks, the guard false runs the original, so a run that could reach outside a
         // list takes the checked copy and stops where it always did
         const guard = loopGuards.get(node)
+        // a named walk's label, written on the loop itself (both copies of a guarded one, each in its own block)
+        const named = node.label ? `${toCamel(node.label)}: ` : ''
 
         if (!guard) {
-          return `while (${expression(node.cond)}) ${block(node.body, depth)}`
+          return `${named}while (${expression(node.cond)}) ${block(node.body, depth)}`
         }
 
         // each name written the way the emitter writes that variable everywhere else
@@ -2682,11 +2832,11 @@ function makeEmitter(
           hoisted = new Map([...hoisted, [key, local]])
         }
 
-        const fast = [...reads, `while (${expression(node.cond)}) ${block(node.body, depth + 1)}`].join(`\n${pad(depth + 1)}`)
+        const fast = [...reads, `${named}while (${expression(node.cond)}) ${block(node.body, depth + 1)}`].join(`\n${pad(depth + 1)}`)
         uncheckedLists = outer
         fastCalls = outerCalls
         hoisted = outerHoisted
-        const slow = `while (${expression(node.cond)}) ${block(node.body, depth + 1)}`
+        const slow = `${named}while (${expression(node.cond)}) ${block(node.body, depth + 1)}`
 
         return `if (${test}) {\n${pad(depth + 1)}${fast}\n${pad(depth)}} else {\n${pad(depth + 1)}${slow}\n${pad(depth)}}`
       }
@@ -2702,22 +2852,25 @@ function makeEmitter(
         return `try ${block(node.body, depth)}${handler}`
       }
       case 'for-each': {
+        // a named walk's label, on the `for` itself: inside the block below, since a `continue` may only name a loop
+        const named = node.label ? `${toCamel(node.label)}: ` : ''
+
         // a walk over a LIST that names its index is a counted loop: `entries()` made a `[i, x]` pair per turn, and
         // this allocates nothing. The length is read every turn, as the array iterator `for...of` uses does
         if (node.index && node.iterable.type?.kind === 'array') {
           const walked = `__walked${depth}`
           const body = block(node.body, depth)
 
-          return `{ const ${walked} = ${expression(node.iterable)}; for (let ${toCamel(node.index)} = 0; ${toCamel(node.index)} < ${walked}.length; ${toCamel(node.index)}++) {\n${pad(depth + 1)}const ${toCamel(node.item)} = ${walked}[${toCamel(node.index)}]!${body.slice(1)} }`
+          return `{ const ${walked} = ${expression(node.iterable)}; ${named}for (let ${toCamel(node.index)} = 0; ${toCamel(node.index)} < ${walked}.length; ${toCamel(node.index)}++) {\n${pad(depth + 1)}const ${toCamel(node.item)} = ${walked}[${toCamel(node.index)}]!${body.slice(1)} }`
         }
 
         // a walk that names its INDEX over anything else iterates the entries; one that does not keeps the plain `of`
         // loop. lean-0017
         return node.index
-          ? `for (const [${toCamel(node.index)}, ${toCamel(node.item)}] of ${expression(
+          ? `${named}for (const [${toCamel(node.index)}, ${toCamel(node.item)}] of ${expression(
               node.iterable,
             )}.entries()) ${block(node.body, depth)}`
-          : `for (const ${toCamel(node.item)} of ${expression(
+          : `${named}for (const ${toCamel(node.item)} of ${expression(
               node.iterable,
             )}) ${block(node.body, depth)}`
       }
@@ -2730,7 +2883,7 @@ function makeEmitter(
           const exceptionSubject = /^[A-Za-z_$][\w$]*$/.test(raw) ? raw : `(${raw})`
           let out = ''
           node.cases.forEach((branch, i) => {
-            const arm = node.exceptionArms![branch.label]!
+            const arm = node.exceptionArms!.find(one => one.label === branch.label)!
             // only the fields the arm READS, asked of the program and not of the emitted text (swift.ts says why)
             const read = namesIn(branch.body)
             const locals = armLocals([...arm.shared, ...arm.link], branch.binds ?? [])
@@ -2770,11 +2923,14 @@ function makeEmitter(
         const held = isName && !shadowed ? undefined : `__at${depth}`
         const subject = held ?? raw
 
-        // the chain, wrapped in a block that holds the subject where one was bound
+        // the chain, wrapped in a block that holds the subject where one was bound. The block opens with `;`: after a
+        // statement ending in a parenthesized value (`let markers = ([] as Marker[])`) tsc read `(...) {` as an arrow
+        // function missing its `=>` and refused the module, where JavaScript inserts the semicolon
+        // (parser/diagnostic.tree, test/compile/held-block.ts)
         const wrap = (chain: string): string =>
           held === undefined
             ? chain
-            : `{\n${pad(depth + 1)}const ${held} = ${raw}\n${pad(depth + 1)}${chain}\n${pad(depth)}}`
+            : `;{\n${pad(depth + 1)}const ${held} = ${raw}\n${pad(depth + 1)}${chain}\n${pad(depth)}}`
 
         // Booleans lower to NATIVE JS booleans in this backend (a
         // comparison emits `>`, an `if` tests truthiness), so a
@@ -2851,18 +3007,31 @@ function makeEmitter(
           // string's `rope`), and keyed by the name alone the one declared last answered, so `rope`'s arm declared
           // `vector`'s fields and read an outer `length` (the engine/value port, 2026-10-04)
           const owned = node.subject.type?.kind === 'named' ? tsVariantFieldsByOwner.get(node.subject.type.name)?.get(branch.label) : undefined
-          const fields = (owned ?? tsVariantFields.get(branch.label) ?? []).map(
-            f => f.name,
-          )
+          const declaredCase = owned ?? tsVariantFields.get(branch.label) ?? []
+          const fields = declaredCase.map(f => f.name)
           // the ones the arm's program READS, as the exception arms ask: a `subject.field` read stays on the subject,
           // so nothing reaches a local except by its name, and an emitted `time.now()` is not a read of `time`
           const read = namesIn(branch.body)
           const locals = armLocals(fields, branch.binds ?? [])
             .filter(({ local }) => read.has(local))
-            .map(
-              ({ field, local }) =>
-                `${pad(depth + 1)}const ${toCamel(local)} = ${subject}.${toMember(field)}`,
-            )
+            .map(({ field, local }) => {
+              // a `need false` maybe field binds as a maybe, and a plain one as its empty value where it was left out (D10)
+              const declaredOne = declaredCase.find(f => f.name === field)
+
+              if (optionalMaybe(declaredOne)) {
+                tsMaybeFieldUsed = true
+
+                return `${pad(depth + 1)}const ${toCamel(local)} = __termMaybe(${subject}.${toMember(field)})`
+              }
+
+              if (declaredOne?.optional && !tsEmptyOf(declaredOne.type).startsWith('undefined')) {
+                const operator = emptyStored(declaredOne.type) ? '??=' : '??'
+
+                return `${pad(depth + 1)}const ${toCamel(local)} = (${subject}.${toMember(field)} ${operator} ${tsEmptyOf(declaredOne.type)})`
+              }
+
+              return `${pad(depth + 1)}const ${toCamel(local)} = ${subject}.${toMember(field)}`
+            })
 
           const body =
             locals.length === 0
@@ -2903,9 +3072,9 @@ function makeEmitter(
       }
 
       case 'break':
-        return 'break'
+        return node.label ? `break ${toCamel(node.label)}` : 'break'
       case 'continue':
-        return 'continue'
+        return node.label ? `continue ${toCamel(node.label)}` : 'continue'
       case 'exit':
         // a page has no process to end: `process` is a ReferenceError in a browser, so `exit` there is a return
         return env === 'browser' ? 'return' : 'process.exit(0)'
@@ -2960,9 +3129,10 @@ function makeEmitter(
             // construction and its own type disagree: `element` takes its `pattern` `need false` and passed the
             // optional parameter into a field the case declared required, in every module the builder is
             // inlined into. The mill has carried `optional` since `need false` existed; this backend ignored it.
+            // a `need false` maybe field is `f?: T` (D10)
             const fields = v.fields.map(
               f =>
-                `${toMember(f.name)}${f.optional ? '?' : ''}: ${tsType(f.type)}`,
+                `${toMember(f.name)}${f.optional ? '?' : ''}: ${tsType(optionalMaybe(f) ?? f.type)}`,
             )
 
             return `{ ${[
@@ -2979,7 +3149,7 @@ function makeEmitter(
         const fields = node.fields
           .map(
             f =>
-              `${pad(depth + 1)}${toMember(f.name)}${f.optional ? '?' : ''}: ${tsType(f.type)}`,
+              `${pad(depth + 1)}${toMember(f.name)}${f.optional ? '?' : ''}: ${tsType(optionalMaybe(f) ?? f.type)}`,
           )
           .join('\n')
 
@@ -3161,11 +3331,19 @@ export function emitTypeScript(
     // the roll to wake the hive with, one group per deck, when the program loads the stdlib hive. The emitter
     // appends a `wakeHive()` that calls `hiveWake` per deck and hooks raised exceptions into `hiveTell`
     wake?: { deck: string; entries: Record<string, unknown>[] }[]
+    // export each top-level constant too: per-module emit (compile/modules.ts), where another module reads it
+    exportConstants?: boolean
+    // THE WHOLE PROGRAM, read and never emitted: per-module emit hands this emitter one module, and a `case` on a form
+    // another module defines then declared none of its fields, so `case graft` in @term/host's fuse read `name` and
+    // `value` that were never bound (2026-10-05, found by `stdlib emit-types` on the separate build). The forms, their
+    // fields, tags and texts, the handle types and the tasks' parameters come from here as well as `program`
+    context?: Program
   },
 ): string {
   // separate-compilation stubs are typing context only: their owning unit emits the real definition, and the
   // per-module import wiring reconnects references. They must never be emitted here.
   program = program.filter(s => !(s.form === 'function' && s.stub))
+  const known: Program = options?.context ? [...options.context, ...program] : program
 
   // lower `hook` web routes to a `route(host, path)` dispatcher + a `boot(url, port)` that hands it to the env-
   // abstracted `host` (browser mount / node SSR server). The browser build auto-runs boot; the node build exports it
@@ -3174,7 +3352,7 @@ export function emitTypeScript(
 
   // opaque handle types declared by `dock type` shims: seed name -> concrete TS type
   tsOpaqueTypes = new Map(
-    program
+    known
       .filter(
         (n): n is Extract<typeof n, { form: 'native' }> =>
           n.form === 'native' && n.kind === 'type',
@@ -3192,6 +3370,11 @@ export function emitTypeScript(
   tsVariantFieldsByOwner = new Map()
   tsRecordFields = new Map()
   tsFormWalkUsed = false
+  tsHostUsed = false
+  tsMaybeFieldUsed = false
+  tsDockNames = new Set(
+    program.flatMap(n => (n.form === 'native' && n.kind !== 'type' && !n.module.startsWith('global:') ? [n.alias] : [])),
+  )
   tsIntUsed = false
   tsEqualUsed = false
   tsTextUsed = false
@@ -3200,14 +3383,14 @@ export function emitTypeScript(
   tsIdentity = options?.library ? new Set() : identityCases(program, options?.variants !== undefined)
   tsGuards = new Map()
   tsSharedForms = new Set(
-    program.flatMap(n => (n.form === 'record-type' && n.shared ? [n.name] : [])),
+    known.flatMap(n => (n.form === 'record-type' && n.shared ? [n.name] : [])),
   )
   tsTagByOwner = new Map()
   tsTagByVariant = new Map()
   tsTextByOwner = new Map()
   tsTextByVariant = new Map()
 
-  for (const node of program) {
+  for (const node of known) {
     if (node.form === 'record-type' && node.text) {
       tsTextByOwner.set(node.name, new Map(node.variants.map(v => [v.name, v.text ?? v.name])))
 
@@ -3225,10 +3408,10 @@ export function emitTypeScript(
     }
   }
   tsFunctionParams = new Map(
-    program.flatMap(n => (n.form === 'function' ? [[n.name, n.params] as const] : [])),
+    known.flatMap(n => (n.form === 'function' ? [[n.name, n.params] as const] : [])),
   )
 
-  for (const node of program) {
+  for (const node of known) {
     if (node.form === 'record-type') {
       if (node.variants.length === 0) {
         tsRecordFields.set(node.name, node.fields)
@@ -3388,10 +3571,12 @@ export function emitTypeScript(
       const text = emitter.statement(node, 0)
       // a `mark private` task is not exported: privacy was a check and not an emission, so TypeScript importing the
       // built module could call what no other Term file may (guides: language/modules)
+      // a top-level constant is exported in per-module mode, where a module that reads another's imports it
       const exported =
         (node.form === 'function' && !node.private) ||
         node.form === 'record-type' ||
-        node.form === 'mask'
+        node.form === 'mask' ||
+        (options?.exportConstants === true && node.form === 'let')
 
       return exported ? `export ${text}` : text
     })
@@ -3436,6 +3621,19 @@ export function emitTypeScript(
     }
 
     prelude.push(FORM_WALK_PRELUDE)
+  }
+
+  if (tsMaybeFieldUsed) {
+    prelude.push(MAYBE_FIELD_PRELUDE)
+  }
+
+  // a host value checked where it meets a declared type raises through the class too
+  if (tsHostUsed) {
+    if (!prelude.includes(EXCEPTION_PRELUDE)) {
+      prelude.unshift(EXCEPTION_PRELUDE)
+    }
+
+    prelude.push(HOST_VALUE_PRELUDE)
   }
 
   if (tsIntUsed) {
@@ -3499,6 +3697,14 @@ export function emitTypeScript(
     wake.push(
       `export function wakeHive(): void {\n${groups}\n  ;(globalThis as { __termRaise?: (e: unknown) => void }).__termRaise = (e) => {\n    const x = e as { host: string; form: string; note: string }\n    hiveTell({ host: x.host, kind: "exception", name: x.form, site: "", base: x })\n  }\n}`,
     )
+  }
+
+  // a module that raises through the class without declaring an exception form of its own brings the class too. Per-module
+  // emit (compile/modules.ts) gave @term/host's reader `new TermException(...)` with no class in it, since the forms it
+  // raises live in another module. No catch tests the class by identity (a handler reads `form`), so a module's own
+  // copy of it is the same class to every reader
+  if (!prelude.includes(EXCEPTION_PRELUDE) && lines.some(line => line.includes(`new ${EXCEPTION_CLASS}(`))) {
+    prelude.unshift(EXCEPTION_PRELUDE)
   }
 
   const body = `${[...prelude, ...lines, ...wake].join('\n\n')}\n`

@@ -220,8 +220,8 @@ function reassignedExpr(expr: Expression, into: Set<string>): void {
       break
     case 'template':
       for (const part of expr.parts) {
-        if (typeof part !== 'string') {
-          reassignedExpr(part, into)
+        if (part.form === 'value') {
+          reassignedExpr(part.value, into)
         }
       }
 
@@ -1373,7 +1373,9 @@ export function nativeForms(program: Statement[]): Set<string> {
 
     const node = value as Loose
 
-    if (node.form === 'call' && nativeCall(node.callee as Expression)) {
+    // a view's `call` node (`{ form: 'call', value }`) has no callee: the per-module emit meets views before they are
+    // lowered, and every `term make` of a module holding one crashed here (face's layout-slot)
+    if (node.form === 'call' && node.callee !== undefined && nativeCall(node.callee as Expression)) {
       ;(node.args as Loose[]).forEach(a => reach(a.type))
       reach(node.type)
     }
@@ -1835,7 +1837,9 @@ export function ownedElements(
 
     const node = value as Loose
 
-    if (node.form === 'call' && nativeCall(node.callee as Expression)) {
+    // a view's `call` node (`{ form: 'call', value }`) has no callee: the per-module emit meets views before they are
+    // lowered, and every `term make` of a module holding one crashed here (face's layout-slot)
+    if (node.form === 'call' && node.callee !== undefined && nativeCall(node.callee as Expression)) {
       ;(node.args as Loose[]).forEach(a => crossing(a.type))
       crossing(node.type)
     }
@@ -1897,6 +1901,16 @@ export function ownedElements(
           refuse(outer(node.type))
 
           return
+        // an outer list WRITTEN OUT with its inner lists (`make list, make(list, 3, 8), ...`) builds each inner list as
+        // a list of its own, and the walk over it was told they were plain: Rust walked `row.iter()` on a shared
+        // `Rc<RefCell<Vec>>` and Swift `row.enumerated()` on a `SeedList`, neither of which builds (the loops guide's
+        // grid search, 2026-10-05). An empty one puts nothing in, so it is left to the rules above
+        case 'array':
+          if ((node.items as unknown[]).length > 0) {
+            refuse(outer(node.type))
+          }
+
+          break
         case 'member': {
           // an inner list read out of an outer one anywhere but a `let` (below)
           const key = outerVar(node.target as Loose)
@@ -2568,10 +2582,11 @@ export function textAppend(node: Statement): { name: string; rest: Expression } 
     return undefined
   }
 
-  const [first, ...rest] = node.value.parts
+  const [firstPart, ...rest] = node.value.parts
+  const first = firstPart?.form === 'value' ? firstPart.value : undefined
   const name = node.target.name
 
-  if (typeof first === 'string' || first?.form !== 'variable' || first.name !== name || !rest.length || first.type?.kind !== 'string') {
+  if (first?.form !== 'variable' || first.name !== name || !rest.length || first.type?.kind !== 'string') {
     return undefined
   }
 
@@ -2584,9 +2599,10 @@ export function asciiCharAppend(
   rest: Expression,
   ascii: { has(node: Expression): boolean },
 ): { text: Expression; index: Expression } | undefined {
-  const only = rest.form === 'template' && rest.parts.length === 1 ? rest.parts[0] : undefined
+  const part = rest.form === 'template' && rest.parts.length === 1 ? rest.parts[0] : undefined
+  const only = part?.form === 'value' ? part.value : undefined
 
-  if (!only || typeof only === 'string' || only.form !== 'call' || only.callee.form !== 'member') {
+  if (!only || only.form !== 'call' || only.callee.form !== 'member') {
     return undefined
   }
 
@@ -2820,7 +2836,7 @@ export function tailTasks(program: Statement[]): Map<string, WeakSet<object>> {
 export function emptyText(value: Expression | undefined): boolean {
   return (
     (value?.form === 'string' && value.value === '') ||
-    (value?.form === 'template' && value.parts.every(part => part === ''))
+    (value?.form === 'template' && value.parts.every(part => part.form === 'chunk' && part.value === ''))
   )
 }
 
@@ -3309,7 +3325,8 @@ export function borrowedTexts(program: Statement[], gated: Extract<Statement, { 
             parent?.form === 'member' &&
             key === 'target' &&
             (stringRead(parent as Expression) !== undefined || (STRING_METHODS.has(op) && !OWNING.has(op)))
-          const part = parent?.form === 'template'
+          // a value read inside a template: its parent is the part (compile/node.ts, `TemplatePart`)
+          const part = parent?.form === 'value' && key === 'value'
 
           if (inClosure || !(receiver || part)) {
             ok = false

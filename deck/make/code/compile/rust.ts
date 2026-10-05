@@ -64,8 +64,10 @@ import { provenIncrements } from '@term/make/code/ir/facts/range'
 import { provenArithmetic, type Proven } from '@term/make/code/compile/proven'
 import { boundedLoops, unsignedDivisions } from '@term/make/code/ir/facts/bounds'
 import { asciiTexts } from '@term/make/code/ir/facts/text'
+import { taggedForms, tagText } from '@term/make/code/compile/tag'
 import { declaredLater, formSpec, refuseAny, specForms } from '@term/make/code/compile/backend'
 import type { FormKind, FormSpec } from '@term/make/code/compile/backend'
+import { integerText } from '@term/make/code/compile/type-text'
 
 // Rust reserved and reserved-for-future-use keywords that cannot be bare identifiers; a seed name colliding with
 // one is suffixed with `_`, the same convention typescript.ts's RESERVED already uses, applied uniformly
@@ -281,6 +283,18 @@ function snake(name: string): string {
   // a Term name that is a Rust keyword (`task move`, `task match`, a `move` field) escapes with a trailing
   // underscore, the same way vname does, so every identifier position agrees
   return RUST_RESERVED.has(snakeName) ? `${snakeName}_` : snakeName
+}
+
+// a named walk's label as Rust writes it: `'outer`. `'static` is a lifetime, so a loop called `static` is `'static_`
+function loopName(label: string): string {
+  const name = snake(label)
+
+  return name === 'static' ? `'static_` : `'${name}`
+}
+
+// the label written before a named walk's loop keyword (`'outer: while`), nothing for an unnamed one
+function loopLabel(label: string | undefined): string {
+  return label ? `${loopName(label)}: ` : ''
 }
 
 function pascal(name: string): string {
@@ -986,6 +1000,8 @@ function emitRustPass(
   // correctness. Using the walk's proven `down` measure instead is the precise version, and is left open
   let budgetUses = 0
   let budgetElided = 0
+  // whether an async closure boxed its future through `__term_boxed`, so the helper is written
+  let boxedFutures = false
   const BUDGET = 4000
   const budgetCheck = (node: Statement, depth: number): string => {
     if (!currentAsync || (node.form !== 'while' && node.form !== 'for-each')) {
@@ -1389,9 +1405,12 @@ function emitRustPass(
       return rendered
     }
 
+    // the box says what it is, `Rc<dyn Any>`: inside an async block nothing outside names the slot's type, so the
+    // coercion the slot used to supply never happened, and the block answered `Rc<R>` (E0271, the boxed work of
+    // `spawn` once it was asynchronous, test/compile/spawn-native.ts)
     return value.form === 'integer'
-      ? `std::rc::Rc::new((${rendered}) as i64)`
-      : `std::rc::Rc::new(${rendered})`
+      ? `(std::rc::Rc::new((${rendered}) as i64) as std::rc::Rc<dyn std::any::Any>)`
+      : `(std::rc::Rc::new(${rendered}) as std::rc::Rc<dyn std::any::Any>)`
   }
 
   // the asynchronous tasks, for boxing one read as a value into the pinned-future closure a task slot holds
@@ -1908,6 +1927,8 @@ function emitRustPass(
   // THE FORMS THAT CAN BE A MAP KEY: every field can be, by the key rule (TermHash), where a float, a list and a map
   // can all be keys. A closure and a boxed unknown cannot. The same greatest fixpoint as above, so a recursive form
   // qualifies when nothing outside it disqualifies it. Each one gets a `TermHash` impl (`termHashImpl`)
+  // the forms whose tag the program reads as a field, each given `term_tag`
+  const taggedNames = taggedForms(program)
   const keyableForms = new Set(formDecls.keys())
 
   const keyQualifies = (type: Type, params: Set<string>): boolean => {
@@ -2137,7 +2158,7 @@ function emitRustPass(
 
     switch (node.form) {
       case 'integer':
-        return String(node.value)
+        return integerText(node)
       case 'float':
         // a float literal must carry a decimal point so the value and its arithmetic are f64, not integer
         // (JavaScript writes 1e21 and past as `1e+21`, already a float literal, which a `.0` would break)
@@ -2162,15 +2183,15 @@ function emitRustPass(
             .replace(/\t/g, '\\t')
             // eslint-disable-next-line no-control-regex
             .replace(/[\u0000-\u001f\u007f]/g, c => `\\u{${c.charCodeAt(0).toString(16)}}`)
-        const shape = node.parts.map(part => (typeof part === 'string' ? rustChunk(part) : '{}')).join('')
+        const shape = node.parts.map(part => (part.form === 'chunk' ? rustChunk(part.value) : '{}')).join('')
+        // the values the template shows, in order
+        const values = node.parts.flatMap(part => (part.form === 'value' ? [part.value] : []))
         // a float interpolates as `term_number` lays it out, the same text as every other backend
-        const args = node.parts
-          .filter((part): part is Expression => typeof part !== 'string')
-          .map(part => (part.type?.kind === 'float' ? `term_number(${expr(part)})` : expr(part)))
+        const args = values.map(part => (part.type?.kind === 'float' ? `term_number(${expr(part)})` : expr(part)))
 
         // a template that is one value alone is that value's text, `x.to_string()` (clippy: useless_format)
         if (shape === '{}' && args.length === 1) {
-          const only = node.parts.find((part): part is Expression => typeof part !== 'string')!
+          const only = values[0]!
 
           return only.type?.kind === 'float' ? args[0]! : `${/^[\w.]+$/.test(args[0]!) ? args[0] : `(${bare(args[0]!)})`}.to_string()`
         }
@@ -2917,6 +2938,11 @@ function emitRustPass(
       }
 
       case 'member': {
+        // a form's tag read as a field (`s/form`): its case's name, from the accessor the enum is given (`term_tag`)
+        if (node.tag) {
+          return `${expr(node.target)}.term_tag()`
+        }
+
         // a DYNAMIC segment (`read table/{key}`) indexes the collection through its handle; cloned out, since
         // indexing a Vec of non-Copy values (String, Rc) cannot move
         if (node.index) {
@@ -3066,6 +3092,8 @@ function emitRustPass(
         const body = [...shadows, ...node.body.map(s => stmt(s, 0))]
           .filter(Boolean)
           .join(' ')
+        // what an async closure's block answers, named at the box (below)
+        const closureOutput = currentResult
         closureDepth--
         currentRaising = outerRaising
         guardDepth = outerGuardDepth
@@ -3126,8 +3154,19 @@ function emitRustPass(
           !/\.borrow(_mut)?\(\)|\.lock\(\)|\.with\(/.test(lone)
             ? lone.slice('return '.length, -1)
             : undefined
+        // the box names the future it holds, `Pin<Box<dyn Future<Output = R>>>`: a closure pushed onto a list of tasks
+        // or handed to a runtime has no annotation around it to coerce the concrete async block, and rustc refused it
+        // (E0271, test/compile/spawn-native.ts). Through `__term_boxed::<R, _>`, so the block is CHECKED against R and
+        // a literal in it is read as R: a cast after the box left `40` an `i32` (the roundtrip's job program)
+        if (node.async && closureOutput) {
+          boxedFutures = true
+        }
+
+        const pinned = node.async && closureOutput
+          ? `__term_boxed::<${rustType(closureOutput)}, _>(async move { ${body} })`
+          : `std::boxed::Box::pin(async move { ${body} })`
         const boxed = node.async
-          ? `std::rc::Rc::new(move |${params}| { ${innerClones} std::boxed::Box::pin(async move { ${body} }) })`
+          ? `std::rc::Rc::new(move |${params}| { ${innerClones} ${pinned} })`
           : expression !== undefined
             ? `std::rc::Rc::new(move |${params}| ${expression})`
             : `std::rc::Rc::new(move |${params}| { ${body} })`
@@ -3760,6 +3799,18 @@ function emitRustPass(
           return `let ${mutOf(node.name)}${vname(node.name)}: ${closed} = ${bare(owned(node.init))};`
         }
 
+        // a case of a generic form built bare (`Slot::Empty`) whose type argument only a later use pins: rustc may not
+        // see that use (an inlined call reads it through a method generic over the argument), so the binding names
+        // the type the checker gave it
+        if (!ann && node.init.form === 'record' && node.type?.kind === 'named' && (node.type.args?.length ?? 0) > 0) {
+          const vars = new Set<number>()
+          collectVars(node.type, vars)
+
+          if (vars.size === 0) {
+            return `let ${mutOf(node.name)}${vname(node.name)}: ${rustType(node.type)} = ${bare(owned(node.init))};`
+          }
+        }
+
         return `let ${mutOf(node.name)}${vname(node.name)}${ann || emptyAnn(node.init)} = ${bare(owned(node.init))};`
       }
       case 'assign': {
@@ -3841,40 +3892,41 @@ function emitRustPass(
         if (append && !cellVars.has(append.name)) {
           const rest = append.rest as Extract<Expression, { form: 'template' }>
           const target = vname(append.name)
-          const [only] = rest.parts
+          // the one value appended, when the rest is exactly one value (compile/node.ts, `TemplatePart`)
+          const only = rest.parts.length === 1 && rest.parts[0]!.form === 'value' ? rest.parts[0]!.value : undefined
 
           // a literal: one character is `push` (clippy: single_char_add_str), more is `push_str`
-          if (rest.parts.every(p => typeof p === 'string')) {
-            const literal = (rest.parts as string[]).join('')
+          if (rest.parts.every(p => p.form === 'chunk')) {
+            const literal = rest.parts.map(p => (p.form === 'chunk' ? p.value : '')).join('')
 
             return [...literal].length === 1 ? `${target}.push(${rustChar(literal)});` : `${target}.push_str(${rustString(literal)});`
           }
 
           // one character of an ASCII text is pushed as the char, with no one-character String made for it
-          if (rest.parts.length === 1 && typeof only !== 'string' && only!.form === 'call' && only!.callee.form === 'member') {
-            const text = stringCall(only!.callee)
+          if (only && only.form === 'call' && only.callee.form === 'member') {
+            const text = stringCall(only.callee)
 
             if (text && asciiNodes.has(text.target) && (text.op === 'charAt' || text.op === 'at')) {
-              return `{ let b = ${bytesOf(text.target)}; let i = ${bare(expr(only!.args[0]!))}; if i >= 0 && (i as usize) < b.len() { ${target}.push(b[i as usize] as char); } }`
+              return `{ let b = ${bytesOf(text.target)}; let i = ${bare(expr(only.args[0]!))}; if i >= 0 && (i as usize) < b.len() { ${target}.push(b[i as usize] as char); } }`
             }
           }
 
           // one character read through a cursor is pushed as the char
-          if (rest.parts.length === 1 && typeof only !== 'string' && only!.form === 'call' && only!.callee.form === 'member') {
-            const text = stringCall(only!.callee)
-            const cursor = cursors.reads.get(only!)
+          if (only && only.form === 'call' && only.callee.form === 'member') {
+            const text = stringCall(only.callee)
+            const cursor = cursors.reads.get(only)
 
             if (text && cursor !== undefined && text.op !== 'charCodeAt') {
-              return `if let Some(c) = term_cursor(${strOf(text.target)}, ${bare(expr(only!.args[0]!))}, &mut ${cursorName(cursor)}) { ${target}.push(c); }`
+              return `if let Some(c) = term_cursor(${strOf(text.target)}, ${bare(expr(only.args[0]!))}, &mut ${cursorName(cursor)}) { ${target}.push(c); }`
             }
           }
 
           // one text value alone is pushed as itself, borrowed; the text itself (`<{s}{s}>`) is copied first, since
           // it cannot be read while it is written
-          if (rest.parts.length === 1 && typeof only !== 'string' && textValued(only!)) {
-            const self = only!.form === 'variable' && only!.name === append.name
+          if (only && textValued(only)) {
+            const self = only.form === 'variable' && only.name === append.name
 
-            return `${target}.push_str(&${self ? `${target}.clone()` : bare(expr(only!))});`
+            return `${target}.push_str(&${self ? `${target}.clone()` : bare(expr(only))});`
           }
 
           return `${target}.push_str(&${expr(append.rest)});`
@@ -4104,11 +4156,13 @@ function emitRustPass(
       }
       case 'while': {
         const budget = budgetCheck(node, d + 1)
+        // a named walk's label, on the loop keyword itself (`'outer: while`)
+        const named = loopLabel(node.label)
 
         // `while true` emits `loop`, which rustc knows diverges: a function ending in the loop then needs no
         // unreachable trailing value (E0308)
         if (node.cond.form === 'boolean' && node.cond.value === true) {
-          return `loop {\n${budget}${block(node.body, d + 1)}\n${pad(d)}}`
+          return `${named}loop {\n${budget}${block(node.body, d + 1)}\n${pad(d)}}`
         }
 
         // a counted loop calling a task whose arithmetic is safe below a bound (ir/facts/bounds.ts): written twice, the
@@ -4119,14 +4173,14 @@ function emitRustPass(
           const test = guard.limits.map(l => (l.low ? `${vname(l.name)} >= 0` : `${vname(l.name)} <= ${l.high}`)).join(' && ')
           const outer = fastCalls
           fastCalls = new Set([...outer, ...guard.fast])
-          const fast = `while ${condExpr(node.cond)} {\n${block(node.body, d + 2)}\n${pad(d + 1)}}`
+          const fast = `${named}while ${condExpr(node.cond)} {\n${block(node.body, d + 2)}\n${pad(d + 1)}}`
           fastCalls = outer
-          const slow = `while ${condExpr(node.cond)} {\n${block(node.body, d + 2)}\n${pad(d + 1)}}`
+          const slow = `${named}while ${condExpr(node.cond)} {\n${block(node.body, d + 2)}\n${pad(d + 1)}}`
 
           return `if ${test} {\n${pad(d + 1)}${fast}\n${pad(d)}} else {\n${pad(d + 1)}${slow}\n${pad(d)}}`
         }
 
-        return `while ${condExpr(node.cond)} {\n${budget}${block(
+        return `${named}while ${condExpr(node.cond)} {\n${budget}${block(
           node.body,
           d + 1,
         )}\n${pad(d)}}`
@@ -4174,6 +4228,8 @@ function emitRustPass(
             : expr(node.iterable)
 
         const budget = budgetCheck(node, d + 1)
+        // a named walk's label, on the loop keyword itself, inside any block that holds the walk's temporaries
+        const named = loopLabel(node.label)
 
         // the item and index are locals, so a top-level task or dock alias of the same name does not capture a read
         localNames.add(node.item)
@@ -4234,7 +4290,7 @@ function emitRustPass(
             const walked = block(node.body, d + 1)
             borrowedNames = outerBorrowed
 
-            return `for ${each} {\n${pad(d + 1)}let ${vname(node.item)} = ${byRef ? '__item' : element}; ${index}\n${budget}${walked}\n${pad(d)}}`
+            return `${named}for ${each} {\n${pad(d + 1)}let ${vname(node.item)} = ${byRef ? '__item' : element}; ${index}\n${budget}${walked}\n${pad(d)}}`
           }
 
           // the element at `__at` of a list's storage, copied or cloned out, each read its own statement so no borrow
@@ -4244,13 +4300,13 @@ function emitRustPass(
 
           // a list lent for writing is walked by position on the Vec itself, so the body may still write it
           if (lentAs === 'write' && walkedName !== undefined) {
-            return `{ let mut __at: usize = 0; while __at < ${vname(walkedName)}.len() { let ${vname(node.item)} = ${at(vname(walkedName))}; ${index}__at += 1;\n${budget}${block(
+            return `{ let mut __at: usize = 0; ${named}while __at < ${vname(walkedName)}.len() { let ${vname(node.item)} = ${at(vname(walkedName))}; ${index}__at += 1;\n${budget}${block(
               node.body,
               d + 1,
             )}\n${pad(d)}} }`
           }
 
-          return `{ let __walked = &(${expr(node.iterable)}); let mut __at: usize = 0; while __at < __walked.borrow().len() { let ${vname(node.item)} = ${at('__walked.borrow()')}; ${index}__at += 1;\n${budget}${block(
+          return `{ let __walked = &(${expr(node.iterable)}); let mut __at: usize = 0; ${named}while __at < __walked.borrow().len() { let ${vname(node.item)} = ${at('__walked.borrow()')}; ${index}__at += 1;\n${budget}${block(
             node.body,
             d + 1,
           )}\n${pad(d)}} }`
@@ -4258,11 +4314,11 @@ function emitRustPass(
 
         // a walk that names its INDEX enumerates; `i64` because that is what a Term number is here. lean-0017
         return node.index
-          ? `for (${vname(node.index)}, ${vname(node.item)}) in ${iterable}.into_iter().enumerate().map(|(i, v)| (i as i64, v)) {\n${budget}${block(
+          ? `${named}for (${vname(node.index)}, ${vname(node.item)}) in ${iterable}.into_iter().enumerate().map(|(i, v)| (i as i64, v)) {\n${budget}${block(
               node.body,
               d + 1,
             )}\n${pad(d)}}`
-          : `for ${vname(node.item)} in ${iterable} {\n${budget}${block(
+          : `${named}for ${vname(node.item)} in ${iterable} {\n${budget}${block(
               node.body,
               d + 1,
             )}\n${pad(d)}}`
@@ -4276,7 +4332,7 @@ function emitRustPass(
         if (node.exceptionArms) {
           const carrier = expr(node.subject)
           const arms = node.cases.map(b => {
-            const arm = node.exceptionArms![b.label]!
+            const arm = node.exceptionArms!.find(one => one.label === b.label)!
             const bodyText = block(b.body, d + 2)
             // only the fields the arm READS, asked of the program and not of the emitted text (swift.ts says why)
             const read = namesIn(b.body)
@@ -4622,9 +4678,9 @@ function emitRustPass(
       }
 
       case 'break':
-        return 'break;'
+        return node.label ? `break ${loopName(node.label)};` : 'break;'
       case 'continue':
-        return 'continue;'
+        return node.label ? `continue ${loopName(node.label)};` : 'continue;'
       case 'exit':
         return 'std::process::exit(0);'
       case 'debug':
@@ -5120,7 +5176,8 @@ function emitRustPass(
         // a form that can be a map key hashes and compares by the key rule (TermHash): its fields one by one, a case by
         // its index and then its fields
         const keyable = keyableForms.has(node.name)
-        const bounds = node.params.length ? `<${node.params.map(p => `${p.toUpperCase()}: TermHash`).join(', ')}>` : ''
+        // `Clone` beside `TermHash`: a map field's key rule (`TermMap<K, V>`) needs its key `Clone`
+        const bounds = node.params.length ? `<${node.params.map(p => `${p.toUpperCase()}: TermHash + Clone`).join(', ')}>` : ''
         const structKey = (name: string, typeArgs: string, fields: string[]): string => {
           const hash = fields.map(f => `self.${f}.term_hash(h);`).join(' ')
           const eq = fields.map(f => `self.${f}.term_eq(&other.${f})`).join(' && ') || 'true'
@@ -5206,9 +5263,17 @@ function emitRustPass(
             return `\n${pad(d)}impl${bounds} TermHash for ${pascal(node.name)}${typeArgs} {\n${pad(d + 1)}fn term_hash<H: std::hash::Hasher>(&self, h: &mut H) { match self { ${arms.map(a => a.hash).join(', ')} } }\n${pad(d + 1)}#[allow(unreachable_patterns)]\n${pad(d + 1)}fn term_eq(&self, other: &Self) -> bool { match (self, other) { ${arms.map(a => a.eq).join(', ')}, _ => false } }\n${pad(d)}}`
           }
 
+          // the tag, when the program reads it as a field: the case's name as text (compile/tag.ts)
+          const tagArms = node.variants.map(v =>
+            `Self::${pascal(v.name)}${payloadOf(node.name, v.name) ? '(_)' : v.fields.length > 0 ? ' { .. }' : ''} => ${JSON.stringify(tagText(v.name))}`,
+          )
+          const tagged = taggedNames.has(node.name)
+            ? `\n${pad(d)}impl${generics} ${pascal(node.name)}${typeArgs} {\n${pad(d + 1)}#[allow(dead_code)]\n${pad(d + 1)}pub fn term_tag(&self) -> String { match self { ${tagArms.join(', ')} }.to_string() }\n${pad(d)}}`
+            : ''
+
           return `${derive}enum ${pascal(
             node.name,
-          )}${generics} {\n${cases.join(',\n')}\n${pad(d)}}${structs.join('')}${written}${keyable ? enumKey() : ''}`
+          )}${generics} {\n${cases.join(',\n')}\n${pad(d)}}${structs.join('')}${written}${keyable ? enumKey() : ''}${tagged}`
         }
 
         // a list the record owns is the plain `Vec` (`ownedFields`)
@@ -5571,7 +5636,7 @@ macro_rules! term_hash_by_value { ($($t:ty),*) => { $(impl TermHash for $t {
     fn term_hash<H: std::hash::Hasher>(&self, h: &mut H) { std::hash::Hash::hash(self, h) }
     fn term_eq(&self, other: &Self) -> bool { self == other }
 })* } }
-term_hash_by_value!(i8, i16, i32, i64, i128, u8, u16, u32, u64, u128, usize, isize, bool, char, (), str, String);
+term_hash_by_value!(i8, i16, i32, i64, i128, u8, u16, u32, u64, u128, usize, isize, bool, char, (), str, std::string::String);
 // the canonical key of a float: one NaN, and \`-0.0\` folded into \`0.0\`
 impl TermHash for f64 {
     fn term_hash<H: std::hash::Hasher>(&self, h: &mut H) { let x = if self.is_nan() { f64::NAN } else if *self == 0.0 { 0.0 } else { *self }; std::hash::Hash::hash(&x.to_bits(), h) }
@@ -5581,7 +5646,7 @@ impl TermHash for f32 {
     fn term_hash<H: std::hash::Hasher>(&self, h: &mut H) { (*self as f64).term_hash(h) }
     fn term_eq(&self, other: &Self) -> bool { (*self as f64).term_eq(&(*other as f64)) }
 }
-impl<T: TermHash> TermHash for Vec<T> {
+impl<T: TermHash> TermHash for std::vec::Vec<T> {
     fn term_hash<H: std::hash::Hasher>(&self, h: &mut H) { std::hash::Hash::hash(&self.len(), h); for x in self { x.term_hash(h) } }
     fn term_eq(&self, other: &Self) -> bool { self.len() == other.len() && self.iter().zip(other).all(|(a, b)| a.term_eq(b)) }
 }
@@ -5589,9 +5654,9 @@ impl<T: TermHash> TermHash for [T] {
     fn term_hash<H: std::hash::Hasher>(&self, h: &mut H) { std::hash::Hash::hash(&self.len(), h); for x in self { x.term_hash(h) } }
     fn term_eq(&self, other: &Self) -> bool { self.len() == other.len() && self.iter().zip(other).all(|(a, b)| a.term_eq(b)) }
 }
-impl<T: TermHash> TermHash for Option<T> {
-    fn term_hash<H: std::hash::Hasher>(&self, h: &mut H) { match self { Some(x) => { std::hash::Hash::hash(&1u8, h); x.term_hash(h) } None => std::hash::Hash::hash(&0u8, h) } }
-    fn term_eq(&self, other: &Self) -> bool { match (self, other) { (Some(a), Some(b)) => a.term_eq(b), (None, None) => true, _ => false } }
+impl<T: TermHash> TermHash for std::option::Option<T> {
+    fn term_hash<H: std::hash::Hasher>(&self, h: &mut H) { match self { std::option::Option::Some(x) => { std::hash::Hash::hash(&1u8, h); x.term_hash(h) } std::option::Option::None => std::hash::Hash::hash(&0u8, h) } }
+    fn term_eq(&self, other: &Self) -> bool { match (self, other) { (std::option::Option::Some(a), std::option::Option::Some(b)) => a.term_eq(b), (std::option::Option::None, std::option::Option::None) => true, _ => false } }
 }
 impl<T: TermHash + ?Sized> TermHash for std::rc::Rc<T> {
     fn term_hash<H: std::hash::Hasher>(&self, h: &mut H) { (**self).term_hash(h) }
@@ -5601,7 +5666,7 @@ impl<T: TermHash + ?Sized> TermHash for std::cell::RefCell<T> {
     fn term_hash<H: std::hash::Hasher>(&self, h: &mut H) { self.borrow().term_hash(h) }
     fn term_eq(&self, other: &Self) -> bool { self.borrow().term_eq(&*other.borrow()) }
 }
-impl<T: TermHash + ?Sized> TermHash for Box<T> {
+impl<T: TermHash + ?Sized> TermHash for std::boxed::Box<T> {
     fn term_hash<H: std::hash::Hasher>(&self, h: &mut H) { (**self).term_hash(h) }
     fn term_eq(&self, other: &Self) -> bool { (**self).term_eq(&**other) }
 }
@@ -5794,50 +5859,154 @@ async fn __term_budget() {
     let left = __TERM_BUDGET.with(|b| { let n = b.get().saturating_sub(1); b.set(n); n });
     if left == 0 {
         __TERM_BUDGET.with(|b| b.set(${BUDGET}));
-        tokio::task::yield_now().await;
+        __term_yield().await;
     }
 }`,
       ]
     : []
 
-  // the executor for fire-and-forget calls (terminal-target-0005): a queue on this thread, and a drain that polls it
-  // until nothing more is ready, with a waker that does nothing. Standard library only, so a program that `tick`s an
-  // asynchronous task still builds with a bare rustc. What it runs either finishes without waiting on the outside
-  // world, or stays queued for the next drain. Emitted when a call is queued or a program drains (`run-pending`)
+  // THE EXECUTOR (terminal-target-0005, and design 1 of note/term/research/beam-otp-lessons.md): every Term future on
+  // this thread, one at a time, interleaved only where each one waits, which is node's model. A queue of the work
+  // nobody awaits, timers, and a driver, with a waker that does nothing: whatever drives polls again, so nothing needs
+  // waking. Standard library only, so a program that ticks or spawns still builds with a bare rustc. Emitted when any
+  // task is asynchronous or a program drains (`run-pending`)
   const drains = body.some(line => line.includes('__term_drain('))
-  const spawnHelpers = spawnUses > 0 || drains
+  const spawnHelpers = spawnUses > 0 || drains || budgetUses > 0 || body.some(line => /\basync fn\b|__term_sleep\(|\bjob::/.test(line))
     ? [
-        `// fire and forget: a future nobody awaits is queued here and polled by \`__term_drain\`, never dropped unrun
+        `// fire and forget: a future nobody awaits runs NOW to its first wait, as an async function called on node does,
+// and what is still waiting is queued here and polled by \`__term_drain\` or whatever is waiting, never dropped unrun
 thread_local! { static __TERM_SPAWNED: std::cell::RefCell<Vec<std::pin::Pin<Box<dyn std::future::Future<Output = ()>>>>> = std::cell::RefCell::new(Vec::new()); }
+// how many waits have ended: a round of the driver that moves it nothing has nothing to run until a timer is due
+thread_local! { static __TERM_PROGRESS: std::cell::Cell<u64> = std::cell::Cell::new(0); }
+// the soonest a timer waited on is due, written by each timer that is not
+thread_local! { static __TERM_WAKE: std::cell::Cell<Option<std::time::Instant>> = std::cell::Cell::new(None); }
+#[allow(dead_code)]
+fn __term_progressed() { __TERM_PROGRESS.with(|p| p.set(p.get() + 1)); }
 #[allow(dead_code)]
 fn __term_spawn<T: 'static>(work: impl std::future::Future<Output = T> + 'static) {
-    __TERM_SPAWNED.with(|queue| queue.borrow_mut().push(Box::pin(async move { let _ = work.await; })));
+    let mut work: std::pin::Pin<Box<dyn std::future::Future<Output = ()>>> = Box::pin(async move { let _ = work.await; });
+    let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+    if work.as_mut().poll(&mut context).is_pending() {
+        __TERM_SPAWNED.with(|queue| queue.borrow_mut().push(work));
+    } else {
+        __term_progressed();
+    }
 }
+// one round over the queued work, each polled once: what finishes is dropped, and what the polled work queued in turn
+// goes after what is still waiting
+#[allow(dead_code)]
+fn __term_step() {
+    let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+    let pending: Vec<_> = __TERM_SPAWNED.with(|queue| std::mem::take(&mut *queue.borrow_mut()));
+    let mut waiting = Vec::new();
+    for mut work in pending {
+        if work.as_mut().poll(&mut context).is_ready() {
+            __term_progressed();
+        } else {
+            waiting.push(work);
+        }
+    }
+    __TERM_SPAWNED.with(|queue| {
+        let mut queued = queue.borrow_mut();
+        waiting.append(&mut queued);
+        *queued = waiting;
+    });
+}
+// run the queued work until none of it can go further without waiting (\`run-pending\`)
 #[allow(dead_code)]
 fn __term_drain() {
+    loop {
+        let before = __TERM_PROGRESS.with(|p| p.get());
+        __term_step();
+        if __TERM_PROGRESS.with(|p| p.get()) == before || __TERM_SPAWNED.with(|queue| queue.borrow().is_empty()) {
+            break;
+        }
+    }
+}
+// a timer: ready once its time is due. Not due, it notes when it will be, so a driver with nothing else to run sleeps
+// the thread until then rather than spinning
+struct __TermSleep { at: std::time::Instant }
+impl std::future::Future for __TermSleep {
+    type Output = ();
+    fn poll(self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<()> {
+        if std::time::Instant::now() >= self.at {
+            __term_progressed();
+            return std::task::Poll::Ready(());
+        }
+        let at = self.at;
+        __TERM_WAKE.with(|wake| wake.set(Some(wake.get().map_or(at, |soonest| soonest.min(at)))));
+        cx.waker().wake_by_ref();
+        std::task::Poll::Pending
+    }
+}
+#[allow(dead_code)]
+fn __term_sleep(ms: i64) -> __TermSleep {
+    __TermSleep { at: std::time::Instant::now() + std::time::Duration::from_millis(ms.max(0) as u64) }
+}
+// a wait for \`done\` to hold, running the queued work meanwhile: a job's \`wait\` is one, so the job it waits on runs
+struct __TermUntil<F: Fn() -> bool> { done: F }
+impl<F: Fn() -> bool> std::future::Future for __TermUntil<F> {
+    type Output = ();
+    fn poll(self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<()> {
+        if (self.done)() {
+            __term_progressed();
+            return std::task::Poll::Ready(());
+        }
+        __term_step();
+        if (self.done)() {
+            __term_progressed();
+            return std::task::Poll::Ready(());
+        }
+        cx.waker().wake_by_ref();
+        std::task::Poll::Pending
+    }
+}
+#[allow(dead_code)]
+fn __term_until<F: Fn() -> bool>(done: F) -> __TermUntil<F> {
+    __TermUntil { done }
+}
+// give the other work a turn once: the preemption budget's yield
+struct __TermYield { yielded: bool }
+impl std::future::Future for __TermYield {
+    type Output = ();
+    fn poll(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<()> {
+        __term_progressed();
+        if self.yielded {
+            return std::task::Poll::Ready(());
+        }
+        self.yielded = true;
+        cx.waker().wake_by_ref();
+        std::task::Poll::Pending
+    }
+}
+#[allow(dead_code)]
+fn __term_yield() -> __TermYield {
+    __TermYield { yielded: false }
+}
+// run an asynchronous entry to its answer, with the queued work running beside it, sleeping the thread only while
+// every future waits on a timer. A round that ends no wait with no timer due is a program waiting on something nothing
+// can finish, and it stops rather than hanging
+#[allow(dead_code)]
+fn __term_block_on<T>(entry: impl std::future::Future<Output = T>) -> T {
+    let mut entry = std::pin::pin!(entry);
     let mut context = std::task::Context::from_waker(std::task::Waker::noop());
     loop {
-        let pending: Vec<_> = __TERM_SPAWNED.with(|queue| std::mem::take(&mut *queue.borrow_mut()));
-        if pending.is_empty() {
-            break;
+        let before = __TERM_PROGRESS.with(|p| p.get());
+        __TERM_WAKE.with(|wake| wake.set(None));
+        if let std::task::Poll::Ready(value) = entry.as_mut().poll(&mut context) {
+            return value;
         }
-        let mut waiting = Vec::new();
-        let mut finished = false;
-        for mut work in pending {
-            if work.as_mut().poll(&mut context).is_ready() {
-                finished = true;
-            } else {
-                waiting.push(work);
+        __term_step();
+        if __TERM_PROGRESS.with(|p| p.get()) == before {
+            match __TERM_WAKE.with(|wake| wake.get()) {
+                Some(at) => {
+                    let now = std::time::Instant::now();
+                    if at > now {
+                        std::thread::sleep(at - now);
+                    }
+                }
+                None => panic!("defect: the program waits on work that nothing can finish"),
             }
-        }
-        // what the polled work queued in turn goes after what is still waiting
-        __TERM_SPAWNED.with(|queue| {
-            let mut queued = queue.borrow_mut();
-            waiting.append(&mut queued);
-            *queued = waiting;
-        });
-        if !finished {
-            break;
         }
     }
 }`,
@@ -5845,6 +6014,16 @@ fn __term_drain() {
     : []
 
   lastBudgetStats = { checked: budgetUses, elided: budgetElided }
+
+  // an async closure's future, boxed with its answer stated so the block is checked against it
+  if (boxedFutures) {
+    spawnHelpers.push(
+      `#[allow(dead_code)]
+fn __term_boxed<T, F: std::future::Future<Output = T> + 'static>(work: F) -> std::pin::Pin<Box<dyn std::future::Future<Output = T>>> {
+    Box::pin(work)
+}`,
+    )
+  }
 
   // `melt` clones every field of each form it melts (item 0029)
   for (const form of meltSpecs.keys()) {
@@ -6583,8 +6762,8 @@ function moveOnLastUse(body: Statement[]): Set<string> {
         // `text <{p/inner/count}>` reads `p`: uncounted, `deep(p)` before it was taken as p's last use and moved it
         // (E0382)
         node.parts.forEach(part => {
-          if (typeof part !== 'string') {
-            walkExpr(part, restrict)
+          if (part.form === 'value') {
+            walkExpr(part.value, restrict)
           }
         })
         break

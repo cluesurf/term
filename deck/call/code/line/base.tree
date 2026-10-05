@@ -352,6 +352,9 @@ hook bind
   # Forget the term.surf token on this machine instead
   take toss
     like boolean
+  # Log in again even while the saved token works
+  take again
+    like boolean
   task bind
 
 hook self
@@ -425,8 +428,11 @@ hook make
   # Watch files and recompile incrementally on every change
   take ride
     like boolean
-  # Separate compilation: per-module artifacts, dependents check against interfaces (early cutoff)
+  # Separate compilation, the default: each module checked once against its imports' stubs and cached, per-module artifacts
   take separate
+    like boolean
+  # One whole-program compile per file instead, optimized across modules (the build before separate compilation)
+  take merged
     like boolean
   # Compile .tree files even when package.json owns `make` (which otherwise runs that script instead)
   take trees

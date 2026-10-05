@@ -1,8 +1,11 @@
-// Fire and forget on Rust (compile/rust.ts `__term_spawn`, `__term_drain`; deck/base/code/pending.tree): an asynchronous
-// task started with `tick` from synchronous code, twice, and once more from inside a handler closure, must have run
-// all three times once `run-pending` returns. A bare call of an `async fn` in Rust only builds a future, so before the
-// executor the count was 0 and the blog in a terminal added no post (terminal-target-0005). TypeScript is held to the
-// same answer: an async function runs to its first await when it is called.
+// Fire and forget on every backend (deck/base/code/pending.tree): an asynchronous task started with `tick` from
+// synchronous code, twice, and once more from inside a handler closure, runs AT ONCE to its first wait, as an async
+// function called on TypeScript does, and all three have run once `run-pending` returns. Rust polls the future once
+// where it is started and queues it if it waits (compile/rust.ts `__term_spawn`, `__term_drain`): a bare call of an
+// `async fn` only builds a future, so before the executor the count was 0 and the blog in a terminal added no post
+// (terminal-target-0005). Swift starts a `Task.immediate` and `run-pending` waits for what is outstanding
+// (compile/swift.ts `__termSpawn`, `__termDrain`): a `Task { }` ran later on another thread and the count read 1.
+// Kotlin starts the coroutine where it stands (`termStart`).
 // Run: npx tsx test/compile/tick-native.ts
 
 import { mkdtempSync } from 'node:fs'
@@ -61,15 +64,16 @@ task run
     call start-from
       read seen
   call handler
+  save before, read seen/count
   call run-pending
   save count, read seen/count
-  send back, text <{count}>
+  send back, text <{before} {count}>
 `
 
 const dir = mkdtempSync(join(tmpdir(), 'term-tick-native-'))
 const only = process.env.TICK_ONLY ?? ''
 
-for (const backend of (['typescript', 'rust'] as Backend[]).filter(b => !only || b === only)) {
+for (const backend of (['typescript', 'rust', 'swift', 'kotlin'] as Backend[]).filter(b => !only || b === only)) {
   const ran = runOn({ backend, program: PROGRAM, resolve: env => projectResolver(process.cwd(), env), dir, name: 'tick' })
 
   if (ran.form === 'skipped') {
@@ -80,7 +84,7 @@ for (const backend of (['typescript', 'rust'] as Backend[]).filter(b => !only ||
   ok(`${backend}: compiles, builds and runs`, ran.form === 'ran', ran.form === 'failed' ? `${ran.stage}: ${ran.reason}` : '')
 
   if (ran.form === 'ran') {
-    ok(`${backend}: three ticked calls, two plain and one from a handler, all ran by the time run-pending returns`, ran.output === '3', `got ${JSON.stringify(ran.output)}`)
+    ok(`${backend}: three ticked calls, two plain and one from a handler, each ran at once, before run-pending, and all by the time it returns`, ran.output === '3 3', `got ${JSON.stringify(ran.output)}`)
   }
 }
 

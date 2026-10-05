@@ -1,5 +1,5 @@
 
-# Hash map: the stdlib map type, backed by the native map. Build a value with `make find`.
+# Hash map: the stdlib map type, backed by the native map. Build a value with `make hash`.
 
 mark stable
 
@@ -200,7 +200,7 @@ form hash
       call values
         read self
     save out
-      make find
+      make hash
     save at, code 0
     walk list
       call keys

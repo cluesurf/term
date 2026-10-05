@@ -1,9 +1,8 @@
-# rust structured-concurrency implementation. Forwards to the linked job runtime shim. On this backend a task's
-# `work` is typed as a synchronous function, so a job runs to completion inside `spawn` and is settled before its handle
-# exists: `wait` answers at once, `cancel` finds nothing running, and a `gather` is correct and sequential. The states
-# and the exceptions they raise are code/task.tree's, the same as on node. Running work concurrently needs the work
-# typed as asynchronous, which is note/term/research/beam-otp-lessons.md design 1's later half. Internal: reached only
-# through the public task API.
+# rust structured-concurrency implementation. Forwards to the linked job runtime shim (runtime/job.rs), which runs a
+# job on the program's one-thread executor (compile/rust.ts, `__term_spawn`): it starts at once, runs to its first
+# wait, and the rest of it runs while the caller waits on something else. A job reports its state and keeps its
+# outcome, and what each state means is decided in code/task.tree, the same as on node. A result crosses as `unknown`,
+# so one shim serves every result type. Internal: reached only through the public task API.
 
 dock type
   load <job::SeedJob>, name job-handle
@@ -14,43 +13,57 @@ dock load
 task job-spawn
   take work
     like task
+      mark async
       like unknown
   like job-handle
   send back
     call job/spawn
       read work
 
-# a job here is settled when its handle exists, so there is nothing to wait for
+# wait until the job is no longer running: settled, or cancelled
 task job-settle
   mark async
   take dock, like job-handle
   like void
-  send back
+  call job/settle
+    read dock
+    wait true
 
+# the same, giving up after `milliseconds`: true when it stopped running in time
 task job-settle-within
   mark async
   take dock, like job-handle
   take milliseconds, like number
   like boolean
-  send back, true
+  send back
+    call job/settle-within
+      read dock
+      read milliseconds
+      wait true
 
+# wait until every job has stopped running, or until the first one fails or is cancelled
 task job-settle-group
   mark async
   take docks
     like list
       like job-handle
   like void
-  send back
+  call job/settle-group
+    read docks
+    wait true
 
+# wait until any one job has stopped running, for any reason
 task job-settle-any
   mark async
   take docks
     like list
       like job-handle
   like void
-  send back
+  call job/settle-any
+    read docks
+    wait true
 
-# `done`, or `failed` when the work raised and this backend's shim caught it
+# `running`, `done`, `failed` or `cancelled`
 task job-state
   take dock, like job-handle
   like text
@@ -58,6 +71,7 @@ task job-state
     call job/state
       read dock
 
+# the result of a job whose state is `done`
 task job-result
   take dock, like job-handle
   like unknown
@@ -65,6 +79,8 @@ task job-result
     call job/result
       read dock
 
+# never reached here: a raise inside `work` ends the program on this backend, since the work's own signature cannot
+# carry it, so no job is ever `failed`
 task job-rethrow
   take dock, like job-handle
   like unknown
@@ -81,4 +97,6 @@ task job-cancel
 task job-alive
   take dock, like job-handle
   like boolean
-  send back, false
+  send back
+    call job/alive
+      read dock

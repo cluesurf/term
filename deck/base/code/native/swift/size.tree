@@ -1,3 +1,8 @@
+mark draft
+
+# SHELVED 2026-10-05. This template fuses `free-result`, which no file defines, so each of those fuses built nothing
+# until a fuse was required to name a template the build has (compile/template.ts). Nothing loads this module.
+
 load @term/base/maybe
   find maybe
 

@@ -1030,7 +1030,7 @@ task group-by
     like list
       like t
   save out
-    make find
+    make hash
   walk list, read items
     hook next
       take site, name item

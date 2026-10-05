@@ -761,7 +761,10 @@ function runSuiteSwift(suite: Suite): void {
   // `try!` on a call to a function Swift did NOT mark `throws` is a compile error ("no calls to throwing
   // functions occur"), so this has to match the emitter's own signature, same reasoning as Rust's Result check.
   const fallible = new RegExp(`func ${fn}\\([^)]*\\)\\s*throws\\s*->`).test(emitted)
-  const call = (arg: string): string => (fallible ? `try! ${fn}(${arg})` : `${fn}(${arg})`)
+  // Swift calls a Term task by its parameter's label, so read the label off the emitted signature
+  const label = new RegExp(`func ${fn}\\((\\w+)[ :]`).exec(emitted)?.[1]
+  const labeled = (arg: string): string => (label && label !== '_' ? `${label}: ${arg}` : arg)
+  const call = (arg: string): string => (fallible ? `try! ${fn}(${labeled(arg)})` : `${fn}(${labeled(arg)})`)
   writeFileSync(
     file,
     `${nativePrelude(program, 'swift', readRuntime)}\n${emitted}\nfor input in [${inputs.join(', ')}] { print(${call('input')}, terminator: "\\u{1e}") }\n`,

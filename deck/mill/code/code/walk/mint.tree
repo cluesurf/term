@@ -34,6 +34,8 @@ mint walk
     site must
   case down
     site down
+  case name
+    site name
   hook make
     make walk
       bind mode, read mode
@@ -44,6 +46,7 @@ mint walk
       bind flow, read flow
       bind must, read must
       bind down, read down
+      bind name, read name
 
 mint walk-hook
   case name

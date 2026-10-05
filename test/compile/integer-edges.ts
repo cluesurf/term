@@ -182,7 +182,7 @@ for (const [label, body] of Object.entries(EDGES)) {
         execFileSync('rustc', ['-A', 'warnings', '-C', 'opt-level=3', `${stem}.rs`, '-o', stem], { stdio: ['ignore', 'pipe', 'pipe'] })
         command = [stem]
       } else if (target === 'swift') {
-        writeFileSync(`${stem}.swift`, `${prelude}\n${emitSwift(built.program)}\nprint(edge(4611686018427387904))\n`)
+        writeFileSync(`${stem}.swift`, `${prelude}\n${emitSwift(built.program)}\nprint(edge(x: 4611686018427387904))\n`)
         execFileSync('swiftc', ['-O', '-o', stem, `${stem}.swift`], { stdio: ['ignore', 'pipe', 'pipe'] })
         command = [stem]
       } else {
@@ -236,7 +236,7 @@ task edge
       execFileSync('rustc', ['-A', 'warnings', '-C', 'opt-level=3', `${stem}.rs`, '-o', stem], { stdio: ['ignore', 'pipe', 'pipe'] })
       got = execFileSync(stem).toString().trim()
     } else if (target === 'swift') {
-      writeFileSync(`${stem}.swift`, `${prelude}\n${emitSwift(built.program)}\nprint(edge(3))\n`)
+      writeFileSync(`${stem}.swift`, `${prelude}\n${emitSwift(built.program)}\nprint(edge(x: 3))\n`)
       execFileSync('swiftc', ['-O', '-o', stem, `${stem}.swift`], { stdio: ['ignore', 'pipe', 'pipe'] })
       got = execFileSync(stem).toString().trim()
     } else {

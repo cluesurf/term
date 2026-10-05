@@ -92,7 +92,7 @@ export function checkLostWrites(program: Program, file: string): Diagnostic[] {
     const values = new Map<string, string>()
 
     task.params.forEach((param, i) => {
-      const type = (task.declared?.params[i] ?? param.type) as Type | undefined
+      const type = (task.declared?.params[i]?.type ?? param.type) as Type | undefined
 
       if (type?.kind === 'named' && forms.has(type.name) && !shared.has(type.name)) {
         values.set(param.name, type.name)
@@ -221,13 +221,20 @@ function indexedRoot(target: unknown): string | undefined {
 // for each task, the positions of the parameters it writes: directly, or by handing them to a task that does
 export function collectionWrites(program: Program): Map<Task, Set<number>> {
   const tasks = program.filter((s): s is Task => s.form === 'function' && s.body.length > 0)
+  // a separately compiled task: the positions its own unit found it writes through (`stubWrites`), fixed, since its
+  // body is not here. Without them a write handed on to a standard library task was not seen (@term/host's
+  // `pop-last`), and its warning was missing from a separate build
+  const settled = program.filter((s): s is Task => s.form === 'function' && s.stub === true && s.stubWrites !== undefined)
   const byName = new Map<string, Task[]>()
 
-  for (const task of tasks) {
+  for (const task of [...tasks, ...settled]) {
     byName.set(task.name, [...(byName.get(task.name) ?? []), task])
   }
 
-  const writes = new Map<Task, Set<number>>(tasks.map(task => [task, new Set<number>()]))
+  const writes = new Map<Task, Set<number>>([
+    ...tasks.map(task => [task, new Set<number>()] as [Task, Set<number>]),
+    ...settled.map(task => [task, new Set(task.stubWrites)] as [Task, Set<number>]),
+  ])
   let changed = true
 
   while (changed) {
@@ -566,7 +573,7 @@ export function warnLostCollectionWrites(program: Program, file: string): Diagno
     // the collection parameters it writes
     const written = new Set(
       task.params
-        .filter((param, i) => positions.has(i) && isCollection((task.declared?.params[i] ?? param.type) as Type | undefined))
+        .filter((param, i) => positions.has(i) && isCollection((task.declared?.params[i]?.type ?? param.type) as Type | undefined))
         .map(param => param.name),
     )
 
@@ -608,7 +615,8 @@ export function warnLostCollectionWrites(program: Program, file: string): Diagno
         ...diagnose('type-mismatch', {
           file,
           span: write.span as Diagnostic['span'],
-          message: `this writes \`${name}\`, a collection \`${task.method?.name ?? task.name}\` was handed and sends nothing back: under value semantics (D1) the write reaches a copy the caller never sees`,
+          // the task under the name it was written with, not one it was split apart under (`replace__in4_2`)
+          message: `this writes \`${name}\`, a collection \`${task.method?.name ?? task.name.replace(/(__in\d+_\d+)?(__\d+)*$/, '')}\` was handed and sends nothing back: under value semantics (D1) the write reaches a copy the caller never sees`,
           hint: `send \`${name}\` back and use what comes back, or hold it in a \`mark shared\` form so every binding sees one object`,
         }),
         severity: 'warning',

@@ -15,6 +15,7 @@ import {
 } from '@term/make/code/compile/backend'
 import { monomorphize } from '@term/make/code/ir/monomorphize'
 import { experimentalBanner } from '@term/make/code/compile/backend-registry'
+import { integerText } from '@term/make/code/compile/type-text'
 
 function snake(name: string): string {
   return name.replace(/-/g, '_')
@@ -60,7 +61,7 @@ export function emitWgsl(input: Program): string {
   const expr = (node: Expression): string => {
     switch (node.form) {
       case 'integer':
-        return String(node.value)
+        return integerText(node)
       case 'float':
         // an f32 literal needs a decimal point so it is a float, not an i32
         return Number.isInteger(node.value)
