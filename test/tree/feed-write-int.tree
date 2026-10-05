@@ -6,8 +6,7 @@ load @term/base/list
 load @term/base/boolean
   find and
 
-# by path: the base gate resolves the standard library and relative loads, and no other package
-load ../../deck/feed/code/base
+load @term/feed/base
   find make-cursor
   find read-int
   find make-writer
