@@ -19,7 +19,7 @@
 // Run: npx tsx test/compile/build-time.ts
 
 import { execFileSync } from 'node:child_process'
-import { cpSync, realpathSync, writeFileSync } from 'node:fs'
+import { cpSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { runDir } from './run-dir'
 
@@ -54,17 +54,66 @@ function build(project: string, cacheHome: string): number {
 // a throwaway copy of the stdlib, with its own empty caches, removed when the run ends (run-dir.ts). It was made with
 // `mkdtempSync` and never removed: 1.7 GB a run once both builds wrote their caches, and about 150 runs had left about
 // 250 GB in the system temp by 2026-10-05
-const project = runDir('term-buildtime-')
-const cacheHome = join(project, 'store')
+function freshProject(): { project: string; cacheHome: string } {
+  const project = runDir('term-buildtime-')
 
-cpSync(join(SEED, 'code'), join(project, 'code'), { recursive: true })
-writeFileSync(join(project, 'deck.tree'), 'deck @term/base\n  code <0.0.0>\n')
+  cpSync(join(SEED, 'code'), join(project, 'code'), { recursive: true })
+  writeFileSync(join(project, 'deck.tree'), 'deck @term/base\n  code <0.0.0>\n')
+
+  return { project, cacheHome: join(project, 'store') }
+}
+
+// THE COMPILER MUST HOLD STILL BETWEEN THE TWO BUILDS. The cache's version is a fingerprint of the compiler's source
+// files on disk, path, size and mtime (`compilerSourceHash` in deck/call/code/cache-store.ts), read by the bundled CLI
+// too. So an edit to any of them between the cold build and the warm one opens a fresh namespace, and the warm build
+// is cold BY DESIGN: the safe direction, an edit costing a rebuild and never a stale hit. In a repository where several
+// sessions edit the compiler at once, that read as this suite failing, `cold 36.73s, warm 37.63s` (2026-10-05), a
+// cache that works blamed for one that was correctly invalidated. What invalidates the cache is `term:cache-hit`'s to
+// prove; this suite proves only that an unchanged compiler's warm build reuses what the cold one wrote. So the same
+// inputs the version reads are taken before the cold build and after the warm one, and an attempt they differ across
+// is retried on a fresh copy; if the compiler moved during every attempt, the suite says so and skips
+const COMPILER_DIRS = ['deck/make/code', 'deck/call/code']
+
+function compilerFingerprint(): string {
+  const parts: string[] = []
+
+  for (const dir of COMPILER_DIRS) {
+    for (const file of (readdirSync(join(TERM, dir), { recursive: true }) as string[]).sort()) {
+      if (!file.endsWith('.ts')) continue
+
+      const at = statSync(join(TERM, dir, file))
+      parts.push(`${dir}/${file}:${at.size}:${at.mtimeMs}`)
+    }
+  }
+
+  return parts.join('\n')
+}
+
+const ATTEMPTS = 3
+let measured: { cold: number; warm: number } | undefined
+
+for (let attempt = 1; attempt <= ATTEMPTS && !measured; attempt++) {
+  const { project, cacheHome } = freshProject()
+  const before = compilerFingerprint()
+  const cold = build(project, cacheHome)
+  const warm = build(project, cacheHome)
+
+  if (compilerFingerprint() === before) {
+    measured = { cold, warm }
+  } else {
+    console.log(`  attempt ${attempt}: the compiler's source changed between the builds (cold ${cold.toFixed(2)}s, warm ${warm.toFixed(2)}s), so the warm build was cold by design`)
+  }
+}
+
+if (!measured) {
+  console.log(`skip  the compiler's source changed during each of ${ATTEMPTS} attempts, so no warm build could be measured`)
+  process.exit(0)
+}
 
 let pass = 0
 let fail = 0
 
-const cold = build(project, cacheHome)
-const warm = build(project, cacheHome)
+const { cold, warm } = measured
 const ratio = cold / Math.max(warm, 0.001)
 
 console.log(

@@ -20,6 +20,8 @@ overrides:
   picomatch@2: ^2.3.2
   picomatch@4: ^4.0.4
   shell-quote: ^1.9.0
+  # GHSA-vfj7-8cjw-p6xm affects every release through 3.0.3, the newest.
+  # No fix exists, see the repository root's pnpm-workspace.yaml.
   braces: ^3.0.3
   flatted: ^3.4.2
   # GHSA-2883-xcg3-v3hh. Raised from ^4.3.0, which still admitted the

@@ -10,6 +10,7 @@ import {
   realpathSync,
   statSync,
 } from 'node:fs'
+import type { Dirent } from 'node:fs'
 import { dirname, join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { LoadHow, Resolver, Source } from '@term/make/code/compile/load'
@@ -520,31 +521,40 @@ function treeFilesIn(
     return
   }
 
-  let entries: string[]
+  let entries: Dirent[]
 
   try {
-    entries = readdirSync(dir)
+    entries = readdirSync(dir, { withFileTypes: true })
   } catch {
     return
   }
 
-  for (const entry of entries) {
+  for (const dirent of entries) {
+    const entry = dirent.name
+
+    // `tmp` is scratch and a package's own `link/` is its dependencies, which are searched as packages of their own:
+    // a linked package's `tmp/` held tens of thousands of scratch files, and the walk entered every one
     if (
       entry.startsWith('.') ||
       entry === 'node_modules' ||
-      entry === 'host'
+      entry === 'host' ||
+      entry === 'tmp' ||
+      (entry === 'link' && dir === base)
     ) {
       continue
     }
 
     const full = join(dir, entry)
 
-    let isDir = false
+    // the entry's own type, read with the listing, and a stat only for a link (which is how `link/` holds a package)
+    let isDir = dirent.isDirectory()
 
-    try {
-      isDir = statSync(full).isDirectory()
-    } catch {
-      continue
+    if (dirent.isSymbolicLink()) {
+      try {
+        isDir = statSync(full).isDirectory()
+      } catch {
+        continue
+      }
     }
 
     if (isDir) {
@@ -552,6 +562,29 @@ function treeFilesIn(
     } else if (entry.endsWith('.tree')) {
       out.push({ path: full, rel: relative(base, full) })
     }
+  }
+}
+
+// the definition of `name` a file holds at top level. A file whose text does not contain the name cannot define it,
+// and is never parsed: the search used to parse every stdlib file and up to 2,000 of every linked package's for each
+// name asked, 8.6 s for one code action on the Term root (2026-10-05), where reading them all is a fraction of that
+function definitionIn(file: string, name: string): ModuleExport | undefined {
+  let text: string
+
+  try {
+    text = readFileSync(file, 'utf8')
+  } catch {
+    return undefined
+  }
+
+  return text.includes(name) ? scanDefs(text).find(d => d.name === name) : undefined
+}
+
+function realOf(dir: string): string {
+  try {
+    return realpathSync(dir)
+  } catch {
+    return dir
   }
 }
 
@@ -570,7 +603,7 @@ export function findModuleExporting(
     treeFilesIn(stdlib, stdlib, files)
 
     for (const file of files) {
-      const def = scanDefs(readFileSync(file.path, 'utf8')).find(d => d.name === name)
+      const def = definitionIn(file.path, name)
 
       if (def) {
         const rel = file.rel.replace(/\.tree$/, '').split(sep).join('/')
@@ -590,6 +623,14 @@ export function findModuleExporting(
     return undefined
   }
 
+  // EACH PACKAGE ONCE, and only a package. On the Term root `link/` holds every package twice, under `@term` and the
+  // old `@cluesurf`, `@term/base` is the stdlib searched above, and `bind` points at a folder of generator inputs with
+  // no manifest and no `.tree` file, which took 4.2 s of the 4.8 s a missing name cost (2026-10-05). `@term` is read
+  // first so a name is offered under the current scope
+  const seen = new Set<string>(stdlib ? [realOf(stdlib)] : [])
+
+  scopes.sort((a, b) => Number(b === '@term') - Number(a === '@term') || a.localeCompare(b))
+
   for (const scope of scopes) {
     if (!scope.startsWith('@')) {
       continue
@@ -607,13 +648,19 @@ export function findModuleExporting(
 
     for (const pkg of pkgs) {
       const pkgBase = join(scopeDir, pkg)
+      const real = realOf(pkgBase)
+
+      if (seen.has(real) || !existsSync(join(pkgBase, 'deck.tree'))) {
+        continue
+      }
+
+      seen.add(real)
+
       const files: { path: string; rel: string }[] = []
       treeFilesIn(pkgBase, pkgBase, files)
 
       for (const file of files) {
-        const def = scanDefs(readFileSync(file.path, 'utf8')).find(
-          d => d.name === name,
-        )
+        const def = definitionIn(file.path, name)
 
         if (def) {
           const rel = file.rel

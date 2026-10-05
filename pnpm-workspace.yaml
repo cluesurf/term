@@ -23,6 +23,12 @@ overrides:
   picomatch@2: ^2.3.2
   picomatch@4: ^4.0.4
   shell-quote: ^1.9.0
+  # GHSA-vfj7-8cjw-p6xm, stack exhaustion on deeply nested patterns,
+  # affects every release through 3.0.3, which is the newest on npm
+  # (2024-09). There is no fix to raise this to. It is reached through
+  # micromatch and chokidar 3, on glob and watch patterns this repository
+  # writes itself, never a stranger's, so it is dismissed on GitHub as
+  # tolerable rather than patched.
   braces: ^3.0.3
   flatted: ^3.4.2
   # GHSA-2883-xcg3-v3hh. Raised from ^4.3.0, which still admitted the

@@ -840,6 +840,9 @@ export class LanguageServer {
   >()
 
   private deckOf: DeckOf = projectDeckOf()
+  // the auto-import's answer per package and name, found or not, until a `.tree` file changes on disk: the lightbulb
+  // asks again every time the cursor moves onto the diagnostic
+  private readonly exporting = new Map<string, ReturnType<typeof findModuleExporting>>()
   private readonly cancelled = new Set<number | string>()
   private readonly workspace: Workspace
   private shuttingDown = false
@@ -1524,6 +1527,7 @@ export class LanguageServer {
         }
 
         const files = new Set(changes.map(c => c.file))
+        this.exporting.clear()
         // the packages whose role or deck file changed: a document reading any file of one is analyzed again
         const configRoots = changes.filter(c => CONFIG_FILE.test(c.file)).map(c => dirname(c.file))
 
@@ -2715,8 +2719,12 @@ export class LanguageServer {
     const actions: unknown[] = []
     const seen = new Set<string>()
     const root = doc.path ? findProjectRoot(doc.path) : undefined
+    // the kinds the editor asked for. A save asks for `source.fixAll` alone, and a quick fix is never one of those, so
+    // none is computed for it: the auto-import below searched the stdlib and every linked package for a save
+    const only = request?.context?.only
+    const quickfix = !only?.length || only.some(kind => kind === 'quickfix' || kind.startsWith('quickfix.'))
 
-    for (const diag of request?.context?.diagnostics ?? []) {
+    for (const diag of quickfix ? (request?.context?.diagnostics ?? []) : []) {
       // the old spelling of privacy: rewrite it to the one the language reads now
       if (diag.data?.name === 'note-private') {
         actions.push({
@@ -2751,8 +2759,10 @@ export class LanguageServer {
         continue
       }
 
-      // auto-import: an "unknown name" a linked package exports is offered as a `load` / `find`
-      if (!root) {
+      // auto-import: an "unknown name" a linked package exports is offered as a `load` / `find`. ONLY an unknown name:
+      // every diagnostic was searched for, so a line-length warning on a comment searched every package for a task
+      // named after the word under it. A diagnostic with no code is still searched, since a client may send one bare
+      if (!root || (diag.code !== undefined && diag.code !== 'unknown-name')) {
         continue
       }
 
@@ -2764,12 +2774,17 @@ export class LanguageServer {
 
       seen.add(name)
 
-      let found: ReturnType<typeof findModuleExporting>
+      const key = `${root}\0${name}`
+      let found = this.exporting.get(key)
 
-      try {
-        found = findModuleExporting(root, name)
-      } catch {
-        found = undefined
+      if (!this.exporting.has(key)) {
+        try {
+          found = findModuleExporting(root, name)
+        } catch {
+          found = undefined
+        }
+
+        this.exporting.set(key, found)
       }
 
       if (!found) {
@@ -2834,8 +2849,6 @@ export class LanguageServer {
         },
       })
     }
-
-    const only = request?.context?.only
 
     return only?.length
       ? actions.filter(a => only.some(kind => String((a as { kind: string }).kind).startsWith(kind)))
