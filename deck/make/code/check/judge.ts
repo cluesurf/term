@@ -993,6 +993,64 @@ function quoteSpine(level: number, head: Term, spine: Elim[]): Term {
   return term
 }
 
+// A NORMAL FORM TO REWRITE IN: every transparent definition unfolded, throughout, except two kinds of call kept as
+// written. A constant in `opaque` stays folded, so a law about `both` can find `both(x, y)` in a goal rather than the
+// match `both` unfolds to. And a call whose unfolding only gets STUCK (a match on a value that is not known, such as
+// `evaluate(v, p)` for a variable `p`) stays a call, which is the smallest spelling of the same value. Every step is a
+// conversion, so the term is convertible to the value it came from, and a syntactic comparison of two of them is a
+// sound (if incomplete) equality
+export function normalTerm(level: number, value: Value, opaque: ReadonlySet<string>): Term {
+  const head = headNormal(value, opaque)
+
+  switch (head.v) {
+    case 'rigid':
+      return normalSpine(level, { tag: 'const', name: head.name }, head.spine, opaque)
+    case 'neutral':
+      return normalSpine(level, { tag: 'var', index: level - head.head - 1 }, head.spine, opaque)
+    case 'lam':
+      return { tag: 'lam', body: normalTerm(level + 1, closeOver(head.body, neutralVar(level)), opaque) }
+    case 'pair':
+      return { tag: 'pair', first: normalTerm(level, head.first, opaque), second: normalTerm(level, head.second, opaque) }
+    default:
+      return quote(level, head)
+  }
+}
+
+// unfold transparent heads until a constructor, an opaque call, or a call whose unfolding is stuck
+function headNormal(value: Value, opaque: ReadonlySet<string>): Value {
+  let current = force(value)
+  let fuel = WHNF_FUEL
+
+  while (current.v === 'rigid' && definition.has(current.name) && !opaque.has(current.name) && fuel-- > 0) {
+    const next = force(unfoldRigid(current))
+
+    if (next.v === 'neutral' || next.v === 'flex') {
+      return current
+    }
+
+    current = next
+  }
+
+  return current
+}
+
+// a head under its applications, each argument normalized. Any other elimination is quoted as it stands
+function normalSpine(level: number, head: Term, spine: Elim[], opaque: ReadonlySet<string>): Term {
+  if (spine.some(elim => elim.e !== 'app')) {
+    return quoteSpine(level, head, spine)
+  }
+
+  let term = head
+
+  for (const elim of spine) {
+    if (elim.e === 'app') {
+      term = { tag: 'app', fun: term, arg: normalTerm(level, elim.arg, opaque) }
+    }
+  }
+
+  return term
+}
+
 export function quote(level: number, value: Value): Term {
   value = force(value)
 
