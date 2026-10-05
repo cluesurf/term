@@ -19,6 +19,7 @@ import {
 } from '@term/make/code/check/facts'
 import { terminatingFunctions } from '@term/make/code/check/totality'
 import { raiseSets } from '@term/make/code/check/effects'
+import { provenRules } from '@term/make/code/check/holds'
 import { EXCEPTION_FORM } from '@term/make/code/check/extend'
 import { hashText } from '@term/make/code/term/hash'
 
@@ -36,6 +37,9 @@ export type StubKnown = {
   ends: Set<string>
   raises: Map<string, Set<string>>
   native: Set<string>
+  // each rule the arithmetic provers proved in this unit, and how: over every ordered field, or with integer reasoning.
+  // A dependent citing the rule reads it (check/holds.ts `citedFacts`), since a field-wide rule may cite only another
+  proven: ReadonlyMap<string, 'field' | 'integer'>
 }
 
 export function stubKnown(program: Program): StubKnown {
@@ -66,6 +70,9 @@ export function stubKnown(program: Program): StubKnown {
     ends: terminatingFunctions(program),
     raises: sets.raises,
     native: sets.native,
+    // the proof pass of this unit ran just before (compile/separate.ts calls this after compiling the unit), so its
+    // record is this unit's
+    proven: new Map(provenRules()),
   }
 }
 
@@ -192,8 +199,9 @@ function factsOf(name: string, known: StubKnown): string[] {
     ['ends', known.ends],
     ['native', known.native],
   ]
+  const proven = known.proven.get(name)
 
-  return facts.filter(([, set]) => set.has(name)).map(([fact]) => fact)
+  return [...facts.filter(([, set]) => set.has(name)).map(([fact]) => fact), ...(proven ? [`proven-${proven}`] : [])]
 }
 
 // the stub of one checked program: its public, body-less surface, in original order
@@ -224,6 +232,18 @@ export function stubProgram(program: Program, known?: StubKnown): Program {
               }
             : {}),
           ...(known && only ? { stubShape: only } : {}),
+          // A PURE TASK SHOWN TO END CARRIES ITS WHOLE BODY, for the kernel alone (check/elaborate.ts). The kernel sees
+          // through a task by running its body, so without it a proof in another file could not compute `both(yes, a)`
+          // over an imported `both`: every rule of logic/boolean.tree in @term/seed failed separately and held merged.
+          // A RULE carries its body too, which is its `show hold`, so a `cite` of it from another file finds the lemma.
+          // It is part of the surface, so a body edit rebuilds the units naming it, which is what a proof that ran or
+          // cited the old body requires
+          ...(known &&
+          !statement.claim &&
+          statement.body.length > 0 &&
+          (statement.theorem || (known.ends.has(statement.name) && known.clean.has(statement.name)))
+            ? { stubBody: statement.body }
+            : {}),
           // arity-overload mangling (`name__<arity>`, code/check/overload.ts) is undone: the DEPENDENT unit runs its
           // own disambiguation over these stubs plus its calls, which re-derives the identical mangled names, so the
           // emitted imports line up with the owning unit's exports

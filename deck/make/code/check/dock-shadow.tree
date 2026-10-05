@@ -1,0 +1,242 @@
+# A parameter or local named like a module the same file docks hides that module for the whole task. The browser
+# page's `set-title` took `title`, the text, beside `dock load / load <global:title>, name title`, so `call title/set`
+# read `.set` off the text and stopped every titled page with `title.set is not a function`. Nothing said so, and a
+# duplicate declaration elsewhere kept the bundle from building at all, which hid it (2026-10-04, guides:
+# applications/web/routes). Warned, at the binding, so the name can change before anything runs.
+#
+# Ported from check/dock-shadow.ts (self-hosting, 2026-10-05). It walked each task's body by reflection; here it reads
+# compile/node-walk's statements and expressions of the body. Each hidden name is reported once, at its first binding
+# in the source, and in source order, which the original moved to first: its walk's own order could put a closure's
+# parameter before a `let` written above it.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load ../parser/diagnostic
+  find diagnostic
+  find diagnose
+  find diagnostic-input
+  find span
+
+load ../compile/node
+  find expression
+  find statement
+
+load ../compile/node-walk
+  find expressions-in
+  find statements-in
+
+# the first binding of each hidden name found so far, the names in the order first met: a later binding written
+# earlier in the source replaces the span and keeps the place, as a map set again keeps its key's
+form hidden
+  mark shared
+  link names, like list, like text
+  link spans, like list, like span
+
+task file-of
+  take at, like span
+  like text
+  mark private
+
+  sift at/file
+    case some
+      link written
+      back written
+    case none
+      back <>
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+task is-before
+  take a, like span
+  take b, like span
+  like boolean
+  mark private
+
+  fork test, is-below(a/start/line, b/start/line)
+    hold
+      back true
+  back and(is-equal(a/start/line, b/start/line), is-below(a/start/column, b/start/column))
+
+# a binding of `name` at `at`: kept when the name is docked and this is its first binding in the source so far
+task note-binding
+  take found, like hidden
+  take docked, like list, like text
+  take name, like text
+  take at, like span
+  like void
+  mark private
+
+  fork test, not(has-text(docked, name))
+    hold
+      back
+  walk found/names
+    take one
+    take index
+    fork test, is-equal(one, name)
+      hold
+        fork test, is-before(at, get(found/spans, index))
+          hold
+            save found/spans/{index}, at
+        back
+  push(found/names, name)
+  push(found/spans, at)
+
+task check-dock-shadow
+  take program, like list, like statement
+  like list, like diagnostic
+
+  # the docked module names of each file, side by side
+  save files, make list
+  save aliases, make list
+  walk program
+    take one
+    sift one
+      case native
+        save is-type, false
+        sift kind
+          case some
+            link given
+            sift given
+              case type
+                save is-type, true
+              case module
+                save is-type, false
+          case none
+            save is-type, false
+        fork test, not(is-type)
+          hold
+            save where, file
+            fork test, is-equal(where, <>)
+              hold
+                save where, file-of(span)
+            push(files, where)
+            push(aliases, alias)
+      miss
+        turn next
+
+  save out, make list
+  walk program
+    take one
+    sift one
+      case function
+        fork test, stub
+          hold
+            turn next
+        save own-file, file-of(span)
+        save docked, make list
+        walk files
+          take where
+          take at
+          fork test, is-equal(where, own-file)
+            hold
+              push(docked, get(aliases, at))
+        fork test, is-equal(docked/length, 0)
+          hold
+            turn next
+
+        save task-span, span
+        save task-name, name
+        save found
+          make hidden
+            bind names, make list
+            bind spans, make list
+        walk params
+          take param
+          save at, task-span
+          sift param/span
+            case some
+              link given
+              save at, given
+            case none
+              save at, task-span
+          note-binding(found, docked, param/name, at)
+        walk statements-in(body)
+          take inner
+          sift inner
+            case let
+              note-binding(found, docked, name, span)
+            case for-each
+              note-binding(found, docked, item, span)
+            miss
+              turn next
+        walk expressions-in(body)
+          take inner
+          sift inner
+            case closure
+              save closure-span, span
+              walk params
+                take param
+                note-binding(found, docked, param/name, closure-span)
+            miss
+              turn next
+
+        save order, sorted-order(found/spans)
+        walk order
+          take index
+          save name-hidden, get(found/names, index)
+          save at, get(found/spans, index)
+          save where, file-of(at)
+          fork test, is-equal(where, <>)
+            hold
+              save where, own-file
+          push(out, warning(where, at, name-hidden, task-name))
+      miss
+        turn next
+  back out
+
+# the indices of these spans in source order, stable: two at one place keep the order they were met in
+task sorted-order
+  take spans, like list, like span
+  like list, like number
+  mark private
+
+  save order, make list
+  walk spans
+    take at
+    take index
+    save place, order/length
+    walk test
+      hook test, and(is-above(place, 0), is-before(at, get(spans, get(order, subtract(place, 1)))))
+      hook hold
+        save place, subtract(place, 1)
+    push(order, 0)
+    save shift, subtract(order/length, 1)
+    walk test
+      hook test, is-above(shift, place)
+      hook hold
+        save order/{shift}, get(order, subtract(shift, 1))
+        save shift, subtract(shift, 1)
+    save order/{place}, index
+  back order
+
+task warning
+  take file, like text
+  take at, like span
+  take name, like text
+  take task-name, like text
+  like diagnostic
+  mark private
+
+  save input
+    make diagnostic-input
+      bind file, file
+      bind span, at
+      bind message, make(some, <"{name}" in "{task-name}" hides the module this file docks as "{name}", so `{name}/...` there reads the local>)
+  save kind, make dock-shadow
+  back diagnose(kind, input)

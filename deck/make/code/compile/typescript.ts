@@ -711,7 +711,9 @@ function mapKeyType(type: Type | undefined): Type | true | false {
 // one module and looked up in another must meet the same representative. A primitive is returned untouched. The table
 // holds each representative WEAKLY: a map that keys by it keeps it alive, and once nothing does, its entry is dropped.
 // It held them strongly until 2026-10-02, so a server keyed by request data grew without bound.
-const EQUAL_PRELUDE = `const __termShared = Symbol.for('term.shared')
+// The symbol is marked pure, so a bundle whose program never reaches equality drops it with the functions: a bundler
+// keeps a call it cannot prove free of effects (note/term/compiler/runtime-shaking.md)
+const EQUAL_PRELUDE = `const __termShared = /* @__PURE__ */ Symbol.for('term.shared')
 function __termShare<T extends object>(value: T): T {
   Object.defineProperty(value, __termShared, { value: true })
   return value
@@ -1104,6 +1106,97 @@ const __termText = {
     return a.length === b.length ? 0 : a.length < b.length ? -1 : 1
   },
 }`
+
+// THE TEXT RUNTIME IS SHAKEN BY METHOD, twice. It was one object, and a bundler cannot drop a property nobody reads,
+// so a command that trims one text shipped all thirty-odd methods and the surrogate cache with them
+// (tmp/shake-probe.sh, 2026-10-05). A module now carries the methods its code names, the methods those call, and the
+// helpers any of them mention, and each method is a function of its own (`__termText_trim`), so a bundle keeps only
+// the functions its program reaches even of a module that names them all, as the standard library's text module does.
+// Read off TEXT_PRELUDE, the object as written, so there is one copy of every method to keep right
+type TextPart = { name: string; code: string }
+
+const TEXT_OBJECT = 'const __termText = {\n'
+
+const TEXT_PARTS = ((): { head: TextPart[]; methods: TextPart[] } => {
+  const at = TEXT_PRELUDE.indexOf(TEXT_OBJECT)
+  // the helpers before the object, one declaration a line, each named by what it declares
+  const head = TEXT_PRELUDE.slice(0, at)
+    .split('\n')
+    .filter(line => line.length > 0)
+    .map(line => ({ name: /^const (\w+)/.exec(line)![1]!, code: line }))
+  // the methods: each runs from its comment or its first line to the `},` that closes it at the object's indent
+  const methods: TextPart[] = []
+  let lines: string[] = []
+
+  for (const line of TEXT_PRELUDE.slice(at + TEXT_OBJECT.length).split('\n')) {
+    if (line === '}') {
+      break
+    }
+
+    lines.push(line)
+
+    if (line === '  },') {
+      const named = lines.map(one => /^ {2}(\w+)\(/.exec(one)).find(found => found !== null)
+      methods.push({ name: named![1]!, code: lines.join('\n') })
+      lines = []
+    }
+  }
+
+  return { head, methods }
+})()
+
+// a method of the object as a function of its own: `trim(s: string): string {` at the object's indent is
+// `function __termText_trim(s: string): string {`, its body one level out, and every `__termText.x` it calls `__termText_x`
+function textFunction(method: TextPart): string {
+  return method.code
+    .split('\n')
+    .map(line => (line === '  },' ? '}' : line.startsWith(`  ${method.name}(`) ? `function __termText_${line.slice(2)}` : line.slice(2)))
+    .join('\n')
+    .replace(/__termText\.(\w+)/g, '__termText_$1')
+}
+
+// the text runtime a module's code needs: the methods it names, what they name in turn, and the helpers they mention
+export function textPrelude(code: string): string {
+  const byName = new Map(TEXT_PARTS.methods.map(method => [method.name, method]))
+  const kept = new Set<string>()
+  const queue = [...code.matchAll(/__termText_(\w+)/g)].map(found => found[1]!)
+
+  while (queue.length > 0) {
+    const name = queue.pop()!
+    const method = byName.get(name)
+
+    if (method === undefined || kept.has(name)) {
+      continue
+    }
+
+    kept.add(name)
+    queue.push(...[...method.code.matchAll(/__termText\.(\w+)/g)].map(found => found[1]!))
+  }
+
+  // in the object's own order, so a module's runtime reads the same whichever method it reached first
+  const methods = TEXT_PARTS.methods.filter(method => kept.has(method.name))
+  const body = methods.map(textFunction).join('\n')
+  // a helper is kept when a kept method or a kept helper after it mentions it (`__termWhiteStart` reads `__termWhite`)
+  const head: TextPart[] = []
+  let reads = body
+
+  for (const helper of [...TEXT_PARTS.head].reverse()) {
+    if (new RegExp(`\\b${helper.name}\\b`).test(reads)) {
+      head.unshift(helper)
+      reads = `${helper.code}\n${reads}`
+    }
+  }
+
+  return [...head.map(pureHelper), body].join('\n')
+}
+
+// a helper whose value is computed (`new RegExp(...)`, a `.map(...).join(...)`) is marked pure, so a bundle that
+// dropped every function reading it drops it too: a bundler keeps a call it cannot prove free of effects
+function pureHelper(helper: TextPart): string {
+  const found = /^const (\w+) = (.*)$/s.exec(helper.code)
+
+  return found && /^(new |\[)/.test(found[2]!) ? `const ${found[1]} = /* @__PURE__ */ (() => ${found[2]})()` : helper.code
+}
 
 // A LIST READ PAST THE END STOPS, as it does on Rust, Swift and Kotlin, instead of reading `undefined`. So do a write
 // out of range and a pop of an empty list. A slice clamps its bounds and never counts from the end
@@ -1754,19 +1847,19 @@ function makeEmitter(
         if (textOp && cursor !== undefined && (textOp.op === 'substring' || textOp.op === 'slice')) {
           tsTextUsed = true
 
-          return `__termText.cursorSlice(${expression(textOp.target)}, ${expression(node.args[0]!)}, ${node.args[1] ? expression(node.args[1]) : 'Infinity'}, __cursor${toPascal(cursor)})`
+          return `__termText_cursorSlice(${expression(textOp.target)}, ${expression(node.args[0]!)}, ${node.args[1] ? expression(node.args[1]) : 'Infinity'}, __cursor${toPascal(cursor)})`
         }
 
         if (textOp && cursor !== undefined) {
           tsTextUsed = true
 
-          return `__termText.${textOp.op === 'charCodeAt' ? 'cursorCodeAt' : 'cursorCharAt'}(${expression(textOp.target)}, ${expression(node.args[0]!)}, __cursor${toPascal(cursor)})`
+          return `__termText_${textOp.op === 'charCodeAt' ? 'cursorCodeAt' : 'cursorCharAt'}(${expression(textOp.target)}, ${expression(node.args[0]!)}, __cursor${toPascal(cursor)})`
         }
 
         if (textOp) {
           tsTextUsed = true
 
-          return `__termText.${textOp.op}(${[
+          return `__termText_${textOp.op}(${[
             expression(textOp.target),
             ...node.args.map(arg => expression(arg)),
           ].join(', ')})`
@@ -2040,7 +2133,7 @@ function makeEmitter(
         if (stringRead(node)) {
           tsTextUsed = true
 
-          return `__termText.length(${expression(node.target)})`
+          return `__termText_length(${expression(node.target)})`
         }
 
         // a binding field with a foreign `name <...>` (e.g. COLOR_BUFFER_BIT) emits that native name verbatim; other
@@ -2137,7 +2230,7 @@ function makeEmitter(
           isText(node.right.type)
         ) {
           tsTextUsed = true
-          const compared = `__termText.compare(${expression(node.left)}, ${expression(node.right)}) ${node.op} 0`
+          const compared = `__termText_compare(${expression(node.left)}, ${expression(node.right)}) ${node.op} 0`
 
           return parentPrecedence > 0 ? `(${compared})` : compared
         }
@@ -3654,7 +3747,7 @@ export function emitTypeScript(
   }
 
   if (tsTextUsed) {
-    prelude.push(TEXT_PRELUDE)
+    prelude.push(textPrelude(lines.join('\n')))
   }
 
   if (tsListUsed) {

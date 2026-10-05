@@ -534,6 +534,10 @@ form variant-field
   link optional
     like boolean
     need false
+  # `slot <name>` under a case: filled by position, `make pair(a, b)`, as a form's slot is
+  link positional
+    like boolean
+    need false
   link span
     like maybe, like span
     need false
@@ -774,6 +778,11 @@ form statement
       need false
     link stub-shape
       like maybe, like statement
+      need false
+    # the whole body of a pure task its owning unit proved to end, which the kernel of a dependent unfolds so a proof
+    # there can run it. Read by check/elaborate.ts only, never emitted
+    link stub-body
+      like list, like statement
       need false
     link stub-export
       like text

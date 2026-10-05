@@ -377,10 +377,43 @@ export function extendForms(
     return linked ? linked[1]! : '@local'
   }
 
+  // the values written by position into the `slot` fields, in order, of a form or of a case
+  const fillSlots = (
+    s: Statement,
+    node: Extract<Expression, { form: 'record' }>,
+    owner: string,
+    slots: { name: string }[],
+  ): void => {
+    const values = node.positional ?? []
+
+    if (values.length > slots.length) {
+      error(
+        s,
+        node.span,
+        `"${owner}" has ${slots.length} slot${slots.length === 1 ? '' : 's'} (${slots
+          .map(f => f.name)
+          .join(', ')}) and this gives ${values.length} values`,
+      )
+    } else {
+      values.forEach((value, i) => {
+        const slot = slots[i]!
+
+        if (node.fields.some(f => f.name === slot.name)) {
+          error(s, value.span, `"${slot.name}" is given twice, by position and by name`)
+        } else {
+          node.fields.push({ name: slot.name, value })
+        }
+      })
+    }
+
+    delete node.positional
+  }
+
   // a construction of a VARIANT given a bare value: `make full, <apples>` for `case full, like text`. A one-value case
   // has one field, `value`, so the one value is it. It reached the kernel instead, which refused it as `expected box,
-  // found (many String) -> box`, naming nothing a reader wrote (guides: language/forms, 2026-10-04). A variant with
-  // more fields, or more values, is refused naming its fields
+  // found (many String) -> box`, naming nothing a reader wrote (guides: language/forms, 2026-10-04). A case whose
+  // fields are `slot`s takes them in order, `make conjunction(p, q)`, as a form's slots are. Any other variant given
+  // values by position is refused naming its fields
   const fillVariant = (s: Statement, node: Extract<Expression, { form: 'record' }>): void => {
     if (!node.positional?.length) {
       return
@@ -392,9 +425,12 @@ export function extendForms(
       return
     }
 
+    const slots = variant.fields.filter(f => f.positional)
     const open = variant.fields.filter(f => !node.fields.some(given => given.name === f.name))
 
-    if (open.length === 1 && node.positional.length === 1) {
+    if (slots.length > 0) {
+      fillSlots(s, node, variant.name, slots)
+    } else if (open.length === 1 && node.positional.length === 1) {
       node.fields.push({ name: open[0]!.name, value: node.positional[0]! })
     } else {
       error(
@@ -433,27 +469,10 @@ export function extendForms(
           node.span,
           `"${rt.name}" has no slots, so its fields are given by name (\`bind <field>, <value>\`)`,
         )
-      } else if (node.positional.length > slots.length) {
-        error(
-          s,
-          node.span,
-          `"${rt.name}" has ${slots.length} slot${slots.length === 1 ? '' : 's'} (${slots
-            .map(f => f.name)
-            .join(', ')}) and this gives ${node.positional.length} values`,
-        )
+        delete node.positional
       } else {
-        node.positional.forEach((value, i) => {
-          const slot = slots[i]!
-
-          if (node.fields.some(f => f.name === slot.name)) {
-            error(s, value.span, `"${slot.name}" is given twice, by position and by name`)
-          } else {
-            node.fields.push({ name: slot.name, value })
-          }
-        })
+        fillSlots(s, node, rt.name, slots)
       }
-
-      delete node.positional
     }
 
     for (const f of rt.fields) {

@@ -1,0 +1,261 @@
+# A call reaches a task that something in the build defines.
+#
+# A task with no body built, and natively it emitted a stub (`TODO`, `fatalError`, `unimplemented!`), so a
+# declaration-only module compiled and failed only when a program called into it, at run time (guides:
+# language/native, 2026-10-03). A declaration on its own is fine: it is how a signature is written ahead of its
+# body, and how a shared module names a task each platform's `native/<env>/` file fills. What is refused is a CALL,
+# from the file being compiled, to a name that has no body anywhere in the build (no task with a body, no `bind`, no
+# native declaration) and that ANOTHER file declares. That call could only ever reach the stub, and nothing in the
+# calling file says so.
+#
+# A call from the declaring file itself is refused too, since 2026-10-05: every backend wrote the call to a stub that
+# fails when it runs (`throw new Error("stub: ...")`, `unimplemented!`, `fatalError`, `TODO`), and the build said
+# nothing (guides: language/native). Left alone is a PROOF file, one holding a theorem, a claim, an axiom or a `hold`:
+# there a body-less task is a postulate, an uninterpreted constant (a higher inductive type's path constructor, `loop`
+# in test/check/circle.ts) or a call the prover may assume nothing about, and a proof is checked, never run.
+#
+# Ported from check/bodiless.ts (self-hosting, 2026-10-05). Its two reflection walks are compile/node-walk's: a `hold`
+# among a body's statements, and the calls among its expressions.
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load ../parser/diagnostic
+  find diagnostic
+  find diagnose
+  find diagnostic-input
+  find span
+
+load ../compile/node
+  find expression
+  find statement
+  find type
+
+load ../compile/node-walk
+  find expressions-in
+  find statements-in
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+task file-of
+  take at, like span
+  like text
+  mark private
+
+  sift at/file
+    case some
+      link written
+      back written
+    case none
+      back <>
+
+# the name a body-less task's result names, when its result is a named type
+task result-name
+  take result, like maybe, like type
+  like text
+  mark private
+
+  sift result
+    case some
+      link given
+      sift given
+        case named
+          back name
+        miss
+          back <>
+    case none
+      back <>
+
+task has-hold
+  take body, like list, like statement
+  like boolean
+  mark private
+
+  walk statements-in(body)
+    take one
+    sift one
+      case hold
+        back true
+      miss
+        turn next
+  back false
+
+task check-bodiless-calls
+  take program, like list, like statement
+  take file, like text
+  like list, like diagnostic
+
+  save bodied, make list
+  # not `declared`: a task's own field of that name would hide it inside the task's arm
+  save declared-names, make list
+  # where each body-less name is declared, so a declaration in the calling file itself is not refused: a name, and the
+  # files it is declared in, joined in the order met
+  save declared-files, make list
+  save families, make list
+  walk program
+    take one
+    sift one
+      case function
+        # a claim is its own gate (`open-claim-used`), and a stub stands in for a body another unit has
+        fork test, or(is-above(body/length, 0), or(stub, or(claim, axiom)))
+          hold
+            push(bodied, name)
+          miss
+            save where, file-of(span)
+            save at, -1
+            walk declared-names
+              take seen
+              take index
+              fork test, is-equal(seen, name)
+                hold
+                  save at, index
+            fork test, is-below(at, 0)
+              hold
+                push(declared-names, name)
+                save first, make list
+                push(first, where)
+                push(declared-files, first)
+              miss
+                save files, get(declared-files, at)
+                fork test, not(has-text(files, where))
+                  hold
+                    push(files, where)
+                    save declared-files/{at}, files
+      case bind
+        push(bodied, name)
+      case native
+        push(bodied, alias)
+      case record-type
+        fork test, is-above(indices/length, 0)
+          hold
+            push(families, name)
+      miss
+        turn next
+
+  # a body-less task that answers an INDEXED family (a form with value indices, `path a b`) states a proposition's
+  # inhabitant: a postulate, as `loop : base = base` is the circle's path constructor (test/check/circle.ts). It is
+  # checked, never run, wherever it is called from
+  save postulates, make list
+  walk program
+    take one
+    sift one
+      case function
+        save named, result-name(result)
+        fork test, and(is-equal(body/length, 0), and(is-unequal(named, <>), has-text(families, named)))
+          hold
+            push(postulates, name)
+      miss
+        turn next
+
+  save unfilled, make list
+  save unfilled-files, make list
+  walk declared-names
+    take name
+    take index
+    fork test, and(not(has-text(bodied, name)), not(has-text(postulates, name)))
+      hold
+        push(unfilled, name)
+        push(unfilled-files, get(declared-files, index))
+
+  save out, make list
+  fork test, is-equal(unfilled/length, 0)
+    hold
+      back out
+
+  # the files that state proofs, where a body-less task is a postulate
+  save proof-files, make list
+  walk program
+    take one
+    sift one
+      case function
+        save where, file-of(span)
+        fork test, and(is-unequal(where, <>), or(theorem, or(claim, or(axiom, has-hold(body)))))
+          hold
+            push(proof-files, where)
+      case hold
+        save where, file-of(span)
+        fork test, is-unequal(where, <>)
+          hold
+            push(proof-files, where)
+      miss
+        turn next
+
+  fork test, has-text(proof-files, file)
+    hold
+      back out
+
+  save reported, make list
+  walk program
+    take one
+    sift one
+      case function
+        fork test, or(is-unequal(file-of(span), file), is-equal(body/length, 0))
+          hold
+            turn next
+        walk expressions-in(body)
+          take expression
+          sift expression
+            case call
+              save call-span, span
+              sift callee
+                case variable
+                  link called
+                  save at, -1
+                  walk unfilled
+                    take seen
+                    take index
+                    fork test, is-equal(seen, called)
+                      hold
+                        save at, index
+                  fork test, is-below(at, 0)
+                    hold
+                      turn next
+                  save line, call-span/start/line
+                  save column, call-span/start/column
+                  save key, <{line}:{column}>
+                  fork test, has-text(reported, key)
+                    hold
+                      turn next
+                  push(reported, key)
+                  save where, join(get(unfilled-files, at), <, >)
+                  push(out, refusal(file, call-span, called, where))
+                miss
+                  turn next
+            miss
+              turn next
+      miss
+        turn next
+  back out
+
+task refusal
+  take file, like text
+  take at, like span
+  take called, like text
+  take where, like text
+  like diagnostic
+  mark private
+
+  save input
+    make diagnostic-input
+      bind file, file
+      bind span, at
+      bind message, make(some, <"{called}" is declared with no body in {where}, and nothing in this build defines it, so this call could only reach a stub>)
+      bind hint, make(some, <give `{called}` a body, or load the module that implements it>)
+  save kind, make unknown-name
+  back diagnose(kind, input)

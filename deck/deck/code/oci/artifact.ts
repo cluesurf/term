@@ -157,8 +157,27 @@ export async function buildArtifact(input: {
     }
   }
 
-  // sorted by id, so the pack cuts depend on content alone and an unchanged run of objects packs identically
-  packable.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+  // IN FILE ORDER: every file's chunks in path order, then the objects no file names (the version's index nodes and
+  // commit) by id. The cuts are content-defined (pack.ts), so an unchanged run of files packs to the same digests, and
+  // a change re-cuts only the packs around it: the edited file's, and the one holding the index nodes, which change
+  // with any edit. Sorted by id alone, as until 2026-10-05, every new object landed at a random place among the
+  // others and an edit of one line re-packed 5 of 6 packs (pnpm term:install-bench)
+  const rank = new Map<string, number>()
+
+  for (const file of input.release.files) {
+    for (const chunk of file.chunks) {
+      if (!rank.has(chunk)) {
+        rank.set(chunk, rank.size)
+      }
+    }
+  }
+
+  packable.sort((a, b) => {
+    const x = rank.get(a.id) ?? Infinity
+    const y = rank.get(b.id) ?? Infinity
+
+    return x !== y ? x - y : a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+  })
   loose.sort((a, b) => (a.descriptor.digest < b.descriptor.digest ? -1 : 1))
 
   const { packs, placement } = buildPacks({ blobs: packable })

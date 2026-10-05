@@ -4903,7 +4903,12 @@ function formOf(bridge: Bridge, value: Form): Statement[] {
     const variants = formsAt(value, 'case').map(arm => {
       // `case face, like face-rule` is a single-payload variant: its one field is called `value`
       const payload = typeOf(bridge, firstAt(arm, 'like'))
-      const armFields = formsAt(arm, 'link').map(link => fieldOf(bridge, link))
+      // `slot` under a case is positional as it is under a form: `make conjunction(p, q)` fills the case's slots in
+      // order. It was refused by the case grammar, which dropped the whole form and left every use of it undefined
+      const armFields = [
+        ...formsAt(arm, 'link').map(link => fieldOf(bridge, link)),
+        ...formsAt(arm, 'slot-field').map(slot => ({ ...fieldOf(bridge, slot), positional: true })),
+      ]
       // An INDEXED family's variant says what the index is AT this constructor: `case vnil / head / make zero`
       // fixes the length to zero, and `case vcons / head / make succ ...` to one more than its tail's. Only a
       // form that declares indices has them, which is the reader's own guard.

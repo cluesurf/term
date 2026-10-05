@@ -1,0 +1,330 @@
+# A number literal is one the backends can hold.
+#
+# `back 9007199254740993` built, and TypeScript emitted it as written, which JavaScript reads as 9007199254740992
+# (guides: language/values, 2026-10-03). `number` is a 64-bit integer on Rust, Swift and Kotlin and a safe integer
+# (below 2^53) on TypeScript, so:
+#
+#   past the 64-bit range      refused: no backend holds it
+#   past 2^53, inside 64 bits  a warning naming the value TypeScript reads instead. The 64-bit integer module
+#                              writes such literals on purpose, for the native backends
+#
+# Only the file being compiled is read, and a `float` literal is not a `number`.
+#
+# Ported from check/literals.ts (self-hosting, 2026-10-05). It walked the file's statements by reflection; here it
+# reads compile/node-walk's expressions. A literal's exact value is a `big-integer` read from its digits, and the value
+# TypeScript reads instead is those digits parsed as a float, which rounds as `Number` of a bigint does.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/integer/big
+  find big-integer
+  find make-big-integer
+  find big-from-number
+  find big-compare
+
+load @term/base/text/number
+  find host-parse-float
+
+load ../parser/diagnostic
+  find diagnostic
+  find diagnose
+  find diagnostic-input
+  find span
+
+load ../compile/node
+  find expression
+  find statement
+  find statement-span
+
+load ../compile/node-walk
+  find expressions-in
+
+form literal-findings
+  link errors, like list, like diagnostic
+  link warnings, like list, like diagnostic
+
+# a width alias of `number` and its range. `u64` stops at the 64-bit signed limit, the range a `number` has
+form width-range
+  link name, like text
+  link low, like text
+  link high, like text
+
+# the width-typed parameters of one task: every parameter's name, and its width or `<>`
+form width-task
+  link name, like text
+  link params, like list, like text
+  link widths, like list, like text
+
+task width-ranges
+  like list, like width-range
+  mark private
+
+  save out, make list
+  push(out, range-of(<u8>, <0>, <255>))
+  push(out, range-of(<u16>, <0>, <65535>))
+  push(out, range-of(<u32>, <0>, <4294967295>))
+  push(out, range-of(<u64>, <0>, <9223372036854775807>))
+  push(out, range-of(<i8>, <-128>, <127>))
+  push(out, range-of(<i16>, <-32768>, <32767>))
+  push(out, range-of(<i32>, <-2147483648>, <2147483647>))
+  push(out, range-of(<i64>, <-9223372036854775808>, <9223372036854775807>))
+  back out
+
+task range-of
+  take name, like text
+  take low, like text
+  take high, like text
+  like width-range
+  mark private
+
+  back
+    make width-range
+      bind name, name
+      bind low, low
+      bind high, high
+
+task is-in-file
+  take at, like span
+  take file, like text
+  like boolean
+  mark private
+
+  sift at/file
+    case some
+      link written
+      back is-equal(written, file)
+    case none
+      back false
+
+task index-of-text
+  take values, like list, like text
+  take value, like text
+  like number
+  mark private
+
+  walk values
+    take one
+    take index
+    fork test, is-equal(one, value)
+      hold
+        back index
+  back -1
+
+task mismatch
+  take file, like text
+  take at, like span
+  take message, like text
+  take hint, like text
+  like diagnostic
+  mark private
+
+  save given-hint, make none
+  fork test, is-unequal(hint, <>)
+    hold
+      save given-hint, make(some, hint)
+  save input
+    make diagnostic-input
+      bind file, file
+      bind span, at
+      bind message, make(some, message)
+      bind hint, given-hint
+  save name, make type-mismatch
+  back diagnose(name, input)
+
+# A literal argument to a width-typed parameter is inside the width. `like u8` is a `number`, so a `u8` parameter
+# took `300` with no message (guides: types/annotations, 2026-10-03). A computed value is not checked: that needs a
+# range type, which the language does not have yet
+task check-widths
+  take program, like list, like statement
+  take file, like text
+  like list, like diagnostic
+  mark private
+
+  # every task with a width-typed parameter, the last of a name winning, as a map keyed by name kept it
+  save tasks, make list
+  walk program
+    take one
+    sift one
+      case function
+        save names, make list
+        save widths, make list
+        save any, false
+        walk params
+          take param
+          push(names, param/name)
+          push(widths, param/width)
+          fork test, is-unequal(param/width, <>)
+            hold
+              save any, true
+        fork test, any
+          hold
+            save entry
+              make width-task
+                bind name, name
+                bind params, names
+                bind widths, widths
+            push(tasks, entry)
+      miss
+        turn next
+
+  save out, make list
+  fork test, is-equal(tasks/length, 0)
+    hold
+      back out
+
+  save ranges, width-ranges()
+  walk program
+    take one
+    sift one
+      case function
+        fork test, not(is-in-file(span, file))
+          hold
+            turn next
+        walk expressions-in(body)
+          take expression
+          sift expression
+            case call
+              sift callee
+                case variable
+                  link called
+                  check-call(tasks, ranges, called, args, names, file, out)
+                miss
+                  turn next
+            miss
+              turn next
+      miss
+        turn next
+  back out
+
+task check-call
+  take tasks, like list, like width-task
+  take ranges, like list, like width-range
+  take called, like text
+  take args, like list, like expression
+  take labels, like list, like text
+  take file, like text
+  take out, like list, like diagnostic
+  like list, like diagnostic
+  mark private
+
+  save found, -1
+  walk tasks
+    take one
+    take index
+    fork test, is-equal(one/name, called)
+      hold
+        save found, index
+  fork test, is-below(found, 0)
+    hold
+      back out
+  save target, get(tasks, found)
+
+  save position, 0
+  walk args
+    take arg
+    take i
+    save label, <>
+    fork test, is-below(i, labels/length)
+      hold
+        save label, get(labels, i)
+    save index, position
+    fork test, is-unequal(label, <>)
+      hold
+        save index, index-of-text(target/params, label)
+      miss
+        save position, add(position, 1)
+    fork test, or(is-below(index, 0), is-minimum(index, target/widths/length))
+      hold
+        turn next
+    save width, get(target/widths, index)
+    fork test, is-equal(width, <>)
+      hold
+        turn next
+    sift arg
+      case integer
+        save exact, exact-of(value, digits)
+        walk ranges
+          take range
+          fork test, is-equal(range/name, width)
+            hold
+              save low, make-big-integer(range/low)
+              save high, make-big-integer(range/high)
+              fork test, or(is-below(big-compare(exact, low), 0), is-above(big-compare(exact, high), 0))
+                hold
+                  save shown, exact/text()
+                  save param-name, get(target/params, index)
+                  push(out, mismatch(file, span, <{shown} is outside `{width}` ({range/low} to {range/high}), the width of "{param-name}">, <>))
+      miss
+        turn next
+  back out
+
+# a literal's exact value: its digits when it has them (past 2^53 too), else its number
+task exact-of
+  take value, like number
+  take digits, like text
+  like big-integer
+  mark private
+
+  fork test, is-unequal(digits, <>)
+    hold
+      back make-big-integer(digits)
+  back big-from-number(value)
+
+task check-literals
+  take program, like list, like statement
+  take file, like text
+  like literal-findings
+
+  save errors, make list
+  save warnings, make list
+  save past-safe, make-big-integer(<9007199254740991>)
+  save below-safe, make-big-integer(<-9007199254740991>)
+  save past-64, make-big-integer(<9223372036854775807>)
+  save below-64, make-big-integer(<-9223372036854775808>)
+  save hint, <use `@term/base/integer/big` for an integer this large>
+
+  save in-file, make list
+  walk program
+    take one
+    fork test, is-in-file(statement-span(one), file)
+      hold
+        push(in-file, one)
+
+  walk expressions-in(in-file)
+    take expression
+    sift expression
+      case integer
+        # a number the parser already could not hold exactly: no digits, and not a safe integer
+        fork test, and(is-equal(digits, <>), or(is-above(value, 9007199254740991), is-below(value, -9007199254740991)))
+          hold
+            push(errors, mismatch(file, span, <this number literal is past every backend's range for `number`>, hint))
+            turn next
+        save exact, exact-of(value, digits)
+        save shown, exact/text()
+        fork test, or(is-above(big-compare(exact, past-64), 0), is-below(big-compare(exact, below-64), 0))
+          hold
+            push(errors, mismatch(file, span, <{shown} is past the 64-bit range every native backend holds a `number` in>, hint))
+            turn next
+        fork test, or(is-above(big-compare(exact, past-safe), 0), is-below(big-compare(exact, below-safe), 0))
+          hold
+            save read-as, host-parse-float(shown)
+            save found, mismatch(file, span, <{shown} is past 2^53, so TypeScript reads it as {read-as}. Rust, Swift and Kotlin hold it exactly>, <>)
+            # a warning is a warning: carried with its severity, never failing the build
+            save found/severity, make warning
+            push(warnings, found)
+      miss
+        turn next
+
+  walk check-widths(program, file)
+    take one
+    push(errors, one)
+
+  back
+    make literal-findings
+      bind errors, errors
+      bind warnings, warnings

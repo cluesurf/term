@@ -13,9 +13,10 @@
 // for `native` / `bind` / `dock` / `zone` (platform surface + side effects).
 // Only `function` and `record-type` definitions are ever pruned.
 //
-// This pass is OPT-IN and must be validated by a differential harness (compile
-// with and without it; the entry's emitted code must be identical) before it
-// is trusted - see note/seed/tree-streaming-and-perf.md.
+// It is ON by default for the optimized merged build (compile.ts `treeShake`)
+// and off in per-module and editor builds, held by test/compile/shake-differential.ts
+// (compile with and without it, the entry's emitted code identical). Every layer
+// of shaking what a program ships is in note/term/compiler/runtime-shaking.md.
 
 import type {
   Program,

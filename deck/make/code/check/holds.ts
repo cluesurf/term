@@ -2789,8 +2789,8 @@ function citedFacts(
   const rule = theorems.get(name)
   const how = provenTheorems.get(name)
 
-  // separate compilation hands a dependent only a rule's signature: its hypotheses and goal stay in its own unit
-  if (rule?.stub) {
+  // a stub carries its rule's hypotheses and goal (`stubBody`), and one without them is a declaration with nothing to use
+  if (rule?.stub && !rule.stubBody) {
     return refuse(
       'it was compiled separately, and this build holds only its signature, not its hypotheses and goal. Build the two files together to cite it',
     )
@@ -3192,8 +3192,14 @@ export function checkHolds(
     program.flatMap(s => (s.form === 'let' && !s.mutable ? [s.name] : [])),
   )
 
+  // a rule from another unit is its stub, which carries the rule's `show hold` as `stubBody` (compile/stub.ts), so it
+  // is cited exactly as the merged build cites it
   theorems = new Map(
-    program.flatMap(s => (s.form === 'function' && s.theorem ? [[s.name, s] as const] : [])),
+    program.flatMap(s =>
+      s.form === 'function' && s.theorem
+        ? [[s.name, s.stub && s.stubBody ? { ...s, body: s.stubBody } : s] as const]
+        : [],
+    ),
   )
   smallTasks = new Map(
     program.flatMap(s =>
@@ -3206,6 +3212,17 @@ export function checkHolds(
   // the pass limited to the file's own tasks keeps what the unlimited pass before it proved (see `provenTheorems`)
   if (!options.only) {
     provenTheorems = new Map()
+  }
+
+  // and how its own unit proved it, which it carries as a fact (`proven-field`, `proven-integer`)
+  for (const s of program) {
+    if (s.form === 'function' && s.theorem && s.stub && s.stubBody) {
+      const how = s.stubFacts?.includes('proven-field') ? 'field' : s.stubFacts?.includes('proven-integer') ? 'integer' : undefined
+
+      if (how) {
+        provenTheorems.set(s.name, how)
+      }
+    }
   }
 
   for (const statement of program) {

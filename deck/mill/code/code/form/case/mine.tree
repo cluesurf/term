@@ -9,6 +9,7 @@ load @term/mill/code/seed/mine
 
 load @term/mill/code/form/link/mine
   find link
+  find link-slot
 
 
 mine base
@@ -84,11 +85,13 @@ mine case-free
     mine term
       site term
 
-# `case <name>` with `link` fields under it, or `case <name>, <payload>` with the payload written inline.
+# `case <name>` with `link` fields under it, or `case <name>, <payload>` with the payload written inline. A field
+# headed `slot` is positional: `make <case>(a, b)` fills the slots in order. Its site is `slot-field`, because a
+# site named `slot` is minted by `mint slot`, the view dialect's slot, and built into nothing a field reader reads.
 #
 # THE FIELDS ARE MATCHED TWICE, before the payload and after it, for the same reason `mine fork-test` matches
-# its arms twice: a field is always headed `link` and a payload never is, but the value alternation ends in a
-# fallback that takes any headed group at all, so written payload-first it swallows the first `link` as the
+# its arms twice: a field is always headed `link` or `slot` and a payload never is, but the value alternation ends
+# in a fallback that takes any headed group at all, so written payload-first it swallows the first `link` as the
 # payload and the variant loses a field.
 mine case
   mine term, term case
@@ -101,6 +104,8 @@ mine case
       mine any
         mine form, like link
           site link
+        mine form, like link-slot
+          site slot-field
         mine form, like case-hold
           site hold
         mine form, like head
@@ -112,6 +117,8 @@ mine case
       mine any
         mine form, like link
           site link
+        mine form, like link-slot
+          site slot-field
         mine form, like case-hold
           site hold
         mine form, like head

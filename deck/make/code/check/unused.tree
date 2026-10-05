@@ -1,0 +1,284 @@
+# Unused-binding warnings: a `let`/`save` binding that is never read is reported as a warning (not an error, so
+# it does not fail compilation). A usability nicety. See note/research/vibe/computation/plans/04-typecheck.md.
+#
+# Ported from check/unused.ts (self-hosting, 2026-10-05). The names read are a hash on a `mark shared` record, since
+# every step of the walk adds to them, and the bindings a list of names beside their spans, the first of each kept.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/hash
+  find hash
+
+load @term/base/maybe
+  find maybe
+
+load ../parser/diagnostic
+  find diagnostic
+  find diagnose
+  find diagnostic-input
+  find span
+
+load ../compile/node
+  find expression
+  find statement
+
+# the names read so far
+form reads
+  mark shared
+  link seen, like hash, like text, like boolean
+
+# the bindings declared so far: each name once, at its first declaration
+form declared
+  mark shared
+  link names, like list, like text
+  link spans, like list, like span
+
+task mark-read
+  take read, like reads
+  take name, like text
+  like void
+  mark private
+
+  save read/seen/{name}, true
+
+task collect-reads
+  take value, like expression
+  take read, like reads
+  like void
+  mark private
+
+  sift value
+    case variable
+      mark-read(read, name)
+    case binary
+      collect-reads(left, read)
+      collect-reads(right, read)
+    case unary
+      collect-reads(operand, read)
+    case await
+      collect-reads(expr, read)
+    case template
+      walk parts
+        take part
+        sift part
+          case value
+            link inner
+            collect-reads(inner, read)
+          miss
+            turn next
+    case member
+      collect-reads(target, read)
+      # `xs/{at}` reads `at` too: the index was skipped, and a binding used only there was warned as never used
+      # (guides: proofs, 2026-10-05)
+      sift index
+        case some
+          link at
+          collect-reads(at, read)
+        case none
+          back
+    case call
+      collect-reads(callee, read)
+      walk args
+        take arg
+        collect-reads(arg, read)
+    case array
+      walk items
+        take item
+        collect-reads(item, read)
+    case map
+      walk entries
+        take entry
+        collect-reads(entry/key, read)
+        collect-reads(entry/value, read)
+    case record
+      walk fields
+        take field
+        collect-reads(field/value, read)
+    case conditional
+      walk branches
+        take branch
+        collect-reads(branch/cond, read)
+        collect-reads(branch/value, read)
+      sift otherwise
+        case some
+          link given
+          collect-reads(given, read)
+        case none
+          back
+    miss
+      back
+
+task declare
+  take found, like declared
+  take name, like text
+  take at, like span
+  like void
+  mark private
+
+  walk found/names
+    take one
+    fork test, is-equal(one, name)
+      hold
+        back
+  push(found/names, name)
+  push(found/spans, at)
+
+task walk-maybe-block
+  take block, like maybe, like list, like statement
+  take found, like declared
+  take read, like reads
+  like void
+  mark private
+
+  sift block
+    case some
+      link body
+      walk-body(body, found, read)
+    case none
+      back
+
+task walk-body
+  take body, like list, like statement
+  take found, like declared
+  take read, like reads
+  like void
+  mark private
+
+  walk body
+    take one
+    sift one
+      case let
+        collect-reads(init, read)
+        # a re-`save` to an existing name counts as a use of the binding's slot; only record first declaration
+        declare(found, name, span)
+      case assign
+        collect-reads(target, read)
+        collect-reads(read(value), read)
+      case expression
+        collect-reads(expr, read)
+      case return
+        sift value
+          case some
+            link given
+            collect-reads(given, read)
+          case none
+            turn next
+      case throw
+        collect-reads(read(value), read)
+      case hold
+        collect-reads(expr, read)
+      case while
+        collect-reads(cond, read)
+        walk-body(body, found, read)
+      case guard
+        walk-body(body, found, read)
+        sift catch
+          case some
+            link clause
+            walk-body(clause/body, found, read)
+          case none
+            turn next
+      case for-each
+        collect-reads(iterable, read)
+        walk-body(body, found, read)
+      case match
+        collect-reads(subject, read)
+        walk cases
+          take arm
+          walk-body(arm/body, found, read)
+        walk-maybe-block(otherwise, found, read)
+      case if
+        walk branches
+          take branch
+          collect-reads(branch/cond, read)
+          walk-body(branch/body, found, read)
+        walk-maybe-block(otherwise, found, read)
+      miss
+        turn next
+
+task fresh-declared
+  like declared
+  mark private
+
+  back
+    make declared
+      bind names, make list
+      bind spans, make list
+
+task fresh-reads
+  like reads
+  mark private
+
+  back
+    make reads
+      bind seen, make hash
+
+task warning
+  take file, like text
+  take at, like span
+  take message, like text
+  like diagnostic
+  mark private
+
+  save input
+    make diagnostic-input
+      bind file, file
+      bind span, at
+      bind message, make(some, message)
+  save kind, make unused-binding
+  back diagnose(kind, input)
+
+task find-unused
+  take program, like list, like statement
+  take file, like text
+  like list, like diagnostic
+
+  save warnings, make list
+
+  # program-wide references: every name read in any function body (call targets included, since a `call helper`
+  # reads the `helper` variable). Used to spot a private function that nothing in the program calls.
+  save referenced, fresh-reads()
+  walk program
+    take one
+    sift one
+      case function
+        walk-body(body, fresh-declared(), referenced)
+      miss
+        turn next
+
+  walk program
+    take one
+    sift one
+      case function
+        # each module reports its own, as check/type-names.ts does. A task merged in from another file carries that
+        # file's span, and stamping it with this one printed `"next" is never used` at clean.tree:147 over a line of
+        # paint.tree, once for every file of the package that loaded it (2026-10-04)
+        sift span/file
+          case some
+            link written
+            fork test, is-unequal(written, file)
+              hold
+                turn next
+          case none
+            save written, <>
+
+        save found, fresh-declared()
+        save read, fresh-reads()
+        walk-body(body, found, read)
+        walk found/names
+          take bound
+          take at
+          fork test, not(read/seen/has(bound))
+            hold
+              push(warnings, warning(file, get(found/spans, at), <"{bound}" is never used>))
+
+        # a private function nothing references is dead code. Only `private`: a public definition may be called from
+        # outside this compilation (the package's surface), so its absence of internal callers is not a defect.
+        fork test, and(private, not(referenced/seen/has(name)))
+          hold
+            push(warnings, warning(file, span, <private "{name}" is never used>))
+      miss
+        turn next
+  back warnings

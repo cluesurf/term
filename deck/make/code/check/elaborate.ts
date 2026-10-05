@@ -6149,14 +6149,35 @@ export function elaborateReport(
     }
   }
 
-  for (const statement of program) {
-    if (statement.form !== 'function' || statement.stub || statement.claim) {
-      // a separate-compilation stub has no body to elaborate: its signature is already registered above (so calls
-      // against it kernel-check), and its body was verified in its owning unit. A claim is a signature, not a body.
+  const carried = carriedBodies(program)
+  // the stubs first, so every body of this unit, and every proof inside one, can reduce through them
+  const stubsFirst = [
+    ...program.filter(statement => statement.form === 'function' && statement.stub),
+    ...program.filter(statement => !(statement.form === 'function' && statement.stub)),
+  ]
+
+  for (const statement of stubsFirst) {
+    if (statement.form !== 'function' || statement.claim) {
+      // a claim is a signature, not a body
       continue
     }
 
+    // A SEPARATE-COMPILATION STUB is elaborated only for its carried body (compile/stub.ts `stubBody`), and only when
+    // this unit reaches it, so a proof here can run a task defined in another file. Its signature is registered above,
+    // and its own unit verified the body and reported on it, so nothing about it is reported again here
+    const stub = statement.stub === true
+
+    if (stub && !carried.has(statement.name)) {
+      continue
+    }
+
+    const task = stub ? { ...statement, body: statement.stubBody! } : statement
+
     if (!representable.has(statement.name)) {
+      if (stub) {
+        continue
+      }
+
       declined.push({
         name: statement.name,
         reason: `its signature names a type the kernel cannot read (${unreadable.get(statement.name) ?? 'the signature'})`,
@@ -6213,13 +6234,30 @@ export function elaborateReport(
         .slice(0, genericLevels.length)
         .map((g, i) => [g.name, genericLevels[i]!]),
     )
-    factsLocal = localNames(statement)
-    factsVolatile = volatileNames(statement.body)
+    factsLocal = localNames(task)
+    factsVolatile = volatileNames(task.body)
+
+    // a stub that is a RULE carries its `show hold` as its body, so a `cite` of it here finds it as a lemma. Checking
+    // it again registers the lemma and must report nothing: its own unit reported on it, and its spans are not ours
+    const reported = stub ? { diagnostics: diagnostics.length, discharged: discharged.length } : undefined
 
     try {
       // inside the try: a refusal raised while the term is BUILT (a type-returning match on a large form) is reported
       // like one raised while it is checked, where it used to escape and end the compile
-      const term = body(statement.body, scope, context, resultValue)
+      const term = body(task.body, scope, context, resultValue)
+
+      // a stub's body is only ever wanted as a definition to see through: one outside the pure fragment, or not shown
+      // to end, stays opaque, and is checked and reported nowhere but its own unit
+      if (stub) {
+        if (term && terminating.has(statement.name) && factsPure.has(statement.name)) {
+          check(context, term, resultValue)
+          defineConstant(statement.name, evaluate([], lambdaOver(term, statement.generics.length + statement.params.length)))
+        } else if (!term && statement.theorem) {
+          checkCommands(task.body, scope, context, resultValue)
+        }
+
+        continue
+      }
 
       if (term) {
         check(context, term, resultValue)
@@ -6230,17 +6268,7 @@ export function elaborateReport(
         // verified functions are included.
         // and purity is the second gate: an impure task's body is one run of it, not what every call answers
         if (terminating.has(statement.name) && factsPure.has(statement.name)) {
-          let lambda: Term = term
-
-          for (
-            let i = 0;
-            i < statement.generics.length + statement.params.length;
-            i++
-          ) {
-            lambda = { tag: 'lam', body: lambda }
-          }
-
-          defineConstant(statement.name, evaluate([], lambda))
+          defineConstant(statement.name, evaluate([], lambdaOver(term, statement.generics.length + statement.params.length)))
         }
 
         proven.push(statement.name)
@@ -6250,6 +6278,10 @@ export function elaborateReport(
 
       verified.push(statement.name)
     } catch (error) {
+      if (stub) {
+        continue
+      }
+
       // TERM_KERNEL_TRACE=1 prints where the kernel failed on a task, which the decline reason alone cannot say
       if (
         typeof process !== 'undefined' &&
@@ -6284,6 +6316,11 @@ export function elaborateReport(
       enclosingGenerics = new Map()
       factsLocal = new Set()
       factsVolatile = new Set()
+
+      if (reported) {
+        diagnostics.length = reported.diagnostics
+        discharged.length = reported.discharged
+      }
     }
   }
 
@@ -6298,4 +6335,62 @@ export function elaborateReport(
   }
 
   return { diagnostics, verified, proven, declined, discharged }
+}
+
+// a body under one lambda per generic and parameter: the closed term a transparent definition is registered as
+function lambdaOver(term: Term, count: number): Term {
+  let lambda = term
+
+  for (let i = 0; i < count; i++) {
+    lambda = { tag: 'lam', body: lambda }
+  }
+
+  return lambda
+}
+
+// THE STUBS WHOSE CARRIED BODY THIS UNIT REACHES: named by one of its own statements, or by a body reached so. A unit
+// reaches a few tasks of its dependency closure, so elaborating every carried body of the closure in every unit would
+// pay for thousands to use a handful. Read by name, every text in a statement, as compile/stub.ts `namesUsed` does,
+// which may take a few more than are called and never fewer
+function carriedBodies(program: Program): Set<string> {
+  const bodies = new Map<string, Statement[]>()
+
+  for (const statement of program) {
+    if (statement.form === 'function' && statement.stub && statement.stubBody) {
+      bodies.set(statement.name, statement.stubBody)
+    }
+  }
+
+  const reached = new Set<string>()
+
+  if (bodies.size === 0) {
+    return reached
+  }
+
+  const queue: unknown[] = program.filter(statement => !(statement.form === 'function' && statement.stub))
+
+  const walk = (node: unknown): void => {
+    if (typeof node === 'string') {
+      const body = bodies.get(node)
+
+      if (body && !reached.has(node)) {
+        reached.add(node)
+        queue.push(body)
+      }
+    } else if (Array.isArray(node)) {
+      node.forEach(walk)
+    } else if (node !== null && typeof node === 'object') {
+      for (const [key, value] of Object.entries(node)) {
+        if (key !== 'span') {
+          walk(value)
+        }
+      }
+    }
+  }
+
+  while (queue.length > 0) {
+    walk(queue.pop())
+  }
+
+  return reached
 }

@@ -1246,6 +1246,18 @@ export function compileProgram(
     tsProgram = passDictionaries(cloned)
   }
 
+  // a statement the build made rather than read (a trait's dictionary) has no file, and per-module emit puts it in a
+  // module of its own that a separate unit, emitting only its own files, never wrote: the unit's module imported
+  // `traitDictScorerPlayer` from a file nothing made (guides: types/masks, 2026-10-05). In a unit it belongs to the
+  // unit, so it goes in the unit's module, which is the only one that reads it
+  if (emitOnly) {
+    const home = naming ?? file
+
+    for (const statement of tsProgram) {
+      statement.span.file ??= home
+    }
+  }
+
   // per-module mode: emit one ESM module per source file from the checked (pre-simplify) program, so module boundaries
   // survive (no cross-module forwarder inlining). The dev server serves these lazily. See code/compile/modules.ts.
   if (modulesUrl) {

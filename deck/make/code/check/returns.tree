@@ -1,0 +1,368 @@
+# Every path through a task that promises a value ends by sending one back.
+#
+# A task whose `like` names a value, with a `hook hold` that returns and no `hook miss`, built clean, and the
+# TypeScript it emitted fell out of the bottom: the caller got `undefined` where the type said text (guides:
+# language/branching, 2026-10-03). Rust closes such a body with `unreachable!()`, so there it stopped at run time
+# instead. Now the build refuses it as `missing-back`.
+#
+# A path ends when it returns, raises, stops the program, loops forever, or calls a task that itself never returns
+# (one whose every path raises, such as a `refuse-...` helper). The analysis is syntactic over the built program, the
+# same reading a host compiler's own return check makes, so it agrees with what each backend will accept.
+#
+# Ported from check/returns.ts (self-hosting, 2026-10-05). Its one reflection walk, for a `return` anywhere in a body,
+# is a walk over the nested statement blocks: a return is a statement, and the expressions it skipped hold one only
+# inside a closure, whose return is its own.
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+load ../parser/diagnostic
+  find diagnostic
+  find diagnose
+  find diagnostic-input
+  find span
+
+load ../compile/node
+  find expression
+  find statement
+  find type
+  find declared-signature
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+# a result type that is a value: anything but the unit. The result AS WRITTEN (`declared`, recorded before the checker
+# runs): this pass runs after it, and the checker fills an unwritten result from what the paths send back, so a task
+# with no `like` whose early exits send a call's value back (zone's `toss`) read as promising one
+task is-value-result
+  take result, like maybe, like type
+  like boolean
+  mark private
+
+  sift result
+    case some
+      link given
+      sift given
+        case unit
+          back false
+        case named
+          back and(is-unequal(name, <void>), is-unequal(name, <unit>))
+        miss
+          back true
+    case none
+      back false
+
+task promises-value
+  take declared, like maybe, like declared-signature
+  take result, like maybe, like type
+  like boolean
+  mark private
+
+  sift declared
+    case some
+      link signature
+      back is-value-result(signature/result)
+    case none
+      back is-value-result(result)
+
+# does a loop body leave its own loop by `halt`, at its own depth (a `halt` inside a nested loop leaves that one)
+task breaks-out
+  take body, like list, like statement
+  like boolean
+  mark private
+
+  walk body
+    take one
+    sift one
+      case break
+        back true
+      case if
+        walk branches
+          take branch
+          fork test, breaks-out(branch/body)
+            hold
+              back true
+        fork test, maybe-breaks-out(otherwise)
+          hold
+            back true
+      case match
+        walk cases
+          take arm
+          fork test, breaks-out(arm/body)
+            hold
+              back true
+        fork test, maybe-breaks-out(otherwise)
+          hold
+            back true
+      case guard
+        fork test, breaks-out(body)
+          hold
+            back true
+        sift catch
+          case some
+            link clause
+            fork test, breaks-out(clause/body)
+              hold
+                back true
+          case none
+            turn next
+      miss
+        turn next
+  back false
+
+task maybe-breaks-out
+  take block, like maybe, like list, like statement
+  like boolean
+  mark private
+
+  sift block
+    case some
+      link body
+      back breaks-out(body)
+    case none
+      back false
+
+task called-name
+  take value, like expression
+  like text
+  mark private
+
+  sift value
+    case await
+      back called-name(expr)
+    case call
+      sift callee
+        case variable
+          back name
+        miss
+          back <>
+    miss
+      back <>
+
+# does this statement list end every path through it, given the tasks known never to return
+task leaves
+  take body, like list, like statement
+  take never, like list, like text
+  like boolean
+  mark private
+
+  walk body
+    take one
+    fork test, statement-leaves(one, never)
+      hold
+        back true
+  back false
+
+task statement-leaves
+  take one, like statement
+  take never, like list, like text
+  like boolean
+  mark private
+
+  sift one
+    case return
+      back true
+    case throw
+      back true
+    case exit
+      back true
+    case if
+      sift otherwise
+        case some
+          link miss-body
+          walk branches
+            take branch
+            fork test, not(leaves(branch/body, never))
+              hold
+                back false
+          back leaves(miss-body, never)
+        case none
+          back false
+    case match
+      # a `fork case` with no `otherwise` names every variant, or the build already refused it as non-exhaustive.
+      # A match on a caught exception is open: an exception it does not name passes on, which also leaves
+      walk cases
+        take arm
+        fork test, not(leaves(arm/body, never))
+          hold
+            back false
+      sift otherwise
+        case some
+          link miss-body
+          back leaves(miss-body, never)
+        case none
+          back true
+    case while
+      sift cond
+        case boolean
+          back and(value, not(breaks-out(body)))
+        miss
+          back false
+    case guard
+      fork test, not(leaves(body, never))
+        hold
+          back false
+      sift catch
+        case some
+          link clause
+          back leaves(clause/body, never)
+        case none
+          back true
+    case expression
+      save name, called-name(expr)
+      back and(is-unequal(name, <>), has-text(never, name))
+    miss
+      back false
+
+# tasks that never return a value: every path raises or stops, and none sends anything back
+task never-returning
+  take program, like list, like statement
+  like list, like text
+  mark private
+
+  save never, make list
+  save grew, true
+  walk test
+    hook test, grew
+    hook hold
+      save grew, false
+      walk program
+        take one
+        sift one
+          case function
+            fork test, or(stub, is-equal(body/length, 0))
+              hold
+                turn next
+            fork test, and(not(has-text(never, name)), and(leaves(body, never), not(contains-return(body))))
+              hold
+                push(never, name)
+                save grew, true
+          miss
+            turn next
+  back never
+
+# a `return` anywhere in these statements' blocks. A closure's or a nested task's return is its own
+task contains-return
+  take body, like list, like statement
+  like boolean
+  mark private
+
+  walk body
+    take one
+    sift one
+      case return
+        back true
+      case if
+        walk branches
+          take branch
+          fork test, contains-return(branch/body)
+            hold
+              back true
+        fork test, maybe-contains-return(otherwise)
+          hold
+            back true
+      case while
+        fork test, contains-return(body)
+          hold
+            back true
+      case for-each
+        fork test, contains-return(body)
+          hold
+            back true
+      case match
+        walk cases
+          take arm
+          fork test, contains-return(arm/body)
+            hold
+              back true
+        fork test, maybe-contains-return(otherwise)
+          hold
+            back true
+      case guard
+        fork test, contains-return(body)
+          hold
+            back true
+        sift catch
+          case some
+            link clause
+            fork test, contains-return(clause/body)
+              hold
+                back true
+          case none
+            turn next
+      miss
+        turn next
+  back false
+
+task maybe-contains-return
+  take block, like maybe, like list, like statement
+  like boolean
+  mark private
+
+  sift block
+    case some
+      link body
+      back contains-return(body)
+    case none
+      back false
+
+task is-in-file
+  take at, like span
+  take file, like text
+  like boolean
+  mark private
+
+  sift at/file
+    case some
+      link written
+      back is-equal(written, file)
+    case none
+      back false
+
+task check-missing-backs
+  take program, like list, like statement
+  take file, like text
+  like list, like diagnostic
+
+  save never, never-returning(program)
+  save out, make list
+  walk program
+    take one
+    sift one
+      case function
+        fork test, or(not(is-in-file(span, file)), or(stub, or(claim, or(theorem, or(roam, is-equal(body/length, 0))))))
+          hold
+            turn next
+        fork test, or(not(promises-value(declared, result)), leaves(body, never))
+          hold
+            turn next
+        save shown, name
+        sift method
+          case some
+            link of
+            save shown, of/name
+          case none
+            save shown, name
+        save input
+          make diagnostic-input
+            bind file, file
+            bind span, span
+            bind message, make(some, <a path through `{shown}` ends without sending a value back, though it promises one>)
+        save kind, make missing-back
+        push(out, diagnose(kind, input))
+      miss
+        turn next
+  back out

@@ -937,10 +937,13 @@ export function raiseSets(
     if (sawNative) {
       nativeShims.add(name)
 
-      // whether or not this program holds the `failure` form, as a `halt <text>` raises it either way: the set was
-      // read off the closure, so one task's raises changed with whichever entry built it, and the roll kept the first
-      // (task/term/roll-cover.ts found `float-floor` raising in some entries' rolls and not in others, 2026-10-05)
-      direct.add('failure')
+      // only when the program holds the `failure` form, which a tree-shaken program drops unless something names it.
+      // So whether a guard around a native call must cover `failure` depends on what the closure keeps: an open
+      // question for the language (note/term/compiler/runtime-shaking.md). The roll asks with `failure` always in its
+      // set (compile/roll.ts), so a task's roll entry is the same whichever entry built it
+      if (exceptions.has('failure')) {
+        direct.add('failure')
+      }
 
       for (const declared of statement.raises ?? []) {
         if (exceptions.has(declared)) {

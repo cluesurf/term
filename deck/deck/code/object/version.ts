@@ -19,6 +19,7 @@ import { MemoryChunkStore } from '@cluesurf/save/store/chunk-store'
 import { chunkBuffer } from './chunk'
 import { classify } from './classify'
 import { parseTree } from '@cluesurf/save/tree/parse'
+import { formatTree } from '@cluesurf/save/tree/format'
 import { canonicalBytes } from '@cluesurf/save/canon/canonicalize'
 import type { ChunkParams } from './chunk'
 import { hashObject } from './hash'
@@ -168,13 +169,21 @@ export async function readVersionFiles(input: {
 // then refuses, needing 32 characters. So the record is ENCODED here as well as parsed, because a parse that
 // succeeds says nothing about whether `writeDataset` can write it.
 // Whether a `.tree` is valid TERM is `term make`'s question, asked before a publish, not this one.
+//
+// AND THE RECORD MUST GIVE THE FILE BACK. A checkout writes a record out with `formatTree` (restore.ts), so a record
+// is kept only when that writes these exact bytes. The record grammar is a DATA grammar: on Term source it parsed the
+// first top-level node and dropped the rest, and comments and blank lines with it, so every published `.tree` file
+// came back cut to its first line or block (`@term/bind`'s 337,814-byte dom.tree to 55 bytes, 3,084 of its 3,094
+// files changed, found 2026-10-05). A file it cannot give back exactly ships as bytes, which is never wrong.
+// test/oci.test.ts "installs Term source byte for byte" holds it.
 function recordOf(data: Buffer): ReturnType<typeof parseTree> | undefined {
   try {
-    const record = parseTree(data.toString('utf8'))
+    const text = data.toString('utf8')
+    const record = parseTree(text)
 
     canonicalBytes(record)
 
-    return record
+    return formatTree(record) === text ? record : undefined
   } catch {
     return undefined
   }

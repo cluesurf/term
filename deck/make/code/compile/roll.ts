@@ -106,7 +106,10 @@ export function buildRoll(
     }
   }
 
-  const sets = raiseSets(program, exceptions)
+  // `failure` always: a native shim raises it by construction, and the program holds its form only when the closure
+  // kept it, so without it one task's raises changed with whichever entry built the roll (task/term/roll-cover.ts
+  // found `float-floor` raising in some entries' rolls and not in others, 2026-10-05)
+  const sets = raiseSets(program, new Set([...exceptions, 'failure']))
 
   const roll: Roll = {
     deck: [],

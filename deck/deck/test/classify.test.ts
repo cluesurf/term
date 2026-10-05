@@ -59,6 +59,10 @@ describe('classify', () => {
   })
 })
 
+// A data `.tree` in the record grammar's canonical form, which is what the formatter writes back: a record is kept
+// only when it gives the file back byte for byte (object/version.ts `recordOf`)
+const CANONICAL = '# the corpus\nword hello\n  syllables @integer 2\n  # written form\n  text hello\n'
+
 describe('`.tree` is parsed, not chunked', () => {
   let dir = ''
   let store: ObjectStore
@@ -66,10 +70,7 @@ describe('`.tree` is parsed, not chunked', () => {
   beforeEach(() => {
     dir = mkdtempSync(path.join(tmpdir(), 'classify-src-'))
     mkdirSync(path.join(dir, 'code'), { recursive: true })
-    writeFileSync(
-      path.join(dir, 'code/word.tree'),
-      '# the corpus\nword hello\n  # written form\n  text hello\n  syllables @integer 2\n',
-    )
+    writeFileSync(path.join(dir, 'code/word.tree'), CANONICAL)
     writeFileSync(path.join(dir, 'code/main.ts'), 'export const x = 1\n')
     store = localObjectStore({
       root: mkdtempSync(path.join(tmpdir(), 'classify-obj-')),
@@ -113,9 +114,23 @@ describe('`.tree` is parsed, not chunked', () => {
 
     const back = readFileSync(path.join(dest, 'code/word.tree'), 'utf8')
 
-    expect(back).toContain('# the corpus')
-    expect(back).toContain('# written form')
-    expect(back).toContain('syllables @integer 2')
+    expect(back).toBe(CANONICAL)
+  })
+
+  // the same record with its fields in another order, and Term source with several top-level nodes, which the record
+  // grammar would cut to its first: neither comes back as written from a record, so both ship as bytes
+  it('ships as bytes a .tree its record would not give back', async () => {
+    writeFileSync(path.join(dir, 'code/word.tree'), '# the corpus\nword hello\n  # written form\n  text hello\n  syllables @integer 2\n')
+    writeFileSync(path.join(dir, 'code/form.tree'), 'form point\n  link x, like number\n\nform line\n  link from, like point\n')
+
+    const built = await buildVersion({ dir, store })
+
+    for (const at of ['code/word.tree', 'code/form.tree']) {
+      const file = built.files.find(f => f.path === at)
+
+      expect(file?.record).toBeUndefined()
+      expect(file?.chunks.length).toBeGreaterThan(0)
+    }
   })
 
   it('reports a one-field edit as exactly one change', () => {

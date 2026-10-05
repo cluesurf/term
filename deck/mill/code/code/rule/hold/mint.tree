@@ -102,6 +102,9 @@ mint case, like code-case
     site seed
   case link
     site link
+  # a `slot` field, positional (form/case/mine.tree)
+  case slot-field, mint link-slot
+    site slot-field
   case hold, mint case-hold
     site hold
   hook make
@@ -111,6 +114,7 @@ mint case, like code-case
       bind like, read like
       bind seed, read seed
       bind link, read link
+      bind slot-field, read slot-field
       bind hold, read hold
 
 mint melt, like code-melt

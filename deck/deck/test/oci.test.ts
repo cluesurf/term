@@ -502,6 +502,49 @@ describe('OCI image layout', () => {
     expect(await readTree(dest)).toEqual(await readTree(source))
   })
 
+  // A `.tree` file is stored as a record only when the record gives the file back. Term source is not a record: the
+  // data grammar read its first top-level node and dropped the rest, and every installed `.tree` file came back cut
+  // to its first line or block (object/version.ts `recordOf`, 2026-10-05). Several top-level nodes, comments, blank
+  // lines and a lean file, each byte for byte
+  it('installs Term source byte for byte', async () => {
+    const work = await scratch('source')
+    const source = path.join(work, 'src')
+    const term = {
+      'code/list.tree': 'load @term/base/list\n  find get\n\n# the first item, or none\ntask first\n  take items, like list\n\n  back get(items, 0)\n\ntask second\n  take items, like list\n\n  back get(items, 1)\n',
+      'code/form.tree': 'form point\n  link x, like number\n  link y, like number\n\nform line\n  link from, like point\n  link to, like point\n',
+      'code/role.tree': 'role code\nmark lean\n',
+      'deck.tree': 'deck @term/demo\n  mark <1.0.0>\n',
+    }
+
+    await writePackage(source, term)
+
+    const transport = layoutTransport({ dir: path.join(work, 'mirror'), prefix: 'mirror.local' })
+    const repository = { host: 'mirror.local', namespace: 'term', name: 'term/demo' }
+
+    await publishToOci({
+      dir: source,
+      package: '@term/demo',
+      version: '1.0.0',
+      target: { kind: 'version', version: '1.0.0' },
+      link: [],
+      transport,
+      repository,
+      scope: '@term',
+      keysRepository: 'term',
+      local: layoutObjectStore({ dir: path.join(work, 'store') }),
+      keypair: generateKeypair(),
+      author: 'tester',
+      time: TIME,
+    })
+
+    const version = await readOciVersion({ transport, repository: 'term/demo', package: '@term/demo', reference: '1.0.0', scope: '@term', keysRepository: 'term', host: 'mirror.local', trustDir: path.join(work, 'trust'), env: {} })
+    const dest = path.join(work, 'dest')
+
+    await installOciVersion({ transport, repository: 'term/demo', version, dest, local: layoutObjectStore({ dir: path.join(work, 'client') }) })
+
+    expect(await readTree(dest)).toEqual(await readTree(source))
+  })
+
   it('reads and writes the bare tags of a single-repository layout, the shape oras --oci-layout uses', async () => {
     const work = await scratch('bare')
     const source = path.join(work, 'src')
