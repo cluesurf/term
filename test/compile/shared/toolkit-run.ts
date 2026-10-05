@@ -23,12 +23,14 @@ import {
 import { buildCompose, buildComposeAndroid } from '@term/call/code/compose'
 import { runCompose } from './compose-build'
 import { runComposeAndroid } from './compose-android'
+import { runComposeRemote } from './compose-remote'
+import type { RemoteDesktop } from './compose-remote'
 
 // a macOS test app opens its window past the right edge of the screens and never takes focus (native-view.swift
 // windowAway), run from the gate or by hand alike
 process.env.TERM_WINDOW_AWAY ??= '1'
 
-export type Leg = 'macos' | 'ios' | 'android' | 'compose' | 'compose-android'
+export type Leg = 'macos' | 'ios' | 'android' | 'compose' | 'compose-android' | 'compose-linux' | 'compose-windows'
 
 export type ToolkitRun = {
   // the Term root, where `@term/*` resolves
@@ -64,6 +66,8 @@ const TOOLKIT: Record<Leg, string> = {
   android: 'Android views',
   compose: 'Compose',
   'compose-android': 'Jetpack Compose',
+  'compose-linux': 'Compose on Linux',
+  'compose-windows': 'Compose on Windows',
 }
 
 const readRuntime = (file: string): string | undefined => (existsSync(file) ? readFileSync(file, 'utf8') : undefined)
@@ -298,8 +302,31 @@ function runComposeAndroidLeg(run: ToolkitRun): void {
   run.judge('compose-android', TOOLKIT['compose-android'], ran.output, shot)
 }
 
-// every leg `only` allows ('' for all, Compose among them only where the test opted in), each skipped with its reason
-// where its toolchain or device is absent
+// Compose on another desktop (compose-target-0004, 0005): the program built here, packaged by the target's own jpackage
+// as an app image, run there headless, its output and its PNG brought back (./compose-remote.ts)
+function runComposeRemoteLeg(run: ToolkitRun, desktop: RemoteDesktop): void {
+  const leg: Leg = `compose-${desktop}`
+  const shot = run.shots[leg] ?? join(run.dir, `${leg}.png`)
+  const ran = runComposeRemote({ root: run.root, dir: run.dir, name: run.name, text: run.program(leg, `${leg}.png`), desktop, shot: `${leg}.png`, pulled: shot })
+
+  if (ran.form === 'skipped') {
+    console.log(`skip  ${leg}  (${ran.reason})`)
+
+    return
+  }
+
+  run.ok(`${leg}: builds here and packages there`, ran.form === 'ran', ran.form === 'failed' ? `${ran.stage}: ${ran.reason}` : '')
+
+  if (ran.form !== 'ran') {
+    return
+  }
+
+  run.ok(`${leg}: the packaged app said it exits 0`, ran.output.includes('native-view exit 0'), ran.output.slice(-1600))
+  run.judge(leg, TOOLKIT[leg], ran.output, shot)
+}
+
+// every leg `only` allows ('' for all, Compose among them only where the test opted in, and another desktop's only when
+// asked for by name, since it needs that machine), each skipped with its reason where its toolchain or device is absent
 export function runToolkits(run: ToolkitRun, only: string): void {
   const apple = process.platform === 'darwin'
 
@@ -321,5 +348,9 @@ export function runToolkits(run: ToolkitRun, only: string): void {
 
   if (only === 'compose-android' || (!only && run.composeAndroid)) {
     runComposeAndroidLeg(run)
+  }
+
+  if (only === 'compose-linux' || only === 'compose-windows') {
+    runComposeRemoteLeg(run, only === 'compose-linux' ? 'linux' : 'windows')
   }
 }

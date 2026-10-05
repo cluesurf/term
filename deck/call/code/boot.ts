@@ -109,7 +109,7 @@ const MAX_PORT = 2499
 
 // true if a TCP port is free to bind. The test MUST bind the same way the real server does (all interfaces, dual-stack)
 // or a stale IPv6-bound server (`:::2400`) would look free to an IPv4-only probe and the child would then EADDRINUSE.
-function portIsFree(port: number): Promise<boolean> {
+export function portIsFree(port: number): Promise<boolean> {
   return new Promise(resolve => {
     const tester = net
       .createServer()
@@ -796,8 +796,12 @@ export async function callBoot(input: {
       const cli = cliRoutes.length > 0
 
       // for an SSR server (the node host), also build the browser CLIENT bundle the rendered page loads, so the
-      // server-rendered HTML becomes interactive. The app must have a deck.tree root (appDir) to hold `build/`.
-      if (!cli && env === 'node' && appDir) {
+      // server-rendered HTML becomes interactive. The app must have a deck.tree root (appDir) to hold `build/`. Only a
+      // program that renders pages has one, and it is the one that wraps them in the document shell: a program that
+      // only prints got a bundle too, and a `build/` it never served
+      const rendersPages = /\bdocumentShell\b/.test(result.typescript)
+
+      if (!cli && env === 'node' && appDir && rendersPages) {
         const prod = process.env.NODE_ENV === 'production'
         buildStyles(appDir)
         await buildClientBundle({
@@ -1073,13 +1077,27 @@ export async function callBoot(input: {
       cwd: serverCwd,
       stdio: ['inherit', 'pipe', 'pipe'],
     })
-    followChild(child, 'server')
+    // its lines are tagged with the deck's name, the source they come from: `server` was wrong for a program that
+    // prints and returns, and is told apart from a server only once it has (2026-10-04)
+    followChild(child, binName)
 
     // `start` once the port takes a connection: printed at spawn, a request sent on that line was refused, which
     // a script that waits for the line before asking met every time (2026-10-04, test/call/page-status.ts). Bounded,
     // so a server slow to listen still gets its line, and skipped when the child stopped instead
     if (await listening(port, child)) {
       report({ glyph: 'done', kind: 'lifecycle', verb: 'start', subject: address })
+    } else if (child.exitCode !== null || child.signalCode !== null) {
+      // A ONE-SHOT RUN: the program returned without ever listening, so it was a program that does its work and
+      // ends, not a server. The boot ends with it, its exit code passed on, and starts no watcher: it kept watching,
+      // and said `stop http://localhost:2400` for a port nothing had served on (guides: basics/first-program,
+      // commands/boot, 2026-10-04)
+      if (child.exitCode) {
+        report({ glyph: 'failed', kind: 'lifecycle', verb: 'exit', subject: `code ${child.exitCode}`, exit: child.exitCode })
+      }
+
+      finish('Done', { uptime: true })
+
+      return
     }
 
     // restart the server on a freshly-built entry: wait for the old process to fully EXIT (releasing the port) before
@@ -1094,7 +1112,7 @@ export async function callBoot(input: {
       }
 
       child = spawn('node', [next], { cwd: serverCwd, stdio: ['inherit', 'pipe', 'pipe'] })
-      followChild(child, 'server')
+      followChild(child, binName)
     }
 
     const stops: Array<() => void> = []
@@ -1151,7 +1169,12 @@ export async function callBoot(input: {
       await new Promise<void>(() => {})
     } else {
       // production / no-watch: run until the server child exits, then return (matching a plain `node run.mjs`)
-      const code = await new Promise<number | null>(done => child.once('exit', exit => done(exit)))
+      // a child that exited while `start` waited for its port has already sent `exit`: read what it left, or this
+      // waits for an event that came and went, and boot ends with no closing item and the child's code lost
+      const code =
+        child.exitCode !== null || child.signalCode !== null
+          ? child.exitCode
+          : await new Promise<number | null>(done => child.once('exit', exit => done(exit)))
 
       if (code) {
         report({ glyph: 'failed', kind: 'lifecycle', verb: 'exit', subject: `code ${code}`, exit: code })

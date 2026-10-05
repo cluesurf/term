@@ -2,15 +2,15 @@
 // payload (note/term/plan/term-load-install.md, P3).
 //
 //   1. publish this machine's payload twice, as 2.6.0 and 2.6.2, signed by a throwaway key that founds the key set
-//   2. install 2.6.0 the way https://term.surf/load does: unpack under code/, write install.tree, link bin/term
+//   2. install 2.6.0 by running THE LOADER term.surf serves (mesh/site/term.surf/home/public/load)
 //   3. run the INSTALLED term: check passes, update moves the link to 2.6.2, check passes there, back returns to 2.6.0
 //   4. tamper with install.tree's digest: check refuses
 //
 // Needs the payload `pnpm run release --dry` writes; says so and stops when it is missing.
 // Run: npx tsx test/call/self-release.ts
-import { execFile, execFileSync } from 'node:child_process'
+import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, readlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -21,6 +21,8 @@ import { httpTransport } from '../../deck/deck/code/oci/transport'
 import { startOciServer } from '../../deck/deck/test/oci-server'
 
 const TERM = join(import.meta.dirname, '..', '..')
+// the installer term.surf serves at /load
+const LOADER = join(TERM, '..', '..', '..', '..', 'mesh', 'site', 'term.surf', 'home', 'public', 'load')
 const VERSION = (JSON.parse(readFileSync(join(TERM, 'package.json'), 'utf8')) as { version: string }).version
 const NEXT = VERSION.replace(/\.(\d+)$/, (_, patch: string) => `.${Number(patch) + 2}`)
 const PLATFORM = currentPlatform()
@@ -83,13 +85,28 @@ const env = {
 const base = join(home, '.base', '@cluesurf', 'term')
 const bin = join(base, 'bin', 'term')
 
-// what the loader does
 const first = join(base, 'code', VERSION)
-mkdirSync(first, { recursive: true })
-execFileSync('tar', ['-xzf', payloadFile, '-C', first])
-writeFileSync(join(first, 'install.tree'), `install\n  code <${VERSION}>\n  form <${PLATFORM}>\n  hash <${digest}>\n`)
-mkdirSync(join(base, 'bin'), { recursive: true })
-symlinkSync(join('..', 'code', VERSION, 'term', 'bin', 'term'), bin)
+
+// THE REAL LOADER, the script term.surf serves at /load, pointed at the loopback registry. Async for the reason below
+function load(extra: Record<string, string>): Promise<{ code: number; out: string }> {
+  return new Promise(resolve => {
+    execFile(
+      // TERM_LOAD_SHELL=dash runs it under Debian and Ubuntu's /bin/sh, which forgives no bashism
+      process.env['TERM_LOAD_SHELL'] ?? 'sh',
+      [LOADER],
+      {
+        env: {
+          ...env,
+          TERM_LOAD_REGISTRY: `http://${server.host}`,
+          ...extra,
+        },
+        encoding: 'utf8',
+        timeout: 120_000,
+      },
+      (error, stdout, stderr) => resolve({ code: error ? 1 : 0, out: `${stdout}${stderr}` }),
+    )
+  })
+}
 
 // ASYNC, never execFileSync: the registry runs in THIS process, and a synchronous child blocks the event loop the
 // registry answers on, so the child waits on the registry and the registry on the child, forever
@@ -104,6 +121,11 @@ function term(args: string[]): Promise<{ code: number; out: string }> {
 }
 
 try {
+  const loaded = await load({ TERM_LOAD_VERSION: VERSION })
+  ok(`the loader installs ${VERSION}, checked and linked`, loaded.code === 0 && existsSync(bin) && readlinkSync(bin).includes(`/code/${VERSION}/`), loaded.out)
+  ok('the loader wrote install.tree with the layer digest', existsSync(join(first, 'install.tree')) && readFileSync(join(first, 'install.tree'), 'utf8').includes(digest))
+  ok('the loader names the PATH line, and edits no profile', /export PATH=/.test(loaded.out), loaded.out)
+
   const checked = await term(['self', 'check'])
   ok(`check passes on the loader's install of ${VERSION}`, checked.code === 0 && /signed release/.test(checked.out), checked.out)
 
@@ -124,6 +146,18 @@ try {
   writeFileSync(tree, readFileSync(tree, 'utf8').replace(digest, `sha256:${'0'.repeat(64)}`))
   const tampered = await term(['self', 'check'])
   ok('check refuses an install whose digest is not the signed release', tampered.code !== 0 && /not the release/.test(tampered.out), tampered.out)
+
+  // with no version named, the loader takes the newest, into a second machine
+  const fresh = mkdtempSync(join(tmpdir(), 'term-load-'))
+  const latest = await load({ HOME: fresh, TERM_TRUST_DIR: join(fresh, 'trust'), TERM_STORE: join(fresh, 'store') })
+  ok(`the loader with no version installs the newest, ${NEXT}`, latest.code === 0 && existsSync(join(fresh, '.base', '@cluesurf', 'term', 'code', NEXT, 'install.tree')), latest.out)
+
+  // a platform the release does not carry is named, and nothing is installed
+  const absent = await load({ HOME: fresh, TERM_LOAD_VERSION: '9.9.9' })
+  ok('the loader refuses a version that was never released', absent.code !== 0 && /term 9\.9\.9/.test(absent.out), absent.out)
+
+  // every blob GET above was redirected to the registry's separate storage host, which records any token it is sent
+  ok('no pull token ever reached the storage host', server.leakedAuth.length === 0, server.leakedAuth.join(', '))
 } finally {
   await server.close()
 }

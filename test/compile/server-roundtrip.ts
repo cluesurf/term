@@ -31,6 +31,7 @@ import { check } from '@term/make/code/check/infer'
 import { resolveAsync } from '@term/make/code/check/async-resolve'
 import { simplify } from '@term/make/code/ir/simplify'
 import { collectModules } from '@term/make/code/compile/load'
+import { bindModules, stampModule } from '@term/make/code/check/bind-modules'
 import type { Source } from '@term/make/code/compile/load'
 import {
   withNativeEnv,
@@ -100,8 +101,7 @@ function frontEnd(
   env: 'rust' | 'swift' | 'kotlin',
 ): Program {
   const resolver = withNativeEnv(env, stdlib)
-  const sources = collectModules({ file: 'main.tree', text }, resolver)
-    .sources
+  const { sources, scope } = collectModules({ file: 'main.tree', text }, resolver)
 
   const program: Program = []
   const roots = new Set<string>()
@@ -132,9 +132,12 @@ function frontEnd(
       }
     }
 
+    stampModule(built.program, unit.file)
     program.push(...built.program)
   }
 
+  // module scope and form extension, as `compileProgram` runs them (check/bind-modules.ts)
+  bindModules(program, scope, 'main.tree')
   resolveNames(program, 'main.tree')
   check(program, 'main.tree')
   resolveAsync(program)

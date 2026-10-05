@@ -6,7 +6,6 @@
 // construction infers cleanly. Pure, browser-safe. See note/research/vibe/computation/plans/07-codegen.md.
 
 import { armLocals } from '@term/make/code/check/arm'
-import { readNames } from '@term/make/code/check/facts'
 import { provenIncrements } from '@term/make/code/ir/facts/range'
 import { provenArithmetic, type Proven } from '@term/make/code/compile/proven'
 import { boundedLoops, listKey } from '@term/make/code/ir/facts/bounds'
@@ -652,6 +651,8 @@ export function emitKotlin(
   // the Kotlin subclass for a variant label, and each variant's field names (for construction / smart-cast access)
   const variantClass = new Map<string, string>()
   const variantFieldNames = new Map<string, string[]>()
+  // the same, by FORM and case (`rope/leaf`): two forms may name a case alike, and an arm reads its own form's
+  const ownedFieldNames = new Map<string, string[]>()
   // a counter for the locals a `when` binds its subject to
   let matchCount = 0
   // the enclosing function's declared result, so a `return <unknown-typed value>` can cast at the gradual
@@ -823,6 +824,7 @@ export function emitKotlin(
         v.name,
         v.fields.map(f => f.name),
       )
+      ownedFieldNames.set(`${node.name}/${v.name}`, v.fields.map(f => f.name))
     }
   }
 
@@ -1080,6 +1082,17 @@ export function emitKotlin(
     target.target.type?.kind === 'named' &&
     fieldLists.has(`${target.target.type.name}/${target.name}`)
   let takenSubjects = new WeakMap<object, unknown>()
+  // the reused variants the task being emitted both keeps a node of and builds one of: their spare is a local of the
+  // task, `__spare<Case>`, where it went through the program's `termSpare<Case>`, a static reference written and read per
+  // node. Towers' moves, once pop and push were inlined into them: 359 ms to 319 (`tmp/kotlin-towers-ab3.ts`)
+  let localSpares = new Set<string>()
+  let spareTemps = 0
+  // a reused variant's class, which names its spares
+  const spareClass = (label: string): string => {
+    const reused = reuseVariants.get(label)!
+
+    return classFor(label, { kind: 'named', name: reused.form } as Type) ?? `${pascal(reused.form)}${pascal(label)}`
+  }
   // the field-less case of a form, which `slotTakes` asks for
   const emptyCaseOf = (type: Type | undefined): { form: string; empty: string } | undefined => {
     const form = type?.kind === 'named' ? program.find(n => n.form === 'record-type' && n.name === type.name) : undefined
@@ -1971,6 +1984,17 @@ export function emitKotlin(
         const reusedVariant = cls ? reuseVariants.get(node.name) : undefined
         const builder = reusedVariant && node.fields.length === reusedVariant.fields.length ? `termReuse${cls}` : cls
 
+        // in a task that keeps its own spare (`localSpares`): every field computed first, then the spare taken and
+        // rebuilt, or a new node made, so no field's value can read a node already being rebuilt
+        if (cls && reusedVariant && node.fields.length === reusedVariant.fields.length && localSpares.has(node.name)) {
+          const k = spareTemps++
+          const temps = node.fields.map((f, i) => `val __f${k}_${i} = ${fieldValue(f.name, f.value)}`)
+          const sets = node.fields.map((f, i) => `__h${k}.${camel(f.name)} = __f${k}_${i}`)
+          const fresh = `${cls}(${node.fields.map((f, i) => `${camel(f.name)} = __f${k}_${i}`).join(', ')})`
+
+          return `run { ${temps.join('; ')}; val __h${k} = __spare${cls}; if (__h${k} != null) { __spare${cls} = null; ${sets.join('; ')}; __h${k} } else ${fresh} }`
+        }
+
         if (cls) {
           return node.fields.length > 0
             ? `${builder}(${node.fields
@@ -2777,7 +2801,7 @@ export function emitKotlin(
             const arm = node.exceptionArms![b.label]!
             const bodyText = block(b.body, d + 2)
             // only the fields the arm READS, asked of the program and not of the emitted text (swift.ts says why)
-            const read = readNames(b.body)
+            const read = namesIn(b.body)
             const locals = armLocals([...arm.shared, ...arm.link], b.binds ?? [])
               .filter(({ local }) => read.has(local))
               .map(({ field, local }) =>
@@ -2859,17 +2883,24 @@ export function emitKotlin(
                   ...reused.recursive.map(
                     f => `${pad(d + 2)}${subject}.${camel(f)} = ${classFor(reused.empty, node.subject.type) ?? pascal(reused.empty)}`,
                   ),
-                  `${pad(d + 2)}termSpare${cls} = ${subject}`,
+                  localSpares.has(b.label) ? `${pad(d + 2)}__spare${cls} = ${subject}` : `${pad(d + 2)}termSpare${cls} = ${subject}`,
                 ]
               : []
-          // the arm's fields (renamed or not, see check/arm.ts) become locals read off the smart-cast subject, the
-          // ones the body reads
+          // the case of the subject's own form, where two forms name a case alike (engine/value port, 2026-10-04)
+          const owned = node.subject.type?.kind === 'named' ? ownedFieldNames.get(`${node.subject.type.name}/${b.label}`) : undefined
+          // the ones the arm's program READS, as the exception arms ask: a smart cast serves a `subject.field` read on
+          // its own, so nothing reaches a local except by its name, and an emitted `time.now()` is not a read of `time`
+          const read = namesIn(b.body)
+          const bound = armLocals(owned ?? variantFieldNames.get(b.label) ?? [], b.binds ?? []).filter(({ local }) => read.has(local))
+          const locals = bound.map(({ field, local }) => `${pad(d + 2)}val ${camel(local)} = ${subject}.${camel(field)}`)
+          // the arm's fields (renamed or not, see check/arm.ts) become locals read off the smart-cast subject, and are
+          // locals while its body is emitted: a field named like a task (`size`) is the local, never `::size`
+          const added = bound.map(({ local }) => local).filter(local => !localNames.has(local))
+          added.forEach(local => localNames.add(local))
           const bodyText = spare.length
             ? [block(b.body.slice(0, 1), d + 2), ...spare, block(b.body.slice(1), d + 2)].filter(Boolean).join('\n')
             : block(b.body, d + 2)
-          const locals = armLocals(variantFieldNames.get(b.label) ?? [], b.binds ?? [])
-            .filter(({ local }) => new RegExp(`\\b${camel(local).replace(/[^\w$]/g, '\\$&')}\\b`).test(bodyText))
-            .map(({ field, local }) => `${pad(d + 2)}val ${camel(local)} = ${subject}.${camel(field)}`)
+          added.forEach(local => localNames.delete(local))
           // a field-less case is one `object`, so it is that object by identity (`subject === ChainEnd`), one compare
           // where `is` is a type check: List's empty-list tests, 176 ms to 143 against the hand version's `null` at 135
           // (`tmp/kotlin-list-ab.ts`). Every other case keeps `is` and its smart cast, in a `when` with no subject
@@ -2885,6 +2916,13 @@ export function emitKotlin(
               d + 2,
             )}\n${pad(d + 1)}}`,
           )
+        }
+
+        // a `when` with no subject is not checked for exhaustiveness, so one whose arms all return read to Kotlin as a task
+        // that can fall off its end ("missing return", the stdlib's walk.tree over a `maybe`): its last arm is the `else`
+        // the cases already cover, which says so
+        if (byIdentity && !node.otherwise) {
+          arms.push(`${pad(d + 1)}else -> throw IllegalStateException("unreachable")`)
         }
 
         const when = `when${byIdentity ? '' : ` (${subject})`} {\n${arms.join('\n')}\n${pad(d)}}`
@@ -2980,6 +3018,26 @@ export function emitKotlin(
         redeclared = redeclaredLets(node)
         const outerTaken = takenSubjects
         takenSubjects = reuseVariants.size ? slotTakes(node.body, () => true, lastReads(node.body), emptyCaseOf, new Set()).takes : new WeakMap()
+        // the variants this task keeps a node of (a match on a taken subject) and builds one of: a spare of its own
+        const outerSpares = localSpares
+        localSpares = new Set()
+
+        if (reuseVariants.size) {
+          const kept = new Set<string>()
+          const built = new Set<string>()
+          const visit = (value: unknown): void => {
+            if (typeof value !== 'object' || value === null) return
+            if (Array.isArray(value)) return value.forEach(visit)
+            const n = value as { form?: string; name?: string; subject?: object; cases?: { label: string }[] }
+            if (n.form === 'closure') return
+            if (n.form === 'match' && n.subject && takenSubjects.has(n.subject)) n.cases?.forEach(c => reuseVariants.has(c.label) && kept.add(c.label))
+            if (n.form === 'record' && n.name && reuseVariants.has(n.name)) built.add(n.name)
+            for (const [key, child] of Object.entries(n)) if (key !== 'type' && key !== 'span') visit(child)
+          }
+
+          visit(node.body)
+          kept.forEach(label => built.has(label) && localSpares.add(label))
+        }
 
         const shadows = node.params
           .filter(p => mutated.has(p.name))
@@ -3017,12 +3075,18 @@ export function emitKotlin(
             : [
                 ...shadows,
                 ...cursors.names.map(name => `${pad(d + 1)}val __cursor${pascal(name)} = LongArray(2)`),
+                ...[...localSpares].map(label => {
+                  const cls = spareClass(label)
+
+                  return `${pad(d + 1)}var __spare${cls}: ${cls}? = null`
+                }),
                 block(node.body, d + 1),
                 unreachable,
               ]
                 .filter(Boolean)
                 .join('\n')
 
+        localSpares = outerSpares
         fnAssigned = outerAssigned
         arrayNames = outerArrays
         builders = outerBuilders
@@ -3043,6 +3107,11 @@ export function emitKotlin(
       }
 
       case 'record-type': {
+        // an ALIAS form (a base and nothing of its own) is its base: `typealias`, never an empty class
+        if (node.alias && node.fields.length === 0 && node.variants.length === 0) {
+          return `typealias ${pascal(node.name)} = ${kotlinType(node.alias)}`
+        }
+
         if (node.variants.length > 0) {
           const generics = node.params.length
             ? `<${node.params
@@ -3081,7 +3150,17 @@ export function emitKotlin(
               const typeOf = (f: { name: string; type: Type }): string => {
                 const kind = arrayOf(f)
 
-                return kind === 'Object' && f.type.kind === 'array' ? `Array<${kotlinType(f.type.element)}>` : kind ? `${kind}Array` : kotlinType(f.type)
+                const written = kind === 'Object' && f.type.kind === 'array' ? `Array<${kotlinType(f.type.element)}>` : kind ? `${kind}Array` : kotlinType(f.type)
+
+                // the class is `out T`, and a list the variant holds is `MutableList<T>`, where T is invariant: Kotlin
+                // refuses the field. A Term value is never written through the variant's type, so the variance is
+                // asserted where T stands inside another type (the engine/data/array port, 2026-10-04)
+                return written.includes('<') || written.includes('->')
+                  ? ownGenerics.reduce(
+                      (text, p) => text.replace(new RegExp(`(?<!\\w)${p.toUpperCase()}(?!\\w)`, 'g'), `@UnsafeVariance ${p.toUpperCase()}`),
+                      written,
+                    )
+                  : written
               }
               const fields = v.fields
                 .map(f => `${held} ${camel(f.name)}: ${typeOf(f)}`)

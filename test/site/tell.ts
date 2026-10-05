@@ -121,7 +121,6 @@ async function main(): Promise<void> {
     expose: (e: unknown) => { status: number; body: string }
     statusOf: (c: string) => number
     caseOf: (n: string) => string
-    casePath: (c: string) => string
     keyOf: (h: string, f: string) => string
     errorsPage: () => { status: number; body: string }
     errorPage: (c: string) => { status: number; body: string }
@@ -131,7 +130,8 @@ async function main(): Promise<void> {
 
   ok('the status table maps the seventeen', M.statusOf('absence') === 404 && M.statusOf('excess') === 413 && M.statusOf('timeout') === 504 && M.statusOf('bundle') === 500)
   ok('a case is snake on the wire', M.caseOf('upload-excess') === 'upload_excess')
-  ok('a case path is kebab', M.casePath('upload_excess') === '/errors/upload-excess')
+  // a case's path is kebab: held below by the `/errors` index linking `/errors/too-large`. `case-path` itself is one
+  // line, inlined at its one call and not exported, so it cannot be called from here
   ok('the site text key is exception/<host>/<form>/note', M.keyOf('@probe/tell', 'upload-excess') === 'exception/@probe/tell/upload-excess/note', M.keyOf('@probe/tell', 'upload-excess'))
 
   let told: { status: number; body: string } | undefined

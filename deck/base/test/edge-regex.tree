@@ -111,7 +111,7 @@ test <the patterns the command line uses>
         call is-equal
           call replace-matches
             text <^<.+>$>
-            text <<free text>>
+            text <<<free text>>>
             text <>
           text <>
 
@@ -218,9 +218,9 @@ test <lazy and counted repetition>
     call and
       call is-equal
         call all-texts
-          text <<.+?>>
-          text <<a><bb>>
-        text <<a>,<bb>>
+          text <<<.+?>>>
+          text <<<a><bb>>>
+        text <<<a>,<bb>>>
       call is-equal
         call all-texts
           text <\d{2,3}>
@@ -293,6 +293,21 @@ test <the whole pattern syntax, the same on every backend>
             text <(?:(a)|b)+>
             text <ab>
           text <0:2:ab|~>
+
+# a raw literal (`<<...>>`) is the pattern exactly as written: no `\{`, no `\<`
+test <a raw literal is the pattern as written>
+  want hold
+    call and
+      call is-equal
+        call describe-hit
+          text <<(?<=\$)\d+>>
+          text <cost $10>
+        text <6:8:10>
+      call is-equal
+        call describe-hit
+          text <<\p{Lu}\p{Ll}+>>
+          text <an Émile>
+        text <3:8:Émile>
 
 test <a text that is not a pattern is refused on every backend>
   want hold

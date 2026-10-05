@@ -27,14 +27,34 @@ load @term/base/text/string
   find starts-with
   find replace
 
+# `headers` by lower-case name and `query` the decoded query string, both filled by the transport, and empty in a
+# request built without them. A request had neither until 2026-10-04, so a handler could not read `Authorization` or
+# `?page=2` (guides: applications/web/routes)
 form request
   link method, like text
   link path, like text
   link body, like text
+  link headers
+    like hash
+      like text
+      like text
+    fall make hash
+  link query
+    like hash
+      like text
+      like text
+    fall make hash
 
+# `headers` are written onto the wire as given, none when left out. A response had none, so a JSON body went out
+# with no `Content-Type` (guides: applications/web/routes, 2026-10-04)
 form response
   link status, like u16
   link body, like text
+  link headers
+    like hash
+      like text
+      like text
+    fall make hash
 
 # a registered route: a method, a path pattern (`/users/:id`, `/files/**`), and its handler
 form route

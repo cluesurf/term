@@ -11,8 +11,8 @@
 // the `/base` prefix so `/base/boot.js` maps to the `build/boot.js` the assets binding serves. This
 // replaces the node host's `<global:assets>` filesystem read (there is no filesystem on a Worker).
 
-type TermRequest = { method: string; path: string; body: string }
-type TermResponse = { status: number; body: string }
+type TermRequest = { method: string; path: string; body: string; headers: Map<string, string>; query: Map<string, string> }
+type TermResponse = { status: number; body: string; headers?: Map<string, string> }
 type Handle = (request: TermRequest) => TermResponse | Promise<TermResponse>
 
 // content-type by file extension, for any body served with a known asset extension. A `.js` module
@@ -120,9 +120,23 @@ export const transport = {
         const body =
           method === 'GET' || method === 'HEAD' ? '' : await request.text()
 
-        const response = await handle({ method, path: url.pathname, body })
+        // the request's headers by lower-case name and its query string decoded, as the `request` form declares them
+        const headers = new Map<string, string>()
+        request.headers.forEach((value, name) => headers.set(name.toLowerCase(), value))
+        const response = await handle({ method, path: url.pathname, body, headers, query: new Map(url.searchParams) })
         const out = response.body ?? ''
         const code = response.status ?? 200
+
+        // the headers the handler set, written as given; a `content-type` among them decides the type
+        const given: Record<string, string> = {}
+
+        for (const [name, value] of response.headers ?? []) {
+          given[name] = value
+        }
+
+        if (Object.keys(given).some(name => name.toLowerCase() === 'content-type') && code !== 1 && !(code >= 300 && code < 400 && out)) {
+          return new Response(out, { status: code, headers: given })
+        }
 
         // proxy sentinel (status 1): fetch the upstream URL and stream its bytes through this origin
         // (the page URL stays put), carrying the upstream content-type.
@@ -171,11 +185,11 @@ export const transport = {
         if (head.startsWith('<!doctype') || head.startsWith('<html')) {
           return new Response(out, {
             status: code,
-            headers: { 'Content-Type': 'text/html; charset=utf-8' },
+            headers: { 'Content-Type': 'text/html; charset=utf-8', ...given },
           })
         }
 
-        return new Response(out, { status: code })
+        return new Response(out, { status: code, headers: given })
       },
     }
   },

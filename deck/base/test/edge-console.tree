@@ -1,0 +1,11 @@
+# `write` puts text out with no newline, and builds and runs on every backend. What it prints is held on node by the
+# library/processes sample; this holds that the native `write-text` of each backend exists and returns. Held by
+# `pnpm term:base-gate`.
+
+load @term/base/console
+  find write
+
+test <write returns, having written its text with no newline>
+  call write
+    text <>
+  want hold, true

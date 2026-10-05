@@ -52,8 +52,7 @@ import { collectModules } from '@term/make/code/compile/load'
 import type { Source } from '@term/make/code/compile/load'
 import { withNativeEnv, nativePrelude } from '@term/make/code/compile/native'
 import { expandTemplates } from '@term/make/code/compile/template'
-import { extendForms } from '@term/make/code/check/extend'
-import { disambiguateOverloads } from '@term/make/code/check/overload'
+import { bindModules, stampModule } from '@term/make/code/check/bind-modules'
 import { emitTypeScript } from '@term/make/code/compile/typescript'
 import { emitRust } from '@term/make/code/compile/rust'
 import { emitSwift } from '@term/make/code/compile/swift'
@@ -221,10 +220,10 @@ function frontEnd(
   // rustc is a different program.
   env: 'node' | 'rust' | 'swift' | 'kotlin' = 'node',
 ): Program {
-  const sources = collectModules(
+  const { sources, scope } = collectModules(
     { file: 'main.tree', text },
     withNativeEnv(env, resolver),
-  ).sources
+  )
   const program: Program = []
 
   for (const unit of sources) {
@@ -240,11 +239,12 @@ function frontEnd(
       throw new Error(`mill failed: ${unit.file}: ${built.diagnostics.map(d => d.message).join(', ')}`)
     }
 
+    stampModule(built.program, unit.file)
     program.push(...built.program)
   }
 
-  extendForms(program, 'main.tree')
-  disambiguateOverloads(program)
+  // module scope and form extension, as `compileProgram` runs them (check/bind-modules.ts)
+  bindModules(program, scope, 'main.tree')
   resolveNames(program, 'main.tree')
 
   const errors = check(program, 'main.tree').filter(d => d.severity !== 'warning')

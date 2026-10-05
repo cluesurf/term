@@ -164,6 +164,17 @@ const PATTERN: Record<TokenKind, RegExp> = {
     /(?:\\[<>{}nrte\\]|\\(?![<>{}nrte\\])|\{+(?!\s*(?:[a-zA-Z_{]|$))|[^>{\\])+/y,
 }
 
+// a raw literal's content as the chunk an ordinary literal would carry for the same text: the mill unescapes `\\`,
+// `\{` and `\}`, so those are escaped, and angles stay bare, as the lexer leaves them in any chunk
+export function rawChunk(content: string): string {
+  return content.replace(/[\\{}]/g, c => `\\${c}`)
+}
+
+// the content a raw literal was written with, from its chunk (the inverse of `rawChunk`)
+export function rawContent(chunk: string): string {
+  return chunk.replace(/\\([\\{}])/g, '$1')
+}
+
 /**
  * Diagnostics found while lexing, rather than the first one.
  *
@@ -240,6 +251,68 @@ export function tokenize(source: {
         previous = token
         pos += 2
         column += 2
+        continue
+      }
+
+      // A RAW TEXT LITERAL, `<<...>>`, wherever a text literal may open: its content is read exactly as written, up to
+      // the `>>` that ends the first run of `>` on the same line, with no interpolation and no escape, so a pattern reads as its engine reads it
+      // (`<<\p{Lu}(?<=x)>>`). It reaches every later stage as an ordinary literal: the open token carries `<<`, which
+      // the tree keeps (`raw`) so a printer writes it back the same way, and the one chunk is escaped so that the
+      // mill's unescaping gives the content back verbatim. Text holding `>>`, or more than one line, is an ordinary
+      // literal with its angles escaped. Until 2026-10-04 `<<x>>` was a literal holding the nested text `<x>`, which is
+      // now written `<\<x\>>` (note/term/stdlib/regex-engine.md, "Writing a pattern in a `.tree` file").
+      if ((mode === LexMode.Default || mode === LexMode.Interpolation) && lineText.startsWith('<<', pos)) {
+        // the LAST two of the first run of `>`, so content may end in `>` (`<<<.+?>>>` holds `<.+?>`) and two raw
+        // literals on one line still close apart (`f(<<a>>, <<b>>)`)
+        let end = lineText.indexOf('>>', pos + 2)
+
+        while (end >= 0 && lineText[end + 2] === '>') {
+          end++
+        }
+
+        if (end < 0) {
+          found.push(
+            diagnose('syntax-error', {
+              file: source.file,
+              span: { start: { line, column }, end: { line, column: column + 2 } },
+              message: 'a raw text literal `<<...>>` must end with `>>` on the same line',
+              hint: 'for text holding `>>` or spanning lines, write an ordinary literal and escape its angles: `<\\<x\\>>` is the text `<x>`',
+            }),
+          )
+
+          // the rest of the line cannot be read as anything sensible: skip to its newline, which still lexes, so the
+          // next line is the resync point and this one reports once
+          column += lineText.length - 1 - pos
+          pos = lineText.length - 1
+          continue
+        }
+
+        const content = lineText.slice(pos + 2, end)
+        const tokensOf: Token[] = [
+          { kind: TokenKind.OpenAngle, span: { start: { line, column }, end: { line, column: column + 2 } }, text: '<<' },
+          ...(content
+            ? [
+                {
+                  kind: TokenKind.Chunk,
+                  span: { start: { line, column: column + 2 }, end: { line, column: column + 2 + content.length } },
+                  text: rawChunk(content),
+                },
+              ]
+            : []),
+          {
+            kind: TokenKind.CloseAngle,
+            span: { start: { line, column: column + 2 + content.length }, end: { line, column: column + 4 + content.length } },
+            text: '>>',
+          },
+        ]
+
+        for (const token of tokensOf) {
+          append(token)
+          previous = token
+        }
+
+        pos = end + 2
+        column += 4 + content.length
         continue
       }
 

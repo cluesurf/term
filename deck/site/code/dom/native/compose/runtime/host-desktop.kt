@@ -107,6 +107,7 @@ object composeHost {
         commit: Boolean,
     ) {
         val host = ui ?: return
+        nativeView.keyboardIsTest = true
         host.waitForIdle()
         if (request() == null) {
             host.cxOnNodeWithTag(tag).cxRequestFocus()

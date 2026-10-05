@@ -661,6 +661,51 @@ view page
   ok('a file that does not compile says so, at its own line', refused.status === 1 && /code\/broken\.tree does not compile/.test(refused.out) && /broken\.tree:3:/.test(refused.out), refused.out)
 }
 
+// ---- commands/wash: `boot` and `store` targets ----
+{
+  const washed = mkdtempSync(join(tmpdir(), 'term-wash-boot-'))
+  writeFileSync(join(washed, 'deck.tree'), 'deck demo\n  mark <0.0.1>\n')
+
+  for (const dir of ['.base/@cluesurf/term/boot/x', '.base/@cluesurf/term/client/y', 'build', 'work', 'host']) {
+    mkdirSync(join(washed, dir), { recursive: true })
+  }
+
+  const boot = term(washed, 'wash', 'boot')
+
+  ok(
+    '`term wash boot` removes boot/, client/, build/ and work/, and leaves host/',
+    boot.status === 0 && /Boot output removed/.test(boot.out) && !existsSync(join(washed, 'build')) && !existsSync(join(washed, 'work')) && !existsSync(join(washed, '.base/@cluesurf/term/boot')) && existsSync(join(washed, 'host')),
+    boot.out,
+  )
+
+  // the machine-wide store, pointed somewhere harmless: its module cache goes, the installed decks beside it stay
+  const home = mkdtempSync(join(tmpdir(), 'term-wash-store-'))
+  mkdirSync(join(home, 'mill/v1'), { recursive: true })
+  mkdirSync(join(home, 'blobs'))
+  writeFileSync(join(home, 'index.json'), '{}')
+  const nowhere = mkdtempSync(join(tmpdir(), 'term-wash-anywhere-'))
+  const run = spawnSync('node', [LINE, 'wash', 'store'], { cwd: nowhere, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1', TERM_CACHE_HOME: home } })
+  const out = `${run.stdout}${run.stderr}`
+
+  ok(
+    '`term wash store` removes the shared module cache from anywhere, and keeps the installed decks',
+    run.status === 0 && /Shared module cache removed/.test(out) && !existsSync(join(home, 'mill')) && existsSync(join(home, 'blobs')) && existsSync(join(home, 'index.json')),
+    out,
+  )
+}
+
+// ---- commands/look: a module that does not compile is listed, and says so ----
+{
+  const looked = mkdtempSync(join(tmpdir(), 'term-look-broken-'))
+  mkdirSync(join(looked, 'code'))
+  writeFileSync(join(looked, 'deck.tree'), 'deck demo\n  mark <0.0.1>\n')
+  writeFileSync(join(looked, 'code/broken.tree'), 'task half\n  take n, like number\n\n  like number\n\n  back <not a number>\n')
+
+  const run = term(looked, 'look', 'code/broken.tree')
+
+  ok('`term look` on a module that does not compile lists it and says so', run.status === 0 && /does not compile, so its signatures are as written/.test(run.out) && /task\s+half/.test(run.out) && /term scan code\/broken\.tree/.test(run.out), run.out)
+}
+
 // ---- library/collections: `term boot` after a list read past its end stops the program ----
 {
   const stopped = mkdtempSync(join(tmpdir(), 'term-boot-stop-'))

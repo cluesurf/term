@@ -279,5 +279,85 @@ task boot
   ok('and the page after it answers 200, titled', home?.status === 200 && /<title>Shelf<\/title>/.test(home.body), String(home?.status))
 }
 
+// ---- an API route: the response's headers reach the wire, and the request carries its headers and query ----
+{
+  const dir = project(
+    'api',
+    'code/boot.tree',
+    `load @term/site/http/http
+  find request
+  find response
+  find route
+  find route-server
+
+load @term/site/http/serve
+  find serve
+
+load @term/base/list
+  find list
+  find push
+
+load @term/base/hash
+  find hash
+  find get, name hash-get
+  find set
+
+load @term/base/maybe
+  find unwrap-or
+
+task show-book
+  take request, like request
+  take params, like hash
+
+  like response
+
+  save id, unwrap-or(hash-get(params, <id>), <>)
+  save fields, unwrap-or(hash-get(request/query, <fields>), <all>)
+  save agent, unwrap-or(hash-get(request/headers, <user-agent>), <nobody>)
+  save headers, make hash
+  set headers, <content-type>, <application/json>
+
+  back
+    make response
+      bind status, 200
+      bind body, <{"id":"{id}","fields":"{fields}","agent":"{agent}"}>
+      bind headers, headers
+
+task boot
+  take url, like text
+  take port, like u16
+
+  save routes, make list
+
+  push routes
+    make route
+      bind method, <GET>
+      bind path, </books/:id>
+      bind handle, show-book
+  serve route-server(routes), port
+`,
+  )
+  writeFileSync(join(dir, 'deck.tree'), 'deck api\n  mark <0.0.1>\n  boot ./code/boot\n')
+
+  const child = spawn('node', [LINE, 'boot', '--port', '4973'], { cwd: dir, env: { ...process.env, NO_COLOR: '1' } })
+  let log = ''
+  child.stdout.on('data', chunk => (log += String(chunk)))
+  child.stderr.on('data', chunk => (log += String(chunk)))
+  const started = Date.now()
+
+  while (!/✓ start/.test(log) && Date.now() - started < 60_000 && child.exitCode === null) {
+    await new Promise(done => setTimeout(done, 100))
+  }
+
+  try {
+    const answer = await fetch('http://127.0.0.1:4973/books/7?fields=title', { headers: { 'user-agent': 'page-status' } }).catch(() => undefined)
+    const body = answer ? await answer.text() : ''
+    ok('a response\'s `content-type` header reaches the wire', answer?.headers.get('content-type') === 'application/json', `${answer?.headers.get('content-type')} ${log.slice(-400)}`)
+    ok('and the handler read the query and a request header', body === '{"id":"7","fields":"title","agent":"page-status"}', body)
+  } finally {
+    child.kill()
+  }
+}
+
 console.log(`\npage-status: ${pass} pass, ${fail} fail`)
 process.exit(fail ? 1 : 0)

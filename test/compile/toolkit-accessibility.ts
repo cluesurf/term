@@ -200,7 +200,7 @@ const rows = new Map(
     .map(cells => [cells[0]!, cells] as const),
 )
 // both Compose legs read one column: Compose's semantics, from which each platform's bridge is made
-const COLUMN: Record<Leg, number> = { macos: 2, ios: 3, android: 4, compose: 5, 'compose-android': 5 }
+const COLUMN: Record<Leg, number> = { macos: 2, ios: 3, android: 4, compose: 5, 'compose-android': 5, 'compose-linux': 5, 'compose-windows': 5 }
 
 // the cell allows this role: every part of it named in backticks, `none` for an empty role, `hidden` for one out of the tree
 function allows(leg: Leg, word: string, role: string): boolean {

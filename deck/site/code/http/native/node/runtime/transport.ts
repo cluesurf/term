@@ -6,8 +6,8 @@ import { Hono } from 'hono'
 // aliased: the seed `serve` task is emitted into the same bundle scope, so the hono adapter must not shadow it
 import { serve as honoServe } from '@hono/node-server'
 
-type Request = { method: string; path: string; body: string }
-type Response = { status: number; body: string }
+type Request = { method: string; path: string; body: string; headers: Map<string, string>; query: Map<string, string> }
+type Response = { status: number; body: string; headers?: Map<string, string> }
 type Handle = (request: Request) => Response | Promise<Response>
 type Listener = { handle: Handle; close(): void }
 
@@ -90,14 +90,34 @@ const transport = {
         context.req.method === 'GET' || context.req.method === 'HEAD'
           ? ''
           : await context.req.text()
+      // the request's headers by lower-case name, and its query string decoded, as the `request` form declares them
+      const headers = new Map<string, string>()
+      context.req.raw.headers.forEach((value, name) => headers.set(name.toLowerCase(), value))
+      const query = new Map<string, string>(url.searchParams)
       const response = await handle({
         method: context.req.method,
         path: url.pathname,
         body,
+        headers,
+        query,
       })
       const out = response.body ?? ''
       const status = (response.status ?? 200) as never
       const code = response.status ?? 200
+
+      // the headers the handler set, written as given. A `content-type` among them decides the type, ahead of the
+      // guesses below
+      const given: Record<string, string> = {}
+
+      for (const [name, value] of response.headers ?? []) {
+        given[name] = value
+      }
+
+      const typed = Object.keys(given).some(name => name.toLowerCase() === 'content-type')
+
+      if (typed && code !== 1 && !(code >= 300 && code < 400 && out)) {
+        return context.body(out, status, { ...NO_STORE, ...given })
+      }
       // a proxy resource route (e.g. /vibe.pdf) returns the sentinel status 1 with the source URL as the body: fetch it
       // and stream the bytes back through this origin (the page URL stays put), carrying the upstream content-type.
       if (code === 1 && out) {
@@ -143,8 +163,8 @@ const transport = {
       // shape of the body is the signal); JSON / plain text fall through to hono's default text/plain
       const head = out.trimStart().slice(0, 14).toLowerCase()
       if (head.startsWith('<!doctype') || head.startsWith('<html'))
-        return context.html(out, status, { ...NO_STORE })
-      return context.body(out, status, { ...NO_STORE })
+        return context.html(out, status, { ...NO_STORE, ...given })
+      return context.body(out, status, { ...NO_STORE, ...given })
     })
     let server: ReturnType<typeof honoServe> | null = null
     return {

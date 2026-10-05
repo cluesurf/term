@@ -44,8 +44,7 @@ import { collectModules } from '@term/make/code/compile/load'
 import type { Source } from '@term/make/code/compile/load'
 import { withNativeEnv } from '@term/make/code/compile/native'
 import { expandTemplates } from '@term/make/code/compile/template'
-import { extendForms } from '@term/make/code/check/extend'
-import { disambiguateOverloads } from '@term/make/code/check/overload'
+import { bindModules, stampModule } from '@term/make/code/check/bind-modules'
 import type { Program } from '@term/make/code/compile/node'
 import {
   compileFeedMine,
@@ -214,10 +213,10 @@ const resolver = (path: string, from: string): Source | undefined => {
 
 function compilesClean(source: string, at: string): boolean {
   try {
-    const sources = collectModules(
+    const { sources, scope } = collectModules(
       { file: at, text: source },
       withNativeEnv('node', resolver),
-    ).sources
+    )
     const program: Program = []
 
     for (const unit of sources) {
@@ -233,11 +232,14 @@ function compilesClean(source: string, at: string): boolean {
         return false
       }
 
+      stampModule(built.program, unit.file)
       program.push(...built.program)
     }
 
-    extendForms(program, at)
-    disambiguateOverloads(program)
+    // module scope and form extension, as `compileProgram` runs them (check/bind-modules.ts); a refusal is not clean
+    if (bindModules(program, scope, at).length) {
+      return false
+    }
 
     // BOTH PASSES' DIAGNOSTICS. `resolve` is what reports an UNDEFINED NAME, and discarding its return value made
     // this check pass on a reader calling `read-crown`, a task nothing defines. `check` reports type mismatches

@@ -1,0 +1,349 @@
+# The bookkeeping of the incremental query engine (Tier 2, the Salsa model): the revision counter, the inputs, the
+# memos, the durability shortcut, the dependency frame a running query records into, and backdating. A value that
+# recomputes to an equal result keeps its old `changed-at`, so its dependents are not invalidated. Durability tiers give
+# O(1) validation when only a low-stability input changed: 0 is the edited buffer, 1 other project files, 2 the stdlib.
+#
+# Ported from compile/query.ts (self-hosting, 2026-10-04). The original was one `Database` class holding its state, the
+# compute CLOSURE of every memo, the in-flight PROMISE of every key, and comparing input values with `Object.is`. A
+# record holding a function of a context that reaches back to the record is what strict positivity refuses, and
+# identity is not a thing Term has, so the module split along that line:
+#   - this file is the state and every decision made on it, a `mark shared` store the driver holds
+#   - compile/query.ts keeps the `Database` API its callers and test use, and only what Term cannot hold: the computes
+#     by key, the in-flight promises, and the two identity tests, which it answers as booleans (`same-value`,
+#     `equal-previous`)
+# A frame's dependencies and every list here keep insertion order and hold a key once, as the original's `Set`s did.
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+# an input: its value, the revision it last changed at, and its durability
+form input-cell
+  link value, like unknown
+  link changed-at, like number
+  link durability, like number
+
+# a query's remembered answer: the value, the revision it last CHANGED at (backdated when a recompute is equal), the
+# revision it was last VERIFIED at, the keys it read, and the weakest durability among them
+form memo
+  link value, like unknown
+  link changed-at, like number
+  link verified-at, like number
+  link deps, like list, like text
+  link durability, like number
+
+# a running query's own dependency frame: the keys it read, and the weakest durability among them
+form frame
+  mark shared
+  link deps, like list, like text
+  link durability, like number
+
+form store
+  mark shared
+  link revision, like number
+  link inputs
+    like hash
+      like text
+      like input-cell
+  link memos
+    like hash
+      like text
+      like memo
+  # the last revision at which an input of each durability changed, indexed by durability: the durability shortcut
+  link last-changed, like list, like number
+  # observability for tests: every query-body execution, and the count per key
+  link recomputes, like number
+  link run-count
+    like hash
+      like text
+      like number
+
+task make-store
+  like store
+
+  back
+    make store
+      bind revision, 1
+      bind inputs, make hash
+      bind memos, make hash
+      bind last-changed, make list(0, 0, 0)
+      bind recomputes, 0
+      bind run-count, make hash
+
+# a fresh frame records nothing yet and is as durable as anything gets
+task make-frame
+  like frame
+
+  back
+    make frame
+      bind deps, make list
+      bind durability, 2
+
+task runs
+  take store, like store
+  take key, like text
+  like number
+
+  back get-or-default(store/run-count, key, 0)
+
+task has-input
+  take store, like store
+  take key, like text
+  like boolean
+
+  back has(store/inputs, key)
+
+task blank-input
+  like input-cell
+
+  back
+    make input-cell
+      bind value, <>
+      bind changed-at, 0
+      bind durability, 0
+
+# the value an input holds. Ask `has-input` first
+task input-value
+  take store, like store
+  take key, like text
+  like unknown
+
+  host cell, get-or-default(store/inputs, key, blank-input())
+
+  back cell/value
+
+# set (or change) an input. `same-value` says the value given is the one the input already holds, by the host's
+# identity: setting an input to its own value at its own durability is a no-op, so re-saving identical source
+# invalidates nothing. A real change bumps the revision and the durability's last-changed marker
+task set-input
+  take store, like store
+  take key, like text
+  take value, like unknown
+  take durability, like number
+  take same-value, like boolean
+
+  fork test, has(store/inputs, key)
+    hold
+      host held, get-or-default(store/inputs, key, blank-input())
+      fork test, same-value
+        hold
+          fork test, is-equal(held/durability, durability)
+            hold
+              back
+  save store/revision, add(store/revision, 1)
+  store/inputs/set(key, make-input-cell(value, store/revision, durability))
+  store/last-changed/set(durability, store/revision)
+
+task make-input-cell
+  take value, like unknown
+  take changed-at, like number
+  take durability, like number
+  like input-cell
+
+  back
+    make input-cell
+      bind value, value
+      bind changed-at, changed-at
+      bind durability, durability
+
+# add a key to a frame once, keeping the order it was first read in, and lower the frame's durability to `durability`
+task note-dependency
+  take frame, like frame
+  take key, like text
+  take durability, like number
+
+  fork test, contains(frame/deps, key)
+    miss
+      frame/deps/push(key)
+  fork test, is-below(durability, frame/durability)
+    hold
+      save frame/durability, durability
+
+# read an input inside a running query, recording it as a dependency. Ask `has-input` first: the driver raises
+# `unknown input` for a key the store lacks
+task read-input
+  take store, like store
+  take frame, like frame
+  take key, like text
+  like unknown
+
+  host cell, get-or-default(store/inputs, key, blank-input())
+  note-dependency(frame, key, cell/durability)
+
+  back cell/value
+
+task has-memo
+  take store, like store
+  take key, like text
+  like boolean
+
+  back has(store/memos, key)
+
+task blank-memo
+  like memo
+
+  back
+    make memo
+      bind value, <>
+      bind changed-at, 0
+      bind verified-at, 0
+      bind deps, make list
+      bind durability, 2
+
+task memo-of
+  take store, like store
+  take key, like text
+  like memo
+
+  back get-or-default(store/memos, key, blank-memo())
+
+# the value a query last answered. Ask `has-memo` first
+task memo-value
+  take store, like store
+  take key, like text
+  like unknown
+
+  host found, memo-of(store, key)
+
+  back found/value
+
+task memo-deps
+  take store, like store
+  take key, like text
+  like list, like text
+
+  host found, memo-of(store, key)
+
+  back found/deps
+
+# record a finished sub-query as a dependency of the running one, lowering the frame to the memo's durability
+task note-query
+  take store, like store
+  take frame, like frame
+  take key, like text
+
+  host found, memo-of(store, key)
+  note-dependency(frame, key, found/durability)
+
+# is the memo already verified at this revision, so its value is the answer as it stands
+task is-verified
+  take store, like store
+  take key, like text
+  like boolean
+
+  fork test, has(store/memos, key)
+    miss
+      back false
+  host found, memo-of(store, key)
+
+  back is-equal(found/verified-at, store/revision)
+
+task mark-verified
+  take store, like store
+  take key, like text
+
+  host found, memo-of(store, key)
+  save found/verified-at, store/revision
+  store/memos/set(key, found)
+
+# the durability shortcut: no input as durable as the memo, or more, changed since it was verified, so it cannot have
+# changed. This is the O(1) keystroke case: editing a durability-0 file never walks a durability-2 (stdlib) query
+task is-unchanged-by-durability
+  take store, like store
+  take key, like text
+  like boolean
+
+  host found, memo-of(store, key)
+  save latest, 0
+  save d, found/durability
+  walk test
+    hook test, is-maximum(d, 2)
+    hook hold
+      host at, get(store/last-changed, d)
+      fork test, is-above(at, latest)
+        hold
+          save latest, at
+      save d, add(d, 1)
+
+  back is-maximum(latest, found/verified-at)
+
+# did an input change after `revision`. Ask `has-input` first
+task input-changed-after
+  take store, like store
+  take key, like text
+  take revision, like number
+  like boolean
+
+  host cell, get-or-default(store/inputs, key, blank-input())
+
+  back is-above(cell/changed-at, revision)
+
+# did a memo change after `revision`
+task memo-changed-after
+  take store, like store
+  take key, like text
+  take revision, like number
+  like boolean
+
+  host found, memo-of(store, key)
+
+  back is-above(found/changed-at, revision)
+
+task memo-verified-at
+  take store, like store
+  take key, like text
+  like number
+
+  host found, memo-of(store, key)
+
+  back found/verified-at
+
+# store a query body's answer. `equal-previous` says a memo existed and its value equals this one by the query's own
+# equality: then the memo keeps its old `changed-at` (backdating), so dependents are not invalidated
+task store-result
+  take store, like store
+  take key, like text
+  take value, like unknown
+  take equal-previous, like boolean
+  take frame, like frame
+
+  save store/recomputes, add(store/recomputes, 1)
+  store/run-count/set(key, add(get-or-default(store/run-count, key, 0), 1))
+
+  host previous, memo-of(store, key)
+  save changed-at, store/revision
+  fork test, equal-previous
+    hold
+      save changed-at, previous/changed-at
+
+  store/memos/set(key, make-memo(value, changed-at, store/revision, copy(frame/deps), frame/durability))
+
+task make-memo
+  take value, like unknown
+  take changed-at, like number
+  take verified-at, like number
+  take deps, like list, like text
+  take durability, like number
+  like memo
+
+  back
+    make memo
+      bind value, value
+      bind changed-at, changed-at
+      bind verified-at, verified-at
+      bind deps, deps
+      bind durability, durability
+
+task revision-of
+  take store, like store
+  like number
+
+  back store/revision
+
+task recomputes-of
+  take store, like store
+  like number
+
+  back store/recomputes

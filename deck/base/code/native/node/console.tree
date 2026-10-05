@@ -3,6 +3,14 @@
 
 dock load
   load <global:console>, name console
+  load <global:process>, name process
+
+# the text as given, no newline: a prompt, a progress dot
+task write-text
+  take message, like text
+  like void
+  call process/stdout/write
+    read message
 
 task write-line
   take message, like text

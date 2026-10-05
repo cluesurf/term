@@ -65,7 +65,7 @@ form value
   case map
     link value, like map-cell
   case function
-    link value, like closure
+    link value, like closure-value
   # a built-in, by name: the engine's dispatcher runs it
   case native
     link name, like text
@@ -83,7 +83,7 @@ form task-cell
   link result, like value
   link thrown, like boolean
 
-form closure
+form closure-value
   mark shared
   link params, like list, like text
   link body, like list, like statement
@@ -95,8 +95,14 @@ form closure
 # the environment: the variables in force, which of them are constant, and the scope it sits in
 form scope
   mark shared
-  link vars, like hash, like text, like value
-  link consts, like hash, like text, like boolean
+  link vars
+    like hash
+      like text
+      like value
+  link consts
+    like hash
+      like text
+      like boolean
   link parent, like list, like scope
 
 task make-unit
@@ -146,6 +152,72 @@ task string
   back
     make string
       bind value, from-string(read text)
+
+# a value of each kind from its data: engine/ast names the same cases (`array`, `map`, `integer`), so a construction
+# goes through these rather than a bare `make array` that two forms answer to
+task integer-value
+  take held, like ternary-integer
+  like value
+
+  back
+    make integer
+      bind value, held
+
+task float-value
+  take held, like ternary-float
+  like value
+
+  back
+    make float
+      bind value, held
+
+task rope-value
+  take held, like rope
+  like value
+
+  back
+    make string
+      bind value, held
+
+task array-of
+  take items, like vector value
+  like value
+
+  back
+    make array
+      bind value, items
+
+task map-of
+  take cell, like map-cell
+  like value
+
+  back
+    make map
+      bind value, cell
+
+task function-of
+  take held, like closure-value
+  like value
+
+  back
+    make function
+      bind value, held
+
+task native-of
+  take name, like text
+  like value
+
+  back
+    make native
+      bind name, name
+
+task task-of
+  take cell, like task-cell
+  like value
+
+  back
+    make task
+      bind value, cell
 
 # truthiness for conditions: boolean true, nonzero number, non-empty string, array or map; unit and unknown are false
 task truthy

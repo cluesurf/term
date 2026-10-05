@@ -1,0 +1,16 @@
+# The Linux machine a Compose desktop app image is packaged and run on (compose-target-0004), built on the work droplet
+# by test/compile/shared/compose-remote.ts. jpackage builds only for the OS it runs on, so the Linux image is made here:
+# the program's jar and its runtime are built on the Mac (bytecode is the same everywhere), and only Skia's native
+# library differs, which the input folder carries for linux-x64.
+#
+#   eclipse-temurin:25-jdk   the JDK, jpackage included, the same major version the Mac builds with
+#   binutils                 objcopy, which jlink uses to strip the runtime it puts in the image
+#   fontconfig, fonts-dejavu what Skia finds a face through and draws text with. A container has no fonts at all
+#   libgl1                   libGL.so.1, which Skia's Linux library links against even to draw offscreen
+#
+# No display and no Xvfb: a Term test runs the app headless (TERM_WINDOW_AWAY=1), drawing through Skia offscreen
+FROM eclipse-temurin:25-jdk
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends binutils fontconfig fonts-dejavu-core libgl1 \
+  && rm -rf /var/lib/apt/lists/*

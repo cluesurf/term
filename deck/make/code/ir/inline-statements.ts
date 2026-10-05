@@ -13,7 +13,8 @@
 // calls itself nowhere, holds no closure, guard, loop or nested task, binds no name one of its parameters has, writes
 // no variable it does not bind, writes no field of a parameter that is not a list or a hash (a record is a value, so a
 // call gives the callee its own copy, which a substitution would not), and returns only in tail position (the last
-// statement of its body, or of a branch or a case that is itself last). Its call becomes:
+// statement of its body, or of a branch or a case that is itself last). Nothing is inlined INTO a task that calls itself
+// (`recursiveTasks`), whose frame every level of the recursion pays for. Its call becomes:
 //   - each parameter: the argument itself where the argument is a variable or a literal and the body never writes the
 //     parameter (so a list lent to the task is still the caller's own, never moved into a new name), else a `let` of
 //     a fresh name
@@ -467,11 +468,21 @@ function inlineRound(program: Program, inlinedNames: Set<string>, holder: { name
     return [...before, ...tails(renamed)]
   }
 
+  // the tasks that call themselves, which nothing is inlined into: their frame is paid at every level of the recursion,
+  // and a body pasted in grows it, its locals (a backend's spare, the pool behind it) held across every recursive call.
+  // Towers' `move-disks` with `move-top` pasted in twice read 70 ms on Rust, its result plain, where calling `move-top`,
+  // into which `pop-disk` and `push-disk` are still pasted, read 38 (`tmp/rust-towers-rest3-ab.ts`, 2026-10-04)
+  const recursiveTasks = new Set(
+    fns
+      .filter(fn => Array.isArray(fn.body) && some(fn.body, node => node.form === 'call' && (node.callee as Loose).form === 'variable' && (node.callee as Loose).name === fn.name))
+      .map(fn => fn.name),
+  )
+
   // a call to an inlinable task
   const target = (e: Expression | undefined, owner: string): Fn | undefined => {
     const callee = e?.form === 'call' && e.callee.form === 'variable' ? inlinable.get(e.callee.name) : undefined
 
-    return callee && callee.name !== owner ? callee : undefined
+    return callee && callee.name !== owner && !recursiveTasks.has(owner) ? callee : undefined
   }
 
   // a call's arguments with any inlinable call among them taken out into a `let` first, when every argument before it

@@ -114,22 +114,39 @@ write unreadable code. You describe the program once, clearly, and the
 toolchain carries it the rest of the way to essentially optimal machine
 behavior on every platform it touches.
 
-## The book
+## Install
 
-A complete, example-first guide lives in [`book/`](book/readme.md). It
-is a tree of short cheatsheet pages: each one opens with a reference of
-every keyword, command, or operator in its topic, then shows the `.tree`
-you write to use it, with a note on how it maps to ideas you already
-know.
+```sh
+curl -fsSL https://term.surf/load | sh
+```
 
-Start with [the syntax model](book/language/readme.md), then read what
-you need: the [language](book/language/readme.md) (functions, forms,
-matching, loops, traits, templates, modules, and more),
-[proofs](book/math/readme.md), the
-[standard library](book/stdlib/readme.md), the
-[web framework](book/web/readme.md),
-[command-line apps](book/cli/readme.md), and the
-[`term` toolchain](book/toolchain/readme.md).
+or, with Homebrew:
+
+```sh
+brew install cluesurf/tool/term
+```
+
+Both install the same signed release, `@term/code`, from
+`ghcr.io/cluesurf/term/code`, built for `darwin-arm64`, `darwin-x64`,
+`linux-x64` and `linux-arm64`. Each checks the download's sha256
+against the registry's digest. The script then runs `term self check`,
+which verifies the release signature against the `@term` key set before
+anything goes on your `PATH`. It writes only under
+`~/.base/@cluesurf/term/`, and prints the `PATH` line to add rather than
+editing a shell profile.
+
+Term runs on Node.js 22.3 or newer.
+
+```sh
+term --version     # 2.6.2
+term self update   # the newest release, verified, beside the current one
+term self back     # back to the previous version, no download
+```
+
+A Homebrew install updates with `brew upgrade cluesurf/tool/term`.
+
+The guides, from a first program to proofs, native apps and the package
+registry, are at [term.surf/guides](https://term.surf/guides).
 
 ## Packages
 
@@ -191,7 +208,7 @@ Where to start digging:
 
 | you want | open |
 | --- | --- |
-| what a keyword means | `book/`, then the dialect in `deck/mill/code/` |
+| what a keyword means | [term.surf/guides](https://term.surf/guides), then the dialect in `deck/mill/code/` |
 | why a file fails to compile | `deck/make/code/check/` |
 | what a backend emits | `deck/make/code/compile/<target>.ts` |
 | what a CLI command does | `deck/call/code/line.ts`, then the file it dispatches to |
@@ -206,13 +223,13 @@ parent repository's `note/term/`.
 ```
 .tree source
     ↓
-make (compiler): parse → resolve → check → emit
-    ├─→ TypeScript  (browsers, Node.js)
-    ├─→ Rust        (servers, CLI, embedded)
-    ├─→ Kotlin      (Android, JVM)
-    ├─→ Swift       (iOS, macOS)
-    ├─→ LLVM        (native binaries)
-    └─→ WGSL        (GPU shaders)
+make (compiler): parse → mill → resolve → check → emit
+    ├─→ TypeScript  Node, the browser, Cloudflare Workers
+    ├─→ Rust        Linux and Windows apps, servers, CLIs
+    ├─→ Swift       macOS, the iOS simulator
+    ├─→ Kotlin      Android
+    ├─→ WGSL        the GPU, numbers and arrays only (experimental)
+    └─→ HVM         the pure fragment only (experimental)
 ```
 
 The compiler parses `.tree` files into a surface AST, mills them into a
@@ -221,17 +238,11 @@ bidirectional inference pass that elaborates into a dependent kernel for
 soundness. Each backend then emits idiomatic output for its platform.
 Generics, traits, async, and effects lower to the natural construct on
 each target: native traits on Rust, protocols on Swift, interfaces on
-Kotlin, and monomorphization on LLVM and WGSL.
+Kotlin, and monomorphization on WGSL.
 
 The CLI ([call](./deck/call)) drives the whole pipeline and ships a dev
 server with hot module reload. The language server ([flow](./deck/flow))
 reuses the same analysis for diagnostics, hover, and go-to-definition.
-
-## Installation
-
-```
-pnpm add @cluesurf/term -g
-```
 
 ## Developing Term
 
@@ -247,49 +258,44 @@ powershell -ExecutionPolicy Bypass -File task\dev\bootstrap\start.ps1 check
 
 ## Getting Started
 
-```bash
-# Compile a project
-term make
-
-# Run in dev mode (watch + hot reload)
-term flow
-
-# Add a package
-term deck save <package>
-
-# Run tests
-term test
+```sh
+term wake hello          # a new project in ./hello
+cd hello
+term boot                # build it and run it, rebuilding on every save
+term make                # build it
+term test                # run its tests, holds and rules
+term save @scope/name    # add a dependency to deck.tree, then install
+term load                # install every dependency, verified against lock.tree
+term bind                # log in to term.surf with Google, to publish
+term host                # publish this package to its scope's registry
+term --help              # every verb, one line each
 ```
 
 ## Example
 
-```
+```tree
 task double
   take value, like number
+
   like number
-  send back
-    call add
-      read value
-      read value
+
+  back add(value, value)
 ```
 
-Compiles to:
+`term make --emit <backend> code/double.tree` prints one program as one
+backend's source. The body of `double` on each:
 
-**Rust**
-
-```rust
-fn double(value: i64) -> i64 {
-    return value + value;
-}
+```
+node     return __termInt(value + value)
+rust     i64::checked_add(value, value).expect("excess: a number past i64")
+swift    return (value + value)
+kotlin   return Math.addExact(value, value)
 ```
 
-**TypeScript**
-
-```typescript
-export function double(value: number): number {
-  return value + value
-}
-```
+Each stops on an overflow rather than wrapping, in its platform's own
+way: Swift's `+` traps, Kotlin's `addExact` throws, Rust's `checked_add`
+panics through `expect`, and on Node `__termInt` raises the standard
+library's `excess` once the sum passes `Number.MAX_SAFE_INTEGER`.
 
 ## License
 

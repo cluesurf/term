@@ -106,7 +106,8 @@ function main(): void {
         continue
       }
 
-      const result = compile({ file, text }, { resolve, leanOf })
+      // a port is a LIBRARY its TypeScript callers build values for: no case is tested by identity
+      const result = compile({ file, text }, { resolve, leanOf, library: true })
       const name = relative(TERM, file)
 
       if (!result.ok) {

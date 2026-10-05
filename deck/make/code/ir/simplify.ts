@@ -2261,8 +2261,13 @@ function rootOf(node: Expression): string | undefined {
   return undefined
 }
 
+// every case's field names, by case name across every form (coarse: two forms naming a case alike pool their
+// fields, which only blocks more inlining). Set by `simplify`
+let caseFields = new Map<string, Set<string>>()
+
 // every name a function binds anywhere in its body, nested closures included: parameters, `let`s, loop items and
-// indexes. Coarse on purpose: a name bound anywhere in the function blocks an inlining that could be captured by it
+// indexes, an arm's fields and a handler's caught value. Coarse on purpose: a name bound anywhere in the function
+// blocks an inlining that could be captured by it
 function boundNames(fn: Extract<Statement, { form: 'function' }>): Set<string> {
   const names = new Set<string>(fn.params.map(p => p.name))
   const visit = (node: unknown): void => {
@@ -2305,7 +2310,10 @@ function boundNames(fn: Extract<Statement, { form: 'function' }>): Set<string> {
       const arms = record.exceptionArms as Record<string, { shared: string[]; link: string[] }> | undefined
 
       for (const c of record.cases as { label: string; binds?: string[] }[]) {
-        for (const name of [...(c.binds ?? []), ...(arms?.[c.label]?.shared ?? []), ...(arms?.[c.label]?.link ?? [])]) {
+        // an arm's `link` lines name what it binds; without them it binds the case's fields by their own names
+        const own = c.binds?.length ? [] : [...(caseFields.get(c.label) ?? [])]
+
+        for (const name of [...(c.binds ?? []), ...own, ...(arms?.[c.label]?.shared ?? []), ...(arms?.[c.label]?.link ?? [])]) {
           names.add(name)
         }
       }
@@ -2458,6 +2466,17 @@ export function simplify(
   program: Program,
   roots?: Set<string>,
 ): Program {
+  // every case's fields, which an arm with no `link` lines binds by their own names (see `boundNames`)
+  caseFields = new Map()
+
+  for (const node of program) {
+    if (node.form === 'record-type') {
+      for (const variant of node.variants) {
+        caseFields.set(variant.name, new Set([...(caseFields.get(variant.name) ?? []), ...variant.fields.map(f => f.name)]))
+      }
+    }
+  }
+
   // an interpolation that reads only module constants is filled here, at compile time, before propagation can
   // make a local look constant too (see `fillTemplates`)
   const inlined = fillTemplates(

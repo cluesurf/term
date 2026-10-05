@@ -364,6 +364,11 @@ function flatten(node: Node, nested = false, value = false, options: FormatOptio
         )
         .join('')
     case 'text': {
+      // a raw literal is written back as it was (parser/token.ts)
+      if (node.raw !== undefined) {
+        return `<<${node.raw}>>`
+      }
+
       // the same re-escaping printTree does, computed across the WHOLE literal: an angle that cannot balance has
       // to come back out escaped or the formatted literal reads as a nested bracket and stops parsing, while a
       // balanced one is content and must be left exactly as it is

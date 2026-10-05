@@ -167,6 +167,7 @@ object composeHost {
         text: String,
         commit: Boolean,
     ) {
+        nativeView.keyboardIsTest = true
         settle()
         if (request() == null) {
             val node = find(tag, merged = true) ?: return

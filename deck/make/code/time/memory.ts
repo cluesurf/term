@@ -2,6 +2,8 @@ import type { Resolver } from '@term/make/code/compile/load'
 // Memory profiling. Runs the compiled program once in a child `node --expose-gc` process, forcing a collection
 // before and after so the heap delta reflects what the program retained, not transient allocation. CPU profiling is
 // intentionally not here yet (profiling the compiled artifact's hotspots is a separate, later piece).
+//
+// The result and the report are Term, time/profile.tree (self-hosting, 2026-10-04). This file is the process work.
 
 import {
   compileToModule,
@@ -9,16 +11,13 @@ import {
   runNode,
   cleanupDir,
 } from '@term/make/code/time/execute'
+import { formatBytes, formatMemoryResult, makeMemoryResult } from '@term/make/code/time/profile'
+import type { MemoryResult } from '@term/make/code/time/profile'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 
-export type MemoryResult = {
-  name: string
-  heap_used_before_bytes: number
-  heap_used_after_bytes: number
-  heap_delta_bytes: number
-  rss_after_bytes: number
-}
+export { formatBytes, formatMemoryResult }
+export type { MemoryResult }
 
 const HARNESS = `async function main() {
   if (typeof global.gc === 'function') global.gc()
@@ -65,43 +64,8 @@ export async function runMemoryProfile(input: {
       after: { heapUsed: number; rss: number }
     } = JSON.parse(stdout)
 
-    return {
-      name: input.name,
-      heap_used_before_bytes: usage.before.heapUsed,
-      heap_used_after_bytes: usage.after.heapUsed,
-      heap_delta_bytes: usage.after.heapUsed - usage.before.heapUsed,
-      rss_after_bytes: usage.after.rss,
-    }
+    return makeMemoryResult(input.name, usage.before.heapUsed, usage.after.heapUsed, usage.after.rss)
   } finally {
     await cleanupDir(dir)
   }
-}
-
-export function formatBytes(n: number): string {
-  const sign = n < 0 ? '-' : ''
-  const abs = Math.abs(n)
-
-  if (abs < 1024) {
-    return `${sign}${abs}B`
-  }
-
-  if (abs < 1024 * 1024) {
-    return `${sign}${(abs / 1024).toFixed(1)}KB`
-  }
-
-  if (abs < 1024 * 1024 * 1024) {
-    return `${sign}${(abs / 1024 / 1024).toFixed(2)}MB`
-  }
-
-  return `${sign}${(abs / 1024 / 1024 / 1024).toFixed(2)}GB`
-}
-
-export function formatMemoryResult(result: MemoryResult): string {
-  return [
-    `  ${result.name}`,
-    `    heap before: ${formatBytes(result.heap_used_before_bytes)}`,
-    `    heap after:  ${formatBytes(result.heap_used_after_bytes)}`,
-    `    retained:    ${formatBytes(result.heap_delta_bytes)}`,
-    `    rss:         ${formatBytes(result.rss_after_bytes)}`,
-  ].join('\n')
 }

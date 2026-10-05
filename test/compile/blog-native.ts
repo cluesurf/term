@@ -142,6 +142,8 @@ runToolkits(
       android: process.env.SNAPSHOT_BLOG_ANDROID,
       'compose-android': process.env.SNAPSHOT_BLOG_COMPOSE_ANDROID,
       compose: process.env.SNAPSHOT_BLOG_COMPOSE,
+      'compose-linux': process.env.SNAPSHOT_BLOG_COMPOSE_LINUX,
+      'compose-windows': process.env.SNAPSHOT_BLOG_COMPOSE_WINDOWS,
     },
     compose: true,
     composeAndroid: true,

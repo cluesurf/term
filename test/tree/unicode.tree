@@ -4,11 +4,11 @@ load @term/base/code/text/unicode
   find rune-count
   find byte-count
   find grapheme-count
+  find grapheme-slice
   find to-nfc
   find to-nfd
   find normalize
   find normal-form
-  find make-nfd
 
 test <rune-count counts code points>
   want hold
@@ -70,3 +70,32 @@ test <normalize verb with a dynamic form decomposes>
           text <café>
           read form
       code 5
+
+test <grapheme-slice keeps an accent with its letter>
+  save decomposed
+    call to-nfd
+      text <café!>
+  want hold
+    call is-equal
+      call grapheme-slice
+        read decomposed
+        code 3
+        code 4
+      call to-nfd
+        text <é>
+
+test <grapheme-slice clamps both ends, and a crossed pair is empty>
+  want hold
+    call and
+      call is-equal
+        call grapheme-slice
+          text <abc>
+          code -5
+          code 99
+        text <abc>
+      call is-equal
+        call grapheme-slice
+          text <abc>
+          code 2
+          code 1
+        text <>

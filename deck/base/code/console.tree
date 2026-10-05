@@ -4,8 +4,17 @@
 mark stable
 
 load @term/base/native/{platform}/console
+  find write-text
   find write-line
   find write-error
+
+# the text as given, with no newline after it, so the next write continues the line: a prompt before what is
+# typed, a dot per step of progress. In a browser, which has no line to continue, it is logged as a line
+task write
+  take message, like text
+  like void
+  call write-text
+    read message
 
 task log
   take message, like text

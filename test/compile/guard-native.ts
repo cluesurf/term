@@ -21,8 +21,7 @@ import { collectModules } from '@term/make/code/compile/load'
 import type { Source } from '@term/make/code/compile/load'
 import { withNativeEnv, nativePrelude } from '@term/make/code/compile/native'
 import { expandTemplates } from '@term/make/code/compile/template'
-import { extendForms } from '@term/make/code/check/extend'
-import { disambiguateOverloads } from '@term/make/code/check/overload'
+import { bindModules, stampModule } from '@term/make/code/check/bind-modules'
 import { emitRust } from '@term/make/code/compile/rust'
 import { emitSwift } from '@term/make/code/compile/swift'
 import { emitKotlin, hoistKotlinImports } from '@term/make/code/compile/kotlin'
@@ -195,7 +194,7 @@ task translated
 `
 
 function frontEnd(env: Env): Program {
-  const sources = collectModules({ file: 'main.tree', text: PROGRAM }, withNativeEnv(env, resolver)).sources
+  const { sources, scope } = collectModules({ file: 'main.tree', text: PROGRAM }, withNativeEnv(env, resolver))
   const program: Program = []
 
   for (const unit of sources) {
@@ -211,11 +210,17 @@ function frontEnd(env: Env): Program {
       throw new Error(`mill failed: ${unit.file}: ${built.diagnostics.map(d => d.message).join(', ')}`)
     }
 
+    stampModule(built.program, unit.file)
     program.push(...built.program)
   }
 
-  extendForms(program, 'main.tree')
-  disambiguateOverloads(program)
+  // module scope and form extension, as `compileProgram` runs them (check/bind-modules.ts)
+  const unbound = bindModules(program, scope, 'main.tree')
+
+  if (unbound.length) {
+    throw new Error(`scope failed: ${unbound.slice(0, 5).map(d => d.message).join(' | ')}`)
+  }
+
   resolveNames(program, 'main.tree')
   const errors = check(program, 'main.tree').filter(d => d.severity !== 'warning')
 

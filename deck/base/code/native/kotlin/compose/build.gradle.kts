@@ -22,7 +22,7 @@ val composeVersion = "1.12.1"
 val sqliteJdbcVersion = "3.53.4.0"
 
 // the desktop artifact for the machine resolving it, so the same file serves macOS, Linux and Windows
-val desktop = run {
+val hostDesktop = run {
   val os = System.getProperty("os.name").lowercase()
   val arm = System.getProperty("os.arch").let { it == "aarch64" || it == "arm64" }
   val system = when {
@@ -30,8 +30,14 @@ val desktop = run {
     os.contains("win") -> "windows"
     else -> "linux"
   }
-  "org.jetbrains.compose.desktop:desktop-jvm-$system-${if (arm) "arm64" else "x64"}:$composeVersion"
+  "$system-${if (arm) "arm64" else "x64"}"
 }
+
+// another platform's, named `<os>-<arch>` (`linux-x64`, `windows-arm64`): the libraries an app image for THAT machine
+// carries (compose-target-0004). The program's own classes are the same bytecode everywhere; only Skia's native library
+// differs, so a build here resolves the target's libraries and the target's own jpackage packages them
+val desktopTarget = providers.gradleProperty("desktopTarget").orNull ?: hostDesktop
+val desktop = "org.jetbrains.compose.desktop:desktop-jvm-$desktopTarget:$composeVersion"
 
 plugins { java }
 
@@ -84,6 +90,15 @@ tasks.register("writeAndroid") {
   val androidOut = providers.gradleProperty("androidOut")
   doLast {
     file(androidOut.get()).writeText(android.resolve().joinToString("\n") { it.absolutePath } + "\n")
+  }
+}
+
+// the desktop runtime's files for `desktopTarget`, one a line: what an app image for that platform carries beside the
+// program's jar
+tasks.register("writeDesktop") {
+  val desktopOut = providers.gradleProperty("desktopOut")
+  doLast {
+    file(desktopOut.get()).writeText(compose.resolve().joinToString("\n") { it.absolutePath } + "\n")
   }
 }
 

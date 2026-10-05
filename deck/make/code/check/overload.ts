@@ -262,18 +262,23 @@ function bindByImport(program: Program, scope: ImportScope | undefined, entry?: 
   // the files of a group a reference in `file` reaches: its own, else those its imports reach
   // A reference written through an import alias (`find to-number, name decimal-to-number`) skips its own file: it named
   // the import, and the file's own `to-number` would otherwise take it, since the alias is rewritten to the imported name
-  const reached = (group: Group, file: string | undefined, aliased = false): string[] => {
+  // and an alias reaches the files ITS find named: two aliases of one imported name may come from two modules
+  // (`to-number` as `float-to-number` and as `decimal-to-number`, engine.tree)
+  const reached = (group: Group, file: string | undefined, alias?: string): string[] => {
     if (!file) {
       return []
     }
 
-    if (group.byFile.has(file) && !aliased) {
+    if (group.byFile.has(file) && alias === undefined) {
       return [file]
     }
 
     const reach = new Set<string>()
+    const entry = scope?.get(file)
+    // a bare name reaches its PLAIN finds: `find get` from the list beside `find get, name vector-get` from the array
+    const targets = (alias !== undefined ? entry?.aliases?.get(alias) : (entry?.plain?.get(group.name) ?? (entry?.plain ? [] : undefined))) ?? entry?.finds.get(group.name) ?? []
 
-    for (const target of scope?.get(file)?.finds.get(group.name) ?? []) {
+    for (const target of targets) {
       exported(target, reach)
     }
 
@@ -326,14 +331,15 @@ function bindByImport(program: Program, scope: ImportScope | undefined, entry?: 
     file: string | undefined,
     arity: number | undefined,
     span: Span,
-    aliased: boolean,
+    alias: string | undefined,
   ): string | undefined => {
-    const imported = reached(group, file, aliased)
+    const imported = reached(group, file, alias)
 
     // the file imported the name from a module that defines it some OTHER way (a form's method, as `stream.tree`'s
     // `find contains` from the list, or a signature an env fills): it means that one, never this group's, and is left
     // as written for the resolver to find there
-    const asked = (file && scope?.get(file)?.finds.get(group.name)) || []
+    const asked =
+      (file && ((alias !== undefined ? scope?.get(file)?.aliases?.get(alias) : scope?.get(file)?.plain?.get(group.name)) ?? scope?.get(file)?.finds.get(group.name))) || []
 
     if (imported.length === 0 && asked.length > 0) {
       return undefined
@@ -418,7 +424,7 @@ function bindByImport(program: Program, scope: ImportScope | undefined, entry?: 
         return
       }
 
-      const name = bind(group, file, arity, variable.span, variable.alias !== undefined)
+      const name = bind(group, file, arity, variable.span, variable.alias)
 
       if (name) {
         variable.name = name
@@ -486,12 +492,14 @@ function bindNativesApart(program: Program, scope: ImportScope | undefined): voi
   )
 
   // the binding a reference to `name` in `file` means, or undefined for the task
-  const meant = (name: string, file: string, aliased: boolean): Extract<Statement, { form: 'bind' }> | undefined => {
+  const meant = (name: string, file: string, alias: string | undefined): Extract<Statement, { form: 'bind' }> | undefined => {
     const binds = original.get(name)!
-    const targets = new Set(scope?.get(file)?.finds.get(name) ?? [])
+    // an alias reaches the files its own find named, never every file the imported name was found in
+    const entry = scope?.get(file)
+    const targets = new Set((alias !== undefined ? entry?.aliases?.get(alias) : undefined) ?? entry?.finds.get(name) ?? [])
     const reached = binds.find(b => targets.has(b.span.file!))
 
-    if (aliased) {
+    if (alias !== undefined) {
       return reached
     }
 
@@ -536,7 +544,7 @@ function bindNativesApart(program: Program, scope: ImportScope | undefined): voi
         return
       }
 
-      const bind = meant(name, file, variable.alias !== undefined)
+      const bind = meant(name, file, variable.alias)
 
       if (bind) {
         variable.name = renamed.get(bind)!
@@ -556,6 +564,61 @@ function bindNativesApart(program: Program, scope: ImportScope | undefined): voi
 // value, `call focus` the task), so the value is renamed apart, and every VALUE reference in a file that can see it
 // follows: the file that defines it, and any file whose `find` of the name reaches that file through the `bear` chain.
 // A call, and a value reference anywhere else, keeps the name, which is the task's.
+// TWO MODULES' `host` OF ONE NAME. A `host` is private to its module, so a reference means its own file's. Both
+// reached the merged program under the one name, and TypeScript refused the second declaration: engine/data/array's and
+// string's `max-leaf` and `rebalance-depth`, once the engine held both (2026-10-04). Each file's is renamed apart and
+// its own references follow; the entry file's keeps its name, as bindByImport keeps the entry's tasks
+function bindHostsApart(program: Program, entry: string | undefined): void {
+  const byName = new Map<string, Extract<Statement, { form: 'let' }>[]>()
+
+  for (const s of program) {
+    if (s.form === 'let' && s.span.file) {
+      byName.set(s.name, [...(byName.get(s.name) ?? []), s])
+    }
+  }
+
+  let index = 0
+
+  for (const [name, hosts] of byName) {
+    const files = new Set(hosts.map(h => h.span.file!))
+
+    if (files.size < 2) {
+      continue
+    }
+
+    for (const file of [...files].sort()) {
+      if (file === entry) {
+        continue
+      }
+
+      const renamed = `${name}__host${index++}`
+
+      for (const host of hosts.filter(h => h.span.file === file)) {
+        host.name = renamed
+      }
+
+      for (const top of program) {
+        if (top.span.file !== file) {
+          continue
+        }
+
+        // a `host` reads only its initializer: its own name is the declaration, not a local of it
+        const scanned = top.form === 'let' ? top.init : top
+
+        if (boundIn(scanned).has(name)) {
+          continue
+        }
+
+        eachReference(scanned, (variable, arity) => {
+          if (arity === undefined && variable.form === 'variable' && variable.name === name) {
+            variable.name = renamed
+          }
+        })
+      }
+    }
+  }
+}
+
 function bindValuesApart(program: Program, scope: ImportScope | undefined): void {
   const callable = new Map<string, Set<string>>()
 
@@ -792,6 +855,7 @@ export function disambiguateOverloads(program: Program, scope?: ImportScope, ent
 
   nestLeanLabels(program)
   bindSiblingMethods(program)
+  bindHostsApart(program, entry)
   bindValuesApart(program, scope)
   bindNativesApart(program, scope)
 

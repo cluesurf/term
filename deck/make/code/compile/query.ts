@@ -4,6 +4,35 @@
 // changed. This edition is ASYNC and concurrency-safe: a query body runs under an explicit execution context (`Cx`)
 // rather than a global frame stack, so many query bodies can be in flight at once (the foundation for parallel
 // per-definition compilation). See note/seed/compiler/async-query-engine.md and note/seed/plan/tier-4-parallel-compile.md.
+//
+// The state and every decision made on it are Term, compile/memo.tree (self-hosting, 2026-10-04). This file is the
+// host driver, and holds only what Term cannot: each query's compute closure by key, the in-flight promise per key,
+// and the two identity tests (`Object.is` on an input, a query's own `equals` on a recompute), passed to the store as
+// booleans. Its API is the original's, so its callers and test/compile/query.ts are unchanged.
+
+import {
+  hasInput,
+  hasMemo,
+  inputChangedAfter,
+  inputValue,
+  isUnchangedByDurability,
+  isVerified,
+  makeFrame,
+  makeStore,
+  markVerified,
+  memoChangedAfter,
+  memoDeps,
+  memoValue,
+  memoVerifiedAt,
+  noteQuery,
+  readInput,
+  recomputesOf,
+  revisionOf,
+  runs,
+  setInput,
+  storeResult,
+} from '@term/make/code/compile/memo'
+import type { Frame, Store } from '@term/make/code/compile/memo'
 
 // durability tiers: LOW = the edited buffer, MEDIUM = other project files, HIGH = the stdlib (rarely changes).
 export const LOW = 0
@@ -25,38 +54,23 @@ export interface Cx {
   ): Promise<T>
 }
 
-type InputCell = {
-  value: unknown
-  changedAt: number
-  durability: Durability
-}
-type Memo = {
-  value: unknown
-  changedAt: number
-  verifiedAt: number
-  deps: string[]
-  durability: Durability
-  compute: Compute<unknown>
-  equals: Equals<unknown>
-}
-// a query's own dependency frame: the keys it read and the weakest durability among them
-type Frame = { deps: Set<string>; durability: Durability }
+// what a memo was computed with, kept by key so a stale dependency can be recomputed on demand
+type Recipe = { compute: Compute<unknown>; equals: Equals<unknown> }
 
 export class Database {
-  private revision = 1
-  private readonly inputs = new Map<string, InputCell>()
-  private readonly memos = new Map<string, Memo>()
+  private readonly store: Store = makeStore()
+  private readonly recipes = new Map<string, Recipe>()
   // the in-flight computation per key, so two concurrent requests for one key share one run (dedup)
   private readonly inFlight = new Map<string, Promise<unknown>>()
-  // the last revision at which an input of each durability changed (index by durability). The durability shortcut.
-  private readonly lastChanged: [number, number, number] = [0, 0, 0]
-  // observability for tests: total query-body executions, and per-key execution counts
-  recomputes = 0
-  private readonly runCount = new Map<string, number>()
+
+  // observability for tests: total query-body executions
+  get recomputes(): number {
+    return recomputesOf(this.store)
+  }
 
   // how many times a specific query's body has executed (for tests / diagnostics)
   runs(key: string): number {
-    return this.runCount.get(key) ?? 0
+    return runs(this.store, key)
   }
 
   // set (or change) an input. Setting it to its current value is a no-op (content-addressed: re-saving identical
@@ -66,23 +80,9 @@ export class Database {
     value: unknown,
     durability: Durability = LOW,
   ): void {
-    const existing = this.inputs.get(key)
+    const same = hasInput(this.store, key) && Object.is(inputValue(this.store, key), value)
 
-    if (
-      existing &&
-      Object.is(existing.value, value) &&
-      existing.durability === durability
-    ) {
-      return
-    }
-
-    this.revision += 1
-    this.inputs.set(key, {
-      value,
-      changedAt: this.revision,
-      durability,
-    })
-    this.lastChanged[durability] = this.revision
+    setInput(this.store, key, value, durability, same)
   }
 
   // the top-level entry: run `fn` under a fresh root context. The root is not memoized; it exists only to give the
@@ -103,25 +103,17 @@ export class Database {
   // build an execution context whose frame records the dependencies of one running query. `active` is the set of keys
   // on this path (ancestors), for cycle detection.
   private makeContext(active: Set<string>): Cx & { frame: Frame } {
-    const frame: Frame = { deps: new Set(), durability: HIGH }
+    const frame = makeFrame()
     const db = this
 
     return {
       frame,
       input<T>(key: string): T {
-        const cell = db.inputs.get(key)
-
-        if (!cell) {
+        if (!hasInput(db.store, key)) {
           throw new Error(`unknown input: ${key}`)
         }
 
-        frame.deps.add(key)
-
-        if (cell.durability < frame.durability) {
-          frame.durability = cell.durability
-        }
-
-        return cell.value as T
+        return readInput(db.store, frame, key) as T
       },
       async query<T>(
         key: string,
@@ -134,18 +126,13 @@ export class Database {
 
         const value = (await db.resolveKey(
           key,
-          compute,
+          compute as Compute<unknown>,
           equals as Equals<unknown>,
           active,
         )) as T
 
         // record `key` as a dependency of THIS query, lowering its durability to the weakest dep
-        const memo = db.memos.get(key)!
-        frame.deps.add(key)
-
-        if (memo.durability < frame.durability) {
-          frame.durability = memo.durability
-        }
+        noteQuery(db.store, frame, key)
 
         return value
       },
@@ -159,10 +146,8 @@ export class Database {
     equals: Equals<unknown>,
     active: Set<string>,
   ): Promise<unknown> {
-    const memo = this.memos.get(key)
-
-    if (memo?.verifiedAt === this.revision) {
-      return Promise.resolve(memo.value)
+    if (isVerified(this.store, key)) {
+      return Promise.resolve(memoValue(this.store, key))
     }
 
     const flying = this.inFlight.get(key)
@@ -192,12 +177,10 @@ export class Database {
     equals: Equals<unknown>,
     active: Set<string>,
   ): Promise<unknown> {
-    const memo = this.memos.get(key)
+    if (hasMemo(this.store, key) && !(await this.depsChanged(key))) {
+      markVerified(this.store, key)
 
-    if (memo && !(await this.depsChanged(memo))) {
-      memo.verifiedAt = this.revision
-
-      return memo.value
+      return memoValue(this.store, key)
     }
 
     return this.run(key, compute, equals, active)
@@ -210,51 +193,31 @@ export class Database {
     equals: Equals<unknown>,
     active: Set<string>,
   ): Promise<unknown> {
-    const previous = this.memos.get(key)
     const childActive = new Set(active)
     childActive.add(key)
 
     const cx = this.makeContext(childActive)
     const value = await compute(cx)
-    this.recomputes += 1
-    this.runCount.set(key, (this.runCount.get(key) ?? 0) + 1)
+    // backdating is decided by the store: an equal result keeps the old changedAt, so dependents are not invalidated
+    const equal = hasMemo(this.store, key) && equals(memoValue(this.store, key), value)
 
-    // backdating: an equal result keeps the old changedAt, so dependents are not invalidated
-    const changedAt =
-      previous && equals(previous.value, value)
-        ? previous.changedAt
-        : this.revision
-
-    this.memos.set(key, {
-      value,
-      changedAt,
-      verifiedAt: this.revision,
-      deps: [...cx.frame.deps],
-      durability: cx.frame.durability,
-      compute,
-      equals,
-    })
+    storeResult(this.store, key, value, equal, cx.frame)
+    this.recipes.set(key, { compute, equals })
 
     return value
   }
 
   // would this memo's value differ if recomputed? The cheap-to-expensive ladder: durability shortcut, then a walk of
   // recorded dependencies (recomputing a stale derived dep on demand)
-  private async depsChanged(memo: Memo): Promise<boolean> {
-    // durability shortcut: if no input of durability >= this memo's changed since it was verified, it cannot have
-    // changed. This is the O(1) keystroke case: editing a LOW file never walks a HIGH-durability (stdlib) query.
-    let maxChanged = 0
-
-    for (let d = memo.durability; d <= HIGH; d++) {
-      maxChanged = Math.max(maxChanged, this.lastChanged[d])
-    }
-
-    if (maxChanged <= memo.verifiedAt) {
+  private async depsChanged(key: string): Promise<boolean> {
+    if (isUnchangedByDurability(this.store, key)) {
       return false
     }
 
-    for (const dep of memo.deps) {
-      if (await this.changedAfter(dep, memo.verifiedAt)) {
+    const verifiedAt = memoVerifiedAt(this.store, key)
+
+    for (const dep of memoDeps(this.store, key)) {
+      if (await this.changedAfter(dep, verifiedAt)) {
         return true
       }
     }
@@ -267,26 +230,25 @@ export class Database {
     key: string,
     revision: number,
   ): Promise<boolean> {
-    const input = this.inputs.get(key)
-
-    if (input) {
-      return input.changedAt > revision
+    if (hasInput(this.store, key)) {
+      return inputChangedAfter(this.store, key, revision)
     }
 
-    const memo = this.memos.get(key)
-
-    if (!memo) {
+    // unknown dependency: assume changed
+    if (!hasMemo(this.store, key)) {
       return true
-    } // unknown dependency: assume changed
+    }
 
-    if (memo.verifiedAt !== this.revision) {
-      if (await this.depsChanged(memo)) {
-        await this.resolveKey(key, memo.compute, memo.equals, new Set())
+    if (memoVerifiedAt(this.store, key) !== revisionOf(this.store)) {
+      if (await this.depsChanged(key)) {
+        const recipe = this.recipes.get(key)!
+
+        await this.resolveKey(key, recipe.compute, recipe.equals, new Set())
       } else {
-        memo.verifiedAt = this.revision
+        markVerified(this.store, key)
       }
     }
 
-    return this.memos.get(key)!.changedAt > revision
+    return memoChangedAfter(this.store, key, revision)
   }
 }

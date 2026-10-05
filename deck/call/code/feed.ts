@@ -5,10 +5,10 @@
 // A SERVICE in the terminal output standard's sense (section 11): a `start` item with its address, a `reload` item
 // per hot-applied file, and on ctrl-c the closing `Stopped` item with the uptime, exit 130.
 
-import { realpathSync, watch as fsWatch, existsSync } from 'fs'
+import { realpathSync, readFileSync, watch as fsWatch, existsSync } from 'fs'
 import path from 'path'
 import { startDevServer } from '@term/call/code/dev/server'
-import { findEntry } from '@term/call/code/boot'
+import { findEntry, portIsFree } from '@term/call/code/boot'
 import type { NativeEnv } from '@term/make/code/compile/native'
 import { closeRun, failRun, field, openRun, report, showPath } from '@term/call/code/output'
 
@@ -37,12 +37,33 @@ export async function callFeed(input: {
     }
 
     const started = Date.now()
-    const port = input.port ?? 5173
+
+    // the port is checked, as `term boot`'s is: one named with `-p` that is taken is refused, and without `-p` the first
+    // free one from 5173 is used. It was taken as given, and the server failed on it later (guides: commands/feed)
+    let port = input.port ?? 5173
+
+    if (input.port !== undefined && !(await portIsFree(input.port))) {
+      report({ glyph: 'failed', kind: 'problem', subject: `Port ${input.port} is in use`, fields: [field('next', `term halt -p ${input.port}, or term feed -p <another port>`)] })
+      closeRun({ verdict: 'Not started', failure: 'environment' })
+
+      return
+    }
+
+    while (input.port === undefined && !(await portIsFree(port)) && port < 5273) {
+      port++
+    }
+
+    // a page entry with a `boot` task that nothing calls: the shell calls it once the module loads, so the scaffold's
+    // `log` runs. A `hook` table boots itself. Nothing called it, and `term wake`'s program logged nothing
+    const text = readFileSync(entry, 'utf8')
+    const callsBoot = /^task boot\b/m.test(text) && !/^hook /m.test(text)
+
     const server = startDevServer({
       root: input.root,
       entry,
       port,
       env: input.env ?? 'browser',
+      boot: callsBoot,
     })
 
     // watch the project for `.tree` edits and hot-apply each change

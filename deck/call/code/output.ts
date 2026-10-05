@@ -231,6 +231,14 @@ export function closeRun(input: { verdict: string; counts?: Tally[]; facts?: str
 
 // data the user asked for, on stdout, as it is
 export function printData(value: string): void {
+  // the blank line after the opening is owed to the first thing under it, and data on the same terminal is that
+  // thing: `term look` drew its table directly under the opening item (guides: commands/look, 2026-10-04). Paid on
+  // stderr, and only when both streams are the terminal, so a pipe never gets a line it did not ask for
+  if (runner?.session.owed && process.stdout.isTTY && process.stderr.isTTY) {
+    process.stderr.write('\n')
+    runner = { ...runner, session: { ...runner.session, owed: false } }
+  }
+
   printDataOut(value)
 }
 

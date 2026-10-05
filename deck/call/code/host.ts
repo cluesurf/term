@@ -27,6 +27,9 @@ import { callBoot } from '@term/call/code/boot'
 import { env, keptAt, userHome, legacyUserHome } from '@term/call/code/home'
 import { closeRun, count, failRun, field, location, openRun, printData, report } from '@term/call/code/output'
 
+// The packages published as RELEASES (deck/deck/code/oci/release.ts), which `term host` refuses
+const RELEASED = new Set(['@term/code'])
+
 // `term host`: publish this package to its scope's OCI registry, or with `--trust` / `--untrust` rotate the scope's
 // key set instead. Registry credentials come from TERM_OCI_TOKEN (for TERM_OCI_HOST, default ghcr.io), GHCR_TOKEN
 // (ghcr.io, what `zone load cluesurf` casts), or the docker config that `oras login` writes. See
@@ -65,6 +68,17 @@ export async function callHost(input: {
       ? `@${manifest.host}/${manifest.name}`
       : manifest.name
     const version = showCode(manifest.mark)
+
+    // A RELEASED name is not a source package. `@term/code` is the toolchain, published per platform by
+    // `pnpm term:release` (task/release.ts) to the same repository a source publish would use, and the installer takes
+    // the newest tag there. A source artifact under it took 2.6.0 for good on 2026-10-04 and pushed the first release
+    // to 2.6.2; one at a higher version would make every install fail
+    if (RELEASED.has(name)) {
+      report({ glyph: 'failed', kind: 'problem', verb: 'check', subject: `${name} is released with pnpm term:release, not published with term host` })
+      closeRun({ verdict: 'Nothing was published', failure: 'usage' })
+
+      return
+    }
     const route = routeOf({ name, registry: input.registry, manifest })
 
     if (input.trust || input.untrust) {

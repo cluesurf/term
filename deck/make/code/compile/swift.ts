@@ -6,7 +6,6 @@
 // needed. Generic functions emit `<T>`. Pure, browser-safe. See note/research/vibe/computation/plans/07-codegen.md.
 
 import { armLocals } from '@term/make/code/check/arm'
-import { readNames } from '@term/make/code/check/facts'
 import { raiseSets } from '@term/make/code/check/effects'
 import { provenIncrements } from '@term/make/code/ir/facts/range'
 import { provenArithmetic, type Proven } from '@term/make/code/compile/proven'
@@ -1295,6 +1294,8 @@ export function emitSwift(
 
   // variant label -> the owning enum, and each variant's field names (for construction and match binding)
   const variantFields = new Map<string, string[]>()
+  // the same, by FORM and case (`rope/leaf`): two forms may name a case alike, and an arm reads its own form's
+  const caseFieldNames = new Map<string, string[]>()
   const variantSet = new Set<string>()
   // the `note shared` forms, emitted as classes and compared by identity
   const sharedForms = new Set(
@@ -1398,6 +1399,7 @@ export function emitSwift(
         v.name,
         v.fields.map(f => f.name),
       )
+      caseFieldNames.set(`${node.name}/${v.name}`, v.fields.map(f => f.name))
     }
 
     if (node.params.length > 0) {
@@ -2875,7 +2877,7 @@ export function emitSwift(
             const bodyText = armBlock(b.body, d + 2, bind)
             // only the fields the arm READS, asked of the program and not of the emitted text: `time` matched inside
             // an inlined `time.now()`, bound the caught exception's `time` and shadowed the clock module
-            const read = readNames(b.body)
+            const read = namesIn(b.body)
             const locals = armLocals([...arm.shared, ...arm.link], b.binds ?? [])
               .filter(({ local }) => read.has(local))
               .map(({ field, local }) =>
@@ -2941,7 +2943,11 @@ export function emitSwift(
             )}`
           }
 
-          const fields = variantFields.get(b.label) ?? []
+          // the case of the subject's own form, where two forms name a case alike (engine/value port, 2026-10-04)
+          const fields =
+            (node.subject.type?.kind === 'named' ? caseFieldNames.get(`${node.subject.type.name}/${b.label}`) : undefined) ??
+            variantFields.get(b.label) ??
+            []
           const branchBind: Bindings = new Map(bind)
 
           if (subjectVar && fields.length > 0) {
@@ -3198,6 +3204,11 @@ export function emitSwift(
       }
 
       case 'record-type': {
+        // an ALIAS form (a base and nothing of its own) is its base: `typealias`, never an empty struct
+        if (node.alias && node.fields.length === 0 && node.variants.length === 0) {
+          return `typealias ${pascal(node.name)} = ${swiftType(node.alias)}`
+        }
+
         // a generic that flows into a map key inside the fields must be `Hashable` (the SeedMap wrapper requires it)
         const keys = formKeyIndices.get(node.name)
         const generics = node.params.length

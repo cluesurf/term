@@ -19,6 +19,8 @@ export type FormSymbol = {
   deck: string
   fields: { name: string; type: string }[]
   variants: string[]
+  // the `#` lines written directly above the definition, joined into one text, empty when there are none
+  note: string
 }
 export type TaskSymbol = {
   kind: 'task'
@@ -27,6 +29,24 @@ export type TaskSymbol = {
   deck: string
   params: { name: string; type: string }[]
   result: string
+  // the result was not written (no `like` for it) and was read off the checked program instead (`fillInferred`)
+  inferred: boolean
+  note: string
+}
+
+// the tasks whose source writes no result type: their `unit` is a placeholder, not a claim
+const unwritten = new WeakSet<TaskSymbol>()
+
+// fill each unwritten result from a checked program's own: `task twice / take n / back multiply(n, 2)` printed
+// `-> unit` because only the source was read (guides: commands/look, 2026-10-04). `results` is task name to type,
+// from a compile of the module. A task the compile does not name keeps its placeholder
+export function fillInferred(symbols: Symbol[], results: Map<string, string>): void {
+  for (const symbol of symbols) {
+    if (symbol.kind === 'task' && unwritten.has(symbol) && results.has(symbol.name)) {
+      symbol.result = results.get(symbol.name)!
+      symbol.inferred = true
+    }
+  }
 }
 export type Symbol = FormSymbol | TaskSymbol
 
@@ -83,6 +103,26 @@ export function inspectModule(
       continue
     }
 
+    // the doc comment of each top-level `task` and `form`, by kind and name: the comment lines the parser keeps on the
+    // definition's group (CST trivia), the `#` and one space taken off each
+    const notes = new Map<string, string>()
+
+    for (const group of parsed.tree.nodes) {
+      const head = group.nodes[0]
+      const named = group.nodes[1]
+      const word = (node: typeof head): string =>
+        node?.kind === 'name' ? node.parts.map(part => (part.kind === 'chunk' ? part.text : '')).join('') : ''
+      const kind = word(head)
+      const name = named?.kind === 'group' ? word(named.nodes[0]) : word(named)
+
+      if ((kind === 'task' || kind === 'form') && name && group.comments?.length) {
+        notes.set(
+          `${kind} ${name}`,
+          group.comments.map(comment => comment.text.replace(/^#\s?/, '').trim()).filter(Boolean).join(' '),
+        )
+      }
+    }
+
     const milled = mill(expandTemplates(parsed.tree), source.file)
 
     if (!milled.ok) {
@@ -108,9 +148,10 @@ export function inspectModule(
             type: showType(f.type),
           })),
           variants: statement.variants.map(v => v.name),
+          note: notes.get(`form ${statement.name}`) ?? '',
         })
       } else if (statement.form === 'function') {
-        symbols.push({
+        const task: TaskSymbol = {
           kind: 'task',
           name: statement.name,
           module,
@@ -122,7 +163,16 @@ export function inspectModule(
           result: statement.result
             ? showType(statement.result)
             : 'unit',
-        })
+          inferred: false,
+          // a method is written inside its form, not at the top level, so a top-level task of its name is not its note
+          note: statement.method ? '' : (notes.get(`task ${statement.name}`) ?? ''),
+        }
+
+        if (!statement.result) {
+          unwritten.add(task)
+        }
+
+        symbols.push(task)
       }
 
       const isPrivate = statement.form === 'function' && statement.private === true
@@ -167,7 +217,7 @@ export function toJson(symbols: Symbol[]): string {
 
 // a CSV with a quoted signature column (commas inside are safe)
 export function toCsv(symbols: Symbol[]): string {
-  const rows = ['kind,name,deck,module,signature']
+  const rows = ['kind,name,deck,module,signature,note']
 
   for (const symbol of symbols) {
     rows.push(
@@ -177,6 +227,7 @@ export function toCsv(symbols: Symbol[]): string {
         symbol.deck,
         symbol.module,
         JSON.stringify(signature(symbol)),
+        JSON.stringify(symbol.note),
       ].join(','),
     )
   }
@@ -193,12 +244,13 @@ export function toTable(symbols: Symbol[]): string {
   const deckWidth = width('deck')
   const moduleWidth = width('module')
 
+  // a definition's doc comment on the line under it, at the name's column
   return symbols
     .map(
       s =>
         `${s.kind === 'form' ? 'form' : 'task'}  ${s.name.padEnd(
           nameWidth,
-        )}  ${s.deck.padEnd(deckWidth)}  ${s.module.padEnd(moduleWidth)}  ${signature(s)}`,
+        )}  ${s.deck.padEnd(deckWidth)}  ${s.module.padEnd(moduleWidth)}  ${signature(s)}${s.note ? `\n      ${s.note}` : ''}`,
     )
     .join('\n')
 }

@@ -1,6 +1,7 @@
 import fsp from 'fs/promises'
 import path from 'path'
 import { closeRun, count, field, openRun, report, showPath } from '@term/call/code/output'
+import { cacheHome } from '@term/call/code/cache-store'
 
 // `.base/term/cache` is the PRE-RENAME path, kept here on purpose. `.base/term/` became
 // `.base/@cluesurf/term/` on 2026-08-30, and a cache deliberately does not travel through `keptAt` on a rename
@@ -14,6 +15,37 @@ const BUILD_DIRS = [
   '.base/term/cache',
 ]
 
+// what `term boot` and `term cast` write: the program boot runs, the browser bundles by content, the bundle and its
+// import map, and the Worker. Each is written again by the next boot or cast
+const BOOT_DIRS = [
+  '.base/@cluesurf/term/boot',
+  '.base/@cluesurf/term/client',
+  'build',
+  'work',
+]
+
+const TARGETS = ['deck', 'tail', 'boot', 'store']
+
+// remove each that exists under `root`, one `remove` item apiece, and say how many there were
+async function removeEach(root: string, dirs: string[], shown: (dir: string) => string): Promise<number> {
+  let cleaned = 0
+
+  for (const dir of dirs) {
+    const fullPath = path.join(root, dir)
+
+    try {
+      await fsp.access(fullPath)
+      await fsp.rm(fullPath, { recursive: true, force: true })
+      report({ glyph: 'removed', kind: 'change', verb: 'remove', subject: shown(dir) })
+      cleaned++
+    } catch {
+      // directory doesn't exist
+    }
+  }
+
+  return cleaned
+}
+
 // `term wash`: the build's output removed, one `remove` change item per directory that was there (terminal output
 // standard, section 9)
 export async function callWash(input: {
@@ -22,10 +54,27 @@ export async function callWash(input: {
 }): Promise<void> {
   openRun({ verb: 'wash', root: input.root, facts: input.target ? [input.target] : [] })
 
-  // `deck` is the build output, the same as no target, and `tail` the logs. Any other word washed the build output
-  if (input.target !== undefined && input.target !== 'deck' && input.target !== 'tail') {
+  // `deck` is the build output, the same as no target, `tail` the logs, `boot` what boot and cast write, `store` the
+  // machine-wide module cache. Any other word washed the build output
+  if (input.target !== undefined && !TARGETS.includes(input.target)) {
     report({ glyph: 'failed', kind: 'problem', subject: `There is nothing named ${input.target} to wash` })
-    closeRun({ verdict: 'Nothing removed', next: 'term wash, term wash deck or term wash tail', failure: 'usage' })
+    closeRun({ verdict: 'Nothing removed', next: 'term wash, or term wash deck, tail, boot or store', failure: 'usage' })
+
+    return
+  }
+
+  // the machine-wide cache of parsed modules, which every project shares and the next build of any of them fills
+  // again. Not a project's, so it needs no deck.tree. The installed decks beside it (`blobs/`, `index.json`) are not
+  // a cache: an offline install reads them, so they stay (guides: commands/wash, 2026-10-04)
+  if (input.target === 'store') {
+    const home = cacheHome()
+    const cleaned = await removeEach(home, ['mill'], dir => `${showPath(path.join(home, dir))}/`)
+
+    closeRun({
+      verdict: cleaned > 0 ? 'Shared module cache removed' : 'Nothing to clean',
+      counts: [count(cleaned, 'directories', 'directory')],
+      done: cleaned > 0,
+    })
 
     return
   }
@@ -68,20 +117,19 @@ export async function callWash(input: {
     return
   }
 
-  let cleaned = 0
+  if (input.target === 'boot') {
+    const cleaned = await removeEach(input.root, BOOT_DIRS, dir => `${dir}/`)
 
-  for (const dir of BUILD_DIRS) {
-    const fullPath = path.join(input.root, dir)
+    closeRun({
+      verdict: cleaned > 0 ? 'Boot output removed' : 'Nothing to clean',
+      counts: [count(cleaned, 'directories', 'directory')],
+      done: cleaned > 0,
+    })
 
-    try {
-      await fsp.access(fullPath)
-      await fsp.rm(fullPath, { recursive: true, force: true })
-      report({ glyph: 'removed', kind: 'change', verb: 'remove', subject: `${dir}/` })
-      cleaned++
-    } catch {
-      // directory doesn't exist
-    }
+    return
   }
+
+  const cleaned = await removeEach(input.root, BUILD_DIRS, dir => `${dir}/`)
 
   closeRun({
     verdict: cleaned > 0 ? 'Build output removed' : 'Nothing to clean',

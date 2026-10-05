@@ -164,7 +164,7 @@ function makeEmitter() {
       case 'expression':
         return `${expr(s.expr)};`
       case 'return':
-        return `return ${s.value ? expr(s.value) : 'RT.UNIT_V'};`
+        return `return ${expr(s.value)};`
       case 'block':
         return block(s.body)
       case 'function':
@@ -186,7 +186,7 @@ function makeEmitter() {
           )
           .join('')
 
-        return s.otherwise ? `${head} else ${block(s.otherwise)}` : head
+        return s.otherwise.length > 0 ? `${head} else ${block(s.otherwise)}` : head
       }
 
       case 'while': {
@@ -221,7 +221,7 @@ function makeEmitter() {
           )}))) { ${matched} = true; ${c.body.map(stmt).join(' ')} } `
         }
 
-        if (s.otherwise) {
+        if (s.otherwise.length > 0) {
           out += `if (!${matched}) { ${s.otherwise
             .map(stmt)
             .join(' ')} } `
@@ -239,19 +239,20 @@ function makeEmitter() {
       case 'try': {
         let out = `try ${block(s.body)}`
 
-        if (s.catchBody) {
+        // zero or one catch (engine/ast `catches`): none lets a throw go on, an empty body swallows it
+        for (const caught of s.catches.slice(0, 1)) {
           // the JS catch param is internal; the optional user-named binding recovers the original thrown Value
           const raw = `_err${counter++}`
-          const bind = s.catchName
-            ? `const ${s.catchName} = RT.fromError(${raw}); `
+          const bind = caught.name
+            ? `const ${caught.name} = RT.fromError(${raw}); `
             : ''
 
-          out += ` catch (${raw}) { ${bind}${s.catchBody
+          out += ` catch (${raw}) { ${bind}${caught.body
             .map(stmt)
             .join(' ')} }`
         }
 
-        if (s.finallyBody) {
+        if (s.finallyBody.length > 0) {
           out += ` finally ${block(s.finallyBody)}`
         }
 

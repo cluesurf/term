@@ -1,33 +1,68 @@
 // `term halt`: stop running `term boot` servers.
 //   term halt -p <port>   stop the app serving on that port
-//   term halt             stop every term boot instance on the machine
+//   term halt             stop this project's term boot, or every one on the machine outside a project
 //
 // Term boot servers are easy to find without a registry: each runs `node <project>/.base/@cluesurf/term/boot/<hash>/run.mjs`, a path
 // that is unique to term boot. We match that in the process table (cross-process, machine-wide), so `term halt` works
 // from anywhere with no shared state to go stale. `term halt -p <port>` instead asks the OS who is listening on the port.
 
 import { execSync } from 'child_process'
+import { existsSync, realpathSync } from 'fs'
+import path from 'path'
 import { closeRun, count, openRun, report } from '@term/call/code/output'
 
 // the marker that identifies a term boot server process in the process table
 const BOOT_MARKER = '.base/@cluesurf/term/boot/'
 
-// the PIDs of every running term boot server (match the run.mjs path in each process's command line)
-function bootPids(): number[] {
-  try {
-    const out = execSync('ps -ax -o pid=,command=', {
-      encoding: 'utf8',
-    })
+type Process = { pid: number; parent: number; command: string }
 
-    return out
+function processTable(): Process[] {
+  try {
+    return execSync('ps -ax -o pid=,ppid=,command=', { encoding: 'utf8' })
       .split('\n')
-      .filter(
-        line => line.includes(BOOT_MARKER) && line.includes('run.mjs'),
-      )
-      .map(line => Number(line.trim().split(/\s+/)[0]))
-      .filter(pid => Number.isInteger(pid) && pid > 0)
+      .map(line => /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(line))
+      .filter((match): match is RegExpExecArray => match !== null)
+      .map(match => ({ pid: Number(match[1]), parent: Number(match[2]), command: match[3]! }))
   } catch {
     return []
+  }
+}
+
+// every running term boot program, the project it belongs to, and the process to stop for it: the `term boot` that
+// started it when that is its parent, so the boot shuts it down and ends with its own closing item. Stopping the
+// program alone left the boot watching with nothing to serve (guides: commands/halt, 2026-10-04)
+function boots(): { program: number; target: number; project: string }[] {
+  const table = processTable()
+  const byPid = new Map(table.map(one => [one.pid, one]))
+
+  return table
+    .filter(one => one.command.includes(BOOT_MARKER) && one.command.includes('run.mjs'))
+    .map(one => {
+      const at = one.command.indexOf(BOOT_MARKER)
+      const start = one.command.lastIndexOf(' ', at) + 1
+      const parent = byPid.get(one.parent)
+      const owned = parent !== undefined && /\bboot\b/.test(parent.command) && !parent.command.includes('run.mjs')
+
+      return { program: one.pid, target: owned ? parent.pid : one.pid, project: one.command.slice(start, at).replace(/\/$/, '') }
+    })
+}
+
+// the folder holding the nearest deck.tree, from `from` up, or undefined outside a project
+function projectOf(from: string): string | undefined {
+  let at = path.resolve(from)
+
+  while (true) {
+    if (existsSync(path.join(at, 'deck.tree'))) {
+      return at
+    }
+
+    const up = path.dirname(at)
+
+    if (up === at) {
+      return undefined
+    }
+
+    at = up
   }
 }
 
@@ -68,9 +103,11 @@ export async function callHalt(input: {
     openRun({ verb: 'halt', root: process.cwd(), facts: input.ports.map(port => `:${port}`) })
 
     let stopped = 0
+    // a program a `term boot` started is stopped through its boot, as bare `halt` does
+    const owner = new Map(boots().map(one => [one.program, one.target]))
 
     for (const port of input.ports) {
-      const pids = pidsOnPort(port)
+      const pids = [...new Set(pidsOnPort(port).map(pid => owner.get(pid) ?? pid))]
 
       if (!pids.length) {
         report({ glyph: 'warning', kind: 'lifecycle', verb: 'stop', subject: `Nothing is serving on :${port}` })
@@ -91,12 +128,24 @@ export async function callHalt(input: {
     return
   }
 
-  openRun({ verb: 'halt', root: process.cwd(), facts: ['every term boot'] })
+  // in a project, its own boots: bare `term halt` stopped every boot on the machine, another project's included.
+  // Outside any project there is no "own", and it stops them all, saying so
+  const project = projectOf(process.cwd())
+  openRun({ verb: 'halt', root: process.cwd(), facts: [project ? 'this project\'s term boot' : 'every term boot'] })
 
-  const pids = bootPids()
+  const real = (folder: string): string => {
+    try {
+      return realpathSync(folder)
+    } catch {
+      return folder
+    }
+  }
+  const here = project === undefined ? undefined : real(project)
+  const found = boots().filter(one => here === undefined || real(one.project) === here)
+  const targets = [...new Set(found.map(one => one.target))]
   let stopped = 0
 
-  for (const pid of pids) {
+  for (const pid of targets) {
     if (stop(pid)) {
       stopped++
       report({ glyph: 'done', kind: 'lifecycle', verb: 'stop', subject: 'term boot', facts: [`pid ${pid}`] })
@@ -104,7 +153,7 @@ export async function callHalt(input: {
   }
 
   closeRun({
-    verdict: pids.length ? 'Stopped' : 'No term boot instance is running',
+    verdict: targets.length ? 'Stopped' : project ? 'No term boot of this project is running' : 'No term boot instance is running',
     counts: [count(stopped, 'instances', 'instance')],
   })
 }

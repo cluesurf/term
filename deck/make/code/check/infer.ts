@@ -835,7 +835,19 @@ export function check(
         // an OVERLOADED variant constructor (a surface name shared by more than one enum) cannot be typed to a single
         // enum here. Infer its field values for their own sake, then leave the construction's type flexible so it
         // unifies with whatever the position expects; the kernel resolves the owning enum and verifies the fields.
-        if ((variantOwners.get(node.name)?.length ?? 0) > 1) {
+        // Unless its FIELDS name one owner: `make leaf / bind items, ...` is engine/data/array's `vector` and not
+        // string's `rope`, whose `leaf` has `text` and `length`. Typed leniently, the empty list inside never learned
+        // its element, and Swift spelled it `SeedList<Any>` (the engine/value port, 2026-10-04)
+        const owners = variantOwners.get(node.name) ?? []
+        const given = node.fields.map(f => f.name)
+        const fitting = owners.filter(owner => {
+          const own = caseFields.get(`${owner}/${node.name}`)
+
+          return own !== undefined && given.every(name => own.has(name)) && own.size === given.length
+        })
+        const chosen = owners.length > 1 && fitting.length === 1 ? fitting[0] : undefined
+
+        if (owners.length > 1 && chosen === undefined) {
           for (const field of node.fields) {
             inferExpression(field.value, env)
           }
@@ -850,7 +862,7 @@ export function check(
         // every emitter already reads it: the host dialect's `data` has a `case hash` (which always carries its `list`),
         // and typing a bare `make hash` as that variant broke every program holding both (native-dom-0019)
         const nativeEmpty = (node.name === 'hash' || node.name === 'list') && node.fields.length === 0
-        const enumName = nativeEmpty ? node.name : (variantEnum.get(node.name) ?? node.name)
+        const enumName = nativeEmpty ? node.name : (chosen ?? variantEnum.get(node.name) ?? node.name)
         const params = formGenerics.get(enumName) ?? []
         const argMap = new Map<string, Type>()
         const args = params.map(p => {
@@ -860,9 +872,11 @@ export function check(
           return v
         })
 
-        const declared = variantEnum.has(node.name)
-          ? variantFields.get(node.name)
-          : records.get(node.name)
+        const declared = chosen
+          ? caseFields.get(`${chosen}/${node.name}`)
+          : variantEnum.has(node.name)
+            ? variantFields.get(node.name)
+            : records.get(node.name)
 
         for (const field of node.fields) {
           const valueType = inferExpression(field.value, env)

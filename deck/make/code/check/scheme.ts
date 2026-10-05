@@ -112,14 +112,18 @@ export function isValueExpression(node: Expression): boolean {
     case 'boolean':
     case 'string':
     case 'unit':
-    case 'array':
-    case 'map':
     case 'variable':
     case 'closure':
     case 'hole':
       return true
     // `make hash` / `make list` build a mutable native map / array whose key and element types are fixed by later
-    // use, so the binding stays monomorphic (the value restriction); any other construction is a value
+    // use, so the binding stays monomorphic (the value restriction); any other construction is a value. An array or
+    // map LITERAL is the same mutable native, and the lean `make list` arrives as one: generalized, `host xs, make list`
+    // gave every use a fresh element, the binding's own was never solved, and `xs/push(id)` held a `Vec<Rc<dyn Any>>`
+    // on Rust and `[Any]` on Swift and Kotlin while TypeScript's `any` hid it (the time/profile port, 2026-10-04)
+    case 'array':
+    case 'map':
+      return false
     case 'record':
       return node.name !== 'hash' && node.name !== 'list'
     default:

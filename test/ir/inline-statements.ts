@@ -215,6 +215,48 @@ const refuses = (label: string, text: string, callee: string, owner: string): vo
   ok(`refuses ${label}`, callees(out.program, owner).includes(callee) && !out.inlined.has(callee), callees(out.program, owner).join(', '))
 }
 
+// nothing is inlined INTO a task that calls itself: Towers' `move-disks` keeps calling `move-top`, into which pop and
+// push are still inlined (70 ms to 38 on Rust, the move's frame paid at every level of the recursion)
+const recursiveCaller = inlineStatements(
+  checked(`${STACK}\n${PUSH}\n${POP}\n${MOVE}\ntask move-disks
+  take piles, like list, like stack
+  take disks, like number
+  take from, like number
+  take to, like number
+  like number
+  fork test
+    hook test
+      call is-equal
+        read disks
+        code 1
+    hook hold
+      call move-top
+        read piles
+        read from
+        read to
+      send back, code 1
+  host before
+    call move-disks
+      read piles
+      call subtract
+        read disks
+        code 1
+      read from
+      read to
+  call move-top
+    read piles
+    read from
+    read to
+  send back, read before
+`),
+)
+ok(
+  'recursive caller: move-disks still calls move-top',
+  callees(recursiveCaller.program, 'move-disks').filter(c => c === 'move-top').length === 2 && !recursiveCaller.inlined.has('move-top'),
+  callees(recursiveCaller.program, 'move-disks').join(', '),
+)
+ok('recursive caller: move-top still inlines pop and push', callees(recursiveCaller.program, 'move-top').length === 0, callees(recursiveCaller.program, 'move-top').join(', '))
+
 refuses(
   'a task that calls itself',
   `${STACK}\ntask depth

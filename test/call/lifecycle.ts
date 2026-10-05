@@ -197,7 +197,8 @@ const halted = term(root, 'halt')
 // the assertion deliberately does not spell the name of the verb `halt` stops: task/term/cli-coverage.ts counts a
 // verb as covered when a test names it, so mentioning one verb inside another verb's test claims coverage that
 // does not exist. Only `halt` is tested here.
-ok('`halt` reports when nothing is running', /No term boot instance is running/.test(halted), halted)
+// in a project it asks only about that project's boots (guides: commands/halt, 2026-10-04)
+ok('`halt` reports when nothing is running', /No term boot of this project is running/.test(halted), halted)
 ok('`halt` says `term`, not `seed`', !/\bseed [a-z]/.test(halted), halted)
 
 // `note`: names the package and its version, read from the manifest

@@ -9,7 +9,7 @@ import {
 } from '@term/make/code/engine/engine'
 import {
   type Value,
-  UNIT,
+  makeUnit,
   integer as mkInt,
   float as mkFloat,
   boolean as mkBool,
@@ -17,16 +17,15 @@ import {
   truthy as isTruthy,
   display as show,
   keyOf,
-  bigOf,
 } from '@term/make/code/engine/value'
 import * as Arr from '@term/make/code/engine/data/array'
 import * as Mp from '@term/make/code/engine/data/map'
 
-export const UNIT_V: Value = UNIT
+export const UNIT_V: Value = makeUnit()
 
 // constructors (literals)
 export const int = (v: bigint | number): Value =>
-  mkInt(typeof v === 'bigint' ? v : BigInt(v))
+  mkInt({ dock: typeof v === 'bigint' ? v : BigInt(v) })
 export const flt = (v: number): Value => mkFloat(v)
 export const bool = (v: boolean): Value => mkBool(v)
 export const str = (v: string): Value => mkStr(v)
@@ -42,7 +41,12 @@ export const mapLit = (pairs: [string, Value][]): Value => {
     m = Mp.set(m, `s:${k}`, v)
   }
 
-  return { form: 'map', value: m }
+  // the contents in a shared cell (engine/value `map-cell`), marked as the port marks a `mark shared` record, so it is
+  // compared and keyed by identity like one the interpreter made
+  const cell = { map: m }
+  Object.defineProperty(cell, Symbol.for('term.shared'), { value: true })
+
+  return { form: 'map', value: cell }
 }
 
 // binary ops
@@ -80,14 +84,16 @@ export function setIndex(c: Value, i: Value, v: Value): Value {
       form: 'array',
       value: Arr.set(
         c.value,
-        Number(bigOf((i as { value: Parameters<typeof bigOf>[0] }).value)),
+        // an integer index: its ternary integer holds a big integer, `{ dock: bigint }`
+        Number((i as { value: { value: { dock: bigint } } }).value.value.dock),
         v,
       ),
     }
   }
 
   if (c.form === 'map') {
-    c.value = Mp.set(c.value, keyOf(i), v)
+    // a map's contents sit in its shared cell (engine/value `map-cell`), one object every alias sees
+    c.value.map = Mp.set(c.value.map, keyOf(i), v)
 
     return c
   }
@@ -97,7 +103,7 @@ export function setIndex(c: Value, i: Value, v: Value): Value {
 
 export function setMember(c: Value, name: string, v: Value): Value {
   if (c.form === 'map') {
-    c.value = Mp.set(c.value, `s:${name}`, v)
+    c.value.map = Mp.set(c.value.map, `s:${name}`, v)
 
     return c
   }
@@ -109,7 +115,7 @@ export function setMember(c: Value, name: string, v: Value): Value {
 export const print = (...args: Value[]): Value => {
   console.log(args.map(show).join(' '))
 
-  return UNIT
+  return UNIT_V
 }
 
 export const len = (v: Value): Value => member(v, 'length')
@@ -127,7 +133,7 @@ export const keys = (m: Value): Value => {
     throw new Error('keys needs a map')
   }
 
-  return array(Mp.keys(m.value).map(k => str(k.replace(/^s:/, ''))))
+  return array(Mp.keys(m.value.map).map(k => str(k.replace(/^s:/, ''))))
 }
 
 export const strOf = (v: Value): Value => str(show(v))
@@ -153,7 +159,7 @@ export const iterate = (v: Value): Iterable<Value> => {
   }
 
   if (v.form === 'map') {
-    return Mp.values(v.value)
+    return Mp.values(v.value.map)
   }
 
   throw new Error(`cannot iterate ${v.form}`)

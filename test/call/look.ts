@@ -5,7 +5,9 @@
 import { readFileSync } from 'node:fs'
 import { dirname, join, resolve as resolvePath } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { inspectModule, toCsv, toJson, toTable } from '@term/make/code/inspect'
+import { fillInferred, inspectModule, toCsv, toJson, toTable } from '@term/make/code/inspect'
+import { compile } from '@term/make/code/compile/compile'
+import { showType } from '@term/make/code/compile/node'
 import { projectResolver } from '@term/call/code/make'
 import { projectDeckOf } from '@term/call/code/deck-of'
 
@@ -80,6 +82,40 @@ ok(
     bears.offeredModules === 3,
   `${bears.offeredModules} modules: ${[...new Set(bears.offered.map(s => s.module))].join(',')}`,
 )
+
+// a definition's doc comment, the `#` lines above it, is listed with it (guides: commands/look, 2026-10-04)
+const list = look(seedRoot, join(seedRoot, 'code/list.tree'))
+const sort = list.offered.find(s => s.kind === 'task' && s.name === 'sort')
+ok('a task carries the comment written above it', (sort?.note ?? '').startsWith('a new list holding the items in the order `compare` gives'), sort?.note)
+ok('the table prints it under the task', toTable(sort ? [sort] : []).split('\n')[1]?.startsWith('      a new list holding') ?? false, toTable(sort ? [sort] : []))
+ok('the csv and json carry it', toCsv(sort ? [sort] : []).includes('"a new list holding') && JSON.parse(toJson(sort ? [sort] : []))[0]?.note === sort?.note)
+const sortBy = list.offered.find(s => s.kind === 'task' && s.name === 'sort-by')
+ok('each task carries its own comment, not its neighbor\'s', (sortBy?.note ?? '').startsWith('a new list in the order of the number `key` gives'), sortBy?.note)
+const zip = list.offered.find(s => s.kind === 'task' && s.name === 'zip')
+ok('and one comment line is the whole note', zip?.note === 'pairs of the items at the same position, as long as the shorter list', zip?.note)
+
+// a result the source does not write is filled from the checked program, and only that one (guides: commands/look)
+{
+  const file = join(TERM, 'tmp-look-infer.tree')
+  const text = 'task twice\n  take n, like number\n\n  back multiply(n, 2)\n\ntask nothing\n  take n, like number\n  like void\n  save m, n\n'
+  const seen = inspectModule({ file, text }, projectResolver(TERM), deckOf)
+  const checked = compile({ file, text })
+  const results = new Map<string, string>()
+
+  if (checked.ok) {
+    for (const node of checked.program) {
+      if (node.form === 'function' && node.result) {
+        results.set(node.name, showType(node.result))
+      }
+    }
+  }
+
+  fillInferred(seen.symbols, results)
+  const twice = seen.symbols.find(s => s.name === 'twice')
+  const nothing = seen.symbols.find(s => s.name === 'nothing')
+  ok('an unwritten result is the inferred one, and says so', twice?.kind === 'task' && twice.result === 'number' && twice.inferred, JSON.stringify(twice))
+  ok('a written one is left as written', nothing?.kind === 'task' && !nothing.inferred, JSON.stringify(nothing))
+}
 
 console.log(`\nlook: ${pass} pass, ${fail} fail`)
 

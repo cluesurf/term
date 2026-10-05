@@ -8,7 +8,11 @@
 #   - an integer literal's `value: number | bigint` is an `integer-literal`, a case per member (D9: a primitive union is
 #     a form, no shortcut): `small` a number, `big` a big integer
 #   - a template's `(string | Expression)[]` is a list of `template-part`, a case per member: `chunk` and `value`
-#   - the optional fields are `need false`, emitted `field?: T`
+#   - `is-async` is optional (`need false`, emitted `isAsync?: boolean`): an absent boolean reads false. The other
+#     optional fields became required, because Term has no test for a field's presence, and a TypeScript caller that
+#     left one out handed the engine `undefined`: `otherwise` is a list, maybe empty; a `return` always carries a
+#     value (`unit` for none); and a `try` says whether it catches with `catches`, zero or one `catch-clause`. That
+#     last is a real distinction: an EMPTY catch body swallows a throw, and no catch lets it go on
 #   - a record inside a node (a map entry, an if branch, a switch case) is a form of its own
 
 load @term/base/integer/big
@@ -105,6 +109,11 @@ form branch
   link cond, like expression
   link body, like list, like statement
 
+# a `catch`: the name the thrown value is bound to, empty for none, and the body
+form catch-clause
+  link name, like text
+  link body, like list, like statement
+
 form switch-case
   link match, like expression
   link body, like list, like statement
@@ -122,18 +131,16 @@ form statement
     link expr, like expression
   case if
     link branches, like list, like branch
-    link otherwise
-      like list, like statement
-      need false
+    # empty for no `else`
+    link otherwise, like list, like statement
   case while
     link cond, like expression
     link body, like list, like statement
   case switch
     link subject, like expression
     link cases, like list, like switch-case
-    link otherwise
-      like list, like statement
-      need false
+    # empty for no `default`
+    link otherwise, like list, like statement
   case function
     link name, like text
     link params, like list, like text
@@ -142,9 +149,8 @@ form statement
       like boolean
       need false
   case return
-    link value
-      like expression
-      need false
+    # `unit` for a bare `return`
+    link value, like expression
   case break
   case continue
   case block
@@ -153,15 +159,10 @@ form statement
     link value, like expression
   case try
     link body, like list, like statement
-    link catch-name
-      like text
-      need false
-    link catch-body
-      like list, like statement
-      need false
-    link finally-body
-      like list, like statement
-      need false
+    # zero or one: a try with no catch lets a throw go on, and one with an empty catch body swallows it
+    link catches, like list, like catch-clause
+    # empty for no `finally`
+    link finally-body, like list, like statement
   case for
     link name, like text
     link iterable, like expression

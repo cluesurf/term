@@ -37,8 +37,8 @@ mine separator-list
   mine crown
     mine chord, share <(>
     mine chord, share <)>
-    mine chord, share <<>
-    mine chord, share <>>
+    mine chord, share <\<>
+    mine chord, share <\>>
     mine chord, share <@>
     mine chord, share <,>
     mine chord, share <;>

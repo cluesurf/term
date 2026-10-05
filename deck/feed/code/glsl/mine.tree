@@ -1104,16 +1104,16 @@ mine VOID-TOK
   mine chord, write <void>
 
 mine LEFT-OP
-  mine chord, write <<<>
+  mine chord, write <\<\<>
 
 mine RIGHT-OP
-  mine chord, write <>>>
+  mine chord, write <\>\>>
 
 mine LE-OP
-  mine chord, write <<=>
+  mine chord, write <\<=>
 
 mine GE-OP
-  mine chord, write <>=>
+  mine chord, write <\>=>
 
 mine EQ-OP
   mine chord, write <==>
@@ -1146,10 +1146,10 @@ mine SUB-ASSIGN
   mine chord, write <-=>
 
 mine LEFT-ASSIGN
-  mine chord, write <<<=>
+  mine chord, write <\<\<=>
 
 mine RIGHT-ASSIGN
-  mine chord, write <>>=>
+  mine chord, write <\>\>=>
 
 mine AND-ASSIGN
   mine chord, write <&=>
@@ -1544,10 +1544,10 @@ mine MOD-OP
   mine chord, write <%>
 
 mine LT-OP
-  mine chord, write <<>
+  mine chord, write <\<>
 
 mine GT-OP
-  mine chord, write <>>
+  mine chord, write <\>>
 
 mine BAND-OP
   mine chord, write <&>

@@ -4410,8 +4410,16 @@ export function lastReads(body: Statement[], many?: WeakSet<object>): WeakSet<ob
         const front = new Map<string, { nodes: object[]; held: boolean }>()
         mentions(s.form === 'if' ? s.branches.map(b => b.cond) : s.subject, front, false)
         const arms = s.form === 'if' ? [...s.branches.map(b => b.body), ...(s.otherwise ? [s.otherwise] : [])] : [...s.cases.map(c => c.body), ...(s.otherwise ? [s.otherwise] : [])]
-        const armLater = new Set([...after, ...front.keys()])
-        arms.forEach(arm => block(arm, armLater))
+        // what is read after an arm: nothing past the statement when the arm ends in a `return` or a raise, since the
+        // task has left; a match's subject names besides, which may stay borrowed through the arm. An `if`'s
+        // conditions are done before any arm runs, so they are read before it, never after
+        const subjectNames = s.form === 'match' ? [...front.keys()] : []
+        const armLater = (arm: Statement[]): Set<string> => {
+          const end = arm[arm.length - 1]
+
+          return end?.form === 'return' || end?.form === 'throw' ? new Set(subjectNames) : new Set([...after, ...subjectNames])
+        }
+        arms.forEach(arm => block(arm, armLater(arm)))
 
         // a subject no arm mentions is read last as the subject: matched by value, its fields move out
         const inArms = new Map<string, { nodes: object[]; held: boolean }>()

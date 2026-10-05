@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs'
 import { transformSync } from 'esbuild'
 
-const source = readFileSync(new URL('../deck/base/code/native/node/runtime/bit.ts', import.meta.url), 'utf8')
+const source = readFileSync(new URL('../../deck/base/code/native/node/runtime/bit.ts', import.meta.url), 'utf8')
 const js = transformSync(`${source}\nreturn bit`, { loader: 'ts', format: 'cjs' }).code
 type Bit = Record<string, (a: number, b: number) => number>
 const bit = new Function(js)() as Bit

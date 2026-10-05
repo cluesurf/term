@@ -1100,7 +1100,7 @@ const cli = yargs(hideBin(process.argv))
     yargs =>
       yargs.positional('target', {
         type: 'string',
-        description: 'What to clean: deck, the build output (the default), or tail, the logs',
+        description: 'What to clean: deck, the build output (the default); tail, the logs; boot, what boot and cast write; store, the machine-wide module cache',
       }),
     async argv => {
       await callWash({

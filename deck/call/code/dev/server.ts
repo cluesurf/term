@@ -14,6 +14,7 @@ import { hashText } from '@term/make/code/term/hash'
 import { projectResolver } from '@term/call/code/make'
 import { projectCache } from '@term/call/code/cache-store'
 import { findProjectRoot } from '@term/call/code/boot'
+import { projectLeanOf, projectRoleOf } from '@term/call/code/role-of'
 import type { NativeEnv } from '@term/make/code/compile/native'
 import {
   ensureModule,
@@ -86,9 +87,11 @@ export function startDevServer(options: DevOptions): DevServer {
   // returns the compile error messages (empty array on success), so a failed recompile can be reported to the client
   // as an overlay instead of forcing a state-losing reload
   const build = (): string[] => {
+    // the role and the lean reading, as `term make` reads them: without them a `mark lean` module was read as
+    // longhand (guides: commands/feed, 2026-10-04)
     const result = compile(
       { file: entryFile, text: readFileSync(entryFile, 'utf8') },
-      { resolve, cache, modules: urlForFile },
+      { resolve, cache, modules: urlForFile, roleOf: projectRoleOf(projectRoot), leanOf: projectLeanOf(projectRoot) },
     )
 
     if (!result.ok) {

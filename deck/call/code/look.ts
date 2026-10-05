@@ -1,11 +1,15 @@
 import { readFileSync } from 'fs'
 import path from 'path'
 import {
+  fillInferred,
   inspectModule,
   toJson,
   toCsv,
   toTable,
 } from '@term/make/code/inspect'
+import { compile } from '@term/make/code/compile/compile'
+import { showType } from '@term/make/code/compile/node'
+import { projectLeanOf, projectRoleOf } from '@term/call/code/role-of'
 import type { Source } from '@term/make/code/compile/load'
 import { projectResolver } from '@term/call/code/make'
 import { projectDeckOf } from '@term/call/code/deck-of'
@@ -82,6 +86,31 @@ export async function callLook(input: {
     projectDeckOf(),
   )
   const { loadDiagnostics } = inspection
+
+  // a task that writes no result type gets the one the checker infers, when the module compiles. One that does not
+  // compile is listed as written, which is what `look` printed for everything until 2026-10-04
+  const checked = compile(entry, { resolve, roleOf: projectRoleOf(input.root), leanOf: projectLeanOf(input.root) })
+
+  if (checked.ok) {
+    const results = new Map<string, string>()
+
+    for (const node of checked.program) {
+      if (node.form === 'function' && node.result) {
+        results.set(node.name, showType(node.result))
+      }
+    }
+
+    fillInferred(inspection.symbols, results)
+  } else if (checked.diagnostics.some(d => d.severity !== 'warning')) {
+    // listed from its source all the same, which is still the answer to "what does it offer", and said so
+    report({
+      glyph: 'warning',
+      verb: 'check',
+      subject: 'The module does not compile, so its signatures are as written',
+      counts: [count(checked.diagnostics.filter(d => d.severity !== 'warning').length, 'errors', 'error')],
+      fields: [field('next', `term scan ${input.target}`)],
+    })
+  }
   const listed = input.all ? inspection.symbols : inspection.offered
   const modules = input.all ? inspection.modules : inspection.offeredModules
 

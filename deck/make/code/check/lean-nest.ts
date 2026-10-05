@@ -52,7 +52,11 @@ function fold(name: string, args: Expression[], span: Call['span']): Expression 
 //
 // One ambiguity is accepted and written down: an EXPLICIT `call key` inside a lean call, where `key` is also a
 // parameter of the call it sits in, reads as that parameter. `bind key, ...` is the long form that forces it.
-function leanLabelOf(item: Expression): { name: string; value: Expression } | undefined {
+// The label is the name the call was WRITTEN with: a callee renamed from an import alias (`rope-text` to `to-string`)
+// reads back as its alias, and `imported` carries the imported name, so the nested call keeps its `leanAliases`
+// (`trim(rope-text(value))` inside `parse-float(...)` named nothing once a second module defined `to-string`, the
+// engine port, 2026-10-04)
+function leanLabelOf(item: Expression): { name: string; imported?: string; value: Expression } | undefined {
   if (
     item.form !== 'call' ||
     !item.lean ||
@@ -63,7 +67,13 @@ function leanLabelOf(item: Expression): { name: string; value: Expression } | un
     return undefined
   }
 
-  return { name: item.callee.name, value: { form: 'array', items: item.args, span: item.span } as Expression }
+  const alias = item.callee.alias
+
+  return {
+    name: alias ?? item.callee.name,
+    ...(alias !== undefined ? { imported: item.callee.name } : {}),
+    value: { form: 'array', items: item.args, span: item.span } as Expression,
+  }
 }
 
 // Rewrite every lean label of `node` that `isParameter` refuses and `isCallable` accepts into a positional nested
@@ -115,6 +125,7 @@ export function nestLeanCalls(
 
     const inner = arg.items.map(item => leanLabelOf(item))
     const innerNames = inner.map(one => one?.name)
+    const innerAliases = inner.map(one => one?.imported)
 
     return {
       form: 'call',
@@ -125,6 +136,7 @@ export function nestLeanCalls(
       ...(innerNames.some(Boolean)
         ? { names: innerNames, leanNames: innerNames.map(Boolean) }
         : {}),
+      ...(innerAliases.some(Boolean) ? { leanAliases: innerAliases } : {}),
     } as Expression
   })
 

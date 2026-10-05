@@ -356,7 +356,7 @@ task pass-command
             save value, picked-values(one)
     fork test, is-equal(value, <>)
       hold
-        save value, <<{one/label}>>
+        save value, <\<{one/label}\>>
     save out, <{out} {one/flag} {value}>
   fork test, yes
     hold

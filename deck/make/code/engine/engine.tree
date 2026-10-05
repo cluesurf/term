@@ -1,0 +1,1691 @@
+# The engine: a tree-walking interpreter for the imperative vibe language. The reference semantics the compiler will
+# be checked against. See note/research/vibe/computation/engine/03-execution-model.md.
+#
+# Ported from engine/engine.ts (self-hosting, 2026-10-04). The original was async throughout, every evaluation an
+# `await`, and held a JavaScript Promise for each async call. This one is a plain recursive interpreter. What follows
+# from that, and the other changes of shape:
+#   - an ASYNC call runs to its end when it is made, and its `task` keeps the answer or what it threw for the `await`.
+#     The answers are the original's. What can differ is the ORDER two concurrent tasks' side effects happen in, which
+#     the original left to the microtask queue
+#   - a thrown value travels as an `outcome` (`done`, `thrown`) out of every evaluation, where the original threw a
+#     JavaScript `VibeThrow` and caught it around each statement
+#   - a built-in is a `native` value holding its NAME, run here by `call-native`, since a value holding a host function
+#     is a type Term's strict positivity refuses (engine/value.tree)
+#   - the original's quirks are kept: a `while` and a `switch` go on past a throw in their body, `for` over a map
+#     strips only `s:` from a key while `entries` strips `s:`, `i:` and `f:`, and `has` on a non-map searches a list
+#   - text is compared by code point (`ordering/from-texts`), where `<` compared UTF-16 units: they differ only between
+#     a character past the Basic Multilingual Plane and one in its top range
+#   - `int` and `floor` of a fraction truncate, where `BigInt` of a fraction raised a RangeError
+
+load ./ast
+  find expression
+  find statement
+  find binary-op
+  find assign-op
+  find program
+
+load ./value
+  find value
+  find scope
+  find closure-value
+  find map-cell
+  find task-cell
+  find make-unit
+  find integer
+  find integer-of
+  find float
+  find boolean
+  find string
+  find integer-value
+  find float-value
+  find rope-value
+  find array-of
+  find map-of
+  find function-of
+  find native-of
+  find task-of
+  find truthy
+  find values-equal
+  find key-of
+  find display
+  find to-form-name
+
+load ./data/integer
+  find ternary-integer
+  find add-ternary, name integer-add
+  find subtract-ternary, name integer-subtract
+  find multiply-ternary, name integer-multiply
+  find negate-ternary, name integer-negate
+  find absolute-ternary, name integer-absolute
+  find divide-ternary, name integer-divide
+  find remainder-ternary, name integer-remainder
+  find compare-ternary, name integer-compare
+
+load ./data/float
+  find ternary-float
+  find from-number, name float-from-number
+  find to-number, name float-to-number
+  find add-ternary, name float-add
+  find subtract-ternary, name float-subtract
+  find multiply-ternary, name float-multiply
+  find negate-ternary, name float-negate
+  find compare-ternary, name float-compare
+  find whole-to-big
+
+load ./data/string
+  find rope
+  find to-string, name rope-text
+  find length, name rope-length
+  find concat, name rope-concat
+  find char-at, name rope-char-at
+  find slice, name rope-slice
+
+load ./data/array
+  find vector
+  find from-array
+  find to-array
+  find size, name vector-size
+  find get, name vector-get
+  find set, name vector-set
+  find push, name vector-push
+  find pop, name vector-pop
+  find slice, name vector-slice
+  find concat, name vector-concat
+
+load ./data/map
+  find ternary-map
+  find make-map
+  find set, name map-set
+  find lookup, name map-lookup
+  find has, name map-has
+  find remove, name map-remove
+  find keys, name map-keys
+  find entries, name map-entries
+
+load @term/base/integer/big
+  find big-integer
+  find big-from-number
+  find big-multiply
+  find big-compare
+
+load @term/base/float
+  find round-down
+  find round-up
+  find absolute
+  find square-root
+  find power
+  find to-decimal
+  find to-number, name decimal-to-number
+
+load @term/base/text
+  find split
+  find to-upper-case
+  find to-lower-case
+  find trim
+  find contains
+  find starts-with
+  find substring
+  find char-count
+
+load @term/base/text/number
+  find parse-float
+
+load @term/base/text/unicode
+  find to-runes
+  find rune-to-text
+
+load @term/base/ordering
+  find ordering
+  find from-texts
+
+load @term/base/list
+  find list
+  find get
+  find join
+  find sort
+
+load @term/base/console
+  find log
+
+# what running a statement ends in
+form signal
+  case normal
+  case returned
+    link value, like value
+  case broke
+  case continued
+  case thrown
+    link value, like value
+
+# what evaluating an expression ends in: a value, or a value thrown
+form outcome
+  case done
+    link value, like value
+  case thrown
+    link value, like value
+
+# the built-ins, each a `native` value in the global scope, run by `call-native`
+task native-names
+  like list, like text
+
+  back make list(<print>, <len>, <push>, <str>, <int>, <keys>, <float>, <abs>, <min>, <max>, <pow>, <sqrt>, <floor>, <ceil>, <range>, <pop>, <slice>, <reverse>, <first>, <last>, <contains>, <indexOf>, <sort>, <map>, <filter>, <reduce>, <sortBy>, <split>, <join>, <upper>, <lower>, <replace>, <trim>, <has>, <get>, <setKey>, <del>, <entries>)
+
+# ---- outcomes ----
+
+task finish
+  take v, like value
+  like outcome
+
+  back
+    make done
+      bind value, v
+
+task fail-with
+  take v, like value
+  like outcome
+
+  back
+    make thrown
+      bind value, v
+
+task is-thrown
+  take o, like outcome
+  like boolean
+
+  sift o
+    case thrown
+      back true
+    case done
+      back false
+
+task value-of
+  take o, like outcome
+  like value
+
+  sift o
+    case done
+      back value
+    case thrown
+      back value
+
+# a thrown outcome as the signal a statement ends in
+task signal-of
+  take o, like outcome
+  like signal
+
+  back
+    make thrown
+      bind value, value-of(o)
+
+task normal
+  like signal
+
+  back make normal
+
+task is-normal
+  take s, like signal
+  like boolean
+
+  sift s
+    case normal
+      back true
+    miss
+      back false
+
+# ---- scopes ----
+
+task make-scope
+  take parent, like list, like scope
+  like scope
+
+  back
+    make scope
+      bind vars, make hash
+      bind consts, make hash
+      bind parent, parent
+
+task child-scope
+  take parent, like scope
+  like scope
+
+  save parents, make list
+  parents/push(parent)
+  back make-scope(parents)
+
+task define
+  take into, like scope
+  take name, like text
+  take v, like value
+  take mutable, like boolean
+
+  into/vars/set(name, v)
+  fork test, is-equal(mutable, false)
+    hold
+      into/consts/set(name, true)
+
+task lookup
+  take from, like scope
+  take name, like text
+  like value
+
+  save here, from
+  walk test
+    hook test, true
+    hook hold
+      fork test, here/vars/has(name)
+        hold
+          back here/vars/get(name)
+      fork test, is-equal(here/parent/length, 0)
+        hold
+          halt <undefined variable "{name}">
+      save here, get(here/parent, 0)
+  halt <undefined variable "{name}">
+
+task assign-var
+  take into, like scope
+  take name, like text
+  take v, like value
+
+  save here, into
+  walk test
+    hook test, true
+    hook hold
+      fork test, here/vars/has(name)
+        hold
+          fork test, here/consts/has(name)
+            hold
+              halt <cannot assign to const "{name}">
+          here/vars/set(name, v)
+          back
+      fork test, is-equal(here/parent/length, 0)
+        hold
+          halt <assignment to undefined variable "{name}">
+      save here, get(here/parent, 0)
+
+# ---- numbers ----
+
+# a big integer as the double nearest it, as `Number(bigint)` reads one
+task number-of-big
+  take big, like big-integer
+  like decimal
+
+  back parse-float(big/text())
+
+task index-of-value
+  take index, like value
+  like number
+
+  sift index
+    case integer
+      back decimal-to-number(number-of-big(value/value))
+    miss
+      halt <an index must be an integer, not {to-form-name(index)}>
+
+# a value as a double: an integer, a float, or a text read as a number
+task number-of
+  take v, like value
+  like decimal
+
+  sift v
+    case integer
+      back number-of-big(value/value)
+    case float
+      back float-to-number(value)
+    case string
+      back parse-float(trim(rope-text(value)))
+    miss
+      halt <int of {to-form-name(v)}>
+
+# the whole value of a double, as an integer value
+task integer-of-number
+  take n, like decimal
+  like value
+
+  back integer(whole-to-big(n))
+
+task to-float
+  take v, like value
+  like ternary-float
+
+  sift v
+    case float
+      back value
+    case integer
+      back float-from-number(number-of-big(value/value))
+    miss
+      halt <expected a number, got {to-form-name(v)}>
+
+task compare-result
+  take op, like binary-op
+  take c, like number
+  like value
+
+  sift op
+    case below
+      back boolean(is-below(c, 0))
+    case at-most
+      back boolean(is-maximum(c, 0))
+    case above
+      back boolean(is-above(c, 0))
+    case at-least
+      back boolean(is-minimum(c, 0))
+    miss
+      halt <bad comparison {to-text(op)}>
+
+task compare-texts
+  take a, like text
+  take b, like text
+  like number
+
+  save order, from-texts(a, b)
+  fork test, order/is-less()
+    hold
+      back -1
+  fork test, order/is-greater()
+    hold
+      back 1
+  back 0
+
+task binary
+  take op, like binary-op
+  take a, like value
+  take b, like value
+  like value
+
+  sift op
+    case equal
+      back boolean(values-equal(a, b))
+    case unequal
+      back boolean(is-equal(values-equal(a, b), false))
+    miss
+      save other, true
+
+  # text and list concatenation with +, and the ordering of texts
+  sift a
+    case string
+      link left
+      sift b
+        case string
+          sift op
+            case plus
+              back rope-value(rope-concat(left, value))
+            miss
+              back compare-result(op, compare-texts(rope-text(left), rope-text(value)))
+        miss
+          save other, true
+    case array
+      link left
+      sift b
+        case array
+          sift op
+            case plus
+              back array-of(vector-concat(left, value))
+            miss
+              save other, true
+        miss
+          save other, true
+    case integer
+      link left
+      sift b
+        case integer
+          sift op
+            case plus
+              back integer-value(integer-add(left, value))
+            case minus
+              back integer-value(integer-subtract(left, value))
+            case times
+              back integer-value(integer-multiply(left, value))
+            case divide
+              back integer-value(integer-divide(left, value))
+            case remainder
+              back integer-value(integer-remainder(left, value))
+            miss
+              back compare-result(op, integer-compare(left, value))
+        miss
+          save other, true
+    miss
+      save other, true
+
+  # numeric: a float when either side is one
+  save af, to-float(a)
+  save bf, to-float(b)
+  sift op
+    case plus
+      back float-value(float-add(af, bf))
+    case minus
+      back float-value(float-subtract(af, bf))
+    case times
+      back float-value(float-multiply(af, bf))
+    case divide
+      back float(divide(float-to-number(af), float-to-number(bf)))
+    case remainder
+      save x, float-to-number(af)
+      save y, float-to-number(bf)
+      save whole, divide(x, y)
+      save whole, round-toward-zero(whole)
+      back float(subtract(x, multiply(whole, y)))
+    miss
+      back compare-result(op, float-compare(af, bf))
+
+task round-toward-zero
+  take x, like decimal
+  like decimal
+
+  fork test, is-below(x, 0.0)
+    hold
+      back round-up(x)
+  back round-down(x)
+
+task index-get
+  take target, like value
+  take index, like value
+  like value
+
+  sift target
+    case array
+      back vector-get(value, index-of-value(index))
+    case string
+      back string(rope-char-at(value, index-of-value(index)))
+    case map
+      back map-lookup(value/map, key-of(index), make-unit())
+    miss
+      halt <cannot index a {to-form-name(target)}>
+
+task member-get
+  take target, like value
+  take name, like text
+  like value
+
+  fork test, is-equal(name, <length>)
+    hold
+      sift target
+        case string
+          back integer-of(rope-length(value))
+        case array
+          back integer-of(vector-size(value))
+        case map
+          back integer-of(value/map/size)
+        miss
+          save other, true
+  sift target
+    case map
+      back map-lookup(value/map, <s:{name}>, make-unit())
+    miss
+      halt <no member "{name}" on {to-form-name(target)}>
+
+# ---- expressions ----
+
+task evaluate
+  take expr, like expression
+  take within, like scope
+  like outcome
+
+  sift expr
+    case integer
+      sift value
+        case small
+          back finish(integer-of(value))
+        case big
+          back finish(integer(value))
+    case float
+      back finish(float(value))
+    case boolean
+      back finish(boolean(value))
+    case string
+      back finish(string(value))
+    case template
+      # chunks as written, each expression evaluated and shown as text
+      save out, <>
+      walk parts
+        take part
+        sift part
+          case chunk
+            save out, <{out}{value}>
+          case value
+            save o, evaluate(value, within)
+            fork test, is-thrown(o)
+              hold
+                back o
+            save out, <{out}{display(value-of(o))}>
+      back finish(string(out))
+    case unit
+      back finish(make-unit())
+    case variable
+      back finish(lookup(within, name))
+    case array
+      save made, make list
+      walk items
+        take item
+        save o, evaluate(item, within)
+        fork test, is-thrown(o)
+          hold
+            back o
+        made/push(value-of(o))
+      back finish(array-of(from-array(made)))
+    case map
+      save cell
+        make map-cell
+          bind map, make-map()
+      walk entries
+        take entry
+        save o, evaluate(entry/value, within)
+        fork test, is-thrown(o)
+          hold
+            back o
+        save cell/map, map-set(cell/map, <s:{entry/key}>, value-of(o))
+      back finish(map-of(cell))
+    case closure
+      save made
+        make closure-value
+          bind params, copy-texts(params)
+          bind body, copy-statements(body)
+          bind env, within
+          bind is-async, definitely(is-async)
+          bind name, <>
+      back finish(function-of(made))
+    case unary
+      save o, evaluate(operand, within)
+      fork test, is-thrown(o)
+        hold
+          back o
+      save v, value-of(o)
+      sift op
+        case not
+          back finish(boolean(is-equal(truthy(v), false)))
+        case negate
+          sift v
+            case integer
+              back finish(integer-value(integer-negate(value)))
+            case float
+              back finish(float-value(float-negate(value)))
+            miss
+              halt <unary - on {to-form-name(v)}>
+    case binary
+      save lo, evaluate(left, within)
+      fork test, is-thrown(lo)
+        hold
+          back lo
+      save l, value-of(lo)
+      sift op
+        case both
+          fork test, truthy(l)
+            hold
+              back evaluate(right, within)
+          back lo
+        case either
+          fork test, truthy(l)
+            hold
+              back lo
+          back evaluate(right, within)
+        miss
+          save ro, evaluate(right, within)
+          fork test, is-thrown(ro)
+            hold
+              back ro
+          back finish(binary(op, l, value-of(ro)))
+    case index
+      save t, evaluate(target, within)
+      fork test, is-thrown(t)
+        hold
+          back t
+      save i, evaluate(index, within)
+      fork test, is-thrown(i)
+        hold
+          back i
+      back finish(index-get(value-of(t), value-of(i)))
+    case member
+      save t, evaluate(target, within)
+      fork test, is-thrown(t)
+        hold
+          back t
+      back finish(member-get(value-of(t), name))
+    case await
+      save o, evaluate(expr, within)
+      fork test, is-thrown(o)
+        hold
+          back o
+      save v, value-of(o)
+      sift v
+        case task
+          fork test, value/thrown
+            hold
+              back fail-with(value/result)
+          back finish(value/result)
+        miss
+          back o
+    case call
+      save f, evaluate(callee, within)
+      fork test, is-thrown(f)
+        hold
+          back f
+      save given, make list
+      walk args
+        take arg
+        save o, evaluate(arg, within)
+        fork test, is-thrown(o)
+          hold
+            back o
+        given/push(value-of(o))
+      save fn, value-of(f)
+      sift fn
+        case native
+          back call-native(name, given)
+        case function
+          fork test, value/is-async
+            hold
+              save ran, apply-closure(value, given)
+              save cell
+                make task-cell
+                  bind result, value-of(ran)
+                  bind thrown, is-thrown(ran)
+              back finish(task-of(cell))
+          back apply-closure(value, given)
+        miss
+          halt <cannot call a {to-form-name(fn)}>
+
+# ---- statements ----
+
+task execute
+  take stmt, like statement
+  take within, like scope
+  like signal
+
+  sift stmt
+    case let
+      save o, evaluate(init, within)
+      fork test, is-thrown(o)
+        hold
+          back signal-of(o)
+      define(within, name, value-of(o), mutable)
+      back normal()
+    case expression
+      save o, evaluate(expr, within)
+      fork test, is-thrown(o)
+        hold
+          back signal-of(o)
+      back normal()
+    case return
+      save o, evaluate(value, within)
+      fork test, is-thrown(o)
+        hold
+          back signal-of(o)
+      back
+        make returned
+          bind value, value-of(o)
+    case break
+      back make broke
+    case continue
+      back make continued
+    case block
+      back execute-block(body, child-scope(within))
+    case throw
+      save o, evaluate(value, within)
+      fork test, is-thrown(o)
+        hold
+          back signal-of(o)
+      back
+        make thrown
+          bind value, value-of(o)
+    case try
+      save result, execute-block(body, child-scope(within))
+      sift result
+        case thrown
+          link caught
+          fork test, is-above(catches/length, 0)
+            hold
+              save clause, get(catches, 0)
+              save inside, child-scope(within)
+              fork test, is-unequal(clause/name, <>)
+                hold
+                  define(inside, clause/name, caught, true)
+              save result, execute-block(clause/body, inside)
+        miss
+          save kept, true
+      # finally overrides the pending signal when it ends in one of its own
+      fork test, is-above(finally-body/length, 0)
+        hold
+          save after, execute-block(finally-body, child-scope(within))
+          fork test, is-equal(is-normal(after), false)
+            hold
+              back after
+      back result
+    case for
+      save o, evaluate(iterable, within)
+      fork test, is-thrown(o)
+        hold
+          back signal-of(o)
+      walk for-items(value-of(o))
+        take item
+        save inner, child-scope(within)
+        define(inner, name, item, true)
+        save sig, execute-block(body, inner)
+        sift sig
+          case broke
+            halt
+          case returned
+            back sig
+          case thrown
+            back sig
+          miss
+            save kept, true
+      back normal()
+    case function
+      save made
+        make closure-value
+          bind params, copy-texts(params)
+          bind body, copy-statements(body)
+          bind env, within
+          bind is-async, definitely(is-async)
+          bind name, name
+      define(within, name, function-of(made), false)
+      back normal()
+    case assign
+      back assign(target, op, value, within)
+    case if
+      walk branches
+        take branch
+        save o, evaluate(branch/cond, within)
+        fork test, is-thrown(o)
+          hold
+            back signal-of(o)
+        fork test, truthy(value-of(o))
+          hold
+            back execute-block(branch/body, child-scope(within))
+      back execute-block(otherwise, child-scope(within))
+    case while
+      walk test
+        hook test, true
+        hook hold
+          save o, evaluate(cond, within)
+          fork test, is-thrown(o)
+            hold
+              back signal-of(o)
+          fork test, is-equal(truthy(value-of(o)), false)
+            hold
+              halt
+          save sig, execute-block(body, child-scope(within))
+          sift sig
+            case broke
+              halt
+            case returned
+              back sig
+            miss
+              save kept, true
+      back normal()
+    case switch
+      save o, evaluate(subject, within)
+      fork test, is-thrown(o)
+        hold
+          back signal-of(o)
+      save matched, -1
+      save at, 0
+      walk cases
+        take one
+        save m, evaluate(one/match, within)
+        fork test, is-thrown(m)
+          hold
+            back signal-of(m)
+        fork test, values-equal(value-of(o), value-of(m))
+          hold
+            save matched, at
+            halt
+        save at, add(at, 1)
+      save inner, child-scope(within)
+      fork test, is-below(matched, 0)
+        hold
+          back execute-block(otherwise, inner)
+      # fall through until a break
+      save at, matched
+      walk test
+        hook test, is-below(at, cases/length)
+        hook hold
+          save one, get(cases, at)
+          save sig, execute-block(one/body, inner)
+          sift sig
+            case broke
+              back normal()
+            case returned
+              back sig
+            case continued
+              back sig
+            miss
+              save kept, true
+          save at, add(at, 1)
+      back normal()
+
+task execute-block
+  take body, like list, like statement
+  take within, like scope
+  like signal
+
+  walk body
+    take stmt
+    save sig, execute(stmt, within)
+    fork test, is-equal(is-normal(sig), false)
+      hold
+        back sig
+  back normal()
+
+# the binary operation a compound assignment applies
+task op-of
+  take op, like assign-op
+  like binary-op
+
+  sift op
+    case add
+      back make plus
+    case subtract
+      back make minus
+    case multiply
+      back make times
+    case divide
+      back make divide
+    case set
+      back make plus
+
+task updated
+  take op, like assign-op
+  take current, like value
+  take rhs, like value
+  like value
+
+  sift op
+    case set
+      back rhs
+    miss
+      back binary(op-of(op), current, rhs)
+
+task assign
+  take target, like expression
+  take op, like assign-op
+  take value-expression, like expression
+  take within, like scope
+  like signal
+
+  save o, evaluate(value-expression, within)
+  fork test, is-thrown(o)
+    hold
+      back signal-of(o)
+  save rhs, value-of(o)
+  save plain, false
+  sift op
+    case set
+      save plain, true
+    miss
+      save plain, false
+
+  sift target
+    case variable
+      save next, rhs
+      fork test, is-equal(plain, false)
+        hold
+          save next, updated(op, lookup(within, name), rhs)
+      assign-var(within, name, next)
+      back normal()
+    case index
+      link holder
+      link at
+      save held-name, name-of-variable(holder, <index assignment target must be a variable>)
+      save container, lookup(within, held-name)
+      save io, evaluate(at, within)
+      fork test, is-thrown(io)
+        hold
+          back signal-of(io)
+      save index, value-of(io)
+      sift container
+        case array
+          save i, index-of-value(index)
+          save current, make-unit()
+          fork test, is-equal(plain, false)
+            hold
+              save current, vector-get(value, i)
+          assign-var(within, held-name, array-of(vector-set(value, i, updated(op, current, rhs))))
+          back normal()
+        case map
+          save k, key-of(index)
+          save current, make-unit()
+          fork test, is-equal(plain, false)
+            hold
+              save current, map-lookup(value/map, k, make-unit())
+          save value/map, map-set(value/map, k, updated(op, current, rhs))
+          back normal()
+        miss
+          halt <cannot index-assign a {to-form-name(container)}>
+    case member
+      link holder
+      link field
+      save held-name, name-of-variable(holder, <member assignment target must be a variable>)
+      save container, lookup(within, held-name)
+      sift container
+        case map
+          save k, <s:{field}>
+          save current, make-unit()
+          fork test, is-equal(plain, false)
+            hold
+              save current, map-lookup(value/map, k, make-unit())
+          save value/map, map-set(value/map, k, updated(op, current, rhs))
+          back normal()
+        miss
+          halt <cannot set member on a {to-form-name(container)}>
+    miss
+      halt <invalid assignment target>
+
+task name-of-variable
+  take e, like expression
+  take refusal, like text
+  like text
+
+  sift e
+    case variable
+      back name
+    miss
+      halt <{refusal}>
+
+# ---- calls ----
+
+# an optional flag as a definite one: absent (a TypeScript caller left it out) reads false
+task definitely
+  take flag
+    like boolean
+    need false
+  like boolean
+
+  fork test, flag
+    hold
+      back true
+  back false
+
+
+task apply-closure
+  take fn, like closure-value
+  take given, like list, like value
+  like outcome
+
+  save inner, child-scope(fn/env)
+  walk fn/params
+    take param
+    take i
+    save v, make-unit()
+    fork test, is-below(i, given/length)
+      hold
+        save v, get(given, i)
+    define(inner, param, v, true)
+  save sig, execute-block(fn/body, inner)
+  sift sig
+    case thrown
+      back fail-with(value)
+    case returned
+      back finish(value)
+    miss
+      back finish(make-unit())
+
+# call any callable value: a closure, a built-in, or a task's answer
+task call-value
+  take fn, like value
+  take given, like list, like value
+  like outcome
+
+  sift fn
+    case function
+      back apply-closure(value, given)
+    case native
+      back call-native(name, given)
+    case task
+      fork test, value/thrown
+        hold
+          back fail-with(value/result)
+      back finish(value/result)
+    miss
+      halt <cannot call a {to-form-name(fn)}>
+
+# a key without its kind's prefix, as the original's `replace(/^s:/, '')`
+task strip-prefix
+  take key, like text
+  take prefixes, like list, like text
+  like text
+
+  walk prefixes
+    take prefix
+    fork test, starts-with(key, prefix)
+      hold
+        back substring(key, char-count(prefix), char-count(key))
+  back key
+
+# the elements a `for` loop walks: an array's, a text's code points, or a map's keys
+task for-items
+  take v, like value
+  like list, like value
+
+  save out, make list
+  sift v
+    case array
+      back to-array(value)
+    case string
+      walk to-runes(rope-text(value))
+        take rune
+        out/push(string(rune-to-text(rune)))
+      back out
+    case map
+      walk map-keys(value/map)
+        take key
+        out/push(string(strip-prefix(key, make list(<s:>))))
+      back out
+    miss
+      halt <cannot iterate a {to-form-name(v)}>
+
+# ---- the built-ins ----
+
+task arg
+  take given, like list, like value
+  take i, like number
+  like value
+
+  fork test, is-below(i, given/length)
+    hold
+      back get(given, i)
+  back make-unit()
+
+task items-of
+  take v, like value
+  take op, like text
+  like list, like value
+
+  sift v
+    case array
+      back to-array(value)
+    miss
+      halt <{op} needs an array, got {to-form-name(v)}>
+
+task index-length
+  take v, like value
+  like value
+
+  sift v
+    case string
+      back integer-of(rope-length(value))
+    case array
+      back integer-of(vector-size(value))
+    case map
+      back integer-of(value/map/size)
+    miss
+      halt <len of {to-form-name(v)}>
+
+task compare-values
+  take a, like value
+  take b, like value
+  like ordering
+
+  save below, make below
+  fork test, truthy(binary(below, a, b))
+    hold
+      back make less
+  save above, make above
+  fork test, truthy(binary(above, a, b))
+    hold
+      back make greater
+  back make equal
+
+task compare-values-number
+  take a, like value
+  take b, like value
+  like number
+
+  sift compare-values(a, b)
+    case less
+      back -1
+    case greater
+      back 1
+    case equal
+      back 0
+
+# 3 to a whole power, for `pow` on two integers: square and multiply
+task big-power
+  take base, like big-integer
+  take exponent, like number
+  like big-integer
+
+  save out, big-from-number(1)
+  save square, base
+  save left, exponent
+  walk test
+    hook test, is-above(left, 0)
+    hook hold
+      save half, divide(left, 2)
+      fork test, is-unequal(subtract(left, multiply(half, 2)), 0)
+        hold
+          save out, big-multiply(out, square)
+      save square, big-multiply(square, square)
+      save left, half
+  back out
+
+task call-native
+  take name, like text
+  take given, like list, like value
+  like outcome
+
+  save a0, arg(given, 0)
+  save a1, arg(given, 1)
+  save a2, arg(given, 2)
+
+  fork test, is-equal(name, <print>)
+    hold
+      save shown, make list
+      walk given
+        take one
+        shown/push(display(one))
+      log(join(shown, < >))
+      back finish(make-unit())
+  fork test, is-equal(name, <len>)
+    hold
+      back finish(index-length(a0))
+  fork test, is-equal(name, <push>)
+    hold
+      sift a0
+        case array
+          back finish(array-of(vector-push(value, a1)))
+        miss
+          halt <push needs an array>
+  fork test, is-equal(name, <str>)
+    hold
+      back finish(string(display(a0)))
+  fork test, is-equal(name, <int>)
+    hold
+      back finish(integer-of-number(number-of(a0)))
+  fork test, is-equal(name, <keys>)
+    hold
+      sift a0
+        case map
+          save out, make list
+          walk map-keys(value/map)
+            take key
+            out/push(string(strip-prefix(key, make list(<s:>))))
+          back finish(array-of(from-array(out)))
+        miss
+          halt <keys needs a map>
+  fork test, is-equal(name, <float>)
+    hold
+      back finish(float(number-of(a0)))
+  fork test, is-equal(name, <abs>)
+    hold
+      sift a0
+        case integer
+          back finish(integer-value(integer-absolute(value)))
+        miss
+          back finish(float(absolute(number-of(a0))))
+  fork test, is-equal(name, <min>)
+    hold
+      fork test, is-maximum(compare-values-number(a0, a1), 0)
+        hold
+          back finish(a0)
+      back finish(a1)
+  fork test, is-equal(name, <max>)
+    hold
+      fork test, is-minimum(compare-values-number(a0, a1), 0)
+        hold
+          back finish(a0)
+      back finish(a1)
+  fork test, is-equal(name, <pow>)
+    hold
+      sift a0
+        case integer
+          link x
+          sift a1
+            case integer
+              fork test, is-minimum(number-of-big(value/value), 0.0)
+                hold
+                  back finish(integer(big-power(x/value, decimal-to-number(number-of-big(value/value)))))
+            miss
+              save other, true
+        miss
+          save other, true
+      back finish(float(power(number-of(a0), number-of(a1))))
+  fork test, is-equal(name, <sqrt>)
+    hold
+      back finish(float(square-root(number-of(a0))))
+  fork test, is-equal(name, <floor>)
+    hold
+      back finish(integer-of-number(round-down(number-of(a0))))
+  fork test, is-equal(name, <ceil>)
+    hold
+      back finish(integer-of-number(round-up(number-of(a0))))
+  fork test, is-equal(name, <range>)
+    hold
+      save first, 0.0
+      fork test, is-above(given/length, 1)
+        hold
+          save first, number-of(a0)
+      save last, number-of(get(given, subtract(given/length, 1)))
+      save out, make list
+      save i, first
+      walk test
+        hook test, is-below(i, last)
+        hook hold
+          out/push(integer-of-number(i))
+          save i, add(i, 1.0)
+      back finish(array-of(from-array(out)))
+  fork test, is-equal(name, <pop>)
+    hold
+      sift a0
+        case array
+          back finish(array-of(vector-pop(value)))
+        miss
+          halt <pop needs an array>
+  fork test, is-equal(name, <slice>)
+    hold
+      save s, decimal-to-number(number-of(a1))
+      sift a0
+        case array
+          save e, vector-size(value)
+          fork test, is-above(given/length, 2)
+            hold
+              save e, decimal-to-number(number-of(a2))
+          back finish(array-of(vector-slice(value, s, e)))
+        case string
+          save e, rope-length(value)
+          fork test, is-above(given/length, 2)
+            hold
+              save e, decimal-to-number(number-of(a2))
+          back finish(rope-value(rope-slice(value, s, e)))
+        miss
+          halt <slice of {to-form-name(a0)}>
+  fork test, is-equal(name, <reverse>)
+    hold
+      save xs, items-of(a0, <reverse>)
+      save out, make list
+      save i, subtract(xs/length, 1)
+      walk test
+        hook test, is-minimum(i, 0)
+        hook hold
+          out/push(get(xs, i))
+          save i, subtract(i, 1)
+      back finish(array-of(from-array(out)))
+  fork test, is-equal(name, <first>)
+    hold
+      back finish(arg(items-of(a0, <first>), 0))
+  fork test, is-equal(name, <last>)
+    hold
+      save xs, items-of(a0, <last>)
+      back finish(arg(xs, subtract(xs/length, 1)))
+  fork test, is-equal(name, <contains>)
+    hold
+      sift a0
+        case array
+          walk to-array(value)
+            take one
+            fork test, values-equal(one, a1)
+              hold
+                back finish(boolean(true))
+          back finish(boolean(false))
+        case string
+          back finish(boolean(contains(rope-text(value), display(a1))))
+        case map
+          back finish(boolean(map-has(value/map, key-of(a1))))
+        miss
+          halt <contains on {to-form-name(a0)}>
+  fork test, is-equal(name, <indexOf>)
+    hold
+      save at, 0
+      walk items-of(a0, <indexOf>)
+        take one
+        fork test, values-equal(one, a1)
+          hold
+            back finish(integer-of(at))
+        save at, add(at, 1)
+      back finish(integer-of(-1))
+  fork test, is-equal(name, <sort>)
+    hold
+      save sorted, sort-values(items-of(a0, <sort>))
+      back finish(array-of(from-array(sorted)))
+  fork test, is-equal(name, <map>)
+    hold
+      save out, make list
+      save at, 0
+      walk items-of(a0, <map>)
+        take one
+        save called, make list
+        called/push(one)
+        called/push(integer-of(at))
+        save o, call-value(a1, called)
+        fork test, is-thrown(o)
+          hold
+            back o
+        out/push(value-of(o))
+        save at, add(at, 1)
+      back finish(array-of(from-array(out)))
+  fork test, is-equal(name, <filter>)
+    hold
+      save out, make list
+      walk items-of(a0, <filter>)
+        take one
+        save called, make list
+        called/push(one)
+        save o, call-value(a1, called)
+        fork test, is-thrown(o)
+          hold
+            back o
+        fork test, truthy(value-of(o))
+          hold
+            out/push(one)
+      back finish(array-of(from-array(out)))
+  fork test, is-equal(name, <reduce>)
+    hold
+      save acc, a2
+      walk items-of(a0, <reduce>)
+        take one
+        save called, make list
+        called/push(acc)
+        called/push(one)
+        save o, call-value(a1, called)
+        fork test, is-thrown(o)
+          hold
+            back o
+        save acc, value-of(o)
+      back finish(acc)
+  fork test, is-equal(name, <sortBy>)
+    hold
+      save keyed, make list
+      walk items-of(a0, <sortBy>)
+        take one
+        save called, make list
+        called/push(one)
+        save o, call-value(a1, called)
+        fork test, is-thrown(o)
+          hold
+            back o
+        save pair, make list
+        pair/push(value-of(o))
+        pair/push(one)
+        keyed/push(pair)
+      save sorted, sort-keyed(keyed)
+      save out, make list
+      walk sorted
+        take pair
+        out/push(get(pair, 1))
+      back finish(array-of(from-array(out)))
+  fork test, is-equal(name, <split>)
+    hold
+      save out, make list
+      walk split(display(a0), display(a1))
+        take part
+        out/push(string(part))
+      back finish(array-of(from-array(out)))
+  fork test, is-equal(name, <join>)
+    hold
+      save shown, make list
+      walk items-of(a0, <join>)
+        take one
+        shown/push(display(one))
+      save separator, <>
+      fork test, is-above(given/length, 1)
+        hold
+          save separator, display(a1)
+      back finish(string(join(shown, separator)))
+  fork test, is-equal(name, <upper>)
+    hold
+      back finish(string(to-upper-case(display(a0))))
+  fork test, is-equal(name, <lower>)
+    hold
+      back finish(string(to-lower-case(display(a0))))
+  fork test, is-equal(name, <replace>)
+    hold
+      back finish(string(join(split(display(a0), display(a1)), display(a2))))
+  fork test, is-equal(name, <trim>)
+    hold
+      back finish(string(trim(display(a0))))
+  fork test, is-equal(name, <has>)
+    hold
+      sift a0
+        case map
+          back finish(boolean(map-has(value/map, key-of(a1))))
+        miss
+          walk items-of(a0, <has>)
+            take one
+            fork test, values-equal(one, a1)
+              hold
+                back finish(boolean(true))
+          back finish(boolean(false))
+  fork test, is-equal(name, <get>)
+    hold
+      back finish(index-get(a0, a1))
+  fork test, is-equal(name, <setKey>)
+    hold
+      sift a0
+        case map
+          save value/map, map-set(value/map, key-of(a1), a2)
+          back finish(a0)
+        miss
+          halt <setKey needs a map>
+  fork test, is-equal(name, <del>)
+    hold
+      sift a0
+        case map
+          save value/map, map-remove(value/map, key-of(a1))
+          back finish(a0)
+        miss
+          halt <del needs a map>
+  fork test, is-equal(name, <entries>)
+    hold
+      sift a0
+        case map
+          save out, make list
+          walk map-entries(value/map)
+            take entry
+            save pair, make list
+            pair/push(string(strip-prefix(entry/key, make list(<s:>, <i:>, <f:>))))
+            pair/push(entry/value)
+            out/push(array-of(from-array(pair)))
+          back finish(array-of(from-array(out)))
+        miss
+          halt <entries needs a map>
+  halt <no built-in named "{name}">
+
+# a fresh list of a closure's parameters and body: the closure keeps its own, never the AST's
+task copy-texts
+  take xs, like list, like text
+  like list, like text
+
+  save out, make list
+  walk xs
+    take x
+    out/push(x)
+  back out
+
+task copy-statements
+  take xs, like list, like statement
+  like list, like statement
+
+  save out, make list
+  walk xs
+    take x
+    out/push(x)
+  back out
+
+# a stable bottom-up merge sort of values, by `compare-values`, the stdlib's own algorithm (`@term/base/list` `sort`),
+# written here because its comparison may raise (a text beside a number), which the stdlib's comparator cannot
+task sort-values
+  take items, like list, like value
+  like list, like value
+
+  save keyed, make list
+  walk items
+    take one
+    save pair, make list
+    pair/push(one)
+    pair/push(one)
+    keyed/push(pair)
+  save out, make list
+  walk sort-keyed(keyed)
+    take pair
+    out/push(get(pair, 1))
+  back out
+
+# `[key, item]` pairs in the order of their keys, stable: equal keys keep the order they came in
+task sort-keyed
+  take pairs, like list, like list, like value
+  like list, like list, like value
+
+  save source, make list
+  walk pairs
+    take one
+    source/push(one)
+  save total, source/length
+  save width, 1
+  walk test
+    hook test, is-below(width, total)
+    hook hold
+      save merged, make list
+      save low, 0
+      walk test
+        hook test, is-below(low, total)
+        hook hold
+          save middle, min-of(add(low, width), total)
+          save high, min-of(add(middle, width), total)
+          save i, low
+          save j, middle
+          walk test
+            hook test, and(is-below(i, middle), is-below(j, high))
+            hook hold
+              save left, get(source, i)
+              save right, get(source, j)
+              # the left one first unless the right sorts strictly before it
+              fork test, is-below(compare-values-number(get(right, 0), get(left, 0)), 0)
+                hold
+                  merged/push(right)
+                  save j, add(j, 1)
+                miss
+                  merged/push(left)
+                  save i, add(i, 1)
+          walk test
+            hook test, is-below(i, middle)
+            hook hold
+              merged/push(get(source, i))
+              save i, add(i, 1)
+          walk test
+            hook test, is-below(j, high)
+            hook hold
+              merged/push(get(source, j))
+              save j, add(j, 1)
+          save low, high
+      save source, merged
+      save width, multiply(width, 2)
+  back source
+
+task min-of
+  take a, like number
+  take b, like number
+  like number
+
+  fork test, is-below(a, b)
+    hold
+      back a
+  back b
+
+# ---- running a program ----
+
+# the global scope: every built-in, and the caller's own bindings
+task make-global-scope
+  take extra
+    like hash
+      like text
+      like value
+  like scope
+
+  save g, make-scope(make list)
+  walk native-names()
+    take name
+    define(g, name, native-of(name), false)
+  walk extra/keys()
+    take key
+    define(g, key, extra/get(key), false)
+  back g
+
+# hoist the function declarations, so a function can be called before its place in the text
+task hoist
+  take code, like list, like statement
+  take g, like scope
+
+  walk code
+    take stmt
+    sift stmt
+      case function
+        execute(stmt, g)
+      miss
+        save other, true
+
+# run a program in a fresh global scope, answering the last evaluated value
+task run
+  take code, like list, like statement
+  like value
+
+  back run-with(code, make hash)
+
+# the same with extra bindings in the global scope. Two tasks, not a `fall` default, because a TypeScript caller
+# reaches only the declared signature
+task run-with
+  take code, like list, like statement
+  take extra
+    like hash
+      like text
+      like value
+  like value
+
+  save g, make-global-scope(extra)
+  hoist(code, g)
+  save last, make-unit()
+  walk code
+    take stmt
+    sift stmt
+      case function
+        turn next
+      case expression
+        save o, evaluate(expr, g)
+        fork test, is-thrown(o)
+          hold
+            halt <vibe throw: {display(value-of(o))}>
+        save last, value-of(o)
+      miss
+        save sig, execute(stmt, g)
+        sift sig
+          case returned
+            back value
+          miss
+            save kept, true
+  back last
+
+# call a named function defined in a program, with argument values, answering its result
+task call-function
+  take code, like list, like statement
+  take name, like text
+  take given, like list, like value
+  like value
+
+  back call-function-with(code, name, given, make hash)
+
+task call-function-with
+  take code, like list, like statement
+  take name, like text
+  take given, like list, like value
+  take extra
+    like hash
+      like text
+      like value
+  like value
+
+  save g, make-global-scope(extra)
+  hoist(code, g)
+  save fn, lookup(g, name)
+  sift fn
+    case function
+      save o, apply-closure(value, given)
+      fork test, is-thrown(o)
+        hold
+          halt <vibe throw: {display(value-of(o))}>
+      back value-of(o)
+    case native
+      save o, call-native(name, given)
+      fork test, is-thrown(o)
+        hold
+          halt <vibe throw: {display(value-of(o))}>
+      back value-of(o)
+    miss
+      halt <"{name}" is not a function>

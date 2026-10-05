@@ -13,6 +13,7 @@ import { resolve as resolveNames } from '@term/make/code/check/resolve'
 import { check } from '@term/make/code/check/infer'
 import { pureFunctions } from '@term/make/code/check/facts'
 import { collectModules } from '@term/make/code/compile/load'
+import { bindModules, stampModule } from '@term/make/code/check/bind-modules'
 import type { Source } from '@term/make/code/compile/load'
 import type { Program } from '@term/make/code/compile/node'
 import { existsSync, readFileSync } from 'node:fs'
@@ -37,8 +38,9 @@ const stdlib = stdlibResolver()!
 
 function programOf(text: string): Program {
   const program: Program = []
+  const { sources, scope } = collectModules({ file: 'main.tree', text }, stdlib)
 
-  for (const unit of collectModules({ file: 'main.tree', text }, stdlib).sources) {
+  for (const unit of sources) {
     const parsed = parse(unit)
 
     if (!parsed.ok) {
@@ -51,9 +53,12 @@ function programOf(text: string): Program {
       throw new Error(`mill failed: ${unit.file}`)
     }
 
+    stampModule(built.program, unit.file)
     program.push(...built.program)
   }
 
+  // module scope and form extension, as `compileProgram` runs them (check/bind-modules.ts)
+  bindModules(program, scope, 'main.tree')
   resolveNames(program, 'main.tree')
   check(program, 'main.tree')
 

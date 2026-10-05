@@ -184,7 +184,75 @@ export function checkTypeNames(program: Program, file: string): Diagnostic[] {
     }
   }
 
+  // a CONSTRUCTION is held to the same rule: `make unit` (no such form) built a `{}` on TypeScript wherever the slot was
+  // `like unknown`, and only the native compilers refused it, as `Unit {}` naming nothing (the compile/memo port,
+  // 2026-10-04). A construction names a form, a case of one (`make red`, or `make light/red`), or the native empty
+  // `make hash` / `make list`. `make list(1, 2)` and its kin are the native collections too. `make void` is the
+  // language's empty value: `@term/base/void` declares the form, and the program carries it as the primitive
+  const constructible = new Set<string>(['hash', 'list', 'void'])
+
+  for (const s of program) {
+    if (s.form === 'record-type') {
+      constructible.add(s.name)
+
+      for (const variant of s.variants) {
+        constructible.add(variant.name)
+        constructible.add(`${s.name}/${variant.name}`)
+      }
+    }
+  }
+
+  for (const s of program) {
+    if (s.span.file !== file || s.form !== 'function' || s.stub) {
+      continue
+    }
+
+    eachConstruction(s.body, node => {
+      if (!constructible.has(node.name)) {
+        out.push(
+          diagnose('unknown-name', {
+            file,
+            span: node.span ?? s.span,
+            message: `\`make ${node.name}\` names no form (in \`${s.method?.name ?? s.name}\`). It built an empty record on TypeScript and nothing on a native backend`,
+            hint: 'name a form or one of its cases, or `make hash` / `make list`',
+          }),
+        )
+      }
+    })
+  }
+
   return out
+}
+
+// every `record` construction under a value, found structurally: any object carrying a `form`, through every field,
+// so a new expression form cannot hide one
+function eachConstruction(value: unknown, visit: (node: { name: string; span?: Span }) => void, seen = new Set<object>()): void {
+  if (value === null || typeof value !== 'object' || seen.has(value)) {
+    return
+  }
+
+  seen.add(value)
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      eachConstruction(item, visit, seen)
+    }
+
+    return
+  }
+
+  const node = value as { form?: unknown; name?: unknown; span?: Span; type?: unknown }
+
+  if (node.form === 'record' && typeof node.name === 'string') {
+    visit(node as { name: string; span?: Span })
+  }
+
+  for (const [key, field] of Object.entries(value)) {
+    // a type and a span hold no construction
+    if (key !== 'type' && key !== 'span' && key !== 'declared') {
+      eachConstruction(field, visit, seen)
+    }
+  }
 }
 
 // does a type name the form `name` anywhere without type arguments

@@ -206,6 +206,10 @@ export function compile(
   options?: {
     resolve?: Resolver
     cache?: CompileCache
+    // a LIBRARY whose values host code also builds (a port TypeScript imports): no field-less case is tested by
+    // identity with the module's one constant, since a caller's `{ t: "base" }` is not it (typescript.ts
+    // `identityCases`, which broke check/cubical's own tests and pairing the day it landed, 2026-10-04)
+    library?: boolean
     // a parse memo shared across a batch build, so the stdlib closure is parsed once for the whole run rather than
     // once per entry. The dependency walk runs before the output cache can be asked, so without this a warm build
     // still re-parses everything on its way to the hit. See makeParseMemo in compile/load.ts.
@@ -475,6 +479,7 @@ export function compile(
             expose: options?.exposeTwins,
           }
         : undefined,
+      options?.library,
     )
 
     // `note <word>` written as metadata in the ENTRY file: the old spelling of `mark <word>`, read the same and warned
@@ -593,6 +598,8 @@ export function compileProgram(
   scope?: ImportScope,
   // the chosen implementations, with the closure's twins (ir/twin.ts)
   selected?: { twins: Twin[]; choices: TwinChoices; expose?: boolean },
+  // a library host code also builds values of (compile's `library`)
+  library?: boolean,
 ): CompileResult {
   // the certificate checker's refusals so far, so this compile can report its own
   const uncertifiedBefore = uncertifiedCount()
@@ -1129,7 +1136,7 @@ export function compileProgram(
   return {
     ok: true,
     program: loweredProgram,
-    typescript: emitTypeScript(loweredTs, { env, wake }),
+    typescript: emitTypeScript(loweredTs, { env, wake, ...(library ? { library: true } : {}) }),
     warnings,
     ...(claims.open.length ? { openClaims: claims.open } : {}),
     obligations,

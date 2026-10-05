@@ -15,11 +15,9 @@ import { mill } from '@term/make/code/compile/mill'
 import { resolve as resolveNames } from '@term/make/code/check/resolve'
 import { check } from '@term/make/code/check/infer'
 import { resolveAsync } from '@term/make/code/check/async-resolve'
-import { extendForms } from '@term/make/code/check/extend'
 import { simplify } from '@term/make/code/ir/simplify'
 import { collectModules } from '@term/make/code/compile/load'
-import { bindFormsByImport } from '@term/make/code/check/scope'
-import { disambiguateOverloads } from '@term/make/code/check/overload'
+import { bindModules, stampModule } from '@term/make/code/check/bind-modules'
 import type { Source } from '@term/make/code/compile/load'
 import {
   withNativeEnv,
@@ -157,21 +155,14 @@ function frontEnd(
       {for (const node of built.program)
         {if (node.form === 'function') {roots.add(node.name)}}}
 
-    // each definition knows its file, as `compile` stamps it: the module scope splits a name by it
-    for (const node of built.program) {
-      node.span.file = unit.file
-    }
-
+    stampModule(built.program, unit.file)
     program.push(...built.program)
   }
 
-  // module scope, in the order `compileProgram` runs it. Without it `matches` in regex.tree (a text) and in
-  // pattern.tree (a pattern) merged flat, and the uuid and process cases handed `prepare` a text (2026-10-04)
-  bindFormsByImport(program, scope, 'main.tree')
-  // form extension, as compile() runs it first: an exception form (`like timeout`) gets its fields and every `halt
-  // <form>` is finished. Without it a raise of a stdlib exception emitted a class with no fields
-  extendForms(program, 'main.tree')
-  disambiguateOverloads(program, scope, 'main.tree')
+  // module scope and form extension, as `compileProgram` runs them (check/bind-modules.ts). Without the scope
+  // `matches` in regex.tree (a text) and in pattern.tree (a pattern) merged flat, and the uuid and process cases
+  // handed `prepare` a text (2026-10-04); without the extension a stdlib exception emitted a class with no fields
+  bindModules(program, scope, 'main.tree')
   resolveNames(program, 'main.tree')
   check(program, 'main.tree')
 
@@ -849,11 +840,12 @@ function runSwiftCrypto(
   if (!have('swiftc')) {return skipped(name, 'swiftc not installed')}
 
   const file = join(dir, `${name.replace(/\W/g, '')}.swift`)
+  const emitted = emitSwift(program)
+  // a `compute` that can raise (`fetch` raises on a refused connection) is called with `try`
+  const call = /func compute\(\)[^{]*\bthrows\b/.test(emitted) ? 'try await compute()' : 'await compute()'
   writeFileSync(
     file,
-    `${nativePrelude(program, 'swift', readRuntime)}\n${emitSwift(
-      program,
-    )}\nprint(await compute(), terminator: "")\n`,
+    `${nativePrelude(program, 'swift', readRuntime)}\n${emitted}\nprint(${call}, terminator: "")\n`,
   )
 
   const exe = file.replace(/\.swift$/, '')
@@ -861,8 +853,15 @@ function runSwiftCrypto(
   deferNative(name, async () => {
     const built = await run('swiftc', [...nativeFlags('swift'), '-o', exe, file])
 
+    // only a missing framework is the toolchain's; any other build error is the emitted code's, and fails
     if (built.status !== 0) {
-      skipped(name, `swiftc could not build (CryptoKit unavailable?): ${built.stderr.slice(0, 120)}`)
+      const error = built.stderr.split('\n').find(line => line.includes('error:')) ?? built.stderr.slice(0, 200)
+
+      if (/no such module/.test(built.stderr)) {
+        skipped(name, `swiftc could not resolve a framework: ${error}`)
+      } else {
+        ok(name, `build failed: ${error}`, want)
+      }
 
       return
     }

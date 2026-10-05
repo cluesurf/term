@@ -63,6 +63,7 @@ export function bannerText(): string {
     '    term move mark 2       Bump minor version',
     '    term move mark 1       Bump major version',
     '    term move mark rc      Start or move a pre-release',
+    '    term self              This install of term: check, update, or go back',
     '',
     chalk.yellow('  Info'),
     '    term show              Show the toolchain version and platform',

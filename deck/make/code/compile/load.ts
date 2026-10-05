@@ -60,7 +60,10 @@ type ImportScan = {
 // is private to the file it names. `at` is where each name's first `find` line is, for that diagnostic.
 export type ImportScope = Map<
   string,
-  { finds: Map<string, string[]>; bears: string[]; at?: Map<string, Span> }
+  // `aliases`: the files each ALIAS a find names reached (`find to-number, name decimal-to-number` -> the module
+  // it was found in), since two aliases of one imported name may come from two modules
+  // `plain`: the files a name was found in WITHOUT an alias, what a reference written as the bare name reaches
+  { finds: Map<string, string[]>; bears: string[]; at?: Map<string, Span>; aliases?: Map<string, string[]>; plain?: Map<string, string[]> }
 >
 
 // the parser's own renderer, so an interpolated path keeps its braces: `load @term/base/code/native/{platform}/float`
@@ -283,6 +286,8 @@ export function collectModules(
       finds: new Map<string, string[]>(),
       bears: [] as string[],
       at: new Map<string, Span>(),
+      aliases: new Map<string, string[]>(),
+      plain: new Map<string, string[]>(),
     }
     scope.set(source.file, own)
 
@@ -317,6 +322,14 @@ export function collectModules(
 
           entry.names.forEach((name, i) => {
             own.finds.set(name, [...(own.finds.get(name) ?? []), dependency.file])
+
+            const alias = entry.aliases[i]
+
+            if (alias !== undefined) {
+              own.aliases.set(alias, [...(own.aliases.get(alias) ?? []), dependency.file])
+            } else {
+              own.plain.set(name, [...(own.plain.get(name) ?? []), dependency.file])
+            }
 
             if (!own.at.has(name) && entry.spans[i]) {
               own.at.set(name, { ...entry.spans[i]!, file: source.file })

@@ -233,6 +233,10 @@ fun CxHostedStepper(slot: TermSlot) {
 
 object nativeView {
     var root: TermNode? = null
+    // set by a host's `inputMethod` when a test is the keyboard: a field's text input session then stays with the test
+    // and never reaches the platform, whose own input method manager would share the field's edit processor and finish
+    // the composition whenever it restarted input (Android did, between stages, by a race a cold emulator lost)
+    @Volatile var keyboardIsTest = false
     private var title = ""
     private var width = 800
     private var height = 600
@@ -1123,7 +1127,7 @@ class CxFieldInput(private val node: TermNode) : androidx.compose.ui.platform.Pl
     ): Nothing {
         node.request = request
         try {
-            nextHandler.startInputMethod(request)
+            if (nativeView.keyboardIsTest) kotlinx.coroutines.awaitCancellation() else nextHandler.startInputMethod(request)
         } finally {
             if (node.request === request) node.request = null
         }

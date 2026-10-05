@@ -1,0 +1,293 @@
+# What `term time --cpu` and `--memory` report, from the numbers a profiled run gives back. Pure. time/cpu.ts and
+# time/memory.ts run the compiled program in a child process and read what it wrote; this turns that into the result
+# and the text printed.
+#
+# Ported from the pure halves of time/cpu.ts (`summarize`, `formatCpuResult`) and time/memory.ts (`formatBytes`,
+# `formatMemoryResult`, and the heap arithmetic) (self-hosting, 2026-10-04). The process work stays in those two files,
+# as time/output.ts kept the clock and the disk. Three shapes changed:
+#   - the result fields are kebab here and camelCase on TypeScript (`self-ms` is `selfMs`). The originals' snake_case
+#     keys were read by nothing but the two format tasks, which moved with them
+#   - a figure is placed with the stdlib's `to-fixed`, as time/stats' durations are: the decimal a number prints as,
+#     half away from zero, where `toFixed` rounded the binary value. Only ties differ, and the pairing counts them apart
+#   - a width is counted in code points (`char-count`), where `.length` counted UTF-16 units. They differ only for a
+#     function name outside the Basic Multilingual Plane
+# The profile is read as V8 writes it: its fields are the JSON's own names, so a parsed `.cpuprofile` is one.
+
+load @term/base/list
+  find sort
+
+load @term/base/ordering
+  find ordering
+
+load @term/base/float
+  find to-decimal
+
+load @term/base/text
+  find char-count
+  find pad-left
+  find pad-right
+  find last-index-of
+  find substring
+  find ends-with
+
+load @term/base/text/number
+  find to-fixed
+
+# a V8 `.cpuprofile`, the part read here
+form call-frame
+  link function-name, like text
+  link url, like text
+  link line-number, like number
+
+form profile-node
+  link id, like number
+  link call-frame, like call-frame
+
+form v8-profile
+  link nodes, like list, like profile-node
+  link start-time, like number
+  link end-time, like number
+  link samples, like list, like number
+  link time-deltas, like list, like number
+
+form cpu-frame
+  link name, like text
+  link location, like text
+  link self-ms, like decimal
+  link total-ms, like decimal
+
+form cpu-result
+  link name, like text
+  link duration-ms, like decimal
+  link sample-count, like number
+  link frames, like list, like cpu-frame
+
+form memory-result
+  link name, like text
+  link heap-used-before-bytes, like number
+  link heap-used-after-bytes, like number
+  link heap-delta-bytes, like number
+  link rss-after-bytes, like number
+
+# the last part of a path, as Node's POSIX `basename` reads one: trailing slashes are not a part
+task base-name
+  take path, like text
+  like text
+
+  save rest, path
+  walk test
+    hook test, ends-with(rest, </>)
+    hook hold
+      save rest, substring(rest, 0, subtract(char-count(rest), 1))
+
+  back substring(rest, add(last-index-of(rest, </>), 1))
+
+# V8's own frames, which say nothing about the program
+task is-synthetic
+  take name, like text
+  like boolean
+
+  back or(or(is-equal(name, <(root)>), is-equal(name, <(program)>)), or(is-equal(name, <(idle)>), is-equal(name, <(garbage collector)>)))
+
+# the hottest first; equal times keep the order they were met in, as a stable sort does
+task by-self-time
+  take left, like cpu-frame
+  take right, like cpu-frame
+  like ordering
+
+  fork test, is-above(left/self-ms, right/self-ms)
+    hold
+      back make less
+  fork test, is-below(left/self-ms, right/self-ms)
+    hold
+      back make greater
+  back make equal
+
+# attribute each sample's elapsed time to the node it landed on (self time), gather it by call frame, and rank. V8's
+# synthetic frames (the profiler root, the collector, the program, idle) are skipped so the program's own surface
+task summarize
+  take profile, like v8-profile
+  take name, like text
+  take top, like number
+  like cpu-result
+
+  host nodes, make hash
+  walk profile/nodes
+    take node
+    nodes/set(node/id, node)
+
+  # each sampled node's self time, kept in the order a node was first sampled
+  host self-ms, make hash
+  host sampled, make list
+  save at, 0
+  walk profile/samples
+    take id
+    save delta, 0
+    fork test, is-below(at, profile/time-deltas/length)
+      hold
+        save delta, get(profile/time-deltas, at)
+    fork test, has(self-ms, id)
+      miss
+        sampled/push(id)
+        self-ms/set(id, 0.0)
+    self-ms/set(id, add(get-or-default(self-ms, id, 0.0), divide(to-decimal(delta), 1000.0)))
+    save at, add(at, 1)
+
+  # the frames, gathered by name and place, in the order they were first met
+  host frames, make hash
+  host order, make list
+  walk sampled
+    take id
+    fork test, has(nodes, id)
+      hold
+        host node, get-or-default(nodes, id, blank-node())
+        save function-name, node/call-frame/function-name
+        fork test, is-equal(function-name, <>)
+          hold
+            save function-name, <(anonymous)>
+        fork test, is-synthetic(function-name)
+          miss
+            save file, <native>
+            fork test, is-equal(node/call-frame/url, <>)
+              miss
+                save file, base-name(node/call-frame/url)
+            save location, <{file}:{add(node/call-frame/line-number, 1)}>
+            save key, <{function-name}@{location}>
+            save ms, get-or-default(self-ms, id, 0.0)
+            fork test, has(frames, key)
+              hold
+                host held, get-or-default(frames, key, blank-frame())
+                save held/self-ms, add(held/self-ms, ms)
+                save held/total-ms, held/self-ms
+                frames/set(key, held)
+              miss
+                order/push(key)
+                frames/set(key, make-frame(function-name, location, ms))
+
+  host gathered, make list
+  walk order
+    take key
+    gathered/push(get-or-default(frames, key, blank-frame()))
+
+  save ranked, sort(gathered, by-self-time)
+  host kept, make list
+  walk ranked
+    take frame
+    fork test, is-below(kept/length, top)
+      hold
+        kept/push(frame)
+
+  back
+    make cpu-result
+      bind name, name
+      bind duration-ms, divide(to-decimal(subtract(profile/end-time, profile/start-time)), 1000.0)
+      bind sample-count, profile/samples/length
+      bind frames, kept
+
+task blank-node
+  like profile-node
+
+  back
+    make profile-node
+      bind id, 0
+      bind call-frame
+        make call-frame
+          bind function-name, <>
+          bind url, <>
+          bind line-number, 0
+
+task blank-frame
+  like cpu-frame
+
+  back make-frame(<>, <>, 0.0)
+
+task make-frame
+  take name, like text
+  take location, like text
+  take ms, like decimal
+  like cpu-frame
+
+  back
+    make cpu-frame
+      bind name, name
+      bind location, location
+      bind self-ms, ms
+      bind total-ms, ms
+
+task format-cpu-result
+  take result, like cpu-result
+  like text
+
+  host lines, make list
+  lines/push(<{result/name}: {to-fixed(result/duration-ms, 1)}ms wall, {result/sample-count} samples>)
+  lines/push(<>)
+
+  fork test, is-equal(result/frames/length, 0)
+    hold
+      lines/push(<  (no user frames sampled; the run was too short)>)
+      back join(lines, <\n>)
+
+  save width, 8
+  walk result/frames
+    take frame
+    fork test, is-above(char-count(frame/name), width)
+      hold
+        save width, char-count(frame/name)
+
+  lines/push(<  {pad-right(<function>, width, < >)}  {pad-left(<self>, 9, < >)}  location>)
+  walk result/frames
+    take frame
+    lines/push(<  {pad-right(frame/name, width, < >)}  {pad-left(<{to-fixed(frame/self-ms, 1)}ms>, 9, < >)}  {frame/location}>)
+
+  back join(lines, <\n>)
+
+# the heap a run retained: what was in use after a collection at the end, less what was in use after one at the start
+task make-memory-result
+  take name, like text
+  take heap-before, like number
+  take heap-after, like number
+  take rss-after, like number
+  like memory-result
+
+  back
+    make memory-result
+      bind name, name
+      bind heap-used-before-bytes, heap-before
+      bind heap-used-after-bytes, heap-after
+      bind heap-delta-bytes, subtract(heap-after, heap-before)
+      bind rss-after-bytes, rss-after
+
+task format-bytes
+  take n, like number
+  like text
+
+  save sign, <>
+  save size, n
+  fork test, is-below(n, 0)
+    hold
+      save sign, <->
+      save size, subtract(0, n)
+
+  fork test, is-below(size, 1024)
+    hold
+      back <{sign}{size}B>
+  fork test, is-below(size, 1048576)
+    hold
+      back <{sign}{to-fixed(divide(to-decimal(size), 1024.0), 1)}KB>
+  fork test, is-below(size, 1073741824)
+    hold
+      back <{sign}{to-fixed(divide(divide(to-decimal(size), 1024.0), 1024.0), 2)}MB>
+  back <{sign}{to-fixed(divide(divide(divide(to-decimal(size), 1024.0), 1024.0), 1024.0), 2)}GB>
+
+task format-memory-result
+  take result, like memory-result
+  like text
+
+  host lines, make list
+  lines/push(<  {result/name}>)
+  lines/push(<    heap before: {format-bytes(result/heap-used-before-bytes)}>)
+  lines/push(<    heap after:  {format-bytes(result/heap-used-after-bytes)}>)
+  lines/push(<    retained:    {format-bytes(result/heap-delta-bytes)}>)
+  lines/push(<    rss:         {format-bytes(result/rss-after-bytes)}>)
+
+  back join(lines, <\n>)

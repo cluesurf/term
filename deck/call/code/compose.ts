@@ -185,7 +185,9 @@ function stage<T>(stages: Stages, name: string, run: () => T): T {
 export type ComposeBuilt =
   | { form: 'skipped'; reason: string }
   | { form: 'failed'; stage: 'compile' | 'scope' | 'prelude' | 'flags' | 'build'; reason: string }
-  | { form: 'built'; jar: string; classpath: string; main: string; stages: Stages }
+  // `runtimeJars` are the program's own compiled runtime (compileKotlin), which every OS's app image carries as it is,
+  // beside that OS's Compose libraries
+  | { form: 'built'; jar: string; classpath: string; main: string; runtimeJars: string[]; stages: Stages }
 
 // compile `text` (entry file `<dir>/<name>.tree`) for Compose on the desktop JVM and build it into a jar. `root` is where
 // the program's packages resolve; `file` is the entry's own path when the program is an app's (see entryOf). A session
@@ -275,11 +277,13 @@ export function buildCompose({
     return { form: 'failed', stage: 'build', reason: errors.slice(0, 8).join('\n') || built.output.slice(-800) }
   }
 
-  // kotlinc names a file's top-level class after the file: `<name>.kt` holds `<Name>Kt`
-  const main = `${name.charAt(0).toUpperCase()}${name.slice(1).replace(/-(\w)/g, (_, c: string) => c.toUpperCase())}Kt`
+  // kotlinc names a file's top-level class after the file, capitalized, a character no name may hold written `_`:
+  // `app.kt` holds `AppKt` and `compose-linux.kt` holds `Compose_linuxKt` (it was guessed `ComposeLinuxKt`, which no
+  // build found until a name had a hyphen in it)
+  const main = `${name.charAt(0).toUpperCase()}${name.slice(1)}`.replace(/[^A-Za-z0-9_$]/g, '_') + 'Kt'
 
   // the runtime's jar first: the program is run, and packaged, with it beside the Compose libraries
-  return { form: 'built', jar, classpath: [...built.runtimeJars, classpath].join(':'), main, stages }
+  return { form: 'built', jar, classpath: [...built.runtimeJars, classpath].join(':'), main, runtimeJars: built.runtimeJars, stages }
 }
 
 export type ComposeAndroidBuilt =
@@ -479,14 +483,28 @@ function dexFiles(dir: string): string[] {
 // where the Android stages that do not change between edits are kept: beside the Compose runtimes
 const ANDROID_CACHE = join(RUNTIME_CACHE, '..', 'compose-android')
 
+// the list of every file a kept folder was made with, written into it
+const KEPT = '.kept'
+
+// whether a kept folder still holds every file it was made with. The cache is under $TMPDIR, which macOS purges FILE
+// BY FILE, so a folder can survive with a file gone, and is then made again rather than trusted
+function whole(dir: string): boolean {
+  const list = join(dir, KEPT)
+
+  return existsSync(list) && readFileSync(list, 'utf8').split('\n').filter(Boolean).every(one => existsSync(join(dir, one)))
+}
+
 // a folder made once per `key` and kept under `root`: made under a name of its own and renamed into place, so a build
-// running beside this one never reads half of it, and a stage that failed leaves nothing behind. Answers its path
+// running beside this one never reads half of it, a stage that failed leaves nothing behind, and one that lost a file
+// since is made again (`whole`). Answers its path
 function kept(root: string, key: string, make: (dir: string) => void): string {
   const done = join(root, key)
 
-  if (existsSync(done)) {
+  if (existsSync(done) && whole(done)) {
     return done
   }
+
+  rmSync(done, { recursive: true, force: true })
 
   const fresh = join(root, `${key}.${process.pid}.${Date.now()}`)
   mkdirSync(fresh, { recursive: true })
@@ -497,6 +515,9 @@ function kept(root: string, key: string, make: (dir: string) => void): string {
     rmSync(fresh, { recursive: true, force: true })
     throw e
   }
+
+  // every file the stage made, by its path inside the folder, for `whole` to find again
+  writeFileSync(join(fresh, KEPT), `${filesUnder(fresh, '').map(one => one.slice(fresh.length + 1)).join('\n')}\n`)
 
   try {
     renameSync(fresh, done)
@@ -640,6 +661,55 @@ function linkAndroidApp(input: {
   return { base: join(dir, 'base.apk'), rJar: join(dir, 'r.jar'), rDex: join(dir, 'r-dex') }
 }
 
+// jpackage's input folder for a desktop app, made at `input`: the program's jar and every library beside it. Each library
+// under a name of its own: two Compose jars share a file name (`runtime-desktop-1.12.1.jar` is both
+// org.jetbrains.compose.runtime's redirect and androidx.compose.runtime's runtime), and copied by name alone the second
+// replaced the first, so the packaged app had no `Composer`. Shared by the image made here and one made on another
+// machine for its own OS (compose-target-0004)
+export function composeInput({ jar, libraries, input }: { jar: string; libraries: string[]; input: string }): void {
+  rmSync(input, { recursive: true, force: true })
+  mkdirSync(input, { recursive: true })
+  copyFileSync(jar, join(input, basename(jar)))
+  libraries.forEach((library, index) => copyFileSync(library, join(input, `${String(index).padStart(3, '0')}-${basename(library)}`)))
+}
+
+// jpackage's arguments for a desktop app image, every path as the machine that RUNS jpackage sees it: this one's, or
+// another's for its own OS (jpackage builds only for the OS it runs on). `console` keeps a Windows launcher's standard
+// output, which a Windows app image's launcher, a GUI program, otherwise has none of
+export function jpackageArguments({
+  input,
+  jar,
+  main,
+  name,
+  dest,
+  console = false,
+}: {
+  input: string
+  jar: string
+  main: string
+  name: string
+  dest: string
+  console?: boolean
+}): string[] {
+  return [
+    '--type',
+    'app-image',
+    '--input',
+    input,
+    '--main-jar',
+    basename(jar),
+    '--main-class',
+    main,
+    '--name',
+    name,
+    '--dest',
+    dest,
+    '--java-options',
+    '--enable-native-access=ALL-UNNAMED',
+    ...(console ? ['--win-console'] : []),
+  ]
+}
+
 // a built desktop jar packaged by jpackage as an app image with its own JVM, for the OS this runs on: the jar and every
 // Compose library in one input folder, `main` the class kotlinc named after the program's file. Answers the image's path
 export function packageComposeDesktop({
@@ -656,36 +726,10 @@ export function packageComposeDesktop({
   out: string
 }): string {
   const input = join(out, 'input')
-  rmSync(input, { recursive: true, force: true })
-  mkdirSync(input, { recursive: true })
-  copyFileSync(jar, join(input, basename(jar)))
-
-  // each library under a name of its own: two Compose jars share a file name (`runtime-desktop-1.12.1.jar` is both
-  // org.jetbrains.compose.runtime's redirect and androidx.compose.runtime's runtime), and copied by name alone the
-  // second replaced the first, so the packaged app had no `Composer`
-  classpath
-    .split(':')
-    .filter(Boolean)
-    .forEach((library, index) => copyFileSync(library, join(input, `${String(index).padStart(3, '0')}-${basename(library)}`)))
-
+  composeInput({ jar, libraries: classpath.split(':').filter(Boolean), input })
   const image = join(out, process.platform === 'darwin' ? `${name}.app` : name)
   rmSync(image, { recursive: true, force: true })
-  run('jpackage', [
-    '--type',
-    'app-image',
-    '--input',
-    input,
-    '--main-jar',
-    basename(jar),
-    '--main-class',
-    main,
-    '--name',
-    name,
-    '--dest',
-    out,
-    '--java-options',
-    '--enable-native-access=ALL-UNNAMED',
-  ])
+  run('jpackage', jpackageArguments({ input, jar, main, name, dest: out }))
 
   return image
 }

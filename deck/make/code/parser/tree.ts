@@ -7,7 +7,7 @@ import type {
 } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
 import type { Token } from '@term/make/code/parser/token'
-import { tokenize } from '@term/make/code/parser/token'
+import { TokenKind, rawContent, tokenize } from '@term/make/code/parser/token'
 import type { Event } from '@term/make/code/parser/event'
 import {
   EventKind,
@@ -40,6 +40,9 @@ export type NameNode = {
 export type TextNode = {
   kind: 'text'
   parts: (ChunkNode | InterpolationNode)[]
+  // a RAW literal (`<<...>>`, token.ts) as it was written: its parts are the one chunk an ordinary literal would carry
+  // for the same text, so every reader sees an ordinary literal, and a printer writes this back between `<<` and `>>`
+  raw?: string
   parent?: GroupNode
   // CST trivia: comments written above a line that opens with this text
   comments?: Comment[]
@@ -227,6 +230,12 @@ function buildTree(
 
         if (here.kind === 'group') {
           const text: TextNode = { kind: 'text', parts: [] }
+
+          // a raw literal opens with `<<`, and its content is the one chunk after it, or nothing
+          if (event.token.text === '<<') {
+            const next = event.token.next
+            text.raw = next?.kind === TokenKind.Chunk ? rawContent(next.text) : ''
+          }
 
           if (pendingComments.length > 0) {
             text.comments = pendingComments
@@ -506,9 +515,14 @@ export function parseTolerant(source: { file: string; text: string }): {
 //
 // A backslash and the character after it are copied through untouched. Escaping an angle that already carries
 // one doubles it, which is how an earlier attempt took the round-trip failures from 12 to 83.
+//
+// And an angle that opens the CONTENT is escaped with its partner, balanced or not: printed bare after the literal's
+// own `<` it would read as `<<`, which opens a raw literal (token.ts), so `<\<x\>>` would come back as `<<x>>`, the
+// raw text `x`.
 export function escapeTextChunks(chunks: string[]): string[] {
   const escape = chunks.map(() => new Set<number>())
   const opens: { part: number; at: number }[] = []
+  const leads = chunks.findIndex(text => text.length > 0)
 
   chunks.forEach((text, part) => {
     for (let i = 0; i < text.length; i++) {
@@ -525,6 +539,9 @@ export function escapeTextChunks(chunks: string[]): string[] {
         const open = opens.pop()
 
         if (!open) {
+          escape[part]!.add(i)
+        } else if (open.part === leads && open.at === 0) {
+          escape[open.part]!.add(0)
           escape[part]!.add(i)
         }
       }
@@ -601,7 +618,7 @@ export function renderHead(node: Node): string {
     case 'name':
       return renderParts(node.parts)
     case 'text':
-      return `<${renderParts(node.parts, true)}>`
+      return node.raw !== undefined ? `<<${node.raw}>>` : `<${renderParts(node.parts, true)}>`
     case 'integer':
       return String(node.value)
     // the TOKEN text, not the value: `String(1.0)` is `"1"`, which re-reads as an INTEGER and silently changes

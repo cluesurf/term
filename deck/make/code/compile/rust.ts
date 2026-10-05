@@ -58,7 +58,6 @@ import {
 import type { Lend, TextCursors } from '@term/make/code/compile/backend'
 import type { CollectionOp } from '@term/make/code/compile/backend'
 import { armLocals } from '@term/make/code/check/arm'
-import { readNames } from '@term/make/code/check/facts'
 import { privateForms } from '@term/make/code/compile/place'
 import { raiseSets } from '@term/make/code/check/effects'
 import { provenIncrements } from '@term/make/code/ir/facts/range'
@@ -701,6 +700,8 @@ function emitRustPass(
   // a variant's field names, for binding them in a `match` arm (`Maybe::Some { value } => ...`) so the branch body can
   // read them; a `subject/field` read inside the branch then resolves to that bound local.
   const variantFields = new Map<string, string[]>()
+  // the same, by FORM and case (`rope/leaf`): two forms may name a case alike, and an arm reads its own form's
+  const caseFieldNames = new Map<string, string[]>()
   // struct / variant fields that hold a closure (a `Box<dyn Fn>`): calling one needs parentheses (`(r.handle)(x)`),
   // since rust would otherwise read `r.handle(x)` as a method call on a field named `handle`.
   const closureFields = new Set<string>()
@@ -721,6 +722,7 @@ function emitRustPass(
         v.name,
         v.fields.map(f => f.name),
       )
+      caseFieldNames.set(`${node.name}/${v.name}`, v.fields.map(f => f.name))
 
       for (const f of v.fields) {
         if (f.type.kind === 'function') {
@@ -749,8 +751,13 @@ function emitRustPass(
   const payloads = new Map<string, string>()
   const takenNames = new Set(program.flatMap(n => (n.form === 'record-type' ? [pascal(n.name)] : [])))
 
+  // A form the program clones (held by `Rc`) takes the same payload behind its `Rc`: `Link(Rc<ChainLink>)`, so a value
+  // is one pointer and a clone one count, where `Link { value, next: Rc<Chain> }` was a 16-byte value copied with every
+  // clone. With each name's last read moved (`manyMoves`), Rust List 43 ms to 33 against the hand version's
+  // `Option<Rc<Element>>` at 34; either alone was worth 3 (`tmp/rust-list-payload-ab.ts`). Not a generic form, whose
+  // struct would carry the parameters, and not a `mark shared` one
   for (const node of program) {
-    if (node.form !== 'record-type' || !boxedForms.has(node.name)) {
+    if (node.form !== 'record-type' || !(boxedForms.has(node.name) || (node.params.length === 0 && !node.shared))) {
       continue
     }
 
@@ -764,6 +771,8 @@ function emitRustPass(
   }
 
   const payloadOf = (owner: string, label: string): string | undefined => payloads.get(`${owner}/${label}`)
+  // what holds a form's payload: a `Box` for a form nothing clones, an `Rc` for one the program shares
+  const payloadHolder = (owner: string): string => (boxedForms.has(owner) ? 'Box' : 'std::rc::Rc')
   // the payload a form's reused boxes hold: its one payload case's, so the helpers have one type. A form with two keeps
   // the plain allocation
   const reusedPayload = (owner: string): string | undefined => {
@@ -992,11 +1001,12 @@ function emitRustPass(
     // a form held by payload reuses only the boxes of its one payload case (`reusedPayload`)
     const payloaded = form?.form === 'record-type' && form.variants.some(v => payloadOf(name, v.name))
 
+    // an `Rc` payload is not reused: its node may be shared
     return (
       form?.form === 'record-type' &&
       form.params.length === 0 &&
       form.variants.some(v => v.fields.length === 0) &&
-      (!payloaded || reusedPayload(name) !== undefined)
+      (!payloaded || (reusedPayload(name) !== undefined && boxedForms.has(name)))
     )
   }
 
@@ -1251,10 +1261,12 @@ function emitRustPass(
 
     return 'Vec::new()'
   }
-  const owned = (value: Expression): string => {
-    // the last of several reads of its name in this statement (`manyMoves`), every earlier one written as a clone
+  // the last of several reads of its name in this statement (`manyMoves`), every earlier one written as a clone, of a
+  // value held by value here: asked BEFORE the read is written, which counts as a use of its own
+  const lastOfManyMove = (value: Expression): boolean => {
     const prior = value.form === 'variable' ? statementUses.get(value.name) : undefined
-    const lastOfMany =
+
+    return (
       value.form === 'variable' &&
       manyMoves.has(value) &&
       prior !== undefined &&
@@ -1269,6 +1281,19 @@ function emitRustPass(
       !lentNames.has(value.name) &&
       !ownedNames.has(value.name) &&
       !sliceNames.has(value.name)
+    )
+  }
+  // a read just written as a `.clone()`: counted as a clone, not as some other use of its name
+  const countClone = (value: Expression): void => {
+    const uses = value.form === 'variable' ? statementUses.get(value.name) : undefined
+
+    if (uses) {
+      uses.other--
+      uses.clone++
+    }
+  }
+  const owned = (value: Expression): string => {
+    const lastOfMany = lastOfManyMove(value)
     const rendered = expr(value)
     // MOVE ON LAST USE, as a call argument does: a variable read exactly once in the function, and not in a loop or a
     // closure (`moveArgs`), moves into the structure. Building `node(head, into)` cloned `into` at its only read
@@ -1287,16 +1312,7 @@ function emitRustPass(
 
     if (clones) {
       noteClone(value.type)
-
-      // this read is written as a clone, not as some other use of its name
-      if (value.form === 'variable') {
-        const uses = statementUses.get(value.name)
-
-        if (uses) {
-          uses.other--
-          uses.clone++
-        }
-      }
+      countClone(value)
     }
 
     return clones ? `${rendered}.clone()` : rendered
@@ -1393,6 +1409,11 @@ function emitRustPass(
   const variantTypes = new Map(
     program.flatMap(n =>
       n.form === 'record-type' ? n.variants.map(v => [v.name, new Map(v.fields.map(f => [f.name, f.type]))] as const) : [],
+    ),
+  )
+  const caseFieldTypes = new Map(
+    program.flatMap(n =>
+      n.form === 'record-type' ? n.variants.map(v => [`${n.name}/${v.name}`, new Map(v.fields.map(f => [f.name, f.type]))] as const) : [],
     ),
   )
   // the records a borrow may reach into (every form but a `mark shared` handle), as `borrowedRecords` counts them
@@ -2430,7 +2451,7 @@ function emitRustPass(
             if (
               a.form === 'variable' &&
               a.type &&
-              (moveArgs.has(a.name) || lastMove(a) || ownsInner(elementLists.items, a))
+              (moveArgs.has(a.name) || lastMove(a) || lastOfManyMove(a) || ownsInner(elementLists.items, a))
             ) {
               return expr(a)
             }
@@ -2457,6 +2478,7 @@ function emitRustPass(
 
             if (clones) {
               noteClone(a.type)
+              countClone(a)
             }
 
             return clones
@@ -2552,6 +2574,37 @@ function emitRustPass(
                   : `&${argList[i]}.borrow()`
             }
           })
+        }
+
+        // a call that hands a shared list's cell over (`out.clone()`) may borrow it mutably inside, so an argument that
+        // borrows the same cell to read it (`list_get(&out.borrow(), j)`) is evaluated into a local first. Inline, its
+        // `Ref` lives to the call's semicolon and the callee's `borrow_mut` panics: "RefCell already borrowed". Every
+        // argument that does something is hoisted, in order, so evaluation order is kept
+        if (!lending) {
+          const handed = new Set(
+            node.args.flatMap(a =>
+              a.form === 'variable' &&
+              (a.type?.kind === 'array' || (a.type?.kind === 'named' && a.type.name === 'list')) &&
+              !ownedNames.has(a.name) &&
+              !lentNames.has(a.name)
+                ? [a.name]
+                : [],
+            ),
+          )
+          const collides = node.args.some(
+            (a, i) => a.form !== 'variable' && (argList[i] ?? '').includes('.borrow') && [...namesIn(a)].some(n => handed.has(n)),
+          )
+
+          if (collides) {
+            node.args.forEach((a, i) => {
+              if (a.form === 'variable' || a.form === 'integer' || a.form === 'float' || a.form === 'boolean') {
+                return
+              }
+
+              hoisted.push(`let __lend_${i} = ${argList[i]};`)
+              argList[i] = `__lend_${i}`
+            })
+          }
         }
 
         // the call is a `let` statement, never the block's tail: a tail's temporaries (the `RefMut` the lend made)
@@ -2692,7 +2745,7 @@ function emitRustPass(
             const built = `${payload} { ${fields.join(', ')} }`
 
             return `${named}::${pascal(node.name)}(${
-              reusable(owner) ? (reuseBuilt.add(owner), `term_box_${snake(owner)}(${built})`) : `Box::new(${built})`
+              reusable(owner) ? (reuseBuilt.add(owner), `term_box_${snake(owner)}(${built})`) : `${payloadHolder(owner)}::new(${built})`
             })`
           }
 
@@ -3884,9 +3937,7 @@ function emitRustPass(
         // like a plain one. It used to fall to the pass-on branch and hand back a String where a TermException goes
         const carrier =
           node.value.form === 'string' || node.value.form === 'template'
-            ? tell(
-                `TermException(Box::new(TermRaised { host: String::new(), form: "failure".to_string(), note: ${expr(node.value)}, code: String::new(), time: 0, link: std::rc::Rc::new(()), base: std::rc::Rc::new(()) }))`,
-              )
+            ? tell(`term_fail(${expr(node.value).replace(/^("(?:[^"\\]|\\.)*")\.to_string\(\)$/, '$1')})`)
             : node.value.form === 'record' && exceptionForms.has(node.value.name)
               ? tell(
                   `{ let raised = ${expr(node.value)}; TermException(Box::new(TermRaised { host: raised.host.clone(), form: raised.form.clone(), note: raised.note.clone(), code: raised.code.clone(), time: raised.time, link: std::rc::Rc::new(raised.link.clone()), base: std::rc::Rc::new(raised) })) }`,
@@ -4067,7 +4118,7 @@ function emitRustPass(
             const arm = node.exceptionArms![b.label]!
             const bodyText = block(b.body, d + 2)
             // only the fields the arm READS, asked of the program and not of the emitted text (swift.ts says why)
-            const read = readNames(b.body)
+            const read = namesIn(b.body)
             const locals = armLocals([...arm.shared, ...arm.link], b.binds ?? [])
               .filter(({ local }) => read.has(local))
               .map(({ field, local }) =>
@@ -4179,7 +4230,8 @@ function emitRustPass(
             subjectType?.kind === 'named' && variantOwners.get(b.label)?.has(subjectType.name)
               ? subjectType.name
               : (variantOwner.get(b.label) ?? '')
-          const fields = variantFields.get(b.label) ?? []
+          // the case of the subject's own form, where two forms name a case alike (engine/value port, 2026-10-04)
+          const fields = caseFieldNames.get(`${owner}/${b.label}`) ?? variantFields.get(b.label) ?? []
           // bind the variant's fields so the branch body can read them; narrow the subject for this arm so a
           // `subject/field` read resolves to the bound local (restored after the arm so sibling arms are unaffected)
           // the arm's `link` lines select or rename the fields (see check/arm.ts); a field left out is `..`
@@ -4211,12 +4263,15 @@ function emitRustPass(
               return { arm: '(_)', lines: [] }
             }
 
+            // an `Rc` payload opened by value moves out when the node is unique and is cloned out when shared
             const source =
               borrowedSubject || referenced
                 ? '&**__node'
                 : reusable(owner)
                   ? (reuseOpened.add(owner), `term_open_${snake(owner)}(__node)`)
-                  : '*__node'
+                  : boxedForms.has(owner)
+                    ? '*__node'
+                    : 'std::rc::Rc::unwrap_or_clone(__node)'
 
             return { arm: '(__node)', lines: [`${pad(d + 2)}let ${payload}${fieldPattern} = ${source};`] }
           }
@@ -4231,7 +4286,7 @@ function emitRustPass(
 
           // under a borrowed subject each field arrives as a reference: a record field stays one (a borrowed name in the
           // arm), a `Copy` field is copied out and anything else cloned out, so the arm's body reads it as it always did
-          const fieldTypes = variantTypes.get(b.label)
+          const fieldTypes = caseFieldTypes.get(`${owner}/${b.label}`) ?? variantTypes.get(b.label)
           // the same test `borrowedRecords` makes: a field whose type is a record (not a `mark shared` handle)
           const recordField = (field: string): boolean => {
             const type = fieldTypes?.get(field)
@@ -4906,6 +4961,12 @@ function emitRustPass(
         ].join(', ')})]\n${pad(d)}`
         const written = writeIt ? `\n${pad(d)}${keyedEquality(node, keyed)}` : ''
 
+        // an ALIAS form (a base and nothing of its own, `form program / like list, like statement`) is its base. It was
+        // emitted as an empty struct, so `for stmt in code` over a `program` did not compile (engine/ast, 2026-10-04)
+        if (node.alias && node.fields.length === 0 && node.variants.length === 0) {
+          return `pub type ${pascal(node.name)}${generics} = ${rustType(node.alias)};`
+        }
+
         if (node.variants.length > 0) {
           // the structs the payload cases hold, after the enum, deriving what it derives (`payloads`)
           const structs: string[] = []
@@ -4928,7 +4989,7 @@ function emitRustPass(
             if (payload) {
               structs.push(`\n${pad(d)}${derive}struct ${payload} { ${fields.join(', ')} }`)
 
-              return `${pad(d + 1)}${pascal(v.name)}(Box<${payload}>)`
+              return `${pad(d + 1)}${pascal(v.name)}(${payloadHolder(node.name)}<${payload}>)`
             }
 
             return `${pad(d + 1)}${pascal(v.name)}${
@@ -5398,7 +5459,15 @@ impl std::ops::Deref for TermException { type Target = TermRaised; fn deref(&sel
 impl std::ops::DerefMut for TermException { fn deref_mut(&mut self) -> &mut TermRaised { &mut self.0 } }
 impl std::fmt::Display for TermException { fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { write!(f, "{}: {}", self.form, self.note) } }
 impl std::fmt::Debug for TermException { fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { write!(f, "{}: {}", self.form, self.note) } }
-impl std::error::Error for TermException {}`,
+impl std::error::Error for TermException {}
+// a text raised as \`failure\`, built out of line: the carrier's seven fields written at each raise kept the task that
+// raises too large for LLVM to lay out its happy path tight (Towers 69 ms to 63, \`tmp/rust-towers-rest4-ab.ts\`)
+#[allow(dead_code)]
+#[cold]
+#[inline(never)]
+fn term_fail(note: impl Into<String>) -> TermException {
+    TermException(Box::new(TermRaised { host: String::new(), form: "failure".to_string(), note: note.into(), code: String::new(), time: 0, link: std::rc::Rc::new(()), base: std::rc::Rc::new(()) }))
+}`,
       ]
     : []
 

@@ -53,6 +53,26 @@ bind grapheme-count
   case kotlin
     text <java.text.BreakIterator.getCharacterInstance().let \{ val bi = it; bi.setText($value); var n = 0L; while (bi.next() != java.text.BreakIterator.DONE) n++; n \}>
 
+# the grapheme clusters from `start` up to `end`, as text: a cut that never splits a user-perceived character, where
+# a code-point slice parts `e` from its accent and an emoji from its modifier. Both ends are clamped to the text, and
+# an `end` before `start` gives the empty text. Each platform's own segmenter, as `grapheme-count` uses
+bind grapheme-slice
+  take value, like text
+  take start, like number
+  take end, like number
+  like text
+  case node
+    text <(function () \{ const g = [...new Intl.Segmenter().segment($value)].map(function (s) \{ return s.segment \}); const a = Math.min(Math.max($start, 0), g.length); const b = Math.min(Math.max($end, a), g.length); return g.slice(a, b).join("") \})()>
+  case browser
+    text <(function () \{ const g = [...new Intl.Segmenter().segment($value)].map(function (s) \{ return s.segment \}); const a = Math.min(Math.max($start, 0), g.length); const b = Math.min(Math.max($end, a), g.length); return g.slice(a, b).join("") \})()>
+  case rust
+    load <unicode_segmentation/UnicodeSegmentation>
+    text <\{ let g: Vec\<&str\> = $value.graphemes(true).collect(); let a = ($start).clamp(0, g.len() as i64) as usize; let b = ($end).clamp(a as i64, g.len() as i64) as usize; g[a..b].concat() \}>
+  case swift
+    text <\{ () -\> String in let g = Array($value); let a = min(max(Int($start), 0), g.count); let b = min(max(Int($end), a), g.count); return String(g[a..\<b]) \}()>
+  case kotlin
+    text <run \{ val bi = java.text.BreakIterator.getCharacterInstance(); bi.setText($value); val cuts = mutableListOf(0); while (bi.next() != java.text.BreakIterator.DONE) cuts.add(bi.current()); val n = cuts.size - 1; val a = ($start).coerceIn(0L, n.toLong()).toInt(); val b = ($end).coerceIn(a.toLong(), n.toLong()).toInt(); $value.substring(cuts[a], cuts[b]) \}>
+
 # Unicode normalization. The four forms each map to the platform's normalizer: canonical (NFC) / canonical-decomposed
 # (NFD) / compatibility (NFKC) / compatibility-decomposed (NFKD). rust uses the unicode-normalization crate, the rest
 # use the built-in normalizer.

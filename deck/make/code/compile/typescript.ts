@@ -27,6 +27,7 @@ import {
   isText,
   gatedTasks,
   listFacts,
+  namesIn,
 } from '@term/make/code/compile/backend'
 import { lowerRoutes } from '@term/make/code/compile/route-lower'
 import { RENDER } from '@term/make/code/compile/render-names'
@@ -39,7 +40,6 @@ import {
 } from '@term/make/code/compile/bind'
 import type { Bind } from '@term/make/code/compile/bind'
 import { armLocals } from '@term/make/code/check/arm'
-import { readNames } from '@term/make/code/check/facts'
 import { provenArithmetic, type Proven } from '@term/make/code/compile/proven'
 import { boundedLoops, listKey } from '@term/make/code/ir/facts/bounds'
 import type { LoopGuard } from '@term/make/code/ir/facts/bounds'
@@ -2663,7 +2663,7 @@ function makeEmitter(
           node.cases.forEach((branch, i) => {
             const arm = node.exceptionArms![branch.label]!
             // only the fields the arm READS, asked of the program and not of the emitted text (swift.ts says why)
-            const read = readNames(branch.body)
+            const read = namesIn(branch.body)
             const locals = armLocals([...arm.shared, ...arm.link], branch.binds ?? [])
               .filter(({ local }) => read.has(local))
               .map(({ field, local }) => `${pad(depth + 1)}const ${toCamel(local)} = ${exceptionSubject}.${arm.link.includes(field) ? `link.${toMember(field)}` : toMember(field)}`)
@@ -2778,16 +2778,18 @@ function makeEmitter(
         node.cases.forEach((branch, i) => {
           // the variant's fields, as locals: `link` renames them in order, otherwise they keep their names. Only the
           // ones the body reads, so an unused field costs nothing and cannot shadow an outer name by accident.
-          const fields = (tsVariantFields.get(branch.label) ?? []).map(
+          // the case of the SUBJECT's form: two forms may name a case alike (`leaf` on engine/data/array's `vector` and
+          // string's `rope`), and keyed by the name alone the one declared last answered, so `rope`'s arm declared
+          // `vector`'s fields and read an outer `length` (the engine/value port, 2026-10-04)
+          const owned = node.subject.type?.kind === 'named' ? tsVariantFieldsByOwner.get(node.subject.type.name)?.get(branch.label) : undefined
+          const fields = (owned ?? tsVariantFields.get(branch.label) ?? []).map(
             f => f.name,
           )
-          const bodyText = branch.body
-            .map(s => statement(s, depth + 1))
-            .join('\n')
+          // the ones the arm's program READS, as the exception arms ask: a `subject.field` read stays on the subject,
+          // so nothing reaches a local except by its name, and an emitted `time.now()` is not a read of `time`
+          const read = namesIn(branch.body)
           const locals = armLocals(fields, branch.binds ?? [])
-            .filter(({ local }) =>
-              new RegExp(`\\b${toCamel(local).replace(/[^\w$]/g, '\\$&')}\\b`).test(bodyText),
-            )
+            .filter(({ local }) => read.has(local))
             .map(
               ({ field, local }) =>
                 `${pad(depth + 1)}const ${toCamel(local)} = ${subject}.${toMember(field)}`,
@@ -3082,6 +3084,8 @@ export function emitTypeScript(
   options?: {
     hmr?: boolean
     variants?: Set<string>
+    // a library host code also builds values of: no field-less case is tested by identity (compile.ts `library`)
+    library?: boolean
     env?: string
     // exception form names defined across the WHOLE program, for the same per-module reason as `variants`
     exceptions?: Set<string>
@@ -3124,7 +3128,7 @@ export function emitTypeScript(
   tsTextUsed = false
   tsListUsed = false
   tsFieldless = new Map()
-  tsIdentity = identityCases(program, options?.variants !== undefined)
+  tsIdentity = options?.library ? new Set() : identityCases(program, options?.variants !== undefined)
   tsGuards = new Map()
   tsSharedForms = new Set(
     program.flatMap(n => (n.form === 'record-type' && n.shared ? [n.name] : [])),
