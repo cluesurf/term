@@ -1684,9 +1684,9 @@ export async function callMake(input: {
               counts: [count(pool.jobs, 'units', 'unit'), count(pool.workers, 'workers', 'worker')],
               // where the time went: the walk before the pool, and the workers' building and rolling, summed
               facts: [
-                `walk ${Math.round(pool.spent.walking / 1000)} s`,
-                `build ${Math.round(pool.spent.building / 1000)} s of workers`,
-                `roll ${Math.round(pool.spent.rolling / 1000)} s of workers`,
+                `walk ${Math.round(pool.spent.walking / 1000)}s`,
+                `build ${Math.round(pool.spent.building / 1000)}s of workers`,
+                `roll ${Math.round(pool.spent.rolling / 1000)}s of workers`,
               ],
               ...(pool.failures.length > 0 ? { message: pool.failures.slice(0, 5) } : {}),
             })

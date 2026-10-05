@@ -55,6 +55,39 @@ const RENDER = renderNames()
 const guardStart = (text: string): string =>
   /^[([`]/.test(text) ? `;${text}` : text
 
+// whether an arm only READS the collection its local `name` holds: every use is a `walk` over it or its `length`. Such
+// a local of a left-out `need false` field takes the empty value with `??`, leaving the record as it was; any other use
+// (handed to a call, written through, captured) keeps `??=`, so a write through it lands in the record as it does
+// natively. A port reading a type's `args` gave every type it read `args: []`, which the checker tells from none
+// (`if (subject.args)`), 2026-10-05
+function onlyReads(body: Statement[], name: string): boolean {
+  let safe = true
+
+  const visit = (node: unknown): void => {
+    if (!safe || !node || typeof node !== 'object') return
+    if (Array.isArray(node)) return node.forEach(visit)
+    const record = node as Record<string, unknown>
+    const isName = (value: unknown): boolean => (value as { form?: string; name?: string } | undefined)?.form === 'variable' && (value as { name: string }).name === name
+
+    if (isName(record)) {
+      safe = false
+      return
+    }
+
+    for (const [key, child] of Object.entries(record)) {
+      if (key === 'span' || key === 'type') continue
+      // `walk xs` and `xs/length` read it, and nothing else of it is visited
+      if (record.form === 'for-each' && key === 'iterable' && isName(child)) continue
+      if (record.form === 'member' && key === 'target' && record.name === 'length' && isName(child)) continue
+      visit(child)
+    }
+  }
+
+  visit(body)
+
+  return safe
+}
+
 // a division of two integers: both operands typed `number` (a `float` or an unresolved operand keeps JavaScript's
 // float quotient, since its meaning is not known to be the integer one)
 // whether an emitted expression is ONE primary, safe under any operator without parentheses: a name or member chain
@@ -3124,7 +3157,7 @@ function makeEmitter(
               }
 
               if (declaredOne?.optional && !tsEmptyOf(declaredOne.type).startsWith('undefined')) {
-                const operator = emptyStored(declaredOne.type) ? '??=' : '??'
+                const operator = emptyStored(declaredOne.type) && !onlyReads(branch.body, local) ? '??=' : '??'
 
                 return `${pad(depth + 1)}const ${toCamel(local)} = (${subject}.${toMember(field)} ${operator} ${tsEmptyOf(declaredOne.type)})`
               }

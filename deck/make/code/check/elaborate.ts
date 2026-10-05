@@ -49,6 +49,7 @@ import {
   infer,
   litLevel,
   neutralVar,
+  normalTerm,
   quote,
   resetDefinitions,
   resetMetas,
@@ -125,6 +126,21 @@ function headConstantName(term: Term): string | undefined {
   }
 
   return head.tag === 'const' ? head.name : undefined
+}
+
+// every constant a term names: the operators and constructors an equation is written in
+function constantsOf(term: Term, into = new Set<string>()): Set<string> {
+  if (term.tag === 'const') {
+    into.add(term.name)
+  }
+
+  for (const child of Object.values(term)) {
+    if (child !== null && typeof child === 'object' && 'tag' in child) {
+      constantsOf(child as Term, into)
+    }
+  }
+
+  return into
 }
 
 // does a term have a FREE de Bruijn variable below `depth` (an index that escapes all its binders)? Used as a safety
@@ -928,6 +944,10 @@ export function elaborateReport(
   const factsFunctions = functionNames(program)
   let factsLocal = new Set<string>()
   let factsVolatile = new Set<string>()
+  // the marks of the RULE being checked. A task-typed mark ranges over the kernel's functions, which are pure, so a call
+  // to one is a value and not an effect: `v(n)` for an assignment `v`. A task's callback parameter is not, and stays
+  // in `factsLocal`, where a call to it may do anything
+  let ruleMarks = new Set<string>()
 
   const diagnostics: Diagnostic[] = []
   const verified: string[] = []
@@ -3128,12 +3148,14 @@ export function elaborateReport(
           return tactic.arg && theoremNames.has(tactic.arg) ? 'open' : 'bad'
         }
 
-        // a cited lemma must state the same equality, in either orientation (== is symmetric)
+        // a cited lemma states the same equality, in either orientation (== is symmetric), or the goal is an INSTANCE
+        // of it: one rewrite by it, at some values of its marks, makes the two sides the same
         // a theorem stating something else may still be USED (its conclusion as a fact toward this goal): that is
         // the arithmetic provers' citation, so it is left to them rather than failed here
         return (lemma.left === here.left &&
           lemma.right === here.right) ||
-          (lemma.left === here.right && lemma.right === here.left)
+          (lemma.left === here.right && lemma.right === here.left) ||
+          instanceOf(level, left, right, lemmaRules.get(tactic.arg!))
           ? 'ok'
           : theoremNames.has(tactic.arg!)
             ? 'open'
@@ -3877,6 +3899,42 @@ export function elaborateReport(
       default:
         return null
     }
+  }
+
+  // IS THIS GOAL AN INSTANCE OF A PROVEN EQUATION: `cite both-commutes` proving `both(f(x), g(y)) == both(g(y), f(x))`,
+  // as Lean's `exact both_comm _ _` does. Both sides are normalized with the equation's own operators kept folded
+  // (judge.ts `normalTerm`), so `both(...)` is still there to be found, and one rewrite by the equation, either way
+  // round and on either side, must make the two sides identical. Sound: the normal forms are conversions of the sides,
+  // a rewrite replaces a term by one the equation proves equal, and identical terms are equal
+  function instanceOf(
+    level: number,
+    left: Value,
+    right: Value,
+    rule: { binderCount: number; lhs: Term; rhs: Term } | undefined,
+  ): boolean {
+    if (!rule) {
+      return false
+    }
+
+    const opaque = new Set([...constantsOf(rule.lhs), ...constantsOf(rule.rhs)])
+    const sides = [normalTerm(level, left, opaque), normalTerm(level, right, opaque)] as const
+    const printed = sides.map(showTerm)
+
+    if (process.env.TRACE_CITE) {
+      console.error('cite instance', printed, showTerm(rule.lhs), showTerm(rule.rhs), rule.binderCount, level)
+    }
+
+    for (const directed of [rule, { ...rule, lhs: rule.rhs, rhs: rule.lhs }]) {
+      for (const [from, to] of [[0, 1], [1, 0]] as const) {
+        const rewritten = rewriteOnce(sides[from], directed)
+
+        if (rewritten && showTerm(rewritten) === printed[to]) {
+          return true
+        }
+      }
+    }
+
+    return false
   }
 
   // rewrite a term to a fixed point by a set of lemmas (directed left-to-right), bounded by fuel so a non-terminating
@@ -5526,7 +5584,7 @@ export function elaborateReport(
     // a goal that calls something two calls may disagree on is not the kernel's to decide: every task is a constant
     // in the signature, so `roll() == roll()` would be convertible by construction. Leave it to the linear prover,
     // which reports it as outside the fragment. See check/facts.ts.
-    if (callsImpure(goal, factsPure, factsFunctions, factsLocal)) {
+    if (callsImpure(goal, factsPure, factsFunctions, new Set([...factsLocal].filter(name => !ruleMarks.has(name))))) {
       return
     }
 
@@ -6178,6 +6236,10 @@ export function elaborateReport(
         continue
       }
 
+      if (process.env.TRACE_CITE) {
+        console.error('declined', statement.name, unreadable.get(statement.name))
+      }
+
       declined.push({
         name: statement.name,
         reason: `its signature names a type the kernel cannot read (${unreadable.get(statement.name) ?? 'the signature'})`,
@@ -6236,6 +6298,7 @@ export function elaborateReport(
     )
     factsLocal = localNames(task)
     factsVolatile = volatileNames(task.body)
+    ruleMarks = statement.theorem ? new Set(statement.params.map(param => param.name)) : new Set()
 
     // a stub that is a RULE carries its `show hold` as its body, so a `cite` of it here finds it as a lemma. Checking
     // it again registers the lemma and must report nothing: its own unit reported on it, and its spans are not ours
@@ -6316,6 +6379,7 @@ export function elaborateReport(
       enclosingGenerics = new Map()
       factsLocal = new Set()
       factsVolatile = new Set()
+      ruleMarks = new Set()
 
       if (reported) {
         diagnostics.length = reported.diagnostics

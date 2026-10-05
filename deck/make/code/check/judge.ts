@@ -1016,7 +1016,8 @@ export function normalTerm(level: number, value: Value, opaque: ReadonlySet<stri
   }
 }
 
-// unfold transparent heads until a constructor, an opaque call, or a call whose unfolding is stuck
+// unfold transparent heads until a constructor, an opaque call, or a call whose unfolding is stuck: a variable at the
+// head, or a match (the elaborator's `match__<form>`) left waiting on a value that is not known
 function headNormal(value: Value, opaque: ReadonlySet<string>): Value {
   let current = force(value)
   let fuel = WHNF_FUEL
@@ -1024,7 +1025,7 @@ function headNormal(value: Value, opaque: ReadonlySet<string>): Value {
   while (current.v === 'rigid' && definition.has(current.name) && !opaque.has(current.name) && fuel-- > 0) {
     const next = force(unfoldRigid(current))
 
-    if (next.v === 'neutral' || next.v === 'flex') {
+    if (next.v === 'neutral' || next.v === 'flex' || (next.v === 'rigid' && next.name.startsWith('match__'))) {
       return current
     }
 

@@ -48,7 +48,7 @@ const written = new Set([...readFileSync(MOCKUP_DIFFERENCES, 'utf8').matchAll(/^
 // D33 and D34 are applied to every card by `elbowQuotes` and `oneSpaceFields`, not by a patch, so they are cited here.
 // D35 and D41 are the other way round: the cards are drawn with the mockups' clocks and gray verb (build.ts `STANDARD`)
 // D43 (a problem's code on its title) is on no card, and test/item/unit.ts holds it
-const cited = new Set(['D33', 'D34', 'D35', 'D41', 'D42', 'D43',...CARDS.flatMap(card => [...card.patches.flatMap(patch => patch.entry.split(' ')), ...(card.entry ? [card.entry] : [])])])
+const cited = new Set(['D33', 'D34', 'D35', 'D41', 'D42', 'D43', 'D44',...CARDS.flatMap(card => [...card.patches.flatMap(patch => patch.entry.split(' ')), ...(card.entry ? [card.entry] : [])])])
 const unwritten = [...cited].filter(entry => !written.has(entry))
 const unapplied = [...written].filter(entry => !cited.has(entry))
 const unjustified = CARDS.filter(card => card.whole && !card.entry).map(card => card.caption)
@@ -96,7 +96,7 @@ function applyPatches(lines: Expected[], patches: Patch[]): Expected[] {
 
 function expectedOf(card: Card, mockup: Mockup): Expected[] {
   if (card.whole) {
-    return fileKey(oneSpaceFields(card.whole, card.colorless === true), card.colorless === true)
+    return attachDurations(fileKey(oneSpaceFields(card.whole, card.colorless === true), card.colorless === true))
   }
 
   const lines: Expected[] = mockup.lines.map(line => ({
@@ -104,7 +104,29 @@ function expectedOf(card: Card, mockup: Mockup): Expected[] {
     marks: line.marks.map(mark => (mark.role === 'cursor' ? null : mark)),
   }))
 
-  return fileKey(oneSpaceFields(elbowQuotes(applyPatches(lines, card.patches)), card.colorless === true), card.colorless === true)
+  return attachDurations(fileKey(oneSpaceFields(elbowQuotes(applyPatches(lines, card.patches)), card.colorless === true), card.colorless === true))
+}
+
+// D44: a duration's unit is attached to its figure, `410ms` and `2.90s`, where the mockups write `410 ms` and `2.90 s`
+// (the user's choice, 2026-10-05: `1m 13s` was already attached, and `6.94 s` beside it read as two styles). A size
+// keeps its space (`18.4 MB`), so only `ms` and `s` after a figure are joined
+const DURATION_GAP = /(?<=\d)[  ](?=(?:ms|s)(?![\w-]))/g
+
+function attachDurations(lines: Expected[]): Expected[] {
+  return lines.map(line => {
+    const gaps = [...line.text.matchAll(DURATION_GAP)].map(found => found.index!)
+
+    if (gaps.length === 0) {
+      return line
+    }
+
+    const drop = new Set(gaps)
+
+    return {
+      text: [...line.text].filter((_, at) => !drop.has(at)).join(''),
+      marks: line.marks.filter((_, at) => !drop.has(at)),
+    }
+  })
 }
 
 // D42: a location's key is `file`, where the mockups write `at` (the user's choice, 2026-10-05). An `at` key is a dim

@@ -89,6 +89,9 @@ form duration-rule
   link second-unit, like text
   link minute-unit, like text
   link hour-unit, like text
+  # a space between a figure and its unit: `6.94 s` when true, `6.94s` when false, as
+  # `1m 13s` already was (the user's choice, 2026-10-05)
+  link unit-gap, like boolean, fall false
   # the word before a duration that is an uptime
   link uptime-word, like text
 
@@ -665,6 +668,7 @@ task make-standard
           second-unit <s>
           minute-unit <m>
           hour-unit <h>
+          unit-gap false
           uptime-word <up>
       sizes
         make size-rule

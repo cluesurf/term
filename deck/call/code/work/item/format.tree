@@ -216,16 +216,20 @@ task push-figure
   take unit, like text
   take number-role, like text
   take unit-role, like text
+  # the no-break space between them, which a duration leaves out (`unit-gap`)
+  take gap, like boolean, fall true
 
   like list, like span
 
   spans/push make-span(number, number-role)
-  spans/push make-span(make-glue(), unit-role)
+  fork test, gap
+    hold
+      spans/push make-span(make-glue(), unit-role)
   spans/push make-span(unit, unit-role)
   back spans
 
-# a duration of section 6, to three significant figures: `4 ms`, `410 ms`, `2.90 s`,
-# `24.1 s`, `2m 05s`, `10h 12m`.
+# a duration of section 6, to three significant figures: `4ms`, `410ms`, `2.90s`,
+# `24.1s`, `2m 05s`, `10h 12m`, the unit attached to its figure (`unit-gap`).
 # `number-role` colors the numbers: `text` normally, `warning` over budget (then the
 # units follow it)
 task format-duration
@@ -250,7 +254,13 @@ task format-duration
   # below a second: whole milliseconds, which are three figures or fewer
   fork test, is-below(ms, 1000)
     hold
-      back push-figure(spans, <{ms}>, rule/millisecond-unit, number-role, unit-role)
+      back
+        push-figure spans
+          <{ms}>
+          rule/millisecond-unit
+          number-role
+          unit-role
+          rule/unit-gap
   # one to ten seconds: three figures is two decimals. 9,995 ms rounds to 10.00,
   # which is the next form's 10.0
   save hundredths, divide-round(ms, 10)
@@ -264,6 +274,7 @@ task format-duration
           rule/second-unit
           number-role
           unit-role
+          rule/unit-gap
   # ten seconds to a minute: one decimal. 59,950 ms rounds to 60.0, which is a
   # minute
   save tenths, divide-round(ms, 100)
@@ -277,6 +288,7 @@ task format-duration
           rule/second-unit
           number-role
           unit-role
+          rule/unit-gap
   # a minute to an hour: minutes and zero-padded seconds
   save seconds, divide-round(ms, 1000)
   fork test, is-below(seconds, 3600)
