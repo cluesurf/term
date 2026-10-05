@@ -5,8 +5,11 @@
 
 import { existsSync, readFileSync } from 'node:fs'
 import { spawn } from 'node:child_process'
-import { projectResolver } from '@term/call/code/make'
+import { buildSession, projectResolver } from '@term/call/code/make'
 import { runTestFile } from '@term/call/code/test-run'
+import type { TestUnits } from '@term/call/code/test-run'
+import { projectCache, projectCacheDir } from '@term/call/code/cache-store'
+import { projectDeckOf } from '@term/call/code/deck-of'
 import { declaresDraft } from '@term/call/code/draft'
 import { projectRoleOf, projectLeanOf } from '@term/call/code/role-of'
 import { closeRun, count, failRun, field, location, openRun, outputOptions, report, reportProblems } from '@term/call/code/output'
@@ -14,6 +17,8 @@ import { closeRun, count, failRun, field, location, openRun, outputOptions, repo
 export async function callTest(input: {
   root: string
   filter?: string
+  // each test file compiled whole, the standard library checked again for every one, instead of through units
+  merged?: boolean
 }): Promise<void> {
   try {
     const fs = await import('fs/promises')
@@ -22,7 +27,7 @@ export async function callTest(input: {
     const isSeedProject = await hasDeckTree({ root: input.root })
 
     if (isSeedProject) {
-      await runSeedTests({ root: input.root, filter: input.filter })
+      await runSeedTests({ root: input.root, filter: input.filter, merged: input.merged })
 
       return
     }
@@ -209,6 +214,7 @@ async function capturePrinted<T>(run: () => Promise<T>): Promise<{ value: T; lin
 async function runSeedTests(input: {
   root: string
   filter?: string
+  merged?: boolean
 }): Promise<void> {
   const path = await import('path')
   const fs = await import('fs/promises')
@@ -241,6 +247,20 @@ async function runSeedTests(input: {
   const leanOf = projectLeanOf(input.root)
   const readRuntime = (p: string): string | undefined =>
     existsSync(p) ? readFileSync(p, 'utf8') : undefined
+  // one build session for every test file (note/term/plan/incremental-best-in-class.md, step 10): the units every file
+  // reaches, the standard library's above all, are checked once for the run and read from the cache after that
+  const session = buildSession(input.root)
+  const units: TestUnits | undefined = input.merged
+    ? undefined
+    : {
+        root: input.root,
+        cache: projectCache(input.root),
+        bundles: path.join(projectCacheDir(input.root), 'test'),
+        deckOf: projectDeckOf(),
+        parsed: session.parsed,
+        units: session.units,
+        walked: session.walked,
+      }
 
   let pass = 0
   let fail = 0
@@ -266,6 +286,7 @@ async function runSeedTests(input: {
           readRuntime,
           roleOf,
           leanOf,
+          units,
         }),
       )
 

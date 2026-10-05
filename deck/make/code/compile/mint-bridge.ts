@@ -15,12 +15,9 @@
 // EVERY minted form is named for the grammar rule that built it, so the switches below are total and a rule
 // added to the grammar shows up here as an unhandled name rather than as silence.
 
-import type {
-  GroupNode,
-  NameNode,
-  Node,
-  RootNode,
-} from '@term/make/code/parser/tree'
+import type { Node } from '@term/make/code/parser/tree'
+import type { GroupNode, NameNode, RootNode } from '@term/make/code/parser/narrow'
+import { partsOf, isGroup } from '@term/make/code/parser/narrow'
 import type { Diagnostic, Span } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
 import type {
@@ -407,7 +404,7 @@ function textExpression(
     return { form: 'string', value: textOf(value) ?? '', span }
   }
 
-  const braced = node.parts.find(part => part.kind === 'interpolation')
+  const braced = partsOf(node).find(part => part.kind === 'interpolation')
 
   if (!braced) {
     return { form: 'string', value: textOf(value) ?? '', span }
@@ -415,13 +412,13 @@ function textExpression(
 
   const parts: TemplatePart[] = []
 
-  for (const part of node.parts) {
+  for (const part of partsOf(node)) {
     if (part.kind === 'chunk') {
       parts.push(chunkPart(unescapeText(part.text)))
       continue
     }
 
-    if (part.kind !== 'interpolation' || !part.group) {
+    if (part.kind !== 'interpolation' || !isGroup(part.group)) {
       continue
     }
 
@@ -1374,7 +1371,7 @@ function nameNodeOf(node: Node | undefined): NameNode | undefined {
   for (const child of node.nodes) {
     const found = nameNodeOf(child)
 
-    if (found?.parts.some(part => part.kind === 'interpolation')) {
+    if (found && partsOf(found).some(part => part.kind === 'interpolation')) {
       return found
     }
   }
@@ -1399,7 +1396,7 @@ function dynamicPath(bridge: Bridge, value: Minted, span: Span): Expression | un
       : { form: 'variable', name, span }
   }
 
-  for (const part of head.parts) {
+  for (const part of partsOf(head)) {
     if (part.kind === 'chunk') {
       for (const segment of part.text.split('/').filter(s => s.length > 0)) {
         step(segment)
@@ -1408,7 +1405,7 @@ function dynamicPath(bridge: Bridge, value: Minted, span: Span): Expression | un
       continue
     }
 
-    if (!part.group) {
+    if (!isGroup(part.group)) {
       continue
     }
 
@@ -1475,7 +1472,7 @@ function tagOf(value: Form): string | undefined {
 }
 
 // Is this word written with an empty pair of parentheses straight after it, `f()`. The tree keeps no node for
-// them, so the answer is in the token stream: the word's last token, then `(`, then `)`.
+// them, so the word's last chunk says what followed its token (`follows`, read off the token list by the parser).
 function hasEmptyParens(node: Node): boolean {
   const name =
     node.kind === 'name'
@@ -1485,13 +1482,7 @@ function hasEmptyParens(node: Node): boolean {
         : undefined
   const last = name?.parts[name.parts.length - 1]
 
-  if (last?.kind !== 'chunk') {
-    return false
-  }
-
-  const open = (last.token as { next?: { kind: string; next?: { kind: string } } }).next
-
-  return open?.kind === 'open-paren' && open.next?.kind === 'close-paren'
+  return last?.kind === 'chunk' && last.follows === 'empty-parens'
 }
 
 // The forms a value word builds when it stands alone, by the word that heads each. A bare `meet` is the empty
@@ -1540,7 +1531,7 @@ function opensParen(node: Node | undefined): boolean {
     return false
   }
 
-  return (last.token as { next?: { kind: string } }).next?.kind === 'open-paren'
+  return last.follows !== undefined
 }
 
 // The names the file defines or imports that a body line may call: `task x` and `view x` at the top level, and

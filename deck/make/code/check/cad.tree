@@ -1,0 +1,696 @@
+# Multivariate real-arithmetic decision by cylindrical algebraic decomposition (CAD): the lift of the univariate Sturm
+# base case (sturm.tree) to two variables. It decides BIVARIATE non-negativity: `p(x, y) >= 0 for all real x, y`.
+#
+# The construction is the CAD pipeline for one polynomial in the variables x < y:
+#   1. PROJECT onto the base line (the x-axis). The truth of "p(x0, .) >= 0 for all y" changes only where the real
+#      y-root structure of the fibre polynomial p(x0, y) changes: where a leading coefficient vanishes (a degree drop)
+#      or where two real roots collide (the y-discriminant vanishes). So the projection set is the y-coefficient
+#      polynomials a_j(x) together with the y-DISCRIMINANT disc_y(p)(x) = res_y(p, dp/dy). Their real roots are the
+#      critical x-values.
+#   2. DECOMPOSE the base line into the sign-invariant cells of the projection polynomial, via the one-dimensional CAD
+#      (`cell-samples-big`): one rational sample x* strictly inside each cell.
+#   3. LIFT: on each base cell the fibre's y-root structure is constant, so the truth of "p(x, .) >= 0 for all y" is
+#      constant across the cell and is decided at the single rational sample x* by the univariate decision on p(x*, y).
+#
+# `p >= 0` everywhere holds iff every base-cell fibre is non-negative. This is sound and COMPLETE: the cells partition
+# the line by exactly the structure changes, and the rational samples are dense in the cells, so by continuity the
+# algebraic cell boundaries are covered too. It proves non-negativity with NO sum-of-squares certificate, including the
+# MOTZKIN polynomial `x^4 y^2 + x^2 y^4 - 3 x^2 y^2 + 1`, the classic non-negative form that is provably not a sum of
+# squares. All arithmetic is exact (big-integer rationals). Browser-safe.
+#
+# Ported from check/cad.ts (self-hosting, 2026-10-05). A coefficient is the stdlib `big-integer` (`{ dock }` on
+# TypeScript), so a bivariate is a list of rows of them, `coeff[i][j]` the coefficient of `x^i y^j`; a ragged row reads
+# zero past its end, as before. The interpolation's rationals are this file's own (`cad-ratio`), sturm's being private.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/integer/big
+  find big-integer
+  find big-from-number
+  find big-add
+  find big-subtract
+  find big-multiply
+  find big-compare
+
+load ./sturm
+  find exact-ratio
+  find cell-samples-big
+  find rational-non-negative-everywhere
+
+# ----- big integers -----
+
+task cad-big
+  take value, like number
+  like big-integer
+  mark private
+
+  back big-from-number(value)
+
+task cad-sign
+  take value, like big-integer
+  like number
+  mark private
+
+  back big-compare(value, cad-big(0))
+
+task cad-is-zero
+  take value, like big-integer
+  like boolean
+  mark private
+
+  back is-equal(cad-sign(value), 0)
+
+task cad-absolute
+  take value, like big-integer
+  like big-integer
+  mark private
+
+  fork test, is-below(cad-sign(value), 0)
+    hold
+      back value/negate()
+  back value
+
+# `base ^ exponent`, for an exponent that is not negative
+task cad-power
+  take base, like big-integer
+  take exponent, like number
+  like big-integer
+  mark private
+
+  save out, cad-big(1)
+  save at, 0
+  walk test
+    hook test, is-below(at, exponent)
+    hook hold
+      save out, big-multiply(out, base)
+      save at, add(at, 1)
+  back out
+
+task cad-gcd
+  take first, like big-integer
+  take second, like big-integer
+  like big-integer
+  mark private
+
+  save a, cad-absolute(first)
+  save b, cad-absolute(second)
+  walk test
+    hook test, not(cad-is-zero(b))
+    hook hold
+      save rest, a/remainder(b)
+      save a, b
+      save b, rest
+  back a
+
+# ----- integer polynomials in x (the coefficient ring of the y-polynomial), index = power -----
+
+task trim-int
+  take p, like list, like big-integer
+  like list, like big-integer
+  mark private
+
+  save size, p/length
+  walk test
+    hook test, and(is-above(size, 0), cad-is-zero(get(p, subtract(size, 1))))
+    hook hold
+      save size, subtract(size, 1)
+  back p/slice(0, size)
+
+task int-at
+  take p, like list, like big-integer
+  take at, like number
+  like big-integer
+  mark private
+
+  fork test, and(is-minimum(at, 0), is-below(at, p/length))
+    hold
+      back get(p, at)
+  back cad-big(0)
+
+task zeros
+  take size, like number
+  like list, like big-integer
+  mark private
+
+  save out, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      push(out, cad-big(0))
+      save at, add(at, 1)
+  back out
+
+task multiply-int
+  take a, like list, like big-integer
+  take b, like list, like big-integer
+  like list, like big-integer
+  mark private
+
+  fork test, or(is-equal(a/length, 0), is-equal(b/length, 0))
+    hold
+      back make list
+
+  save out, zeros(subtract(add(a/length, b/length), 1))
+  save i, 0
+  walk test
+    hook test, is-below(i, a/length)
+    hook hold
+      save j, 0
+      walk test
+        hook test, is-below(j, b/length)
+        hook hold
+          save k, add(i, j)
+          save out/{k}, big-add(get(out, k), big-multiply(get(a, i), get(b, j)))
+          save j, add(j, 1)
+      save i, add(i, 1)
+  back trim-int(out)
+
+# ----- the bivariate as a y-polynomial whose coefficients are x-polynomials -----
+
+# `p[i][j]`, zero past a ragged row's end
+task entry
+  take p, like list, like list, like big-integer
+  take i, like number
+  take j, like number
+  like big-integer
+  mark private
+
+  fork test, is-minimum(i, p/length)
+    hold
+      back cad-big(0)
+  back int-at(get(p, i), j)
+
+# the y-degree of `p` (the largest j with a non-zero x^i y^j term)
+task y-degree
+  take p, like list, like list, like big-integer
+  like number
+  mark private
+
+  save degree, 0
+  walk p
+    take row
+    save j, 0
+    walk test
+      hook test, is-below(j, row/length)
+      hook hold
+        fork test, and(not(cad-is-zero(get(row, j))), is-above(j, degree))
+          hold
+            save degree, j
+        save j, add(j, 1)
+  back degree
+
+# the x-polynomial coefficient of y^j (i.e. a_j(x) where p = sum_j a_j(x) y^j)
+task y-coefficient
+  take p, like list, like list, like big-integer
+  take j, like number
+  like list, like big-integer
+  mark private
+
+  save out, make list
+  save i, 0
+  walk test
+    hook test, is-below(i, p/length)
+    hook hold
+      push(out, entry(p, i, j))
+      save i, add(i, 1)
+  back trim-int(out)
+
+# the fibre polynomial p(k, y): substitute the integer x = k, giving a univariate polynomial in y (index = power of y)
+task fibre-at-integer
+  take p, like list, like list, like big-integer
+  take k, like big-integer
+  like list, like big-integer
+  mark private
+
+  save dy, y-degree(p)
+  save out, make list
+  save j, 0
+  walk test
+    hook test, is-maximum(j, dy)
+    hook hold
+      # Horner in x over the coefficient column for y^j
+      save acc, cad-big(0)
+      save i, subtract(p/length, 1)
+      walk test
+        hook test, is-minimum(i, 0)
+        hook hold
+          save acc, big-add(big-multiply(acc, k), entry(p, i, j))
+          save i, subtract(i, 1)
+      push(out, acc)
+      save j, add(j, 1)
+  back trim-int(out)
+
+# the fibre polynomial p(n/d, y) at a RATIONAL x = n/d, returned as exact rational coefficients per power of y.
+# Multiplying through by d^(x-degree) clears denominators while preserving every y-sign, but keeping it rational is
+# simplest and the univariate decision consumes rationals directly.
+task fibre-at-rational
+  take p, like list, like list, like big-integer
+  take n, like big-integer
+  take d, like big-integer
+  like list, like exact-ratio
+  mark private
+
+  save dy, y-degree(p)
+  save dx, subtract(p/length, 1)
+  save out, make list
+  save j, 0
+  walk test
+    hook test, is-maximum(j, dy)
+    hook hold
+      # a_j(n/d) = (sum_i c[i][j] n^i d^(dx-i)) / d^dx
+      save numerator, cad-big(0)
+      save i, 0
+      walk test
+        hook test, is-maximum(i, dx)
+        hook hold
+          save c, entry(p, i, j)
+          fork test, not(cad-is-zero(c))
+            hold
+              save numerator, big-add(numerator, big-multiply(big-multiply(c, cad-power(n, i)), cad-power(d, subtract(dx, i))))
+          save i, add(i, 1)
+      save one
+        make exact-ratio
+          bind n, numerator
+          bind d, cad-power(d, dx)
+      push(out, one)
+      save j, add(j, 1)
+  back out
+
+# ----- exact integer resultant (Sylvester matrix, fraction-free Bareiss determinant) -----
+
+# the determinant of an integer matrix by the Bareiss algorithm: fraction-free Gaussian elimination, every intermediate
+# is an exact integer (a minor of the original), so no rounding. Returns 0 for a singular matrix.
+task bareiss-determinant
+  take matrix, like list, like list, like big-integer
+  like big-integer
+  mark private
+
+  save n, matrix/length
+  fork test, is-equal(n, 0)
+    hold
+      back cad-big(1)
+
+  save m, make list
+  walk matrix
+    take row
+    push(m, row/slice(0, row/length))
+  save previous, cad-big(1)
+  save sign, cad-big(1)
+
+  save k, 0
+  walk test
+    hook test, is-below(k, subtract(n, 1))
+    hook hold
+      fork test, cad-is-zero(get(get(m, k), k))
+        hold
+          # find a row below with a non-zero pivot and swap (flips the sign)
+          save swap, -1
+          save i, add(k, 1)
+          walk test
+            hook test, is-below(i, n)
+            hook hold
+              fork test, not(cad-is-zero(get(get(m, i), k)))
+                hold
+                  save swap, i
+                  halt
+              save i, add(i, 1)
+          fork test, is-equal(swap, -1)
+            hold
+              back cad-big(0)
+          save held, get(m, k)
+          save m/{k}, get(m, swap)
+          save m/{swap}, held
+          save sign, sign/negate()
+
+      save pivot-row, get(m, k)
+      save pivot, get(pivot-row, k)
+      save i, add(k, 1)
+      walk test
+        hook test, is-below(i, n)
+        hook hold
+          save row, get(m, i)
+          save j, add(k, 1)
+          walk test
+            hook test, is-below(j, n)
+            hook hold
+              save cross, big-subtract(big-multiply(get(row, j), pivot), big-multiply(get(row, k), get(pivot-row, j)))
+              save row/{j}, cross/divide(previous)
+              save j, add(j, 1)
+          save row/{k}, cad-big(0)
+          save m/{i}, row
+          save i, add(i, 1)
+
+      save previous, pivot
+      save k, add(k, 1)
+
+  save last, subtract(n, 1)
+  back big-multiply(sign, get(get(m, last), last))
+
+# the resultant of two univariate integer polynomials (index = power), via the Sylvester matrix determinant. Zero iff
+# the two share a common root. `resultant(f, f')` vanishes exactly when `f` has a repeated root, so it is the
+# discriminant up to a leading-coefficient factor, which is all the projection needs (its real roots).
+task resultant
+  take a, like list, like big-integer
+  take b, like list, like big-integer
+  like big-integer
+  mark private
+
+  save f, trim-int(a)
+  save g, trim-int(b)
+
+  fork test, or(is-equal(f/length, 0), is-equal(g/length, 0))
+    hold
+      back cad-big(0)
+
+  # the degrees of f and g
+  save m, subtract(f/length, 1)
+  save n, subtract(g/length, 1)
+
+  # two non-zero constants share no root
+  fork test, and(is-equal(m, 0), is-equal(n, 0))
+    hold
+      back cad-big(1)
+
+  save size, add(m, n)
+  save matrix, make list
+
+  # n rows of f's coefficients (highest power first), each shifted right by one
+  save r, 0
+  walk test
+    hook test, is-below(r, n)
+    hook hold
+      push(matrix, shifted-row(f, size, r))
+      save r, add(r, 1)
+
+  # m rows of g's coefficients (highest power first), each shifted right by one
+  save r, 0
+  walk test
+    hook test, is-below(r, m)
+    hook hold
+      push(matrix, shifted-row(g, size, r))
+      save r, add(r, 1)
+
+  back bareiss-determinant(matrix)
+
+# one Sylvester row: the polynomial's coefficients, highest power first, starting at column `shift`
+task shifted-row
+  take p, like list, like big-integer
+  take size, like number
+  take shift, like number
+  like list, like big-integer
+  mark private
+
+  save row, zeros(size)
+  save degree, subtract(p/length, 1)
+  save i, 0
+  walk test
+    hook test, is-maximum(i, degree)
+    hook hold
+      save at, add(shift, i)
+      save row/{at}, get(p, subtract(degree, i))
+      save i, add(i, 1)
+  back row
+
+# the derivative with respect to y of a fibre polynomial (index = power of y)
+task derivative-y
+  take fibre, like list, like big-integer
+  like list, like big-integer
+  mark private
+
+  save out, make list
+  save j, 1
+  walk test
+    hook test, is-below(j, fibre/length)
+    hook hold
+      push(out, big-multiply(cad-big(j), get(fibre, j)))
+      save j, add(j, 1)
+  back trim-int(out)
+
+# ----- the y-discriminant as an x-polynomial, by evaluation and interpolation -----
+
+# an exact rational of the interpolation, in lowest terms with a positive denominator
+form cad-ratio
+  link n, like big-integer
+  link d, like big-integer
+
+task make-ratio
+  take numerator, like big-integer
+  take denominator, like big-integer
+  like cad-ratio
+  mark private
+
+  save n, numerator
+  save d, denominator
+  fork test, is-below(cad-sign(d), 0)
+    hold
+      save n, n/negate()
+      save d, d/negate()
+  save g, cad-gcd(n, d)
+  fork test, cad-is-zero(g)
+    hold
+      save g, cad-big(1)
+  back
+    make cad-ratio
+      bind n, n/divide(g)
+      bind d, d/divide(g)
+
+task ratio-add
+  take a, like cad-ratio
+  take b, like cad-ratio
+  like cad-ratio
+  mark private
+
+  back make-ratio(big-add(big-multiply(a/n, b/d), big-multiply(b/n, a/d)), big-multiply(a/d, b/d))
+
+task ratio-multiply
+  take a, like cad-ratio
+  take b, like cad-ratio
+  like cad-ratio
+  mark private
+
+  back make-ratio(big-multiply(a/n, b/n), big-multiply(a/d, b/d))
+
+task ratio-zero
+  like cad-ratio
+  mark private
+
+  back make-ratio(cad-big(0), cad-big(1))
+
+# a sample of the discriminant: an integer x and the resultant there
+form sample-point
+  link x, like big-integer
+  link y, like big-integer
+
+# Lagrange interpolation of the integer polynomial through the points `(x_i, y_i)`: the unique polynomial of degree
+# < count that hits every sample. Returned with integer coefficients scaled to clear denominators (its real roots, all
+# the projection needs, are unchanged by a non-zero scale).
+task interpolate
+  take points, like list, like sample-point
+  like list, like big-integer
+  mark private
+
+  # the polynomial as exact rationals: result = sum_i y_i * prod_{j != i} (x - x_j) / (x_i - x_j)
+  save acc, make list
+
+  save i, 0
+  walk test
+    hook test, is-below(i, points/length)
+    hook hold
+      save xi, get(points, i)/x
+      save yi, get(points, i)/y
+      # the polynomial 1
+      save basis, make list
+      push(basis, make-ratio(cad-big(1), cad-big(1)))
+      save denominator, cad-big(1)
+
+      save j, 0
+      walk test
+        hook test, is-below(j, points/length)
+        hook hold
+          fork test, is-unequal(j, i)
+            hold
+              save xj, get(points, j)/x
+              # multiply basis by (x - xj)
+              save next, make list
+              save k, 0
+              walk test
+                hook test, is-maximum(k, basis/length)
+                hook hold
+                  push(next, ratio-zero())
+                  save k, add(k, 1)
+              save k, 0
+              walk test
+                hook test, is-below(k, basis/length)
+                hook hold
+                  save next/{k}, ratio-add(get(next, k), ratio-multiply(get(basis, k), make-ratio(xj/negate(), cad-big(1))))
+                  save up, add(k, 1)
+                  save next/{up}, ratio-add(get(next, up), get(basis, k))
+                  save k, add(k, 1)
+              save basis, next
+              save denominator, big-multiply(denominator, big-subtract(xi, xj))
+          save j, add(j, 1)
+
+      # add the basis, scaled by y_i / denominator
+      save scale, make-ratio(yi, denominator)
+      save k, 0
+      walk test
+        hook test, is-below(k, basis/length)
+        hook hold
+          save term, ratio-multiply(get(basis, k), scale)
+          fork test, is-below(k, acc/length)
+            hold
+              save acc/{k}, ratio-add(get(acc, k), term)
+            miss
+              push(acc, ratio-add(ratio-zero(), term))
+          save k, add(k, 1)
+      save i, add(i, 1)
+
+  # clear denominators: multiply by the lcm of all denominators
+  save lcm, cad-big(1)
+  walk acc
+    take c
+    fork test, not(cad-is-zero(c/n))
+      hold
+        save lcm, big-multiply(lcm/divide(cad-gcd(lcm, c/d)), c/d)
+
+  save out, make list
+  walk acc
+    take c
+    save scaled, big-multiply(c/n, lcm)
+    push(out, scaled/divide(c/d))
+  back trim-int(out)
+
+# the y-discriminant of `p` as an x-polynomial: res_y(p, dp/dy) sampled at enough integer x where the y-degree is full,
+# then interpolated. Its real roots are the x where the fibre's real y-roots collide.
+task discriminant-x
+  take p, like list, like list, like big-integer
+  like list, like big-integer
+  mark private
+
+  save dy, y-degree(p)
+
+  # a fibre of y-degree < 2 has no discriminant structure (no two roots to collide)
+  fork test, is-below(dy, 2)
+    hold
+      back make list
+
+  save dx, subtract(p/length, 1)
+  # a_dy(x); the y-degree is full exactly where this is non-zero
+  save lead-y, y-coefficient(p, dy)
+  # an upper bound on the x-degree of the resultant
+  save bound, add(multiply(subtract(multiply(2, dy), 1), dx), 2)
+  save points, make list
+
+  save step, 0
+  walk test
+    hook test, is-maximum(points/length, bound)
+    hook hold
+      save k, cad-big(step)
+      save step, add(step, 1)
+
+      # skip the finitely many x where the y-degree drops (leadY(k) == 0); there the resultant value would not lie on
+      # the generic resultant polynomial, and those x are already caught by the leadY factor of the projection.
+      save lead, cad-big(0)
+      save i, subtract(lead-y/length, 1)
+      walk test
+        hook test, is-minimum(i, 0)
+        hook hold
+          save lead, big-add(big-multiply(lead, k), get(lead-y, i))
+          save i, subtract(i, 1)
+
+      fork test, cad-is-zero(lead)
+        hold
+          turn next
+
+      save fibre, fibre-at-integer(p, k)
+      save point
+        make sample-point
+          bind x, k
+          bind y, resultant(fibre, derivative-y(fibre))
+      push(points, point)
+
+      # safety: enough generic points were sampled
+      fork test, is-above(subtract(step, 1), add(bound, 8))
+        hold
+          halt
+
+  back interpolate(points)
+
+# the PROJECTION polynomial on the x-axis: the product of the y-discriminant and every (non-zero) y-coefficient
+# polynomial a_j(x). Its real roots are a superset of the critical x-values (where the fibre's >= 0 truth can change),
+# so cell-decomposing by it never merges two differently-behaved x-regions, which keeps the lift sound.
+task projection-x
+  take p, like list, like list, like big-integer
+  like list, like big-integer
+  mark private
+
+  save projection, make list
+  push(projection, cad-big(1))
+  save dy, y-degree(p)
+
+  save j, 0
+  walk test
+    hook test, is-maximum(j, dy)
+    hook hold
+      save aj, y-coefficient(p, j)
+      fork test, is-above(aj/length, 0)
+        hold
+          save projection, multiply-int(projection, aj)
+      save j, add(j, 1)
+
+  save disc, discriminant-x(p)
+  fork test, is-above(disc/length, 0)
+    hold
+      save projection, multiply-int(projection, disc)
+  back projection
+
+task whole-ratio
+  take value, like big-integer
+  like exact-ratio
+  mark private
+
+  back
+    make exact-ratio
+      bind n, value
+      bind d, cad-big(1)
+
+# is `p(x, y) >= 0` for ALL real x and y? The bivariate CAD decision.
+task bivariate-non-negative
+  take p, like list, like list, like big-integer
+  like boolean
+
+  save dy, y-degree(p)
+
+  # no real y: p is a univariate x-polynomial, decided directly by the one-dimensional CAD.
+  fork test, is-equal(dy, 0)
+    hold
+      save x-poly, make list
+      walk y-coefficient(p, 0)
+        take c
+        push(x-poly, whole-ratio(c))
+      back rational-non-negative-everywhere(x-poly)
+
+  # an ODD y-degree fibre runs to -infinity in y, so it is negative somewhere, unless the leading y-coefficient can
+  # vanish, which the cell sampling below detects. The general path handles this uniformly, so no special case is
+  # needed here; we proceed to project and lift.
+
+  save projection, projection-x(p)
+  # the base cells: one rational sample x* strictly inside each sign-invariant interval of the projection. A constant
+  # projection (no critical x) yields a single cell sampled at 0.
+  save samples, make list
+  fork test, is-maximum(projection/length, 1)
+    hold
+      push(samples, whole-ratio(cad-big(0)))
+    miss
+      save samples, cell-samples-big(projection)
+
+  walk samples
+    take sample
+    # this base cell has a fibre that dips below zero
+    fork test, not(rational-non-negative-everywhere(fibre-at-rational(p, sample/n, sample/d)))
+      hold
+        back false
+  back true

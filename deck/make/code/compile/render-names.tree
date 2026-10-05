@@ -1,0 +1,70 @@
+# The render runtime's task names (deck/site/code/view/render.tree): the ONE place the compiler spells them. The view
+# lowering (view-lower.ts), the TypeScript zone emitter (typescript.ts), the counted walk (view.ts) and the three lists
+# that keep the runtime alive through pruning and inlining (compile.ts, modules.ts, ir/simplify.ts) all read these, so a
+# rename in render.tree is one edit here. Every task is a verb (`make-text`, never `text`), so the names a component or
+# a form needs stay free.
+#
+# Ported from compile/render-names.ts (self-hosting, 2026-10-05). Its record and list were exported constants, and a
+# Term module exports tasks, so each is asked for: `render-names` and `render-support`. The record's fields are the
+# original's keys, so a caller writes `const RENDER = renderNames()` and reads it as before.
+
+load @term/base/list
+  find list
+
+form render-names
+  link element, like text
+  link text, like text
+  link dynamic, like text
+  link attribute, like text
+  link bind-attribute, like text
+  link event, like text
+  link show, like text
+  link each, like text
+  link each-keyed, like text
+  link dynamic-view, like text
+  link gate, like text
+  link mount, like text
+  link portal, like text
+  # where a raise that escapes an event handler goes: the view lowering guards every handler and hands what it caught
+  # to this, so the app keeps running and a view can show it (swiftui-target-0003)
+  link raise, like text
+  # the items a counted `walk size` walks, made by render.tree for the view role's lowering
+  link integers, like text
+
+task render-names
+  like render-names
+
+  back
+    make render-names
+      bind element, <make-element>
+      bind text, <make-text>
+      bind dynamic, <make-dynamic-text>
+      bind attribute, <write-attribute>
+      bind bind-attribute, <bind-attribute>
+      bind event, <attach-event>
+      bind show, <show>
+      bind each, <render-each>
+      bind each-keyed, <render-each-keyed>
+      bind dynamic-view, <render-dynamic-view>
+      bind gate, <render-gate>
+      bind mount, <mount>
+      bind portal, <mount-portal>
+      bind raise, <keep-raise>
+      bind integers, <list-integers>
+
+# the rest of what the lowered views call by name: the dom and scope primitives under the render tasks and the signals
+# a component's state is made of. With `render-names`, the tasks that must survive every pass before the lowering, which
+# is why the prune pins them (compile.ts) and the statement inliner leaves them alone (ir/inline-statements.ts)
+task render-support
+  like list, like text
+
+  save names, make list
+  push(names, <append>)
+  push(names, <remove>)
+  push(names, <replace>)
+  push(names, <open-scope>)
+  push(names, <close-scope>)
+  push(names, <make-signal>)
+  push(names, <read-signal>)
+  push(names, <dispose-scope>)
+  back names

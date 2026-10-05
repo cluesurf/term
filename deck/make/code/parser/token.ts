@@ -14,88 +14,87 @@ export enum LexMode {
   Name = 'name',
 }
 
-export enum TokenKind {
-  CloseBrace = 'close-brace', // }}
-  CloseParen = 'close-paren', // )
-  CloseAngle = 'close-angle', // > end of text
-  Comma = 'comma',
-  Comment = 'comment',
-  Decimal = 'decimal', // 3.14
-  Radix = 'radix', // 0x.., 0b.., 0o..
-  Newline = 'newline',
-  OpenBrace = 'open-brace', // {{
-  OpenParen = 'open-paren', // (
-  OpenAngle = 'open-angle', // < start of text
-  Space = 'space',
-  Name = 'name', // a term or path
-  Integer = 'integer',
-  Chunk = 'chunk', // a literal text chunk inside < >
-}
+export type TokenKind =
+  | 'close-brace' // }}
+  | 'close-paren' // )
+  | 'close-angle' // > end of text
+  | 'comma'
+  | 'comment'
+  | 'decimal' // 3.14
+  | 'radix' // 0x.., 0b.., 0o..
+  | 'newline'
+  | 'open-brace' // {{
+  | 'open-paren' // (
+  | 'open-angle' // < start of text
+  | 'space'
+  | 'name' // a term or path
+  | 'integer'
+  | 'chunk' // a literal text chunk inside < >
 
 export type Token = {
   kind: TokenKind
   span: Span
   text: string
-  previous?: Token
-  next?: Token
 }
 
+// the tokens in source order. A reader looks one step either way by index, so a token holds no link to its
+// neighbors (it was a doubly linked list, which a Term record cannot be)
 export type TokenList = {
   file: string
   text: string
   lines: string[]
-  head?: Token
+  list: Token[]
 }
 
-export type TokenResult =
-  | { ok: true; tokens: TokenList }
-  | { ok: false; diagnostics: Diagnostic[] }
+// the tokens, and every diagnostic found on the way: the text lexed with no mistake when there are none. The tokens are
+// kept either way, as far as the lexer could read them
+export type TokenResult = { tokens: TokenList; diagnostics: Diagnostic[] }
 
 // Which token kinds may match in each mode, in priority order.
 const INTERPOLATION_MATCHERS: TokenKind[] = [
-  TokenKind.CloseBrace,
-  TokenKind.CloseParen,
-  TokenKind.CloseAngle,
-  TokenKind.Comma,
-  TokenKind.Comment,
-  TokenKind.Decimal,
-  TokenKind.Radix,
-  TokenKind.Newline,
-  TokenKind.OpenBrace,
-  TokenKind.OpenParen,
-  TokenKind.OpenAngle,
+  'close-brace',
+  'close-paren',
+  'close-angle',
+  'comma',
+  'comment',
+  'decimal',
+  'radix',
+  'newline',
+  'open-brace',
+  'open-paren',
+  'open-angle',
   // Integer before Name, as on a line: the Name pattern takes digits too, so with Name first a number inside braces
   // was a name, and `<sum {add-two(2, 3)}>` failed with `the name "2" is not defined` (guides: language/syntax,
   // values, collections, 2026-10-04). A word that starts with a letter is still a Name, the Integer pattern failing
   // on its first character
-  TokenKind.Integer,
-  TokenKind.Name,
-  TokenKind.Space,
+  'integer',
+  'name',
+  'space',
 ]
 
 const TEXT_MATCHERS: TokenKind[] = [
-  TokenKind.OpenBrace,
-  TokenKind.CloseAngle,
-  TokenKind.Chunk,
+  'open-brace',
+  'close-angle',
+  'chunk',
 ]
 
-const NAME_MATCHERS: TokenKind[] = [TokenKind.OpenBrace, TokenKind.Name]
+const NAME_MATCHERS: TokenKind[] = ['open-brace', 'name']
 
 const DEFAULT_MATCHERS: TokenKind[] = [
-  TokenKind.CloseBrace,
-  TokenKind.CloseParen,
-  TokenKind.CloseAngle,
-  TokenKind.Comma,
-  TokenKind.Comment,
-  TokenKind.Decimal,
-  TokenKind.Radix,
-  TokenKind.Newline,
-  TokenKind.OpenBrace,
-  TokenKind.OpenParen,
-  TokenKind.OpenAngle,
-  TokenKind.Integer,
-  TokenKind.Space,
-  TokenKind.Name,
+  'close-brace',
+  'close-paren',
+  'close-angle',
+  'comma',
+  'comment',
+  'decimal',
+  'radix',
+  'newline',
+  'open-brace',
+  'open-paren',
+  'open-angle',
+  'integer',
+  'space',
+  'name',
 ]
 
 const MODE_MATCHERS: Record<LexMode, TokenKind[]> = {
@@ -113,14 +112,14 @@ const MODE_MATCHERS: Record<LexMode, TokenKind[]> = {
 // because `y` already anchors at the cursor; with `y`, `^` would wrongly only
 // match offset 0.
 const PATTERN: Record<TokenKind, RegExp> = {
-  [TokenKind.CloseBrace]: /\}+/y,
-  [TokenKind.CloseParen]: /\)/y,
-  [TokenKind.CloseAngle]: />/y,
-  [TokenKind.Comma]: /, */y,
-  [TokenKind.Comment]: /#(?: +[^\n]+)?/y,
-  [TokenKind.Decimal]: /-?\d+\.\d+/y,
-  [TokenKind.Radix]: /0[xXbBoOuU]\w+/y,
-  [TokenKind.Newline]: /\n/y,
+  ['close-brace']: /\}+/y,
+  ['close-paren']: /\)/y,
+  ['close-angle']: />/y,
+  ['comma']: /, */y,
+  ['comment']: /#(?: +[^\n]+)?/y,
+  ['decimal']: /-?\d+\.\d+/y,
+  ['radix']: /0[xXbBoOuU]\w+/y,
+  ['newline']: /\n/y,
   // a `{` opens an interpolation ONLY when an identifier follows (`{name}`); otherwise it is a literal brace. This lets
   // a text string carry JSON (`<{"a":1}>`) or a regex quantifier (`<[0-9]{3}>`) without escaping, while `{name}`
   // template / string interpolation still works.
@@ -130,16 +129,16 @@ const PATTERN: Record<TokenKind, RegExp> = {
   // immediately by a letter, because that is what keeps an embedded JS or Rust block literal — `text <... { if
   // (sc === 0) ... }>` in decimal.tree would otherwise open an interpolation. Only the braces are captured, so
   // the interpolation's depth is still the length of the match.
-  [TokenKind.OpenBrace]: /\{+(?=\s*(?:[a-zA-Z_]|$))/y,
-  [TokenKind.OpenParen]: /\(/y,
-  [TokenKind.OpenAngle]: /</y,
-  [TokenKind.Space]: / +/y,
+  ['open-brace']: /\{+(?=\s*(?:[a-zA-Z_]|$))/y,
+  ['open-paren']: /\(/y,
+  ['open-angle']: /</y,
+  ['space']: / +/y,
   // A bare name may carry ESCAPED BRACES. `{` normally opens an interpolation, so a
   // glob written bare (`@/book/**/\{code,view\}/**/*.tree`) escapes them. The escaped
   // group is consumed WHOLE, commas included, since a comma would otherwise end the
   // token and split the pattern in two. `\{` / `\}` on their own are also literal.
   // The reader unescapes, so the value comes back as `{code,view}`.
-  [TokenKind.Name]:
+  ['name']:
     /(?:\\\{[^\\]*\\\}|\\[{}<>\\]|[@~$%^&*'":.a-z0-9A-Z_\-?/])+/y,
   // a bare run of digits is an Integer, BUT digits followed by a hyphen and a letter (`24-cell`) is a kebab IDENTIFIER,
   // not a number, so the Integer matcher declines there and the Name matcher claims the whole `24-cell`. A pure number
@@ -148,7 +147,7 @@ const PATTERN: Record<TokenKind, RegExp> = {
   // three digits after each comma and no space, so an ordinary argument list (`take a, 3`) still splits on its comma:
   // only `1,234` binds as one number, never `1, 234`. The separated alternative is tried first, since the plain one
   // would otherwise match just the leading `2`.
-  [TokenKind.Integer]:
+  ['integer']:
     /-?\d{1,3}(?:,\d{3})+(?![\d,])|-?\d+(?=\b)(?!-[a-zA-Z])/y,
   // a chunk runs over literal text, including a `{` that does not open an interpolation (not followed by an
   // identifier) and any `}`; it stops at `>` (close), `\` (escape), or an interpolation-opening `{`. Escapes cover
@@ -158,8 +157,8 @@ const PATTERN: Record<TokenKind, RegExp> = {
   // no matcher can consume it, which surfaces as a structure error rather than anything about the backslash.
   // a run of braces followed by a letter opens an interpolation whole (`{x}` is depth one, `{{x}}` depth two, the
   // runtime interpolation), so the chunk matcher stops before a brace run that a letter follows
-  [TokenKind.Chunk]:
-    // `e` alongside `nrt`: `\e` is the escape character (0x1B), which is what every ANSI colour sequence opens
+  ['chunk']:
+    // `e` alongside `nrt`: `\e` is the escape character (0x1B), which is what every ANSI color sequence opens
     // with and the one thing a Term program needed to write terminal output without an npm package.
     /(?:\\[<>{}nrte\\]|\\(?![<>{}nrte\\])|\{+(?!\s*(?:[a-zA-Z_{]|$))|[^>{\\])+/y,
 }
@@ -191,6 +190,7 @@ export function tokenize(source: {
     file: source.file,
     text: source.text,
     lines: source.text.split('\n'),
+    list: [],
   }
 
   const braceStack: string[] = []
@@ -212,12 +212,7 @@ export function tokenize(source: {
   let previous: Token | undefined
 
   function append(token: Token) {
-    if (!tokens.head) {
-      tokens.head = token
-    } else if (previous) {
-      token.previous = previous
-      previous.next = token
-    }
+    tokens.list.push(token)
   }
 
   for (const rawLine of tokens.lines) {
@@ -239,7 +234,7 @@ export function tokenize(source: {
           lineText.startsWith('>', pos + 1))
       ) {
         const token: Token = {
-          kind: TokenKind.Chunk,
+          kind: 'chunk',
           span: {
             start: { line, column },
             end: { line, column: column + 2 },
@@ -289,18 +284,18 @@ export function tokenize(source: {
 
         const content = lineText.slice(pos + 2, end)
         const tokensOf: Token[] = [
-          { kind: TokenKind.OpenAngle, span: { start: { line, column }, end: { line, column: column + 2 } }, text: '<<' },
+          { kind: 'open-angle', span: { start: { line, column }, end: { line, column: column + 2 } }, text: '<<' },
           ...(content
             ? [
                 {
-                  kind: TokenKind.Chunk,
+                  kind: 'chunk' as const,
                   span: { start: { line, column: column + 2 }, end: { line, column: column + 2 + content.length } },
                   text: rawChunk(content),
                 },
               ]
             : []),
           {
-            kind: TokenKind.CloseAngle,
+            kind: 'close-angle',
             span: { start: { line, column: column + 2 + content.length }, end: { line, column: column + 4 + content.length } },
             text: '>>',
           },
@@ -324,7 +319,7 @@ export function tokenize(source: {
         (textDepthStack[textDepthStack.length - 1] ?? 0) > 0
       ) {
         const token: Token = {
-          kind: TokenKind.Chunk,
+          kind: 'chunk',
           span: {
             start: { line, column },
             end: { line, column: column + 1 },
@@ -359,7 +354,7 @@ export function tokenize(source: {
         let text = lineText.slice(pos, pos + size)
 
         // a closing }} only consumes as many braces as the matching opener pushed
-        if (kind === TokenKind.CloseBrace) {
+        if (kind === 'close-brace') {
           const open = braceStack[braceStack.length - 1]
 
           if (open) {
@@ -383,30 +378,30 @@ export function tokenize(source: {
         pos += size
         column += size
 
-        if (kind === TokenKind.OpenBrace) {
+        if (kind === 'open-brace') {
           braceStack.push(text)
-        } else if (kind === TokenKind.CloseBrace) {
+        } else if (kind === 'close-brace') {
           braceStack.pop()
         }
 
         switch (kind) {
-          case TokenKind.Newline:
+          case 'newline':
             line++
             column = 0
             break
-          case TokenKind.OpenBrace:
+          case 'open-brace':
             modeStack.push(LexMode.Interpolation)
             break
-          case TokenKind.CloseBrace:
+          case 'close-brace':
             modeStack.pop()
             break
-          case TokenKind.OpenAngle:
+          case 'open-angle':
             modeStack.push(LexMode.Text)
             textDepthStack.push(0)
             // where this literal opened, so an unclosed one can point at it
             textOpenStack.push({ line, column })
             break
-          case TokenKind.CloseAngle:
+          case 'close-angle':
             modeStack.pop()
             textDepthStack.pop()
             textOpenStack.pop()
@@ -422,7 +417,7 @@ export function tokenize(source: {
           // `{` followed by a name, so `{"a":1}` and `{ ... }` stay literal text, and a real `{code,view}` in a
           // path is written `\{code,view\}` as it always was. Checked across the tree: the only unescaped
           // `{name,` left is inside a `#` comment.
-          case TokenKind.Chunk:
+          case 'chunk':
             // a chunk in a text literal may carry unescaped `<` (a generic / less-than); each deepens the bracket
             // balance so its matching `>` is treated as content rather than the literal's terminator.
             if (mode === LexMode.Text && textDepthStack.length > 0) {
@@ -538,9 +533,5 @@ export function tokenize(source: {
     )
   }
 
-  if (found.length > 0) {
-    return { ok: false, diagnostics: found }
-  }
-
-  return { ok: true, tokens }
+  return { tokens, diagnostics: found }
 }

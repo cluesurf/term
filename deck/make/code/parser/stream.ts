@@ -16,8 +16,9 @@
 // angle brackets and it cannot disagree with the grammar, which is the trade this codebase makes every time.
 
 import { parse } from '@term/make/code/parser/tree'
+import { groupsOf } from './narrow'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
-import type { GroupNode } from '@term/make/code/parser/tree'
+import type { GroupNode } from '@term/make/code/parser/narrow'
 
 export type StreamResult =
   // a completed top-level group
@@ -114,7 +115,7 @@ export function walkGroups(source: TreeSource, take: TakeResult): void {
     const parsed = parse({ file: source.file, text: held.join('\n') })
 
     return parsed.ok && parsed.tree.nodes.length === 1
-      ? parsed.tree.nodes[0]
+      ? groupsOf(parsed.tree.nodes)[0]
       : undefined
   }
 

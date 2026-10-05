@@ -58,11 +58,28 @@ task reverse-deps
             dep
             make list
       save into, get-or-default(reverse, dep, none)
-      fork test, is-equal(contains(into, node), false)
+      # `node` is pushed into a list only while `node` is walked, so a node listing `dep` twice is caught by the LAST
+      # entry alone. `contains` read the whole list for every edge, which is quadratic in the dependents of one node:
+      # a standard library module has thousands on @term/bind
+      fork test, is-equal(ends-with(into, node), false)
         hold
           push(into, node)
           set(reverse, dep, into)
   back reverse
+
+# Whether `items` ends with `item`
+task ends-with
+  mark private
+  take items
+    like list
+      like text
+  take item, like text
+  like boolean
+
+  fork test, is-equal(items/length, 0)
+    hold
+      back false
+  back is-equal(get(items, subtract(items/length, 1)), item)
 
 # The nodes that must be rebuilt: every changed node plus everything that transitively depends on it, in the order
 # they are reached. With EARLY CUTOFF, a node's dependents join only when `interface-changed` says the node changed

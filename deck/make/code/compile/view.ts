@@ -14,13 +14,8 @@
 // every backend emits it as an ordinary function. What this reader will NOT build is as much the point as what
 // it will: no computed local, no attribute or event handler, no unbounded loop. See note/term/view/.
 
-import type {
-  GroupNode,
-  NameNode,
-  Node,
-  RootNode,
-  TextNode,
-} from '@term/make/code/parser/tree'
+import type { Node } from '@term/make/code/parser/tree'
+import type { GroupNode, NameNode, RootNode, TextNode } from '@term/make/code/parser/narrow'
 import type { Diagnostic, Span } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
 import { parse } from '@term/make/code/parser/tree'
@@ -40,7 +35,10 @@ import { writeLong } from '@term/make/code/compile/host'
 import type { Data, DataEntry } from '@term/make/code/compile/host'
 import type { ViewCaps } from '@term/make/code/compile/view-cap'
 import { makeViewCaps, capMessage } from '@term/make/code/compile/view-cap'
-import { RENDER } from '@term/make/code/compile/render-names'
+import { renderNames } from '@term/make/code/compile/render-names'
+
+// the render runtime's task names, asked of compile/render-names once
+const RENDER = renderNames()
 
 // ---- the forms ----
 // One per form in @term/base/code/view-file, plus the ones reused from zone, seed, bind, road, like and take.
@@ -2479,12 +2477,12 @@ function spanOf(node: Node | RootNode): Span {
     case 'integer':
     case 'decimal':
     case 'radix':
-      return node.token.span
+      return node.span
     case 'name':
     case 'text': {
       const chunk = node.parts.find(part => part.kind === 'chunk')
 
-      return chunk?.kind === 'chunk' ? chunk.token.span : zero
+      return chunk?.kind === 'chunk' ? chunk.span : zero
     }
     case 'group':
       return node.nodes[0] ? spanOf(node.nodes[0]) : zero

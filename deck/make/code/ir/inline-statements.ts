@@ -29,7 +29,11 @@
 // counts every kind of reference). A compile that names no roots keeps every definition, since anything may call it
 
 import type { Expression, Program, Statement, Type } from '@term/make/code/compile/node'
-import { RENDER, RENDER_SUPPORT } from '@term/make/code/compile/render-names'
+import { renderNames, renderSupport } from '@term/make/code/compile/render-names'
+
+// the render runtime's task names, asked of compile/render-names once
+const RENDER = renderNames()
+const RENDER_SUPPORT = renderSupport()
 
 type Fn = Extract<Statement, { form: 'function' }>
 type Call = Extract<Expression, { form: 'call' }>

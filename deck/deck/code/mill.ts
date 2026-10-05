@@ -5,6 +5,7 @@
 // SPAN of the node it is about, so an error names the line in deck.tree.
 
 import { parse } from '@term/make/code/parser/tree'
+import { groupsOf } from '@term/make/code/parser/narrow'
 import {
   headWord,
   readMineGrammar,
@@ -354,7 +355,7 @@ export function parseRoleMill(input: {
   // line under a `role` (`skip` where `miss` was meant) dropped the whole rule without a word, and every file it was
   // meant to catch fell through to another role (guides: language/dsls/mills). Each `role` group is mined alone
   // against the `role` rule, the same grammar, and one that does not fit refuses the file at its line.
-  for (const group of parsed.tree.nodes) {
+  for (const group of groupsOf(parsed.tree.nodes)) {
     if (headWord(group) !== 'role') {
       continue
     }

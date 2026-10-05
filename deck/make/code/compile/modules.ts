@@ -20,7 +20,10 @@ import {
   toCamel,
   toPascal,
 } from '@term/make/code/compile/typescript'
-import { RENDER } from '@term/make/code/compile/render-names'
+import { renderNames } from '@term/make/code/compile/render-names'
+
+// the render runtime's task names, asked of compile/render-names once
+const RENDER = renderNames()
 
 const ENTRY = '<entry>'
 

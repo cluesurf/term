@@ -14,6 +14,7 @@ import { dirname, join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { LoadHow, Resolver, Source } from '@term/make/code/compile/load'
 import { parse, renderHead } from '@term/make/code/parser/tree'
+import { groupsOf } from '@term/make/code/parser/narrow'
 import type { Node } from '@term/make/code/parser/tree'
 import { spanOfNode } from '@term/make/code/compile/mill-run'
 import { baseRefusal, fileCandidates, packageRest } from '@term/make/code/deck/resolve'
@@ -67,7 +68,7 @@ export function codeRootOfText(text: string, file = 'deck.tree'): string {
     return first?.kind === 'name' ? renderHead(first) : undefined
   }
 
-  for (const statement of parsed.tree.nodes) {
+  for (const statement of groupsOf(parsed.tree.nodes)) {
     if (headOf(statement) !== 'deck') {
       continue
     }
@@ -470,7 +471,7 @@ export function scanDefs(text: string): ModuleExport[] {
     return defs
   }
 
-  for (const group of parsed.tree.nodes) {
+  for (const group of groupsOf(parsed.tree.nodes)) {
     const head = group.nodes[0]
     const kind = head?.kind === 'name' ? renderHead(head) : undefined
 

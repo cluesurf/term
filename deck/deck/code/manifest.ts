@@ -12,7 +12,9 @@ import { parseCode, parseCodeHold, showCode } from './code'
 import { scopeName } from './name'
 import { parseManifestMill } from './mill'
 import { parse, renderHead } from '@term/make/code/parser/tree'
-import type { GroupNode, Node } from '@term/make/code/parser/tree'
+import type { Node } from '@term/make/code/parser/tree'
+import type { GroupNode } from '@term/make/code/parser/narrow'
+import { groupsOf } from '@term/make/code/parser/narrow'
 import { spanOfNode } from '@term/make/code/compile/mill-run'
 import {
   readTree,
@@ -615,11 +617,11 @@ export function manifestSpellings(input: { text: string; file?: string }): Manif
 
   // a LOCKFILE is not a manifest: its `deck` entries carry `code <version>` as their own format, which is the
   // package manager's to change and not this rule's
-  if (parsed.tree.nodes.some(statement => headOf(statement) === 'lock' && statement.nodes[1]?.kind === 'text')) {
+  if (groupsOf(parsed.tree.nodes).some(statement => headOf(statement) === 'lock' && statement.nodes[1]?.kind === 'text')) {
     return []
   }
 
-  for (const statement of parsed.tree.nodes) {
+  for (const statement of groupsOf(parsed.tree.nodes)) {
     const head = headOf(statement)
 
     if (head === 'deck') {

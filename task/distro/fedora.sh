@@ -2,8 +2,9 @@
 # term's Fedora half, run inside task/distro/fedora.dockerfile by task/distro.ts. Two modes:
 #
 #   build   /in/term-linux-{x64,arm64}.tar.gz (the release payloads) -> /out/term-<VERSION>-1.{x86_64,aarch64}.rpm
-#   index   /repo, a dnf repository holding every .rpm it serves -> its repodata/. The host signs repomd.xml
-#           (repomd.xml.asc): the key never enters a container
+#   index   /repo, a dnf repository whose <version>/ folders hold every .rpm it lists -> its repodata/. The host signs
+#           repomd.xml (repomd.xml.asc): the key never enters a container. Only repodata/ is published: term.surf
+#           redirects each <version>/ path to the GitHub release (mesh/site/term.surf/home/site/tool/release-redirect.ts)
 #
 # Both architectures build on whichever this container runs on: the spec compiles nothing, so `--target` only names
 # the architecture the package is for.

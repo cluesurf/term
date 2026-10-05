@@ -1,0 +1,86 @@
+# Why a unit was built (note/term/plan/incremental-best-in-class.md, step 6, `term make --explain`).
+#
+# A unit's answer is looked up by a key made of its inputs (compile/separate.ts): its own modules' texts, the settings
+# it was built under, the compiler, and the fingerprint of every dependency definition it reaches by name
+# (compile/names.tree). A key that misses says only that something moved. The inputs themselves, kept from the last
+# time the unit was built, say what: each reason names the file, the setting or the name, so an edit can be traced to
+# every unit it cost.
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+# what a unit was built from
+form unit-inputs
+  # the compiler's fingerprint for units
+  link compiler, like text
+  # each of the unit's own files, to the fingerprint of its text
+  link own
+    like hash
+      like text
+      like text
+  # each of the unit's own files, to how it is read: its role, its lean and its deck
+  link read
+    like hash
+      like text
+      like text
+  # everything else its key holds: the templates it can expand, the platform, the await switch, how it was checked
+  link settings, like text
+  # each name it reaches, to the fingerprints of the definitions giving it
+  link names
+    like hash
+      like text
+      like text
+
+# The reasons `now` differs from `before`, the inputs of the unit's last build. None when they are the same, which
+# means the unit's stored answer was missing rather than stale
+task why
+  take before, like unit-inputs
+  take now, like unit-inputs
+  like list
+    like text
+
+  save reasons, make list
+  fork test, is-equal(before/compiler, now/compiler)
+    miss
+      push(reasons, <the compiler changed>)
+
+  walk keys(now/own)
+    take file
+    fork test, has(before/own, file)
+      hold
+        fork test, is-equal(get-or-default(before/own, file, <>), get-or-default(now/own, file, <>))
+          miss
+            push(reasons, <its own text changed: {file}>)
+        fork test, is-equal(get-or-default(before/read, file, <>), get-or-default(now/read, file, <>))
+          miss
+            push(reasons, <how it is read changed, its role, lean or deck: {file}>)
+      miss
+        push(reasons, <it holds a new file: {file}>)
+  walk keys(before/own)
+    take file
+    fork test, is-equal(has(now/own, file), false)
+      hold
+        push(reasons, <it no longer holds {file}>)
+
+  fork test, is-equal(before/settings, now/settings)
+    miss
+      push(reasons, <its settings changed: templates, platform, role or lean>)
+
+  walk keys(now/names)
+    take name
+    fork test, has(before/names, name)
+      hold
+        fork test, is-equal(get-or-default(before/names, name, <>), get-or-default(now/names, name, <>))
+          miss
+            push(reasons, <`{name}` changed>)
+      miss
+        push(reasons, <`{name}` is newly defined>)
+  walk keys(before/names)
+    take name
+    fork test, is-equal(has(now/names, name), false)
+      hold
+        push(reasons, <`{name}` is no longer reached>)
+  back reasons

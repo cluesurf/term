@@ -19,11 +19,17 @@ import { spawn } from 'node:child_process'
 import { commandRoutes } from '@term/call/code/hook-dispatch'
 import type { ChildProcess } from 'node:child_process'
 import { compile } from '@term/make/code/compile/compile'
+import { compileSeparate } from '@term/make/code/compile/separate'
+import type { UnitMemo } from '@term/make/code/compile/separate'
+import type { WalkMemo } from '@term/make/code/compile/load'
+import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import {
   projectResolver,
   resolveTreeFile,
+  unitSlug,
   watchTreeFiles,
 } from '@term/call/code/make'
+import { writeUnitBundle } from '@term/call/code/unit-bundle'
 import { nativePrelude } from '@term/make/code/compile/native'
 import type { NativeEnv } from '@term/make/code/compile/native'
 import { hashText } from '@term/make/code/term/hash'
@@ -38,7 +44,8 @@ import {
 } from '@term/call/code/remote-cache'
 import { toConstant } from '@term/make/code/compile/typescript'
 import { parse } from '@term/make/code/parser/tree'
-import type { GroupNode } from '@term/make/code/parser/tree'
+import type { GroupNode } from '@term/make/code/parser/narrow'
+import { groupsOf } from '@term/make/code/parser/narrow'
 import { manifestValueOf } from '@term/call/code/manifest-name'
 import { closeRun, count, failRun, field, followChild, isRunOpen, location, openRun, report, reportProblems, showPath } from '@term/call/code/output'
 
@@ -72,7 +79,26 @@ function nodeValue(group: GroupNode): string {
 // that the per-build hash does not already capture (e.g. a new prelude assembly rule).
 // 9: the client bundle enters through a one-line import of the program, and its import map names only the externals
 // the bundle kept (2026-10-04)
-const BOOT_CACHE_EPOCH = '9'
+// 10: a program is built one unit at a time, and bundled from its modules and its entry's shim (2026-10-05)
+const BOOT_CACHE_EPOCH = '10'
+
+// how one build makes its bundle: the routes a command-line program dispatches on, the key its bundle is cached by,
+// what goes in front of the bundle, and what the bundler is handed (written under `dir`, its entry returned)
+type BootPlan = {
+  cliRoutes: ReturnType<typeof commandRoutes>
+  key: string
+  banner: string
+  write: (dir: string) => string
+}
+
+// the unit answers and module walks of every build in this process, so a rebuild of the dev loop reads what an edit
+// did not reach from memory. Bounded: past the cap the memo starts over and reads from the cache
+const PROCESS_UNITS: UnitMemo = new Map()
+const PROCESS_WALKED: WalkMemo = new Map()
+const PROCESS_UNITS_CAP = 20_000
+
+// what the last build through units built and read, for the step's test (test/call/boot-units.ts)
+export const lastBootUnits = { built: 0, reused: 0 }
 
 // whether the server child is taking connections on `port`: asked every 50 ms for up to 10 s. False only when the
 // child exits first, so a server that is merely slow is still reported started when the time runs out
@@ -231,7 +257,7 @@ function loadHostEnv(appDir: string): string[] {
     return []
   }
 
-  const host = result.tree.nodes.find(g => nodeHead(g) === 'host')
+  const host = groupsOf(result.tree.nodes).find(g => nodeHead(g) === 'host')
 
   if (!host) {
     return []
@@ -766,67 +792,160 @@ export async function callBoot(input: {
       cli: boolean
     } | null> => {
       const started = Date.now()
-      const result = compile(
-        { file: entry, text: readFileSync(entry, 'utf8') },
-        {
-          resolve,
-          cache,
-          parsed: processParse(),
-          env,
-          deckOf: projectDeckOf(),
-          // the role and the lean surface, as `term make` reads them (see the client build above)
-          roleOf: projectRoleOf(projectRoot),
-          leanOf: projectLeanOf(projectRoot),
-        },
-      )
 
-      if (!result.ok) {
-        reportProblems(result.diagnostics.map(diagnostic => ({ diagnostic })), cwd)
+      // the compile failed: its problems, and the build item that says so
+      const failed = (diagnostics: Diagnostic[]): null => {
+        reportProblems(diagnostics.map(diagnostic => ({ diagnostic })), cwd)
         report({
           glyph: 'failed',
           verb: 'build',
           subject: path.relative(cwd, entry) || entry,
           duration: Date.now() - started,
-          counts: [count(result.diagnostics.length, 'errors', 'error')],
+          counts: [count(diagnostics.length, 'errors', 'error')],
         })
 
         return null
       }
 
-      // a program whose top level declares `hook` commands is a command-line
-      // tool: it gets a dispatching run entry instead of the server harness,
-      // and none of the SSR client machinery
-      const cliRoutes = commandRoutes(result.program)
-      const cli = cliRoutes.length > 0
+      const readRuntime = (p: string): string | undefined => (existsSync(p) ? readFileSync(p, 'utf8') : undefined)
 
-      // for an SSR server (the node host), also build the browser CLIENT bundle the rendered page loads, so the
-      // server-rendered HTML becomes interactive. The app must have a deck.tree root (appDir) to hold `build/`. Only a
-      // program that renders pages has one, and it is the one that wraps them in the document shell: a program that
-      // only prints got a bundle too, and a `build/` it never served
-      const rendersPages = /\bdocumentShell\b/.test(result.typescript)
+      // ONE UNIT AT A TIME, as `term make` builds (note/term/plan/incremental-best-in-class.md, step 9). The program's
+      // modules are each built against the stubs of what they load, and a rebuild in the same process (the dev loop,
+      // `watchApp`) reads every unit an edit did not reach from memory: the merged compile checked the whole closure
+      // again for every edit. The routes come from each unit's `dock` statements, the parameters they call with from
+      // the stubs, the prelude from the natives the stubs carry, and the bundle from the closure's modules and the
+      // entry's shim, which exports every public task of the closure as the merged module did. A program that renders
+      // pages is still built whole, with its client bundle (`buildClientBundle`), and `TERM_BOOT_MERGED=1` builds any
+      // program whole
+      const unitPlan = (): BootPlan | null | undefined => {
+        if (PROCESS_UNITS.size > PROCESS_UNITS_CAP) {
+          PROCESS_UNITS.clear()
+        }
 
-      if (!cli && env === 'node' && appDir && rendersPages) {
-        const prod = process.env.NODE_ENV === 'production'
-        buildStyles(appDir)
-        await buildClientBundle({
-          entry,
-          appDir,
-          projectRoot,
-          installRoot,
-          prod,
-        })
-        // content-hash the cache-bust-critical assets and write the manifest the shell reads
-        hashAssets(path.join(appDir, 'build'), prod)
-        // bump the dev live-reload id (the client polls /base/__id and reloads when it changes)
-        writeBuildId(appDir)
+        const deckOf = projectDeckOf()
+        const slug = (file: string): string => unitSlug(projectRoot, file, deckOf)
+        const built = compileSeparate(
+          { file: entry, text: readFileSync(entry, 'utf8') },
+          {
+            resolve,
+            cache,
+            modules: file => `./${slug(file)}`,
+            roleOf: projectRoleOf(projectRoot),
+            leanOf: projectLeanOf(projectRoot),
+            deckOf,
+            parsed: processParse(),
+            units: PROCESS_UNITS,
+            walked: PROCESS_WALKED,
+            env,
+            keepProgram: true,
+          },
+        )
+
+        if (!built.ok) {
+          return failed(built.diagnostics)
+        }
+
+        lastBootUnits.built = built.built.length
+        lastBootUnits.reused = built.reused.length
+
+        const modules = [...built.modules]
+
+        if (modules.some(([, emit]) => /\bdocumentShell\b/.test(emit.code))) {
+          return undefined
+        }
+
+        const cliRoutes = commandRoutes([...(built.surface ?? []), ...built.docks])
+        const prelude = nativePrelude(built.natives, env, readRuntime)
+
+        return {
+          cliRoutes,
+          key: `units\n${built.closureKey}\n${prelude}`,
+          // the prelude is a module of the bundle, not a banner (call/code/unit-bundle.ts)
+          banner: '',
+          // the closure's modules beside one another, the prelude, and the entry's shim, under the boot cache's `host/`
+          write: dir =>
+            writeUnitBundle({ dir, entry, modules, slug, exports: built.exports, prelude }),
+        }
       }
 
-      // auto-prepend the native runtime shims this program docks. This is the prelude the build owns.
-      const prelude = nativePrelude(result.program, env, p =>
-        existsSync(p) ? readFileSync(p, 'utf8') : undefined,
-      )
+      // the program compiled whole, every module in one
+      const mergedPlan = async (): Promise<BootPlan | null> => {
+        const result = compile(
+          { file: entry, text: readFileSync(entry, 'utf8') },
+          {
+            resolve,
+            cache,
+            parsed: processParse(),
+            env,
+            deckOf: projectDeckOf(),
+            // the role and the lean surface, as `term make` reads them (see the client build above)
+            roleOf: projectRoleOf(projectRoot),
+            leanOf: projectLeanOf(projectRoot),
+          },
+        )
 
-      const source = `${prelude}\n${result.typescript}`
+        if (!result.ok) {
+          return failed(result.diagnostics)
+        }
+
+        // a program whose top level declares `hook` commands is a command-line
+        // tool: it gets a dispatching run entry instead of the server harness,
+        // and none of the SSR client machinery
+        const cliRoutes = commandRoutes(result.program)
+        const cli = cliRoutes.length > 0
+
+        // for an SSR server (the node host), also build the browser CLIENT bundle the rendered page loads, so the
+        // server-rendered HTML becomes interactive. The app must have a deck.tree root (appDir) to hold `build/`. Only a
+        // program that renders pages has one, and it is the one that wraps them in the document shell: a program that
+        // only prints got a bundle too, and a `build/` it never served
+        const rendersPages = /\bdocumentShell\b/.test(result.typescript)
+
+        if (!cli && env === 'node' && appDir && rendersPages) {
+          const prod = process.env.NODE_ENV === 'production'
+          buildStyles(appDir)
+          await buildClientBundle({
+            entry,
+            appDir,
+            projectRoot,
+            installRoot,
+            prod,
+          })
+          // content-hash the cache-bust-critical assets and write the manifest the shell reads
+          hashAssets(path.join(appDir, 'build'), prod)
+          // bump the dev live-reload id (the client polls /base/__id and reloads when it changes)
+          writeBuildId(appDir)
+        }
+
+        // auto-prepend the native runtime shims this program docks. This is the prelude the build owns.
+        const prelude = nativePrelude(result.program, env, readRuntime)
+        const source = `${prelude}\n${result.typescript}`
+
+        return {
+          cliRoutes,
+          key: source,
+          banner: '',
+          write: dir => {
+            writeFileSync(path.join(dir, 'app.ts'), source)
+
+            return path.join(dir, 'app.ts')
+          },
+        }
+      }
+
+      const viaUnits = env === 'node' && process.env.TERM_BOOT_MERGED !== '1' ? unitPlan() : undefined
+
+      if (viaUnits === null) {
+        return null
+      }
+
+      const plan = viaUnits ?? (await mergedPlan())
+
+      if (plan === null) {
+        return null
+      }
+
+      const { cliRoutes } = plan
+      const cli = cliRoutes.length > 0
 
       // a bundle written with `--out` ships, so it cannot name this machine's project: its `require` is anchored at
       // the bundle's own file, and a package it needs resolves through the dependencies of whatever package carries it
@@ -888,7 +1007,7 @@ export async function callBoot(input: {
           env,
           `esbuild@${esbuildVersion}`,
           JSON.stringify(bundleConfig),
-          source,
+          plan.key,
         ].join('\n'),
       )
 
@@ -907,11 +1026,16 @@ export async function callBoot(input: {
       } else {
         mkdirSync(cached, { recursive: true })
         mkdirSync(out, { recursive: true })
-        writeFileSync(path.join(cached, 'app.ts'), source)
+
+        // the units' prelude goes in front of the whole bundle, after the `require` the node banner defines, so every
+        // module of the closure sees the shims it docks, as the one merged module did
+        const banner = ['banner' in bundleConfig ? (bundleConfig.banner?.js ?? '') : '', plan.banner].filter(part => part).join('\n')
+
         buildSync({
-          entryPoints: [path.join(cached, 'app.ts')],
+          entryPoints: [plan.write(cached)],
           outfile: bundle,
           ...bundleConfig,
+          ...(banner ? { banner: { js: banner } } : {}),
         })
         report({ glyph: 'done', verb: 'build', subject: path.relative(cwd, entry) || entry, duration: Date.now() - started, fields: shown ? [location(shown)] : [] })
       }
@@ -943,8 +1067,10 @@ export async function callBoot(input: {
           copyFileSync(shipped, path.join(out, 'dock.mjs'))
         } else {
           buildSync({
+            // beside this module when it runs from source, and under `deck/` from the bundle in `host/`
             entryPoints: [
-              path.join(here, '../deck/call/code/hook-dispatch.ts'),
+              [path.join(here, 'hook-dispatch.ts'), path.join(here, '../deck/call/code/hook-dispatch.ts')].find(existsSync) ??
+                path.join(here, '../deck/call/code/hook-dispatch.ts'),
             ],
             outfile: path.join(out, 'dock.mjs'),
             bundle: true,

@@ -7,7 +7,9 @@ import type { Diagnostic, Span } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
 import { spanOfWhole } from '@term/make/code/compile/mill-run'
 import { parse, renderHead } from '@term/make/code/parser/tree'
-import type { GroupNode, ParseResult, RootNode } from '@term/make/code/parser/tree'
+import type { ParseResult } from '@term/make/code/parser/tree'
+import type { GroupNode, RootNode } from '@term/make/code/parser/narrow'
+import { groupsOf } from '@term/make/code/parser/narrow'
 
 // another deck's module: `@scope/name/...`, outside `@term`, whose decks ship with the compiler, and not the local
 // `@/` alias. Only such a path that resolves to nothing is refused at the load: it can only mean the deck is missing
@@ -150,7 +152,7 @@ function scanImports(tree: RootNode): ImportScan {
   let hasZone = false
   let hasRoute = false
 
-  for (const group of tree.nodes) {
+  for (const group of groupsOf(tree.nodes)) {
     const keyword = headName(group)
 
     // `view` is the component head in both roles, and means the emitter will synthesize render-runtime calls. A
@@ -261,6 +263,10 @@ export type WalkedModule = {
   text: string
   own: ImportScope extends Map<string, infer V> ? V : never
   deps: Source[]
+  // the question that found each of `deps`, in step with it: a module whose text is unchanged keeps its walk, but
+  // a module it loads may have changed, so a kept walk asks again for the sources it visits rather than visiting the
+  // texts it was walked with
+  asks: { path: string; how?: LoadHow }[]
   edges: string[]
   diagnostics: Diagnostic[]
 }
@@ -315,7 +321,12 @@ export function collectModules(
       edges.set(source.file, [...one.edges])
     }
 
-    for (const dependency of one.deps) {
+    const deps =
+      one === known
+        ? one.asks.map((ask, i) => resolve(ask.path, source.file, ask.how) ?? one.deps[i]!)
+        : one.deps
+
+    for (const dependency of deps) {
       visit(dependency)
     }
 
@@ -328,6 +339,7 @@ export function collectModules(
   function walkOne(source: Source): WalkedModule {
     const found: Diagnostic[] = []
     const deps: Source[] = []
+    const asks: { path: string; how?: LoadHow }[] = []
     const out: string[] = []
 
     // discover dependencies from the module's parse tree. A module that does not parse contributes no dependencies:
@@ -398,6 +410,7 @@ export function collectModules(
         }
 
         deps.push(dependency)
+        asks.push(base !== undefined ? { path, how: { base } } : { path })
       } else if (thirdParty(path) && base === undefined) {
         // (a load with `base` that resolves to nothing has the more exact cause the bridge names: a `base` that is
         // not the path's first segment)
@@ -418,7 +431,7 @@ export function collectModules(
       }
     }
 
-    return { text: source.text, own, deps, edges: out, diagnostics: found }
+    return { text: source.text, own, deps, asks, edges: out, diagnostics: found }
   }
 
   visit(entry)

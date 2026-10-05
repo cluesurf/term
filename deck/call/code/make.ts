@@ -16,15 +16,18 @@ import {
   isLookStylesheet,
 } from '@term/make/code/compile/compile'
 import { compileSeparate } from '@term/make/code/compile/separate'
-import type { UnitMemo } from '@term/make/code/compile/separate'
+import type { SeparateResult, UnitExplain, UnitMemo } from '@term/make/code/compile/separate'
+import { hashText } from '@term/make/code/term/hash'
+import { staleEntries } from '@term/make/code/compile/reach'
 import { isDataFile } from '@term/make/code/compile/host'
 import { toCamel, toPascal } from '@term/make/code/compile/typescript'
 import { CompileCache } from '@term/make/code/compile/cache'
 import { makeParseMemo } from '@term/make/code/compile/load'
-import { projectCache } from '@term/call/code/cache-store'
+import { projectCache, projectCacheDir } from '@term/call/code/cache-store'
 import { readable } from '@term/call/code/test-preprocess'
 import { isLockfileAt, isRoleFileAt, manifestNameOf } from '@term/call/code/manifest-name'
 import { projectDeckOf } from '@term/call/code/deck-of'
+import type { DeckOf } from '@term/make/code/compile/roll'
 import { projectRoleOf, projectLeanOf } from '@term/call/code/role-of'
 import { parse } from '@term/make/code/parser/tree'
 import {
@@ -191,6 +194,8 @@ export function findTreeFiles(
   // the platform being built for; when given, other platforms' native trees are skipped. `shared` is always kept,
   // since it belongs to every target.
   platform?: string,
+  // the package root the walk started from, so a folder that means something only at the root is told apart
+  root: string = dir,
 ): string[] {
   let entries: string[]
 
@@ -207,6 +212,25 @@ export function findTreeFiles(
       entry === 'node_modules' ||
       entry === 'host' ||
       entry === '.git'
+    ) {
+      continue
+    }
+
+    // NOTHING HERE IS THIS PACKAGE'S SOURCE, and the walk used to descend into all of it and throw it away after.
+    // Measured on the Term root, 2026-10-05: 29.6 s in `tmp/` (44,848 scratch `.tree` files tests and benchmarks
+    // write) and 7.8 s in `link/` (5,206 files of installed dependencies), against 0.4 s for the 157 files that are
+    // the package. The language server lists a package for every workspace symbol search, so one search held the
+    // editor's queue for 46 s and a save waited behind it ("Getting code actions from 'Term'").
+    //
+    //   a hidden folder   `.base` (Term's caches), `.build` and `.swiftpm` (Swift's), never source
+    //   tmp               scratch, gitignored by house rule
+    //   link at the root  the installed dependencies, reached through the resolver like any other package, and not
+    //                     compiled as this one's files (the same reason a nested package is skipped below). ONLY at
+    //                     the root: `deck/mill/code/code/form/link` is the grammar of the `link` head, real source
+    if (
+      entry.startsWith('.') ||
+      entry === 'tmp' ||
+      (entry === 'link' && dir === root)
     ) {
       continue
     }
@@ -258,7 +282,7 @@ export function findTreeFiles(
         continue
       }
 
-      findTreeFiles(full, out, platform)
+      findTreeFiles(full, out, platform, root)
     } else if (entry.endsWith('.tree')) {
       // a package MANIFEST is read by the package manager and is not Term code. Compiling one emitted an empty
       // module that nothing imports, and only ever produced misleading errors: a manifest head the code mill does not
@@ -363,23 +387,217 @@ function isWithin(child: string, parent: string): boolean {
 }
 
 // What a separate build learns that the next one may keep (`compileProjectSeparate`): the unit answers, each module's
-// walk, each load's answer and each module's parse. A watch keeps one while the project's files are the same files,
-// since a module's walk and parse are checked against its text, and a load's answer only changes when a file appears
-// or disappears (note/term/plan/incremental-best-in-class.md, step 2)
+// walk, each load's answer, each module's parse, and each entry's outcome. A watch keeps one for its life
+// (note/term/plan/incremental-best-in-class.md, steps 2 and 3). A module's walk and parse are checked against its text
+// and a load's answer against its file's stamp, so an edit is seen wherever it lands. What a stamp cannot see is a
+// file appearing where a load found nothing, or a manifest or role file changing how every module is read, so either
+// of those starts the session over
 export type BuildSession = {
   resolve: Resolver
   parsed: ParseMemo
   units: UnitMemo
   walked: WalkMemo
+  // what each entry built to, the last time it built
+  entries: Map<string, EntryOutcome>
+  // starts a build of `files` and answers which files moved since the last one, of every module that build walked.
+  // `undefined` when nothing may be replayed: the session's first build, or one that started it over
+  turn: (files: string[]) => string[] | undefined
+  // ends a build: the stamp of every module it walked, which the next build's `turn` compares against
+  close: () => void
+}
+
+// an entry's build, as much of it as the next build needs to replay it: its own problems, its open claims, its
+// obligations, and how many units it reached. Its artifacts are already on disk, written when it was built
+export type EntryOutcome = {
+  problems: BuildProblem[]
+  open: string[]
+  obligations: Parameters<typeof addOwed>[1]
+  units: number
+  closureKey: string
 }
 
 export function buildSession(root: string): BuildSession {
+  let kept = keptResolver(projectResolver(root))
+  const walked: WalkMemo = new Map()
+  const entries = new Map<string, EntryOutcome>()
+  // each walked module's stamp as of the last build
+  const stamps = new Map<string, string>()
+  // the files that say how every module is read, rather than being one
+  const settings = ['deck.tree', 'lock.tree', 'role.tree', 'base/role.tree'].map(name => path.join(root, name))
+  let known: string | undefined
+
   return {
-    resolve: buildResolver(projectResolver(root)),
+    resolve: (importPath, fromFile, how) => kept.resolve(importPath, fromFile, how),
     parsed: makeParseMemo(),
     units: new Map(),
-    walked: new Map(),
+    walked,
+    entries,
+    turn: files => {
+      kept.turn()
+
+      const listed = files.join('\n')
+      const moved = [...stamps].filter(([file, stamp]) => kept.stamp(file) !== stamp).map(([file]) => file)
+
+      if (listed === known && !moved.some(file => settings.includes(file))) {
+        return moved
+      }
+
+      // the session's first build: nothing it holds can be stale yet (a parallel pass may have walked for it already),
+      // but no entry has an outcome to replay
+      if (known === undefined) {
+        known = listed
+
+        return undefined
+      }
+
+      known = listed
+      kept = keptResolver(projectResolver(root))
+      walked.clear()
+      entries.clear()
+      stamps.clear()
+
+      return undefined
+    },
+    close: () => {
+      for (const file of [...walked.keys(), ...settings]) {
+        stamps.set(file, kept.stamp(file))
+      }
+    },
   }
+}
+
+// What `term make --explain` keeps (note/term/plan/incremental-best-in-class.md, step 6): the inputs each unit was last
+// built from, one file per unit under the project's cache, written only when the unit is built. It sits beside the
+// cache rather than in it, because the cache's directories are per compiler version, and "the compiler changed" is
+// one of the things it has to be able to say
+export function explainStore(root: string): UnitExplain {
+  const dir = path.join(projectCacheDir(root), 'explain')
+  const fileOf = (id: string): string => path.join(dir, `${hashText(id)}.json`)
+
+  return {
+    reasons: new Map(),
+    recall: id => {
+      try {
+        const kept = JSON.parse(readFileSync(fileOf(id), 'utf8')) as {
+          compiler: string
+          own: [string, string][]
+          read?: [string, string][]
+          settings: string
+          names: [string, string][]
+        }
+
+        return {
+          compiler: kept.compiler,
+          own: new Map(kept.own),
+          read: new Map(kept.read ?? []),
+          settings: kept.settings,
+          names: new Map(kept.names),
+        }
+      } catch {
+        return undefined
+      }
+    },
+    remember: (id, inputs) => {
+      try {
+        mkdirSync(dir, { recursive: true })
+        writeFileSync(
+          fileOf(id),
+          JSON.stringify({
+            compiler: inputs.compiler,
+            own: [...inputs.own],
+            read: [...inputs.read],
+            settings: inputs.settings,
+            names: [...inputs.names],
+          }),
+        )
+      } catch {
+        // an explanation is never worth failing a build over
+      }
+    },
+  }
+}
+
+// A resolver whose answers outlive one build. An answer is a file AND its text. WHICH file a load lands on changes only
+// when a file appears or disappears, which starts a session over (`buildSession`), so that half is kept. The text is
+// kept with the stamp (size and modification time) it was read at, and the first time a build hands a file out its
+// stamp is asked again: a file that moved is read again. Never asked of `base` again, because `base` keeps what it
+// read for its own life (`projectResolver`'s read cache) and would hand back the old text, which is how the first
+// version of this served an edited module as it was (task/term/edit-replay.ts found it on its first run). A later ask
+// in the same build is a map lookup. `turn` starts a build
+export function keptResolver(base: Resolver): { resolve: Resolver; turn: () => void; stamp: (file: string) => string } {
+  const answers = new Map<string, Source | undefined>()
+  // each file handed out, the text it was handed out with and the stamp that text was read at
+  const texts = new Map<string, { stamp: string; text: string }>()
+  const stamps = new Map<string, string>()
+
+  const stampOf = (file: string): string => {
+    const known = stamps.get(file)
+
+    if (known !== undefined) {
+      return known
+    }
+
+    let stamp = 'missing'
+
+    try {
+      const stat = statSync(file)
+      stamp = `${stat.size}:${stat.mtimeMs}`
+    } catch {
+      stamp = 'missing'
+    }
+
+    stamps.set(file, stamp)
+
+    return stamp
+  }
+
+  // `found` with its file's text as it is now
+  const current = (found: Source): Source => {
+    const now = stampOf(found.file)
+    let had = texts.get(found.file)
+
+    if (had === undefined) {
+      had = { stamp: now, text: found.text }
+      texts.set(found.file, had)
+    } else if (had.stamp !== now) {
+      try {
+        had = { stamp: now, text: readFileSync(found.file, 'utf8') }
+        texts.set(found.file, had)
+      } catch {
+        // gone: the session starts over at its next build, when the file list no longer holds it
+        return found
+      }
+    }
+
+    return had.text === found.text ? found : { ...found, text: had.text }
+  }
+
+  const resolve: Resolver = (importPath, fromFile, how) => {
+    const key = `${importPath}\u0000${fromFile}\u0000${how?.base ?? ''}`
+    let found: Source | undefined
+
+    if (answers.has(key)) {
+      found = answers.get(key)
+    } else {
+      found = base(importPath, fromFile, how)
+      answers.set(key, found)
+    }
+
+    if (found === undefined) {
+      return undefined
+    }
+
+    const now = current(found)
+
+    // kept as handed out, so an unchanged file is the same object every build
+    if (now !== found) {
+      answers.set(key, now)
+    }
+
+    return now
+  }
+
+  return { resolve, turn: () => stamps.clear(), stamp: stampOf }
 }
 
 // A resolver that answers each (load, file it is in, `base`) once for the life of one build. Every entry's import walk
@@ -903,6 +1121,68 @@ function appShadowFindings(root: string, resolve: Resolver): ContractFinding[] {
   return contractFindings(path.join(path.dirname(generic.file), 'native'), own)
 }
 
+// stable, flat artifact name per source module under host/.unit/: its deck's name and its path inside the deck
+// (`_term_base_code_text`), the same from every project. A unit's emitted imports name the modules it loads by this,
+// and a unit is shared by every project on the machine (the `unit` cache kind), so the name cannot depend on which
+// project built it: it was the path relative to the project root, and the standard library's units one project built
+// imported `./.._base_code_string` into a project whose own copy was `./.._term_deck_term_deck_base_code_string`. A
+// file in no deck keeps the path relative to the root
+export function unitSlug(root: string, file: string, deckOf: DeckOf = projectDeckOf()): string {
+  const deck = deckOf(file)
+  const named = deck ? `${deck.name}/${path.relative(deck.root, file)}` : path.relative(root, file)
+
+  return named.replace(/\.tree$/, '').replace(/[^A-Za-z0-9._-]/g, '_')
+}
+
+// THE ENTRY SHIM: the classic host/<path>.ts artifact exports what the merged build's artifact exported, every public
+// task, constant and type of the entry's closure (`exports`), each from the module that defines it, so a TypeScript
+// importer keeps its import path and its names. Only the entry's own module was re-exported at first, and zone's test
+// helper read `tonePack`, a standard library task, off `seal/base` and got undefined
+export function entryShim(
+  root: string,
+  file: string,
+  exports: { name: string; exported: string; file: string; type: boolean }[],
+  slug: (file: string) => string,
+): string {
+  const outPath = path.join(root, 'host', path.relative(root, file).replace(/\.tree$/, '.ts'))
+
+  const unitOf = (module: string): string => {
+    const relative = path
+      .relative(path.dirname(outPath), path.join(root, 'host', '.unit', slug(module)))
+      .split(path.sep)
+      .join('/')
+
+    // `./` or `../` makes it a relative import. A shim at the root of host/ reaches `.unit/x`, which begins with a
+    // dot and is a PACKAGE name all the same, so a bundler left it external and node failed to find it
+    return relative.startsWith('./') || relative.startsWith('../') ? relative : `./${relative}`
+  }
+
+  const values = new Map<string, string[]>()
+  const types = new Map<string, string[]>()
+
+  for (const one of exports) {
+    const spell = one.type ? toPascal : toCamel
+    const local = spell(one.name)
+    const remote = spell(one.exported)
+    const into = one.type ? types : values
+
+    into.set(one.file, [...(into.get(one.file) ?? []), remote === local ? local : `${remote} as ${local}`])
+  }
+
+  const lines = [
+    ...[...values].map(([module, names]) => `export { ${names.join(', ')} } from '${unitOf(module)}'`),
+    ...[...types].map(([module, names]) => `export type { ${names.join(', ')} } from '${unitOf(module)}'`),
+  ]
+
+  return `${lines.join('\n')}\n`
+}
+
+// a file that is not a program, and so is compiled whole rather than cut into units: a mill definition, a data file,
+// a look stylesheet
+export function isWholeFile(file: string, text: string, role: string | null | undefined): boolean {
+  return role === 'mill' || role === 'host' || (!role && isDataFile({ file, text })) || isLookStylesheet({ file, text })
+}
+
 // Separate compilation for the whole project (`term make --separate`): every module of every entry's closure is
 // checked once against its dependencies' INTERFACES and emitted once into host/.unit/<slug>.ts (imports are
 // sibling-relative, so one artifact serves every importer), with each entry keeping a re-export shim at its classic
@@ -917,6 +1197,10 @@ export function compileProjectSeparate(
   // build makes its own; a watch keeps one across rebuilds (`watchProject`), so an edit re-walks only the module it
   // changed and asks the filesystem nothing it asked before, until a file appears or disappears
   session: BuildSession = buildSession(root),
+  // each entry's answer, built already by a parallel pass over the units (build-separate-parallel.ts)
+  precomputed?: Map<string, SeparateResult>,
+  // why each unit built was built (`term make --explain`, `explainStore`)
+  explain?: UnitExplain,
 ): {
   compiled: number
   written: number
@@ -929,9 +1213,17 @@ export function compileProjectSeparate(
   obligations: Owed
   built: number
   reused: number
+  // each built program entry's closure key, which the roll is cached by (call/code/roll.ts `projectRoll`)
+  closures: Map<string, string>
 } {
   const files = findTreeFiles(root, [], platform)
   const { resolve, parsed, units, walked } = session
+  // the entries this build must build again: those whose closure holds a file that moved since the session's last
+  // build (compile/reach.tree). The rest replay what they built to then. Every entry builds when the session cannot
+  // say what moved
+  const moved = session.turn(files)
+  const stale =
+    moved === undefined ? undefined : new Set(staleEntries(new Map([...walked].map(([file, one]) => [file, one.edges])), files, moved))
   const deckOf = projectDeckOf()
   const roleOf = projectRoleOf(root)
   const leanOf = projectLeanOf(root)
@@ -941,13 +1233,7 @@ export function compileProjectSeparate(
   const open = new Set<string>()
   const obligations: Owed = { total: 0, proven: 0 }
 
-  // stable, flat artifact name per source module. Project files key by their root-relative path; imported modules
-  // living outside the root (stdlib / linked decks) key by their path with separators flattened.
-  const slug = (file: string): string =>
-    path
-      .relative(root, file)
-      .replace(/\.tree$/, '')
-      .replace(/[^A-Za-z0-9._-]/g, '_')
+  const slug = (file: string): string => unitSlug(root, file, deckOf)
 
   let compiled = 0
   let written = 0
@@ -956,6 +1242,8 @@ export function compileProjectSeparate(
   let reused = 0
 
   const errors: string[] = []
+  // each built program entry's closure key, which the roll is cached by (`projectRoll`)
+  const closures = new Map<string, string>()
 
   // Artifacts are written AS THEY ARE PRODUCED, and this remembers only which paths have been written.
   //
@@ -990,6 +1278,21 @@ export function compileProjectSeparate(
   }
 
   for (const file of files) {
+    const replay = stale?.has(file) === false ? session.entries.get(file) : undefined
+
+    if (replay) {
+      compiled++
+      reused += replay.units
+      closures.set(file, replay.closureKey)
+      problems.push(...replay.problems)
+      warnings.push(...replay.problems.map(problem => renderDiagnostic(problem.diagnostic, problem.text)))
+      replay.open.forEach(claim => open.add(claim))
+      addOwed(obligations, replay.obligations)
+      continue
+    }
+
+    session.entries.delete(file)
+
     // a file of `test` blocks, or a feed grammar, is built as compileProject builds it (`buildable`)
     const unit = buildable(file, readFileSync(file, 'utf8'), roleOf(file))
 
@@ -1012,9 +1315,8 @@ export function compileProjectSeparate(
     // module) and a mill definition (checked, never built). Each goes through compile() exactly as the merged build
     // sends it, and is written where the merged build writes it
     const role = roleOf(file)
-    const whole = role === 'mill' || role === 'host' || (!role && isDataFile({ file, text })) || isLookStylesheet({ file, text })
 
-    if (whole) {
+    if (isWholeFile(file, text, role)) {
       const one = compile({ file, text }, { resolve, cache, parsed, walked, deckOf, roleOf, leanOf })
 
       if (!one.ok) {
@@ -1049,7 +1351,8 @@ export function compileProjectSeparate(
       continue
     }
 
-    const result = compileSeparate(
+    // a parallel pass may have built it already (build-separate-parallel.ts), with these same options in a worker
+    const result = precomputed?.get(file) ?? compileSeparate(
       { file, text },
       // roleOf comes along: a unit compiled separately has to be asked the same question about its role as one
       // compiled through the merged path, or the two disagree about whether a `hook` is a command or a route
@@ -1063,6 +1366,7 @@ export function compileProjectSeparate(
         parsed,
         units,
         walked,
+        explain,
       },
     )
 
@@ -1083,11 +1387,14 @@ export function compileProjectSeparate(
 
     // only this file's warnings, as compileProject reports them: a grammar's own compile is of the reader generated
     // from it, whose unused captures are about code nobody wrote
+    const own: BuildProblem[] = []
+
     for (const warning of result.warnings) {
       if (warning.file === file && !(grammar && warning.name === 'unused-binding')) {
         const problem = framed(warning)
         warnings.push(renderDiagnostic(problem.diagnostic, problem.text))
         problems.push(problem)
+        own.push(problem)
       }
     }
 
@@ -1097,6 +1404,15 @@ export function compileProjectSeparate(
 
     addOwed(obligations, result.obligations)
 
+    session.entries.set(file, {
+      problems: own,
+      open: result.openClaims ?? [],
+      obligations: result.obligations,
+      units: result.built.length + result.reused.length,
+      closureKey: result.closureKey,
+    })
+    closures.set(file, result.closureKey)
+
     for (const [mfile, emit] of result.modules) {
       writeArtifact(
         path.join(root, 'host', '.unit', `${slug(mfile)}.ts`),
@@ -1104,43 +1420,11 @@ export function compileProjectSeparate(
       )
     }
 
-    // the entry shim: the classic host/<path>.ts artifact exports what the merged build's artifact exported, every
-    // public task, constant and type of the entry's closure (`exports`), each from the module that defines it, so a
-    // TypeScript importer keeps its import path and its names. Only the entry's own module was re-exported at first,
-    // and zone's test helper read `tonePack`, a standard library task, off `seal/base` and got undefined
-    const outPath = path.join(
-      root,
-      'host',
-      path.relative(root, file).replace(/\.tree$/, '.ts'),
+    // the entry shim, written by the worker that built the entry when a parallel pass did (`shim`)
+    writeArtifact(
+      path.join(root, 'host', path.relative(root, file).replace(/\.tree$/, '.ts')),
+      'shim' in result && typeof result.shim === 'string' ? result.shim : entryShim(root, file, result.exports, slug),
     )
-
-    const unitOf = (module: string): string => {
-      const relative = path
-        .relative(path.dirname(outPath), path.join(root, 'host', '.unit', slug(module)))
-        .split(path.sep)
-        .join('/')
-
-      return relative.startsWith('.') ? relative : `./${relative}`
-    }
-
-    const values = new Map<string, string[]>()
-    const types = new Map<string, string[]>()
-
-    for (const one of result.exports) {
-      const spell = one.type ? toPascal : toCamel
-      const local = spell(one.name)
-      const remote = spell(one.exported)
-      const into = one.type ? types : values
-
-      into.set(one.file, [...(into.get(one.file) ?? []), remote === local ? local : `${remote} as ${local}`])
-    }
-
-    const lines = [
-      ...[...values].map(([module, names]) => `export { ${names.join(', ')} } from '${unitOf(module)}'`),
-      ...[...types].map(([module, names]) => `export type { ${names.join(', ')} } from '${unitOf(module)}'`),
-    ]
-
-    writeArtifact(outPath, `${lines.join('\n')}\n`)
   }
 
   // an app's shadows of face's platform implementations take exactly face's contract, as compileProject holds them
@@ -1150,6 +1434,8 @@ export function compileProjectSeparate(
     errors.push(fault)
     faults.push(fault)
   }
+
+  session.close()
 
   return {
     compiled,
@@ -1163,6 +1449,7 @@ export function compileProjectSeparate(
     obligations,
     built,
     reused,
+    closures,
   }
 }
 
@@ -1170,13 +1457,10 @@ export function compileProjectSeparate(
 // Debounced so a burst of saves triggers one rebuild. Runs until the process is killed.
 export function watchProject(root: string, merged = false): void {
   const cache = projectCache(root)
-  // the build graph of every rebuild, kept for the life of the watch: a unit's key is its own text and its imports'
-  // surfaces, so an edit misses exactly the units it changed and every other is answered from memory, and a module's
-  // walk (its loads, their files, its edges) is kept while its text is, so an edit re-walks only the module it touched.
-  // The resolver remembers where every load landed, so a file added or removed makes a new session: a load that
-  // failed may now land, and one that landed may now fail
-  let session = buildSession(root)
-  let files = findTreeFiles(root, [], 'node').join('\n')
+  // the build graph of every rebuild, kept for the life of the watch: an edit rebuilds the entries it reaches, re-walks
+  // the modules it changed, and misses the units whose text or imported surfaces it changed. Everything else is
+  // answered from memory (`BuildSession`)
+  const session = buildSession(root)
 
   openRun({ verb: 'make', root, facts: ['watching', ...(merged ? ['merged'] : [])] })
   stopOnInterrupt()
@@ -1185,13 +1469,6 @@ export function watchProject(root: string, merged = false): void {
   // until ctrl-c: it is a stream (section 11)
   const build = (changed: string): void => {
     const started = Date.now()
-    const now = findTreeFiles(root, [], 'node').join('\n')
-
-    if (now !== files) {
-      files = now
-      session = buildSession(root)
-    }
-
     const result = merged ? compileProject(root, cache) : compileProjectSeparate(root, cache, 'node', session)
     reportProblems(result.problems, root, result.faults)
     report({
@@ -1296,6 +1573,9 @@ export async function callMake(input: {
   // an edit rebuilds the edited module and what reads it. It agreed with this build on every file of every package
   // before the switch (`pnpm term:separate-diff`, test/compile/separate.ts)
   merged?: boolean
+  // say why each unit that was built was built (step 6 of note/term/plan/incremental-best-in-class.md). The build runs
+  // on one thread, since the reasons are found where each unit is built
+  explain?: boolean
   // compile the .tree files even when package.json carries a `make` script.
   //
   // A package.json `make` script normally REPLACES the .tree build entirely, which is right when the script IS the
@@ -1376,11 +1656,53 @@ export async function callMake(input: {
       const started = Date.now()
       // the separate path's own counts, units built against units replayed from the cache
       let units: { built: number; reused: number } | undefined
+      // and each entry's closure key, which the roll below is cached by
+      let closures: Map<string, string> | undefined
 
       if (separate) {
-        const built = compileProjectSeparate(input.root)
+        const session = buildSession(input.root)
+        let precomputed: Map<string, SeparateResult> | undefined
+        let pooled = 0
+        const explain = input.explain ? explainStore(input.root) : undefined
+
+        // a big project's units are built across worker threads first, in dependency order, and the build below then
+        // writes what they answered (build-separate-parallel.ts). A pool that cannot start leaves it to the build
+        if (!explain && fileCount >= 16 && cpus().length > 2) {
+          try {
+            const { compileUnitsParallel } = await import('@term/call/code/build-separate-parallel')
+            const pooledAt = Date.now()
+            const pool = await compileUnitsParallel(input.root, findTreeFiles(input.root, [], 'node'), session)
+            precomputed = pool.results
+            pooled = pool.built
+
+            // the pool's part of the build, apart: its units, its workers, its time, and what it could not answer
+            report({
+              glyph: pool.failures.length > 0 ? 'warning' : 'done',
+              verb: 'build',
+              subject: 'units in parallel',
+              duration: Date.now() - pooledAt,
+              counts: [count(pool.jobs, 'units', 'unit'), count(pool.workers, 'workers', 'worker')],
+              ...(pool.failures.length > 0 ? { message: pool.failures.slice(0, 5) } : {}),
+            })
+          } catch {
+            precomputed = undefined
+          }
+        }
+
+        const built = compileProjectSeparate(input.root, undefined, 'node', session, precomputed, explain)
         result = built
-        units = { built: built.built, reused: built.reused }
+        units = { built: built.built + pooled, reused: built.reused }
+        closures = built.closures
+
+        // one item per unit built, its reasons under it
+        for (const [label, reasons] of explain?.reasons ?? []) {
+          const subject = label
+            .split('+')
+            .map(file => (isWithin(file, input.root) ? path.relative(input.root, file) : file))
+            .join(' + ')
+
+          report({ glyph: 'info', verb: 'built', subject, message: reasons })
+        }
       } else if (parallel) {
         try {
           const { compileProjectParallel } = await import(
@@ -1478,7 +1800,8 @@ export async function callMake(input: {
       // above is cached, so this costs the roll pass and nothing else. See code/compile/roll.ts.
       try {
         const { projectRoll } = await import('@term/call/code/roll')
-        const { roll } = projectRoll(input.root)
+        const rolledAt = Date.now()
+        const { roll } = projectRoll(input.root, closures)
         const fs = await import('fs')
         const rollPath = path.join(input.root, 'host', 'roll.json')
         const text = JSON.stringify(roll, null, 2) + '\n'
@@ -1500,6 +1823,7 @@ export async function callMake(input: {
           glyph: 'info',
           verb: 'write',
           subject: 'host/roll.json',
+          duration: Date.now() - rolledAt,
           counts: [
             count(roll.exception.length, 'exceptions', 'exception'),
             count(roll.task.length, 'tasks', 'task'),

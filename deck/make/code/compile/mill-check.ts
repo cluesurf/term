@@ -20,7 +20,9 @@
 import type { Diagnostic, Span } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
 import { parse } from '@term/make/code/parser/tree'
-import type { GroupNode, Node } from '@term/make/code/parser/tree'
+import type { Node } from '@term/make/code/parser/tree'
+import type { GroupNode } from '@term/make/code/parser/narrow'
+import { groupsOf } from '@term/make/code/parser/narrow'
 import { spanOfWhole } from '@term/make/code/compile/mill-run'
 import type { Source } from '@term/make/code/compile/load'
 
@@ -50,7 +52,7 @@ export function millDeclared(source: Source): Set<string> {
     return names
   }
 
-  for (const group of parsed.tree.nodes) {
+  for (const group of groupsOf(parsed.tree.nodes)) {
     if (DECLARING.has(headOf(group))) {
       names.add(wordOf(group.nodes[1]))
     }
@@ -79,7 +81,7 @@ export function checkMillDefinition(
     // the forms the file's loads bring in, for the `like` checks
     const known = new Set<string>()
 
-    for (const group of tree.tree.nodes) {
+    for (const group of groupsOf(tree.tree.nodes)) {
       if (headOf(group) !== 'load') {
         continue
       }
@@ -119,7 +121,7 @@ export function checkMillDefinition(
       }
     }
 
-    for (const group of tree.tree.nodes) {
+    for (const group of groupsOf(tree.tree.nodes)) {
       if (headOf(group) !== 'mint') {
         continue
       }

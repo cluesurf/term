@@ -49,6 +49,32 @@ function leadingNote(file: string): string {
   return first.replace(/^L\d+:\s*/, '')
 }
 
+// a rule ported to Term (lint/rule-check.tree) keeps its explanation as the `#` comment block directly above its task
+const PORTED = join(TERM, 'deck/make/code/lint/rule-check.tree')
+
+function portedNote(name: string): string | undefined {
+  if (!existsSync(PORTED)) {
+    return undefined
+  }
+
+  const lines = readFileSync(PORTED, 'utf8').split('\n')
+  const at = lines.indexOf(`task ${name}`)
+
+  if (at < 0) {
+    return undefined
+  }
+
+  let start = at
+
+  while (start > 0 && lines[start - 1]!.startsWith('#')) {
+    start--
+  }
+
+  const note = lines.slice(start, at).map(line => line.replace(/^# ?/, '').trim()).join(' ')
+
+  return note ? note.replace(/^L\d+:\s*/, '') : undefined
+}
+
 const rows = [...RULES].sort((a, b) => a.code.localeCompare(b.code))
 
 const body = [
@@ -68,7 +94,7 @@ const body = [
   '| --- | --- | --- | --- | --- |',
   ...rows.map(rule => {
     const file = fileFor(rule.name)
-    const note = file ? leadingNote(file) : rule.docs
+    const note = file ? leadingNote(file) : (portedNote(rule.name) ?? rule.docs)
 
     return `| \`${rule.code}\` | \`${rule.name}\` | ${rule.severity} | ${rule.fixable ? 'yes' : 'no'} | ${note} |`
   }),

@@ -11,7 +11,7 @@
 // `{{platform}}`.
 
 import { printTree } from '@term/make/code/parser/tree'
-import type { RootNode } from '@term/make/code/parser/tree'
+import type { RootNode } from '@term/make/code/parser/narrow'
 import { importPathsOf, makeParseMemo } from '@term/make/code/compile/load'
 import { mill } from '@term/make/code/compile/mill'
 

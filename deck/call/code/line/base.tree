@@ -423,6 +423,10 @@ hook self
   hook back
     task self-back
 
+# Install the newest release and move the front to it (term self update)
+hook update
+  task self-update
+
 # Build/compile the project
 hook make
   # Watch files and recompile incrementally on every change
@@ -433,6 +437,9 @@ hook make
     like boolean
   # One whole-program compile per file instead, optimized across modules (the build before separate compilation)
   take merged
+    like boolean
+  # Say why each unit that was built was built: its own text, a name it reaches, its settings, or the compiler
+  take explain
     like boolean
   # Compile .tree files even when package.json owns `make` (which otherwise runs that script instead)
   take trees
@@ -514,6 +521,9 @@ hook test
   # Filter tests
   take filter
     like text
+  # Compile each test file whole, instead of one unit at a time with the units shared across files
+  take merged
+    like boolean
   task test
 
 # Run benchmarks, or profile a file with --cpu / --memory

@@ -23,6 +23,12 @@
 
 import { cellSamplesBig } from '@term/make/code/check/sturm'
 
+// the cell samples of a univariate product as `[num, den]` pairs: check/sturm takes and gives big integers as
+// `{ dock }` and rationals as `{ n, d }` of them, the shapes its Term port has
+function samplesOf(product: bigint[]): [bigint, bigint][] {
+  return cellSamplesBig(product.map(c => ({ dock: c }))).map(r => [r.n.dock, r.d.dock])
+}
+
 // a multivariate polynomial: the exponent tuple (length = the variable count) joined by commas, mapped to its integer
 // coefficient. The empty map is the zero polynomial.
 export type NPoly = Map<string, bigint>
@@ -564,7 +570,7 @@ function fibrePolys(set: NPoly[], nvars: number, pt: [bigint, bigint][]): bigint
 function cadSamples(set: NPoly[], nvars: number): [bigint, bigint][][] {
   if (nvars === 1) {
     const product = uniProduct(set.map(p => fibreUnivariate(p)))
-    const samples = product.length <= 1 ? [[0n, 1n] as [bigint, bigint]] : cellSamplesBig(product)
+    const samples = product.length <= 1 ? [[0n, 1n] as [bigint, bigint]] : samplesOf(product)
 
     return samples.map(s => [s])
   }
@@ -577,7 +583,7 @@ function cadSamples(set: NPoly[], nvars: number): [bigint, bigint][][] {
     const fibres = fibrePolys(set, nvars, s)
     const product = uniProduct(fibres)
     const fibreSamples =
-      product.length <= 1 ? [[0n, 1n] as [bigint, bigint]] : cellSamplesBig(product)
+      product.length <= 1 ? [[0n, 1n] as [bigint, bigint]] : samplesOf(product)
 
     for (const fs of fibreSamples) {
       out.push([...s, fs])
@@ -628,8 +634,14 @@ function evalAt(p: NPoly, point: [bigint, bigint][]): Rat {
   return acc
 }
 
+// a polynomial and a term as check/cad-nvar.tree exchanges them: each coefficient a big integer, `{ dock }`
+export type BigPoly = Map<string, { dock: bigint }>
+export type NTerm = { exponents: number[]; coefficient: { dock: bigint } }
+
 // is `p(x_0, ..., x_{nvars-1}) >= 0` for ALL real arguments? The n-variable CAD decision.
-export function nonNegativeEverywhereNvar(p: NPoly, nvars: number): boolean {
+export function nonNegativeEverywhereNvar(poly: BigPoly, nvars: number): boolean {
+  const p: NPoly = new Map([...poly].map(([k, c]) => [k, c.dock]))
+
   if (isZero(p)) {
     return true
   }
@@ -637,7 +649,7 @@ export function nonNegativeEverywhereNvar(p: NPoly, nvars: number): boolean {
   if (nvars === 1) {
     // defer to the exact univariate cell decision
     const product = fibreUnivariate(p)
-    const samples = product.length <= 1 ? [[0n, 1n] as [bigint, bigint]] : cellSamplesBig(product)
+    const samples = product.length <= 1 ? [[0n, 1n] as [bigint, bigint]] : samplesOf(product)
 
     for (const s of samples) {
       if (evalAt(p, [s]).n < 0n) {
@@ -658,12 +670,12 @@ export function nonNegativeEverywhereNvar(p: NPoly, nvars: number): boolean {
 }
 
 // build an NPoly from a list of `[exponentTuple, coefficient]` terms (each tuple of length nvars)
-export function nPoly(terms: [number[], bigint][]): NPoly {
+export function nPoly(terms: NTerm[]): BigPoly {
   const out: NPoly = new Map()
 
-  for (const [e, c] of terms) {
-    addTerm(out, key(e), c)
+  for (const term of terms) {
+    addTerm(out, key(term.exponents), term.coefficient.dock)
   }
 
-  return out
+  return new Map([...out].map(([k, c]) => [k, { dock: c }]))
 }

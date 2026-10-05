@@ -9,7 +9,9 @@ import { manifestName } from '@term/call/code/manifest-name'
 import { projectResolver } from '@term/call/code/make'
 import { manifestSpellings } from '@cluesurf/deck.tree'
 import { parse, renderHead } from '@term/make/code/parser/tree'
-import type { GroupNode, Node } from '@term/make/code/parser/tree'
+import type { Node } from '@term/make/code/parser/tree'
+import type { GroupNode } from '@term/make/code/parser/narrow'
+import { groupsOf } from '@term/make/code/parser/narrow'
 import { spanOfNode } from '@term/make/code/compile/mill-run'
 import type { Resolver } from '@term/make/code/compile/load'
 import { closeRun, count, openRun, report, reportProblems } from '@term/call/code/output'
@@ -110,7 +112,7 @@ export function inertManifestFields(text: string, file: string): Finding[] {
 
   const out: Finding[] = []
 
-  for (const root of parsed.tree.nodes) {
+  for (const root of groupsOf(parsed.tree.nodes)) {
     if (headOf(root) !== 'deck' || root.kind !== 'group') {
       continue
     }
@@ -174,7 +176,7 @@ function loadPaths(text: string, file: string): { path: string; base?: string; s
 
   const out: { path: string; base?: string; span: Finding['span'] }[] = []
 
-  for (const group of parsed.tree.nodes) {
+  for (const group of groupsOf(parsed.tree.nodes)) {
     if (headOf(group) !== 'load') {
       continue
     }

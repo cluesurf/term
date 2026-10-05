@@ -10,7 +10,9 @@
 // Read off the concrete tree, because the alias and the word are both gone by the time the program is built.
 
 import type { Span } from '@term/make/code/parser/diagnostic'
-import type { GroupNode, Node, ParseResult, RootNode } from '@term/make/code/parser/tree'
+import type { Node, ParseResult } from '@term/make/code/parser/tree'
+import type { GroupNode, RootNode } from '@term/make/code/parser/narrow'
+import { groupsOf } from '@term/make/code/parser/narrow'
 import { headWord, spanOfNode, wordOf } from '@term/make/code/compile/mill-run'
 
 // the heads `mine seed` reads as a construct before it tries a bare call
@@ -34,7 +36,7 @@ export type KeywordImport = { word: string; span: Span }
 
 // does a parsed module define a top-level `task <word>`
 export function definesTask(parsed: ParseResult, word: string): boolean {
-  return parsed.ok && parsed.tree.nodes.some(group => headWord(group) === 'task' && wordOf(group.nodes[1]) === word)
+  return parsed.ok && groupsOf(parsed.tree.nodes).some(group => headWord(group) === 'task' && wordOf(group.nodes[1]) === word)
 }
 
 // every `find <word>` under a top-level `load` that imports one of the words with no `name`, where `isTask` says the
@@ -45,7 +47,7 @@ export function keywordImports(tree: RootNode, isTask: (word: string) => boolean
   const found: KeywordImport[] = []
   const called = calledWords(tree)
 
-  for (const load of tree.nodes) {
+  for (const load of groupsOf(tree.nodes)) {
     if (headWord(load) !== 'load') {
       continue
     }
@@ -74,12 +76,12 @@ export function keywordImports(tree: RootNode, isTask: (word: string) => boolean
 function calledWords(tree: RootNode): Set<string> {
   const words = new Set<string>()
 
-  const visit = (node: Node): void => {
+  const visit = (node: Node | RootNode): void => {
     if (node.kind === 'name') {
       const last = node.parts.at(-1)
       const word = wordOf(node)
 
-      if (word !== undefined && VALUE_WORDS.has(word) && last?.kind === 'chunk' && (last.token as { next?: { kind: string } }).next?.kind === 'open-paren') {
+      if (word !== undefined && VALUE_WORDS.has(word) && last?.kind === 'chunk' && last.follows !== undefined) {
         words.add(word)
       }
 

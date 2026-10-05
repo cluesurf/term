@@ -1,0 +1,95 @@
+# Units built in parallel, each once everything it depends on is built (note/term/plan/incremental-best-in-class.md,
+# step 5).
+#
+# A schedule is made from a graph, each node to the nodes it depends on, and hands out a node the moment the last of
+# them is finished: `first` the nodes that depend on nothing, `finish` the nodes a finished one was the last thing
+# holding back. A pool of workers drains it, so every core is busy whenever the graph has room, and no node is started
+# before what it reads exists. A dependency the graph does not hold as a node is taken as finished already, and an edge
+# from a node to itself is ignored, so a cycle must arrive as one node (compile/separate.ts cuts the graph into its
+# strongly connected components first).
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+form schedule
+  # each node waiting, to how many of its dependencies are not finished
+  link waiting
+    like hash
+      like text
+      like number
+  # each node, to the nodes that wait on it
+  link waiters
+    like hash
+      like text
+      like list
+        like text
+
+task make-schedule
+  take graph
+    like hash
+      like text
+      like list
+        like text
+  like schedule
+
+  save waiting, make hash
+  save waiters, make hash
+  save none, make list
+  walk keys(graph)
+    take node
+    save count, 0
+    walk get-or-default(graph, node, none)
+      take dep
+      fork test, is-equal(dep, node)
+        hold
+          turn next
+      fork test, is-equal(has(graph, dep), false)
+        hold
+          turn next
+      fork test, is-equal(has(waiters, dep), false)
+        hold
+          set(waiters, dep, make list)
+      save into, get-or-default(waiters, dep, none)
+      push(into, node)
+      set(waiters, dep, into)
+      save count, add(count, 1)
+    set(waiting, node, count)
+  back
+    make schedule
+      bind waiting, read waiting
+      bind waiters, read waiters
+
+# The nodes that wait on nothing, in the graph's order
+task first
+  take plan, like schedule
+  like list
+    like text
+
+  save ready, make list
+  walk keys(plan/waiting)
+    take node
+    fork test, is-equal(get-or-default(plan/waiting, node, 0), 0)
+      hold
+        push(ready, node)
+  back ready
+
+# Mark `node` finished, and answer the nodes it was the last thing holding back
+task finish
+  take plan, like schedule
+  take node, like text
+  like list
+    like text
+
+  save ready, make list
+  save none, make list
+  walk get-or-default(plan/waiters, node, none)
+    take waiter
+    save left, subtract(get-or-default(plan/waiting, waiter, 0), 1)
+    set(plan/waiting, waiter, left)
+    fork test, is-equal(left, 0)
+      hold
+        push(ready, waiter)
+  back ready

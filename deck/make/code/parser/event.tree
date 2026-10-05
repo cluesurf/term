@@ -1,0 +1,1088 @@
+# The structure pass. The token list to a flat stream of open and close events (group, name, text, interpolation,
+# indent) plus content events (chunk, integer, decimal, radix). Resolves indentation into nesting levels, commas into
+# sibling groups, and opens and closes names, interpolations, and texts. Detects the structural errors. Browser-safe.
+#
+# Ported from parser/event.ts (self-hosting, 2026-10-05). The decisions:
+#   - the closure state is split by what can hold it: the stacks and the output are lists on a `builder`, a
+#     `mark shared` form every step pushes to and pops from, and the scalars (`at-line-start`, `last-depth`, the leaf
+#     a comma comes after) are the main loop's own, so only it writes them
+#   - `startContent` is gone. Every caller cleared `atLineStart` before calling it and every indent frame was pushed
+#     `used`, so neither of its branches could change a frame, and an indent frame is its depth and `own-line` alone
+#   - a context frame holds the span of the token that opened it (a parenthesis, an interpolation's braces), the only
+#     thing either read of the token, and an empty stack reads as `no-context` rather than undefined
+#   - the five content events are `read-chunk` and so on (they were `chunk`, ...): a tag's values are its case names,
+#     and `chunk`, `integer`, `decimal` and `radix` are the concrete tree's own node kinds. Nothing outside the parser
+#     reads an event, and tree.ts names the thing in its message (`unexpected chunk here`)
+#   - a radix literal's value is its digits summed as a big integer and read by the host from base ten, so it rounds
+#     once, as `parseInt` did. A literal whose first digit is not in its base is `NaN`, as before
+#   - a text literal's indentation is cut with `substring`, in the units the host's text has, as `slice` cut it
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+  find substring
+  find trim
+  find trim-end
+  find ends-with
+  find starts-with
+  find index-of
+  find contains
+  find replace-all
+  find to-lower-case
+
+load @term/base/text/unicode
+  find to-runes
+
+load @term/base/text/number
+  find parse-float
+  find host-parse-float
+
+load @term/base/float
+  find to-number
+
+load @term/base/integer/big
+  find big-integer
+  find big-from-number
+  find big-add
+  find big-multiply
+
+load ./diagnostic
+  find span
+  find position
+  find diagnostic
+  find diagnostic-input
+  find diagnose
+  find diagnostic-name
+
+load ./token
+  find token
+  find token-kind
+  find token-list
+
+# what a name's last token is followed by on its line: an opening parenthesis (`f(a)`) or an empty pair (`f()`). The
+# mill reads it to tell `f()` from `f`, and a keyword's call from the keyword. It is the one thing a reader once followed
+# a token's link forward for, so it is read off the token list here instead
+form follows
+  mark text
+  case paren, text <paren>
+  case empty-parens, text <empty-parens>
+
+# An event carries the span and text of the token it was made from, not the token: the text may differ (a text
+# literal's chunk is trimmed of its indentation, and merged with the next line's), and nothing after this pass reads a
+# token
+form event
+  mark tag, name kind
+  case open-group
+  case close-group
+  case open-name
+  case close-name
+  case open-text
+    link text, like text
+    link span, like span
+  case close-text
+    link span, like span
+  case open-interpolation
+    link span, like span
+    link depth, like number
+  case close-interpolation
+    link span, like span
+  case open-indent
+  case close-indent
+  case read-chunk
+    link text, like text
+    link span, like span
+    link follows
+      like maybe, like follows
+      need false
+  case read-integer
+    link text, like text
+    link span, like span
+    link value, like number
+  case read-decimal
+    link text, like text
+    link span, like span
+    link value, like decimal
+  case read-radix
+    link text, like text
+    link span, like span
+    link value, like number
+    link radix, like number
+  case read-comment
+    link text, like text
+    link span, like span
+
+# the events, and every structural mistake found on the way: none when the text is well formed
+form event-result
+  link events, like list, like event
+  link diagnostics, like list, like diagnostic
+
+# Whether a comma after a part that opened no level (a literal, or a call closed by its own parenthesis) stays at that
+# part's level. `stays` is the grammar since 2026-10-02: `want hold, is-equal get(found, 1), 14` gives `is-equal` two
+# arguments. `pops` reproduces the superseded reading, where such a comma popped the level ABOVE the part, and `call`
+# stays after a closed call only. Only a migration measuring the corpus both ways passes anything else
+# (task/term/comma-migrate.ts).
+#
+# The comma itself pops ONE level. The rule before 2026-08-30 closed every level back to the line's head.
+form comma-after-leaf
+  mark text
+  case stays, text <stays>
+  case after-call, text <call>
+  case pops, text <pops>
+
+# what the part before a comma was: a literal, a call its own `)` closed, or neither
+form leaf
+  mark text
+  case no-leaf
+  case a-literal
+  case a-call
+
+# what the structure pass is inside
+form context
+  mark text
+  case at-root
+  case in-name
+  case in-text
+  case in-hole
+  case in-group
+  case in-indent
+  # inside `(` ... `)`: the children of the group whose head the paren follows. A name inside opens a child group, a
+  # comma closes the current child, and `)` closes back through the frame and then the owning group. Lives on one
+  # line. This is what lets `h(x,h(y,1),h(w,2))` be one tree, the compact spelling of Term data.
+  case in-paren
+  # what an empty stack reads as: only malformed input closes the root
+  case no-context
+
+form context-frame
+  link kind, like context
+  # the span of the token that opened it, for a parenthesis and an interpolation; empty otherwise
+  link span, like span
+
+form indent-frame
+  link depth, like number
+  # whether this level's text starts on its own line, so a chunk carries the literal's own indentation
+  link own-line, like boolean
+
+# the stacks and the output, shared by every step: each task pushes to and pops from the one builder the main loop
+# holds, so it is `mark shared` (D1), a reference with identity rather than a value copied into each call
+form builder
+  mark shared
+  link file, like text
+  link events, like list, like event
+  link contexts, like list, like context-frame
+  link indents, like list, like indent-frame
+  link diagnostics, like list, like diagnostic
+
+task build-events
+  take tokens, like token-list
+  take after-leaf-rule, like comma-after-leaf, fall make(stays)
+  like event-result
+
+  save b
+    make builder
+      bind file, tokens/file
+      bind events, make list
+      bind contexts, make list
+      bind indents, make list
+      bind diagnostics, make list
+  push(b/contexts, frame-of(make(at-root), zero-span()))
+  push(b/indents, indent-of(0, true))
+
+  save at-line-start, true
+  save last-depth, 0
+  # the last part written was a leaf: a literal, or a call its own `)` closed. Read only by `comma`
+  save after-leaf, make(no-leaf)
+
+  # the token list, walked by index: a step either way is `at - 1` and `at + 1`
+  save list, tokens/list
+  save at, 0
+
+  walk test
+    hook test, is-below(at, list/length)
+    hook hold
+      save token, get(list, at)
+      save leaf-before, after-leaf
+      save after-leaf, make(no-leaf)
+
+      sift token/kind
+        case open-brace
+          open-interpolation(b, token, opens-hole-group(list, at), last-depth)
+        case close-brace
+          close-interpolation(b)
+        case open-angle
+          save at-line-start, false
+          open-text(b, token, add(last-depth, 1), ends-line-at(list, add(at, 1)))
+        case close-angle
+          close-text(b, token)
+          save after-leaf, make(a-literal)
+        case open-paren
+          close-name-once(b)
+          push(b/contexts, frame-of(make(in-paren), token/span))
+        case close-paren
+          fork test, close-paren(b)
+            hold
+              save after-leaf, make(a-call)
+        case comma
+          comma(b, leaf-before, after-leaf-rule)
+        case hash-comment
+          # a comment is trivia: keep it in the stream so the tree builder can attach it to the CST (for the
+          # formatter and inline lint suppression). It does not affect grouping or indentation.
+          save at-line-start, false
+          save comment-event
+            make read-comment
+              bind text, token/text
+              bind span, token/span
+          push(b/events, comment-event)
+        case decimal-number
+          save at-line-start, false
+          read-decimal-event(b, token)
+          save after-leaf, make(a-literal)
+        case radix-number
+          save at-line-start, false
+          read-radix-event(b, token)
+          save after-leaf, make(a-literal)
+        case space
+          close-names(b)
+          fork test, at-line-start
+            hold
+              save at-line-start, false
+              save last-depth, indent-to(b, token, last-depth)
+            miss
+              # a number is a leaf and cannot have a following node on the same line
+              fork test, kind-is-integer(list, subtract(at, 1))
+                hold
+                  fail-with(b, make(invalid-nesting), token/span, <a number is a value, so nothing can nest after it on the same line>)
+          save after-leaf, leaf-before
+        case newline
+          close-line(b)
+          save at-line-start, true
+        case text-chunk
+          save at-line-start, false
+          read-chunk-event(b, token, starts-line(list, at), more-chunk-at(list, add(at, 1)))
+        case word
+          save at-line-start, false
+          read-name(b, token, opens-name-group(list, at), kind-is-close-brace(list, subtract(at, 1)), follows-at(list, at))
+        case whole-number
+          save at-line-start, false
+          read-integer-event(b, token)
+          save after-leaf, make(a-literal)
+      save at, add(at, 1)
+
+  close-line(b)
+
+  back
+    make event-result
+      bind events, b/events
+      bind diagnostics, b/diagnostics
+
+# ---- indentation ----
+
+# the indentation a line's leading spaces open, levels pushed for each step deeper, and the depth it leaves
+task indent-to
+  take b, like builder
+  take token, like token
+  take last-depth, like number
+  like number
+  mark private
+
+  save frame, top-indent(b)
+  save width, token/text/length
+  save depth, divide-whole(width, 2)
+
+  fork test, is-unequal(modulo(width, 2), 0)
+    hold
+      fail-with(b, make(invalid-nesting), token/span, <indentation must be a multiple of two spaces>)
+      save depth, add(frame/depth, 1)
+    miss
+      fork test, is-above(depth, add(last-depth, 1))
+        hold
+          fork test, is-equal(b/indents/length, 1)
+            hold
+              fail-with(b, make(invalid-indentation), token/span, <indent one level deeper than the parent, not more>)
+          save depth, add(last-depth, 1)
+        miss
+          fork test, is-below(depth, frame/depth)
+            hold
+              save depth, add(frame/depth, 1)
+
+  save diff, subtract(depth, frame/depth)
+  walk test
+    hook test, is-above(diff, 0)
+    hook hold
+      push(b/contexts, frame-of(make(in-indent), zero-span()))
+      push(b/events, make(open-indent))
+      save diff, subtract(diff, 1)
+
+  back depth
+
+# `n / 2`, rounded down, for a count that is not negative
+task divide-whole
+  take value, like number
+  take by, like number
+  like number
+  mark private
+
+  back divide(subtract(value, modulo(value, by)), by)
+
+# never pop the root frame (depth 0): an over-dedent on malformed input must degrade to a diagnostic, not crash
+task pop-indent
+  take b, like builder
+  mark private
+
+  fork test, is-above(b/indents/length, 1)
+    hold
+      b/indents/pop()
+
+task top-indent
+  take b, like builder
+  like indent-frame
+  mark private
+
+  back get(b/indents, subtract(b/indents/length, 1))
+
+# ---- texts ----
+
+task open-text
+  take b, like builder
+  take token, like token
+  take depth, like number
+  take own-line, like boolean
+  mark private
+
+  push(b/indents, indent-of(depth, own-line))
+  push(b/contexts, frame-of(make(in-text), zero-span()))
+  save opened
+    make open-text
+      bind text, token/text
+      bind span, token/span
+  push(b/events, opened)
+
+task close-text
+  take b, like builder
+  take token, like token
+  mark private
+
+  save closed
+    make close-text
+      bind span, token/span
+  push(b/events, closed)
+  pop-context(b)
+  pop-indent(b)
+
+# the literal opening here ends its line, so its content is the indented lines below: the chunk after it is only
+# whitespace and its newline, `/^\s*\n$/`
+task ends-line-at
+  take list, like list, like token
+  take at, like number
+  like boolean
+  mark private
+
+  fork test, is-minimum(at, list/length)
+    hold
+      back false
+  save next, get(list, at)
+  sift next/kind
+    case text-chunk
+      back and(ends-with(next/text, <\n>), is-equal(trim(next/text), <>))
+    miss
+      back false
+
+# whether the token at `at` is a chunk
+task more-chunk-at
+  take list, like list, like token
+  take at, like number
+  like boolean
+  mark private
+
+  fork test, is-minimum(at, list/length)
+    hold
+      back false
+  sift get(list, at)/kind
+    case text-chunk
+      back true
+    miss
+      back false
+
+# Only a chunk that STARTS its line carries the literal's own indentation. A chunk that follows an interpolation on the
+# same line (`x {{foo}} y`) begins mid-line, and slicing `depth * 2` characters off it ate the text outright: ` y` is
+# two characters, so the `y` vanished with no error. It is trimmed instead, which is what puts `}}or{{` next to each
+# other in text-multiline.tree's expected output.
+task starts-line
+  take list, like list, like token
+  take at, like number
+  like boolean
+  mark private
+
+  fork test, is-equal(at, 0)
+    hold
+      back true
+  back is-below(get(list, subtract(at, 1))/span/end/line, get(list, at)/span/start/line)
+
+task read-chunk-event
+  take b, like builder
+  take token, like token
+  take starts, like boolean
+  take more, like boolean
+  mark private
+
+  save frame, top-indent(b)
+  save content, token/text
+
+  fork test, frame/own-line
+    hold
+      fork test, starts
+        hold
+          save content, trim-end(substring(content, multiply(frame/depth, 2)))
+        miss
+          save content, trim(content)
+
+  # merge consecutive chunks inside a multiline text to keep things clean: the last event is replaced by one holding
+  # both texts, at the first one's span
+  fork test, and(frame/own-line, last-is-chunk(b))
+    hold
+      save last-at, subtract(b/events/length, 1)
+      sift get(b/events, last-at)
+        case read-chunk
+          link last-text
+          link last-span
+          link last-follows
+          fork test, is-unequal(content, <>)
+            hold
+              save merged, content
+              fork test, is-unequal(last-text, <>)
+                hold
+                  fork test, ends-with(last-text, <\n>)
+                    hold
+                      save merged, <{last-text}{content}>
+                    miss
+                      save merged, <{last-text} {content}>
+              save b/events/{last-at}, chunk-event(merged, last-span, last-follows)
+            miss
+              fork test, more
+                hold
+                  save b/events/{last-at}, chunk-event(<{last-text}\n\n>, last-span, last-follows)
+        miss
+          back
+      back
+
+  save added
+    make read-chunk
+      bind text, content
+      bind span, token/span
+  push(b/events, added)
+
+task last-is-chunk
+  take b, like builder
+  like boolean
+  mark private
+
+  fork test, is-equal(b/events/length, 0)
+    hold
+      back false
+  sift get(b/events, subtract(b/events/length, 1))
+    case read-chunk
+      back true
+    miss
+      back false
+
+# a chunk event, with what follows it when there is something
+task chunk-event
+  take text, like text
+  take at, like span
+  take after, like maybe, like follows
+  like event
+  mark private
+
+  sift after
+    case some
+      back
+        make read-chunk
+          bind text, read(text)
+          bind span, at
+          bind follows, after
+    miss
+      back
+        make read-chunk
+          bind text, read(text)
+          bind span, at
+
+# ---- numbers ----
+
+task read-decimal-event
+  take b, like builder
+  take token, like token
+  mark private
+
+  save read-one
+    make read-decimal
+      bind text, token/text
+      bind span, token/span
+      bind value, parse-float(token/text)
+  push(b/events, read-one)
+
+task read-integer-event
+  take b, like builder
+  take token, like token
+  mark private
+
+  # thousand separators are presentation only: `2,440,588` is the number 2440588
+  save read-one
+    make read-integer
+      bind text, token/text
+      bind span, token/span
+      bind value, to-number(parse-float(replace-all(token/text, <,>, <>)))
+  push(b/events, read-one)
+
+# `/^0([xXbBoOuU])([0-9a-fA-F]+)/`: 0x and 0u are hex (0u is a unicode code point, its value the code point), 0b
+# binary, 0o octal
+task read-radix-event
+  take b, like builder
+  take token, like token
+  mark private
+
+  save runes, to-runes(token/text)
+  save digits, hex-run(runes, 2)
+
+  fork test, or(is-below(runes/length, 3), is-equal(digits, 0))
+    hold
+      fail-with(b, make(syntax-error), token/span, <this looks like a based number but is malformed>)
+      back
+
+  save base, to-lower-case(substring(token/text, 1, 2))
+  save radix, 16
+  fork test, is-equal(base, <b>)
+    hold
+      save radix, 2
+  fork test, is-equal(base, <o>)
+    hold
+      save radix, 8
+
+  save read-one
+    make read-radix
+      bind text, token/text
+      bind span, token/span
+      bind value, radix-value(runes, add(2, digits), radix)
+      bind radix, radix
+  push(b/events, read-one)
+
+# how many hex digits run from `at`
+task hex-run
+  take runes, like list, like number
+  take at, like number
+  like number
+  mark private
+
+  save end, at
+  walk test
+    hook test, and(is-below(end, runes/length), is-below(digit-value(get(runes, end)), 16))
+    hook hold
+      save end, add(end, 1)
+  back subtract(end, at)
+
+# `parseInt(digits, radix)`: the digits from index 2 that are digits in `radix`, up to the first that is not. Summed
+# exactly and read by the host from base ten, so the number is the nearest to the whole value, as parseInt's was
+task radix-value
+  take runes, like list, like number
+  take end, like number
+  take radix, like number
+  like number
+  mark private
+
+  save total, big-from-number(0)
+  save base, big-from-number(radix)
+  save count, 0
+  save at, 2
+  walk test
+    hook test, is-below(at, end)
+    hook hold
+      save digit, digit-value(get(runes, at))
+      fork test, is-minimum(digit, radix)
+        hold
+          halt
+      save total, big-add(big-multiply(total, base), big-from-number(digit))
+      save count, add(count, 1)
+      save at, add(at, 1)
+
+  fork test, is-equal(count, 0)
+    hold
+      back to-number(host-parse-float(<NaN>))
+  back to-number(host-parse-float(total/text()))
+
+# a digit's value in any base to 16, 99 for anything else
+task digit-value
+  take code, like number
+  like number
+  mark private
+
+  fork test, and(is-minimum(code, 48), is-maximum(code, 57))
+    hold
+      back subtract(code, 48)
+  fork test, and(is-minimum(code, 97), is-maximum(code, 102))
+    hold
+      back subtract(code, 87)
+  fork test, and(is-minimum(code, 65), is-maximum(code, 70))
+    hold
+      back subtract(code, 55)
+  back 99
+
+# ---- names ----
+
+# a name opens a group of its own after nothing, a line break, a comma, an opening brace or parenthesis, or a space
+task opens-name-group
+  take list, like list, like token
+  take at, like number
+  like boolean
+  mark private
+
+  fork test, is-equal(at, 0)
+    hold
+      back true
+  sift get(list, subtract(at, 1))/kind
+    case newline
+      back true
+    case comma
+      back true
+    case open-brace
+      back true
+    case open-paren
+      back true
+    case space
+      back true
+    miss
+      back false
+
+# an interpolation opens a group of its own after nothing, a line break or a space
+task opens-hole-group
+  take list, like list, like token
+  take at, like number
+  like boolean
+  mark private
+
+  fork test, is-equal(at, 0)
+    hold
+      back true
+  sift get(list, subtract(at, 1))/kind
+    case newline
+      back true
+    case space
+      back true
+    miss
+      back false
+
+task kind-is-integer
+  take list, like list, like token
+  take at, like number
+  like boolean
+  mark private
+
+  fork test, is-below(at, 0)
+    hold
+      back false
+  sift get(list, at)/kind
+    case whole-number
+      back true
+    miss
+      back false
+
+task kind-is-close-brace
+  take list, like list, like token
+  take at, like number
+  like boolean
+  mark private
+
+  fork test, is-below(at, 0)
+    hold
+      back false
+  sift get(list, at)/kind
+    case close-brace
+      back true
+    miss
+      back false
+
+# what the name token at `at` is followed by: `(` then `)`, `(` alone, or neither
+task follows-at
+  take list, like list, like token
+  take at, like number
+  like maybe, like follows
+  mark private
+
+  fork test, not(kind-is-open-paren(list, add(at, 1)))
+    hold
+      back make none
+  fork test, kind-is-close-paren(list, add(at, 2))
+    hold
+      back make(some, make(empty-parens))
+  back make(some, make(paren))
+
+task kind-is-open-paren
+  take list, like list, like token
+  take at, like number
+  like boolean
+  mark private
+
+  fork test, is-minimum(at, list/length)
+    hold
+      back false
+  sift get(list, at)/kind
+    case open-paren
+      back true
+    miss
+      back false
+
+task kind-is-close-paren
+  take list, like list, like token
+  take at, like number
+  like boolean
+  mark private
+
+  fork test, is-minimum(at, list/length)
+    hold
+      back false
+  sift get(list, at)/kind
+    case close-paren
+      back true
+    miss
+      back false
+
+task read-name
+  take b, like builder
+  take token, like token
+  take opens, like boolean
+  take follows-close, like boolean
+  take after, like maybe, like follows
+  mark private
+
+  fork test, opens
+    hold
+      push(b/events, make(open-group))
+      push(b/contexts, frame-of(make(in-group), zero-span()))
+      push(b/events, make(open-name))
+      push(b/contexts, frame-of(make(in-name), zero-span()))
+
+  fork test, contains(token/text, </>)
+    hold
+      save segments, split(token/text, </>)
+      save at, 0
+      walk test
+        hook test, is-below(at, segments/length)
+        hook hold
+          save segment, get(segments, at)
+          fork test, and(starts-with(segment, <->), not(and(is-equal(at, 0), follows-close)))
+            hold
+              fail-with(b, make(syntax-error), token/span, <a path segment cannot start with a dash>)
+              halt
+          save mark-at, index-of(segment, <?>)
+          fork test, and(is-unequal(mark-at, -1), is-unequal(mark-at, subtract(segment/length, 1)))
+            hold
+              fail-with(b, make(syntax-error), token/span, <the optional mark ? must be at the end of a segment>)
+              halt
+          save at, add(at, 1)
+
+  push(b/events, chunk-event(token/text, token/span, after))
+
+# ---- interpolations, parentheses, commas ----
+
+task open-interpolation
+  take b, like builder
+  take token, like token
+  take opens, like boolean
+  take last-depth, like number
+  mark private
+
+  fork test, opens
+    hold
+      push(b/contexts, frame-of(make(in-group), zero-span()))
+      push(b/events, make(open-group))
+      push(b/contexts, frame-of(make(in-name), zero-span()))
+      push(b/events, make(open-name))
+
+  push(b/contexts, frame-of(make(in-hole), token/span))
+  save opened
+    make open-interpolation
+      bind span, token/span
+      bind depth, token/text/length
+  push(b/events, opened)
+  push(b/indents, indent-of(add(last-depth, 1), true))
+
+task close-interpolation
+  take b, like builder
+  mark private
+
+  save open, true
+  walk test
+    hook test, open
+    hook hold
+      sift top-context(b)
+        case in-name
+          push(b/events, make(close-name))
+          pop-context(b)
+        case in-indent
+          push(b/events, make(close-indent))
+          pop-context(b)
+        case in-group
+          push(b/events, make(close-group))
+          pop-context(b)
+        case in-hole
+          # at the span of the brace that opened it, as before
+          save closed
+            make close-interpolation
+              bind span, top-frame(b)/span
+          push(b/events, closed)
+          pop-context(b)
+          save open, false
+        miss
+          save open, false
+
+  pop-indent(b)
+
+# Close a parenthesis: everything opened inside it, the paren frame, then the group that owns it. A `)` with no open
+# paren on the line closes what it can, as before, so a stray one degrades rather than crashes. Whether it closed a
+# group of its own, which makes the call a leaf
+task close-paren
+  take b, like builder
+  like boolean
+  mark private
+
+  save owned, false
+  walk b/contexts
+    take frame
+    sift frame/kind
+      case in-paren
+        save owned, true
+      miss
+        save owned, owned
+
+  save open, true
+  walk test
+    hook test, open
+    hook hold
+      sift top-context(b)
+        case in-indent
+          push(b/events, make(close-indent))
+          pop-context(b)
+        case in-group
+          push(b/events, make(close-group))
+          pop-context(b)
+        case in-name
+          push(b/events, make(close-name))
+          pop-context(b)
+        case in-paren
+          pop-context(b)
+          save open, false
+        miss
+          save open, false
+
+  # the group whose head the paren followed
+  fork test, and(owned, is-group(top-context(b)))
+    hold
+      push(b/events, make(close-group))
+      pop-context(b)
+      back true
+  back false
+
+# Close everything still open at the end of a line.
+task close-line
+  take b, like builder
+  mark private
+
+  save open, true
+  walk test
+    hook test, open
+    hook hold
+      sift top-context(b)
+        case in-group
+          push(b/events, make(close-group))
+          pop-context(b)
+        case in-indent
+          push(b/events, make(close-indent))
+          pop-context(b)
+        case in-name
+          push(b/events, make(close-name))
+          pop-context(b)
+        case in-paren
+          # a parenthesis lives on one line: one left open is a syntax error at the line's end
+          save at, top-frame(b)/span
+          pop-context(b)
+          fail-with(b, make(syntax-error), at, <a parenthesis must be closed on the line it opens>)
+        miss
+          save open, false
+
+# A comma POPS ONE LEVEL: the part after it is a sibling of the part before it, however deep that part had nested. So
+# `foo bar baz bang boom, a b c, d e f` puts `a` beside `boom` (both under `bang`) and `d` beside `c` (both under `b`),
+# because `boom` was the deepest node when the first comma arrived and `c` was when the second did. Only a space nests,
+# and a comma undoes exactly one space. See test/parser/file/comma-depth.tree.
+task comma
+  take b, like builder
+  take before, like leaf
+  take rule, like comma-after-leaf
+  mark private
+
+  close-name-once(b)
+
+  # A literal and a call closed by its own `)` open no level, so there is no level of theirs for the comma to pop.
+  # The part after the comma stays at THEIR level: `want hold, is-equal get(found, 1), 14` gives `is-equal` two
+  # arguments, and `code <1>, <2>` gives `code` two children.
+  fork test, stays-after(before, rule)
+    hold
+      back
+
+  fork test, not(is-group(top-context(b)))
+    hold
+      back
+
+  # the line's head, or a parenthesis owner, is the floor: a comma never escapes past it, so the head stays open to
+  # receive what follows
+  fork test, is-below(b/contexts/length, 2)
+    hold
+      back
+  sift get(b/contexts, subtract(b/contexts/length, 2))/kind
+    case in-indent
+      back
+    case at-root
+      back
+    miss
+      pop-context(b)
+      push(b/events, make(close-group))
+
+# whether the part after a comma stays at the level of the leaf before it
+task stays-after
+  take before, like leaf
+  take rule, like comma-after-leaf
+  like boolean
+  mark private
+
+  sift before
+    case a-call
+      sift rule
+        case pops
+          back false
+        miss
+          back true
+    case a-literal
+      sift rule
+        case stays
+          back true
+        miss
+          back false
+    miss
+      back false
+
+task close-name-once
+  take b, like builder
+  mark private
+
+  sift top-context(b)
+    case in-name
+      pop-context(b)
+      push(b/events, make(close-name))
+    miss
+      back
+
+task close-names
+  take b, like builder
+  mark private
+
+  save open, true
+  walk test
+    hook test, open
+    hook hold
+      sift top-context(b)
+        case in-name
+          push(b/events, make(close-name))
+          pop-context(b)
+        miss
+          save open, false
+
+# ---- the context stack ----
+
+task top-context
+  take b, like builder
+  like context
+  mark private
+
+  fork test, is-equal(b/contexts/length, 0)
+    hold
+      back make(no-context)
+  back top-frame(b)/kind
+
+task top-frame
+  take b, like builder
+  like context-frame
+  mark private
+
+  back get(b/contexts, subtract(b/contexts/length, 1))
+
+task pop-context
+  take b, like builder
+  mark private
+
+  fork test, is-above(b/contexts/length, 0)
+    hold
+      b/contexts/pop()
+
+task is-group
+  take kind, like context
+  like boolean
+  mark private
+
+  sift kind
+    case in-group
+      back true
+    miss
+      back false
+
+# ---- building ----
+
+task fail-with
+  take b, like builder
+  take name, like diagnostic-name
+  take at, like span
+  take hint, like text
+  mark private
+
+  save input
+    make diagnostic-input
+      bind file, b/file
+      bind span, at
+      bind hint, make(some, hint)
+  push(b/diagnostics, diagnose(name, input))
+
+task frame-of
+  take kind, like context
+  take at, like span
+  like context-frame
+  mark private
+
+  back
+    make context-frame
+      bind kind, kind
+      bind span, at
+
+task indent-of
+  take depth, like number
+  take own-line, like boolean
+  like indent-frame
+  mark private
+
+  back
+    make indent-frame
+      bind depth, depth
+      bind own-line, own-line
+
+task zero-span
+  like span
+  mark private
+
+  save zero
+    make position
+      bind line, 0
+      bind column, 0
+  back
+    make span
+      bind start, zero
+      bind end, zero

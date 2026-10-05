@@ -30,7 +30,7 @@ import {
   namesIn,
 } from '@term/make/code/compile/backend'
 import { lowerRoutes } from '@term/make/code/compile/route-lower'
-import { RENDER } from '@term/make/code/compile/render-names'
+import { renderNames } from '@term/make/code/compile/render-names'
 import {
   collectBinds,
   renderBind,
@@ -48,6 +48,9 @@ import type { Reuse } from '@term/make/code/compile/place'
 import { asciiTexts } from '@term/make/code/ir/facts/text'
 import type { PlaceWrite } from '@term/make/code/compile/place'
 import { integerText } from '@term/make/code/compile/type-text'
+
+// the render runtime's task names, asked of compile/render-names once
+const RENDER = renderNames()
 
 const guardStart = (text: string): string =>
   /^[([`]/.test(text) ? `;${text}` : text
@@ -3060,8 +3063,11 @@ function makeEmitter(
             ? `${guardFor(branch.label)}(${subject})`
             : `${subject}.${tagFor(branch.label, node.subject.type)} === ${JSON.stringify(branch.label)}`
 
+          // the only arm opens a bare block, so it opens with `;` as a held match's does: after a statement ending in a
+          // parenthesized value (`const lines = ([] as string[])`) tsc read `(...) {` as an arrow function missing its
+          // `=>` (parser/tree.tree's `print-tree`, a `sift` over the one-case `root-node`)
           out += last && i === 0
-            ? body
+            ? body.startsWith('{') ? `;${body}` : body
             : last
             ? ` else ${body}`
             : `${i ? ' else ' : ''}if (${test}) ${body}`

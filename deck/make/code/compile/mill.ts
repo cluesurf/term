@@ -21,7 +21,7 @@
 // switch without making it (`TERM_MILL_GRAMMAR=1 pnpm term:test`), and the 107 failures were worked down one at
 // a time to zero before the line moved. The account is in note/term/mint-bridge/readme.md.
 
-import type { RootNode } from '@term/make/code/parser/tree'
+import type { RootNode } from '@term/make/code/parser/narrow'
 import { millByGrammar } from '@term/make/code/compile/mint-bridge'
 import type { MillResult } from '@term/make/code/compile/mint-bridge'
 

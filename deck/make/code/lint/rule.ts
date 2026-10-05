@@ -12,7 +12,7 @@ import type {
   Program,
   Statement,
 } from '@term/make/code/compile/node'
-import type { RootNode } from '@term/make/code/parser/tree'
+import type { RootNode } from '@term/make/code/parser/narrow'
 
 // a source replacement: the editor swaps the text in `span` for `text`. The unit of every autofix and of the
 // formatter's output, so the language server applies both the same way.

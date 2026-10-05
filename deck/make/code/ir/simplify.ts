@@ -15,7 +15,10 @@ import { chunkPart, valuePart } from '@term/make/code/compile/node'
 import { egraphArith } from '@term/make/code/ir/egraph-arith'
 import { inlineStatements } from '@term/make/code/ir/inline-statements'
 import { expressionsEqual } from '@term/make/code/compile/expr-equal'
-import { RENDER } from '@term/make/code/compile/render-names'
+import { renderNames } from '@term/make/code/compile/render-names'
+
+// the render runtime's task names, asked of compile/render-names once
+const RENDER = renderNames()
 
 // the render + reactive runtime primitives emitZone (code/compile/typescript.ts) synthesizes as raw calls in a zone's
 // output. They never appear as call nodes in the AST, so reference-counting cannot see them. When a program contains

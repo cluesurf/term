@@ -2,8 +2,10 @@
 # term's Debian half, run inside task/distro/debian.dockerfile by task/distro.ts. Two modes:
 #
 #   build   /in/term-linux-{x64,arm64}.tar.gz (the release payloads) -> /out/term_<VERSION>_{amd64,arm64}.deb
-#   index   /repo, an apt repository whose pool holds every .deb it serves -> its dists/, with an UNSIGNED Release.
-#           The host signs Release (InRelease, Release.gpg): the key never enters a container
+#   index   /repo, an apt repository whose pool/<version>/ folders hold every .deb it lists -> its dists/, with an
+#           UNSIGNED Release. The host signs Release (InRelease, Release.gpg): the key never enters a container. The
+#           pool is not published: term.surf redirects each pool/<version>/ path to the GitHub release
+#           (mesh/site/term.surf/home/site/tool/release-redirect.ts)
 #
 # The package is the payload as released, unpacked at /usr/lib/term, and /usr/bin/term a link to its sh launcher,
 # which follows the link back. Node is RECOMMENDED, not depended on: the launcher runs whatever `node` is on PATH, so
@@ -54,8 +56,9 @@ if [ "$mode" = index ]; then
     dir="dists/stable/main/binary-$arch"
 
     mkdir -p "$dir"
+    # uncompressed only: a few lines a version, and nothing between term.surf's static files and apt can then
+    # recompress or decode a .gz on the way and break its hash
     dpkg-scanpackages --arch "$arch" pool > "$dir/Packages" 2>/dev/null
-    gzip -9nkf "$dir/Packages"
   done
 
   apt-ftparchive \

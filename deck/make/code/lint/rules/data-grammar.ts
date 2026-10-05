@@ -5,7 +5,7 @@
 // editor show a data file's problems the way they show a program's. A data file has no AST, so the visitor is
 // silent: the analysis entry calls `lintData` on the tree instead.
 
-import type { RootNode } from '@term/make/code/parser/tree'
+import type { RootNode } from '@term/make/code/parser/narrow'
 import type { Finding, Rule } from '@term/make/code/lint/rule'
 import { expandData, readData } from '@term/make/code/compile/host'
 

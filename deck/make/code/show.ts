@@ -73,6 +73,7 @@ const BANNER_SECTIONS: { title: string; commands: [string, string][] }[] = [
       ['term move mark 1', 'Bump major version'],
       ['term move mark rc', 'Start or move a pre-release'],
       ['term self', 'This install of term: check, update, or go back'],
+      ['term update', 'Install the newest term (term self update)'],
     ],
   },
   {

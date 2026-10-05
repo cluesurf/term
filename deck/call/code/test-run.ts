@@ -4,11 +4,21 @@
 // and native-runtime reader so both the `term test` CLI (project resolver) and the dev harness (stdlib tree) reuse
 // it. Pure logic, no process exit, no printing. See note/library/seed/test-dsl.md.
 
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { hashText } from '@term/make/code/term/hash'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { transformSync } from 'esbuild'
+import { buildSync, transformSync, version as esbuildVersion } from 'esbuild'
+import { compileSeparate } from '@term/make/code/compile/separate'
+import type { UnitMemo } from '@term/make/code/compile/separate'
+import type { CompileCache } from '@term/make/code/compile/cache'
+import type { ModuleEmit } from '@term/make/code/compile/modules'
+import type { Program } from '@term/make/code/compile/node'
+import type { DeckOf } from '@term/make/code/compile/roll'
+import type { ParseMemo, WalkMemo } from '@term/make/code/compile/load'
+import { unitSlug } from '@term/call/code/make'
+import { writeUnitBundle } from '@term/call/code/unit-bundle'
 import { parse } from '@term/make/code/parser/tree'
 import { mill } from '@term/make/code/compile/mill'
 import { compile } from '@term/make/code/compile/compile'
@@ -58,6 +68,119 @@ function discoverTests(text: string, file: string): string[] {
     .map(node => (node as { name: string }).name)
 }
 
+// what one test file's unit build may keep for the next: the project's cache and the memos of a build session
+// (call/code/make.ts `BuildSession`)
+export type TestUnits = {
+  root: string
+  cache: CompileCache
+  // where a test file's bundle is kept between runs
+  bundles: string
+  deckOf: DeckOf
+  parsed: ParseMemo
+  units: UnitMemo
+  walked: WalkMemo
+}
+
+type UnitsBuilt =
+  | {
+      ok: true
+      program: Program
+      warnings: Diagnostic[]
+      modules: Map<string, ModuleEmit>
+      names: (file: string) => string
+      entry: string
+      closureKey: string
+      exports: { name: string; exported: string; file: string; type: boolean }[]
+    }
+  | { ok: false; diagnostics: Diagnostic[] }
+
+// a test file built through units. `program` is only the native modules its closure docks, which is all the prelude
+// reads of a program
+function compileUnits(
+  source: { file: string; text: string },
+  input: { resolve: Resolver; roleOf?: RoleOf; leanOf?: (file: string) => boolean },
+  units: TestUnits,
+): UnitsBuilt {
+  const names = (file: string): string => unitSlug(units.root, file, units.deckOf)
+  const result = compileSeparate(source, {
+    resolve: input.resolve,
+    cache: units.cache,
+    modules: file => `./${names(file)}`,
+    roleOf: input.roleOf,
+    leanOf: input.leanOf,
+    deckOf: units.deckOf,
+    parsed: units.parsed,
+    units: units.units,
+    walked: units.walked,
+  })
+
+  if (!result.ok) {
+    return result
+  }
+
+  return {
+    ok: true,
+    program: result.natives,
+    warnings: result.warnings,
+    modules: result.modules,
+    names,
+    entry: source.file,
+    closureKey: result.closureKey,
+    exports: result.exports,
+  }
+}
+
+// every module of a unit build written beside one another, and bundled from the test file's own into one module with
+// the native prelude in front of it, which every module's shims are then in scope of. A bundle is decided by the test
+// file's closure and its prelude, so it is kept under the project's cache by both and reused while neither moves,
+// which leaves a warm run nothing to do for a file but run it
+function bundleUnits(built: Extract<UnitsBuilt, { ok: true }>, prelude: string, dir: string, units: TestUnits): string {
+  // the closure key names what was built and not what built it, so the compiler's own fingerprint goes in beside it
+  const kept = units.bundles
+  const at = join(
+    kept,
+    `${hashText(`${BUNDLE_EPOCH}\nesbuild@${esbuildVersion}\n${units.cache.versionOf('unit')}\n${built.closureKey}\n${prelude}`)}.mjs`,
+  )
+
+  if (existsSync(at)) {
+    return readFileSync(at, 'utf8')
+  }
+
+  // the prelude is a module of the bundle, and the entry re-exports the closure's public tasks (call/code/unit-bundle.ts)
+  const bundled = buildSync({
+    entryPoints: [
+      writeUnitBundle({
+        dir,
+        entry: built.entry,
+        modules: [...built.modules],
+        slug: built.names,
+        exports: built.exports,
+        prelude,
+      }),
+    ],
+    bundle: true,
+    format: 'esm',
+    platform: 'node',
+    packages: 'external',
+    write: false,
+  })
+
+  const text = bundled.outputFiles[0]!.text
+
+  try {
+    mkdirSync(kept, { recursive: true })
+    writeFileSync(at, text)
+  } catch {
+    // a bundle not kept is built again next run, never a failed test
+  }
+
+  return text
+}
+
+// moved when the bundling itself changes, so a kept bundle from before is never run
+// 3: the prelude is a module of the bundle, imported by each module that docks a shim, and the entry the closure's shim
+const BUNDLE_EPOCH = 'test-bundle-3'
+
 // a test file's diagnostics moved back onto the lines as written, and rendered against them: the rewritten text holds
 // lines the reader never wrote (guides: commands/test, 2026-10-04)
 function asWritten(
@@ -82,16 +205,22 @@ export async function runTestFile(input: {
   // mills it, or every property head in it is an unknown name and the file "did not compile"
   roleOf?: RoleOf
   leanOf?: (file: string) => boolean
+  // build through units, one at a time against the stubs of what each loads, with what one test file's build learns
+  // kept for the next (note/term/plan/incremental-best-in-class.md, step 10). A project's test files all reach the
+  // standard library, and each merged compile checked it again
+  units?: TestUnits
 }): Promise<TestRun> {
   // expand `test <phrase>` blocks into top-level tasks; a file with none passes through unchanged
   // `heads`: each test task's 0-based line in the file as written, so a test that does not hold is placed (`at`)
   const { text, labels, heads } = preprocessTests(input.source)
   const names = discoverTests(text, input.file)
-  const result = compile(
-    // use the real file path as the entry so `@/...` local-package aliases resolve against this file's deck.tree
-    { file: input.file, text },
-    { resolve: input.resolve, roleOf: input.roleOf, leanOf: input.leanOf },
-  )
+  const result = input.units
+    ? compileUnits({ file: input.file, text }, input, input.units)
+    : compile(
+        // use the real file path as the entry so `@/...` local-package aliases resolve against this file's deck.tree
+        { file: input.file, text },
+        { resolve: input.resolve, roleOf: input.roleOf, leanOf: input.leanOf },
+      )
 
   if (!result.ok) {
     const { diagnostics, diag } = asWritten(result.diagnostics, input)
@@ -138,14 +267,14 @@ export async function runTestFile(input: {
     input.readRuntime,
   )
 
-  const js = transformSync(`${prelude}\n${result.typescript}`, {
-    loader: 'ts',
-    format: 'esm',
-  }).code
-
   const dir = mkdtempSync(join(tmpdir(), 'seed-test-'))
   const out = join(dir, 'module.mjs')
-  writeFileSync(out, js)
+
+  if ('closureKey' in result) {
+    writeFileSync(out, bundleUnits(result, prelude, dir, input.units!))
+  } else {
+    writeFileSync(out, transformSync(`${prelude}\n${result.typescript}`, { loader: 'ts', format: 'esm' }).code)
+  }
 
   const mod = (await import(pathToFileURL(out).href)) as Record<
     string,

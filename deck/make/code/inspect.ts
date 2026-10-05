@@ -6,6 +6,7 @@
 import { collectModules } from '@term/make/code/compile/load'
 import type { Resolver, Source } from '@term/make/code/compile/load'
 import { parse } from '@term/make/code/parser/tree'
+import { groupsOf } from '@term/make/code/parser/narrow'
 import { expandTemplates } from '@term/make/code/compile/template'
 import { mill } from '@term/make/code/compile/mill'
 import { deckFromPath } from '@term/make/code/compile/roll'
@@ -107,7 +108,7 @@ export function inspectModule(
     // definition's group (CST trivia), the `#` and one space taken off each
     const notes = new Map<string, string>()
 
-    for (const group of parsed.tree.nodes) {
+    for (const group of groupsOf(parsed.tree.nodes)) {
       const head = group.nodes[0]
       const named = group.nodes[1]
       const word = (node: typeof head): string =>

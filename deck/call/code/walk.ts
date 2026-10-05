@@ -18,6 +18,7 @@ export {
   siblingResolver,
 } from '@term/make/code/resolve'
 import { parse, renderHead } from '@term/make/code/parser/tree'
+import { groupsOf } from '@term/make/code/parser/narrow'
 
 // the keywords that begin a top-level definition; anything else typed at the prompt is an expression to evaluate
 const DEFINITION_HEADS = new Set([
@@ -37,7 +38,7 @@ function isDefinition(line: string): boolean {
     return false
   }
 
-  const first = parsed.tree.nodes[0]
+  const first = groupsOf(parsed.tree.nodes)[0]
 
   if (!first) {
     return false

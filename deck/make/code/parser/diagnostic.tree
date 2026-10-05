@@ -4,10 +4,10 @@
 # Ported from parser/diagnostic.ts (self-hosting, 2026-10-05), the compiler's second shared type after compile/node.
 # The decisions:
 #   - the catalog is a text form, `diagnostic-name`, and `entry-of`. On TypeScript a name IS its text, so a caller still
-#     writes `diagnose('type-mismatch', ...)` and a misspelt name still fails to typecheck. The checker holds `entry-of`
+#     writes `diagnose('type-mismatch', ...)` and a misspelled name still fails to typecheck. The checker holds `entry-of`
 #     to every name, which is what `satisfies Record<string, CatalogEntry>` did. A text form cannot list its own cases,
 #     so `diagnostic-names` lists them for the parser fixture, which walked `Object.keys(CATALOG)`
-#   - colour is written as the escapes chalk wrote, close codes and all (`\e[39m` after a colour, `\e[22m` after bold
+#   - color is written as the escapes chalk wrote, close codes and all (`\e[39m` after a color, `\e[22m` after bold
 #     and dim), with chalk's two rules: an empty text stays empty, and a line break closes the style and opens it again
 #     after. chalk is an npm package and a native compiler cannot have one
 #   - `color` is a parameter that falls to `false`. It fell to `chalk.level > 0`, which asks the terminal, and the one
@@ -278,7 +278,7 @@ task encase-lines
             save out, <{out}{part}{close}\n{open}>
   back out
 
-# one style, as chalk applies it: nothing when colour is off or the text is empty, a style already inside re-opened
+# one style, as chalk applies it: nothing when color is off or the text is empty, a style already inside re-opened
 # where it closed, and the line rule
 task tint
   take on, like boolean

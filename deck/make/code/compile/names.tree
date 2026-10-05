@@ -1,0 +1,124 @@
+# Name-level cutoff (note/term/plan/incremental-best-in-class.md, step 4).
+#
+# A unit is checked against the stubs of every unit it reaches (compile/separate.ts), and its cached answer was keyed
+# by the whole surface of each: a signature edit to one task of the standard library rebuilt every unit reaching that
+# module, whether it called the task or not. What a unit's answer can depend on is narrower: the definitions it can
+# reach BY NAME, starting from the names its own modules use and following each definition reached to the names it
+# mentions in turn (a task's result type, a form's field types). Those definitions' fingerprints are the key, in the
+# order the build met them, so a later definition that takes a name over is a change too.
+#
+# A name used and defined nowhere is in the key as well, by its absence: a definition that appears and gives it joins
+# the reached list and moves the key, so the unit that names it is rebuilt. That is the lesson of Kotlin's lookup
+# tracking, that the lookups which FAILED are dependencies too.
+#
+# A definition reached by type rather than by name (a mask instance) gives `*`, which every unit uses.
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+# one definition of a stub, as the cutoff reads it
+form name-def
+  # the names a dependent can reach it by: its own, its cases', its methods'
+  link gives, like list, like text
+  # every name it mentions, which a unit reaching it may reach through it
+  link reads, like list, like text
+  # its fingerprint, without its place in the file
+  link print, like text
+
+# The fingerprints of the definitions `used` reaches, in the order of `defs`
+task names-reached
+  take defs, like list, like name-def
+  take used, like list, like text
+  like list, like text
+
+  save taken, taken-defs(defs, used)
+  save prints, make list
+  save at, 0
+  walk defs
+    take def
+    fork test, has(taken, at)
+      hold
+        push(prints, def/print)
+    save at, add(at, 1)
+  back prints
+
+# The same reach by name: each name a reached definition gives, to the fingerprints of the reached definitions giving
+# it, joined in the order of `defs`. What `term make --explain` compares (compile/explain.tree)
+task names-printed
+  take defs, like list, like name-def
+  take used, like list, like text
+  like hash
+    like text
+    like text
+
+  save taken, taken-defs(defs, used)
+  save printed, make hash
+  save at, 0
+  walk defs
+    take def
+    fork test, has(taken, at)
+      hold
+        walk def/gives
+          take name
+          save before, get-or-default(printed, name, <>)
+          set(printed, name, <{before}{def/print}>)
+    save at, add(at, 1)
+  back printed
+
+# The definitions `used` reaches, by their place in `defs`
+task taken-defs
+  mark private
+  take defs, like list, like name-def
+  take used, like list, like text
+  like hash
+    like number
+    like boolean
+
+  # each name to the definitions giving it
+  save givers, make hash
+  save none, make list
+  save at, 0
+  walk defs
+    take def
+    walk def/gives
+      take name
+      fork test, is-equal(has(givers, name), false)
+        hold
+          set(givers, name, make list)
+      save into, get-or-default(givers, name, none)
+      push(into, at)
+      set(givers, name, into)
+    save at, add(at, 1)
+
+  # every name met, and every definition taken, from the used names outward
+  save named, make hash
+  save taken, make hash
+  save queue, make list
+  walk used
+    take name
+    fork test, is-equal(has(named, name), false)
+      hold
+        set(named, name, true)
+        push(queue, name)
+
+  walk test
+    hook test
+      is-above(queue/length, 0)
+    hook hold
+      save name, pop(queue)
+      walk get-or-default(givers, name, none)
+        take index
+        fork test, is-equal(has(taken, index), false)
+          hold
+            set(taken, index, true)
+            save def, get(defs, index)
+            walk def/reads
+              take read
+              fork test, is-equal(has(named, read), false)
+                hold
+                  set(named, read, true)
+                  push(queue, read)
+  back taken

@@ -22,6 +22,12 @@ import {
   cellSamplesBig,
   rationalNonNegativeEverywhere,
 } from '@term/make/code/check/sturm'
+import type { ExactRatio } from '@term/make/code/check/sturm'
+
+// a rational as check/sturm takes it: each part a big integer, `{ dock }` on TypeScript
+function ratioOf(n: bigint, d: bigint): ExactRatio {
+  return { n: { dock: n }, d: { dock: d } }
+}
 
 // a bivariate polynomial: `coeff[i][j]` = integer coefficient of `x^i y^j`. Ragged rows are padded as zero.
 export type Bivariate = bigint[][]
@@ -390,15 +396,17 @@ function projectionX(p: Bivariate): IntPoly {
   return proj
 }
 
-// is `p(x, y) >= 0` for ALL real x and y? The bivariate CAD decision.
-export function bivariateNonNegative(p: Bivariate): boolean {
+// is `p(x, y) >= 0` for ALL real x and y? The bivariate CAD decision. It takes the coefficients as check/cad.tree
+// does, each a big integer `{ dock }`
+export function bivariateNonNegative(coefficients: { dock: bigint }[][]): boolean {
+  const p: Bivariate = coefficients.map(row => row.map(c => c.dock))
   const dy = yDegree(p)
 
   // no real y: p is a univariate x-polynomial -- decide it directly by the one-dimensional CAD.
   if (dy === 0) {
     const xPoly = yCoefficient(p, 0)
 
-    return rationalNonNegativeEverywhere(xPoly.map(c => [c, 1n]))
+    return rationalNonNegativeEverywhere(xPoly.map(c => ratioOf(c, 1n)))
   }
 
   // an ODD y-degree fibre runs to -infinity in y, so it is negative somewhere -- unless the leading y-coefficient can
@@ -410,13 +418,13 @@ export function bivariateNonNegative(p: Bivariate): boolean {
   // projection (no critical x) yields a single cell sampled at 0.
   const samples =
     proj.length <= 1
-      ? ([[0n, 1n]] as [bigint, bigint][])
-      : cellSamplesBig(proj)
+      ? [ratioOf(0n, 1n)]
+      : cellSamplesBig(proj.map(c => ({ dock: c })))
 
-  for (const [n, d] of samples) {
-    const fibre = fibreAtRational(p, n, d)
+  for (const { n, d } of samples) {
+    const fibre = fibreAtRational(p, n.dock, d.dock)
 
-    if (!rationalNonNegativeEverywhere(fibre)) {
+    if (!rationalNonNegativeEverywhere(fibre.map(([fn, fd]) => ratioOf(fn, fd)))) {
       return false // this base cell has a fibre that dips below zero
     }
   }

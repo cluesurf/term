@@ -49,10 +49,11 @@ async function main(): Promise<void> {
   }
 
   // `term self` manages versions, so it runs on the copy that was started, never on a project's: a project pinned to
-  // an older release must not take `self` back to that release's verbs. A `+range` before it is for `self show`
+  // an older release must not take `self` back to that release's verbs. A `+range` before it is for `self show`.
+  // `term update` is `term self update` (line.ts), and runs on the front for the same reason
   const own = splitFlag(args)
 
-  if (own.argv[0] === 'self') {
+  if (own.argv[0] === 'self' || own.argv[0] === 'update') {
     if (own.text !== undefined) {
       env['TERM_NEED_FLAG'] = own.text
     }

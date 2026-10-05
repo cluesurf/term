@@ -7,7 +7,9 @@
 // resolver the compiler is given, so a path the editor opens is the file the build reads.
 
 import { parseTolerant, renderHead } from '@term/make/code/parser/tree'
-import type { GroupNode, Node } from '@term/make/code/parser/tree'
+import type { Node } from '@term/make/code/parser/tree'
+import type { GroupNode } from '@term/make/code/parser/narrow'
+import { groupsOf } from '@term/make/code/parser/narrow'
 import { spanOfNode } from '@term/make/code/compile/mill-run'
 import type { Span } from '@term/make/code/parser/diagnostic'
 
@@ -89,7 +91,7 @@ export function pathMentions(file: string, text: string): PathMention[] {
     }
   }
 
-  for (const group of tree.nodes) {
+  for (const group of groupsOf(tree.nodes)) {
     visit(group, false)
   }
 
@@ -104,7 +106,7 @@ export function declarationsOf(file: string, text: string): Declaration[] {
   const { tree } = parseTolerant({ file, text })
   const out: Declaration[] = []
 
-  for (const group of tree.nodes) {
+  for (const group of groupsOf(tree.nodes)) {
     const head = headWord(group)
 
     if (!head || !DECLARING.has(head)) {

@@ -3,11 +3,9 @@
 // Solid-model structure (run-once setup, signals), emitted as clean TypeScript. See
 // note/research/vibe/computation/plans/15-components.md. Browser-safe (returns a string).
 
-import type {
-  GroupNode,
-  NameNode,
-  Node,
-} from '@term/make/code/parser/tree'
+import type { Node } from '@term/make/code/parser/tree'
+import type { GroupNode, NameNode } from '@term/make/code/parser/narrow'
+import { groupsOf } from '@term/make/code/parser/narrow'
 import { parse } from '@term/make/code/parser/tree'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 
@@ -63,7 +61,7 @@ export function compileZone(source: {
     return { ok: false, diagnostics: parsed.diagnostics }
   }
 
-  const zoneGroup = parsed.tree.nodes.find(g => head(g) === 'view')
+  const zoneGroup = groupsOf(parsed.tree.nodes).find(g => head(g) === 'view')
 
   if (!zoneGroup) {
     return { ok: false, diagnostics: [] }

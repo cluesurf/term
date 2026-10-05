@@ -38,3 +38,12 @@ export const RENDER_SUPPORT = [
   'read-signal',
   'dispose-scope',
 ] as const
+
+// the shape compile/render-names.tree exports, which its callers read: the record, and the support list
+export function renderNames(): { [K in keyof typeof RENDER]: string } {
+  return { ...RENDER }
+}
+
+export function renderSupport(): string[] {
+  return [...RENDER_SUPPORT]
+}

@@ -7,6 +7,7 @@
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
 import { parse } from '@term/make/code/parser/tree'
+import { groupsOf } from '@term/make/code/parser/narrow'
 import { noteMetadataSites } from '@term/make/code/check/note-metadata'
 import { definesTask, keywordImports } from '@term/make/code/check/keyword-import'
 import {
@@ -95,7 +96,7 @@ import { simplify } from '@term/make/code/ir/simplify'
 import { passDictionaries } from '@term/make/code/ir/dictionary'
 import { lowerViews } from '@term/make/code/compile/view-lower'
 import { lowerRoutes } from '@term/make/code/compile/route-lower'
-import { RENDER, RENDER_SUPPORT } from '@term/make/code/compile/render-names'
+import { renderNames, renderSupport } from '@term/make/code/compile/render-names'
 import { checkLook, compileLookCss } from '@term/make/code/compile/look-css'
 import { compileLookTable, styleTableText } from '@term/make/code/compile/look-table'
 import {
@@ -121,6 +122,10 @@ import type {
 import { checkTwins } from '@term/make/code/check/twin'
 import { applyTwins, exposeTwins, guardTask, twinTask } from '@term/make/code/ir/twin'
 import type { TwinChoices } from '@term/make/code/ir/twin'
+
+// the render runtime's task names, asked of compile/render-names once
+const RENDER = renderNames()
+const RENDER_SUPPORT = renderSupport()
 
 // The packages that DESCRIBE a host's API rather than implement anything: @term/bind, 3,091 files transcribed from
 // TypeScript's lib.d.ts, Node's typings and Rust's documentation. Their types are the host's (`or`, `index`, `maybe`
@@ -193,7 +198,7 @@ export function isLookStylesheet(source: {
   return (
     looked.ok &&
     looked.tree.nodes.length > 0 &&
-    looked.tree.nodes.every(node => {
+    groupsOf(looked.tree.nodes).every(node => {
       const first = node.nodes[0]
       const name =
         first?.kind === 'name'
@@ -245,6 +250,11 @@ export function compile(
     roll?: boolean
     // with `roll`: answer the roll and the diagnostics only, cached on their own (the program and TypeScript left out)
     rollOnly?: boolean
+    // with `roll` and `rollOnly`: the roll of an entry KNOWN TO BUILD, read off the checked program as soon as it is
+    // typed and its async tasks are resolved, without the passes after that, which only refuse or warn (the kernel,
+    // the provers, totality and the rest). Those are most of a compile, and `term make` already ran them on every
+    // entry it asks this of. Held equal to the full roll on every file of every package (task/term/roll-fast.ts)
+    rollFast?: boolean
     // each module's own part of the import walk, shared by a batch build's entries (compile/load.ts `WalkMemo`)
     walked?: WalkMemo
     // the deck a source file belongs to (name and root), from its nearest `deck.tree`. Names the `host` of every
@@ -457,7 +467,7 @@ export function compile(
       options?.env,
       // explicit entry points imply pruning (application dead-code elimination)
       treeShake || (options?.entryPoints?.length ?? 0) > 0,
-      options?.roll,
+      options?.roll && options.rollOnly && options.rollFast ? 'fast' : options?.roll,
       options?.deckOf,
       collected?.scope,
       (options?.twins && Object.keys(options.twins).length > 0) || options?.exposeTwins
@@ -497,7 +507,7 @@ export function compile(
         : full
     }
 
-    return cache ? cache.output(`${graphKey}|roll-only`, rollOf) : rollOf()
+    return cache ? cache.output(`${graphKey}|roll-only${options.rollFast ? '|fast' : ''}`, rollOf) : rollOf()
   }
 
   // the output cache stores a JSON-serialized result, which cannot hold the per-module `Map`. So in per-module mode we
@@ -696,7 +706,8 @@ export function compileProgram(
   optimize?: boolean,
   env?: string,
   treeShake?: boolean,
-  wantRoll?: boolean,
+  // `fast`: the roll alone, once the program is typed (compile's `rollFast`)
+  wantRoll?: boolean | 'fast',
   deckOf?: (file: string) => { name: string; root: string } | undefined,
   // what each module imports by name, so a call to a name two modules define binds to the one its file imported
   scope?: ImportScope,
@@ -974,6 +985,11 @@ export function compileProgram(
   // takes (check/async-slots.ts)
   asyncSlots(program)
   resolveAsync(program)
+
+  // the roll alone, for an entry already known to build: everything below only refuses or warns
+  if (wantRoll === 'fast') {
+    return { ok: true, program: [], typescript: '', warnings: [], roll: buildRoll(program, file, { deckOf }) }
+  }
 
   // elaboration: lower the now-typed surface into the sound dependent kernel and let it verify. The kernel is the
   // single type-theoretic authority; the surface pass above is its inference front-end. See plans/12-type-systems.

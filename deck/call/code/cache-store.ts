@@ -765,6 +765,9 @@ export function processParse(): ParseMemo {
 export function projectCache(
   projectRoot: string,
   version: Record<string, string> = compilerVersions(),
+  // how many milled modules the cache holds in memory. A worker of a pool passes fewer: eight workers each holding
+  // every module of @term/bind held more than the machine had
+  millCap?: number,
 ): CompileCache {
   const forKind = (kind: string): string =>
     version[kind] ?? compilerVersion(kind)
@@ -774,5 +777,6 @@ export function projectCache(
     // per kind here too: the key folds the version in, so passing one version would put the output fingerprint
     // into every mill key and undo the split the store directory just made
     forKind,
+    millCap,
   )
 }

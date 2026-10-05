@@ -759,7 +759,12 @@ function collectNumberLiteralValues(program: Program): Set<string> {
 
     const form = (node as { form?: unknown }).form
 
-    if (form === 'integer' || form === 'float') {
+    // an integer by its EXACT text, the name every use of it is elaborated to (`integerText`): past 2^53 its `value`
+    // is the rounded number, so registering that left `numberValue#9007199254740993` unknown (test/compile/guide-gaps.ts,
+    // "a literal past 2^53"). A float has no exact text but its value
+    if (form === 'integer') {
+      values.add(integerText(node as Parameters<typeof integerText>[0]))
+    } else if (form === 'float') {
       values.add(String((node as { value?: unknown }).value))
     }
 

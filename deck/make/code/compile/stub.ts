@@ -74,9 +74,113 @@ export function stubKnown(program: Program): StubKnown {
 // unchanged. It was `interfaceHash`, a summary of names and types, which left out a task's contracts (`have`, `must`),
 // its signature's raise bounds, a parameter's default, a constant's value (folded into a dependent's text at compile
 // time) and the facts above, so an edit to any of them replayed a dependent built against the old one
-export function surfaceHash(surface: Program): string {
-  return hashText(JSON.stringify(surface, (key, value) => (key === 'span' ? undefined : typeof value === 'bigint' ? `${value}n` : value)))
+// `portable` writes each deck's root as a token (compile/separate.ts `portableBy`), so the same surface has the same
+// fingerprint in every clone of the repository
+export function surfaceHash(surface: Program, portable: (text: string) => string = text => text): string {
+  return hashText(portable(JSON.stringify(surface, withoutSpans)))
 }
+
+function withoutSpans(key: string, value: unknown): unknown {
+  return key === 'span' ? undefined : typeof value === 'bigint' ? `${value}n` : value
+}
+
+// EACH DEFINITION OF A SURFACE, AS THE NAME-LEVEL CUTOFF READS IT (compile/names.tree): the names it can be reached by,
+// the names it mentions, and its fingerprint. A dependent's key holds the fingerprints of the definitions it reaches by
+// name, so an edit to a task it never names leaves its answer standing. A definition reached by type rather than by
+// name, a mask instance, gives `*`, which every unit uses
+export function nameDefs(surface: Program, portable: (text: string) => string = text => text): NameDef[] {
+  return surface.map(statement => {
+    const record = statement as Record<string, unknown>
+    const reads = new Set<string>()
+
+    const walk = (node: unknown): void => {
+      if (typeof node === 'string') {
+        reads.add(node)
+      } else if (Array.isArray(node)) {
+        node.forEach(walk)
+      } else if (node !== null && typeof node === 'object') {
+        for (const [key, value] of Object.entries(node)) {
+          if (key !== 'span') {
+            walk(value)
+          }
+        }
+      }
+    }
+
+    walk(record)
+
+    return { gives: givesOf(record), reads: [...reads], print: hashText(portable(JSON.stringify(record, withoutSpans))) }
+  })
+}
+
+export type NameDef = { gives: string[]; reads: string[]; print: string }
+
+// every name a unit's own program writes: each text in its milled statements, which is more than the names it uses
+// (a literal's text, a field's name) and never fewer, since a surplus name only keeps a definition in its key
+export function namesUsed(program: Program): string[] {
+  const used = new Set<string>(NAMES_ALWAYS_USED)
+
+  const walk = (node: unknown): void => {
+    if (typeof node === 'string') {
+      used.add(node)
+    } else if (Array.isArray(node)) {
+      node.forEach(walk)
+    } else if (node !== null && typeof node === 'object') {
+      for (const [key, value] of Object.entries(node)) {
+        if (key !== 'span') {
+          walk(value)
+        }
+      }
+    }
+  }
+
+  walk(program)
+
+  return [...used]
+}
+
+function givesOf(record: Record<string, unknown>): string[] {
+  const names = (list: unknown): string[] =>
+    Array.isArray(list) ? list.map(one => (typeof one === 'string' ? one : String((one as { name?: unknown }).name ?? ''))) : []
+
+  switch (record.form) {
+    case 'function': {
+      // a form's method is called by its method's name (`x/push`), which need not be the task's
+      const method = (record.method as { name?: unknown } | undefined)?.name
+
+      return typeof method === 'string' && method !== record.name ? [String(record.name), method] : [String(record.name)]
+    }
+    case 'let':
+    case 'view':
+    case 'bind':
+      return [String(record.name)]
+    case 'record-type':
+      // a case is reached by its own name (`make some`, `case some`), and a form that is `like` another by every form
+      // above it: a unit naming `exception` may read every exception there is (a roll, a guard's arms)
+      return [
+        String(record.name),
+        ...names(record.variants),
+        ...(Array.isArray(record.chain) ? (record.chain as string[]) : []),
+        ...extendBase(record.extend),
+      ]
+    case 'mask':
+      return [String(record.name), ...names(record.methods)]
+    case 'native':
+      return [String(record.alias)]
+    default:
+      return ['*']
+  }
+}
+
+function extendBase(extend: unknown): string[] {
+  const base = (extend as { base?: { kind?: string; name?: unknown } } | undefined)?.base
+
+  return base?.kind === 'named' && typeof base.name === 'string' ? [base.name] : []
+}
+
+// the names a unit reaches without writing them: what the checker and the emitters name on a program's behalf (an
+// exception's base form, a view's type, the data a `fill` makes, a pending job's handle), and `*`
+export const NAMES_ALWAYS_USED = ['*', 'data', 'exception', 'view', 'type', 'text', 'maybe', 'some', 'none', 'list', 'hash', 'handle', 'spawn', 'defect', 'failure', 'data-mismatch', EXCEPTION_FORM]
 
 // one task's share of what its unit found
 function factsOf(name: string, known: StubKnown): string[] {
@@ -98,11 +202,12 @@ export function stubProgram(program: Program, known?: StubKnown): Program {
 
   for (const statement of program) {
     switch (statement.form) {
+      // A PRIVATE TASK IS IN THE STUB TOO, still marked private. A dependent cannot call it, and is told so by the
+      // privacy checks (check/private.ts), which need the definition to say why: without it a `find` of a private task
+      // read as `unknown-name` where the whole-program build says `private-name`, and the one place that did say it
+      // was the dependency's own check seeing its importer's scope, an answer that then reached every other importer.
+      // A test of the same package may call one, and its module exports it
       case 'function': {
-        if (statement.private) {
-          break
-        }
-
         // a one-statement body that sends a value back is what the shape readers recognize (check/facts.ts
         // `onlyStatement`). Nothing longer is carried, so an edit inside a longer body still cuts off at the stub
         const only = statement.body.length === 1 && statement.body[0]!.form === 'return' ? statement.body[0] : undefined

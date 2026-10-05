@@ -15,7 +15,7 @@
 // knows every position. A file that does not hold the name as a whole word is never milled.
 
 import { realpathSync, readFileSync } from 'node:fs'
-import { basename, dirname, join } from 'node:path'
+import { basename, dirname, join, sep } from 'node:path'
 import { analyze as analyzeSource } from '@term/make/code/analyze'
 import { importFindsOf, makeParseMemo } from '@term/make/code/compile/load'
 import type { ParseMemo, Resolver } from '@term/make/code/compile/load'
@@ -89,6 +89,9 @@ export function canonical(file: string): string {
 export class Workspace {
   // the build's file list per package, until a file is created or deleted under it
   private readonly lists = new Map<string, string[]>()
+  // a file's top-level definitions, kept beside the text they were scanned from, so a symbol search typed one
+  // character at a time scans each file once and not once a keystroke
+  private readonly defs = new Map<string, { text: string; defs: ReturnType<typeof scanDefs> }>()
 
   constructor(private readonly host: WorkspaceHost) {}
 
@@ -101,17 +104,43 @@ export class Workspace {
     }
   }
 
+  // forget the file list of every package holding this file, and no other: a file created or deleted in one package
+  // used to send every package's next question back to disk
+  forgetFile(file: string): void {
+    for (const root of [...this.lists.keys()]) {
+      if (file.startsWith(root.endsWith(sep) ? root : root + sep)) {
+        this.lists.delete(root)
+      }
+    }
+
+    this.defs.delete(file)
+  }
+
+  // the build's own list, which never enters scratch, caches or installed dependencies (findTreeFiles). It used to
+  // walk them and filter here, after the fact: 40 s on the Term root, for 111 files, every first search. The filter
+  // also dropped every path with a `link` folder in it, which hid the mill's `form/link` and `lock/link` grammars
   files(root: string): string[] {
     let list = this.lists.get(root)
 
     if (!list) {
-      list = findTreeFiles(root).filter(
-        f => !/[\\/](?:tmp|\.base|link)[\\/]/.test(f.slice(root.length)),
-      )
+      list = findTreeFiles(root)
       this.lists.set(root, list)
     }
 
     return list.length > WORKSPACE_FILE_CAP ? [] : list
+  }
+
+  private defsOf(file: string, text: string): ReturnType<typeof scanDefs> {
+    const kept = this.defs.get(file)
+
+    if (kept && kept.text === text) {
+      return kept.defs
+    }
+
+    const defs = scanDefs(text)
+    this.defs.set(file, { text, defs })
+
+    return defs
   }
 
   read(file: string): string | undefined {
@@ -170,7 +199,7 @@ export class Workspace {
           continue
         }
 
-        for (const def of scanDefs(text)) {
+        for (const def of this.defsOf(file, text)) {
           if (wanted && !fuzzy(def.name.toLowerCase(), wanted)) {
             continue
           }

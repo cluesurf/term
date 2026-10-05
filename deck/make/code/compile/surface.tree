@@ -208,7 +208,7 @@ task is-halt-word
 
 # Unescape a text literal's escape sequences: the delimiters (`\<` `\>` `\{` `\}`, kept in the chunk so the bracket is
 # content and not a delimiter), the standard characters (`\n` `\r` `\t` `\\`), and `\e`, the escape character (0x1B)
-# every ANSI colour sequence opens with. A backslash before anything else stays, with what follows it.
+# every ANSI color sequence opens with. A backslash before anything else stays, with what follows it.
 task unescape-text
   take value, like text
   like text

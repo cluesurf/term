@@ -6,112 +6,56 @@ import type {
   Span,
 } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
-import type { Token } from '@term/make/code/parser/token'
-import { TokenKind, rawContent, tokenize } from '@term/make/code/parser/token'
-import type { Event } from '@term/make/code/parser/event'
-import {
-  EventKind,
-  buildEvents,
-} from '@term/make/code/parser/event'
+import { rawContent, tokenize } from '@term/make/code/parser/token'
+import type { CommaAfterLeaf, Event, Follows } from '@term/make/code/parser/event'
+import { buildEvents } from '@term/make/code/parser/event'
+import type {
+  ChunkNode,
+  DecimalNode,
+  GroupNode,
+  IntegerNode,
+  InterpolationNode,
+  NameNode,
+  RadixNode,
+  TextNode,
+} from '@term/make/code/parser/narrow'
 
-export type RootNode = { kind: 'root'; nodes: GroupNode[] }
+// A node holds no link to its parent and no token: what a reader wants of the token is carried on the node (its
+// `span`, its `text` as written, and for a name's chunk what `follows` it), so the tree is plain data and a Term
+// record can hold it.
+// CST trivia: a comment written on a line above a node
 export type Comment = { text: string; span: Span }
-export type GroupNode = {
-  kind: 'group'
-  nodes: (
-    | GroupNode
-    | NameNode
-    | TextNode
-    | IntegerNode
-    | DecimalNode
-    | RadixNode
-  )[]
-  parent?: GroupNode | InterpolationNode
-  optional?: boolean
-  // CST trivia: comments written on the lines above this group. The formatter re-emits them; lint reads
-  // suppressions. This is what makes the tree a concrete syntax tree rather than a bare AST.
-  comments?: Comment[]
-}
-export type NameNode = {
-  kind: 'name'
-  parts: (ChunkNode | InterpolationNode)[]
-  parent?: GroupNode
-}
-export type TextNode = {
-  kind: 'text'
-  parts: (ChunkNode | InterpolationNode)[]
-  // a RAW literal (`<<...>>`, token.ts) as it was written: its parts are the one chunk an ordinary literal would carry
-  // for the same text, so every reader sees an ordinary literal, and a printer writes this back between `<<` and `>>`
-  raw?: string
-  parent?: GroupNode
-  // CST trivia: comments written above a line that opens with this text
-  comments?: Comment[]
-}
-export type InterpolationNode = {
-  kind: 'interpolation'
-  depth: number
-  group?: GroupNode
-  // the root of a path written after a call, `greeting()/text`, with no braces (buildTree)
-  call?: boolean
-  parent?: NameNode | TextNode
-}
-export type ChunkNode = {
-  kind: 'chunk'
-  text: string
-  token: Token
-  parent?: NameNode | TextNode
-}
-export type IntegerNode = {
-  kind: 'integer'
-  value: number
-  // CST trivia: comments written above a line that opens with this literal (a data file's run of scalars)
-  comments?: Comment[]
-  token: Token
-  parent?: GroupNode
-}
-export type DecimalNode = {
-  kind: 'decimal'
-  value: number
-  // CST trivia: comments written above a line that opens with this literal (a data file's run of scalars)
-  comments?: Comment[]
-  token: Token
-  parent?: GroupNode
-}
-export type RadixNode = {
-  kind: 'radix'
-  value: number
-  // CST trivia: comments written above a line that opens with this literal (a data file's run of scalars)
-  comments?: Comment[]
-  radix: number
-  token: Token
-  parent?: GroupNode
-}
 
+// the top of a parsed file, which is no other node's child, so it stands apart from the union
+export type RootNode = { kind: 'root'; nodes: Node[] }
+
+// One union, the shape parser/tree.tree's `node` form emits: a Term form cannot hold a list of some of its cases, so a
+// group's `nodes`, a name's `parts` and an interpolation's `group` are typed `Node`, and a reader narrows on `kind`
 export type Node =
-  | RootNode
-  | GroupNode
-  | NameNode
-  | TextNode
-  | InterpolationNode
-  | ChunkNode
-  | IntegerNode
-  | DecimalNode
-  | RadixNode
+  // `comments`: CST trivia, the comments written on the lines above this group. The formatter re-emits them; lint
+  // reads suppressions. This is what makes the tree a concrete syntax tree rather than a bare AST.
+  | { kind: 'group'; nodes: Node[]; optional?: boolean; comments?: Comment[] }
+  | { kind: 'name'; parts: Node[] }
+  // `raw`: a RAW literal (`<<...>>`, token.ts) as it was written. Its parts are the one chunk an ordinary literal would
+  // carry for the same text, so every reader sees an ordinary literal, and a printer writes this back between `<<` and
+  // `>>`
+  | { kind: 'text'; parts: Node[]; raw?: string; comments?: Comment[] }
+  // `call`: the root of a path written after a call, `greeting()/text`, with no braces (buildTree)
+  | { kind: 'interpolation'; depth: number; group?: Node; call?: boolean }
+  // `text`: in a name, without the optional mark `?`. `follows`: in a name, what its token is followed by, `(`
+  // (`f(a)`) or `()` (`f()`)
+  | { kind: 'chunk'; text: string; span: Span; follows?: Follows }
+  // `text`: the literal as written (`2,440,588`, and `1.0`, which is not `String(1)`)
+  | { kind: 'integer'; value: number; text: string; span: Span; comments?: Comment[] }
+  | { kind: 'decimal'; value: number; text: string; span: Span; comments?: Comment[] }
+  | { kind: 'radix'; value: number; text: string; span: Span; comments?: Comment[]; radix: number }
 
-export type ParseResult =
-  | { ok: true; tree: RootNode }
-  | { ok: false; diagnostics: Diagnostic[] }
+// `ok` when the text parsed with no diagnostic. Every field is there either way, so a Term record holds it: a failed
+// parse carries an empty tree, and a good one no diagnostics
+export type ParseResult = { ok: boolean; tree: RootNode; diagnostics: Diagnostic[] }
 
-type Frame = { line: Node[]; levels: Node[]; level: number }
-
-function setParent(child: { parent?: unknown }, parent: unknown) {
-  // non-enumerable so the tree can be serialized without circular references
-  Object.defineProperty(child, 'parent', {
-    value: parent,
-    enumerable: false,
-    writable: true,
-  })
-}
+// a line and the levels of nesting it stands at, by the node each opened: the root is one, though it is no Node
+type Frame = { line: (Node | RootNode)[]; levels: (Node | RootNode)[]; level: number }
 
 function buildTree(
   events: Event[],
@@ -145,12 +89,12 @@ function buildTree(
   }
 
   const unexpected = (event: Event) => {
-    const token = 'token' in event ? event.token : undefined
     diagnostics.push(
       diagnose('unexpected-node', {
         file,
-        span: token ? token.span : zeroSpan(),
-        message: `unexpected ${event.kind} here`,
+        span: 'span' in event ? event.span : zeroSpan(),
+        // a content event is named for what it read (`read-chunk`), and the message names the thing (`chunk`)
+        message: `unexpected ${event.kind.replace(/^read-/, '')} here`,
       }),
     )
   }
@@ -161,19 +105,20 @@ function buildTree(
   // the event before this one, so a path chunk can tell that it follows a call's closing parenthesis directly
   let previous: Event | undefined
 
-  for (const event of events) {
+  for (let at = 0; at < events.length; at++) {
+    const event = events[at]!
     const before = previous
     previous = event
 
     switch (event.kind) {
-      case EventKind.Comment:
+      case 'read-comment':
         pendingComments.push({
-          text: event.token.text,
-          span: event.token.span,
+          text: event.text,
+          span: event.span,
         })
         break
 
-      case EventKind.OpenGroup: {
+      case 'open-group': {
         const here = base()
 
         if (here.kind === 'root' || here.kind === 'group') {
@@ -185,13 +130,11 @@ function buildTree(
           }
 
           here.nodes.push(group)
-          setParent(group, here)
           top().line.push(group)
           lift(top(), group)
         } else if (here.kind === 'interpolation') {
           const group: GroupNode = { kind: 'group', nodes: [] }
           here.group = group
-          setParent(group, here)
           top().line.push(group)
           lift(top(), group)
         } else {
@@ -201,9 +144,9 @@ function buildTree(
         break
       }
 
-      case EventKind.CloseGroup:
-      case EventKind.CloseName:
-      case EventKind.CloseText: {
+      case 'close-group':
+      case 'close-name':
+      case 'close-text': {
         // more closes than opens: the event stream underflowed on malformed input. Report it rather than
         // dereferencing an empty stack — a parser must produce a diagnostic, never throw. `base()` already has
         // the same guard through VOID_NODE; this path did not, and crashed with a TypeError instead.
@@ -218,13 +161,12 @@ function buildTree(
         break
       }
 
-      case EventKind.OpenName: {
+      case 'open-name': {
         const here = base()
 
         if (here.kind === 'group') {
           const name: NameNode = { kind: 'name', parts: [] }
           here.nodes.push(name)
-          setParent(name, here)
           top().line.push(name)
         } else {
           unexpected(event)
@@ -233,16 +175,16 @@ function buildTree(
         break
       }
 
-      case EventKind.OpenText: {
+      case 'open-text': {
         const here = base()
 
         if (here.kind === 'group') {
           const text: TextNode = { kind: 'text', parts: [] }
 
           // a raw literal opens with `<<`, and its content is the one chunk after it, or nothing
-          if (event.token.text === '<<') {
-            const next = event.token.next
-            text.raw = next?.kind === TokenKind.Chunk ? rawContent(next.text) : ''
+          if (event.text === '<<') {
+            const next = events[at + 1]
+            text.raw = next?.kind === 'read-chunk' ? rawContent(next.text) : ''
           }
 
           if (pendingComments.length > 0) {
@@ -251,7 +193,6 @@ function buildTree(
           }
 
           here.nodes.push(text)
-          setParent(text, here)
           top().line.push(text)
         } else {
           unexpected(event)
@@ -260,7 +201,7 @@ function buildTree(
         break
       }
 
-      case EventKind.OpenInterpolation: {
+      case 'open-interpolation': {
         const here = base()
 
         if (here.kind === 'name' || here.kind === 'text') {
@@ -270,7 +211,6 @@ function buildTree(
           }
 
           here.parts.push(interpolation)
-          setParent(interpolation, here)
           stack.push({
             line: [interpolation],
             levels: [interpolation],
@@ -288,10 +228,7 @@ function buildTree(
           const name: NameNode = { kind: 'name', parts: [interpolation] }
           const group: GroupNode = { kind: 'group', nodes: [name] }
 
-          setParent(interpolation, name)
-          setParent(name, group)
           here.nodes.push(group)
-          setParent(group, here)
           stack.push({
             line: [interpolation],
             levels: [interpolation],
@@ -304,41 +241,30 @@ function buildTree(
         break
       }
 
-      case EventKind.CloseInterpolation:
+      case 'close-interpolation':
         stack.pop()
         break
 
-      case EventKind.Chunk: {
+      case 'read-chunk': {
         const here = base()
 
         if (here.kind === 'name') {
-          const text = event.token.text
-          const optional = text.includes('?')
-          const chunk: ChunkNode = {
-            kind: 'chunk',
-            text: optional ? text.replace(/\?/g, '') : text,
-            token: event.token,
-          }
+          const optional = event.text.includes('?')
 
-          here.parts.push(chunk)
-          setParent(chunk, here)
+          here.parts.push(chunkOf(event, optional ? event.text.replace(/\?/g, '') : event.text))
 
-          if (optional && here.parent) {
-            here.parent.optional = true
+          // the group the name opened in stands just under it on the line
+          const owner = top().line.at(-2)
+
+          if (optional && owner?.kind === 'group') {
+            owner.optional = true
           }
         } else if (here.kind === 'text') {
-          const chunk: ChunkNode = {
-            kind: 'chunk',
-            text: event.token.text,
-            token: event.token,
-          }
-
-          here.parts.push(chunk)
-          setParent(chunk, here)
+          here.parts.push(chunkOf(event, event.text))
         } else if (
           here.kind === 'group' &&
-          before?.kind === EventKind.CloseGroup &&
-          event.token.text.startsWith('/') &&
+          before?.kind === 'close-group' &&
+          event.text.startsWith('/') &&
           here.nodes.at(-1)?.kind === 'group'
         ) {
           // a PATH AFTER A CALL, `greeting()/text`: the call just closed, and the chunk touching its parenthesis
@@ -346,9 +272,8 @@ function buildTree(
           // segment rooted at the call, so every reader after this one sees a path it already reads. `call`
           // makes the printer write it back the way it was written.
           const call = here.nodes.pop() as GroupNode
-          const head = pathAfterCall(call, event.token)
+          const head = pathAfterCall(call, chunkOf(event, event.text))
           here.nodes.push(head)
-          setParent(head, here)
 
           // a comma later on the line pops back to a level, and the call may be one: the path stands there now
           const levels = top().levels
@@ -359,25 +284,22 @@ function buildTree(
           }
         } else if (
           here.kind === 'group' &&
-          before?.kind === EventKind.CloseInterpolation &&
-          event.token.text.startsWith('/') &&
+          before?.kind === 'close-interpolation' &&
+          event.text.startsWith('/') &&
           bareBraces(here.nodes.at(-1))
         ) {
           // a path after bare braces, `f(a, {k}/x)`: the rest of the name the braces opened
           const name = (here.nodes.at(-1) as GroupNode).nodes[0] as NameNode
-          const chunk: ChunkNode = { kind: 'chunk', text: event.token.text, token: event.token }
-          name.parts.push(chunk)
-          setParent(chunk, name)
+          name.parts.push(chunkOf(event, event.text))
         } else if (
           here.kind === 'interpolation' &&
           here.group &&
-          before?.kind === EventKind.CloseGroup &&
-          event.token.text.startsWith('/')
+          before?.kind === 'close-group' &&
+          event.text.startsWith('/')
         ) {
           // the same path inside a text's braces, `<{greeting()/text}>`, where the call is the braces' one group
-          const head = pathAfterCall(here.group, event.token)
+          const head = pathAfterCall(here.group, chunkOf(event, event.text))
           here.group = head
-          setParent(head, here)
         } else {
           unexpected(event)
         }
@@ -385,14 +307,15 @@ function buildTree(
         break
       }
 
-      case EventKind.Integer: {
+      case 'read-integer': {
         const here = base()
 
         if (here.kind === 'group') {
           const node: IntegerNode = {
             kind: 'integer',
             value: event.value,
-            token: event.token,
+            text: event.text,
+            span: event.span,
           }
 
           if (pendingComments.length > 0) {
@@ -401,12 +324,11 @@ function buildTree(
           }
 
           here.nodes.push(node)
-          setParent(node, here)
         } else if (here.kind === 'root') {
           diagnostics.push(
             diagnose('invalid-nesting', {
               file,
-              span: event.token.span,
+              span: event.span,
               hint: 'a bare number is a value, not a name, so it cannot be the head of a line',
             }),
           )
@@ -417,14 +339,15 @@ function buildTree(
         break
       }
 
-      case EventKind.Decimal: {
+      case 'read-decimal': {
         const here = base()
 
         if (here.kind === 'group') {
           const node: DecimalNode = {
             kind: 'decimal',
             value: event.value,
-            token: event.token,
+            text: event.text,
+            span: event.span,
           }
 
           if (pendingComments.length > 0) {
@@ -433,14 +356,13 @@ function buildTree(
           }
 
           here.nodes.push(node)
-          setParent(node, here)
         } else if (here.kind === 'root') {
           // the same mistake an INTEGER head makes, and it deserves the same sentence. It used to fall through to
           // `unexpected(event)` and say only "unexpected decimal here", which names the token kind and not the problem.
           diagnostics.push(
             diagnose('invalid-nesting', {
               file,
-              span: event.token.span,
+              span: event.span,
               hint: 'a bare number is a value, not a name, so it cannot be the head of a line',
             }),
           )
@@ -451,7 +373,7 @@ function buildTree(
         break
       }
 
-      case EventKind.Radix: {
+      case 'read-radix': {
         const here = base()
 
         if (here.kind === 'group') {
@@ -459,7 +381,8 @@ function buildTree(
             kind: 'radix',
             value: event.value,
             radix: event.radix,
-            token: event.token,
+            text: event.text,
+            span: event.span,
           }
 
           if (pendingComments.length > 0) {
@@ -468,14 +391,13 @@ function buildTree(
           }
 
           here.nodes.push(node)
-          setParent(node, here)
         } else if (here.kind === 'root') {
           // the same mistake an INTEGER head makes, and it deserves the same sentence. It used to fall through to
           // `unexpected(event)` and say only "unexpected radix here", which names the token kind and not the problem.
           diagnostics.push(
             diagnose('invalid-nesting', {
               file,
-              span: event.token.span,
+              span: event.span,
               hint: 'a bare number is a value, not a name, so it cannot be the head of a line',
             }),
           )
@@ -486,14 +408,14 @@ function buildTree(
         break
       }
 
-      case EventKind.OpenIndent: {
+      case 'open-indent': {
         const frame = top()
         frame.level++
         frame.line = [frame.levels[frame.level]!]
         break
       }
 
-      case EventKind.CloseIndent: {
+      case 'close-indent': {
         const frame = top()
         frame.level--
         frame.line = [frame.levels[frame.level]!]
@@ -520,80 +442,58 @@ function bareBraces(node: Node | undefined): boolean {
 
 // `greeting()/text` as the name `{greeting()}/text`: a group holding one name, whose parts are the call in braces
 // and the path chunk
-function pathAfterCall(call: GroupNode, token: Token): GroupNode {
-  const name: NameNode = { kind: 'name', parts: [] }
+function pathAfterCall(call: Node, chunk: ChunkNode): GroupNode {
   const interpolation: InterpolationNode = { kind: 'interpolation', depth: 1, group: call, call: true }
-  const chunk: ChunkNode = { kind: 'chunk', text: token.text, token }
-  const head: GroupNode = { kind: 'group', nodes: [name] }
+  const name: NameNode = { kind: 'name', parts: [interpolation, chunk] }
 
-  setParent(call, interpolation)
-  setParent(interpolation, name)
-  name.parts.push(interpolation, chunk)
-  setParent(chunk, name)
-  setParent(name, head)
+  return { kind: 'group', nodes: [name] }
+}
 
-  return head
+// a chunk node from its event, holding `text`, with what follows it when the event says
+function chunkOf(event: { span: Span; follows?: Follows }, text: string): ChunkNode {
+  return event.follows ? { kind: 'chunk', text, span: event.span, follows: event.follows } : { kind: 'chunk', text, span: event.span }
 }
 
 function zeroSpan(): Span {
   return { start: { line: 0, column: 0 }, end: { line: 0, column: 0 } }
 }
 
-// The strict entry. Parse text to a tree, or return diagnostics.
-export function parse(source: {
-  file: string
-  text: string
-}): ParseResult {
-  const tokenResult = tokenize(source)
+// The strict entry. Parse text to a tree, or say why not: a failed parse's tree is empty. `afterLeaf` is the comma
+// rule (event.ts), the grammar's unless a migration asks for another.
+export function parse(source: { file: string; text: string }, afterLeaf: CommaAfterLeaf = 'stays'): ParseResult {
+  const tolerant = parseTolerant(source, afterLeaf)
 
-  if (!tokenResult.ok) {
-    return { ok: false, diagnostics: tokenResult.diagnostics }
+  if (tolerant.diagnostics.length > 0) {
+    return { ok: false, tree: { kind: 'root', nodes: [] }, diagnostics: tolerant.diagnostics }
   }
 
-  const eventResult = buildEvents(tokenResult.tokens)
-
-  if (!eventResult.ok) {
-    return { ok: false, diagnostics: eventResult.diagnostics }
-  }
-
-  const diagnostics: Diagnostic[] = []
-  const tree = buildTree(
-    eventResult.stream.events,
-    source.file,
-    diagnostics,
-  )
-
-  if (diagnostics.length) {
-    return { ok: false, diagnostics }
-  }
-
-  return { ok: true, tree }
+  return { ok: true, tree: tolerant.tree, diagnostics: [] }
 }
 
-// The tolerant entry. Never fails. Returns whatever tree it built plus any diagnostics. For the language server.
-export function parseTolerant(source: { file: string; text: string }): {
+// The tolerant entry. Never fails. Returns whatever tree it built plus any diagnostics. For the language server. A
+// text that does not lex, or does not nest, gives an empty tree: only the last stage builds past a mistake.
+export function parseTolerant(
+  source: { file: string; text: string },
+  afterLeaf: CommaAfterLeaf = 'stays',
+): {
   tree: RootNode
   diagnostics: Diagnostic[]
 } {
   const empty: RootNode = { kind: 'root', nodes: [] }
   const tokenResult = tokenize(source)
 
-  if (!tokenResult.ok) {
+  if (tokenResult.diagnostics.length > 0) {
     return { tree: empty, diagnostics: tokenResult.diagnostics }
   }
 
-  const eventResult = buildEvents(tokenResult.tokens)
+  const eventResult = buildEvents(tokenResult.tokens, afterLeaf)
 
-  if (!eventResult.ok) {
+  if (eventResult.diagnostics.length > 0) {
     return { tree: empty, diagnostics: eventResult.diagnostics }
   }
 
   const diagnostics: Diagnostic[] = []
-  const tree = buildTree(
-    eventResult.stream.events,
-    source.file,
-    diagnostics,
-  )
+  const tree = buildTree(eventResult.events, source.file, diagnostics)
 
   return { tree, diagnostics }
 }
@@ -676,7 +576,7 @@ export function escapeTextChunks(chunks: string[]): string[] {
   })
 }
 
-function renderParts(parts: (ChunkNode | InterpolationNode)[], escape = false): string {
+function renderParts(parts: Node[], escape = false): string {
   let out = ''
   const escaped = escape
     ? escapeTextChunks(parts.filter((p): p is ChunkNode => p.kind === 'chunk').map(p => p.text))
@@ -686,8 +586,10 @@ function renderParts(parts: (ChunkNode | InterpolationNode)[], escape = false): 
   for (const part of parts) {
     if (part.kind === 'chunk') {
       out += escape ? escaped[chunkAt++]! : part.text
+    } else if (part.kind !== 'interpolation') {
+      continue
     } else if (part.call && part.group) {
-      out += part.group.nodes.length > 1 ? renderInline(part.group) : `${renderInline(part.group)}()`
+      out += part.group.kind === 'group' && part.group.nodes.length > 1 ? renderInline(part.group) : `${renderInline(part.group)}()`
     } else {
       out += `${'{'.repeat(part.depth)}${
         part.group ? renderInline(part.group) : ''
@@ -698,8 +600,12 @@ function renderParts(parts: (ChunkNode | InterpolationNode)[], escape = false): 
   return out
 }
 
-// Render a group in inline parenthesized form: a(b, c). Used inside interpolation.
-function renderInline(group: GroupNode): string {
+// Render a group in inline parenthesized form: a(b, c). Used inside interpolation. Any other node is its head.
+function renderInline(group: Node): string {
+  if (group.kind !== 'group') {
+    return renderHead(group)
+  }
+
   const [head, ...rest] = group.nodes
   const headText = head ? renderHead(head) : ''
 
@@ -722,13 +628,13 @@ export function renderHead(node: Node): string {
       return node.raw !== undefined ? `<<${node.raw}>>` : `<${renderParts(node.parts, true)}>`
     case 'integer':
       return String(node.value)
-    // the TOKEN text, not the value: `String(1.0)` is `"1"`, which re-reads as an INTEGER and silently changes
+    // the text AS WRITTEN, not the value: `String(1.0)` is `"1"`, which re-reads as an INTEGER and silently changes
     // the type (`like decimal` becomes `like number`, and Rust then refuses to multiply a float by an integer).
-    // `radix` already prints its token for the same reason.
+    // `radix` prints its text for the same reason.
     case 'decimal':
-      return node.token.text
+      return node.text
     case 'radix':
-      return node.token.text
+      return node.text
     case 'group':
       return renderInline(node)
     default:
@@ -759,7 +665,9 @@ export function printTree(tree: RootNode): string {
   }
 
   for (const group of tree.nodes) {
-    walk(group, 0)
+    if (group.kind === 'group') {
+      walk(group, 0)
+    }
   }
 
   return lines.join('\n')

@@ -42,11 +42,11 @@ export const CACHE_EPOCH = '9'
 // integer wider than a double and `Number()` would store a different integer
 const BIGINT_TAG = '$bigint'
 
-function storeBigint(_key: string, value: unknown): unknown {
+export function storeBigint(_key: string, value: unknown): unknown {
   return typeof value === 'bigint' ? { [BIGINT_TAG]: value.toString() } : value
 }
 
-function reviveBigint(_key: string, value: unknown): unknown {
+export function reviveBigint(_key: string, value: unknown): unknown {
   if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
     const tagged = (value as Record<string, unknown>)[BIGINT_TAG]
 
@@ -58,15 +58,41 @@ function reviveBigint(_key: string, value: unknown): unknown {
   return value
 }
 
-function readEntry<T>(stored: string | undefined): T | undefined {
+function readEntry<T>(stored: string | undefined, kind = 'output'): T | undefined {
   if (stored === undefined) {
     return undefined
   }
 
   try {
-    return JSON.parse(stored, reviveBigint) as T
+    const value = JSON.parse(stored, reviveBigint) as unknown
+
+    return usable(kind, value) ? (value as T) : undefined
   } catch {
     return undefined
+  }
+}
+
+// WHETHER A STORED ENTRY HAS THE SHAPE ITS KIND READS (note/term/plan/incremental-best-in-class.md, step 14). A torn or
+// flipped entry fails gzip's checksum and a cut one fails to parse, and both are misses already. One that parses to the
+// wrong shape, a `{}` where a unit's build belongs, was handed back as a hit, and the first read of a field it lacked
+// crashed the build. It is a miss too, and the build that follows writes a good entry over it
+function usable(kind: string, value: unknown): boolean {
+  if (value === null || typeof value !== 'object') {
+    return false
+  }
+
+  const entry = value as Record<string, unknown>
+
+  switch (kind) {
+    case 'mill':
+      return typeof entry.ok === 'boolean' && (entry.ok ? Array.isArray(entry.program) : Array.isArray(entry.diagnostics))
+    case 'scan':
+      return Array.isArray(entry.paths) && Array.isArray(entry.finds)
+    case 'unit':
+      // stored with each deck's root as a token (compile/separate.ts `portableBy`), read back by the build
+      return typeof entry.portable === 'string'
+    default:
+      return true
   }
 }
 
@@ -80,7 +106,9 @@ function readScan<T>(stored: string | undefined): T | undefined {
   }
 
   try {
-    return JSON.parse(stored, (_key, value: unknown) => (value === null ? undefined : value)) as T
+    const value = JSON.parse(stored, (_key, value: unknown) => (value === null ? undefined : value)) as unknown
+
+    return usable('scan', value) ? (value as T) : undefined
   } catch {
     return undefined
   }
@@ -224,6 +252,11 @@ export class CompileCache {
       : this.version(kind)
   }
 
+  // the compiler's fingerprint for one kind, which `term make --explain` reports when it moved
+  versionOf(kind: string): string {
+    return this.versionFor(kind)
+  }
+
   milledUnit(
     file: string,
     text: string,
@@ -239,7 +272,7 @@ export class CompileCache {
       return cloneUnit(cached)
     }
 
-    const unit = readEntry<MilledUnit>(this.store?.load('mill', key))
+    const unit = readEntry<MilledUnit>(this.store?.load('mill', key), 'mill')
 
     if (unit !== undefined) {
       this.mills.set(key, unit)
@@ -316,7 +349,7 @@ export class CompileCache {
       return cached
     }
 
-    const value = readEntry<T>(this.store?.load(kind, versioned))
+    const value = readEntry<T>(this.store?.load(kind, versioned), kind)
 
     if (value !== undefined) {
       this.outputs.set(versioned, value)

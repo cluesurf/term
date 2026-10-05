@@ -1,0 +1,1312 @@
+# The tree builder. The event stream to the syntax tree, using a stack of nesting frames. Each node attaches under the
+# head of its line. Also the public parse entry and a printer for the canonical form. Browser-safe.
+#
+# Ported from parser/tree.ts (self-hosting, 2026-10-05). The decisions:
+#   - the tree is one tagged form, `node`, and a root is a form of its own, `root-node`, since it is no other node's
+#     child. A Term form cannot hold a list of some of its cases, so a group's `nodes`, a name's `parts` and an
+#     interpolation's `group` are `node`, and a TypeScript reader narrows through parser/narrow.ts
+#   - the original built the tree by placing a node in its parent and writing to it afterwards (a name's parts, a
+#     group's `optional`, an interpolation's `group`), through whichever of its references it held. Here a node is
+#     built as a `draft`, a `mark shared` record with an id, the frames and the parents hold drafts, and the tree is
+#     read out of them once the events are done. The id stands for the identity `levels.indexOf` compared
+#   - an optional field is present exactly when the original set it: `optional` and `call` only when true, `comments`
+#     only when there were some, `raw`, `follows` and an interpolation's `group` only when there is one
+#   - a level past the end of a frame's levels, or before its start, is the void draft, where the original read a
+#     hole or `undefined` and its `base()` answered the void node for either
+#   - the parse result always carries a tree, empty when the text failed: a Term record holds every field
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find contains
+  find replace-all
+  find starts-with
+  find substring
+
+load @term/base/text/string
+  find repeat
+
+load @term/base/text/unicode
+  find to-runes
+  find from-runes
+
+load ./diagnostic
+  find span
+  find position
+  find diagnostic
+  find diagnostic-input
+  find diagnose
+
+load ./token
+  find token-source
+  find tokenize
+  find raw-content
+
+load ./event
+  find event
+  find follows
+  find comma-after-leaf
+  find build-events
+
+# CST trivia: a comment written on a line above a node
+form comment
+  link text, like text
+  link span, like span
+
+# A node of the concrete syntax tree. It holds no link to its parent and no token: what a reader wants of the token is
+# carried on the node (its `span`, its `text` as written, and for a name's chunk what `follows` it)
+form node
+  mark tag, name kind
+  case group
+    link nodes, like list, like node
+    link optional
+      like maybe, like boolean
+      need false
+    # CST trivia: comments written on the lines above this group. The formatter re-emits them; lint reads
+    # suppressions. This is what makes the tree a concrete syntax tree rather than a bare AST.
+    link comments
+      like maybe, like list, like comment
+      need false
+  case name
+    link parts, like list, like node
+  case text
+    link parts, like list, like node
+    # a RAW literal (`<<...>>`, token.ts) as it was written: its parts are the one chunk an ordinary literal would
+    # carry for the same text, so every reader sees an ordinary literal, and a printer writes this back between `<<`
+    # and `>>`
+    link raw
+      like maybe, like text
+      need false
+    link comments
+      like maybe, like list, like comment
+      need false
+  case interpolation
+    link depth, like number
+    link group
+      like maybe, like node
+      need false
+    # the root of a path written after a call, `greeting()/text`, with no braces
+    link call
+      like maybe, like boolean
+      need false
+  case chunk
+    # the chunk's text: in a name, without the optional mark `?`
+    link text, like text
+    link span, like span
+    # in a name, what its token is followed by: `(` (`f(a)`) or `()` (`f()`)
+    link follows
+      like maybe, like follows
+      need false
+  case integer
+    link value, like number
+    # the literal as written (`2,440,588`)
+    link text, like text
+    link span, like span
+    link comments
+      like maybe, like list, like comment
+      need false
+  case decimal
+    link value, like decimal
+    # the literal as written: `1.0` is not `String(1)`
+    link text, like text
+    link span, like span
+    link comments
+      like maybe, like list, like comment
+      need false
+  case radix
+    link value, like number
+    link text, like text
+    link span, like span
+    link comments
+      like maybe, like list, like comment
+      need false
+    link radix, like number
+
+# the top of a parsed file, which is no other node's child, so it is a form of its own rather than a case of `node`:
+# its one case keeps the `kind` a reader tests
+form root-node
+  mark tag, name kind
+  case root
+    link nodes, like list, like node
+
+# `ok` when the text parsed with no diagnostic. Every field is there either way: a failed parse carries an empty tree,
+# and a good one no diagnostics
+form parse-result
+  link ok, like boolean
+  link tree, like root-node
+  link diagnostics, like list, like diagnostic
+
+# what the tolerant entry gives: whatever tree it built, and every diagnostic
+form tolerant-parse
+  link tree, like root-node
+  link diagnostics, like list, like diagnostic
+
+# ---- the builder ----
+
+# what a draft is, the kinds a node has and the root, and `void`, what an empty line or a missing level reads as
+form draft-kind
+  mark text
+  case void-draft
+  case root-draft
+  case group-draft
+  case name-draft
+  case text-draft
+  case hole-draft
+  case chunk-draft
+  case integer-draft
+  case decimal-draft
+  case radix-draft
+
+# a node while the tree is built, shared so a write after it is placed reaches the parent that holds it. Each kind uses
+# the fields its node has: `children` are a root's or a group's nodes and a name's or a text's parts
+form draft
+  mark shared
+  link id, like number
+  link kind, like draft-kind
+  link children, like list, like draft
+  link optional, like boolean
+  link comments, like list, like comment
+  link raw, like maybe, like text
+  link depth, like number
+  link group, like maybe, like draft
+  link call, like boolean
+  link text, like text
+  link span, like span
+  link follows, like maybe, like follows
+  link whole, like number
+  link fraction, like decimal
+  link radix, like number
+
+# a nesting frame: the nodes open on the current line, and the node each level of indentation stands under
+form frame
+  mark shared
+  link line, like list, like draft
+  link levels, like list, like draft
+  link level, like number
+
+form tree-builder
+  mark shared
+  link file, like text
+  link next-id, like number
+  link stack, like list, like frame
+  # a sentinel frame for the same reason the void draft exists: malformed input can close more frames than it opened.
+  # Every read through it yields the void draft, which matches no real node kind, so the event is unexpected
+  link void-frame, like frame
+  # what an empty line, or a level past the ones a frame has, reads as. Its kind matches none of the real node kinds,
+  # so every check falls through to `unexpected` and emits a diagnostic instead of failing
+  link void, like draft
+  # comments seen since the last group, attached as leading trivia to the next group opened (CST)
+  link pending, like list, like comment
+  link diagnostics, like list, like diagnostic
+
+task build-tree
+  take events, like list, like event
+  take file, like text
+  like tolerant-parse
+
+  save void-one, blank-draft(-1, make(void-draft))
+  save root, blank-draft(0, make(root-draft))
+  save void-frame
+    make frame
+      bind line, make list
+      bind levels, make list
+      bind level, 0
+  save first-frame
+    make frame
+      bind line, make list
+      bind levels, make list
+      bind level, 0
+  push(first-frame/line, root)
+  push(first-frame/levels, root)
+  save b
+    make tree-builder
+      bind file, file
+      bind next-id, 1
+      bind stack, make list
+      bind void-frame, void-frame
+      bind void, void-one
+      bind pending, make list
+      bind diagnostics, make list
+  push(b/stack, first-frame)
+
+  save at, 0
+  walk test
+    hook test, is-below(at, events/length)
+    hook hold
+      save one, get(events, at)
+      save before-kind, <>
+      fork test, is-above(at, 0)
+        hold
+          save before-kind, get(events, subtract(at, 1))/kind
+      read-event(b, one, before-kind, next-event-raw(events, add(at, 1)))
+      save at, add(at, 1)
+
+  back
+    make tolerant-parse
+      bind tree, realize-root(root)
+      bind diagnostics, b/diagnostics
+
+# a raw literal opens with `<<`, and its content is the one chunk after it, or nothing: that chunk's raw content
+task next-event-raw
+  take events, like list, like event
+  take at, like number
+  like text
+  mark private
+
+  fork test, is-minimum(at, events/length)
+    hold
+      back <>
+  sift get(events, at)
+    case read-chunk
+      back raw-content(read(text))
+    miss
+      back <>
+
+task read-event
+  take b, like tree-builder
+  take one, like event
+  take before-kind, like text
+  take raw-after, like text
+  mark private
+
+  sift one
+    case read-comment
+      push(b/pending, comment-of(read(text), span))
+
+    case open-group
+      save here, base(b)
+      sift here/kind
+        case root-draft
+          open-group-under(b, here)
+        case group-draft
+          open-group-under(b, here)
+        case hole-draft
+          save group, blank-draft(fresh-id(b), make(group-draft))
+          save here/group, make(some, group)
+          push(top(b)/line, group)
+          lift(top(b), group)
+        miss
+          unexpected(b, one)
+
+    case close-group
+      close-on-line(b, one)
+    case close-name
+      close-on-line(b, one)
+    case close-text
+      close-on-line(b, one)
+
+    case open-name
+      save here, base(b)
+      sift here/kind
+        case group-draft
+          save name, blank-draft(fresh-id(b), make(name-draft))
+          push(here/children, name)
+          push(top(b)/line, name)
+        miss
+          unexpected(b, one)
+
+    case open-text
+      save here, base(b)
+      sift here/kind
+        case group-draft
+          save literal, blank-draft(fresh-id(b), make(text-draft))
+          fork test, is-equal(read(text), <\<\<>)
+            hold
+              save literal/raw, make(some, raw-after)
+          take-pending(b, literal)
+          push(here/children, literal)
+          push(top(b)/line, literal)
+        miss
+          unexpected(b, one)
+
+    case open-interpolation
+      save here, base(b)
+      sift here/kind
+        case name-draft
+          save hole, hole-draft-of(b, depth)
+          push(here/children, hole)
+          push(b/stack, frame-on(hole))
+        case text-draft
+          save hole, hole-draft-of(b, depth)
+          push(here/children, hole)
+          push(b/stack, frame-on(hole))
+        # a BARE `{x}` where a value goes, `is-equal(value, {tag})`: after a comma or an opening parenthesis the
+        # events carry no name around the braces, which `log {tag}` gets. It is that same name, so a template hole
+        # stands for a value anywhere. Without this the close below popped a frame it never pushed, and one brace
+        # became dozens of errors at line 1.
+        case group-draft
+          save hole, hole-draft-of(b, depth)
+          save name, blank-draft(fresh-id(b), make(name-draft))
+          push(name/children, hole)
+          save group, blank-draft(fresh-id(b), make(group-draft))
+          push(group/children, name)
+          push(here/children, group)
+          push(b/stack, frame-on(hole))
+        miss
+          unexpected(b, one)
+
+    case close-interpolation
+      fork test, is-above(b/stack/length, 0)
+        hold
+          b/stack/pop()
+
+    case read-chunk
+      read-chunk-into(b, one, read(text), span, follows, before-kind)
+
+    case read-integer
+      save number-draft, blank-draft(fresh-id(b), make(integer-draft))
+      save number-draft/whole, value
+      place-number(b, one, number-draft, read(text), span)
+    case read-decimal
+      save number-draft, blank-draft(fresh-id(b), make(decimal-draft))
+      save number-draft/fraction, value
+      place-number(b, one, number-draft, read(text), span)
+    case read-radix
+      save number-draft, blank-draft(fresh-id(b), make(radix-draft))
+      save number-draft/whole, value
+      save number-draft/radix, radix
+      place-number(b, one, number-draft, read(text), span)
+
+    case open-indent
+      save frame, top(b)
+      save frame/level, add(frame/level, 1)
+      save frame/line, line-of(level-at(b, frame/levels, frame/level))
+    case close-indent
+      save frame, top(b)
+      save frame/level, subtract(frame/level, 1)
+      save frame/line, line-of(level-at(b, frame/levels, frame/level))
+
+task open-group-under
+  take b, like tree-builder
+  take here, like draft
+  mark private
+
+  save group, blank-draft(fresh-id(b), make(group-draft))
+  take-pending(b, group)
+  push(here/children, group)
+  push(top(b)/line, group)
+  lift(top(b), group)
+
+# more closes than opens: the event stream underflowed on malformed input. Report it rather than failing; a parser
+# must produce a diagnostic. An empty frame stack is the only case: the line of the top frame pops what it holds
+task close-on-line
+  take b, like tree-builder
+  take one, like event
+  mark private
+
+  fork test, is-equal(b/stack/length, 0)
+    hold
+      unexpected(b, one)
+      back
+  save frame, get(b/stack, subtract(b/stack/length, 1))
+  fork test, is-above(frame/line/length, 0)
+    hold
+      frame/line/pop()
+
+task read-chunk-into
+  take b, like tree-builder
+  take one, like event
+  take text, like text
+  take span, like span
+  take follows, like maybe, like follows
+  take before-kind, like text
+  mark private
+
+  save here, base(b)
+
+  sift here/kind
+    case name-draft
+      save optional, contains(read(text), <?>)
+      save written, read(text)
+      fork test, optional
+        hold
+          save written, replace-all(read(text), <?>, <>)
+      push(here/children, chunk-draft-of(b, written, span, follows))
+
+      # the group the name opened in stands just under it on the line
+      save line, top(b)/line
+      fork test, and(optional, is-minimum(line/length, 2))
+        hold
+          save owner, get(line, subtract(line/length, 2))
+          sift owner/kind
+            case group-draft
+              save owner/optional, true
+            miss
+              back
+      back
+
+    case text-draft
+      push(here/children, chunk-draft-of(b, read(text), span, follows))
+      back
+
+    case group-draft
+      # a PATH AFTER A CALL, `greeting()/text`: the call just closed, and the chunk touching its parenthesis reads a
+      # field of what it returns. It is the same name `{greeting()}/text` builds, an interpolated segment rooted at
+      # the call, so every reader after this one sees a path it already reads. `call` makes the printer write it
+      # back the way it was written.
+      fork test, and(is-equal(before-kind, <close-group>), and(starts-with(read(text), </>), last-is-group(here)))
+        hold
+          save call, here/children/pop()
+          save head, path-after-call(b, call, chunk-draft-of(b, read(text), span, follows))
+          push(here/children, head)
+
+          # a comma later on the line pops back to a level, and the call may be one: the path stands there now
+          save levels, top(b)/levels
+          save found, index-of-draft(levels, call/id)
+          fork test, is-minimum(found, 0)
+            hold
+              save levels/{found}, head
+          back
+
+      # a path after bare braces, `f(a, {k}/x)`: the rest of the name the braces opened
+      fork test, and(is-equal(before-kind, <close-interpolation>), and(starts-with(read(text), </>), last-is-bare-braces(here)))
+        hold
+          save braces, get(here/children, subtract(here/children/length, 1))
+          save name, get(braces/children, 0)
+          push(name/children, chunk-draft-of(b, read(text), span, follows))
+          back
+
+      unexpected(b, one)
+
+    case hole-draft
+      # the same path inside a text's braces, `<{greeting()/text}>`, where the call is the braces' one group
+      sift here/group
+        case some
+          fork test, and(is-equal(before-kind, <close-group>), starts-with(read(text), </>))
+            hold
+              save head, path-after-call(b, value, chunk-draft-of(b, read(text), span, follows))
+              save here/group, make(some, head)
+              back
+        miss
+          save nothing, 0
+      unexpected(b, one)
+
+    miss
+      unexpected(b, one)
+
+# a number goes under a group. As the head of a line it is the one mistake that deserves its own sentence: a bare
+# number is a value, not a name
+task place-number
+  take b, like tree-builder
+  take one, like event
+  take number-draft, like draft
+  take text, like text
+  take span, like span
+  mark private
+
+  save number-draft/text, read(text)
+  save number-draft/span, span
+  save here, base(b)
+
+  sift here/kind
+    case group-draft
+      take-pending(b, number-draft)
+      push(here/children, number-draft)
+    case root-draft
+      save input
+        make diagnostic-input
+          bind file, b/file
+          bind span, span
+          bind hint, make(some, <a bare number is a value, not a name, so it cannot be the head of a line>)
+      push(b/diagnostics, diagnose(make(invalid-nesting), input))
+    miss
+      unexpected(b, one)
+
+# `greeting()/text` as the name `{greeting()}/text`: a group holding one name, whose parts are the call in braces and
+# the path chunk
+task path-after-call
+  take b, like tree-builder
+  take call, like draft
+  take chunk, like draft
+  like draft
+  mark private
+
+  save hole, hole-draft-of(b, 1)
+  save hole/group, make(some, call)
+  save hole/call, true
+  save name, blank-draft(fresh-id(b), make(name-draft))
+  push(name/children, hole)
+  push(name/children, chunk)
+  save head, blank-draft(fresh-id(b), make(group-draft))
+  push(head/children, name)
+  back head
+
+task last-is-group
+  take here, like draft
+  like boolean
+  mark private
+
+  fork test, is-equal(here/children/length, 0)
+    hold
+      back false
+  sift get(here/children, subtract(here/children/length, 1))/kind
+    case group-draft
+      back true
+    miss
+      back false
+
+# a group holding one name that is a run of braces, the shape a bare `{x}` builds where a value goes
+task last-is-bare-braces
+  take here, like draft
+  like boolean
+  mark private
+
+  fork test, is-equal(here/children/length, 0)
+    hold
+      back false
+  save last, get(here/children, subtract(here/children/length, 1))
+  sift last/kind
+    case group-draft
+      fork test, is-unequal(last/children/length, 1)
+        hold
+          back false
+      save name, get(last/children, 0)
+      sift name/kind
+        case name-draft
+          fork test, is-equal(name/children/length, 0)
+            hold
+              back false
+          sift get(name/children, subtract(name/children/length, 1))/kind
+            case hole-draft
+              back true
+            miss
+              back false
+        miss
+          back false
+    miss
+      back false
+
+task index-of-draft
+  take drafts, like list, like draft
+  take id, like number
+  like number
+  mark private
+
+  save at, 0
+  walk test
+    hook test, is-below(at, drafts/length)
+    hook hold
+      fork test, is-equal(get(drafts, at)/id, id)
+        hold
+          back at
+      save at, add(at, 1)
+  back -1
+
+# the pending comments, as leading trivia of the node a line opens with
+task take-pending
+  take b, like tree-builder
+  take one, like draft
+  mark private
+
+  fork test, is-above(b/pending/length, 0)
+    hold
+      save one/comments, b/pending
+      save b/pending, make list
+
+task unexpected
+  take b, like tree-builder
+  take one, like event
+  mark private
+
+  # a content event is named for what it read (`read-chunk`), and the message names the thing (`chunk`)
+  save name, one/kind
+  fork test, starts-with(name, <read->)
+    hold
+      save name, substring(name, 5)
+  save input
+    make diagnostic-input
+      bind file, b/file
+      bind span, span-of-event(one)
+      bind message, make(some, <unexpected {name} here>)
+  push(b/diagnostics, diagnose(make(unexpected-node), input))
+
+task span-of-event
+  take one, like event
+  like span
+  mark private
+
+  sift one
+    case open-text
+      back span
+    case close-text
+      back span
+    case open-interpolation
+      back span
+    case close-interpolation
+      back span
+    case read-chunk
+      back span
+    case read-integer
+      back span
+    case read-decimal
+      back span
+    case read-radix
+      back span
+    case read-comment
+      back span
+    miss
+      back zero-span()
+
+# ---- frames ----
+
+task top
+  take b, like tree-builder
+  like frame
+  mark private
+
+  fork test, is-equal(b/stack/length, 0)
+    hold
+      back b/void-frame
+  back get(b/stack, subtract(b/stack/length, 1))
+
+# the node the current line is under: the last one open on it, or the void draft
+task base
+  take b, like tree-builder
+  like draft
+  mark private
+
+  save line, top(b)/line
+  fork test, is-equal(line/length, 0)
+    hold
+      back b/void
+  back get(line, subtract(line/length, 1))
+
+# the node a level of indentation stands under, or the void draft for a level the frame does not have
+task level-at
+  take b, like tree-builder
+  take levels, like list, like draft
+  take level, like number
+  like draft
+  mark private
+
+  fork test, or(is-below(level, 0), is-minimum(level, levels/length))
+    hold
+      back b/void
+  back get(levels, level)
+
+# a group opened as the second node of its line becomes a level of its own: the levels past this frame's are dropped,
+# and the ones it skipped stand empty
+task lift
+  take frame, like frame
+  take one, like draft
+  mark private
+
+  fork test, is-unequal(frame/line/length, 2)
+    hold
+      back
+  save keep, add(frame/level, 1)
+  save levels, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, keep)
+    hook hold
+      fork test, is-below(at, frame/levels/length)
+        hold
+          push(levels, get(frame/levels, at))
+        miss
+          push(levels, blank-draft(-1, make(void-draft)))
+      save at, add(at, 1)
+  push(levels, one)
+  save frame/levels, levels
+
+task line-of
+  take one, like draft
+  like list, like draft
+  mark private
+
+  save line, make list
+  push(line, one)
+  back line
+
+task frame-on
+  take one, like draft
+  like frame
+  mark private
+
+  back
+    make frame
+      bind line, line-of(one)
+      bind levels, line-of(one)
+      bind level, 0
+
+# ---- drafts ----
+
+task fresh-id
+  take b, like tree-builder
+  like number
+  mark private
+
+  save id, b/next-id
+  save b/next-id, add(id, 1)
+  back id
+
+task blank-draft
+  take id, like number
+  take kind, like draft-kind
+  like draft
+  mark private
+
+  back
+    make draft
+      bind id, id
+      bind kind, kind
+      bind children, make list
+      bind optional, false
+      bind comments, make list
+      bind raw, make none
+      bind depth, 0
+      bind group, make none
+      bind call, false
+      bind text, <>
+      bind span, zero-span()
+      bind follows, make none
+      bind whole, 0
+      bind fraction, 0.0
+      bind radix, 0
+
+task hole-draft-of
+  take b, like tree-builder
+  take depth, like number
+  like draft
+  mark private
+
+  save hole, blank-draft(fresh-id(b), make(hole-draft))
+  save hole/depth, depth
+  back hole
+
+task chunk-draft-of
+  take b, like tree-builder
+  take text, like text
+  take span, like span
+  take follows, like maybe, like follows
+  like draft
+  mark private
+
+  save chunk, blank-draft(fresh-id(b), make(chunk-draft))
+  save chunk/text, read(text)
+  save chunk/span, span
+  save chunk/follows, follows
+  back chunk
+
+task comment-of
+  take text, like text
+  take span, like span
+  like comment
+  mark private
+
+  back
+    make comment
+      bind text, read(text)
+      bind span, span
+
+task zero-span
+  like span
+  mark private
+
+  save zero
+    make position
+      bind line, 0
+      bind column, 0
+  back
+    make span
+      bind start, zero
+      bind end, zero
+
+# ---- reading the tree out of the drafts ----
+
+task realize-root
+  take root, like draft
+  like root-node
+  mark private
+
+  back
+    make root
+      bind nodes, realize-all(root/children)
+
+task realize-all
+  take drafts, like list, like draft
+  like list, like node
+  mark private
+
+  save out, make list
+  walk drafts
+    take one
+    push(out, realize(one))
+  back out
+
+task realize
+  take one, like draft
+  like node
+  mark private
+
+  sift one/kind
+    case group-draft
+      back
+        make group
+          bind nodes, realize-all(one/children)
+          bind optional, true-or-none(one/optional)
+          bind comments, comments-or-none(one/comments)
+    case name-draft
+      back
+        make name
+          bind parts, realize-all(one/children)
+    case text-draft
+      back
+        make text
+          bind parts, realize-all(one/children)
+          bind raw, one/raw
+          bind comments, comments-or-none(one/comments)
+    case hole-draft
+      back
+        make interpolation
+          bind depth, one/depth
+          bind group, realize-group(one/group)
+          bind call, true-or-none(one/call)
+    case chunk-draft
+      back
+        make chunk
+          bind text, one/text
+          bind span, one/span
+          bind follows, one/follows
+    case integer-draft
+      back
+        make integer
+          bind value, one/whole
+          bind text, one/text
+          bind span, one/span
+          bind comments, comments-or-none(one/comments)
+    case decimal-draft
+      back
+        make decimal
+          bind value, one/fraction
+          bind text, one/text
+          bind span, one/span
+          bind comments, comments-or-none(one/comments)
+    case radix-draft
+      back
+        make radix
+          bind value, one/whole
+          bind text, one/text
+          bind span, one/span
+          bind comments, comments-or-none(one/comments)
+          bind radix, one/radix
+    # a root or the void draft never stands inside the tree
+    miss
+      back
+        make name
+          bind parts, make list
+
+task realize-group
+  take group, like maybe, like draft
+  like maybe, like node
+  mark private
+
+  sift group
+    case some
+      save realized, realize(value)
+      back make(some, realized)
+    miss
+      back make none
+
+task true-or-none
+  take flag, like boolean
+  like maybe, like boolean
+  mark private
+
+  fork test, flag
+    hold
+      back make(some, true)
+  back make none
+
+task comments-or-none
+  take comments, like list, like comment
+  like maybe, like list, like comment
+  mark private
+
+  fork test, is-above(comments/length, 0)
+    hold
+      back make(some, comments)
+  back make none
+
+# ---- the entries ----
+
+# The strict entry. Parse text to a tree, or say why not: a failed parse's tree is empty. `after-leaf` is the comma
+# rule (event.tree), the grammar's unless a migration asks for another.
+task parse
+  take source, like token-source
+  take after-leaf, like comma-after-leaf, fall make(stays)
+  like parse-result
+
+  save tolerant, parse-tolerant(source, after-leaf)
+
+  fork test, is-above(tolerant/diagnostics/length, 0)
+    hold
+      back
+        make parse-result
+          bind ok, false
+          bind tree, empty-root()
+          bind diagnostics, tolerant/diagnostics
+
+  back
+    make parse-result
+      bind ok, true
+      bind tree, tolerant/tree
+      bind diagnostics, make list
+
+# The tolerant entry. Never fails. Returns whatever tree it built plus any diagnostics. For the language server. A text
+# that does not lex, or does not nest, gives an empty tree: only the last stage builds past a mistake.
+task parse-tolerant
+  take source, like token-source
+  take after-leaf, like comma-after-leaf, fall make(stays)
+  like tolerant-parse
+
+  save tokens, tokenize(source)
+  fork test, is-above(tokens/diagnostics/length, 0)
+    hold
+      back
+        make tolerant-parse
+          bind tree, empty-root()
+          bind diagnostics, tokens/diagnostics
+
+  save events, build-events(tokens/tokens, after-leaf)
+  fork test, is-above(events/diagnostics/length, 0)
+    hold
+      back
+        make tolerant-parse
+          bind tree, empty-root()
+          bind diagnostics, events/diagnostics
+
+  back build-tree(events/events, source/file)
+
+task empty-root
+  like root-node
+  mark private
+
+  back
+    make root
+      bind nodes, make list
+
+# ---- printing ----
+
+# A text literal's chunks, re-escaped for printing.
+#
+# Inside a literal, angles BALANCE: `<a <b> c>` is legal and its inner angles are content, which is why the tokenizer
+# leaves them bare in the chunk. Escaping those would change the text's VALUE, so they are left alone. What must be
+# escaped is an angle that does NOT balance: the tokenizer unescapes the `\<` that opens a literal's content, so
+# `text <\<!doctype html\>>` gives a chunk starting with a bare `<` with no partner, and printing it raw yields
+# `<<!doctype html\>>`, which reads as a nested bracket and no longer parses.
+#
+# Balance is computed across the WHOLE literal, not per chunk. A literal is split into several chunk nodes wherever an
+# interpolation interrupts it, and a chunk holding only the `<` of a matched pair looks unbalanced on its own: doing
+# this per chunk escaped the balanced angles in `<std::sync::Arc<...AtomicBool>>` and changed the module name the mill
+# recorded.
+#
+# A backslash and the character after it are copied through untouched. Escaping an angle that already carries one
+# doubles it, which is how an earlier attempt took the round-trip failures from 12 to 83.
+#
+# And an angle that opens the CONTENT is escaped with its partner, balanced or not: printed bare after the literal's
+# own `<` it would read as `<<`, which opens a raw literal (token.tree), so `<\<x\>>` would come back as `<<x>>`, the
+# raw text `x`.
+task escape-text-chunks
+  take chunks, like list, like text
+  like list, like text
+
+  # for each chunk, the positions (in code points) of the angles to escape
+  save marks, make list
+  save runes, make list
+  walk chunks
+    take one
+    push(marks, make list)
+    push(runes, to-runes(one))
+
+  save leads, -1
+  save part, 0
+  walk test
+    hook test, and(is-below(part, chunks/length), is-below(leads, 0))
+    hook hold
+      fork test, is-above(get(runes, part)/length, 0)
+        hold
+          save leads, part
+      save part, add(part, 1)
+
+  # the open angles not yet closed, by chunk and position
+  save open-parts, make list
+  save open-ats, make list
+
+  save part, 0
+  walk test
+    hook test, is-below(part, chunks/length)
+    hook hold
+      save codes, get(runes, part)
+      save i, 0
+      walk test
+        hook test, is-below(i, codes/length)
+        hook hold
+          save code, get(codes, i)
+          fork test, and(is-equal(code, 92), is-below(add(i, 1), codes/length))
+            hold
+              save i, add(i, 2)
+              turn next
+          fork test, is-equal(code, 60)
+            hold
+              push(open-parts, part)
+              push(open-ats, i)
+          fork test, is-equal(code, 62)
+            hold
+              fork test, is-equal(open-parts/length, 0)
+                hold
+                  push(get(marks, part), i)
+                miss
+                  save from-part, open-parts/pop()
+                  save from-at, open-ats/pop()
+                  fork test, and(is-equal(from-part, leads), is-equal(from-at, 0))
+                    hold
+                      push(get(marks, from-part), 0)
+                      push(get(marks, part), i)
+          save i, add(i, 1)
+      save part, add(part, 1)
+
+  save left, 0
+  walk test
+    hook test, is-below(left, open-parts/length)
+    hook hold
+      push(get(marks, get(open-parts, left)), get(open-ats, left))
+      save left, add(left, 1)
+
+  save out, make list
+  save part, 0
+  walk test
+    hook test, is-below(part, chunks/length)
+    hook hold
+      push(out, escape-marked(get(chunks, part), get(runes, part), get(marks, part)))
+      save part, add(part, 1)
+  back out
+
+# a chunk with a backslash before each marked angle, a backslash and what follows it copied as written
+task escape-marked
+  take chunk, like text
+  take codes, like list, like number
+  take marked, like list, like number
+  like text
+  mark private
+
+  fork test, is-equal(marked/length, 0)
+    hold
+      back chunk
+
+  save out, make list
+  save i, 0
+  walk test
+    hook test, is-below(i, codes/length)
+    hook hold
+      save code, get(codes, i)
+      fork test, and(is-equal(code, 92), is-below(add(i, 1), codes/length))
+        hold
+          push(out, code)
+          push(out, get(codes, add(i, 1)))
+          save i, add(i, 2)
+          turn next
+      fork test, has-number(marked, i)
+        hold
+          push(out, 92)
+      push(out, code)
+      save i, add(i, 1)
+  back from-runes(out)
+
+task has-number
+  take values, like list, like number
+  take wanted, like number
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, wanted)
+      hold
+        back true
+  back false
+
+# a name's or a text's parts as source text, a text's chunks re-escaped
+task render-parts
+  take parts, like list, like node
+  take escape, like boolean
+  like text
+  mark private
+
+  save texts, make list
+  walk parts
+    take part
+    sift part
+      case chunk
+        push(texts, read(text))
+      miss
+        save nothing, 0
+  save escaped, texts
+  fork test, escape
+    hold
+      save escaped, escape-text-chunks(texts)
+
+  save out, <>
+  save chunk-at, 0
+  walk parts
+    take part
+    sift part
+      case chunk
+        save out, <{out}{get(escaped, chunk-at)}>
+        save chunk-at, add(chunk-at, 1)
+      case interpolation
+        sift group
+          case some
+            fork test, is-call(call)
+              hold
+                save out, <{out}{called(value)}>
+                turn next
+            save braces, repeat(<\{>, depth)
+            save closes, repeat(<\}>, depth)
+            save out, <{out}{braces}{render-inline(value)}{closes}>
+          miss
+            save braces, repeat(<\{>, depth)
+            save closes, repeat(<\}>, depth)
+            save out, <{out}{braces}{closes}>
+      miss
+        save nothing, 0
+  back out
+
+task is-call
+  take call, like maybe, like boolean
+  like boolean
+  mark private
+
+  sift call
+    case some
+      back value
+    miss
+      back false
+
+# a call written as the root of a path, `greeting()/text`: its group as written, with `()` when it holds no arguments
+task called
+  take group, like node
+  like text
+  mark private
+
+  sift group
+    case group
+      fork test, is-above(nodes/length, 1)
+        hold
+          back render-inline(group)
+    miss
+      save nothing, 0
+  back <{render-inline(group)}()>
+
+# Render a group in inline parenthesized form: a(b, c). Used inside interpolation. Any other node is its head.
+task render-inline
+  take group, like node
+  like text
+  mark private
+
+  sift group
+    case group
+      fork test, is-equal(nodes/length, 0)
+        hold
+          back <>
+      save head-text, render-head(get(nodes, 0))
+      fork test, is-equal(nodes/length, 1)
+        hold
+          back head-text
+      save rest, make list
+      save at, 1
+      walk test
+        hook test, is-below(at, nodes/length)
+        hook hold
+          push(rest, render-inline(get(nodes, at)))
+          save at, add(at, 1)
+      back <{head-text}({join(rest, <, >)})>
+    miss
+      back render-head(group)
+
+# one node as source text. Exported so a migration can re-emit a parsed line without reimplementing how a name, text
+# literal, number or inline group is spelled.
+task render-head
+  take one, like node
+  like text
+
+  sift one
+    case name
+      back render-parts(parts, false)
+    case text
+      sift raw
+        case some
+          back <\<\<{value}\>\>>
+        miss
+          back <\<{render-parts(parts, true)}\>>
+    case integer
+      back <{value}>
+    # the text AS WRITTEN, not the value: `1.0` printed as a number is `1`, which re-reads as an INTEGER and silently
+    # changes the type (`like decimal` becomes `like number`, and Rust then refuses to multiply a float by an
+    # integer). `radix` prints its text for the same reason.
+    case decimal
+      back read(text)
+    case radix
+      back read(text)
+    case group
+      back render-inline(one)
+    miss
+      back <>
+
+# Print the canonical expanded form: one node per line, children indented two spaces.
+task print-tree
+  take tree, like root-node
+  like text
+
+  save lines, make list
+  sift tree
+    case root
+      walk nodes
+        take group
+        save lines, print-group(group, 0, lines)
+  back join(lines, <\n>)
+
+# the lines given, with a group and everything under it appended, one node per line
+task print-group
+  take group, like node
+  take depth, like number
+  take lines, like list, like text
+  like list, like text
+  mark private
+
+  sift group
+    case group
+      save indent, repeat(<  >, depth)
+      save head, <>
+      fork test, is-above(nodes/length, 0)
+        hold
+          save head, render-head(get(nodes, 0))
+      save mark, <>
+      sift optional
+        case some
+          fork test, value
+            hold
+              save mark, <?>
+        miss
+          save nothing, 0
+      push(lines, <{indent}{head}{mark}>)
+      save at, 1
+      walk test
+        hook test, is-below(at, nodes/length)
+        hook hold
+          save child, get(nodes, at)
+          sift child
+            case group
+              save lines, print-group(child, add(depth, 1), lines)
+            miss
+              push(lines, <{repeat(<  >, add(depth, 1))}{render-head(child)}>)
+          save at, add(at, 1)
+    miss
+      save nothing, 0
+  back lines

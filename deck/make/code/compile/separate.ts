@@ -26,11 +26,23 @@ import type {
   Twin,
 } from '@term/make/code/compile/node'
 import { collectModules, makeParseMemo } from '@term/make/code/compile/load'
-import type { ParseMemo, Resolver, WalkMemo } from '@term/make/code/compile/load'
+import type { ImportScope, ParseMemo, Resolver, WalkMemo } from '@term/make/code/compile/load'
 import { compileProgram, entryWarnings, graphTemplates, milledModule } from '@term/make/code/compile/compile'
 import type { ModuleEmit } from '@term/make/code/compile/modules'
-import { stubKnown, stubProgram, surfaceHash } from '@term/make/code/compile/stub'
-import { contentHash, hashFields } from '@term/make/code/compile/cache'
+import { nameDefs, namesUsed, stubKnown, stubProgram, surfaceHash } from '@term/make/code/compile/stub'
+import type { NameDef } from '@term/make/code/compile/stub'
+import { namesPrinted, namesReached } from '@term/make/code/compile/names'
+import { why } from '@term/make/code/compile/explain'
+import type { UnitInputs } from '@term/make/code/compile/explain'
+
+// `term make --explain` (step 6): the inputs each unit was last built from, kept under the unit's identity, and why
+// each unit built this run was built, by its label
+export type UnitExplain = {
+  recall: (id: string) => UnitInputs | undefined
+  remember: (id: string, inputs: UnitInputs) => void
+  reasons: Map<string, string[]>
+}
+import { contentHash, hashFields, reviveBigint, storeBigint } from '@term/make/code/compile/cache'
 import type { CompileCache } from '@term/make/code/compile/cache'
 import { awaitsOutsideTasks } from '@term/make/code/check/effects'
 import { checkTwins } from '@term/make/code/check/twin'
@@ -53,6 +65,20 @@ export type SeparateResult =
       // observability (and the early-cutoff tests): units rebuilt vs replayed from cache this run
       built: string[]
       reused: string[]
+      // every unit's key in the entry's closure, as one: it moves exactly when a file the entry reaches, a role, a
+      // lean or a setting does, so what is computed from the whole closure (the roll) is cached by it
+      // (note/term/plan/incremental-best-in-class.md, step 8)
+      closureKey: string
+      // every native module the closure docks, from its units' stubs, which carry them whole: what a program built from
+      // these modules needs in front of it (compile/native.ts `nativePrelude`), as the merged program's statements gave
+      natives: Statement[]
+      // every route and command the closure declares, each unit's own `dock` statements in dependency order
+      docks: Statement[]
+      // with `keepProgram`: the entry unit's checked program, its stubs before its own statements, when that unit was
+      // built this run (an editor's keystroke always builds it), and the stubs of every unit the entry reaches, typed,
+      // which is every signature the closure offers
+      program?: Program
+      surface?: Program
     }
   | { ok: false; diagnostics: Diagnostic[] }
 
@@ -62,6 +88,11 @@ export type UnitBuild = {
   files: [string, ModuleEmit][]
   stubs: [string, Statement[]][]
   interfaceHash: string
+  // each stub definition as the name-level cutoff reads it, in the order of `stubs` (compile/names.tree)
+  defs: NameDef[]
+  // the unit's own routes and commands (`dock` statements, checked): what a program built from units dispatches on
+  // (call/code/boot.ts `commandRoutes`), which a stub does not carry
+  docks?: Statement[]
   warnings: Diagnostic[]
   openClaims?: string[]
   obligations?: Tally
@@ -71,9 +102,31 @@ export type UnitBuild = {
 // closure of many entries shares (the standard library's) is read once per run rather than once per entry
 export type UnitMemo = Map<string, UnitBuild | { diagnostics: Diagnostic[] }>
 
+// A deck's root written as a token (`␞@term/base␞`), and read back as this machine's. Longest root first, so a deck
+// nested inside another is written as itself. The token's mark is a character no path and no compiler output holds
+const ROOT_MARK = '␞'
+
+export type Portable = { out: (text: string) => string; in: (text: string) => string }
+
+export function portableBy(decks: { name: string; root: string }[]): Portable {
+  const named = new Map<string, string>()
+
+  for (const deck of decks) {
+    named.set(deck.root, deck.name)
+  }
+
+  const roots = [...named].sort((a, b) => b[0].length - a[0].length)
+
+  return {
+    out: text => roots.reduce((into, [root, name]) => into.split(root).join(`${ROOT_MARK}${name}${ROOT_MARK}`), text),
+    in: text =>
+      text.includes(ROOT_MARK) ? roots.reduce((into, [root, name]) => into.split(`${ROOT_MARK}${name}${ROOT_MARK}`).join(root), text) : text,
+  }
+}
+
 // Tarjan strongly connected components over the file import graph. Returns units in REVERSE topological order of
 // the condensation (dependencies first), which is exactly the build order.
-function units(
+export function units(
   files: string[],
   edges: Map<string, string[]>,
 ): string[][] {
@@ -150,6 +203,10 @@ export function compileSeparate(
     units?: UnitMemo
     // each module's own part of the import walk, shared across the entries of a batch build (compile/load.ts)
     walked?: WalkMemo
+    // why each unit this run builds was built (`term make --explain`)
+    explain?: UnitExplain
+    // hand back what the editor reads (`program`, `surface`): the language server (flow/code/server.ts)
+    keepProgram?: boolean
   },
 ): SeparateResult {
   // one parse per module, shared by the dependency walk, the edge graph, the templates and the mill
@@ -170,6 +227,11 @@ export function compileSeparate(
   if (loadErrors.length > 0) {
     return { ok: false, diagnostics: loadErrors }
   }
+
+  // THE SAME UNIT IS THE SAME ENTRY ON EVERY MACHINE (step 13). A unit's key, its fingerprints and its stored answer
+  // name files by where they are on this disk, so a second clone of the repository at another path missed every one.
+  // Each deck's root is written as a token in all three, and read back as this machine's
+  const portable = portableBy(sources.map(s => options.deckOf?.(s.file)).filter(deck => deck !== undefined))
 
   // the edges the walk itself followed, injected runtimes included: reading the written imports again missed the route
   // runtime a `hook` table is given, so a route's unit never saw the `view` form its dispatcher names
@@ -221,6 +283,17 @@ export function compileSeparate(
     }
   }
 
+  // WHAT A UNIT IS CHECKED WITH IS ITS OWN, and what it reaches. The walk's import scope holds every file the entry
+  // reached, the files that IMPORT a unit among them, and handed whole to a unit's check it let an importer decide the
+  // unit's answer: `a.tree`, checked inside `main.tree`'s build, failed with main's `find` of a private task of a, and
+  // that answer was kept and handed to `public.tree`, which imports a and refers to nothing private (the language
+  // server's suite found it). Neither the unit's key nor its cache knew the importer was there
+  const scopeOf = (unit: number): ImportScope => {
+    const sees = new Set([...order[unit]!, ...[...reach[unit]!].flatMap(d => order[d]!)])
+
+    return new Map([...collected.scope].filter(([file]) => sees.has(file)))
+  }
+
   const builds: UnitBuild[] = []
   const built: string[] = []
   const reused: string[] = []
@@ -230,6 +303,12 @@ export function compileSeparate(
   let openClaims: string[] | undefined
   let obligations: Tally | undefined
   const surface = new Map<string, { name: string; exported: string; file: string; type: boolean }>()
+  const closureKeys: string[] = []
+  const natives: Statement[] = []
+  const docks: Statement[] = []
+  // `keepProgram`: the entry unit's checked program, and every unit's stubs
+  let entryProgram: Program | undefined
+  const surfaceProgram: Program = []
 
   for (let i = 0; i < order.length; i++) {
     const files = order[i]!
@@ -257,21 +336,106 @@ export function compileSeparate(
 
     const usesTemplates = files.some(f => options.roleOf?.(f) === 'view' || /\bfuse\b/.test(byFile.get(f)!.text))
 
-    const keyAs = (checkedAs: string): string => hashFields([
+    const ownKey = (checkedAs: string): string[] => [
       'separate',
       usesTemplates ? templateKey : '',
       options.env ?? '',
-      checkedAs === asImport ? '' : `entry:${checkedAs}`,
+      checkedAs === asImport ? '' : `entry:${portable.out(checkedAs)}`,
       // the await switch decides whether an un-ticked async call outside a task is refused (check/effects.ts)
       awaitsOutsideTasks() ? 'await-outside' : '',
       ...files.map(f => {
         const role = options.roleOf?.(f) ?? ''
         const lean = options.leanOf?.(f) ? '#lean' : ''
+        // the deck a file belongs to names the host of every raise and roll entry it makes, and comes from a
+        // manifest, not from the file
+        const deck = options.deckOf?.(f)?.name ?? ''
+        // and the name its module is imported by, which the unit's emitted imports are written with: units are shared
+        // machine-wide, so a unit named one way is never handed to a build that names it another
+        const module = options.modules(f)
 
-        return `${f}@${contentHash(byFile.get(f)!.text)}${role ? `#${role}` : ''}${lean}`
+        return `${portable.out(f)}@${contentHash(byFile.get(f)!.text)}${role ? `#${role}` : ''}${lean}${deck ? `@${deck}` : ''}>${module}`
       }),
-      ...depHashes,
-    ])
+    ]
+
+    // the run's key, for the memo: the whole surface of everything reached. Cheap, and exact within a run
+    const keyAs = (checkedAs: string): string => hashFields([...ownKey(checkedAs), ...depHashes])
+
+    // THE CACHE'S KEY, BY NAME (step 4, compile/names.tree): the fingerprints of only the dependency definitions this
+    // unit can reach by name, from the names its own modules write. An edit to a task it never names leaves the key,
+    // and so its stored answer, where they were. Asked only when the memo has no answer, since it mills the unit
+    let used: string[] | undefined
+    let defs: NameDef[] | undefined
+
+    const reached = (): { used: string[]; defs: NameDef[] } => {
+      used ??= namesOfUnit()
+
+      if (defs === undefined) {
+        defs = []
+
+        for (const d of [...reach[i]!].sort((a, b) => a - b)) {
+          defs.push(...(builds[d]!.defs ?? nameDefs(builds[d]!.stubs.flatMap(([, list]) => list), portable.out)))
+        }
+      }
+
+      return { used, defs }
+    }
+
+    const namedKeyAs = (checkedAs: string): string => {
+      const { used, defs } = reached()
+
+      return hashFields(['names', ...ownKey(checkedAs), ...namesReached(defs, used)])
+    }
+
+    // the name key, through a pointer kept under the whole-surface key. The same surface always gives the same name
+    // key, so a warm build reads the pointer and the unit and works out no names, and the names are worked out only
+    // when a surface moved, which is when they can spare a rebuild. Without it a new process milled every unit and
+    // walked its whole reach before it could ask the cache anything: a warm `term test` of the standard library was
+    // no faster through units than whole
+    const namedKeyOf = (checkedAs: string, surfaceKey: string): string =>
+      cache ? cache.unit<{ portable: string }>(`surface:${surfaceKey}`, () => ({ portable: namedKeyAs(checkedAs) })).portable : namedKeyAs(checkedAs)
+
+    // what the unit is built from, as `term make --explain` compares it: the same inputs its key is made of, each kept
+    // apart so a change can be named
+    const inputsAs = (checkedAs: string): UnitInputs => {
+      const { used, defs } = reached()
+      const key = ownKey(checkedAs)
+
+      return {
+        compiler: cache?.versionOf('unit') ?? '',
+        own: new Map(files.map(f => [f, contentHash(byFile.get(f)!.text)])),
+        // everything else the key says of the file, after its text's fingerprint
+        read: new Map(files.map((f, at) => [f, key[5 + at]!.slice(portable.out(f).length + 1 + contentHash(byFile.get(f)!.text).length)])),
+        settings: hashFields(key.slice(0, 5)),
+        names: namesPrinted(defs, used),
+      }
+    }
+
+    // the names the unit's own modules write, and the names their loads find. A module that does not mill uses
+    // nothing: its answer is the mill's refusal, which its own text decides
+    const namesOfUnit = (): string[] => {
+      const out = new Set<string>()
+
+      for (const f of files) {
+        const milled = milledModule(byFile.get(f)!, {
+          parsed,
+          templates,
+          templateKey,
+          cache,
+          role: options.roleOf?.(f) ?? undefined,
+          lean: options.leanOf?.(f) ?? false,
+        })
+
+        if (milled.ok) {
+          namesUsed(milled.program).forEach(name => out.add(name))
+        }
+
+        for (const name of collected.scope.get(f)?.finds.keys() ?? []) {
+          out.add(name)
+        }
+      }
+
+      return [...out]
+    }
 
     const make = (checkedAs: string): UnitBuild | { diagnostics: Diagnostic[] } => {
       // dependency context: the stubs of every reachable unit, dependency order preserved. Copied, because the checker
@@ -335,7 +499,7 @@ export function compileSeparate(
         false,
         false,
         options.deckOf,
-        collected.scope,
+        scopeOf(i),
         undefined,
         undefined,
         files[0],
@@ -343,6 +507,10 @@ export function compileSeparate(
 
       if (!result.ok) {
         return { diagnostics: result.diagnostics }
+      }
+
+      if (options.keepProgram && checkedAs === source.file) {
+        entryProgram = result.program
       }
 
       // a twin is checked against the program it twins a task of, as compile() checks it
@@ -376,7 +544,9 @@ export function compileSeparate(
       return {
         files: filesOut,
         stubs: stubbed,
-        interfaceHash: surfaceHash(surface),
+        interfaceHash: surfaceHash(surface, portable.out),
+        defs: nameDefs(surface, portable.out),
+        docks: (result.program ?? []).filter(s => s.form === 'dock' && own.has(s.span.file ?? '')),
         warnings: result.warnings,
         // what the file states and owes, which compile() reports when it is the entry
         ...(checkedAs !== asImport && result.openClaims?.length ? { openClaims: result.openClaims } : {}),
@@ -386,25 +556,59 @@ export function compileSeparate(
 
     let ran = false
 
+    // a unit's answer as the cache keeps it, every deck's root a token, so the entry serves every clone (step 13)
+    const toStore = (value: UnitBuild | { diagnostics: Diagnostic[] }): { portable: string } => ({
+      portable: portable.out(JSON.stringify(value, storeBigint)),
+    })
+
+    // and back, with this machine's roots. One that does not read back as a unit's answer is built again rather than
+    // trusted (compile/cache.ts `usable` checks only the wrapper)
+    const fromStore = (stored: { portable: string }): UnitBuild | { diagnostics: Diagnostic[] } => {
+      try {
+        const value = JSON.parse(portable.in(stored.portable), reviveBigint) as Record<string, unknown>
+
+        if (Array.isArray(value.diagnostics) || (Array.isArray(value.files) && Array.isArray(value.stubs) && typeof value.interfaceHash === 'string')) {
+          return value as UnitBuild | { diagnostics: Diagnostic[] }
+        }
+      } catch {
+        // read as a miss, below
+      }
+
+      ran = true
+
+      return make(answering)
+    }
+
+    // the `checkedAs` the cache is being asked for, which a stored answer that cannot be read is built as
+    let answering = asSelf ?? asImport
+
     // the unit checked as `checkedAs`: this run's answer first, then the cache (memory, then disk), then a build
     const answer = (checkedAs: string): UnitBuild | { diagnostics: Diagnostic[] } => {
+      answering = checkedAs
       const key = keyAs(checkedAs)
       const memo = options.units?.get(key)
       const wrapped = (): UnitBuild | { diagnostics: Diagnostic[] } => {
         ran = true
 
+        if (options.explain) {
+          const now = inputsAs(checkedAs)
+          const before = options.explain.recall(checkedAs)
+          const reasons = before ? why(before, now) : ['nothing recorded: its first build, or the record was washed']
+
+          options.explain.reasons.set(label, reasons.length > 0 ? reasons : ['its stored answer was missing'])
+          options.explain.remember(checkedAs, now)
+        }
+
         return make(checkedAs)
       }
-      const found =
-        memo ??
-        (cache
-          ? cache.unit<UnitBuild | { diagnostics: Diagnostic[] }>(key, wrapped)
-          : wrapped())
+      const found = memo ?? (cache ? fromStore(cache.unit<{ portable: string }>(namedKeyOf(checkedAs, key), () => toStore(wrapped()))) : wrapped())
 
       options.units?.set(key, found)
 
       return found
     }
+
+    closureKeys.push(keyAs(asSelf ?? asImport))
 
     let cached = answer(asSelf ?? asImport)
 
@@ -425,6 +629,8 @@ export function compileSeparate(
       allModules.set(file, emit)
     }
 
+    docks.push(...(cached.docks ?? []))
+
     allWarnings.push(...cached.warnings)
 
     if (entry) {
@@ -435,7 +641,16 @@ export function compileSeparate(
     // the surface, in dependency order, so a later definition of a name replaces an earlier one (`exports`)
     for (const [file, statements] of cached.stubs) {
       for (const s of statements) {
-        if (s.form === 'function' || s.form === 'let') {
+        if (s.form === 'native') {
+          natives.push(s)
+        }
+
+        if (options.keepProgram) {
+          surfaceProgram.push(s)
+        }
+
+        // a private task is in the stub for the privacy checks, and is no part of what an entry's shim exports
+        if ((s.form === 'function' && !s.private) || s.form === 'let') {
           surface.set(`value:${s.name}`, { name: s.name, exported: s.stubExport ?? s.name, file, type: false })
         } else if (s.form === 'record-type' || s.form === 'mask') {
           surface.set(`type:${s.name}`, { name: s.name, exported: s.stubExport ?? s.name, file, type: true })
@@ -456,5 +671,9 @@ export function compileSeparate(
     exports: [...surface.values()],
     built,
     reused,
+    closureKey: hashFields(closureKeys),
+    natives,
+    docks,
+    ...(options.keepProgram ? { surface: surfaceProgram, ...(entryProgram ? { program: entryProgram } : {}) } : {}),
   }
 }

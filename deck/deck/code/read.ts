@@ -20,10 +20,8 @@
 // group, so nothing here has to skip them.
 
 import { parse } from '@term/make/code/parser/tree'
-import type {
-  GroupNode,
-  RootNode,
-} from '@term/make/code/parser/tree'
+import type { GroupNode, RootNode } from '@term/make/code/parser/narrow'
+import { groupsOf } from '@term/make/code/parser/narrow'
 import type {
   Diagnostic,
   Position,
@@ -98,15 +96,16 @@ function tokenExtent(
     }
 
     const record = value as Record<string, unknown>
-    const token = record['token'] as { span?: Span } | undefined
+    // a chunk or a literal carries its token's span (parser/tree), and a group or a name none of its own
+    const span = record['span'] as Span | undefined
 
-    if (token?.span) {
-      if (!start || before(token.span.start, start)) {
-        start = token.span.start
+    if (span) {
+      if (!start || before(span.start, start)) {
+        start = span.start
       }
 
-      if (!end || before(end, token.span.end)) {
-        end = token.span.end
+      if (!end || before(end, span.end)) {
+        end = span.end
       }
     }
 
@@ -262,7 +261,7 @@ export function readTree(input: { file: string; text: string }):
 function formsOf(tree: RootNode, source: Source): Form[] {
   const out: Form[] = []
 
-  for (const group of tree.nodes) {
+  for (const group of groupsOf(tree.nodes)) {
     const form = toForm(group, source)
 
     if (form) {

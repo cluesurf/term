@@ -11,11 +11,9 @@ import { dirname, join } from 'node:path'
 import { resolvePackagePath } from '@term/make/code/resolve'
 import { packageRest } from '@term/make/code/deck/resolve'
 import { parse, renderHead } from '@term/make/code/parser/tree'
-import type {
-  GroupNode,
-  Node,
-  RootNode,
-} from '@term/make/code/parser/tree'
+import type { Node } from '@term/make/code/parser/tree'
+import type { GroupNode, RootNode } from '@term/make/code/parser/narrow'
+import { groupsOf } from '@term/make/code/parser/narrow'
 import {
   readMineGrammar,
   readMintGrammar,
@@ -64,7 +62,7 @@ function readPart(
   const drop = new Set<number>()
   const imports: string[] = []
 
-  for (const group of parsed.tree.nodes) {
+  for (const group of groupsOf(parsed.tree.nodes)) {
     const first = group.nodes[0]
     const name = first?.kind === 'name' ? renderHead(first) : undefined
 
@@ -189,7 +187,7 @@ export function readGrammarFile(file: string): GrammarFile | undefined {
   const rules: GrammarRule[] = []
   const grammarLoadLines = new Set<number>()
 
-  for (const group of parsed.tree.nodes) {
+  for (const group of groupsOf(parsed.tree.nodes)) {
     const head = nameOfGroup(group.nodes[0])
     const span = spanOfWhole(group)
 
@@ -259,7 +257,7 @@ function rulesDefined(text: string, file: string, half: 'mine' | 'mint'): string
 
   const names: string[] = []
 
-  for (const group of parsed.tree.nodes) {
+  for (const group of groupsOf(parsed.tree.nodes)) {
     const head = group.nodes[0]
 
     if (head?.kind !== 'name' || renderHead(head) !== half) {

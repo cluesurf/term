@@ -6,7 +6,7 @@
 // slot, and the two spellings are not interchangeable there in every reader, so it is left alone.
 
 import type { Rule } from '@term/make/code/lint/rule'
-import { TokenKind, tokenize } from '@term/make/code/parser/token'
+import { tokenize } from '@term/make/code/parser/token'
 import type { Token } from '@term/make/code/parser/token'
 
 export const preferSingleBrace: Rule = {
@@ -19,7 +19,7 @@ export const preferSingleBrace: Rule = {
   checkSource(_tree, context) {
     const tokens = tokenize({ file: context.file, text: context.source })
 
-    if (!tokens.ok) {
+    if (tokens.diagnostics.length > 0) {
       return
     }
 
@@ -27,27 +27,27 @@ export const preferSingleBrace: Rule = {
     // the open braces inside the current text literal, outermost first
     const open: Token[] = []
 
-    for (let token = tokens.tokens.head; token; token = token.next) {
+    for (const token of tokens.tokens.list) {
       switch (token.kind) {
-        case TokenKind.OpenAngle:
+        case 'open-angle':
           if (open.length === 0) {
             text++
           }
 
           break
-        case TokenKind.CloseAngle:
+        case 'close-angle':
           if (open.length === 0 && text > 0) {
             text--
           }
 
           break
-        case TokenKind.OpenBrace:
+        case 'open-brace':
           if (text > 0) {
             open.push(token)
           }
 
           break
-        case TokenKind.CloseBrace: {
+        case 'close-brace': {
           const start = open.pop()
 
           if (

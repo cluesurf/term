@@ -1,0 +1,1001 @@
+# n-variable real-arithmetic decision by cylindrical algebraic decomposition (CAD). It decides `p(x_0, ..., x_{k-1}) >= 0
+# for all real arguments` in ANY number of variables, lifting the univariate Sturm base case (sturm.tree) through a
+# recursive CAD.
+#
+# The construction, for variables x_0 < x_1 < ... < x_{k-1}:
+#   PROJECT    eliminate the top variable x_{k-1} from the polynomial set, producing a (k-1)-variable set: each
+#              polynomial's DISCRIMINANT and all its COEFFICIENTS in x_{k-1}, plus the PAIRWISE RESULTANTS among the
+#              set. Over any cell of the base space, this Collins projection makes the real roots of the set in the top
+#              variable vary without collision (delineability), so the cell structure is constant across the cell.
+#   DECOMPOSE  recursively CAD the (k-1)-variable base, getting one RATIONAL sample point in each full-dimensional
+#              (open) base cell.
+#   LIFT       over each base sample s, substitute it into the polynomial(s) to get univariate fibres in x_{k-1}, and
+#              pick one RATIONAL sample strictly inside each open root interval. The pairs (s, sample) are rational
+#              points, one in each full-dimensional cell of the whole space.
+#
+# `p >= 0` everywhere holds iff `p >= 0` at every such sample. This is SOUND and COMPLETE for the (closed)
+# non-negativity condition: the samples meet every full-dimensional cell, p has a constant sign on each, and the open
+# cells are dense, so non-negativity on them extends to the closure (all of R^k) by continuity. Every sample point is
+# RATIONAL (the base samples are rational by induction and each fibre adds a rational coordinate), so all arithmetic is
+# exact big-integer rationals, never an algebraic number. It proves non-negativity with NO sum-of-squares certificate,
+# including the trivariate CHOI-LAM form `x^4 y^2 + y^4 z^2 + z^4 x^2 - 3 x^2 y^2 z^2`, a non-negative polynomial that
+# is not a sum of squares. Browser-safe.
+#
+# Ported from check/cad-nvar.ts (self-hosting, 2026-10-05). A polynomial is a hash from an exponent key (the tuple
+# joined by commas) to a `big-integer` coefficient, `{ dock }` on TypeScript, in the order the terms were added, as
+# the `Map` kept them. `n-poly` takes its terms as `n-term` records. The interpolation's value at a grid point was a
+# closure, and its one caller's polynomials are passed down instead. A sample point is a list of sturm's ratios.
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/hash
+  find hash
+  find has
+  find get-or-default
+  find keys
+
+load @term/base/text
+  find split
+
+load @term/base/text/number
+  find parse-integer
+
+load @term/base/integer/big
+  find big-integer
+  find big-from-number
+  find big-add
+  find big-subtract
+  find big-multiply
+  find big-compare
+
+load ./sturm
+  find exact-ratio
+  find cell-samples-big
+
+# one term of a polynomial: the exponent of each variable, and the coefficient
+form n-term
+  link exponents, like list, like number
+  link coefficient, like big-integer
+
+# ----- big integers -----
+
+task nv-big
+  take value, like number
+  like big-integer
+  mark private
+
+  back big-from-number(value)
+
+task nv-sign
+  take value, like big-integer
+  like number
+  mark private
+
+  back big-compare(value, nv-big(0))
+
+task nv-is-zero
+  take value, like big-integer
+  like boolean
+  mark private
+
+  back is-equal(nv-sign(value), 0)
+
+task nv-absolute
+  take value, like big-integer
+  like big-integer
+  mark private
+
+  fork test, is-below(nv-sign(value), 0)
+    hold
+      back value/negate()
+  back value
+
+task nv-power
+  take base, like big-integer
+  take exponent, like number
+  like big-integer
+  mark private
+
+  save out, nv-big(1)
+  save at, 0
+  walk test
+    hook test, is-below(at, exponent)
+    hook hold
+      save out, big-multiply(out, base)
+      save at, add(at, 1)
+  back out
+
+task nv-gcd
+  take first, like big-integer
+  take second, like big-integer
+  like big-integer
+  mark private
+
+  save a, nv-absolute(first)
+  save b, nv-absolute(second)
+  walk test
+    hook test, not(nv-is-zero(b))
+    hook hold
+      save rest, a/remainder(b)
+      save a, b
+      save b, rest
+  back a
+
+# ----- exponent keys -----
+
+task key-of
+  take exponents, like list, like number
+  like text
+  mark private
+
+  save parts, make list
+  walk exponents
+    take one
+    push(parts, <{one}>)
+  back join(parts, <,>)
+
+task exponents-of
+  take k, like text
+  like list, like number
+  mark private
+
+  save out, make list
+  fork test, is-equal(k, <>)
+    hold
+      back out
+  walk split(k, <,>)
+    take one
+    push(out, parse-integer(one))
+  back out
+
+# the exponent of variable `v`, 0 past the tuple's end
+task exponent-at
+  take exponents, like list, like number
+  take v, like number
+  like number
+  mark private
+
+  fork test, and(is-minimum(v, 0), is-below(v, exponents/length))
+    hold
+      back get(exponents, v)
+  back 0
+
+# the polynomial with `c` added to the term at `k`: a term that sums to zero leaves it, as the `Map` deleted it
+task add-term
+  take p, like hash, like text, like big-integer
+  take k, like text
+  take c, like big-integer
+  like hash, like text, like big-integer
+  mark private
+
+  fork test, nv-is-zero(c)
+    hold
+      back p
+
+  save sum, big-add(get-or-default(p, k, nv-big(0)), c)
+  fork test, nv-is-zero(sum)
+    hold
+      p/remove(k)
+    miss
+      p/set(k, sum)
+  back p
+
+# the degree of `p` in variable `v`
+task degree-in
+  take p, like hash, like text, like big-integer
+  take v, like number
+  like number
+  mark private
+
+  save d, 0
+  walk keys(p)
+    take k
+    save e, exponent-at(exponents-of(k), v)
+    fork test, is-above(e, d)
+      hold
+        save d, e
+  back d
+
+# the derivative of `p` with respect to variable `v`
+task derivative-in
+  take p, like hash, like text, like big-integer
+  take v, like number
+  like hash, like text, like big-integer
+  mark private
+
+  save out, make hash
+  walk keys(p)
+    take k
+    save e, exponents-of(k)
+    save power, get(e, v)
+    fork test, is-above(power, 0)
+      hold
+        save f, e/slice(0, e/length)
+        save f/{v}, subtract(power, 1)
+        save out, add-term(out, key-of(f), big-multiply(get-or-default(p, k, nv-big(0)), nv-big(power)))
+  back out
+
+# the coefficient of `x_v^d` in `p`, with the v-th exponent zeroed (a polynomial in the same variables, not mentioning v)
+task coefficient-in
+  take p, like hash, like text, like big-integer
+  take v, like number
+  take d, like number
+  like hash, like text, like big-integer
+  mark private
+
+  save out, make hash
+  walk keys(p)
+    take k
+    save e, exponents-of(k)
+    fork test, is-equal(exponent-at(e, v), d)
+      hold
+        save f, e/slice(0, e/length)
+        save f/{v}, 0
+        save out, add-term(out, key-of(f), get-or-default(p, k, nv-big(0)))
+  back out
+
+# a univariate polynomial from its coefficients by power, in the order the powers were first met, as dense list
+task dense
+  take by-power, like hash, like number, like big-integer
+  take degree, like number
+  like list, like big-integer
+  mark private
+
+  save out, nv-zeros(add(degree, 1))
+  walk keys(by-power)
+    take power
+    save out/{power}, get-or-default(by-power, power, nv-big(0))
+  back trim-uni(out)
+
+# substitute the integer assignment `vals` for every variable EXCEPT `v`, giving a univariate integer polynomial in `v`
+# (index = power of v)
+task evaluate-except
+  take p, like hash, like text, like big-integer
+  take v, like number
+  take vals, like list, like big-integer
+  like list, like big-integer
+  mark private
+
+  save degree, 0
+  save by-power, make hash
+
+  walk keys(p)
+    take k
+    save e, exponents-of(k)
+    save term, get-or-default(p, k, nv-big(0))
+    save i, 0
+    walk test
+      hook test, is-below(i, e/length)
+      hook hold
+        fork test, and(is-unequal(i, v), is-above(get(e, i), 0))
+          hold
+            save term, big-multiply(term, nv-power(get(vals, i), get(e, i)))
+        save i, add(i, 1)
+
+    save power, get(e, v)
+    by-power/set(power, big-add(get-or-default(by-power, power, nv-big(0)), term))
+    fork test, is-above(power, degree)
+      hold
+        save degree, power
+
+  back dense(by-power, degree)
+
+# ----- univariate integer polynomial helpers (for the resultant) -----
+
+task trim-uni
+  take p, like list, like big-integer
+  like list, like big-integer
+  mark private
+
+  save size, p/length
+  walk test
+    hook test, and(is-above(size, 0), nv-is-zero(get(p, subtract(size, 1))))
+    hook hold
+      save size, subtract(size, 1)
+  back p/slice(0, size)
+
+task nv-zeros
+  take size, like number
+  like list, like big-integer
+  mark private
+
+  save out, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      push(out, nv-big(0))
+      save at, add(at, 1)
+  back out
+
+task nv-determinant
+  take matrix, like list, like list, like big-integer
+  like big-integer
+  mark private
+
+  save n, matrix/length
+  fork test, is-equal(n, 0)
+    hold
+      back nv-big(1)
+
+  save m, make list
+  walk matrix
+    take row
+    push(m, row/slice(0, row/length))
+  save previous, nv-big(1)
+  save sign, nv-big(1)
+
+  save k, 0
+  walk test
+    hook test, is-below(k, subtract(n, 1))
+    hook hold
+      fork test, nv-is-zero(get(get(m, k), k))
+        hold
+          save swap, -1
+          save i, add(k, 1)
+          walk test
+            hook test, is-below(i, n)
+            hook hold
+              fork test, not(nv-is-zero(get(get(m, i), k)))
+                hold
+                  save swap, i
+                  halt
+              save i, add(i, 1)
+          fork test, is-equal(swap, -1)
+            hold
+              back nv-big(0)
+          save held, get(m, k)
+          save m/{k}, get(m, swap)
+          save m/{swap}, held
+          save sign, sign/negate()
+
+      save pivot-row, get(m, k)
+      save pivot, get(pivot-row, k)
+      save i, add(k, 1)
+      walk test
+        hook test, is-below(i, n)
+        hook hold
+          save row, get(m, i)
+          save j, add(k, 1)
+          walk test
+            hook test, is-below(j, n)
+            hook hold
+              save cross, big-subtract(big-multiply(get(row, j), pivot), big-multiply(get(row, k), get(pivot-row, j)))
+              save row/{j}, cross/divide(previous)
+              save j, add(j, 1)
+          save row/{k}, nv-big(0)
+          save m/{i}, row
+          save i, add(i, 1)
+
+      save previous, pivot
+      save k, add(k, 1)
+
+  save last, subtract(n, 1)
+  back big-multiply(sign, get(get(m, last), last))
+
+task nv-row
+  take p, like list, like big-integer
+  take size, like number
+  take shift, like number
+  like list, like big-integer
+  mark private
+
+  save row, nv-zeros(size)
+  save degree, subtract(p/length, 1)
+  save i, 0
+  walk test
+    hook test, is-maximum(i, degree)
+    hook hold
+      save at, add(shift, i)
+      save row/{at}, get(p, subtract(degree, i))
+      save i, add(i, 1)
+  back row
+
+# the resultant of two univariate integer polynomials (index = power), by the Sylvester matrix determinant
+task uni-resultant
+  take a, like list, like big-integer
+  take b, like list, like big-integer
+  like big-integer
+  mark private
+
+  save f, trim-uni(a)
+  save g, trim-uni(b)
+
+  fork test, or(is-equal(f/length, 0), is-equal(g/length, 0))
+    hold
+      back nv-big(0)
+
+  save m, subtract(f/length, 1)
+  save n, subtract(g/length, 1)
+
+  fork test, and(is-equal(m, 0), is-equal(n, 0))
+    hold
+      back nv-big(1)
+
+  save size, add(m, n)
+  save matrix, make list
+  save r, 0
+  walk test
+    hook test, is-below(r, n)
+    hook hold
+      push(matrix, nv-row(f, size, r))
+      save r, add(r, 1)
+  save r, 0
+  walk test
+    hook test, is-below(r, m)
+    hook hold
+      push(matrix, nv-row(g, size, r))
+      save r, add(r, 1)
+  back nv-determinant(matrix)
+
+# ----- exact rationals (for the interpolation and the evaluation) -----
+
+form nv-ratio
+  link n, like big-integer
+  link d, like big-integer
+
+task nv-make
+  take numerator, like big-integer
+  take denominator, like big-integer
+  like nv-ratio
+  mark private
+
+  save n, numerator
+  save d, denominator
+  fork test, is-below(nv-sign(d), 0)
+    hold
+      save n, n/negate()
+      save d, d/negate()
+  save g, nv-gcd(n, d)
+  fork test, nv-is-zero(g)
+    hold
+      save g, nv-big(1)
+  back
+    make nv-ratio
+      bind n, n/divide(g)
+      bind d, d/divide(g)
+
+task nv-whole
+  take value, like big-integer
+  like nv-ratio
+  mark private
+
+  back nv-make(value, nv-big(1))
+
+task nv-add
+  take a, like nv-ratio
+  take b, like nv-ratio
+  like nv-ratio
+  mark private
+
+  back nv-make(big-add(big-multiply(a/n, b/d), big-multiply(b/n, a/d)), big-multiply(a/d, b/d))
+
+task nv-multiply
+  take a, like nv-ratio
+  take b, like nv-ratio
+  like nv-ratio
+  mark private
+
+  back nv-make(big-multiply(a/n, b/n), big-multiply(a/d, b/d))
+
+# ----- the resultant in variable `last` as a polynomial in the lower variables, by evaluation and interpolation -----
+
+# eliminate the top variable `last` (= nvars - 1) from `p` and `q`: their resultant is a polynomial in the lower
+# variables 0..last-1. We sample it on an integer grid (at each grid point both polynomials become univariate in `last`
+# and the resultant is a number) and interpolate. Returned over `last` lower variables (tuples of length `last`).
+task resultant-in-last
+  take p, like hash, like text, like big-integer
+  take q, like hash, like text, like big-integer
+  take nvars, like number
+  like hash, like text, like big-integer
+  mark private
+
+  save last, subtract(nvars, 1)
+
+  # a per-variable degree bound on the resultant: deg_w(res) <= deg_w(p) deg_last(q) + deg_w(q) deg_last(p)
+  save dp-last, degree-in(p, last)
+  save dq-last, degree-in(q, last)
+  save bounds, make list
+  save w, 0
+  walk test
+    hook test, is-below(w, last)
+    hook hold
+      push(bounds, add(multiply(degree-in(p, w), dq-last), multiply(degree-in(q, w), dp-last)))
+      save w, add(w, 1)
+
+  save prefix, make list
+  save rational, interpolate-from(p, q, nvars, bounds, 0, prefix)
+
+  # clear denominators to integers (the resultant is integer-valued, so this is exact; a non-zero scale is irrelevant
+  # to the real roots that the CAD uses)
+  save lcm, nv-big(1)
+  walk keys(rational)
+    take k
+    save r, get-or-default(rational, k, nv-whole(nv-big(0)))
+    fork test, not(nv-is-zero(r/n))
+      hold
+        save lcm, big-multiply(lcm/divide(nv-gcd(lcm, r/d)), r/d)
+
+  save out, make hash
+  walk keys(rational)
+    take k
+    save r, get-or-default(rational, k, nv-whole(nv-big(0)))
+    save scaled, big-multiply(r/n, lcm)
+    save out, add-term(out, k, scaled/divide(r/d))
+  back out
+
+# the resultant at one integer grid point of the lower variables
+task value-at
+  take p, like hash, like text, like big-integer
+  take q, like hash, like text, like big-integer
+  take nvars, like number
+  take point, like list, like number
+  like big-integer
+  mark private
+
+  save last, subtract(nvars, 1)
+  save vals, nv-zeros(nvars)
+  save w, 0
+  walk test
+    hook test, is-below(w, last)
+    hook hold
+      save vals/{w}, nv-big(get(point, w))
+      save w, add(w, 1)
+  back uni-resultant(evaluate-except(p, last, vals), evaluate-except(q, last, vals))
+
+# interpolate a polynomial in the lower variables 0..lower-1 from its values on the integer grid `[0..bounds[w]]`.
+# Recursive (a tensor of univariate Lagrange interpolations); coefficients are exact rationals during the build, keyed
+# by lower-variable exponent tuples, and cleared to integers by the caller.
+task interpolate-from
+  take p, like hash, like text, like big-integer
+  take q, like hash, like text, like big-integer
+  take nvars, like number
+  take bounds, like list, like number
+  take dim, like number
+  take prefix, like list, like number
+  like hash, like text, like nv-ratio
+  mark private
+
+  save lower, subtract(nvars, 1)
+
+  fork test, is-equal(dim, lower)
+    hold
+      save leaf, make hash
+      leaf/set(<>, nv-whole(value-at(p, q, nvars, prefix)))
+      back leaf
+
+  save degree, get(bounds, dim)
+  save subs, make list
+  save pt, 0
+  walk test
+    hook test, is-maximum(pt, degree)
+    hook hold
+      save deeper, prefix/slice(0, prefix/length)
+      push(deeper, pt)
+      push(subs, interpolate-from(p, q, nvars, bounds, add(dim, 1), deeper))
+      save pt, add(pt, 1)
+
+  # Lagrange-combine the `degree + 1` sub-results over variable `dim`
+  save out, make hash
+  save pt, 0
+  walk test
+    hook test, is-maximum(pt, degree)
+    hook hold
+      # the Lagrange basis polynomial L_pt(x_dim) = prod_{s != pt} (x - s)/(pt - s), as rational coefficients in x_dim
+      save basis, make list
+      push(basis, nv-whole(nv-big(1)))
+      save denominator, nv-big(1)
+
+      save s, 0
+      walk test
+        hook test, is-maximum(s, degree)
+        hook hold
+          fork test, is-unequal(s, pt)
+            hold
+              save next, make list
+              save i, 0
+              walk test
+                hook test, is-maximum(i, basis/length)
+                hook hold
+                  push(next, nv-whole(nv-big(0)))
+                  save i, add(i, 1)
+              save i, 0
+              walk test
+                hook test, is-below(i, basis/length)
+                hook hold
+                  save next/{i}, nv-add(get(next, i), nv-multiply(get(basis, i), nv-whole(nv-big(subtract(0, s)))))
+                  save up, add(i, 1)
+                  save next/{up}, nv-add(get(next, up), get(basis, i))
+                  save i, add(i, 1)
+              save basis, next
+              save denominator, big-multiply(denominator, nv-big(subtract(pt, s)))
+          save s, add(s, 1)
+
+      save scale, nv-make(nv-big(1), denominator)
+
+      # result += sub_pt(other vars) * L_pt(x_dim); the sub is over dims dim+1.., which are the LATER positions in the
+      # tuple. We place x_dim's exponent at position `dim`.
+      save sub, get(subs, pt)
+      walk keys(sub)
+        take sub-key
+        save sub-coefficient, get-or-default(sub, sub-key, nv-whole(nv-big(0)))
+        save sub-exponents, exponents-of(sub-key)
+
+        save e, 0
+        walk test
+          hook test, is-below(e, basis/length)
+          hook hold
+            save l, nv-multiply(get(basis, e), scale)
+            fork test, not(nv-is-zero(l/n))
+              hold
+                # assemble the full lower-tuple: positions dim+1.. come from the sub's exponents, position dim is `e`,
+                # positions before dim are 0
+                save full, make list
+                save j, 0
+                walk test
+                  hook test, is-below(j, lower)
+                  hook hold
+                    fork test, is-equal(j, dim)
+                      hold
+                        push(full, e)
+                      miss
+                        fork test, is-above(j, dim)
+                          hold
+                            push(full, exponent-at(sub-exponents, subtract(j, add(dim, 1))))
+                          miss
+                            push(full, 0)
+                    save j, add(j, 1)
+                save fk, key-of(full)
+                out/set(fk, nv-add(get-or-default(out, fk, nv-whole(nv-big(0))), nv-multiply(sub-coefficient, l)))
+            save e, add(e, 1)
+      save pt, add(pt, 1)
+
+  back out
+
+# ----- the Collins projection -----
+
+task is-zero-poly
+  take p, like hash, like text, like big-integer
+  like boolean
+  mark private
+
+  back is-equal(keys(p)/length, 0)
+
+task is-constant-lower
+  take p, like hash, like text, like big-integer
+  take lower, like number
+  like boolean
+  mark private
+
+  fork test, is-zero-poly(p)
+    hold
+      back true
+
+  save zero, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, lower)
+    hook hold
+      push(zero, 0)
+      save at, add(at, 1)
+  back and(is-equal(keys(p)/length, 1), has(p, key-of(zero)))
+
+# the projected polynomial added to the set, unless it is zero or a constant
+task push-projected
+  take out, like list, like hash, like text, like big-integer
+  take q, like hash, like text, like big-integer
+  take nvars, like number
+  like list, like hash, like text, like big-integer
+  mark private
+
+  fork test, not(or(is-zero-poly(q), is-constant-lower(q, subtract(nvars, 1))))
+    hold
+      push(out, q)
+  back out
+
+# project the set of `nvars`-variable polynomials onto the lower `nvars - 1` variables: discriminants and all
+# coefficients in the top variable, plus pairwise resultants. Each output polynomial is over the lower variables.
+task project
+  take set, like list, like hash, like text, like big-integer
+  take nvars, like number
+  like list, like hash, like text, like big-integer
+  mark private
+
+  save last, subtract(nvars, 1)
+  save out, make list
+
+  walk set
+    take q
+    save dq, degree-in(q, last)
+
+    # the discriminant (resultant of q and its derivative) when q genuinely involves the top variable
+    fork test, is-minimum(dq, 1)
+      hold
+        save derivative, derivative-in(q, last)
+        fork test, not(is-zero-poly(derivative))
+          hold
+            save out, push-projected(out, resultant-in-last(q, derivative, nvars), nvars)
+
+    # every coefficient of the top variable (a polynomial in the lower variables). This includes the leading
+    # coefficient (degree drops) and, by taking ALL of them, the points where q vanishes identically in the fibre.
+    save d, 0
+    walk test
+      hook test, is-maximum(d, dq)
+      hook hold
+        save out, push-projected(out, drop-last(coefficient-in(q, last, d), nvars), nvars)
+        save d, add(d, 1)
+
+  # pairwise resultants among DIFFERENT members of the set (needed for delineability when the set has several curves)
+  save i, 0
+  walk test
+    hook test, is-below(i, set/length)
+    hook hold
+      save j, add(i, 1)
+      walk test
+        hook test, is-below(j, set/length)
+        hook hold
+          fork test, or(is-minimum(degree-in(get(set, i), last), 1), is-minimum(degree-in(get(set, j), last), 1))
+            hold
+              save out, push-projected(out, resultant-in-last(get(set, i), get(set, j), nvars), nvars)
+          save j, add(j, 1)
+      save i, add(i, 1)
+
+  back out
+
+# drop the (already-zero) top coordinate from a polynomial that does not mention the top variable
+task drop-last
+  take p, like hash, like text, like big-integer
+  take nvars, like number
+  like hash, like text, like big-integer
+  mark private
+
+  save out, make hash
+  walk keys(p)
+    take k
+    save e, exponents-of(k)
+    save out, add-term(out, key-of(e/slice(0, subtract(nvars, 1))), get-or-default(p, k, nv-big(0)))
+  back out
+
+# ----- the CAD sample points -----
+
+# the product of a set of univariate integer polynomials (their combined roots are the union)
+task uni-product
+  take polys, like list, like list, like big-integer
+  like list, like big-integer
+  mark private
+
+  save out, make list
+  push(out, nv-big(1))
+
+  walk polys
+    take p
+    fork test, is-equal(trim-uni(p)/length, 0)
+      hold
+        turn next
+
+    save next, nv-zeros(subtract(add(out/length, p/length), 1))
+    save i, 0
+    walk test
+      hook test, is-below(i, out/length)
+      hook hold
+        save j, 0
+        walk test
+          hook test, is-below(j, p/length)
+          hook hold
+            save k, add(i, j)
+            save next/{k}, big-add(get(next, k), big-multiply(get(out, i), get(p, j)))
+            save j, add(j, 1)
+        save i, add(i, 1)
+    save out, trim-uni(next)
+
+  back out
+
+# substitute the rational point `pt` into every polynomial of `set`, fixing all variables except the top one, yielding
+# univariate integer fibre polynomials in the top variable. Denominators are cleared by scaling, which preserves the
+# real roots.
+task fibre-polys
+  take set, like list, like hash, like text, like big-integer
+  take nvars, like number
+  take pt, like list, like exact-ratio
+  like list, like list, like big-integer
+  mark private
+
+  save last, subtract(nvars, 1)
+  save out, make list
+
+  walk set
+    take p
+    save d-last, degree-in(p, last)
+    save coefficients, nv-zeros(add(d-last, 1))
+
+    # common denominator: the highest total power of any lower variable
+    save max-lower-degree, 0
+    walk keys(p)
+      take k
+      save e, exponents-of(k)
+      save total, 0
+      save w, 0
+      walk test
+        hook test, is-below(w, last)
+        hook hold
+          save total, add(total, get(e, w))
+          save w, add(w, 1)
+      fork test, is-above(total, max-lower-degree)
+        hold
+          save max-lower-degree, total
+
+    # every term shares the denominator prod_w pt[w].d ^ max-lower-degree
+    save common-denominator, nv-big(1)
+    save w, 0
+    walk test
+      hook test, is-below(w, last)
+      hook hold
+        save common-denominator, big-multiply(common-denominator, nv-power(get(pt, w)/d, max-lower-degree))
+        save w, add(w, 1)
+
+    walk keys(p)
+      take k
+      save e, exponents-of(k)
+      save numerator, get-or-default(p, k, nv-big(0))
+      save denominator, nv-big(1)
+      save w, 0
+      walk test
+        hook test, is-below(w, last)
+        hook hold
+          fork test, is-above(get(e, w), 0)
+            hold
+              save numerator, big-multiply(numerator, nv-power(get(pt, w)/n, get(e, w)))
+              save denominator, big-multiply(denominator, nv-power(get(pt, w)/d, get(e, w)))
+          save w, add(w, 1)
+
+      save power, get(e, last)
+      save scaled, big-multiply(numerator, common-denominator/divide(denominator))
+      save coefficients/{power}, big-add(get(coefficients, power), scaled)
+
+    push(out, trim-uni(coefficients))
+
+  back out
+
+task origin-samples
+  like list, like exact-ratio
+  mark private
+
+  save one
+    make exact-ratio
+      bind n, nv-big(0)
+      bind d, nv-big(1)
+  save out, make list
+  push(out, one)
+  back out
+
+task samples-of
+  take product, like list, like big-integer
+  like list, like exact-ratio
+  mark private
+
+  fork test, is-maximum(product/length, 1)
+    hold
+      back origin-samples()
+  back cell-samples-big(product)
+
+# the rational sample points (one per full-dimensional open cell) of the CAD of R^nvars induced by `set`. Each sample is
+# a list of `nvars` rationals.
+task cad-samples
+  take set, like list, like hash, like text, like big-integer
+  take nvars, like number
+  like list, like list, like exact-ratio
+  mark private
+
+  save out, make list
+
+  fork test, is-equal(nvars, 1)
+    hold
+      save univariate, make list
+      walk set
+        take p
+        push(univariate, fibre-univariate(p))
+      walk samples-of(uni-product(univariate))
+        take s
+        save one, make list
+        push(one, s)
+        push(out, one)
+      back out
+
+  save projected, project(set, nvars)
+  walk cad-samples(projected, subtract(nvars, 1))
+    take s
+    walk samples-of(uni-product(fibre-polys(set, nvars, s)))
+      take fs
+      save point, s/slice(0, s/length)
+      push(point, fs)
+      push(out, point)
+
+  back out
+
+# a single-variable polynomial as an integer coefficient list (index = power of its one variable)
+task fibre-univariate
+  take p, like hash, like text, like big-integer
+  like list, like big-integer
+  mark private
+
+  save degree, 0
+  save by-power, make hash
+  walk keys(p)
+    take k
+    save power, exponent-at(exponents-of(k), 0)
+    by-power/set(power, big-add(get-or-default(by-power, power, nv-big(0)), get-or-default(p, k, nv-big(0))))
+    fork test, is-above(power, degree)
+      hold
+        save degree, power
+  back dense(by-power, degree)
+
+# the sign of `p` at a full rational assignment
+task sign-at
+  take p, like hash, like text, like big-integer
+  take point, like list, like exact-ratio
+  like number
+  mark private
+
+  save acc, nv-whole(nv-big(0))
+  walk keys(p)
+    take k
+    save e, exponents-of(k)
+    save term, nv-whole(get-or-default(p, k, nv-big(0)))
+    save w, 0
+    walk test
+      hook test, is-below(w, e/length)
+      hook hold
+        save t, 0
+        walk test
+          hook test, is-below(t, get(e, w))
+          hook hold
+            save term, nv-multiply(term, nv-make(get(point, w)/n, get(point, w)/d))
+            save t, add(t, 1)
+        save w, add(w, 1)
+    save acc, nv-add(acc, term)
+  back nv-sign(acc/n)
+
+# is `p(x_0, ..., x_{nvars-1}) >= 0` for ALL real arguments? The n-variable CAD decision.
+task non-negative-everywhere-nvar
+  take p, like hash, like text, like big-integer
+  take nvars, like number
+  like boolean
+
+  fork test, is-zero-poly(p)
+    hold
+      back true
+
+  fork test, is-equal(nvars, 1)
+    hold
+      # defer to the exact univariate cell decision
+      walk samples-of(fibre-univariate(p))
+        take s
+        save point, make list
+        push(point, s)
+        fork test, is-below(sign-at(p, point), 0)
+          hold
+            back false
+      back true
+
+  save set, make list
+  push(set, p)
+  walk cad-samples(set, nvars)
+    take sample
+    fork test, is-below(sign-at(p, sample), 0)
+      hold
+        back false
+  back true
+
+# build a polynomial from its terms (each exponent tuple of length nvars)
+task n-poly
+  take terms, like list, like n-term
+  like hash, like text, like big-integer
+
+  save out, make hash
+  walk terms
+    take one
+    save out, add-term(out, key-of(one/exponents), one/coefficient)
+  back out

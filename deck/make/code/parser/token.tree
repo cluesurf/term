@@ -1,0 +1,1092 @@
+# The lexer. Source text to a list of tokens. Table-driven: a set of matchers per lexer mode, where the mode stack
+# (default, text, interpolation, name) selects which matchers can fire next. Browser-safe.
+#
+# Ported from parser/token.ts (self-hosting, 2026-10-05). The decisions:
+#   - each matcher was a sticky regular expression. Here it is a scan over the line's code points (`to-runes`) that
+#     answers how many it takes at a position, 0 for none, as the expression's match would, backtracking included:
+#     the comment above each scan says what the expression was and why the scan takes the same text
+#   - a column counts UTF-16 units, as it did: a code point past U+FFFF moves it two. A character no matcher takes is
+#     reported once per unit, as the original's step of one unit reported it
+#   - `TokenKind` is a text form, `token-kind`, and on TypeScript a kind is its text, as the enum's value was. Its case
+#     names are not all its texts (`word` is `name`), so no case shares a name with node.tree's forms
+#   - the tokens are a list (they were a doubly linked list until 2026-10-05), and the result carries them with every
+#     diagnostic: a caller asks whether there were any
+#   - the check for input left at the end of a line is gone: the loop never stops before the end, so it never fired
+#   - a closing brace run takes as many characters as its opening run had, as before, counted in code points. The two
+#     differ only for a `}` closing a `{{` with a character past U+FFFF straight after it
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/text
+  find split
+
+load @term/base/text/unicode
+  find to-runes
+  find from-runes
+
+load ./diagnostic
+  find position
+  find span
+  find diagnostic
+  find diagnostic-input
+  find diagnose
+
+# what a token is
+form token-kind
+  mark text
+  # `}`, a run that closes an interpolation
+  case close-brace, text <close-brace>
+  case close-paren, text <close-paren>
+  # `>`, the end of a text literal
+  case close-angle, text <close-angle>
+  case comma, text <comma>
+  case hash-comment, text <comment>
+  # 3.14
+  case decimal-number, text <decimal>
+  # 0x.., 0b.., 0o.., 0u..
+  case radix-number, text <radix>
+  case newline, text <newline>
+  # `{`, a run that opens an interpolation
+  case open-brace, text <open-brace>
+  case open-paren, text <open-paren>
+  # `<`, the start of a text literal
+  case open-angle, text <open-angle>
+  case space, text <space>
+  # a term or a path
+  case word, text <name>
+  case whole-number, text <integer>
+  # a literal text chunk inside `< >`
+  case text-chunk, text <chunk>
+
+# which matchers may fire: what the lexer is inside
+form lex-mode
+  mark text
+  case plain, text <default>
+  case literal, text <text>
+  case hole, text <interpolation>
+  case path, text <name>
+
+form token
+  link kind, like token-kind
+  link span, like span
+  link text, like text
+
+form token-list
+  link file, like text
+  link text, like text
+  link lines, like list, like text
+  # the tokens in source order. A reader looks one step either way by index
+  link list, like list, like token
+
+# the tokens, and every diagnostic found on the way: none when the text lexed with no mistake. The tokens are kept
+# either way, as far as the lexer could read them
+form token-result
+  link tokens, like token-list
+  link diagnostics, like list, like diagnostic
+
+form token-source
+  link file, like text
+  link text, like text
+
+# the matchers each mode tries, in priority order, built once a run
+form mode-orders
+  link plain, like list, like token-kind
+  link literal, like list, like token-kind
+  link hole, like list, like token-kind
+  link path, like list, like token-kind
+
+# a raw literal's content as the chunk an ordinary literal would carry for the same text: the mill unescapes `\\`,
+# `\{` and `\}`, so those are escaped, and angles stay bare, as the lexer leaves them in any chunk
+task raw-chunk
+  take content, like text
+  like text
+
+  save out, make list
+  walk to-runes(content)
+    take code
+    fork test, or(is-equal(code, 92), or(is-equal(code, 123), is-equal(code, 125)))
+      hold
+        push(out, 92)
+    push(out, code)
+  back from-runes(out)
+
+# the content a raw literal was written with, from its chunk (the inverse of `raw-chunk`)
+task raw-content
+  take chunk, like text
+  like text
+
+  save runes, to-runes(chunk)
+  save out, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, runes/length)
+    hook hold
+      save one, get(runes, at)
+      fork test, and(is-equal(one, 92), is-below(add(at, 1), runes/length))
+        hold
+          save next, get(runes, add(at, 1))
+          fork test, or(is-equal(next, 92), or(is-equal(next, 123), is-equal(next, 125)))
+            hold
+              push(out, next)
+              save at, add(at, 2)
+              turn next
+      push(out, one)
+      save at, add(at, 1)
+  back from-runes(out)
+
+# Diagnostics found while lexing, rather than the first one.
+#
+# A file with three mistakes should report three. Returning on the first means a person fixes one, runs again, and
+# finds the next: three round trips for one sitting's work. The lexer knows how to carry on past every error it can
+# raise, so it does.
+task tokenize
+  take source, like token-source
+  like token-result
+
+  save lines, split(source/text, <\n>)
+  save list, make list
+  save found, make list
+  save orders, mode-orders-of()
+
+  # the open interpolations' brace runs, the modes, where each open text literal started, and each open literal's
+  # running `<` minus `>` balance, so a nested `>` (closing a generic like `Hmac<Sha256>`, not the literal) stays
+  # content. One balance per text frame on the mode stack, so nested texts do not interfere
+  save braces, make list
+  save modes, make list
+  push(modes, make(plain))
+  save text-opens, make list
+  save text-depths, make list
+
+  save line, 0
+  save column, 0
+
+  walk lines
+    take raw-line
+    save runes, to-runes(<{raw-line}\n>)
+    # a cursor over the line's code points, advanced in place
+    save pos, 0
+
+    walk test
+      hook test, is-below(pos, runes/length)
+      hook hold
+        save mode, top-mode(modes)
+        save one, get(runes, pos)
+
+        # inside a text literal, `\<` and `\>` are the escaped angles: emit the bare angle as content and do NOT touch
+        # the depth balance, so an unbalanced one can be written at all. Depth-balancing alone cannot express `=>` or a
+        # lone `<` in native source, because those never pair up. The backslash is consumed, so `\>` yields `>`.
+        fork test, and(is-literal(mode), and(is-equal(one, 92), is-angle(rune-at(runes, add(pos, 1)))))
+          hold
+            push(list, token-of(make(text-chunk), line, column, add(column, 2), from-runes(runes/slice(add(pos, 1), add(pos, 2)))))
+            save pos, add(pos, 2)
+            save column, add(column, 2)
+            turn next
+
+        # A RAW TEXT LITERAL, `<<...>>`, wherever a text literal may open: its content is read exactly as written, up
+        # to the `>>` that ends the first run of `>` on the same line, with no interpolation and no escape, so a
+        # pattern reads as its engine reads it (`<<\p{Lu}(?<=x)>>`). It reaches every later stage as an ordinary
+        # literal: the open token carries `<<`, which the tree keeps (`raw`) so a printer writes it back the same
+        # way, and the one chunk is escaped so that the mill's unescaping gives the content back verbatim. Text
+        # holding `>>`, or more than one line, is an ordinary literal with its angles escaped. Until 2026-10-04 `<<x>>`
+        # was a literal holding the nested text `<x>`, which is now written `<\<x\>>`.
+        fork test, and(or(is-plain(mode), is-hole(mode)), and(is-equal(one, 60), is-equal(rune-at(runes, add(pos, 1)), 60)))
+          hold
+            # the LAST two of the first run of `>`, so content may end in `>` (`<<<.+?>>>` holds `<.+?>`) and two
+            # raw literals on one line still close apart (`f(<<a>>, <<b>>)`)
+            save end, double-close(runes, add(pos, 2))
+
+            fork test, is-below(end, 0)
+              hold
+                save input
+                  make diagnostic-input
+                    bind file, source/file
+                    bind span, span-of(line, column, add(column, 2))
+                    bind message, make(some, <a raw text literal `\<\<...\>\>` must end with `\>\>` on the same line>)
+                    bind hint, make(some, <for text holding `\>\>` or spanning lines, write an ordinary literal and escape its angles: `\<\\\<x\\\>\>` is the text `\<x\>`>)
+                push(found, diagnose(make(syntax-error), input))
+
+                # the rest of the line cannot be read as anything sensible: skip to its newline, which still lexes,
+                # so the next line is the resync point and this one reports once
+                save column, add(column, width-of(runes, pos, subtract(runes/length, 1)))
+                save pos, subtract(runes/length, 1)
+                turn next
+
+            save content, runes/slice(add(pos, 2), end)
+            save size, width-of(runes, add(pos, 2), end)
+            push(list, token-of(make(open-angle), line, column, add(column, 2), <\<\<>))
+            fork test, is-above(content/length, 0)
+              hold
+                push(list, token-of(make(text-chunk), line, add(column, 2), add(column, add(2, size)), raw-chunk(from-runes(content))))
+            push(list, token-of(make(close-angle), line, add(column, add(2, size)), add(column, add(4, size)), <\>\>>))
+            save pos, add(end, 2)
+            save column, add(column, add(4, size))
+            turn next
+
+        # inside a text literal with an unclosed `<`, the next `>` closes that nested bracket, not the literal: emit
+        # it as a literal chunk and rebalance, so `text <Hmac<Sha256>>` keeps the generic and ends only at the final `>`
+        fork test, and(is-literal(mode), and(is-equal(one, 62), is-above(last-number(text-depths), 0)))
+          hold
+            push(list, token-of(make(text-chunk), line, column, add(column, 1), <\>>))
+            save pos, add(pos, 1)
+            save column, add(column, 1)
+            save text-depths/{subtract(text-depths/length, 1)}, subtract(last-number(text-depths), 1)
+            turn next
+
+        # the first matcher of this mode that takes any text here
+        save hit-kind, make(comma)
+        save hit-size, 0
+        walk kinds-of(mode, orders)
+          take kind
+          save size, match-size(kind, runes, pos)
+          fork test, is-above(size, 0)
+            hold
+              save hit-kind, kind
+              save hit-size, size
+              halt
+
+        fork test, is-above(hit-size, 0)
+          hold
+            save size, hit-size
+            save text, from-runes(runes/slice(pos, add(pos, size)))
+
+            # a closing run only consumes as many braces as the matching opener pushed
+            fork test, and(is-close-brace(hit-kind), is-above(braces/length, 0))
+              hold
+                save size, char-count-of(get(braces, subtract(braces/length, 1)))
+                save run, to-runes(read(text))
+                save text, from-runes(run/slice(0, size))
+
+            save width, width-of(runes, pos, add(pos, size))
+            push(list, token-of(hit-kind, line, column, add(column, width), read(text)))
+            save pos, add(pos, size)
+            save column, add(column, width)
+
+            sift hit-kind
+              case newline
+                save line, add(line, 1)
+                save column, 0
+              case open-brace
+                push(braces, read(text))
+                push(modes, make(hole))
+              case close-brace
+                fork test, is-above(braces/length, 0)
+                  hold
+                    braces/pop()
+                fork test, is-above(modes/length, 0)
+                  hold
+                    modes/pop()
+              case open-angle
+                push(modes, make(literal))
+                push(text-depths, 0)
+                # where this literal opened, so an unclosed one can point at it: just past its `<`, where the column
+                # already stands, as the original recorded it
+                push(text-opens, position-of(line, column))
+              case close-angle
+                fork test, is-above(modes/length, 0)
+                  hold
+                    modes/pop()
+                fork test, is-above(text-depths/length, 0)
+                  hold
+                    text-depths/pop()
+                fork test, is-above(text-opens/length, 0)
+                  hold
+                    text-opens/pop()
+              # A comma is ORDINARY inside an interpolation. `{...}` and `{{...}}` hold a whole tree, not one name:
+              # `{foo bar, baz}` and `{foo(bar,baz(bing boom))}` are both trees, read by the same rules as anywhere
+              # else (a space nests, a comma pops one level).
+              case text-chunk
+                # a chunk in a text literal may carry unescaped `<` (a generic / less-than); each deepens the bracket
+                # balance so its matching `>` is treated as content rather than the literal's terminator
+                fork test, and(is-literal(mode), is-above(text-depths/length, 0))
+                  hold
+                    save text-depths/{subtract(text-depths/length, 1)}, add(last-number(text-depths), opens-in(read(text)))
+              miss
+                save size, size
+            turn next
+
+        # `read items/{0}`: a brace opens an interpolation only before a letter, so a digit inside one is the one
+        # mistake the grammar cannot lex at all. Name the spelling it wanted, and skip the whole `{0}` so the rest of
+        # the line is still read.
+        save braced, braced-index(runes, pos)
+        fork test, is-above(braced, 0)
+          hold
+            save digits, from-runes(runes/slice(add(pos, 1), subtract(add(pos, braced), 1)))
+            save input
+              make diagnostic-input
+                bind file, source/file
+                bind span, span-of(line, column, add(column, braced))
+                bind message, make(some, <a literal index is a plain segment: write /{digits}, not /\{{digits}\}>)
+                bind hint, make(some, <braces evaluate a name, `read x/\{key\}`; a number is a segment of its own>)
+            push(found, diagnose(make(syntax-error), input))
+            save pos, add(pos, braced)
+            save column, add(column, braced)
+            turn next
+
+        # RECORD IT AND SKIP ONE CHARACTER. Returning here abandons the rest of the file, so a second mistake three
+        # lines down is never seen. Advancing guarantees progress, which is what the loop needs, and lets the remaining
+        # lines be lexed and checked. A character past U+FFFF is two units, and is reported once for each, as before
+        save units, width-of(runes, pos, add(pos, 1))
+        save unit, 0
+        walk test
+          hook test, is-below(unit, units)
+          hook hold
+            save at
+              make diagnostic-input
+                bind file, source/file
+                bind span, last-span(list, line, column)
+            push(found, diagnose(make(syntax-error), at))
+            save column, add(column, 1)
+            save unit, add(unit, 1)
+        save pos, add(pos, 1)
+
+  # A TEXT LITERAL LEFT OPEN AT THE END OF THE FILE IS AN ERROR.
+  #
+  # Inside a literal, `<` and `>` balance, so that a generic like `Hmac<Sha256>` can be written as content. The cost
+  # is that ONE unescaped `<` -- a `s < 60` in a native body, say -- opens a bracket that never closes, and the literal
+  # eats the rest of the file in silence.
+  #
+  # What that looks like is every later name in the file being undefined, and the build reporting missing names in a
+  # dozen OTHER files that imported them, with nothing pointing at the line that actually did it. Reporting it here,
+  # at the `<` that opened it, is the difference between a minute and an afternoon. Write `\<` for a literal one.
+  fork test, is-above(text-opens/length, 0)
+    hold
+      save at, get(text-opens, subtract(text-opens/length, 1))
+      save input
+        make diagnostic-input
+          bind file, source/file
+          bind span, span-of(at/line, at/column, add(at/column, 1))
+          bind hint, make(some, <this text literal is never closed, so it swallows the rest of the file. Inside a literal `\<` and `\>` balance, so an unescaped one opens a bracket that never closes. Write `\\\<` and `\\\>` for literal angles>)
+      push(found, diagnose(make(syntax-error), input))
+
+  save tokens
+    make token-list
+      bind file, source/file
+      bind text, source/text
+      bind lines, lines
+      bind list, list
+  back
+    make token-result
+      bind tokens, tokens
+      bind diagnostics, found
+
+# ---- the matchers ----
+
+# how many code points the matcher of `kind` takes at `at`, 0 when it does not match there
+task match-size
+  take kind, like token-kind
+  take runes, like list, like number
+  take at, like number
+  like number
+  mark private
+
+  sift kind
+    case close-brace
+      back run-of(runes, at, 125)
+    case close-paren
+      back one-if(rune-at(runes, at), 41)
+    case close-angle
+      back one-if(rune-at(runes, at), 62)
+    case comma
+      back comma-size(runes, at)
+    case hash-comment
+      back comment-size(runes, at)
+    case decimal-number
+      back decimal-size(runes, at)
+    case radix-number
+      back radix-size(runes, at)
+    case newline
+      back one-if(rune-at(runes, at), 10)
+    case open-brace
+      back open-brace-size(runes, at)
+    case open-paren
+      back one-if(rune-at(runes, at), 40)
+    case open-angle
+      back one-if(rune-at(runes, at), 60)
+    case space
+      back run-of(runes, at, 32)
+    case word
+      back word-size(runes, at)
+    case whole-number
+      back integer-size(runes, at)
+    case text-chunk
+      back chunk-size(runes, at)
+
+# `/, */`: a comma and the spaces after it
+task comma-size
+  take runes, like list, like number
+  take at, like number
+  like number
+  mark private
+
+  fork test, is-unequal(rune-at(runes, at), 44)
+    hold
+      back 0
+  back add(1, run-of(runes, add(at, 1), 32))
+
+# `/#(?: +[^\n]+)?/`: a `#`, then the rest of the line when a space follows it and at least one more character does.
+# The space run and the run after it both take at least one, and together they take the line, however it splits
+task comment-size
+  take runes, like list, like number
+  take at, like number
+  like number
+  mark private
+
+  fork test, is-unequal(rune-at(runes, at), 35)
+    hold
+      back 0
+  save end, add(at, 1)
+  walk test
+    hook test, and(is-below(end, runes/length), is-unequal(get(runes, end), 10))
+    hook hold
+      save end, add(end, 1)
+  fork test, and(is-equal(rune-at(runes, add(at, 1)), 32), is-minimum(subtract(end, add(at, 1)), 2))
+    hold
+      back subtract(end, at)
+  back 1
+
+# `/-?\d+\.\d+/`: an optional minus, digits, a point, digits. No shorter run of either can be followed by what the
+# pattern needs next, so the first try is the only one
+task decimal-size
+  take runes, like list, like number
+  take at, like number
+  like number
+  mark private
+
+  save start, add(at, sign-of(runes, at))
+  save whole, digits-of(runes, start)
+  fork test, or(is-equal(whole, 0), is-unequal(rune-at(runes, add(start, whole)), 46))
+    hold
+      back 0
+  save part, digits-of(runes, add(start, add(whole, 1)))
+  fork test, is-equal(part, 0)
+    hold
+      back 0
+  back subtract(add(start, add(whole, add(1, part))), at)
+
+# `/0[xXbBoOuU]\w+/`: a zero, a base letter, and a run of word characters
+task radix-size
+  take runes, like list, like number
+  take at, like number
+  like number
+  mark private
+
+  fork test, or(is-unequal(rune-at(runes, at), 48), not(is-base-letter(rune-at(runes, add(at, 1)))))
+    hold
+      back 0
+  save end, add(at, 2)
+  walk test
+    hook test, is-word-code(rune-at(runes, end))
+    hook hold
+      save end, add(end, 1)
+  fork test, is-equal(end, add(at, 2))
+    hold
+      back 0
+  back subtract(end, at)
+
+# `/\{+(?=\s*(?:[a-zA-Z_]|$))/`: a `{` opens an interpolation ONLY when an identifier follows (`{name}`); otherwise it
+# is a literal brace. This lets a text string carry JSON (`<{"a":1}>`) or a regex quantifier (`<[0-9]{3}>`) without
+# escaping, while `{name}` template / string interpolation still works.
+#
+# A run of braces may be followed by whitespace, including the line's own newline, before its content: `{{ foo }}`
+# and a `{{` that opens at the end of a line are interpolations holding a tree. Only the braces are taken, so the
+# interpolation's depth is still the length of the match. A shorter run is always followed by a `{`, which the
+# lookahead refuses, so the whole run is the only try
+task open-brace-size
+  take runes, like list, like number
+  take at, like number
+  like number
+  mark private
+
+  save run, run-of(runes, at, 123)
+  fork test, is-equal(run, 0)
+    hold
+      back 0
+  save after, skip-spaces(runes, add(at, run))
+  fork test, or(is-minimum(after, runes/length), or(is-letter-code(get(runes, after)), is-equal(get(runes, after), 95)))
+    hold
+      back run
+  back 0
+
+# `/(?:\\\{[^\\]*\\\}|\\[{}<>\\]|[@~$%^&*'":.a-z0-9A-Z_\-?/])+/`: a bare name, which may carry ESCAPED BRACES. `{`
+# normally opens an interpolation, so a glob written bare (`@/book/**/\{code,view\}/**/*.tree`) escapes them. The
+# escaped group is consumed WHOLE, commas included, since a comma would otherwise end the token and split the pattern
+# in two. `\{` / `\}` on their own are also literal. The reader unescapes, so the value comes back as `{code,view}`.
+#
+# Each turn takes the first alternative that matches, and nothing follows the run, so the regular expression never
+# backtracks into it
+task word-size
+  take runes, like list, like number
+  take at, like number
+  like number
+  mark private
+
+  save end, at
+  walk test
+    hook test, is-below(end, runes/length)
+    hook hold
+      save one, get(runes, end)
+      save next, rune-at(runes, add(end, 1))
+      fork test, and(is-equal(one, 92), is-equal(next, 123))
+        hold
+          # `\{`, everything up to the next backslash, and `\}` there
+          save close, add(end, 2)
+          walk test
+            hook test, and(is-below(close, runes/length), is-unequal(get(runes, close), 92))
+            hook hold
+              save close, add(close, 1)
+          fork test, and(is-below(close, runes/length), is-equal(rune-at(runes, add(close, 1)), 125))
+            hold
+              save end, add(close, 2)
+              turn next
+      fork test, and(is-equal(one, 92), is-escapable(next))
+        hold
+          save end, add(end, 2)
+          turn next
+      fork test, is-name-code(one)
+        hold
+          save end, add(end, 1)
+          turn next
+      halt
+  back subtract(end, at)
+
+# `/-?\d{1,3}(?:,\d{3})+(?![\d,])|-?\d+(?=\b)(?!-[a-zA-Z])/`.
+#
+# A run written with THOUSAND SEPARATORS (`2,440,588`) is one number: exactly three digits after each comma, no space,
+# and nothing after the last group that would continue it. An ordinary argument list (`take a, 3`) still splits on its
+# comma: only `1,234` binds as one number, never `1, 234`. That alternative is tried first, since the plain one would
+# otherwise match just the leading `2`.
+#
+# Otherwise a bare run of digits, BUT digits followed by a hyphen and a letter (`24-cell`) are a kebab IDENTIFIER, not a
+# number, so this declines there and the name matcher claims the whole `24-cell`. A pure number (`24`, `24-3`) is
+# unaffected. The run must end at a word boundary, so `24px` is a name too. In both alternatives a shorter run fails
+# the test the full one failed, so the full one is the only try
+task integer-size
+  take runes, like list, like number
+  take at, like number
+  like number
+  mark private
+
+  save start, add(at, sign-of(runes, at))
+  save lead, digits-of(runes, start)
+  fork test, is-equal(lead, 0)
+    hold
+      back 0
+
+  fork test, and(is-maximum(lead, 3), is-equal(rune-at(runes, add(start, lead)), 44))
+    hold
+      save end, add(start, lead)
+      save groups, 0
+      walk test
+        hook test, and(is-equal(rune-at(runes, end), 44), is-minimum(digits-of(runes, add(end, 1)), 3))
+        hook hold
+          save end, add(end, 4)
+          save groups, add(groups, 1)
+      save after, rune-at(runes, end)
+      fork test, and(is-above(groups, 0), not(or(is-digit-code(after), is-equal(after, 44))))
+        hold
+          back subtract(end, at)
+
+  save end, add(start, lead)
+  save after, rune-at(runes, end)
+  fork test, is-word-code(after)
+    hold
+      back 0
+  fork test, and(is-equal(after, 45), is-letter-code(rune-at(runes, add(end, 1))))
+    hold
+      back 0
+  back subtract(end, at)
+
+# `/(?:\\[<>{}nrte\\]|\\(?![<>{}nrte\\])|\{+(?!\s*(?:[a-zA-Z_{]|$))|[^>{\\])+/`: a chunk runs over literal text,
+# including a `{` that does not open an interpolation (not followed by an identifier) and any `}`; it stops at `>`
+# (close), or an interpolation-opening `{`. Escapes cover the delimiters (`\<` `\>` `\{` `\}`) and the standard
+# characters (`\n` `\r` `\t` `\\`, and `\e`, the escape character every ANSI color sequence opens with); the mill
+# unescapes. A backslash that does not introduce a known escape is a LITERAL backslash, so a Windows path
+# (`text <\Temp>`) or any other stray `\` can be written without doubling it.
+#
+# A run of braces followed by a letter opens an interpolation whole (`{x}` is depth one, `{{x}}` depth two), so the
+# chunk stops before a brace run that a letter follows. A shorter run is followed by a `{`, which the lookahead also
+# refuses, so the whole run is the only try
+task chunk-size
+  take runes, like list, like number
+  take at, like number
+  like number
+  mark private
+
+  save end, at
+  walk test
+    hook test, is-below(end, runes/length)
+    hook hold
+      save one, get(runes, end)
+      fork test, is-equal(one, 92)
+        hold
+          fork test, is-chunk-escape(rune-at(runes, add(end, 1)))
+            hold
+              save end, add(end, 2)
+              turn next
+          save end, add(end, 1)
+          turn next
+      fork test, is-equal(one, 123)
+        hold
+          save run, run-of(runes, end, 123)
+          save after, skip-spaces(runes, add(end, run))
+          fork test, or(is-minimum(after, runes/length), or(is-letter-code(get(runes, after)), or(is-equal(get(runes, after), 95), is-equal(get(runes, after), 123))))
+            hold
+              halt
+          save end, add(end, run)
+          turn next
+      fork test, is-equal(one, 62)
+        hold
+          halt
+      save end, add(end, 1)
+  back subtract(end, at)
+
+# `/\{(\d+)\}/`: a brace holding only digits, its size or 0
+task braced-index
+  take runes, like list, like number
+  take at, like number
+  like number
+  mark private
+
+  fork test, is-unequal(rune-at(runes, at), 123)
+    hold
+      back 0
+  save digits, digits-of(runes, add(at, 1))
+  fork test, and(is-above(digits, 0), is-equal(rune-at(runes, add(at, add(digits, 1))), 125))
+    hold
+      back add(digits, 2)
+  back 0
+
+# ---- small readers ----
+
+# the code point at `at`, or -1 past the end
+task rune-at
+  take runes, like list, like number
+  take at, like number
+  like number
+  mark private
+
+  fork test, and(is-minimum(at, 0), is-below(at, runes/length))
+    hold
+      back get(runes, at)
+  back -1
+
+task one-if
+  take one, like number
+  take wanted, like number
+  like number
+  mark private
+
+  fork test, is-equal(one, wanted)
+    hold
+      back 1
+  back 0
+
+# how many of `code` in a row from `at`
+task run-of
+  take runes, like list, like number
+  take at, like number
+  take code, like number
+  like number
+  mark private
+
+  save end, at
+  walk test
+    hook test, is-equal(rune-at(runes, end), code)
+    hook hold
+      save end, add(end, 1)
+  back subtract(end, at)
+
+task digits-of
+  take runes, like list, like number
+  take at, like number
+  like number
+  mark private
+
+  save end, at
+  walk test
+    hook test, is-digit-code(rune-at(runes, end))
+    hook hold
+      save end, add(end, 1)
+  back subtract(end, at)
+
+# 1 for a minus at `at`, else 0
+task sign-of
+  take runes, like list, like number
+  take at, like number
+  like number
+  mark private
+
+  back one-if(rune-at(runes, at), 45)
+
+# the first position from `at` that is not whitespace
+task skip-spaces
+  take runes, like list, like number
+  take at, like number
+  like number
+  mark private
+
+  save end, at
+  walk test
+    hook test, is-space-code(rune-at(runes, end))
+    hook hold
+      save end, add(end, 1)
+  back end
+
+# the position of the `>>` that ends a raw literal begun before `from`, or -1: the last two of the first run of `>`
+task double-close
+  take runes, like list, like number
+  take from, like number
+  like number
+  mark private
+
+  save at, from
+  walk test
+    hook test, is-below(add(at, 1), runes/length)
+    hook hold
+      fork test, and(is-equal(get(runes, at), 62), is-equal(get(runes, add(at, 1)), 62))
+        hold
+          save end, at
+          walk test
+            hook test, is-equal(rune-at(runes, add(end, 2)), 62)
+            hook hold
+              save end, add(end, 1)
+          back end
+      save at, add(at, 1)
+  back -1
+
+# how many UTF-16 units the code points from `from` to `to` are
+task width-of
+  take runes, like list, like number
+  take from, like number
+  take to, like number
+  like number
+  mark private
+
+  save total, 0
+  save at, from
+  walk test
+    hook test, is-below(at, to)
+    hook hold
+      fork test, is-above(get(runes, at), 65535)
+        hold
+          save total, add(total, 2)
+      fork test, is-maximum(get(runes, at), 65535)
+        hold
+          save total, add(total, 1)
+      save at, add(at, 1)
+  back total
+
+# how many `<` a chunk holds that no backslash comes straight before: `/(?<!\\)</g`
+task opens-in
+  take value, like text
+  like number
+  mark private
+
+  save runes, to-runes(value)
+  save count, 0
+  save at, 0
+  walk test
+    hook test, is-below(at, runes/length)
+    hook hold
+      fork test, and(is-equal(get(runes, at), 60), or(is-equal(at, 0), is-unequal(rune-at(runes, subtract(at, 1)), 92)))
+        hold
+          save count, add(count, 1)
+      save at, add(at, 1)
+  back count
+
+task char-count-of
+  take value, like text
+  like number
+  mark private
+
+  back to-runes(value)/length
+
+task last-number
+  take values, like list, like number
+  like number
+  mark private
+
+  fork test, is-above(values/length, 0)
+    hold
+      back get(values, subtract(values/length, 1))
+  back 0
+
+# ---- character classes, by code point ----
+
+task is-digit-code
+  take code, like number
+  like boolean
+  mark private
+
+  back and(is-minimum(code, 48), is-maximum(code, 57))
+
+task is-letter-code
+  take code, like number
+  like boolean
+  mark private
+
+  back or(and(is-minimum(code, 65), is-maximum(code, 90)), and(is-minimum(code, 97), is-maximum(code, 122)))
+
+# `\w`: a letter, a digit or `_`
+task is-word-code
+  take code, like number
+  like boolean
+  mark private
+
+  back or(is-letter-code(code), or(is-digit-code(code), is-equal(code, 95)))
+
+# a base letter after `0`: x, b, o or u, either case
+task is-base-letter
+  take code, like number
+  like boolean
+  mark private
+
+  back one-of-codes(code, <88 120 66 98 79 111 85 117>)
+
+# a name's own characters: `@~$%^&*'":.`, letters, digits, `_`, `-`, `?` and `/`
+task is-name-code
+  take code, like number
+  like boolean
+  mark private
+
+  fork test, or(is-letter-code(code), is-digit-code(code))
+    hold
+      back true
+  back one-of-codes(code, <64 126 36 37 94 38 42 39 34 58 46 95 45 63 47>)
+
+# after a backslash in a name, the characters an escape may carry: `{}<>\`
+task is-escapable
+  take code, like number
+  like boolean
+  mark private
+
+  back one-of-codes(code, <123 125 60 62 92>)
+
+# after a backslash in a chunk, the known escapes: `<>{}nrte\`
+task is-chunk-escape
+  take code, like number
+  like boolean
+  mark private
+
+  back one-of-codes(code, <60 62 123 125 110 114 116 101 92>)
+
+task is-angle
+  take code, like number
+  like boolean
+  mark private
+
+  back or(is-equal(code, 60), is-equal(code, 62))
+
+# `\s`: the ASCII spaces, the no-break and the other Unicode spaces, the line and paragraph separators and the
+# byte-order mark
+task is-space-code
+  take code, like number
+  like boolean
+  mark private
+
+  fork test, or(and(is-minimum(code, 9), is-maximum(code, 13)), is-equal(code, 32))
+    hold
+      back true
+  fork test, and(is-minimum(code, 8192), is-maximum(code, 8202))
+    hold
+      back true
+  back one-of-codes(code, <160 5760 8232 8233 8239 8287 12288 65279>)
+
+# whether `code` is one of a space-separated list of code points
+task one-of-codes
+  take code, like number
+  take codes, like text
+  like boolean
+  mark private
+
+  walk split(codes, < >)
+    take one
+    fork test, is-equal(<{code}>, one)
+      hold
+        back true
+  back false
+
+# ---- modes ----
+
+# the mode on top of the stack: a stray `}` can pop the outermost, and the lexer is then in the default mode again
+task top-mode
+  take modes, like list, like lex-mode
+  like lex-mode
+  mark private
+
+  fork test, is-above(modes/length, 0)
+    hold
+      back get(modes, subtract(modes/length, 1))
+  back make(plain)
+
+task is-plain
+  take mode, like lex-mode
+  like boolean
+  mark private
+
+  sift mode
+    case plain
+      back true
+    miss
+      back false
+
+task is-literal
+  take mode, like lex-mode
+  like boolean
+  mark private
+
+  sift mode
+    case literal
+      back true
+    miss
+      back false
+
+task is-hole
+  take mode, like lex-mode
+  like boolean
+  mark private
+
+  sift mode
+    case hole
+      back true
+    miss
+      back false
+
+task is-close-brace
+  take kind, like token-kind
+  like boolean
+  mark private
+
+  sift kind
+    case close-brace
+      back true
+    miss
+      back false
+
+task kinds-of
+  take mode, like lex-mode
+  take orders, like mode-orders
+  like list, like token-kind
+  mark private
+
+  sift mode
+    case plain
+      back orders/plain
+    case literal
+      back orders/literal
+    case hole
+      back orders/hole
+    case path
+      back orders/path
+
+# which token kinds may match in each mode, in priority order
+task mode-orders-of
+  like mode-orders
+  mark private
+
+  # an integer before a name inside braces, as on a line: the name matcher takes digits too, so with it first a number
+  # inside braces was a name, and `<sum {add-two(2, 3)}>` failed with `the name "2" is not defined` (guides:
+  # language/syntax, values, collections, 2026-10-04). A word that starts with a letter is still a name, the integer
+  # matcher failing on its first character
+  save hole, make list
+  push(hole, make(close-brace))
+  push(hole, make(close-paren))
+  push(hole, make(close-angle))
+  push(hole, make(comma))
+  push(hole, make(hash-comment))
+  push(hole, make(decimal-number))
+  push(hole, make(radix-number))
+  push(hole, make(newline))
+  push(hole, make(open-brace))
+  push(hole, make(open-paren))
+  push(hole, make(open-angle))
+  push(hole, make(whole-number))
+  push(hole, make(word))
+  push(hole, make(space))
+
+  save literal, make list
+  push(literal, make(open-brace))
+  push(literal, make(close-angle))
+  push(literal, make(text-chunk))
+
+  save path, make list
+  push(path, make(open-brace))
+  push(path, make(word))
+
+  save plain, make list
+  push(plain, make(close-brace))
+  push(plain, make(close-paren))
+  push(plain, make(close-angle))
+  push(plain, make(comma))
+  push(plain, make(hash-comment))
+  push(plain, make(decimal-number))
+  push(plain, make(radix-number))
+  push(plain, make(newline))
+  push(plain, make(open-brace))
+  push(plain, make(open-paren))
+  push(plain, make(open-angle))
+  push(plain, make(whole-number))
+  push(plain, make(space))
+  push(plain, make(word))
+
+  back
+    make mode-orders
+      bind plain, plain
+      bind literal, literal
+      bind hole, hole
+      bind path, path
+
+# ---- building ----
+
+task position-of
+  take line, like number
+  take column, like number
+  like position
+  mark private
+
+  back
+    make position
+      bind line, line
+      bind column, column
+
+task span-of
+  take line, like number
+  take start, like number
+  take end, like number
+  like span
+  mark private
+
+  back
+    make span
+      bind start, position-of(line, start)
+      bind end, position-of(line, end)
+
+task token-of
+  take kind, like token-kind
+  take line, like number
+  take start, like number
+  take end, like number
+  take text, like text
+  like token
+  mark private
+
+  back
+    make token
+      bind kind, kind
+      bind span, span-of(line, start, end)
+      bind text, read(text)
+
+# where a mistake with nothing of its own to point at is reported: the last token's span, or the character here
+task last-span
+  take list, like list, like token
+  take line, like number
+  take column, like number
+  like span
+  mark private
+
+  fork test, is-above(list/length, 0)
+    hold
+      back get(list, subtract(list/length, 1))/span
+  back span-of(line, column, add(column, 1))

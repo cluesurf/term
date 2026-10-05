@@ -1,0 +1,48 @@
+# Which entries of a project a rebuild must build again (note/term/plan/incremental-best-in-class.md, step 3).
+#
+# A separate build (compile/separate.ts) builds every file of a project as an entry, and each entry walks its whole
+# closure: on @term/bind that is 3,091 walks of the standard library for an edit to one file. A unit nobody changed is
+# answered from memory, but the walk, the unit keys and the artifact comparisons are still paid once per entry. An entry
+# whose closure holds no changed file builds to the same answer it built last time, so a watch replays that answer and
+# builds only the entries an edit reaches.
+#
+# `graph` is the build's import graph as the walk found it: each module to the modules it loads, the runtimes it is
+# given included (compile/load.ts `collectModules`). A changed file reaches every module that loads it, and those
+# reach every module that loads them, which is `affected-set` with no cutoff.
+
+load ./affected
+  find affected-set
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+# The entries whose closure holds a changed file, in the order `entries` gives them
+task stale-entries
+  take graph
+    like hash
+      like text
+      like list
+        like text
+  take entries
+    like list
+      like text
+  take changed
+    like list
+      like text
+  like list
+    like text
+
+  save reached, make hash
+  walk affected-set(graph, changed)
+    take file
+    set(reached, file, true)
+  save stale, make list
+  walk entries
+    take entry
+    fork test, has(reached, entry)
+      hold
+        push(stale, entry)
+  back stale

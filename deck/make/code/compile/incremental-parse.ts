@@ -6,11 +6,9 @@
 
 import { hashText } from '@term/make/code/term/hash'
 import { parse } from '@term/make/code/parser/tree'
-import type {
-  RootNode,
-  GroupNode,
-  Node,
-} from '@term/make/code/parser/tree'
+import type { Node } from '@term/make/code/parser/tree'
+import type { RootNode, GroupNode } from '@term/make/code/parser/narrow'
+import { groupsOf } from '@term/make/code/parser/narrow'
 import type { Span } from '@term/make/code/parser/diagnostic'
 
 export type TopBlock = {
@@ -108,7 +106,7 @@ function shiftNode(node: Node, delta: number): void {
     case 'integer':
     case 'decimal':
     case 'radix':
-      shiftSpan(node.token.span, delta)
+      shiftSpan(node.span, delta)
       break
     case 'interpolation':
       if (node.group) {
@@ -161,7 +159,7 @@ export function incrementalParse(
     } else {
       // a changed / new block, or a duplicate of one already used this pass: parse fresh
       const result = parse({ file, text: block.text })
-      const groups = result.ok ? result.tree.nodes : []
+      const groups = result.ok ? groupsOf(result.tree.nodes) : []
 
       for (const group of groups) {
         shiftNode(group, block.startLine)

@@ -9,19 +9,10 @@
 //     `fuse` generates a whole family of definitions (e.g. get-year / get-month / ... per interval).
 // See note/research/vibe/computation/plans/11-elaboration.md (expand phase) and language/12-templates.md. Browser-safe.
 
-import type {
-  ChunkNode,
-  GroupNode,
-  IntegerNode,
-  InterpolationNode,
-  NameNode,
-  Node,
-  RootNode,
-  TextNode,
-} from '@term/make/code/parser/tree'
+import type { Node } from '@term/make/code/parser/tree'
+import type { ChunkNode, GroupNode, IntegerNode, InterpolationNode, NameNode, RootNode, TextNode } from '@term/make/code/parser/narrow'
+import { partsOf, groupsOf, isGroup } from '@term/make/code/parser/narrow'
 import type { Span } from '@term/make/code/parser/diagnostic'
-import type { Token } from '@term/make/code/parser/token'
-import { TokenKind } from '@term/make/code/parser/token'
 import { spanOfWhole } from '@term/make/code/compile/mill-run'
 
 const ZERO_SPAN: Span = {
@@ -29,8 +20,9 @@ const ZERO_SPAN: Span = {
   end: { line: 0, column: 0 },
 }
 
-function chunkToken(text: string): Token {
-  return { kind: TokenKind.Name, span: ZERO_SPAN, text }
+// a chunk written by expansion rather than read from the source: no span of its own, and nothing follows it
+function chunkOf(text: string): ChunkNode {
+  return { kind: 'chunk', text, span: ZERO_SPAN }
 }
 
 // a bare integer node carrying `value`, so a numeric `{param}` interpolated into a value position (`code {mask}`)
@@ -39,14 +31,15 @@ function integerNode(value: number): IntegerNode {
   return {
     kind: 'integer',
     value,
-    token: { kind: TokenKind.Integer, span: ZERO_SPAN, text: String(value) },
+    text: String(value),
+    span: ZERO_SPAN,
   }
 }
 
 function nameNodeOf(text: string): NameNode {
   return {
     kind: 'name',
-    parts: [{ kind: 'chunk', text, token: chunkToken(text) }],
+    parts: [chunkOf(text)],
   }
 }
 
@@ -180,7 +173,7 @@ function resolveValue(
 function interpolationName(
   node: InterpolationNode,
 ): string | undefined {
-  return node.group ? headName(node.group) : undefined
+  return isGroup(node.group) ? headName(node.group) : undefined
 }
 
 // substitute params inside a name's `{param}` interpolations, returning a flat name. A name that IS a bound
@@ -193,7 +186,7 @@ function substituteName(
 ): NameNode {
   let text = ''
 
-  for (const part of name.parts) {
+  for (const part of partsOf(name)) {
     if (part.kind === 'chunk') {
       text += part.text
     } else {
@@ -215,7 +208,7 @@ function substituteName(
 
   return {
     kind: 'name',
-    parts: [{ kind: 'chunk', text, token: chunkToken(text) }],
+    parts: [chunkOf(text)],
   }
 }
 
@@ -223,7 +216,7 @@ function substituteText(
   text: TextNode,
   subs: Map<string, string>,
 ): TextNode {
-  const parts = text.parts.map(
+  const parts = partsOf(text).map(
     (part): ChunkNode | InterpolationNode => {
       if (part.kind === 'chunk') {
         return part
@@ -232,11 +225,7 @@ function substituteText(
       const param = interpolationName(part)
 
       if (param !== undefined && subs.has(param)) {
-        return {
-          kind: 'chunk',
-          text: subs.get(param)!,
-          token: chunkToken(subs.get(param)!),
-        }
+        return chunkOf(subs.get(param)!)
       }
 
       return part
@@ -340,7 +329,7 @@ export function collectTemplates(
 ): Map<string, Template> {
   const templates = new Map<string, Template>()
 
-  for (const group of tree.nodes) {
+  for (const group of groupsOf(tree.nodes)) {
     if (headName(group) !== 'tree') {
       continue
     }
@@ -421,7 +410,7 @@ export function collectEnumerations(
 ): Map<string, string[]> {
   const enums = new Map<string, string[]>()
 
-  for (const group of tree.nodes) {
+  for (const group of groupsOf(tree.nodes)) {
     if (headName(group) !== 'host') {
       continue
     }
@@ -619,39 +608,29 @@ const isZero = (span: Span): boolean =>
 // A copy of a template's body with every span set to the `fuse` that expands it. A mistake in an expansion was
 // reported at the `tree` line, the same line for every fuse of that template, so a template fused ten times named
 // none of the ten (guides: language/templates, 2026-10-04). What a fuse beams in keeps its own lines: those are
-// lines its caller wrote. The copy follows a node's children and nothing else: its `parent` is a back-link.
+// lines its caller wrote. The copy follows a node's children.
 // `replace` says which spans it sets: all of the body's, then only the zero ones the substitution left.
 function atFuse<T extends Node>(node: T, span: Span, replace: (span: Span) => boolean): T {
   return restamp(node, span, replace) as T
 }
 
 function restamp(node: Node, span: Span, replace: (span: Span) => boolean): Node {
-  const token = (t: Token): Token => (replace(t.span) ? { ...t, span } : t)
-
   switch (node.kind) {
     case 'group': {
-      const { parent: _, ...group } = node
-
-      return { ...group, nodes: group.nodes.map(child => atFuse(child, span, replace)) }
+      return { ...node, nodes: node.nodes.map(child => atFuse(child, span, replace)) }
     }
     case 'name':
     case 'text': {
-      const { parent: _, ...named } = node
-
-      return { ...named, parts: named.parts.map(part => atFuse(part, span, replace)) }
+      return { ...node, parts: partsOf(node).map(part => atFuse(part, span, replace)) }
     }
     case 'interpolation': {
-      const { parent: _, ...hole } = node
-
-      return { ...hole, ...(hole.group ? { group: atFuse(hole.group, span, replace) } : {}) }
+      return { ...node, ...(node.group ? { group: atFuse(node.group, span, replace) } : {}) }
     }
     case 'chunk':
     case 'integer':
     case 'decimal':
     case 'radix': {
-      const { parent: _, ...leaf } = node
-
-      return { ...leaf, token: token(leaf.token) }
+      return { ...node, ...(replace(node.span) ? { span } : {}) }
     }
     default:
       return node
@@ -900,7 +879,7 @@ export function expandTemplates(
 
   const nodes: GroupNode[] = []
 
-  for (const group of tree.nodes) {
+  for (const group of groupsOf(tree.nodes)) {
     for (const expanded of expandTop(group, ctx, true)) {
       if (expanded.kind === 'group') {
         nodes.push(expanded)

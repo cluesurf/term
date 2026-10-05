@@ -12,7 +12,7 @@
 
 import { readFileSync } from 'node:fs'
 import { parse, renderHead } from '@term/make/code/parser/tree'
-import type { GroupNode } from '@term/make/code/parser/tree'
+import type { GroupNode } from '@term/make/code/parser/narrow'
 
 function headName(group: GroupNode): string | undefined {
   const first = group.nodes[0]

@@ -2,12 +2,9 @@
 // our own parser and serialize it back deterministically (stable ordering), guaranteeing reproducible installs.
 // See note/research/vibe/computation/plans/16-package-manager.md. Browser-safe.
 
-import type {
-  GroupNode,
-  NameNode,
-  Node,
-  RootNode,
-} from '@term/make/code/parser/tree'
+import type { Node } from '@term/make/code/parser/tree'
+import type { GroupNode, NameNode, RootNode } from '@term/make/code/parser/narrow'
+import { groupsOf } from '@term/make/code/parser/narrow'
 import { parse } from '@term/make/code/parser/tree'
 
 export type LockRequest = {
@@ -92,7 +89,7 @@ export function parseLockfile(text: string): Lockfile {
 
   const tree: RootNode = result.tree
 
-  for (const group of tree.nodes) {
+  for (const group of groupsOf(tree.nodes)) {
     const keyword = headName(group)
 
     if (keyword === 'base') {

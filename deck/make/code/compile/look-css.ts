@@ -29,7 +29,9 @@
 import type { Diagnostic, Span } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
 import { parse } from '@term/make/code/parser/tree'
-import type { GroupNode, Node } from '@term/make/code/parser/tree'
+import type { Node } from '@term/make/code/parser/tree'
+import type { GroupNode } from '@term/make/code/parser/narrow'
+import { groupsOf } from '@term/make/code/parser/narrow'
 
 // ── tree accessors (mirror mill.ts) ───────────────────────────────────────────
 
@@ -713,7 +715,7 @@ export function compileLookCss(
   const only = options?.only
   const blocks: string[] = []
 
-  for (const group of parsed.tree.nodes) {
+  for (const group of groupsOf(parsed.tree.nodes)) {
     const name = headName(group)
 
     if (name === 'face') {
@@ -797,7 +799,7 @@ function tintProblem(group: GroupNode): string | undefined {
 function groupSpan(group: GroupNode, file: string): Span {
   const head = group.nodes[0]
   const chunk = head?.kind === 'name' ? head.parts.find(part => part.kind === 'chunk') : undefined
-  const span = chunk?.kind === 'chunk' ? chunk.token.span : undefined
+  const span = chunk?.kind === 'chunk' ? chunk.span : undefined
 
   return span ? { ...span, file } : { file, start: { line: 0, column: 0 }, end: { line: 0, column: 0 } }
 }
@@ -830,7 +832,7 @@ export function checkLook(source: { file: string; text: string }): Diagnostic[] 
     node.nodes.forEach(visit)
   }
 
-  parsed.tree.nodes.forEach(visit)
+  groupsOf(parsed.tree.nodes).forEach(visit)
 
   return found
 }

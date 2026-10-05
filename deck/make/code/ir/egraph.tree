@@ -1,0 +1,667 @@
+# The e-graph optimizer: the maximal-rewriting backbone from note/research/vibe/computation/plans/13-optimization.md.
+# An e-graph holds every equivalent form of an expression at once. Rewrite rules are applied to saturation, then the
+# cheapest form is extracted. This sidesteps phase ordering: no rule order is committed to. Browser-safe.
+#
+# This first version optimizes a small arithmetic expression IR (the kind the compiler's binary expressions lower to).
+# It demonstrates the technique and can later subsume the simpler simplify.ts pass.
+#
+# Ported from ir/egraph.ts (self-hosting, 2026-10-05). The class was mutable state behind private methods, so the
+# graph is a `mark shared` record and each method a task over it. A class's set of node keys is a list holding each
+# key once, in the order it was added, as the `Set` iterated, and every map keeps its insertion order, which the
+# rewrites and the extraction depend on: they visit classes and nodes in that order. A list read out of a map is a
+# value (D1), so a changed one is written back.
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/hash
+  find hash
+  find has
+  find get-or-default
+  find keys
+
+load @term/base/text
+  find starts-with
+  find substring
+
+load @term/base/text/number
+  find parse-integer
+
+# an arithmetic expression, tagged on `t`
+form expr
+  mark tag, name t
+  case int
+    link value, like number
+  case var
+    link name, like text
+  case op
+    link op, like text
+    link left, like expr
+    link right, like expr
+
+# an e-node references child e-classes by id. leaves encode their value in the key
+form e-node
+  link op, like text
+  link args, like list, like number
+
+form e-graph
+  mark shared
+  link parent, like list, like number
+  link hashcons, like hash, like text, like number
+  # class id -> the keys of its nodes, each once, in the order added
+  link classes, like hash, like number, like list, like text
+  # node key -> node
+  link nodes, like hash, like text, like e-node
+
+# a class and one of its nodes
+form class-node
+  link id, like number
+  link node, like e-node
+
+task key-of
+  take node, like e-node
+  like text
+  mark private
+
+  save parts, make list
+  walk node/args
+    take one
+    push(parts, <{one}>)
+  back <{node/op}({join(parts, <,>)})>
+
+task blank-graph
+  like e-graph
+  mark private
+
+  back
+    make e-graph
+      bind parent, make list
+      bind hashcons, make hash
+      bind classes, make hash
+      bind nodes, make hash
+
+task find-root
+  take g, like e-graph
+  take start, like number
+  like number
+  mark private
+
+  save id, start
+  walk test
+    hook test, is-unequal(get(g/parent, id), id)
+    hook hold
+      save g/parent/{id}, get(g/parent, get(g/parent, id))
+      save id, get(g/parent, id)
+  back id
+
+task fresh
+  take g, like e-graph
+  like number
+  mark private
+
+  save id, g/parent/length
+  push(g/parent, id)
+  g/classes/set(id, make list)
+  back id
+
+task keys-of
+  take g, like e-graph
+  take id, like number
+  like list, like text
+  mark private
+
+  save none-yet, make list
+  back get-or-default(g/classes, id, none-yet)
+
+task node-of
+  take g, like e-graph
+  take k, like text
+  like e-node
+  mark private
+
+  save args, make list
+  save blank
+    make e-node
+      bind op, <>
+      bind args, args
+  back get-or-default(g/nodes, k, blank)
+
+# a key added to a list that holds each key once
+task with-key
+  take keys, like list, like text
+  take k, like text
+  like list, like text
+  mark private
+
+  walk keys
+    take one
+    fork test, is-equal(one, k)
+      hold
+        back keys
+  push(keys, k)
+  back keys
+
+# add a node, returning its (canonical) e-class id
+task add-node
+  take g, like e-graph
+  take op, like text
+  take args, like list, like number
+  like number
+  mark private
+
+  save canon, make list
+  walk args
+    take a
+    push(canon, find-root(g, a))
+  save node
+    make e-node
+      bind op, op
+      bind args, canon
+  save k, key-of(node)
+
+  fork test, has(g/hashcons, k)
+    hold
+      back find-root(g, get-or-default(g/hashcons, k, 0))
+
+  save id, fresh(g)
+  g/hashcons/set(k, id)
+  g/nodes/set(k, node)
+  g/classes/set(id, with-key(keys-of(g, id), k))
+  back id
+
+task union
+  take g, like e-graph
+  take a, like number
+  take b, like number
+  like boolean
+  mark private
+
+  save ra, find-root(g, a)
+  save rb, find-root(g, b)
+
+  fork test, is-equal(ra, rb)
+    hold
+      back false
+
+  save g/parent/{rb}, ra
+
+  save set-a, keys-of(g, ra)
+  walk keys-of(g, rb)
+    take k
+    save set-a, with-key(set-a, k)
+  g/classes/set(ra, set-a)
+  g/classes/remove(rb)
+  back true
+
+# the integer literal a class holds, as `has` and `value`: the first of its nodes that is one
+form literal-of
+  link has, like boolean
+  link value, like number
+
+task int-value
+  take g, like e-graph
+  take id, like number
+  like literal-of
+  mark private
+
+  walk keys-of(g, find-root(g, id))
+    take k
+    save node, node-of(g, k)
+    fork test, starts-with(node/op, <int:>)
+      hold
+        back literal(true, parse-integer(substring(node/op, 4)))
+  back literal(false, 0)
+
+task literal
+  take has, like boolean
+  take value, like number
+  like literal-of
+  mark private
+
+  back
+    make literal-of
+      bind has, has
+      bind value, value
+
+task is-literal
+  take found, like literal-of
+  take wanted, like number
+  like boolean
+  mark private
+
+  back and(found/has, is-equal(found/value, wanted))
+
+# every op-node currently in the graph, with the class it belongs to
+task op-nodes
+  take g, like e-graph
+  like list, like class-node
+  mark private
+
+  save out, make list
+  walk keys(g/classes)
+    take id
+    walk keys-of(g, id)
+      take k
+      save node, node-of(g, k)
+      fork test, is-equal(node/args/length, 2)
+        hold
+          save entry
+            make class-node
+              bind id, id
+              bind node, node
+          push(out, entry)
+  back out
+
+task class-nodes
+  take g, like e-graph
+  take id, like number
+  like list, like e-node
+  mark private
+
+  save out, make list
+  walk keys-of(g, find-root(g, id))
+    take k
+    push(out, node-of(g, k))
+  back out
+
+# build an e-class from an expression
+task build
+  take g, like e-graph
+  take e, like expr
+  like number
+  mark private
+
+  save none, make list
+  sift e
+    case int
+      back add-node(g, <int:{value}>, none)
+    case var
+      back add-node(g, <var:{name}>, none)
+    case op
+      save args, make list
+      push(args, build(g, left))
+      push(args, build(g, right))
+      back add-node(g, op, args)
+
+task int-node
+  take g, like e-graph
+  take value, like number
+  like number
+  mark private
+
+  save none, make list
+  back add-node(g, <int:{value}>, none)
+
+task pair-node
+  take g, like e-graph
+  take op, like text
+  take left, like number
+  take right, like number
+  like number
+  mark private
+
+  save args, make list
+  push(args, left)
+  push(args, right)
+  back add-node(g, op, args)
+
+# apply the rewrite rules once across the whole graph; return whether anything changed
+task step
+  take g, like e-graph
+  like boolean
+  mark private
+
+  save changed, false
+
+  walk op-nodes(g)
+    take entry
+    save id, entry/id
+    save op, entry/node/op
+    save l, get(entry/node/args, 0)
+    save r, get(entry/node/args, 1)
+    save li, int-value(g, l)
+    save ri, int-value(g, r)
+
+    # constant folding
+    fork test, and(li/has, ri/has)
+      hold
+        save folded, fold(op, li/value, ri/value)
+        fork test, folded/has
+          hold
+            save changed, or(union(g, id, int-node(g, folded/value)), changed)
+
+    # commutativity
+    fork test, or(is-equal(op, <+>), is-equal(op, <*>))
+      hold
+        save changed, or(union(g, id, pair-node(g, op, r, l)), changed)
+
+    # identities
+    fork test, and(is-equal(op, <+>), is-literal(ri, 0))
+      hold
+        save changed, or(union(g, id, l), changed)
+    fork test, and(is-equal(op, <+>), is-literal(li, 0))
+      hold
+        save changed, or(union(g, id, r), changed)
+    fork test, and(is-equal(op, <->), is-literal(ri, 0))
+      hold
+        save changed, or(union(g, id, l), changed)
+    fork test, and(is-equal(op, <*>), is-literal(ri, 1))
+      hold
+        save changed, or(union(g, id, l), changed)
+    fork test, and(is-equal(op, <*>), is-literal(li, 1))
+      hold
+        save changed, or(union(g, id, r), changed)
+    fork test, and(is-equal(op, <*>), or(is-literal(ri, 0), is-literal(li, 0)))
+      hold
+        save changed, or(union(g, id, int-node(g, 0)), changed)
+    fork test, and(is-equal(op, </>), is-literal(ri, 1))
+      hold
+        save changed, or(union(g, id, l), changed)
+
+    # (a * b) / b  ->  a
+    fork test, is-equal(op, </>)
+      hold
+        walk class-nodes(g, l)
+          take inner
+          fork test, and(is-equal(inner/op, <*>), is-equal(find-root(g, get(inner/args, 1)), find-root(g, r)))
+            hold
+              save changed, or(union(g, id, get(inner/args, 0)), changed)
+          fork test, and(is-equal(inner/op, <*>), is-equal(find-root(g, get(inner/args, 0)), find-root(g, r)))
+            hold
+              save changed, or(union(g, id, get(inner/args, 1)), changed)
+
+    # x - x  ->  0
+    fork test, and(is-equal(op, <->), is-equal(find-root(g, l), find-root(g, r)))
+      hold
+        save changed, or(union(g, id, int-node(g, 0)), changed)
+
+    # constant reassociation: (a + k1) + k2  ->  a + (k1 + k2); likewise for *. With commutativity this also catches
+    # (k1 + a) + k2 and the multiplicative forms, so scattered constants collapse to one.
+    fork test, and(or(is-equal(op, <+>), is-equal(op, <*>)), ri/has)
+      hold
+        walk class-nodes(g, l)
+          take inner
+          fork test, is-unequal(inner/op, op)
+            hold
+              turn next
+          save inner-constant, int-value(g, get(inner/args, 1))
+          fork test, not(inner-constant/has)
+            hold
+              turn next
+          save combined, fold(op, inner-constant/value, ri/value)
+          fork test, combined/has
+            hold
+              save changed, or(union(g, id, pair-node(g, op, get(inner/args, 0), int-node(g, combined/value))), changed)
+
+  back changed
+
+# restore congruence after merges: re-key every node by its children's canonical classes, and merge two classes that
+# now hold the same node. Without this, `(a + 0) - b` and `a - b` stay apart after `a + 0` joins `a`'s class, because
+# the parent was keyed by the child's old id. A missed merge, never a wrong one, so it lost rewrites rather than making
+# false ones. This is egg's `rebuild`, done eagerly over the whole graph since these graphs are small.
+task rebuild
+  take g, like e-graph
+  like boolean
+  mark private
+
+  save merged, false
+
+  walk test
+    hook test, true
+    hook hold
+      save hashcons, make hash
+      save classes, make hash
+      save pending-a, make list
+      save pending-b, make list
+
+      walk keys(g/classes)
+        take id
+        save root, find-root(g, id)
+        save fresh-set, make list
+        save set, get-or-default(classes, root, fresh-set)
+
+        walk keys-of(g, id)
+          take k
+          save node, node-of(g, k)
+          save canon-args, make list
+          walk node/args
+            take a
+            push(canon-args, find-root(g, a))
+          save canon
+            make e-node
+              bind op, node/op
+              bind args, canon-args
+          save ck, key-of(canon)
+
+          g/nodes/set(ck, canon)
+          save set, with-key(set, ck)
+
+          fork test, has(hashcons, ck)
+            hold
+              save seen, get-or-default(hashcons, ck, 0)
+              fork test, is-unequal(seen, root)
+                hold
+                  push(pending-a, seen)
+                  push(pending-b, root)
+            miss
+              hashcons/set(ck, root)
+
+        classes/set(root, set)
+
+      save g/hashcons, hashcons
+      save g/classes, classes
+
+      fork test, is-equal(pending-a/length, 0)
+        hold
+          back merged
+
+      save at, 0
+      walk test
+        hook test, is-below(at, pending-a/length)
+        hook hold
+          save merged, or(union(g, get(pending-a, at), get(pending-b, at)), merged)
+          save at, add(at, 1)
+
+  back merged
+
+task saturate
+  take g, like e-graph
+  take limit, like number
+  mark private
+
+  save i, 0
+  walk test
+    hook test, is-below(i, limit)
+    hook hold
+      save i, add(i, 1)
+      save stepped, step(g)
+      save rebuilt, rebuild(g)
+
+      # keep applying rules until no class merges (or the bound is hit)
+      fork test, and(not(stepped), not(rebuilt))
+        hold
+          halt
+
+# the cheapest node of each class, and its cost (the node count)
+form best
+  link costs, like hash, like number, like number
+  link nodes, like hash, like number, like e-node
+
+# extract the cheapest expression from a class (cost = node count)
+task extract
+  take g, like e-graph
+  take root, like number
+  like expr
+  mark private
+
+  save costs, make hash
+  save chosen, make hash
+
+  save changed, true
+  walk test
+    hook test, changed
+    hook hold
+      save changed, false
+
+      walk keys(g/classes)
+        take id
+        walk keys-of(g, id)
+          take k
+          save node, node-of(g, k)
+          save cost, 1
+          save ok, true
+
+          walk node/args
+            take a
+            save child, find-root(g, a)
+            fork test, not(has(costs, child))
+              hold
+                save ok, false
+                halt
+            save cost, add(cost, get-or-default(costs, child, 0))
+
+          fork test, and(ok, or(not(has(costs, id)), is-below(cost, get-or-default(costs, id, 0))))
+            hold
+              costs/set(id, cost)
+              chosen/set(id, node)
+              save changed, true
+
+  back rebuild-expr(g, chosen, root)
+
+task rebuild-expr
+  take g, like e-graph
+  take chosen, like hash, like number, like e-node
+  take id, like number
+  like expr
+  mark private
+
+  save args, make list
+  save blank
+    make e-node
+      bind op, <>
+      bind args, args
+  save node, get-or-default(chosen, find-root(g, id), blank)
+
+  fork test, starts-with(node/op, <int:>)
+    hold
+      back
+        make int
+          bind value, parse-integer(substring(node/op, 4))
+
+  fork test, starts-with(node/op, <var:>)
+    hold
+      back
+        make var
+          bind name, substring(node/op, 4)
+
+  save left, rebuild-expr(g, chosen, get(node/args, 0))
+  save right, rebuild-expr(g, chosen, get(node/args, 1))
+  back
+    make op
+      bind op, node/op
+      bind left, left
+      bind right, right
+
+# a constant fold, or none when the answer is not a safe integer. Unchecked, a product past 2^53 became a new constant
+# that folded again, out to `Infinity` and `NaN`, each one a class the next step multiplied by the rest, and the graph
+# grew until the build never finished: `u64-maximum-value`, `i64-maximum-value * 2 + 1` over the safe literals of
+# `-2^31 * 2^32`, hung `term boot` (2026-10-04). Such a fold was never emitted anyway (`fromExpr` in egraph-arith.ts
+# refuses an unsafe literal), so refusing it here loses no rewrite
+#
+# The port asks whether the answer FITS before it computes it: Term's integer arithmetic stops the program at a result
+# past the safe integers, where JavaScript's went on to a float the original then refused
+task fold
+  take op, like text
+  take a, like number
+  take b, like number
+  like literal-of
+  mark private
+
+  fork test, is-equal(op, <+>)
+    hold
+      fork test, sum-fits(a, b)
+        hold
+          back literal(true, add(a, b))
+      back literal(false, 0)
+  fork test, is-equal(op, <->)
+    hold
+      fork test, sum-fits(a, subtract(0, b))
+        hold
+          back literal(true, subtract(a, b))
+      back literal(false, 0)
+  fork test, is-equal(op, <*>)
+    hold
+      fork test, product-fits(a, b)
+        hold
+          back literal(true, multiply(a, b))
+      back literal(false, 0)
+  # a quotient truncated toward zero is never larger than what it divides
+  fork test, and(is-equal(op, </>), is-unequal(b, 0))
+    hold
+      back literal(true, divide(a, b))
+  back literal(false, 0)
+
+# the largest safe integer, 2^53 - 1
+task safe-limit
+  like number
+  mark private
+
+  back 9007199254740991
+
+# whether `a + b` is a safe integer, asked without adding
+task sum-fits
+  take a, like number
+  take b, like number
+  like boolean
+  mark private
+
+  fork test, is-minimum(b, 0)
+    hold
+      back is-maximum(a, subtract(safe-limit(), b))
+  back is-minimum(a, subtract(subtract(0, safe-limit()), b))
+
+# whether `a * b` is a safe integer, asked without multiplying
+task product-fits
+  take a, like number
+  take b, like number
+  like boolean
+  mark private
+
+  fork test, or(is-equal(a, 0), is-equal(b, 0))
+    hold
+      back true
+  back is-maximum(magnitude(a), divide(safe-limit(), magnitude(b)))
+
+task magnitude
+  take value, like number
+  like number
+  mark private
+
+  fork test, is-below(value, 0)
+    hold
+      back subtract(0, value)
+  back value
+
+# optimize an arithmetic expression by equality saturation
+task optimize
+  take e, like expr
+  like expr
+
+  save g, blank-graph()
+  save root, build(g, e)
+  saturate(g, 50)
+  back extract(g, root)
+
+task show-expr
+  take e, like expr
+  like text
+
+  sift e
+    case int
+      back <{value}>
+    case var
+      back name
+    case op
+      back <({show-expr(left)} {op} {show-expr(right)})>

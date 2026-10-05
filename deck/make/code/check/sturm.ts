@@ -389,25 +389,31 @@ export function nonNegativeEverywhere(p: Poly): boolean {
 // (one rational strictly inside each open interval between consecutive distinct roots, plus one left of all and one
 // right of all). `p` has a constant sign on each cell. This is the one-dimensional CAD, exported for the multivariate
 // lift (`cad.ts`): a cell of the base line lifts to a stack of cells in the variable above it.
-export function cellSamples(p: Poly): [bigint, bigint][] {
-  return rCellSamples(toRPoly(p)).map(r => [r.n, r.d] as [bigint, bigint])
+// a big integer and a rational as check/sturm.tree exchanges them: the stdlib `big-integer` is `{ dock }` on TypeScript
+export type BigInteger = { dock: bigint }
+export type ExactRatio = { n: BigInteger; d: BigInteger }
+
+function outward(r: Rat): ExactRatio {
+  return { n: { dock: r.n }, d: { dock: r.d } }
+}
+
+export function cellSamples(p: Poly): ExactRatio[] {
+  return rCellSamples(toRPoly(p)).map(outward)
 }
 
 // the same, for a polynomial whose integer coefficients are EXACT BigInts (they can exceed 2^53 after the multivariate
 // projection multiplies several polynomials, so they must not pass through a float).
-export function cellSamplesBig(coefficients: bigint[]): [bigint, bigint][] {
-  return rCellSamples(rtrim(coefficients.map(c => rat(c)))).map(
-    r => [r.n, r.d] as [bigint, bigint],
-  )
+export function cellSamplesBig(coefficients: BigInteger[]): ExactRatio[] {
+  return rCellSamples(rtrim(coefficients.map(c => rat(c.dock)))).map(outward)
 }
 
 // is the polynomial with the given EXACT RATIONAL coefficients (`[num, den]` per power) non-negative for all reals? The
 // multivariate lift forms a fibre polynomial by substituting a rational sample point, whose coefficients are rationals;
 // this decides that fibre completely without a lossy conversion to floats.
 export function rationalNonNegativeEverywhere(
-  coefficients: [bigint, bigint][],
+  coefficients: ExactRatio[],
 ): boolean {
-  const t = rtrim(coefficients.map(([n, d]) => rat(n, d)))
+  const t = rtrim(coefficients.map(c => rat(c.n.dock, c.d.dock)))
 
   if (t.length === 0) {
     return true

@@ -20,7 +20,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { parse } from '@term/make/code/parser/tree'
 import { readMineGrammar, runMine } from '@term/make/code/compile/mill-run'
-import type { GroupNode } from '@term/make/code/parser/tree'
+import type { GroupNode } from '@term/make/code/parser/narrow'
 
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
@@ -102,7 +102,7 @@ for (const group of parsed.tree.nodes) {
     const first = group.nodes[0]
     const line =
       first?.kind === 'name' && first.parts[0]?.kind === 'chunk'
-        ? first.parts[0].token.span.start.line
+        ? first.parts[0].span.start.line
         : 0
 
     misses.push(`line ${line + 1}: ${(lines[line] ?? '').trim()}`)

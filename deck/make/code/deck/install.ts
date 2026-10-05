@@ -16,12 +16,9 @@ import {
 } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { parse } from '@term/make/code/parser/tree'
-import type {
-  GroupNode,
-  NameNode,
-  Node,
-  RootNode,
-} from '@term/make/code/parser/tree'
+import type { Node } from '@term/make/code/parser/tree'
+import type { GroupNode, NameNode, RootNode } from '@term/make/code/parser/narrow'
+import { groupsOf } from '@term/make/code/parser/narrow'
 import {
   parsePackage,
   storePath,
@@ -97,7 +94,7 @@ export function parseDeck(text: string): Manifest {
   }
 
   const tree: RootNode = result.tree
-  const deckGroup = tree.nodes.find(g => headName(g) === 'deck')
+  const deckGroup = groupsOf(tree.nodes).find(g => headName(g) === 'deck')
 
   if (!deckGroup) {
     return manifest

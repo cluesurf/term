@@ -26,7 +26,10 @@ import type {
   Type,
 } from '@term/make/code/compile/node'
 import type { Span } from '@term/make/code/parser/diagnostic'
-import { RENDER } from '@term/make/code/compile/render-names'
+import { renderNames } from '@term/make/code/compile/render-names'
+
+// the render runtime's task names, asked of compile/render-names once
+const RENDER = renderNames()
 
 // the name a guarded event handler binds what it caught to, before handing it to the render runtime's `keep-raise`
 const HANDLER_RAISE = 'raised-in-handler'

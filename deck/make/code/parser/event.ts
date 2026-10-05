@@ -3,56 +3,60 @@
 // into sibling groups, and opens and closes names, interpolations, and texts. Detects the structural errors.
 // Browser-safe.
 
-import type { Diagnostic } from '@term/make/code/parser/diagnostic'
+import type { Diagnostic, Span } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
 import type { Token, TokenList } from '@term/make/code/parser/token'
-import { TokenKind } from '@term/make/code/parser/token'
 
-export enum EventKind {
-  OpenGroup = 'open-group',
-  CloseGroup = 'close-group',
-  OpenName = 'open-name',
-  CloseName = 'close-name',
-  OpenText = 'open-text',
-  CloseText = 'close-text',
-  OpenInterpolation = 'open-interpolation',
-  CloseInterpolation = 'close-interpolation',
-  OpenIndent = 'open-indent',
-  CloseIndent = 'close-indent',
-  Chunk = 'chunk',
-  Integer = 'integer',
-  Decimal = 'decimal',
-  Radix = 'radix',
-  Comment = 'comment',
-}
+export type EventKind =
+  | 'open-group'
+  | 'close-group'
+  | 'open-name'
+  | 'close-name'
+  | 'open-text'
+  | 'close-text'
+  | 'open-interpolation'
+  | 'close-interpolation'
+  | 'open-indent'
+  | 'close-indent'
+  | 'read-chunk'
+  | 'read-integer'
+  | 'read-decimal'
+  | 'read-radix'
+  | 'read-comment'
 
+// what a name's last token is followed by on its line: an opening parenthesis (`f(a)`), an empty pair (`f()`), or
+// neither (absent). The mill reads it to tell `f()` from `f`, and a keyword's call from the keyword. It is the one
+// thing a reader once followed a token's link forward for, so it is read off the token list here instead.
+export type Follows = 'paren' | 'empty-parens'
+
+// An event carries the span and text of the token it was made from, not the token: the text may differ (a text
+// literal's chunk is trimmed of its indentation, and merged with the next line's), and nothing after this pass reads a
+// token
 export type Event =
-  | { kind: EventKind.OpenGroup }
-  | { kind: EventKind.CloseGroup }
-  | { kind: EventKind.OpenName }
-  | { kind: EventKind.CloseName }
-  | { kind: EventKind.OpenText; token: Token }
-  | { kind: EventKind.CloseText; token: Token }
-  | { kind: EventKind.OpenInterpolation; token: Token; depth: number }
-  | { kind: EventKind.CloseInterpolation; token: Token }
-  | { kind: EventKind.OpenIndent }
-  | { kind: EventKind.CloseIndent }
-  | { kind: EventKind.Chunk; token: Token }
-  | { kind: EventKind.Integer; token: Token; value: number }
-  | { kind: EventKind.Decimal; token: Token; value: number }
+  | { kind: 'open-group' }
+  | { kind: 'close-group' }
+  | { kind: 'open-name' }
+  | { kind: 'close-name' }
+  | { kind: 'open-text'; text: string; span: Span }
+  | { kind: 'close-text'; span: Span }
+  | { kind: 'open-interpolation'; span: Span; depth: number }
+  | { kind: 'close-interpolation'; span: Span }
+  | { kind: 'open-indent' }
+  | { kind: 'close-indent' }
+  | { kind: 'read-chunk'; text: string; span: Span; follows?: Follows }
+  | { kind: 'read-integer'; text: string; span: Span; value: number }
+  | { kind: 'read-decimal'; text: string; span: Span; value: number }
   | {
-      kind: EventKind.Radix
-      token: Token
+      kind: 'read-radix'
+      text: string
+      span: Span
       value: number
       radix: number
     }
-  | { kind: EventKind.Comment; token: Token }
+  | { kind: 'read-comment'; text: string; span: Span }
 
-export type EventStream = TokenList & { events: Event[] }
-
-export type EventResult =
-  | { ok: true; stream: EventStream }
-  | { ok: false; diagnostics: Diagnostic[] }
+// the events, and every structural mistake found on the way: none when the text is well formed
+export type EventResult = { events: Event[]; diagnostics: Diagnostic[] }
 
 enum Context {
   Root = 'root',
@@ -70,27 +74,18 @@ enum Context {
 type ContextFrame = { kind: Context; token?: Token }
 type IndentFrame = { depth: number; ownLine?: boolean; used: boolean }
 
-// Which comma rule the parser applies (see `comma` below). The one-level rule is the grammar's; the flag exists
-// so a migration can parse the same source both ways and report every line whose meaning differs, rather than
-// flipping 2,241 files blind. Flip it back only to reproduce the superseded reading.
-export let commaPopsOneLevel = true
-
-export function setCommaRule(oneLevel: boolean): void {
-  commaPopsOneLevel = oneLevel
-}
-
 // Whether a comma after a part that opened no level (a literal, or a call closed by its own parenthesis) stays at
-// that part's level. `true` is the grammar since 2026-10-02: `want hold, is-equal get(found, 1), 14` gives
-// `is-equal` two arguments. `false` reproduces the superseded reading, where such a comma popped the level ABOVE the
-// part, and `'call'` stays after a closed call only. Only a migration measuring the corpus both ways sets it
-// (task/term/comma-migrate.ts, which moved every file the change would have re-read, 114 of them).
-export let commaAfterLeafStays: boolean | 'call' = true
+// that part's level. `stays` is the grammar since 2026-10-02: `want hold, is-equal get(found, 1), 14` gives
+// `is-equal` two arguments. `pops` reproduces the superseded reading, where such a comma popped the level ABOVE the
+// part, and `call` stays after a closed call only. Only a migration measuring the corpus both ways passes anything
+// else (task/term/comma-migrate.ts, which moved every file the change would have re-read, 114 of them). It was a
+// module-wide switch until 2026-10-05, and a parameter now, so the module holds no state.
+//
+// The comma itself pops ONE level. The rule before 2026-08-30 closed every level back to the line's head; a switch
+// kept it reachable for that migration, and nothing had used it since.
+export type CommaAfterLeaf = 'stays' | 'call' | 'pops'
 
-export function setCommaAfterLeaf(stays: boolean | 'call'): void {
-  commaAfterLeafStays = stays
-}
-
-export function buildEvents(tokens: TokenList): EventResult {
+export function buildEvents(tokens: TokenList, afterLeafRule: CommaAfterLeaf = 'stays'): EventResult {
   const events: Event[] = []
   const contexts: ContextFrame[] = [{ kind: Context.Root }]
   const indents: IndentFrame[] = [
@@ -128,92 +123,91 @@ export function buildEvents(tokens: TokenList): EventResult {
     )
   }
 
-  let token = tokens.head
+  // the token list, walked by index: a step either way is `list[at - 1]` and `list[at + 1]`
+  const list = tokens.list
+  let at = 0
+  const before = (): Token | undefined => list[at - 1]
+  const after = (step = 1): Token | undefined => list[at + step]
 
-  if (token) {
-    do {
-      const leafBefore = afterLeaf
-      afterLeaf = ''
+  for (; at < list.length; at++) {
+    const token = list[at]!
+    const leafBefore = afterLeaf
+    afterLeaf = ''
 
-      switch (token.kind) {
-        case TokenKind.OpenBrace:
-          openInterpolation(token)
-          break
-        case TokenKind.CloseBrace:
-          closeInterpolation()
-          break
-        case TokenKind.OpenAngle:
-          atLineStart = false
-          openText(token)
-          break
-        case TokenKind.CloseAngle:
-          closeText(token)
-          afterLeaf = 'literal'
-          break
-        case TokenKind.OpenParen:
-          if (top()?.kind === Context.Name) {
-            pop()
-            events.push({ kind: EventKind.CloseName })
-          }
+    switch (token.kind) {
+      case 'open-brace':
+        openInterpolation(token)
+        break
+      case 'close-brace':
+        closeInterpolation()
+        break
+      case 'open-angle':
+        atLineStart = false
+        openText(token)
+        break
+      case 'close-angle':
+        closeText(token)
+        afterLeaf = 'literal'
+        break
+      case 'open-paren':
+        if (top()?.kind === Context.Name) {
+          pop()
+          events.push({ kind: 'close-name' })
+        }
 
-          push({ kind: Context.Paren, token })
-          break
-        case TokenKind.CloseParen:
-          afterLeaf = closeParen() ? 'call' : ''
-          break
-        case TokenKind.Comma:
-          comma(leafBefore)
-          break
-        case TokenKind.Comment:
-          // a comment is trivia: keep it in the stream so the tree builder can attach it to the CST (for the
-          // formatter and inline lint suppression). It does not affect grouping or indentation.
-          atLineStart = false
-          events.push({ kind: EventKind.Comment, token })
-          break
-        case TokenKind.Decimal:
-          atLineStart = false
-          decimal(token)
-          afterLeaf = 'literal'
-          break
-        case TokenKind.Radix:
-          atLineStart = false
-          radix(token)
-          afterLeaf = 'literal'
-          break
-        case TokenKind.Space:
-          space(token)
-          afterLeaf = leafBefore
-          break
-        case TokenKind.Newline:
-          closeLine()
-          atLineStart = true
-          break
-        case TokenKind.Chunk:
-          atLineStart = false
-          chunk(token)
-          break
-        case TokenKind.Name:
-          atLineStart = false
-          name(token)
-          break
-        case TokenKind.Integer:
-          atLineStart = false
-          integer(token)
-          afterLeaf = 'literal'
-          break
-        default:
-          break
-      }
-    } while ((token = token.next))
+        push({ kind: Context.Paren, token })
+        break
+      case 'close-paren':
+        afterLeaf = closeParen() ? 'call' : ''
+        break
+      case 'comma':
+        comma(leafBefore)
+        break
+      case 'comment':
+        // a comment is trivia: keep it in the stream so the tree builder can attach it to the CST (for the
+        // formatter and inline lint suppression). It does not affect grouping or indentation.
+        atLineStart = false
+        events.push({ kind: 'read-comment', text: token.text, span: token.span })
+        break
+      case 'decimal':
+        atLineStart = false
+        decimal(token)
+        afterLeaf = 'literal'
+        break
+      case 'radix':
+        atLineStart = false
+        radix(token)
+        afterLeaf = 'literal'
+        break
+      case 'space':
+        space(token)
+        afterLeaf = leafBefore
+        break
+      case 'newline':
+        closeLine()
+        atLineStart = true
+        break
+      case 'chunk':
+        atLineStart = false
+        chunk(token)
+        break
+      case 'name':
+        atLineStart = false
+        name(token)
+        break
+      case 'integer':
+        atLineStart = false
+        integer(token)
+        afterLeaf = 'literal'
+        break
+      default:
+        break
+    }
   }
 
   closeLine()
 
-  if (diagnostics.length) {
-    return { ok: false, diagnostics }
-  }
-
-  return { ok: true, stream: { ...tokens, events } }
+  return { events, diagnostics }
 
   // Validate the first content node on a line.
   function startContent() {
@@ -234,7 +228,7 @@ export function buildEvents(tokens: TokenList): EventResult {
 
   function space(token: Token) {
     while (top()?.kind === Context.Name) {
-      events.push({ kind: EventKind.CloseName })
+      events.push({ kind: 'close-name' })
       pop()
     }
 
@@ -270,11 +264,11 @@ export function buildEvents(tokens: TokenList): EventResult {
 
       while (diff-- > 0) {
         contexts.push({ kind: Context.Indent })
-        events.push({ kind: EventKind.OpenIndent })
+        events.push({ kind: 'open-indent' })
       }
 
       lastDepth = depth
-    } else if (token.previous?.kind === TokenKind.Integer) {
+    } else if (before()?.kind === 'integer') {
       // a number is a leaf and cannot have a following node on the same line
       fail(
         'invalid-nesting',
@@ -287,20 +281,23 @@ export function buildEvents(tokens: TokenList): EventResult {
   function openText(token: Token) {
     pushIndent(1)
     push({ kind: Context.Text })
-    events.push({ kind: EventKind.OpenText, token })
-    indent().ownLine = endsLineWithNewline(token)
+    events.push({ kind: 'open-text', text: token.text, span: token.span })
+    indent().ownLine = endsLineWithNewline()
   }
 
-  function endsLineWithNewline(token: Token): boolean {
-    if (token.next?.kind === TokenKind.Chunk) {
-      return Boolean(/^\s*\n$/.exec(token.next.text))
+  // the literal opening here ends its line, so its content is the indented lines below
+  function endsLineWithNewline(): boolean {
+    const next = after()
+
+    if (next?.kind === 'chunk') {
+      return Boolean(/^\s*\n$/.exec(next.text))
     }
 
     return false
   }
 
   function closeText(token: Token) {
-    events.push({ kind: EventKind.CloseText, token })
+    events.push({ kind: 'close-text', span: token.span })
     pop()
     popIndent()
   }
@@ -308,8 +305,9 @@ export function buildEvents(tokens: TokenList): EventResult {
   function decimal(token: Token) {
     startContent()
     events.push({
-      kind: EventKind.Decimal,
-      token,
+      kind: 'read-decimal',
+      text: token.text,
+      span: token.span,
       value: parseFloat(token.text),
     })
   }
@@ -324,8 +322,9 @@ export function buildEvents(tokens: TokenList): EventResult {
       // 0x / 0u are hex (0u is a unicode code point, value = the code point), 0b binary, 0o octal
       const radixValue = base === 'b' ? 2 : base === 'o' ? 8 : 16
       events.push({
-        kind: EventKind.Radix,
-        token,
+        kind: 'read-radix',
+        text: token.text,
+        span: token.span,
         value: parseInt(found[2]!, radixValue),
         radix: radixValue,
       })
@@ -344,38 +343,36 @@ export function buildEvents(tokens: TokenList): EventResult {
     // interpolation on the same line (`x {{foo}} y`) begins mid-line, and slicing `depth * 2` characters off it
     // ate the text outright — ` y` is two characters, so the `y` vanished with no error. It is trimmed instead,
     // which is what puts `}}or{{` next to each other in text-multiline.tree's expected output.
-    const startsLine =
-      !token.previous || token.previous.span.end.line < token.span.start.line
+    const previous = before()
+    const startsLine = !previous || previous.span.end.line < token.span.start.line
+    let text = token.text
 
     if (frame.ownLine) {
-      token.text = startsLine
-        ? token.text.slice(frame.depth * 2).trimEnd()
-        : token.text.trim()
+      text = startsLine ? text.slice(frame.depth * 2).trimEnd() : text.trim()
     }
 
     const last = events[events.length - 1]
 
-    // merge consecutive chunks inside a multiline text to keep things clean
-    if (last?.kind === EventKind.Chunk && frame.ownLine) {
-      if (token.text) {
-        last.token.text = last.token.text
-          ? last.token.text.endsWith('\n')
-            ? `${last.token.text}${token.text}`
-            : `${last.token.text} ${token.text}`
-          : token.text
-      } else if (token.next?.kind === TokenKind.Chunk) {
-        last.token.text += '\n\n'
+    // merge consecutive chunks inside a multiline text to keep things clean: the last event is replaced by one
+    // holding both texts, at the first one's span
+    if (last?.kind === 'read-chunk' && frame.ownLine) {
+      if (text) {
+        const merged = last.text ? (last.text.endsWith('\n') ? `${last.text}${text}` : `${last.text} ${text}`) : text
+        events[events.length - 1] = { ...last, text: merged }
+      } else if (after()?.kind === 'chunk') {
+        events[events.length - 1] = { ...last, text: `${last.text}\n\n` }
       }
     } else {
-      events.push({ kind: EventKind.Chunk, token })
+      events.push({ kind: 'read-chunk', text, span: token.span })
     }
   }
 
   function integer(token: Token) {
     startContent()
     events.push({
-      kind: EventKind.Integer,
-      token,
+      kind: 'read-integer',
+      text: token.text,
+      span: token.span,
       // thousand separators are presentation only: `2,440,588` is the number 2440588
       value: parseInt(token.text.replace(/,/g, ''), 10),
     })
@@ -394,54 +391,40 @@ export function buildEvents(tokens: TokenList): EventResult {
   function comma(leafBefore: '' | 'literal' | 'call') {
     if (top()?.kind === Context.Name) {
       pop()
-      events.push({ kind: EventKind.CloseName })
+      events.push({ kind: 'close-name' })
     }
 
     // A literal and a call closed by its own `)` open no level, so there is no level of theirs for the comma to
     // pop. The part after the comma stays at THEIR level: `want hold, is-equal get(found, 1), 14` gives
     // `is-equal` two arguments, and `code <1>, <2>` gives `code` two children.
     if (
-      (leafBefore === 'call' && commaAfterLeafStays !== false) ||
-      (leafBefore === 'literal' && commaAfterLeafStays === true)
+      (leafBefore === 'call' && afterLeafRule !== 'pops') ||
+      (leafBefore === 'literal' && afterLeafRule === 'stays')
     ) {
       return
     }
 
-    const closeOne = (): boolean => {
-      if (top()?.kind !== Context.Group) {
-        return false
-      }
-
-      // the line's head, or a parenthesis owner, is the floor: a comma never escapes past it, so the head stays
-      // open to receive what follows
-      const below = contexts[contexts.length - 2]
-
-      if (!below || below.kind === Context.Indent || below.kind === Context.Root) {
-        return false
-      }
-
-      pop()
-      events.push({ kind: EventKind.CloseGroup })
-
-      return true
-    }
-
-    if (commaPopsOneLevel) {
-      closeOne()
-
+    if (top()?.kind !== Context.Group) {
       return
     }
 
-    while (closeOne()) {
-      // the superseded rule: close every nested group back to the line head
+    // the line's head, or a parenthesis owner, is the floor: a comma never escapes past it, so the head stays
+    // open to receive what follows
+    const below = contexts[contexts.length - 2]
+
+    if (!below || below.kind === Context.Indent || below.kind === Context.Root) {
+      return
     }
+
+    pop()
+    events.push({ kind: 'close-group' })
   }
 
   function name(token: Token) {
-    openName(token)
+    openName()
 
     if (token.text.includes('/')) {
-      const followsClose = token.previous?.kind === TokenKind.CloseBrace
+      const followsClose = before()?.kind === 'close-brace'
       const segments = token.text.split('/')
 
       for (let i = 0; i < segments.length; i++) {
@@ -469,46 +452,56 @@ export function buildEvents(tokens: TokenList): EventResult {
       }
     }
 
-    events.push({ kind: EventKind.Chunk, token })
+    const follows = followsOf()
+    events.push(follows ? { kind: 'read-chunk', text: token.text, span: token.span, follows } : { kind: 'read-chunk', text: token.text, span: token.span })
   }
 
-  function openName(token: Token) {
-    const previousKind = token.previous?.kind
+  // what the name token here is followed by: `(` then `)`, `(` alone, or neither
+  function followsOf(): Follows | undefined {
+    if (after()?.kind !== 'open-paren') {
+      return undefined
+    }
+
+    return after(2)?.kind === 'close-paren' ? 'empty-parens' : 'paren'
+  }
+
+  function openName() {
+    const previousKind = before()?.kind
 
     if (
       previousKind === undefined ||
-      previousKind === TokenKind.Newline ||
-      previousKind === TokenKind.Comma ||
-      previousKind === TokenKind.OpenBrace ||
-      previousKind === TokenKind.OpenParen ||
-      previousKind === TokenKind.Space
+      previousKind === 'newline' ||
+      previousKind === 'comma' ||
+      previousKind === 'open-brace' ||
+      previousKind === 'open-paren' ||
+      previousKind === 'space'
     ) {
-      events.push({ kind: EventKind.OpenGroup })
+      events.push({ kind: 'open-group' })
       push({ kind: Context.Group })
       startContent()
-      events.push({ kind: EventKind.OpenName })
+      events.push({ kind: 'open-name' })
       push({ kind: Context.Name })
     }
   }
 
   function openInterpolation(token: Token) {
-    const previousKind = token.previous?.kind
+    const previousKind = before()?.kind
 
     if (
       previousKind === undefined ||
-      previousKind === TokenKind.Newline ||
-      previousKind === TokenKind.Space
+      previousKind === 'newline' ||
+      previousKind === 'space'
     ) {
       push({ kind: Context.Group })
-      events.push({ kind: EventKind.OpenGroup })
+      events.push({ kind: 'open-group' })
       push({ kind: Context.Name })
-      events.push({ kind: EventKind.OpenName })
+      events.push({ kind: 'open-name' })
     }
 
     push({ kind: Context.Interpolation, token })
     events.push({
-      kind: EventKind.OpenInterpolation,
-      token,
+      kind: 'open-interpolation',
+      span: token.span,
       depth: token.text.length,
     })
     pushIndent(1)
@@ -522,15 +515,15 @@ export function buildEvents(tokens: TokenList): EventResult {
     walk: while (true) {
       switch (top()?.kind) {
         case Context.Indent:
-          events.push({ kind: EventKind.CloseIndent })
+          events.push({ kind: 'close-indent' })
           pop()
           break
         case Context.Group:
-          events.push({ kind: EventKind.CloseGroup })
+          events.push({ kind: 'close-group' })
           pop()
           break
         case Context.Name:
-          events.push({ kind: EventKind.CloseName })
+          events.push({ kind: 'close-name' })
           pop()
           break
         case Context.Paren:
@@ -543,7 +536,7 @@ export function buildEvents(tokens: TokenList): EventResult {
 
     // the group whose head the paren followed
     if (owned && top()?.kind === Context.Group) {
-      events.push({ kind: EventKind.CloseGroup })
+      events.push({ kind: 'close-group' })
       pop()
 
       return true
@@ -558,21 +551,22 @@ export function buildEvents(tokens: TokenList): EventResult {
 
       switch (frame?.kind) {
         case Context.Name:
-          events.push({ kind: EventKind.CloseName })
+          events.push({ kind: 'close-name' })
           pop()
           break
         case Context.Indent:
-          events.push({ kind: EventKind.CloseIndent })
+          events.push({ kind: 'close-indent' })
           pop()
           break
         case Context.Group:
-          events.push({ kind: EventKind.CloseGroup })
+          events.push({ kind: 'close-group' })
           pop()
           break
         case Context.Interpolation:
+          // at the span of the brace that opened it, as before
           events.push({
-            kind: EventKind.CloseInterpolation,
-            token: frame.token!,
+            kind: 'close-interpolation',
+            span: frame.token!.span,
           })
           pop()
           break walk
@@ -589,15 +583,15 @@ export function buildEvents(tokens: TokenList): EventResult {
     walk: while (true) {
       switch (top()?.kind) {
         case Context.Group:
-          events.push({ kind: EventKind.CloseGroup })
+          events.push({ kind: 'close-group' })
           pop()
           break
         case Context.Indent:
-          events.push({ kind: EventKind.CloseIndent })
+          events.push({ kind: 'close-indent' })
           pop()
           break
         case Context.Name:
-          events.push({ kind: EventKind.CloseName })
+          events.push({ kind: 'close-name' })
           pop()
           break
         case Context.Paren: {

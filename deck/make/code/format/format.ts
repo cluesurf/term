@@ -24,12 +24,9 @@
 // does not make it.
 
 import { escapeTextChunks, parse } from '@term/make/code/parser/tree'
-import type {
-  GroupNode,
-  NameNode,
-  Node,
-  RootNode,
-} from '@term/make/code/parser/tree'
+import type { Node } from '@term/make/code/parser/tree'
+import type { GroupNode, NameNode, RootNode } from '@term/make/code/parser/narrow'
+import { partsOf, groupOf, groupsOf } from '@term/make/code/parser/narrow'
 import { importsOf, programOf } from '@term/make/code/format/meaning'
 
 const WIDTH = 84
@@ -136,25 +133,19 @@ function plainWord(node: Node | undefined): string | undefined {
 }
 
 // a word's last token is followed straight away by `(`: `host(` and `f(` read so. The tree keeps no node for
-// parentheses, so this is read off the token stream, exactly as compile/mint-bridge.ts reads it
+// parentheses, so the chunk says what follows it (`follows`), exactly as compile/mint-bridge.ts reads it
 function opensParen(node: Node | undefined): boolean {
   const last = node?.kind === 'name' ? node.parts[node.parts.length - 1] : undefined
 
-  return last?.kind === 'chunk' && (last.token as { next?: { kind: string } }).next?.kind === 'open-paren'
+  return last?.kind === 'chunk' && last.follows !== undefined
 }
 
-// `f()`: a call with no arguments, which parses exactly as the bare word `f` (the task itself). Only the token
-// stream remembers the parentheses, so the formatter re-emits them from there or drops a call in silence
+// `f()`: a call with no arguments, which parses exactly as the bare word `f` (the task itself). Only the chunk's
+// `follows` remembers the parentheses, so the formatter re-emits them from there or drops a call in silence
 function emptyParens(node: Node | undefined): boolean {
   const last = node?.kind === 'name' ? node.parts[node.parts.length - 1] : undefined
 
-  if (last?.kind !== 'chunk') {
-    return false
-  }
-
-  const open = (last.token as { next?: { kind: string; next?: { kind: string } } }).next
-
-  return open?.kind === 'open-paren' && open.next?.kind === 'close-paren'
+  return last?.kind === 'chunk' && last.follows === 'empty-parens'
 }
 
 // a group that is a CALL: a plain word or a path (`items/push`, `console/log`) with parts of its own, whose first
@@ -174,7 +165,7 @@ function writtenLine(node: Node | undefined): number | undefined {
   const head = node?.kind === 'group' ? node.nodes[0] : node
   const first = head?.kind === 'name' ? head.parts[0] : undefined
 
-  return first?.kind === 'chunk' ? first.token.span.start.line : undefined
+  return first?.kind === 'chunk' ? first.span.start.line : undefined
 }
 
 // IN A LEAN FILE A BARE HEAD UNDER A CALL IS A LABEL OR A CALL, and only the checker knows which: `gap height 3`
@@ -359,14 +350,18 @@ function flatten(node: Node, nested = false, value = false, options: FormatOptio
       //
       // A path written after a call, `greeting()/text`, holds the call as braces the source never had
       // (parser/tree.ts `pathAfterCall`), so it is written back closed and bare.
-      return node.parts
-        .map(p =>
-          p.kind === 'chunk'
-            ? p.text
-            : p.call && p.group
-              ? closedCall(flatten(p.group, p.group.nodes.length > 1, true, options))
-              : `${'{'.repeat(p.depth)}${p.group ? flatten(p.group, false, true, options) : ''}${'}'.repeat(p.depth)}`,
-        )
+      return partsOf(node)
+        .map(p => {
+          if (p.kind === 'chunk') {
+            return p.text
+          }
+
+          const group = groupOf(p)
+
+          return p.call && group
+            ? closedCall(flatten(group, group.nodes.length > 1, true, options))
+            : `${'{'.repeat(p.depth)}${group ? flatten(group, false, true, options) : ''}${'}'.repeat(p.depth)}`
+        })
         .join('')
     case 'text': {
       // a raw literal is written back as it was (parser/token.ts)
@@ -386,19 +381,23 @@ function flatten(node: Node, nested = false, value = false, options: FormatOptio
       // (and the view dialect's field interpolation), `{{x}}` is runtime interpolation, and hardcoding two
       // braces here turned a document's `text <{sound/symbol}>` into `text <{{sound/symbol}}>` — a different
       // construct — the moment anyone canonicalized a guide.
-      return `<${node.parts
-        .map(p =>
-          p.kind === 'chunk'
-            ? escaped[at++]!
-            : // what an interpolation holds is a VALUE (rule 3): `<problem: {read-signal(problem)}>`
-              `${'{'.repeat(p.depth)}${p.group ? flatten(p.group, false, true, options) : ''}${'}'.repeat(p.depth)}`,
-        )
+      return `<${partsOf(node)
+        .map(p => {
+          if (p.kind === 'chunk') {
+            return escaped[at++]!
+          }
+
+          // what an interpolation holds is a VALUE (rule 3): `<problem: {read-signal(problem)}>`
+          const group = groupOf(p)
+
+          return `${'{'.repeat(p.depth)}${group ? flatten(group, false, true, options) : ''}${'}'.repeat(p.depth)}`
+        })
         .join('')}>`
     }
     case 'integer':
     case 'decimal':
     case 'radix':
-      return node.token.text
+      return node.text
     default:
       return ''
   }
@@ -411,7 +410,7 @@ function closedCall(text: string): string {
 }
 
 // a comparable structural fingerprint (ignores comments, spans, parents): used to verify a rendering round-trips
-function shape(node: Node): string {
+function shape(node: Node | RootNode): string {
   switch (node.kind) {
     case 'root':
       return `R(${node.nodes.map(shape).join(',')})`
@@ -850,7 +849,7 @@ export function valuePlaces(group: GroupNode): boolean[] {
 function isGrammar(tree: RootNode, options: FormatOptions): boolean {
   return (
     options.role === 'mill' ||
-    tree.nodes.some(group => {
+    groupsOf(tree.nodes).some(group => {
       const head = headName(group)
 
       return head === 'mine' || head === 'mint'
@@ -871,7 +870,7 @@ function calling(options: FormatOptions, tree: RootNode): FormatOptions {
 function printTreeLaid(tree: RootNode, options: FormatOptions): string {
   // one blank line between top-level definitions; comments ride with their group
   return (
-    tree.nodes
+    groupsOf(tree.nodes)
       .map(group => formatGroup(group, 0, options).join('\n'))
       .join('\n\n') + '\n'
   )

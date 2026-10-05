@@ -57,6 +57,24 @@ task first-two
       hold
         push(out, value)
   back out
+
+# a form of one case: the sift over it is its only arm, a bare block, right after an empty list
+form crate
+  mark tag, name kind
+  case only
+    link counts, like list, like number
+
+task counts-of
+  take value, like crate
+  like list, like number
+
+  save out, make list
+  sift value
+    case only
+      walk counts
+        take one
+        push(out, one)
+  back out
 `
 
 const built = compile({ file: 'held-block.tree', text }, { resolve: withNativeEnv('node', stdlibResolver()!), library: true, leanOf: () => true } as never)
@@ -68,6 +86,7 @@ if (!built.ok) {
   const parsed = (source as unknown as { parseDiagnostics: ts.Diagnostic[] }).parseDiagnostics
   ok('the emitted module parses as TypeScript', parsed.length === 0, parsed.map(d => ts.flattenDiagnosticMessageText(d.messageText, ' ')).join(' | '))
   ok('the held subject is in its block', /const __at\d+ = __termMaybe\(value\.items\)/.test(built.typescript))
+  ok('the only arm of a one-case match opens its block with `;`', /;\{\s*\n\s*const counts = value\.counts/.test(built.typescript))
 }
 
 console.log(`\nheld-block: ${pass} pass, ${fail} fail`)

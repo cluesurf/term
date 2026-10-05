@@ -19,7 +19,9 @@
 // this session); `send back` has no such problem, since it exits the whole task immediately regardless of which
 // branch it's in.
 
-import type { GroupNode, Node, RootNode } from '@term/make/code/parser/tree'
+import type { Node } from '@term/make/code/parser/tree'
+import type { GroupNode, RootNode } from '@term/make/code/parser/narrow'
+import { groupsOf } from '@term/make/code/parser/narrow'
 import { walkGroups } from '@term/make/code/parser/stream'
 import { headWord, spanOfWhole, textOf, wordOf } from './mill-run'
 
@@ -818,7 +820,7 @@ export function feedMineDrops(tree: RootNode): string[] {
   const grammar = readFeedMineGrammar(tree)
   const out: string[] = []
 
-  for (const group of tree.nodes) {
+  for (const group of groupsOf(tree.nodes)) {
     if (headWord(group) !== 'mine') {
       continue
     }
@@ -872,7 +874,7 @@ export function feedMineFaults(tree: RootNode): string[] {
     }
   }
 
-  for (const node of tree.nodes) {
+  for (const node of groupsOf(tree.nodes)) {
     walk(node)
   }
 
@@ -882,7 +884,7 @@ export function feedMineFaults(tree: RootNode): string[] {
 export function readFeedMineGrammar(tree: RootNode): FeedMineGrammar {
   const grammar: FeedMineGrammar = new Map()
 
-  for (const group of tree.nodes) {
+  for (const group of groupsOf(tree.nodes)) {
     if (headWord(group) !== 'mine') {
       continue
     }

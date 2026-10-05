@@ -50,9 +50,6 @@ function findUp(relative: string): string | undefined {
   return undefined
 }
 
-const BUILD_WORKER_SOURCE =
-  findUp('build-worker.ts') ?? findUp(path.join('deck', 'call', 'code', 'build-worker.ts'))
-
 // the package root, whose tsconfig carries the `@term/...` path mappings
 const TSCONFIG = findUp('tsconfig.json')
 
@@ -62,21 +59,26 @@ const TSCONFIG = findUp('tsconfig.json')
 let buildWorkerBundle: string | undefined
 
 function ensureBuildWorkerBundle(): string {
-  if (buildWorkerBundle) {
-    return buildWorkerBundle
-  }
+  buildWorkerBundle ??= bundleWorker('build-worker')
 
-  if (!BUILD_WORKER_SOURCE || !TSCONFIG) {
+  return buildWorkerBundle
+}
+
+// A worker module, bundled once per process. `name` is a file beside this one, `deck/call/code/<name>.ts`
+export function bundleWorker(name: string): string {
+  const source = findUp(`${name}.ts`) ?? findUp(path.join('deck', 'call', 'code', `${name}.ts`))
+
+  if (!source || !TSCONFIG) {
     // fail before esbuild does, so the caller's fallback is taken without esbuild first
     // printing a resolve error that looks like a broken build
     throw new Error(
-      'parallel build unavailable: could not locate build-worker.ts or tsconfig.json',
+      `parallel build unavailable: could not locate ${name}.ts or tsconfig.json`,
     )
   }
 
-  const out = path.join(tmpdir(), `seed-build-worker-${process.pid}.mjs`)
+  const out = path.join(tmpdir(), `term-${name}-${process.pid}.mjs`)
   buildSync({
-    entryPoints: [BUILD_WORKER_SOURCE],
+    entryPoints: [source],
     outfile: out,
     bundle: true,
     platform: 'node',
@@ -85,14 +87,13 @@ function ensureBuildWorkerBundle(): string {
     // the worker imports make.ts for the project resolver, and make.ts dynamically imports THIS module for the parallel
     // build. The worker never runs that path, so keep this module (and the esbuild it pulls) out of the worker bundle
     // rather than bundling esbuild's native binary into a /tmp worker.
-    external: ['@term/call/code/build-parallel'],
+    external: ['@term/call/code/build-parallel', '@term/call/code/build-separate-parallel'],
     // a CJS module in the compiler graph uses `require(...)` (e.g. a node builtin); esbuild's ESM output does not shim
     // dynamic require, so define one from import.meta.url. Without this the worker dies with "Dynamic require not supported".
     banner: {
       js: "import { createRequire as __seedCreateRequire } from 'module'; const require = __seedCreateRequire(import.meta.url);",
     },
   })
-  buildWorkerBundle = out
 
   return out
 }

@@ -24,18 +24,26 @@ load ./node
   find form-extend
   find dock-component
 
+# the expressions gathered so far: every step pushes to the one list the walk holds, so it is `mark shared` (D1), a
+# reference rather than a value copied into each call
+form gathered
+  mark shared
+  link items, like list, like expression
+
 # every expression in these statements, nested blocks and nested tasks included
 task expressions-in
   take statements, like list, like statement
   like list, like expression
 
-  save out, make list
+  save out
+    make gathered
+      bind items, make list
   gather-block(statements, out)
-  back out
+  back out/items
 
 task gather-maybe
   take value, like maybe, like expression
-  take out, like list, like expression
+  take out, like gathered
   like void
   mark private
 
@@ -48,7 +56,7 @@ task gather-maybe
 
 task gather-list
   take values, like list, like expression
-  take out, like list, like expression
+  take out, like gathered
   like void
   mark private
 
@@ -58,11 +66,11 @@ task gather-list
 
 task gather-expression
   take value, like expression
-  take out, like list, like expression
+  take out, like gathered
   like void
   mark private
 
-  push(out, value)
+  push(out/items, value)
   sift value
     case template
       walk parts
@@ -111,7 +119,7 @@ task gather-expression
 
 task gather-block
   take statements, like list, like statement
-  take out, like list, like expression
+  take out, like gathered
   like void
   mark private
 
@@ -121,7 +129,7 @@ task gather-block
 
 task gather-maybe-block
   take block, like maybe, like list, like statement
-  take out, like list, like expression
+  take out, like gathered
   like void
   mark private
 
@@ -134,7 +142,7 @@ task gather-maybe-block
 
 task gather-statement
   take value, like statement
-  take out, like list, like expression
+  take out, like gathered
   like void
   mark private
 
@@ -218,7 +226,7 @@ task gather-statement
 
 task gather-extend
   take extend, like maybe, like form-extend
-  take out, like list, like expression
+  take out, like gathered
   like void
   mark private
 
@@ -236,7 +244,7 @@ task gather-extend
 
 task gather-component
   take component, like maybe, like dock-component
-  take out, like list, like expression
+  take out, like gathered
   like void
   mark private
 
@@ -251,7 +259,7 @@ task gather-component
 
 task gather-views
   take nodes, like list, like view-node
-  take out, like list, like expression
+  take out, like gathered
   like void
   mark private
 
@@ -286,7 +294,7 @@ task gather-views
 
 task gather-calls
   take calls, like list, like dock-call
-  take out, like list, like expression
+  take out, like gathered
   like void
   mark private
 
@@ -298,7 +306,7 @@ task gather-calls
 
 task gather-route
   take route, like dock-route
-  take out, like list, like expression
+  take out, like gathered
   like void
   mark private
 

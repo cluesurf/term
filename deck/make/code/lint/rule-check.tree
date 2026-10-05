@@ -169,7 +169,8 @@ task has-text
 
 # ---- statement rules ----
 
-# L024: the same native module is loaded (`dock load`) more than once
+# L024: the same native module is loaded (`dock load`) more than once. The extra loads are redundant -- collapse them to
+# one. The driver precomputes the set of modules that appear more than once.
 task no-duplicate-load
   take node, like statement
   take facts, like lint-facts
@@ -184,7 +185,9 @@ task no-duplicate-load
       back none-reported()
   back none-reported()
 
-# L006: a `fork test` whose condition is a boolean literal is always, or never, taken
+# L006: a `fork test` whose condition is a boolean literal is dead control flow -- the branch is always (or never)
+# taken. `fork test / hook test, wave true` should be the body itself; `wave false` should be dropped. Report only,
+# since the right fix (collapse the fork, or correct the condition) is the author's call.
 task no-constant-condition
   take node, like statement
   like list, like rule-report
@@ -203,7 +206,9 @@ task no-constant-condition
       back out
   back out
 
-# L035: a `fork case` with no arms and no `otherwise` handles nothing
+# L035: a `fork case` with no arms (`case` children) and no `otherwise` matches a value but handles nothing, so it is
+# dead scaffolding or an unfinished match. Report only: filling in the arms (or removing the empty fork) is the author's
+# call. This is more specific than no-empty-block, which does not cover a match with zero cases.
 task no-empty-fork-case
   take node, like statement
   like list, like rule-report
@@ -221,7 +226,11 @@ task no-empty-fork-case
       back none-reported()
   back none-reported()
 
-# L008: a native import whose alias nothing reads
+# L008: a native module binding (`dock load / load <node:fs/promises>, name fs`) whose alias is never referenced is dead
+# weight, and on a strict backend it can pull in a module that need not be linked at all. The driver collects every name
+# read anywhere in the program (including inside callback bodies) once and hands it in as `context.referenced`; if the
+# alias is absent, nothing uses the import. Report only: the safe fix (delete the line, and the enclosing `dock load` if
+# it becomes empty) is the author's call.
 task no-unused-load
   take node, like statement
   take facts, like lint-facts
@@ -236,7 +245,9 @@ task no-unused-load
     miss
       back none-reported()
 
-# L012: a two-way fork whose branches run the same statements
+# L012: a `fork test` whose then-branch (`hook hold`) and else-branch (`hook miss`) run exactly the same statements. The
+# condition then changes nothing -- a copy-paste bug, or a leftover after the two branches were meant to diverge. Only
+# fires on a simple two-way fork with fully, structurally identical bodies.
 task no-identical-branches
   take node, like statement
   like list, like rule-report
@@ -259,7 +270,8 @@ task no-identical-branches
       back none-reported()
   back none-reported()
 
-# L013: two arms of a `fork case` with one label: the later can never run
+# L013: two arms of a `fork case` with the same label. The earlier arm always matches first, so the later one can never
+# run -- dead code, usually a typo or a copy-paste that should have named a different variant.
 task no-duplicate-case
   take node, like statement
   like list, like rule-report
@@ -283,7 +295,8 @@ task no-duplicate-case
       back out
   back out
 
-# L028: a value-less `send back` as the last statement of a task does nothing
+# L028: a value-less `send back` as the very last statement of a function does nothing -- the function returns at the
+# end anyway. Remove it.
 task no-useless-return
   take node, like statement
   like list, like rule-report
@@ -347,7 +360,8 @@ task ends-in-continue
     miss
       back none-reported()
 
-# L022: a `turn next` as the last statement of a loop does nothing
+# L022: a `turn next` (continue) as the last statement of a loop body does nothing -- the loop would advance anyway.
+# Remove it.
 task no-redundant-continue
   take node, like statement
   like list, like rule-report
@@ -360,7 +374,8 @@ task no-redundant-continue
     miss
       back none-reported()
 
-# L025: a negated condition with an else reads backward
+# L025: a `fork test` whose condition is a negation (`fork lack ...`) and which also has a `hook miss` (else) reads
+# backward -- the reader parses the negative case first. Invert the condition and swap the branches for clarity.
 task no-negated-condition
   take node, like statement
   like list, like rule-report
@@ -454,7 +469,9 @@ task cond-span
     case hole
       back span
 
-# L009: a branch whose condition repeats an earlier one in the same fork can never run
+# L009: two branches of one `fork test` chain with structurally identical conditions. The later branch can never run
+# (the earlier identical condition always wins), so it is dead code, almost always a copy-paste where a different
+# condition was meant. Only stable conditions are compared, so a chain of distinct effectful checks is never flagged.
 task no-duplicate-branch-condition
   take node, like statement
   like list, like rule-report
@@ -485,7 +502,9 @@ task no-duplicate-branch-condition
       back out
   back out
 
-# L010: an assignment of a stable place to itself has no effect
+# L010: an assignment whose target and value are the same place (`save x, read x`, `save p/x, read p/x`). It has no
+# effect and is almost always a mistake (a wrong operand, or a change that was forgotten). Restricted to the plain `=`
+# form and stable places, so a compound `x += x` (which doubles x) and an effectful target are never misreported.
 task no-self-assignment
   take node, like statement
   like list, like rule-report
@@ -503,7 +522,8 @@ task no-self-assignment
       back none-reported()
   back none-reported()
 
-# L026: an else holding only another fork should be an else-if arm
+# L026: a `hook miss` (else) whose only statement is another `fork test` should be an else-if (`hook test`) arm of the
+# same fork instead, flattening a needless level of nesting.
 task no-lonely-if
   take node, like statement
   like list, like rule-report
@@ -552,7 +572,8 @@ task ends-in-exit
     miss
       back false
 
-# L023: an else is unnecessary when every branch above it exits
+# L023: when every branch of a `fork test` already exits (`send back` / `halt` / `throw`), the `hook miss` (else) is
+# unnecessary -- its body can be unindented to follow the fork. Reduces nesting.
 task no-else-return
   take node, like statement
   like list, like rule-report
@@ -592,7 +613,8 @@ task is-empty-block
     case none
       back false
 
-# L005: a branch or loop with no body. A task with no body is a signature, and is left alone
+# L005: a control-flow block with no body (an empty `fork` branch or `walk` loop) is almost always a mistake or dead
+# scaffolding. Report only: the right fix (fill it in or delete it) is the author's call.
 task no-empty-block
   take node, like statement
   like list, like rule-report
@@ -630,7 +652,8 @@ task no-empty-block
 
 # ---- expression rules ----
 
-# L015: a record literal that sets one field twice
+# L015: a record literal (`make <form>`) that sets the same field twice. The later value silently wins, so the earlier
+# one is dead -- almost always a copy-paste or a typo.
 task no-duplicate-keys
   take node, like expression
   like list, like rule-report
@@ -650,7 +673,8 @@ task no-duplicate-keys
       back out
   back out
 
-# L016: a double negation cancels out
+# L016: a double negation (`fork lack` of a `fork lack`, i.e. `!!x`) cancels out. Use the value directly. Often a
+# leftover from a refactor or a misunderstanding of truthiness.
 task no-double-negation
   take node, like expression
   like list, like rule-report
@@ -678,7 +702,8 @@ task no-double-negation
     miss
       back none-reported()
 
-# L021: two string literals joined, which can be one literal
+# L021: concatenating two string literals (`text <a>` + `text <b>`) can always be written as one literal. The split adds
+# a runtime concat and reads worse.
 task no-useless-concat
   take node, like expression
   like list, like rule-report
@@ -712,7 +737,10 @@ task no-useless-concat
     miss
       back none-reported()
 
-# L033: a negated equality reads better as the opposite comparison
+# L033: a negation wrapped around an equality (`fork lack` of `is-equal(a, b)`, i.e. `!(a == b)`) is clearer written as
+# the opposite comparison. `!(a == b)` is `is-not-equal(a, b)`; `!(a != b)` is `is-equal(a, b)`. Report only: the
+# equality is spelled as a nested call in the source (no inline operator token to flip), and the inline call form the
+# rewrite would need does not round-trip reliably, so a fix could corrupt the operands. The author makes the swap.
 task no-negated-equality
   take node, like expression
   like list, like rule-report
@@ -741,7 +769,9 @@ task no-negated-equality
     miss
       back none-reported()
 
-# L007: comparing a stable expression to itself is constant
+# L007: comparing an expression to itself (`is-equal(x, x)`, `x is-below x`) is always true or always false. It is
+# almost always a typo for a different operand, or leftover dead code. Report only; the fix is to correct the operand,
+# which the linter cannot guess.
 task no-self-comparison
   take node, like expression
   like list, like rule-report
@@ -780,7 +810,8 @@ task is-literal
     miss
       back false
 
-# L014: a comparison of two literals never changes
+# L014: a comparison whose BOTH operands are literals (`5 < 3`, `text <a> == text <b>`) has a result fixed at compile
+# time, so the comparison is pointless -- usually a leftover debug value or a typo for a variable operand.
 task no-constant-binary-expression
   take node, like expression
   like list, like rule-report
@@ -808,7 +839,10 @@ task map-key-text
     miss
       back <>
 
-# L036: a map literal that sets one constant key twice
+# L036: a map literal (`make hash`) that sets the same key twice. As with a duplicate record field, the later value
+# silently wins, so the earlier entry is dead -- almost always a copy-paste or a typo. The record-literal analog is
+# no-duplicate-keys (L015); this covers the map (`make hash`) literal, whose keys are constant strings. Report only: the
+# author decides which entry to keep.
 task no-duplicate-map-key
   take node, like expression
   like list, like rule-report
@@ -862,7 +896,9 @@ task is-boolean-literal
     miss
       back false
 
-# L017: comparing to a boolean literal is redundant
+# L017: comparing a value to a boolean literal (`x == wave true`, `flag != wave false`) is redundant -- the value is
+# already a boolean. Use `x` (or its negation) directly. A common verbosity, and `== true` quietly differs from a
+# truthiness check on non-boolean values, so flagging it nudges toward the clearer form.
 task no-boolean-literal-comparison
   take node, like expression
   like list, like rule-report
@@ -891,7 +927,10 @@ task no-boolean-literal-comparison
     miss
       back none-reported()
 
-# L032: a conditional whose two arms are opposite boolean literals is its condition
+# L032: a value-position conditional (`save x / fork test / hook test <c> / hook hold, wave true / hook miss, wave
+# false`) whose two arms are the opposite boolean literals is just the condition itself. Use the condition directly. The
+# expression-level analog of no-redundant-boolean. Fixable only on the non-negating shape (`true` arm / `false`
+# otherwise), where the result is the bare condition; the reverse needs a negation, so it is reported without a fix.
 task no-redundant-conditional
   take node, like expression
   like list, like rule-report
@@ -961,7 +1000,11 @@ task is-zero
     miss
       back false
 
-# L034: a size compared to zero reads better as an emptiness check
+# L034: comparing a collection's size to zero (`is-equal(size(items), 0)`, `is-above(size(items), 0)`) reads more
+# clearly as an emptiness check (`is-empty` / `is-not-empty`). Report only: the right replacement name depends on the
+# operator and the linter does not assume one canonical helper exists in scope, so it points at the pattern and lets the
+# author choose. Conservative: fires only when exactly one operand is a `size(x)` call and the other is the integer
+# literal 0.
 task prefer-is-empty
   take node, like expression
   like list, like rule-report
@@ -1096,7 +1139,8 @@ task is-terminator
     miss
       back false
 
-# L018: a binding returned on the very next line should be returned directly
+# L018: a binding that exists only to be returned on the very next line (`save x, <e>` then `send back, read x`). Return
+# the expression directly. A common leftover that adds a needless name.
 task prefer-direct-return
   take node, like statement
   like list, like rule-report
@@ -1139,7 +1183,10 @@ task prefer-direct-return
         save at, add(at, 1)
   back out
 
-# L011: a statement after a terminator in the same block never runs. The first in each block only
+# L011: a statement that directly follows a terminator (`send back`, `halt`, `turn next`, `throw`, exit) in the same
+# block can never run. The IR pass drops it silently; this surfaces it to the author, who usually left it by mistake (a
+# stray line after an early return, or a misindented statement). Only the unambiguous case is flagged -- a terminator
+# and its sibling in one block -- never cross-branch flow, so there are no false positives.
 task no-unreachable-code
   take node, like statement
   like list, like rule-report
@@ -1187,7 +1234,11 @@ task returned-boolean
     miss
       back <>
 
-# L031: a fork returning opposite boolean literals from its two branches is its condition
+# L031: a `fork test` that returns `wave true` from its only branch and `wave false` from its else (or the reverse) is
+# just the condition itself (or its negation). Return the boolean condition directly. The classic `if cond { return true
+# } else { return false }` verbosity. Fixable only on the non-negating shape, where the result is the bare condition
+# sliced verbatim; the negating shape (`true` in the else) is reported without a fix because the rewrite needs a `fork
+# lack` wrapper.
 task no-redundant-boolean
   take node, like statement
   like list, like rule-report
@@ -1275,7 +1326,8 @@ task collect-returns
       miss
         turn next
 
-# L027: a function returning a value on some paths and nothing on others
+# L027: a function that returns a value on some paths (`send back x`) but nothing on others (`send back`) is usually a
+# bug -- a path that forgot its value. Either every `send back` carries a value or none does.
 task consistent-return
   take node, like statement
   like list, like rule-report
@@ -1374,7 +1426,9 @@ task written-name
       back name
   back strip-counter(once)
 
-# L001: declared names are kebab-case. A name the compiler invented (`__slot`) is left alone
+# L001: declared names are kebab-case (lowercase words joined by single dashes), the house identifier convention. No
+# camelCase, no underscores, no abbreviations enforced here (that needs a dictionary) but the shape is. Report only: a
+# rename fix would have to update every reference, which is a refactor, not a local edit.
 task kebab-names
   take node, like statement
   like list, like rule-report
@@ -1439,7 +1493,10 @@ task is-number-literal
     miss
       back false
 
-# L003: arithmetic with a neutral operand. `x * 0` is left alone: dropping `x` would drop its effects
+# L003: arithmetic with a neutral operand (`x + 0`, `0 + x`, `x - 0`, `x * 1`, `1 * x`, `x / 1`) is redundant. Fixable:
+# the fix replaces the whole expression with the surviving operand, sliced verbatim from the source so the edit is
+# exact. Only the identities that preserve the other operand's value AND its side effects are offered, so `x * 0` is
+# deliberately excluded (it would drop x, whose evaluation may have effects). Mirrors the IR simplifier.
 task no-redundant-arithmetic
   take node, like expression
   like list, like rule-report

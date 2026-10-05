@@ -6,7 +6,6 @@
 // Soundness controls: every polynomial that genuinely dips below zero is rejected. Run: npx tsx test/check/cad-multivariate.ts
 
 import { bivariateNonNegative } from '@term/make/code/check/cad'
-import type { Bivariate } from '@term/make/code/check/cad'
 
 let pass = 0
 let fail = 0
@@ -22,7 +21,8 @@ function ok(name: string, cond: boolean): void {
 }
 
 // build a bivariate from a list of `[i, j, coeff]` terms (coeff of x^i y^j)
-function biv(terms: [number, number, bigint][]): Bivariate {
+// a bivariate as check/cad takes it: each coefficient a big integer, `{ dock }` on TypeScript
+function biv(terms: [number, number, bigint][]): { dock: bigint }[][] {
   let maxI = 0
   let maxJ = 0
 
@@ -31,7 +31,7 @@ function biv(terms: [number, number, bigint][]): Bivariate {
     maxJ = Math.max(maxJ, j)
   }
 
-  const out: Bivariate = []
+  const out: bigint[][] = []
 
   for (let i = 0; i <= maxI; i++) {
     out.push(new Array(maxJ + 1).fill(0n))
@@ -41,7 +41,7 @@ function biv(terms: [number, number, bigint][]): Bivariate {
     out[i]![j] = c
   }
 
-  return out
+  return out.map(row => row.map(value => ({ dock: value })))
 }
 
 // 1. x^2 + y^2 >= 0 everywhere (a sum of squares -- the easy case, but still bivariate).

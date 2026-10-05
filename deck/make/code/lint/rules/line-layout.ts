@@ -22,7 +22,9 @@
 
 import type { Rule } from '@term/make/code/lint/rule'
 import { parse } from '@term/make/code/parser/tree'
-import type { GroupNode, Node } from '@term/make/code/parser/tree'
+import type { Node } from '@term/make/code/parser/tree'
+import type { GroupNode } from '@term/make/code/parser/narrow'
+import { groupsOf, isGroup, partsOf } from '@term/make/code/parser/narrow'
 import type { Span } from '@term/make/code/parser/diagnostic'
 import { formatGroupLines, valuePlaces } from '@term/make/code/format/format'
 import { programOf } from '@term/make/code/format/meaning'
@@ -49,10 +51,10 @@ function extent(node: Node): { first?: Span['start']; last?: Span['end'] } {
         break
       case 'name':
       case 'text':
-        for (const part of n.parts) {
+        for (const part of partsOf(n)) {
           if (part.kind === 'chunk') {
-            take(part.token.span)
-          } else if (part.group) {
+            take(part.span)
+          } else if (isGroup(part.group)) {
             visit(part.group)
           }
         }
@@ -61,7 +63,7 @@ function extent(node: Node): { first?: Span['start']; last?: Span['end'] } {
       case 'integer':
       case 'decimal':
       case 'radix':
-        take(n.token.span)
+        take(n.span)
         break
       default:
         break
@@ -180,7 +182,7 @@ export const lineLayout: Rule = {
       })
     }
 
-    for (const group of tree.nodes) {
+    for (const group of groupsOf(tree.nodes)) {
       visit(group, false, undefined)
     }
   },

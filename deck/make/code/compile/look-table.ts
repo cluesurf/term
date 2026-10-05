@@ -11,7 +11,7 @@
 // The sheet is read with the compiler's parser and look-css.ts's accessors, so there is still one reader of `look`.
 
 import { parse } from '@term/make/code/parser/tree'
-import type { GroupNode } from '@term/make/code/parser/tree'
+import type { GroupNode } from '@term/make/code/parser/narrow'
 import {
   argName,
   BREAKPOINT,

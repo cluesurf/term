@@ -41,7 +41,9 @@ import {
   linear,
   noteUncertified,
   proves,
+  uncertifiedCount,
 } from '@term/make/code/check/refine'
+import { hashText } from '@term/make/code/term/hash'
 import { checkGram, gramKey } from '@term/make/code/check/certificate'
 import { counterexample, printAssignment, printExpression } from '@term/make/code/check/explain'
 import type { Fact } from '@term/make/code/check/product'
@@ -50,10 +52,7 @@ import {
   positiveEverywhere as sturmPositiveEverywhere,
   nonNegativeEverywhere as sturmNonNegativeEverywhere,
 } from '@term/make/code/check/sturm'
-import {
-  bivariateNonNegative,
-  type Bivariate,
-} from '@term/make/code/check/cad'
+import { bivariateNonNegative } from '@term/make/code/check/cad'
 import {
   nonNegativeEverywhereNvar,
   nPoly,
@@ -1704,7 +1703,8 @@ function sturmProves(expr: Expression): boolean {
 // the bivariate coefficient table of a polynomial (`table[i][j]` = coefficient of `var0^i var1^j`), or null if it does
 // not mention exactly two variables. A monomial key is the variables joined by spaces, so the power of each variable is
 // the count of its occurrences.
-function bivariateCoefficients(poly: Poly): Bivariate | null {
+// `coeff[i][j]`, the integer coefficient of `x^i y^j`
+function bivariateCoefficients(poly: Poly): bigint[][] | null {
   const vars: string[] = []
 
   for (const [key, coefficient] of poly) {
@@ -1804,7 +1804,8 @@ function bivariateProves(expr: Expression): boolean {
     return false
   }
 
-  return bivariateNonNegative(table)
+  // check/cad takes each coefficient as a big integer, `{ dock }` on TypeScript
+  return bivariateNonNegative(table.map(row => row.map(c => ({ dock: c }))))
 }
 
 // a NON-STRICT goal `L >= R` / `R <= L` whose THREE-OR-MORE-variable difference is non-negative for all real values,
@@ -1887,7 +1888,8 @@ function nvarProves(expr: Expression): boolean {
     terms.push([exps, BigInt(Math.round(coefficient))])
   }
 
-  return nonNegativeEverywhereNvar(nPoly(terms), vars.length)
+  // check/cad-nvar takes each term as its exponents and a big-integer coefficient, `{ dock }` on TypeScript
+  return nonNegativeEverywhereNvar(nPoly(terms.map(([exponents, c]) => ({ exponents, coefficient: { dock: c } }))), vars.length)
 }
 
 function nonlinearProves(expr: Expression): boolean {
@@ -3233,6 +3235,27 @@ export function checkHolds(
         ...statement.params.filter(p => p.type?.kind === 'string').map(p => p.name),
         ...(statement.result?.kind === 'string' ? ['back'] : []),
       ])
+
+      // A TASK WHOSE EVERY HOLD WAS PROVEN BEFORE, ASKED THE SAME QUESTION, IS PROVEN AGAIN (step 12): see `holdKey`
+      const key = statement.theorem
+        ? undefined
+        : holdKey(statement, { pure, stateFree, keeping, returning, functions, tables, globals, constants, options })
+      const kept = key !== undefined ? HOLD_MEMO.get(key) : undefined
+
+      if (kept) {
+        replayHolds(kept, options.tally)
+        continue
+      }
+
+      const before = {
+        diagnostics: diagnostics.length,
+        failed: options.tally?.failed.length ?? 0,
+        total: options.tally?.total ?? 0,
+        proven: options.tally?.proven ?? 0,
+        kinds: structuredClone(options.tally?.kinds ?? {}),
+        uncertified: uncertifiedCount(),
+      }
+
       walkHolds(statement.body, base, {
         diagnostics,
         file,
@@ -3255,6 +3278,16 @@ export function checkHolds(
           ? `${statement.method.form}/${statement.method.name}`
           : statement.name,
       })
+
+      // kept only when the walk refused nothing: its answer is then counts alone, with no place in a file
+      if (key !== undefined && diagnostics.length === before.diagnostics && (options.tally?.failed.length ?? 0) === before.failed) {
+        rememberHolds(key, {
+          total: (options.tally?.total ?? 0) - before.total,
+          proven: (options.tally?.proven ?? 0) - before.proven,
+          kinds: kindsAdded(before.kinds, options.tally?.kinds ?? {}),
+          uncertified: uncertifiedCount() - before.uncertified,
+        })
+      }
     } else if (statement.form === 'hold' && !options.only) {
       // (a pass limited to some tasks leaves the module-level holds to the pass over the whole program)
       // a top-level `hold` declared at module scope: prove it with no assumptions (it has no enclosing parameters).
@@ -3277,6 +3310,137 @@ export function checkHolds(
   }
 
   return diagnostics
+}
+
+// PER-DEFINITION HOLDS (note/term/plan/incremental-best-in-class.md, step 12). When a unit is built again because its
+// own text changed, every task in it was walked by the provers again, and the provers are most of what building a
+// unit costs (2.05 s of 4.3 s on a warm `term test` of the standard library). A task's walk reads its own checked
+// statement and, of the whole program, the facts about the names it mentions: which are pure, state-free,
+// length-keeping or fresh-returning, which are functions, globals, constants, extrema, number fields, list pushes and
+// pops, the constant tables, the theorems and which of them are proven, and the proof budget. All of that is its key.
+//
+// Only a walk that refused NOTHING is kept: its answer is then the counts it added to the tally and nothing else, no
+// diagnostic and so no line, no column and no file, which is what makes it safe to hand to the same task moved down
+// the file or built in another clone. A walk that refused something is walked every time, and so is a theorem, whose
+// proof later tasks may cite. The provers' atom counters and memo tables are keyed apart per atom, and no message
+// names an atom, so a walk not taken disturbs no other
+type HoldDelta = {
+  total: number
+  proven: number
+  kinds: Partial<Record<Tier0, { total: number; proven: number }>>
+  uncertified: number
+}
+
+const HOLD_MEMO = new Map<string, HoldDelta>()
+// one answer per task text and context: past this the memo starts over rather than grow for a whole session
+const HOLD_MEMO_CAP = 50_000
+
+function rememberHolds(key: string, delta: HoldDelta): void {
+  if (HOLD_MEMO.size >= HOLD_MEMO_CAP) {
+    HOLD_MEMO.clear()
+  }
+
+  HOLD_MEMO.set(key, delta)
+}
+
+// what a kept walk added, added again
+function replayHolds(delta: HoldDelta, tally: Tally | undefined): void {
+  holdsReplayed.tasks++
+
+  for (let i = 0; i < delta.uncertified; i++) {
+    noteUncertified()
+  }
+
+  if (!tally) {
+    return
+  }
+
+  tally.total += delta.total
+  tally.proven += delta.proven
+
+  for (const [kind, count] of Object.entries(delta.kinds) as [Tier0, { total: number; proven: number }][]) {
+    const into = ((tally.kinds ??= {})[kind] ??= { total: 0, proven: 0 })
+    into.total += count.total
+    into.proven += count.proven
+  }
+}
+
+// how many tasks' walks were answered from the memo, for the step's test (test/check/hold-memo.ts)
+export const holdsReplayed = { tasks: 0 }
+
+// forget every kept walk, so a test can ask the provers afresh
+export function clearHoldMemo(): void {
+  HOLD_MEMO.clear()
+}
+
+function kindsAdded(before: HoldDelta['kinds'], after: HoldDelta['kinds']): HoldDelta['kinds'] {
+  const out: HoldDelta['kinds'] = {}
+
+  for (const [kind, count] of Object.entries(after) as [Tier0, { total: number; proven: number }][]) {
+    const was = before[kind] ?? { total: 0, proven: 0 }
+
+    if (count.total !== was.total || count.proven !== was.proven) {
+      out[kind] = { total: count.total - was.total, proven: count.proven - was.proven }
+    }
+  }
+
+  return out
+}
+
+// everything a task's walk reads, as one key: the task as checked, without its places, and every whole-program fact
+// about a name it mentions
+function holdKey(
+  statement: Extract<Statement, { form: 'function' }>,
+  context: {
+    pure: Set<string>
+    stateFree: Set<string>
+    keeping: Set<string>
+    returning: Set<string>
+    functions: Set<string>
+    tables: Inequality[]
+    globals: Set<string>
+    constants: Set<string>
+    options: { originOnly?: boolean; tally?: Tally }
+  },
+): string {
+  const names = new Set<string>()
+  const text = JSON.stringify(statement, (key, value: unknown) => {
+    if (key === 'span') {
+      return undefined
+    }
+
+    if (typeof value === 'string') {
+      names.add(value)
+    }
+
+    return typeof value === 'bigint' ? `${value}n` : value
+  })
+  const mentioned = (set: Set<string>): string[] => [...names].filter(name => set.has(name)).sort()
+  const mentionedOf = <V>(map: Map<string, V>, show: (value: V) => unknown = value => value): [string, unknown][] =>
+    [...names].filter(name => map.has(name)).sort().map(name => [name, show(map.get(name)!)])
+
+  return hashText(
+    JSON.stringify([
+      text,
+      mentioned(context.pure),
+      mentioned(context.stateFree),
+      mentioned(context.keeping),
+      mentioned(context.returning),
+      mentioned(context.functions),
+      mentioned(context.globals),
+      mentioned(context.constants),
+      mentioned(listPushes),
+      mentioned(listPops),
+      mentionedOf(extrema),
+      mentionedOf(numberFields, fields => [...fields].sort()),
+      mentionedOf(theorems, theorem => JSON.stringify(theorem, (key, value: unknown) => (key === 'span' ? undefined : typeof value === 'bigint' ? `${value}n` : value))),
+      mentionedOf(provenTheorems),
+      context.tables.filter(q => [...q.linear.terms.keys()].some(term => names.has(keyRoot(term)))).map(rowKey).sort(),
+      context.options.originOnly === true,
+      context.options.tally !== undefined,
+      proofBudget(),
+    ]),
+  )
 }
 
 // what a walk needs besides its assumptions: where to report, which tasks are pure, which names the enclosing task

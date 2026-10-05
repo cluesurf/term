@@ -4,7 +4,8 @@
 // language server drives: one parse, then format + lint + compile all read the same result. See plans/19-format-and-lint.
 
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
-import type { RootNode } from '@term/make/code/parser/tree'
+import type { RootNode } from '@term/make/code/parser/narrow'
+import { groupsOf } from '@term/make/code/parser/narrow'
 import { parseTolerant } from '@term/make/code/parser/tree'
 import { expandTemplates } from '@term/make/code/compile/template'
 import { mill } from '@term/make/code/compile/mill'
@@ -78,7 +79,7 @@ function suppressions(tree: RootNode): Map<number, Set<string>> {
     }
   }
 
-  for (const group of tree.nodes) {
+  for (const group of groupsOf(tree.nodes)) {
     visit(group)
   }
 

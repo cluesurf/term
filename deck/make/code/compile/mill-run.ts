@@ -22,11 +22,9 @@
 // make passes through: a single matched case's value rides out as it is (a literal keeps its own data kind, a
 // word rides as its text), which is what a pure alternation (host-entry, host-scalar) wants.
 
-import type {
-  GroupNode,
-  Node,
-  RootNode,
-} from '@term/make/code/parser/tree'
+import type { Node } from '@term/make/code/parser/tree'
+import type { GroupNode, RootNode } from '@term/make/code/parser/narrow'
+import { partsOf, groupsOf } from '@term/make/code/parser/narrow'
 import type { Span } from '@term/make/code/parser/diagnostic'
 import { unescapeText } from '@term/make/code/compile/surface'
 
@@ -105,17 +103,17 @@ export function spanOfWhole(node: Node): Span {
     case 'integer':
     case 'decimal':
     case 'radix':
-      return node.token.span
+      return node.span
     case 'name':
 
     case 'text': {
       const chunk = node.parts.find(p => p.kind === 'chunk')
 
-      return chunk?.kind === 'chunk' ? chunk.token.span : ZERO_SPAN
+      return chunk?.kind === 'chunk' ? chunk.span : ZERO_SPAN
     }
 
     case 'chunk':
-      return node.token.span
+      return node.span
 
     case 'group': {
       const head = node.nodes[0]
@@ -147,12 +145,12 @@ export function spanOfNode(node: Node | undefined): Span | undefined {
     case 'text': {
       const part = node.parts[0]
 
-      return part && 'token' in part ? part.token.span : undefined
+      return part?.kind === 'chunk' ? part.span : undefined
     }
     case 'integer':
     case 'decimal':
     case 'radix':
-      return node.token.span
+      return node.span
     case 'group':
       return spanOfNode(node.nodes[0])
     default:
@@ -169,11 +167,11 @@ export function wordOf(node: Node | undefined): string | undefined {
 
   if (node.kind === 'name') {
     // an interpolation part renders as written (`{platform}` in a load path is part of the word)
-    return node.parts
+    return partsOf(node)
       .map(p =>
         p.kind === 'chunk'
           ? p.text
-          : `{${p.group && p.group.nodes[0]?.kind === 'name' ? p.group.nodes[0].parts.map(q => (q.kind === 'chunk' ? q.text : '')).join('') : ''}}`,
+          : `{${p.group?.kind === 'group' && p.group.nodes[0]?.kind === 'name' ? p.group.nodes[0].parts.map(q => (q.kind === 'chunk' ? q.text : '')).join('') : ''}}`,
       )
       .join('')
   }
@@ -342,7 +340,7 @@ function readMineRule(group: GroupNode): MineRule | undefined {
 export function readMineGrammar(tree: RootNode): MineGrammar {
   const grammar: MineGrammar = new Map()
 
-  for (const group of tree.nodes) {
+  for (const group of groupsOf(tree.nodes)) {
     if (headWord(group) !== 'mine') {
       continue
     }
@@ -381,7 +379,7 @@ export function readMineGrammar(tree: RootNode): MineGrammar {
 export function readLeanRules(tree: RootNode): Set<string> {
   const lean = new Set<string>()
 
-  for (const group of tree.nodes) {
+  for (const group of groupsOf(tree.nodes)) {
     if (headWord(group) !== 'mine') {
       continue
     }
@@ -612,7 +610,7 @@ function matchRule(
       }
 
       const value =
-        node.kind === 'decimal' ? Number(node.value) : exactInteger(node.value, node.token.text)
+        node.kind === 'decimal' ? Number(node.value) : exactInteger(node.value, node.text)
       capture(into, rule.site, {
         kind: 'number',
         value,
@@ -839,7 +837,7 @@ export type MintGrammar = Map<string, Mint>
 export function readMintGrammar(tree: RootNode): MintGrammar {
   const grammar: MintGrammar = new Map()
 
-  for (const group of tree.nodes) {
+  for (const group of groupsOf(tree.nodes)) {
     if (headWord(group) !== 'mint') {
       continue
     }

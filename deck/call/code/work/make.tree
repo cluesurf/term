@@ -32,6 +32,8 @@ form make-ask
   link root, like text
   link ride, like boolean
   link separate, like boolean
+  link merged, like boolean
+  link explain, like boolean
   link trees, like boolean
 
 form remote-ask
@@ -44,6 +46,8 @@ task make
   mark async
   take ride, like boolean
   take separate, like boolean
+  take merged, like boolean
+  take explain, like boolean
   take trees, like boolean
 
   like void
@@ -56,6 +60,8 @@ task make
         bind root, read root
         bind ride, read ride
         bind separate, read separate
+        bind merged, read merged
+        bind explain, read explain
         bind trees, read trees
       wait true
   halt take

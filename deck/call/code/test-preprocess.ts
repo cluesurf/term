@@ -7,8 +7,9 @@
 
 import type { Diagnostic, Position, Span } from '@term/make/code/parser/diagnostic'
 import { parseTolerant, renderHead } from '@term/make/code/parser/tree'
+import { groupsOf } from '@term/make/code/parser/narrow'
 import type { Node } from '@term/make/code/parser/tree'
-import { TokenKind, tokenize } from '@term/make/code/parser/token'
+import { tokenize } from '@term/make/code/parser/token'
 
 // the one assertion head, `want`, with a mode named for the fork branch it requires: `want hold` asserts its body (a
 // boolean expression) is true (it holds), `want miss` asserts it is false (it misses). The body holds the actual
@@ -167,7 +168,12 @@ function comparison(rows: Row[]): { head: string; left: Row[]; right: Row[] } | 
     return undefined
   }
 
-  const group = parsed.tree.nodes[0]!
+  const group = groupsOf(parsed.tree.nodes)[0]
+
+  if (!group) {
+    return undefined
+  }
+
   const head = group.nodes[0]
   const first = head?.kind === 'name' ? renderHead(head) : undefined
   // `call is-equal`: the comparison is the word under `call`, and the values follow it
@@ -221,7 +227,7 @@ function saveOf(name: string, value: Row[], want: number, stacked = value.length
 function inlineArguments(line: string): string[] {
   const tokens = tokenize({ file: 'want.tree', text: line })
 
-  if (!tokens.ok) {
+  if (tokens.diagnostics.length > 0) {
     return []
   }
 
@@ -229,24 +235,23 @@ function inlineArguments(line: string): string[] {
   const cuts: number[] = []
   let start: number | undefined
   let depth = 0
-  let token = tokens.tokens.head
   let past = false
 
-  for (; token; token = token.next) {
+  for (const token of tokens.tokens.list) {
     if (!past) {
       // the comparison's own word and the space after it
-      past = token.kind === TokenKind.Space
+      past = token.kind === 'space'
       start = past ? token.span.end.column : undefined
       continue
     }
 
-    if (token.kind === TokenKind.OpenParen || token.kind === TokenKind.OpenAngle || token.kind === TokenKind.OpenBrace) {
+    if (token.kind === 'open-paren' || token.kind === 'open-angle' || token.kind === 'open-brace') {
       depth++
-    } else if (token.kind === TokenKind.CloseParen || token.kind === TokenKind.CloseAngle || token.kind === TokenKind.CloseBrace) {
+    } else if (token.kind === 'close-paren' || token.kind === 'close-angle' || token.kind === 'close-brace') {
       depth--
     }
 
-    if (token.kind === TokenKind.Comma && depth === 0) {
+    if (token.kind === 'comma' && depth === 0) {
       cuts.push(token.span.start.column)
     }
   }
@@ -265,7 +270,7 @@ function inlineArguments(line: string): string[] {
 function readsAs(piece: Row[], stacked: boolean, want: Node): boolean {
   const written = saveOf('x', piece, -1, stacked).map(row => row.text.slice(2))
   const parsed = parseTolerant({ file: 'want.tree', text: written.join('\n') })
-  const saved = parsed.diagnostics.length === 0 ? parsed.tree.nodes[0]?.nodes.slice(2) : undefined
+  const saved = parsed.diagnostics.length === 0 ? groupsOf(parsed.tree.nodes)[0]?.nodes.slice(2) : undefined
 
   return saved?.length === 1 && shapeOf(saved[0]!) === shapeOf(want)
 }

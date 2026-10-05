@@ -16,7 +16,9 @@
 // its own older name, `note-private` (check/private.ts), and not twice.
 
 import type { Span } from '@term/make/code/parser/diagnostic'
-import type { GroupNode, Node, RootNode } from '@term/make/code/parser/tree'
+import type { Node } from '@term/make/code/parser/tree'
+import type { GroupNode, RootNode } from '@term/make/code/parser/narrow'
+import { groupsOf } from '@term/make/code/parser/narrow'
 import { headWord, spanOfNode, wordOf } from '@term/make/code/compile/mill-run'
 
 export const METADATA_WORDS = new Set([
@@ -68,7 +70,7 @@ export function noteMetadataSites(tree: RootNode, source?: string): NoteSite[] {
     }
   }
 
-  for (const group of tree.nodes) {
+  for (const group of groupsOf(tree.nodes)) {
     visit(group, undefined)
   }
 
@@ -165,7 +167,7 @@ export function waitTrueSites(tree: RootNode, source: string): WaitSite[] {
     }
   }
 
-  for (const group of tree.nodes) {
+  for (const group of groupsOf(tree.nodes)) {
     visit(group, undefined)
   }
 

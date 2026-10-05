@@ -41,6 +41,7 @@ form root-ask
 form test-ask
   link root, like text
   link filter, like text
+  link merged, like boolean
 
 form cast-ask
   link root, like text
@@ -59,6 +60,7 @@ form host-ask
 task test
   mark async
   take filter, like text
+  take merged, like boolean
 
   like void
 
@@ -66,7 +68,7 @@ task test
   save root, call project-root
   mark unsafe
     call test-module/callTest
-      make test-ask, bind(root, read root), bind filter, read filter
+      make test-ask, bind(root, read root), bind(filter, read filter), bind merged, read merged
       wait true
   halt take
     take error

@@ -247,9 +247,12 @@ function bindByImport(program: Program, scope: ImportScope | undefined, entry?: 
     return []
   }
 
-  ;[...groups.values()].forEach((group, g) =>
+  // `g` is 0 for every name: the name already tells two groups apart, and a count across groups made one task's
+  // spelling depend on how many OTHER names the program splits, which a unit's cache key cannot see
+  // (task/term/edit-replay.ts, 2026-10-05). `k` counts the name's own files, which its key holds
+  ;[...groups.values()].forEach(group =>
     group.files.forEach((file, k) => {
-      const renamed = file === entry ? group.name : `${group.name}__in${g}_${k}`
+      const renamed = file === entry ? group.name : `${group.name}__in0_${k}`
       group.renamed.set(file, renamed)
       group.byFile.get(file)!.forEach(d => (d.name = renamed))
     }),

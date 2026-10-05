@@ -21,7 +21,7 @@ import { join } from 'node:path'
 import { parse, printTree } from '@term/make/code/parser/tree'
 import { walkGroups } from '@term/make/code/parser/stream'
 import type { StreamResult } from '@term/make/code/parser/stream'
-import type { GroupNode, RootNode } from '@term/make/code/parser/tree'
+import type { GroupNode, RootNode } from '@term/make/code/parser/narrow'
 
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')

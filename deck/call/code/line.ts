@@ -82,6 +82,7 @@ const COMMANDS = [
   'host',
   'bind',
   'self',
+  'update',
   'make',
   'scan',
   'mind',
@@ -709,6 +710,11 @@ const cli = yargs(hideBin(process.argv))
       })
       .demandCommand(1, 'which self verb?'),
   )
+  // `term update` is `term self update`, the one self verb typed often enough to want a short name. need-run.ts sends it
+  // to the front as it does `self`, so a project pinned to an older release cannot answer it with that release's update
+  .command('update', 'Install the newest release and move the front to it (term self update)', {}, async () => {
+    await callSelfUpdate({ root })
+  })
   .command(
     'make [file]',
     'Build/compile the project, or with --emit one program for one backend',
@@ -742,6 +748,11 @@ const cli = yargs(hideBin(process.argv))
           type: 'boolean',
           description:
             'One whole-program compile per file instead, optimized across modules (the build before separate compilation)',
+        })
+        .option('explain', {
+          type: 'boolean',
+          description:
+            'Say why each unit that was built was built: its own text, a name it reaches, its settings, or the compiler',
         })
         .option('trees', {
           type: 'boolean',
@@ -857,6 +868,7 @@ const cli = yargs(hideBin(process.argv))
         ride: argv.ride,
         merged: argv.merged,
         trees: argv.trees,
+        explain: argv.explain,
       })
     },
   )
@@ -925,14 +937,20 @@ const cli = yargs(hideBin(process.argv))
     'test [filter]',
     'Run tests',
     yargs =>
-      yargs.positional('filter', {
-        type: 'string',
-        description: 'Filter tests',
-      }),
+      yargs
+        .positional('filter', {
+          type: 'string',
+          description: 'Filter tests',
+        })
+        .option('merged', {
+          type: 'boolean',
+          description: 'Compile each test file whole, instead of one unit at a time with the units shared across files',
+        }),
     async argv => {
       await callTest({
         root,
         filter: argv.filter,
+        merged: argv.merged,
       })
     },
   )

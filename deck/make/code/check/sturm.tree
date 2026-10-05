@@ -1,0 +1,901 @@
+# Univariate real-arithmetic decision via STURM'S THEOREM: the one-dimensional base case of cylindrical algebraic
+# decomposition (CAD). A real polynomial is the coefficient list `p[i]`, the coefficient of `x^i` (integer
+# coefficients). The Sturm sequence (the polynomial, its derivative, and the negated polynomial remainders) counts the
+# EXACT number of distinct real roots in an interval by the difference of its sign variations at the endpoints. From it
+# every univariate sign condition is decided: the count of roots in `(a, b]`, root ISOLATION into disjoint rational
+# intervals, the sign-invariant CELL decomposition of the real line, and from those `p > 0 everywhere`, `p >= 0
+# everywhere` (complete, including the touching-zero cases), and `p > 0 on (a, b)`.
+#
+# All arithmetic is EXACT: coefficients and sample points are big-integer rationals, so a sign is never a rounded float
+# near a root. This is the sign-invariant decomposition of the real line that CAD lifts to many variables.
+# Browser-safe.
+#
+# Ported from check/sturm.ts (self-hosting, 2026-10-05). A rational is `exact-ratio`, a numerator and a positive
+# denominator in lowest terms, each the stdlib's `big-integer`. Where the original exchanged `[bigint, bigint]` pairs
+# with its callers (`cellSamples`, `cellSamplesBig`, `rationalNonNegativeEverywhere`), the port exchanges ratios and
+# big integers, and the callers build them (on TypeScript a big integer is `{ dock: <bigint> }`). A number coming in is
+# rounded as `Math.round` rounds it, and a ratio going out as a number is its numerator over its denominator, each read
+# as the nearest float, as `Number(bigint)` read them.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/integer/big
+  find big-integer
+  find big-from-number
+  find big-add
+  find big-subtract
+  find big-multiply
+  find big-compare
+
+load @term/base/float
+  find round
+  find to-number
+
+load @term/base/text/number
+  find host-parse-float
+
+# a rational, `n / d`, with `d` positive and the two in lowest terms
+form exact-ratio
+  link n, like big-integer
+  link d, like big-integer
+
+# an open interval holding exactly one root, with endpoints that are not roots
+form root-span
+  link low, like exact-ratio
+  link high, like exact-ratio
+
+# how many distinct real roots of `f` lie where `g` is positive, negative and zero
+form roots-by-sign
+  link positive, like number
+  link negative, like number
+  link zero, like number
+
+# ===== exact big-integer rationals =====
+
+task big
+  take value, like number
+  like big-integer
+  mark private
+
+  back big-from-number(value)
+
+task big-sign
+  take value, like big-integer
+  like number
+  mark private
+
+  back big-compare(value, big(0))
+
+task big-absolute
+  take value, like big-integer
+  like big-integer
+  mark private
+
+  fork test, is-below(big-sign(value), 0)
+    hold
+      back value/negate()
+  back value
+
+task big-gcd
+  take first, like big-integer
+  take second, like big-integer
+  like big-integer
+  mark private
+
+  save a, big-absolute(first)
+  save b, big-absolute(second)
+  walk test
+    hook test, is-unequal(big-sign(b), 0)
+    hook hold
+      save rest, a/remainder(b)
+      save a, b
+      save b, rest
+  back a
+
+task ratio
+  take numerator, like big-integer
+  take denominator, like big-integer
+  like exact-ratio
+  mark private
+
+  save n, numerator
+  save d, denominator
+  fork test, is-below(big-sign(d), 0)
+    hold
+      save n, n/negate()
+      save d, d/negate()
+
+  save g, big-gcd(n, d)
+  fork test, is-equal(big-sign(g), 0)
+    hold
+      save g, big(1)
+
+  back
+    make exact-ratio
+      bind n, n/divide(g)
+      bind d, d/divide(g)
+
+task whole
+  take value, like big-integer
+  like exact-ratio
+  mark private
+
+  back ratio(value, big(1))
+
+task r-zero
+  like exact-ratio
+  mark private
+
+  back whole(big(0))
+
+task r-one
+  like exact-ratio
+  mark private
+
+  back whole(big(1))
+
+task r-half
+  like exact-ratio
+  mark private
+
+  back ratio(big(1), big(2))
+
+task r-add
+  take x, like exact-ratio
+  take y, like exact-ratio
+  like exact-ratio
+  mark private
+
+  back ratio(big-add(big-multiply(x/n, y/d), big-multiply(y/n, x/d)), big-multiply(x/d, y/d))
+
+task r-subtract
+  take x, like exact-ratio
+  take y, like exact-ratio
+  like exact-ratio
+  mark private
+
+  back ratio(big-subtract(big-multiply(x/n, y/d), big-multiply(y/n, x/d)), big-multiply(x/d, y/d))
+
+task r-multiply
+  take x, like exact-ratio
+  take y, like exact-ratio
+  like exact-ratio
+  mark private
+
+  back ratio(big-multiply(x/n, y/n), big-multiply(x/d, y/d))
+
+task r-inverse
+  take x, like exact-ratio
+  like exact-ratio
+  mark private
+
+  back ratio(x/d, x/n)
+
+task r-sign
+  take x, like exact-ratio
+  like number
+  mark private
+
+  back big-sign(x/n)
+
+task r-negate
+  take x, like exact-ratio
+  like exact-ratio
+  mark private
+
+  back
+    make exact-ratio
+      bind n, x/n/negate()
+      bind d, x/d
+
+task r-absolute
+  take x, like exact-ratio
+  like exact-ratio
+  mark private
+
+  fork test, is-below(r-sign(x), 0)
+    hold
+      back r-negate(x)
+  back x
+
+# x < y (both denominators positive)
+task r-below
+  take x, like exact-ratio
+  take y, like exact-ratio
+  like boolean
+  mark private
+
+  back is-below(big-compare(big-multiply(x/n, y/d), big-multiply(y/n, x/d)), 0)
+
+task r-maximum
+  take x, like exact-ratio
+  take y, like exact-ratio
+  like exact-ratio
+  mark private
+
+  fork test, r-below(x, y)
+    hold
+      back y
+  back x
+
+# a ratio as the nearest float to each of its parts, divided, as `Number(n) / Number(d)` read it
+task r-to-decimal
+  take x, like exact-ratio
+  like decimal
+  mark private
+
+  back divide(host-parse-float(x/n/text()), host-parse-float(x/d/text()))
+
+# a number as `BigInt(Math.round(value))` read it
+task rounded
+  take value, like decimal
+  like exact-ratio
+  mark private
+
+  back whole(big-from-number(to-number(round(value))))
+
+# ===== exact polynomials over the rationals (index = power) =====
+
+task r-trim
+  take p, like list, like exact-ratio
+  like list, like exact-ratio
+  mark private
+
+  save size, p/length
+  walk test
+    hook test, and(is-above(size, 0), is-equal(r-sign(get(p, subtract(size, 1))), 0))
+    hook hold
+      save size, subtract(size, 1)
+  back p/slice(0, size)
+
+task r-coefficient
+  take p, like list, like exact-ratio
+  take at, like number
+  like exact-ratio
+  mark private
+
+  fork test, is-below(at, p/length)
+    hold
+      back get(p, at)
+  back r-zero()
+
+task to-r-poly
+  take p, like list, like decimal
+  like list, like exact-ratio
+  mark private
+
+  save out, make list
+  walk p
+    take c
+    push(out, rounded(c))
+  back r-trim(out)
+
+# every coefficient a safe integer. The DECISIONS below (positive everywhere, non-negative everywhere, positive on an
+# interval) refuse a polynomial that is not, rather than rounding it: a rounded coefficient is a different polynomial,
+# and a sign decided for that one is not a sign for this. proof-by-default-0034.
+task integral
+  take p, like list, like decimal
+  like boolean
+  mark private
+
+  walk p
+    take c
+    fork test, not(is-safe-integer(c))
+      hold
+        back false
+  back true
+
+# `Number.isSafeInteger`: a whole number no larger in size than 2^53 - 1 (so neither `NaN` nor an infinity)
+task is-safe-integer
+  take value, like decimal
+  like boolean
+  mark private
+
+  fork test, is-unequal(round(value), value)
+    hold
+      back false
+  back and(is-maximum(value, 9007199254740991.0), is-minimum(value, -9007199254740991.0))
+
+task r-evaluate
+  take p, like list, like exact-ratio
+  take x, like exact-ratio
+  like exact-ratio
+  mark private
+
+  save acc, r-zero()
+  save at, subtract(p/length, 1)
+  walk test
+    hook test, is-minimum(at, 0)
+    hook hold
+      save acc, r-add(r-multiply(acc, x), get(p, at))
+      save at, subtract(at, 1)
+  back acc
+
+task r-derivative
+  take p, like list, like exact-ratio
+  like list, like exact-ratio
+  mark private
+
+  save out, make list
+  save at, 1
+  walk test
+    hook test, is-below(at, p/length)
+    hook hold
+      push(out, r-multiply(get(p, at), whole(big(at))))
+      save at, add(at, 1)
+  back r-trim(out)
+
+task r-scale
+  take p, like list, like exact-ratio
+  take s, like exact-ratio
+  like list, like exact-ratio
+  mark private
+
+  save out, make list
+  walk p
+    take c
+    push(out, r-multiply(c, s))
+  back out
+
+task r-subtract-poly
+  take a, like list, like exact-ratio
+  take b, like list, like exact-ratio
+  like list, like exact-ratio
+  mark private
+
+  save size, a/length
+  fork test, is-above(b/length, size)
+    hold
+      save size, b/length
+  save out, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      push(out, r-subtract(r-coefficient(a, at), r-coefficient(b, at)))
+      save at, add(at, 1)
+  back r-trim(out)
+
+# the remainder of dividing `a` by `b` (exact rational polynomial long division)
+task r-remainder
+  take a, like list, like exact-ratio
+  take b, like list, like exact-ratio
+  like list, like exact-ratio
+  mark private
+
+  save r, r-trim(a)
+  save bb, r-trim(b)
+  save db, subtract(bb/length, 1)
+  save lead, get(bb, db)
+
+  walk test
+    hook test, and(is-minimum(subtract(r/length, 1), db), is-above(r/length, 0))
+    hook hold
+      save dr, subtract(r/length, 1)
+      save factor, r-multiply(get(r, dr), r-inverse(lead))
+      save term, make list
+      save at, 0
+      walk test
+        hook test, is-below(at, subtract(dr, db))
+        hook hold
+          push(term, r-zero())
+          save at, add(at, 1)
+      walk r-scale(bb, factor)
+        take c
+        push(term, c)
+      save r, r-subtract-poly(r, term)
+
+      fork test, is-minimum(subtract(r/length, 1), dr)
+        hold
+          save r, r-trim(r/slice(0, dr))
+
+  back r-trim(r)
+
+# the Sturm sequence of `p`: p_0 = p, p_1 = p', p_{i+1} = -(p_{i-1} mod p_i), to the last nonzero remainder.
+task r-sturm-sequence
+  take p, like list, like exact-ratio
+  like list, like list, like exact-ratio
+  mark private
+
+  save seq, make list
+  push(seq, r-trim(p))
+  save d, r-derivative(p)
+
+  fork test, is-equal(d/length, 0)
+    hold
+      back seq
+
+  push(seq, d)
+  back extend-remainders(seq)
+
+# the negated remainders appended to a sequence of two, to the last nonzero one
+task extend-remainders
+  take seq, like list, like list, like exact-ratio
+  like list, like list, like exact-ratio
+  mark private
+
+  walk test
+    hook test, true
+    hook hold
+      save previous, get(seq, subtract(seq/length, 2))
+      save current, get(seq, subtract(seq/length, 1))
+      save rem, r-remainder(previous, current)
+      fork test, is-equal(rem/length, 0)
+        hold
+          halt
+      push(seq, r-scale(rem, whole(big(-1))))
+  back seq
+
+# the number of sign variations in a sequence's signs (zeros skipped)
+task variations-of
+  take signs, like list, like number
+  like number
+  mark private
+
+  save last, 0
+  save count, 0
+  walk signs
+    take s
+    fork test, is-unequal(s, 0)
+      hold
+        fork test, and(is-unequal(last, 0), is-unequal(s, last))
+          hold
+            save count, add(count, 1)
+        save last, s
+  back count
+
+# the number of sign variations in the Sturm sequence evaluated at `x` (zeros skipped)
+task r-sign-variations
+  take seq, like list, like list, like exact-ratio
+  take x, like exact-ratio
+  like number
+  mark private
+
+  save signs, make list
+  walk seq
+    take poly
+    push(signs, r-sign(r-evaluate(poly, x)))
+  back variations-of(signs)
+
+# a Cauchy bound `M` (rational) with all real roots of `p` strictly inside `(-M, M)`, and `p(±M) != 0`.
+task r-root-bound
+  take p, like list, like exact-ratio
+  like exact-ratio
+  mark private
+
+  save t, r-trim(p)
+  save lead, r-absolute(get(t, subtract(t/length, 1)))
+  save m, r-zero()
+  save at, 0
+  walk test
+    hook test, is-below(at, subtract(t/length, 1))
+    hook hold
+      save m, r-maximum(m, r-multiply(r-absolute(get(t, at)), r-inverse(lead)))
+      save at, add(at, 1)
+
+  save bound, r-add(m, r-one())
+
+  # make sure the bound itself is not a root (so endpoints stay clean)
+  walk test
+    hook test, or(is-equal(r-sign(r-evaluate(t, bound)), 0), is-equal(r-sign(r-evaluate(t, r-negate(bound))), 0))
+    hook hold
+      save bound, r-add(bound, r-one())
+  back bound
+
+task span-of
+  take low, like exact-ratio
+  take high, like exact-ratio
+  like root-span
+  mark private
+
+  back
+    make root-span
+      bind low, low
+      bind high, high
+
+# isolate the DISTINCT real roots of `p` into disjoint open rational intervals, each containing exactly one root and
+# with non-root endpoints. Sorted by left endpoint.
+task r-isolate-roots
+  take p, like list, like exact-ratio
+  like list, like root-span
+  mark private
+
+  save s, r-trim(p)
+  save out, make list
+
+  fork test, is-maximum(s/length, 1)
+    hold
+      back out
+
+  save seq, r-sturm-sequence(s)
+  save bound, r-root-bound(s)
+
+  # a queue, read from `head` on
+  save queue, make list
+  push(queue, span-of(r-negate(bound), bound))
+  save head, 0
+  save guard, 0
+
+  walk test
+    hook test, and(is-below(head, queue/length), is-below(guard, 200000))
+    hook hold
+      save guard, add(guard, 1)
+      save next, get(queue, head)
+      save head, add(head, 1)
+      save a, next/low
+      save b, next/high
+      # roots in (a, b]
+      save count, subtract(r-sign-variations(seq, a), r-sign-variations(seq, b))
+
+      fork test, is-maximum(count, 0)
+        hold
+          turn next
+
+      fork test, is-equal(count, 1)
+        hold
+          push(out, next)
+          turn next
+
+      # split at a NON-root midpoint (keeps every interval endpoint off the roots)
+      save m, r-multiply(r-add(a, b), r-half())
+      save tries, 0
+      walk test
+        hook test, and(is-equal(r-sign(r-evaluate(s, m)), 0), is-below(tries, 64))
+        hook hold
+          save tries, add(tries, 1)
+          save m, r-multiply(r-add(a, m), r-half())
+
+      push(queue, span-of(a, m))
+      push(queue, span-of(m, b))
+
+  back sort-spans(out)
+
+# by left endpoint, each placed after every one before it (the spans are disjoint, so no two share one)
+task sort-spans
+  take spans, like list, like root-span
+  like list, like root-span
+  mark private
+
+  save sorted, make list
+  walk spans
+    take one
+    save at, sorted/length
+    walk test
+      hook test, and(is-above(at, 0), r-below(one/low, get(sorted, subtract(at, 1))/low))
+      hook hold
+        save at, subtract(at, 1)
+    save before, sorted/slice(0, at)
+    push(before, one)
+    walk sorted/slice(at, sorted/length)
+      take rest
+      push(before, rest)
+    save sorted, before
+  back sorted
+
+# the sign-invariant CELL decomposition: a sample point (rational) in each open interval between consecutive distinct
+# roots, plus one left of all roots and one right of all roots. `p` has a constant sign on each cell, equal to its sign
+# at the sample. (The roots themselves are the zero-cells.) This is the one-dimensional CAD.
+task r-cell-samples
+  take p, like list, like exact-ratio
+  like list, like exact-ratio
+  mark private
+
+  save intervals, r-isolate-roots(p)
+  save samples, make list
+
+  fork test, is-equal(intervals/length, 0)
+    hold
+      # no roots: the sign is constant, sample anywhere
+      push(samples, r-zero())
+      back samples
+
+  # left of the smallest root
+  push(samples, r-subtract(get(intervals, 0)/low, r-one()))
+
+  # each b_i lies strictly between root_i and root_{i+1} (or right of the largest root)
+  walk intervals
+    take span
+    push(samples, span/high)
+  back samples
+
+# ===== the public number interface =====
+
+task degree
+  take p, like list, like decimal
+  like number
+
+  back subtract(to-r-poly(p)/length, 1)
+
+# exact when x is an integer; used by tests for an integer sample
+task evaluate
+  take p, like list, like decimal
+  take x, like decimal
+  like decimal
+
+  back r-to-decimal(r-evaluate(to-r-poly(p), rounded(x)))
+
+task derivative
+  take p, like list, like decimal
+  like list, like decimal
+
+  save out, make list
+  walk r-derivative(to-r-poly(p))
+    take c
+    push(out, r-to-decimal(c))
+  back out
+
+# the number of DISTINCT real roots of `p` in the half-open interval `(a, b]`
+task root-count-in
+  take p, like list, like decimal
+  take a, like decimal
+  take b, like decimal
+  like number
+
+  save seq, r-sturm-sequence(to-r-poly(p))
+  back subtract(r-sign-variations(seq, rounded(a)), r-sign-variations(seq, rounded(b)))
+
+# the total number of DISTINCT real roots of `p`
+task real-root-count
+  take p, like list, like decimal
+  like number
+
+  save t, to-r-poly(p)
+  fork test, is-maximum(t/length, 1)
+    hold
+      back 0
+
+  save seq, r-sturm-sequence(t)
+  save bound, r-root-bound(t)
+  back subtract(r-sign-variations(seq, r-negate(bound)), r-sign-variations(seq, bound))
+
+# does `p` have at least one real root?
+task has-real-root
+  take p, like list, like decimal
+  like boolean
+
+  back is-above(real-root-count(p), 0)
+
+# does `p(x) > 0` for ALL real x? (strictly positive: no real root, positive sign)
+task positive-everywhere
+  take p, like list, like decimal
+  like boolean
+
+  fork test, not(integral(p))
+    hold
+      back false
+
+  save t, to-r-poly(p)
+
+  # the zero polynomial is not strictly positive
+  fork test, is-equal(t/length, 0)
+    hold
+      back false
+
+  fork test, is-above(real-root-count(p), 0)
+    hold
+      back false
+
+  # no real roots: the sign is constant, read it at any point
+  back or(is-above(r-sign(r-evaluate(t, r-zero())), 0), is-above(r-sign(r-evaluate(t, r-root-bound(t))), 0))
+
+# does `p(x) >= 0` for ALL real x? COMPLETE: it samples every cell of the sign-invariant decomposition, so it accepts
+# the touching-zero non-negative polynomials (e.g. `(x-1)^2 (x-2)^2`) that strict positivity cannot, and rejects any
+# polynomial that dips below zero on some interval.
+task non-negative-everywhere
+  take p, like list, like decimal
+  like boolean
+
+  fork test, not(integral(p))
+    hold
+      back false
+
+  back r-non-negative(to-r-poly(p))
+
+task r-non-negative
+  take t, like list, like exact-ratio
+  like boolean
+  mark private
+
+  # the zero polynomial is >= 0 everywhere
+  fork test, is-equal(t/length, 0)
+    hold
+      back true
+
+  walk r-cell-samples(t)
+    take x
+    fork test, is-below(r-sign(r-evaluate(t, x)), 0)
+      hold
+        back false
+  back true
+
+# the CELL sample points of the sign-invariant decomposition of the real line by `p`, as exact rationals (one strictly
+# inside each open interval between consecutive distinct roots, plus one left of all and one right of all). `p` has a
+# constant sign on each cell. This is the one-dimensional CAD, exported for the multivariate lift (cad.tree): a cell of
+# the base line lifts to a stack of cells in the variable above it.
+task cell-samples
+  take p, like list, like decimal
+  like list, like exact-ratio
+
+  back r-cell-samples(to-r-poly(p))
+
+# the same, for a polynomial whose integer coefficients are EXACT big integers (they can exceed 2^53 after the
+# multivariate projection multiplies several polynomials, so they must not pass through a float).
+task cell-samples-big
+  take coefficients, like list, like big-integer
+  like list, like exact-ratio
+
+  save ratios, make list
+  walk coefficients
+    take c
+    push(ratios, whole(c))
+  back r-cell-samples(r-trim(ratios))
+
+# is the polynomial with the given EXACT RATIONAL coefficients (`n / d` per power) non-negative for all reals? The
+# multivariate lift forms a fibre polynomial by substituting a rational sample point, whose coefficients are rationals;
+# this decides that fibre completely without a lossy conversion to floats.
+task rational-non-negative-everywhere
+  take coefficients, like list, like exact-ratio
+  like boolean
+
+  save ratios, make list
+  walk coefficients
+    take c
+    push(ratios, ratio(c/n, c/d))
+  back r-non-negative(r-trim(ratios))
+
+# does `p(x) > 0` for all x in the OPEN interval `(a, b)`? Bounded-quantifier sign decision: true iff `p` has no root
+# in `(a, b)` (an interior root would make it zero, and a sign change would make it negative) and `p` is positive at
+# the midpoint. Sound for a < b.
+task positive-on-interval
+  take p, like list, like decimal
+  take a, like decimal
+  take b, like decimal
+  like boolean
+
+  # the interval's ends are rounded below too, so they are held to the same rule as the coefficients
+  fork test, or(not(integral(p)), or(not(is-safe-integer(a)), not(is-safe-integer(b))))
+    hold
+      back false
+
+  save t, to-r-poly(p)
+  save low, rounded(a)
+  save high, rounded(b)
+  save seq, r-sturm-sequence(t)
+  # roots in (a, b]; subtract a root exactly at b (allowed, the interval is open at b)
+  save half-open, subtract(r-sign-variations(seq, low), r-sign-variations(seq, high))
+  save at-b, 0
+  fork test, is-equal(r-sign(r-evaluate(t, high)), 0)
+    hold
+      save at-b, 1
+
+  fork test, is-above(subtract(half-open, at-b), 0)
+    hold
+      back false
+
+  # no interior root: the sign is constant on (a, b); read it at the midpoint
+  back is-above(r-sign(r-evaluate(t, r-multiply(r-add(low, high), r-half()))), 0)
+
+# ===== the STURM-TARSKI query: sign determination at the real roots of a polynomial =====
+
+task r-multiply-poly
+  take a, like list, like exact-ratio
+  take b, like list, like exact-ratio
+  like list, like exact-ratio
+  mark private
+
+  save out, make list
+  fork test, or(is-equal(a/length, 0), is-equal(b/length, 0))
+    hold
+      back out
+
+  save at, 0
+  walk test
+    hook test, is-below(at, subtract(add(a/length, b/length), 1))
+    hook hold
+      push(out, r-zero())
+      save at, add(at, 1)
+
+  save i, 0
+  walk test
+    hook test, is-below(i, a/length)
+    hook hold
+      save j, 0
+      walk test
+        hook test, is-below(j, b/length)
+        hook hold
+          save k, add(i, j)
+          save out/{k}, r-add(get(out, k), r-multiply(get(a, i), get(b, j)))
+          save j, add(j, 1)
+      save i, add(i, 1)
+  back r-trim(out)
+
+# the sign of a polynomial as its argument runs to +infinity (the sign of its leading coefficient) or to -infinity (the
+# leading sign times (-1)^degree). The zero polynomial has sign 0 at both ends.
+task sign-at-infinity
+  take p, like list, like exact-ratio
+  take positive, like boolean
+  like number
+  mark private
+
+  fork test, is-equal(p/length, 0)
+    hold
+      back 0
+  save lead, r-sign(get(p, subtract(p/length, 1)))
+  fork test, positive
+    hold
+      back lead
+  fork test, is-equal(modulo(subtract(p/length, 1), 2), 0)
+    hold
+      back lead
+  back subtract(0, lead)
+
+task infinity-variations
+  take seq, like list, like list, like exact-ratio
+  take positive, like boolean
+  like number
+  mark private
+
+  save signs, make list
+  walk seq
+    take poly
+    push(signs, sign-at-infinity(poly, positive))
+  back variations-of(signs)
+
+# the generalized (signed-remainder) Sturm sequence of `f` and `g`: f_0 = f, f_1 = g, f_{i+1} = -(f_{i-1} mod f_i).
+task r-signed-remainder-sequence
+  take f, like list, like exact-ratio
+  take g, like list, like exact-ratio
+  like list, like list, like exact-ratio
+  mark private
+
+  save seq, make list
+  push(seq, r-trim(f))
+  fork test, is-equal(r-trim(g)/length, 0)
+    hold
+      back seq
+  push(seq, r-trim(g))
+  back extend-remainders(seq)
+
+# the STURM-TARSKI query TaQ(g, f) = sum over the distinct real roots `x` of `f` of `sign(g(x))`. It is computed from
+# the signed-remainder sequence of `f` and `f' * g` by the difference of its sign variations at -infinity and
+# +infinity, so it reads off the signs of `g` at the (possibly irrational) roots of `f` WITHOUT computing them. This is
+# the engine of Tarski's decidability of the reals: it counts real roots of `f` weighted by where `g` is positive or
+# negative, the exact information a cylindrical decomposition needs to lift a cell through an algebraic point.
+task tarski-query-r
+  take g, like list, like exact-ratio
+  take f, like list, like exact-ratio
+  like number
+  mark private
+
+  save seq, r-signed-remainder-sequence(f, r-multiply-poly(r-derivative(f), g))
+  back subtract(infinity-variations(seq, false), infinity-variations(seq, true))
+
+task tarski-query
+  take g, like list, like decimal
+  take f, like list, like decimal
+  like number
+
+  back tarski-query-r(to-r-poly(g), to-r-poly(f))
+
+# the number of distinct real roots of `f` at which `g` is positive, negative, and zero, by combining three Tarski
+# queries: TaQ(1) = the root count, TaQ(g) = #(g>0) - #(g<0), TaQ(g^2) = #(g>0) + #(g<0). Exact, no root computation.
+task real-roots-by-sign
+  take g, like list, like decimal
+  take f, like list, like decimal
+  like roots-by-sign
+
+  save g-poly, to-r-poly(g)
+  save f-poly, to-r-poly(f)
+  save one, make list
+  push(one, r-one())
+  save total, tarski-query-r(one, f-poly)
+  save single, tarski-query-r(g-poly, f-poly)
+  save square, tarski-query-r(r-multiply-poly(g-poly, g-poly), f-poly)
+
+  back
+    make roots-by-sign
+      bind positive, divide(add(single, square), 2)
+      bind negative, divide(subtract(square, single), 2)
+      bind zero, subtract(total, square)

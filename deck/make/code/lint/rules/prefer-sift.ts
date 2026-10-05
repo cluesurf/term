@@ -4,12 +4,13 @@
 // Lean files only: `fork case` stays the longhand, and a longhand file is left as it is.
 
 import type { Rule } from '@term/make/code/lint/rule'
-import type { GroupNode, Node } from '@term/make/code/parser/tree'
+import type { Node } from '@term/make/code/parser/tree'
+import type { GroupNode } from '@term/make/code/parser/narrow'
 
 // the name token of a node that is a single plain word, or undefined
 function wordToken(node: Node | undefined) {
   if (node?.kind === 'name' && node.parts.length === 1 && node.parts[0]!.kind === 'chunk') {
-    return node.parts[0]!.token
+    return node.parts[0]!
   }
 
   return undefined

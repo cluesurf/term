@@ -12,6 +12,7 @@ import { mergeRolls, showRoll } from '@term/make/code/compile/roll'
 import { buildable, buildResolver, findTreeFiles, projectResolver } from '@term/call/code/make'
 import { makeParseMemo } from '@term/make/code/compile/load'
 import type { BuildProblem } from '@term/call/code/make'
+import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { projectCache } from '@term/call/code/cache-store'
 import { closeRun, count, field, openRun, printData, report, reportProblems } from '@term/call/code/output'
 
@@ -20,7 +21,12 @@ export const ROLL_KINDS = ['deck', 'exception', 'task', 'dock', 'tell', 'kind', 
 // the roll of every entry under `root` that is the project's own (not a linked dependency), merged. It prints
 // nothing: a file that does not compile is in `failed`, and its diagnostics in `problems` for the caller to report
 // (`term roll` draws them; `term make` has reported the same ones from its own build already)
-export function projectRoll(root: string): {
+//
+// `closures`, from the separate build just run (`compileProjectSeparate`), is each entry's closure key: every unit key
+// of everything it reaches, as one. An entry's roll is computed from its whole closure, so it is cached by that key, and
+// a warm pass is one cache read per entry with no walk at all (note/term/plan/incremental-best-in-class.md, step 8). An
+// entry the build did not key is compiled for its roll as before
+export function projectRoll(root: string, closures?: Map<string, string>): {
   roll: Roll
   failed: string[]
   problems: BuildProblem[]
@@ -50,11 +56,12 @@ export function projectRoll(root: string): {
       continue
     }
 
-    const result = compile(
-      { file, text: unit.text },
-      // the roll and the diagnostics are all this reads, so only they are cached (compile's `rollOnly`)
-      { resolve, cache, parsed, roll: true, rollOnly: true, deckOf, roleOf, leanOf },
-    )
+    const key = closures?.get(file)
+    // an entry the build keyed is one that built, so its roll is read off the typed program alone (compile's `rollFast`)
+    const run = (): EntryRoll =>
+      entryRoll({ file, text: unit.text }, { resolve, cache, parsed, deckOf, roleOf, leanOf, rollFast: key !== undefined })
+    // a copy: `relativize` below writes into it, and a hit is the cache's own object
+    const result = key ? structuredClone(cache.output(rollKey(key), run)) : run()
 
     if (!result.ok) {
       failed.push(path.relative(root, file))
@@ -72,6 +79,24 @@ export function projectRoll(root: string): {
   }
 
   return { roll: mergeRolls(rolls), failed, problems }
+}
+
+// one entry's roll, and its diagnostics when it does not build: the whole-program compile the roll is read from, with
+// only the roll and the diagnostics cached (compile's `rollOnly`). Called here and by a worker of the parallel build
+// (separate-worker.ts), which computes each entry's roll beside its units, under the same key
+export type EntryRoll = { ok: boolean; roll?: Roll; diagnostics: Diagnostic[] }
+
+type CompileOptions = NonNullable<Parameters<typeof compile>[1]>
+
+export function entryRoll(source: { file: string; text: string }, options: Omit<CompileOptions, 'roll' | 'rollOnly'>): EntryRoll {
+  const one = compile(source, { ...options, roll: true, rollOnly: true })
+
+  return one.ok ? { ok: true, roll: one.roll, diagnostics: [] } : { ok: false, diagnostics: one.diagnostics }
+}
+
+// where an entry's roll is kept, by its closure key (`SeparateResult.closureKey`)
+export function rollKey(closureKey: string): string {
+  return `roll:${closureKey}`
 }
 
 // sites relative to the root, so the printed roll reads the same on every machine

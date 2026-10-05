@@ -6,12 +6,8 @@
 // package) is checked against it. See note/term/host/. Pure and browser-safe.
 
 import { parse } from '@term/make/code/parser/tree'
-import type {
-  GroupNode,
-  RootNode,
-  TextNode,
-  NameNode,
-} from '@term/make/code/parser/tree'
+import type { GroupNode, RootNode, TextNode, NameNode } from '@term/make/code/parser/narrow'
+import { groupsOf } from '@term/make/code/parser/narrow'
 import type { Diagnostic, Span } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
 
@@ -77,7 +73,7 @@ export function isDataTree(tree: RootNode): boolean {
     return false
   }
 
-  for (const group of tree.nodes) {
+  for (const group of groupsOf(tree.nodes)) {
     const head = headOf(group)
 
     if (!head || !HEADS.has(head)) {
@@ -167,7 +163,7 @@ export function readData(
   const items: Data[] = []
   let seenData = false
 
-  for (const group of tree.nodes) {
+  for (const group of groupsOf(tree.nodes)) {
     const head = headOf(group)
     const kind = head ? HEADS.get(head) : undefined
 
@@ -856,7 +852,7 @@ export function kebab(key: string): string {
 // is every top-level form written in the compact spelling (`h(`, `l(`, `m(`, `t(`, `f(`)? Such a file is formatted
 // one form per line, the way a stream is written
 export function isCompactTree(tree: RootNode): boolean {
-  return tree.nodes.length > 0 && tree.nodes.every(g => (headOf(g) ?? '').length === 1)
+  return tree.nodes.length > 0 && groupsOf(tree.nodes).every(g => (headOf(g) ?? '').length === 1)
 }
 
 // the canonical form straight from the tree, so a comment survives `term form`. Byte for byte what `writeLong`
@@ -868,8 +864,8 @@ export function formatData(tree: RootNode, file: string): string {
   }
 
   const out: string[] = []
-  const anchors = tree.nodes.filter(g => HEADS.get(headOf(g) ?? '') === 'tree')
-  const rest = tree.nodes.filter(g => HEADS.get(headOf(g) ?? '') !== 'tree')
+  const anchors = groupsOf(tree.nodes).filter(g => HEADS.get(headOf(g) ?? '') === 'tree')
+  const rest = groupsOf(tree.nodes).filter(g => HEADS.get(headOf(g) ?? '') !== 'tree')
 
   for (const group of anchors) {
     notes(group, 0, out)
@@ -884,7 +880,7 @@ export function formatData(tree: RootNode, file: string): string {
 
   // the comments written above a group (or above a line that opens with a literal), at the indent
   function notes(node: Node, depth: number, into: string[]): void {
-    if (node.kind === 'name') {
+    if (node.kind === 'name' || node.kind === 'chunk' || node.kind === 'interpolation') {
       return
     }
 
@@ -998,7 +994,7 @@ export function formatData(tree: RootNode, file: string): string {
 function formatCompact(tree: RootNode, file: string): string {
   const out: string[] = []
 
-  for (const group of tree.nodes) {
+  for (const group of groupsOf(tree.nodes)) {
     for (const comment of group.comments ?? []) {
       out.push(comment.text.trim())
     }
@@ -1270,8 +1266,8 @@ export function literalText(node: NameNode | TextNode): string {
   for (const part of node.parts) {
     if (part.kind === 'chunk') {
       out += part.text
-    } else {
-      const inner = part.group ? part.group.nodes.map(n => (n.kind === 'name' ? literalText(n) : '')).join('') : ''
+    } else if (part.kind === 'interpolation') {
+      const inner = part.group?.kind === 'group' ? part.group.nodes.map(n => (n.kind === 'name' ? literalText(n) : '')).join('') : ''
       out += `{${inner}}`
     }
   }
@@ -1311,12 +1307,12 @@ function spanOf(node: Node | RootNode): Span {
     case 'integer':
     case 'decimal':
     case 'radix':
-      return node.token.span
+      return node.span
     case 'name':
     case 'text': {
       const chunk = node.parts.find(p => p.kind === 'chunk')
 
-      return chunk?.kind === 'chunk' ? chunk.token.span : ZERO
+      return chunk?.kind === 'chunk' ? chunk.span : ZERO
     }
     case 'group':
       return node.nodes[0] ? spanOf(node.nodes[0]) : ZERO

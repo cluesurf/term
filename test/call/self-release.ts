@@ -206,6 +206,10 @@ try {
   const newest = await term(['self', 'update'])
   ok('a second update finds nothing newer', newest.code === 0 && /up to date/i.test(newest.out), newest.out)
 
+  // `term update` is `term self update` (line.ts), answered by the front as `self` is (need-run.ts)
+  const alias = await term(['update'])
+  ok('   and `term update` is the same verb: it finds nothing newer', alias.code === 0 && /up to date/i.test(alias.out) && readlinkSync(bin).includes(`/code/${NEXT}/`), alias.out)
+
   const back = await term(['self', 'back'])
   ok(`back returns bin/term to ${VERSION}`, back.code === 0 && readlinkSync(bin).includes(`/code/${VERSION}/`), back.out)
 

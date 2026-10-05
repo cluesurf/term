@@ -1,6 +1,6 @@
 deck @term/code
   head <A reactive modeling language Ψ>
-  mark <2.7.0>
+  mark <2.7.2>
   sort tool
   lock <Apache-2.0>
   site <https://github.com/cluesurf/term>

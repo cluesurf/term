@@ -9,6 +9,11 @@ import {
   nPoly,
 } from '@term/make/code/check/cad-nvar'
 
+// a polynomial from `[exponents, coefficient]` terms, as check/cad-nvar takes them: each coefficient a big integer
+function poly(terms: [number[], bigint][]) {
+  return nPoly(terms.map(([exponents, c]) => ({ exponents, coefficient: { dock: c } })))
+}
+
 let pass = 0
 let fail = 0
 
@@ -25,14 +30,14 @@ function ok(name: string, cond: boolean): void {
 // ===== one variable (regression of the base case through the general engine) =====
 
 // x^2 + 1 > 0, and x^4 - 3x^2 + 3 >= 0 (no real root); x^2 - 1 dips negative.
-ok('1-var: x^2 + 1 >= 0', nonNegativeEverywhereNvar(nPoly([[[2], 1n], [[0], 1n]]), 1))
+ok('1-var: x^2 + 1 >= 0', nonNegativeEverywhereNvar(poly([[[2], 1n], [[0], 1n]]), 1))
 ok(
   '1-var: x^4 - 3x^2 + 3 >= 0',
-  nonNegativeEverywhereNvar(nPoly([[[4], 1n], [[2], -3n], [[0], 3n]]), 1),
+  nonNegativeEverywhereNvar(poly([[[4], 1n], [[2], -3n], [[0], 3n]]), 1),
 )
 ok(
   '1-var soundness: x^2 - 1 is rejected',
-  !nonNegativeEverywhereNvar(nPoly([[[2], 1n], [[0], -1n]]), 1),
+  !nonNegativeEverywhereNvar(poly([[[2], 1n], [[0], -1n]]), 1),
 )
 
 // ===== two variables (regression: Motzkin through the general engine) =====
@@ -40,14 +45,14 @@ ok(
 // x^2 + y^2 >= 0
 ok(
   '2-var: x^2 + y^2 >= 0',
-  nonNegativeEverywhereNvar(nPoly([[[2, 0], 1n], [[0, 2], 1n]]), 2),
+  nonNegativeEverywhereNvar(poly([[[2, 0], 1n], [[0, 2], 1n]]), 2),
 )
 
 // the MOTZKIN polynomial x^4 y^2 + x^2 y^4 - 3 x^2 y^2 + 1 >= 0 (non-negative, not a sum of squares)
 ok(
   '2-var MOTZKIN: x^4 y^2 + x^2 y^4 - 3 x^2 y^2 + 1 >= 0',
   nonNegativeEverywhereNvar(
-    nPoly([[[4, 2], 1n], [[2, 4], 1n], [[2, 2], -3n], [[0, 0], 1n]]),
+    poly([[[4, 2], 1n], [[2, 4], 1n], [[2, 2], -3n], [[0, 0], 1n]]),
     2,
   ),
 )
@@ -56,7 +61,7 @@ ok(
 ok(
   '2-var soundness: Motzkin minus its constant is rejected',
   !nonNegativeEverywhereNvar(
-    nPoly([[[4, 2], 1n], [[2, 4], 1n], [[2, 2], -3n]]),
+    poly([[[4, 2], 1n], [[2, 4], 1n], [[2, 2], -3n]]),
     2,
   ),
 )
@@ -64,7 +69,7 @@ ok(
 // soundness: x^2 - y^2 is a saddle
 ok(
   '2-var soundness: x^2 - y^2 is rejected (saddle)',
-  !nonNegativeEverywhereNvar(nPoly([[[2, 0], 1n], [[0, 2], -1n]]), 2),
+  !nonNegativeEverywhereNvar(poly([[[2, 0], 1n], [[0, 2], -1n]]), 2),
 )
 
 // ===== three variables =====
@@ -87,7 +92,7 @@ function slow(name: string, check: () => boolean): void {
 ok(
   '3-var: x^2 + y^2 + z^2 >= 0',
   nonNegativeEverywhereNvar(
-    nPoly([[[2, 0, 0], 1n], [[0, 2, 0], 1n], [[0, 0, 2], 1n]]),
+    poly([[[2, 0, 0], 1n], [[0, 2, 0], 1n], [[0, 0, 2], 1n]]),
     3,
   ),
 )
@@ -101,14 +106,14 @@ const choiLam: [number[], bigint][] = [
   [[2, 2, 2], -3n],
 ]
 slow('3-var CHOI-LAM: x^4 y^2 + y^4 z^2 + z^4 x^2 - 3 x^2 y^2 z^2 >= 0 (not a sum of squares)', () =>
-  nonNegativeEverywhereNvar(nPoly(choiLam), 3),
+  nonNegativeEverywhereNvar(poly(choiLam), 3),
 )
 
 // SOUNDNESS near Choi-Lam: raise the subtracted coefficient past the AM-GM bound -- x^4 y^2 + y^4 z^2 + z^4 x^2 -
 // 4 x^2 y^2 z^2 is NEGATIVE at x = y = z = 1 (3 - 4 = -1). It must be rejected.
 slow('3-var soundness: ...-4 x^2 y^2 z^2 is rejected (below the AM-GM bound)', () =>
   !nonNegativeEverywhereNvar(
-    nPoly([[[4, 2, 0], 1n], [[0, 4, 2], 1n], [[2, 0, 4], 1n], [[2, 2, 2], -4n]]),
+    poly([[[4, 2, 0], 1n], [[0, 4, 2], 1n], [[2, 0, 4], 1n], [[2, 2, 2], -4n]]),
     3,
   ),
 )
@@ -117,7 +122,7 @@ slow('3-var soundness: ...-4 x^2 y^2 z^2 is rejected (below the AM-GM bound)', (
 ok(
   '3-var soundness: x^2 + y^2 - z^2 is rejected',
   !nonNegativeEverywhereNvar(
-    nPoly([[[2, 0, 0], 1n], [[0, 2, 0], 1n], [[0, 0, 2], -1n]]),
+    poly([[[2, 0, 0], 1n], [[0, 2, 0], 1n], [[0, 0, 2], -1n]]),
     3,
   ),
 )
@@ -126,7 +131,7 @@ ok(
 ok(
   '3-var: (xy - z)^2 >= 0 (touches zero on a surface)',
   nonNegativeEverywhereNvar(
-    nPoly([[[2, 2, 0], 1n], [[1, 1, 1], -2n], [[0, 0, 2], 1n]]),
+    poly([[[2, 2, 0], 1n], [[1, 1, 1], -2n], [[0, 0, 2], 1n]]),
     3,
   ),
 )
@@ -134,7 +139,7 @@ ok(
 // SOUNDNESS: x y - z (one branch before squaring) takes both signs, rejected.
 ok(
   '3-var soundness: xy - z is rejected (both signs)',
-  !nonNegativeEverywhereNvar(nPoly([[[1, 1, 0], 1n], [[0, 0, 1], -1n]]), 3),
+  !nonNegativeEverywhereNvar(poly([[[1, 1, 0], 1n], [[0, 0, 1], -1n]]), 3),
 )
 
 console.log(`\ncad-nvar: ${pass} pass, ${fail} fail`)

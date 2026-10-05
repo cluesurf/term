@@ -42,13 +42,17 @@ import {
 } from '@term/make/code/resolve'
 import { projectLeanOf, projectRoleOf } from '@term/call/code/role-of'
 import { projectDeckOf } from '@term/call/code/deck-of'
-import { projectResolver } from '@term/call/code/make'
+import { isWholeFile, projectResolver, unitSlug } from '@term/call/code/make'
+import { compileSeparate } from '@term/make/code/compile/separate'
+import type { UnitMemo } from '@term/make/code/compile/separate'
+import { makeParseMemo } from '@term/make/code/compile/load'
 import { withNativeEnv } from '@term/make/code/compile/native'
 import { preprocessTests } from '@term/call/code/test-preprocess'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { dirname, join, relative, resolve as resolvePath } from 'node:path'
+import { dirname, join, relative, resolve as resolvePath, sep } from 'node:path'
 import { readFileSync } from 'node:fs'
 import { parseTolerant } from '@term/make/code/parser/tree'
+import { groupsOf } from '@term/make/code/parser/narrow'
 import { spanOfNode } from '@term/make/code/compile/mill-run'
 import {
   buildIndex,
@@ -66,7 +70,7 @@ import type {
   SymbolIndex,
   SymbolKind,
 } from '@term/flow/code/symbols'
-import type { LoadHow, Resolver, Source } from '@term/make/code/compile/load'
+import type { LoadHow, Resolver, Source, WalkMemo } from '@term/make/code/compile/load'
 import { declarationsOf, mentionAt, pathMentions, wordAt } from '@term/flow/code/paths'
 
 // a path on disk, as opposed to an in-memory name a test resolver hands back
@@ -300,6 +304,16 @@ function pathFor(uri: string): string | undefined {
   } catch {
     return undefined
   }
+}
+
+// a path no package builds from, so a change under it changes nothing the server holds: scratch, caches, installed
+// modules, build output, and any hidden folder. The same folders findTreeFiles never enters
+const IGNORED_PATH = /[\\/](?:tmp|node_modules|host|\.[^\\/]*)[\\/]/
+
+const CONFIG_FILE = /(?:^|[\\/])(?:role|deck)\.tree$/
+
+function isUnder(file: string, dir: string): boolean {
+  return file === dir || file.startsWith(dir.endsWith(sep) ? dir : dir + sep)
 }
 
 function uriFor(file: string): string {
@@ -803,6 +817,10 @@ function uriOf(params: unknown): string {
   return uri
 }
 
+// how many unit answers the server keeps before it starts its memo over: the standard library is about 600 units, and
+// every keystroke adds one for the edited module
+const UNIT_MEMO_CAP = 20_000
+
 export class LanguageServer {
   private readonly documents = new Map<string, Doc>()
   // an open document by the file it is, so an import of it reads the editor's text rather than the disk's
@@ -810,6 +828,11 @@ export class LanguageServer {
   // ONE mill and output cache for every document, capped (compile/cache.ts): a module the open files share is milled
   // once, and nothing grows with the session
   private readonly cache = new CompileCache()
+  // and one build session's memos for every document: each unit's answer, each module's walk, each parse, so a
+  // keystroke rebuilds the edited module's unit and what reads it (compile/separate.ts)
+  private readonly units: UnitMemo = new Map()
+  private readonly walked: WalkMemo = new Map()
+  private readonly parsed = makeParseMemo()
   private readonly options: ServerOptions
   private readonly readersByRoot = new Map<
     string,
@@ -977,17 +1000,58 @@ export class LanguageServer {
     const resolve = this.resolverFor(doc, readers.root)
 
     let result: CompileResult | undefined
+    // the closure's typed surface, from units, which the summary is made of (a merged compile's program holds it)
+    let surface: Program | undefined
     let fault: unknown
 
     try {
-      result = compile(
+      const deckOf = this.options.deckOf ?? this.deckOf
+
+      // ONE UNIT AT A TIME, as `term make` builds (note/term/plan/incremental-best-in-class.md, step 11): a keystroke
+      // builds the edited module's unit and reads every other from the server's memory, where a merged compile
+      // checked the document's whole closure again. A file that is not a program is compiled whole, as `term make`
+      // compiles it
+      if (resolve && !isWholeFile(doc.file, inner, role)) {
+        // every keystroke's text is a unit answer of its own, so a long session's memo is bounded: past the cap it
+        // starts over, and the next analysis reads the closure's units from the cache again
+        if (this.units.size > UNIT_MEMO_CAP) {
+          this.units.clear()
+        }
+
+        const built = compileSeparate(
+          { file: doc.file, text: inner },
+          {
+            resolve,
+            cache: this.cache,
+            modules: file => `./${unitSlug(readers.root ?? dirname(doc.file), file, deckOf)}`,
+            roleOf: readers.roleOf,
+            leanOf: readers.leanOf,
+            deckOf,
+            parsed: this.parsed,
+            units: this.units,
+            walked: this.walked,
+            keepProgram: true,
+          },
+        )
+
+        if (!built.ok) {
+          result = { ok: false, diagnostics: built.diagnostics }
+        } else if (built.program) {
+          result = { ok: true, program: built.program, typescript: '', warnings: built.warnings } as CompileResult
+          surface = built.surface
+        }
+      }
+
+      // a document answered whole from memory (its text back to one the server built) has no checked program in
+      // hand, and navigation needs one
+      result ??= compile(
         { file: doc.file, text: inner },
         {
           resolve,
           cache: this.cache,
           roleOf: readers.roleOf,
           leanOf: readers.leanOf,
-          deckOf: this.options.deckOf ?? this.deckOf,
+          deckOf,
           // the editor needs every call site intact for navigation, not the inlined, specialized shape
           optimize: false,
         },
@@ -1049,7 +1113,7 @@ export class LanguageServer {
     if (result?.ok) {
       program = result.program.filter(s => s.span.file === doc.file)
       typed = true
-      summary = summarize(result.program)
+      summary = summarize(surface ? [...surface, ...program] : result.program)
     } else if (map.identity && milled) {
       program = milled
     } else {
@@ -1439,22 +1503,53 @@ export class LanguageServer {
       case 'workspace/didChangeWatchedFiles': {
         // a file created, changed or deleted on disk: a package's file list, its role files and its deck names may
         // all be different now, and every open document that read the file must be analyzed again
+        //
+        // EACH OF THESE USED TO BE PAID FOR EVERY EVENT, whatever it was. Any event forgot every package's file list,
+        // so the next workspace question walked the package again, and saving a `deck.tree` re-analyzed every open
+        // document. A test run writing scratch into `tmp/` sent thousands. Now an event costs what it changed:
+        //
+        //   scratch, caches and output   ignored. Nothing under them is a file of any package (findTreeFiles)
+        //   an open document SAVED       nothing. The editor's text is what every analysis already read
+        //   a file created or deleted    the file lists of the packages holding it, and no other
+        //   a role or deck file          the readers of the packages holding it, and the deck names
         const changes = ((params as { changes?: { uri: string; type: number }[] } | null)?.changes ?? [])
-        const files = new Set(changes.map(c => pathFor(c.uri)).filter((f): f is string => !!f))
+          .map(c => ({ file: pathFor(c.uri), type: c.type }))
+          .filter((c): c is { file: string; type: number } => !!c.file && !IGNORED_PATH.test(c.file))
+          // LSP FileChangeType: 1 created, 2 changed, 3 deleted. A role or deck file is read from DISK by the readers,
+          // so its save counts even while it is open
+          .filter(c => !(c.type === 2 && !CONFIG_FILE.test(c.file) && this.byFile.has(canonical(c.file))))
 
-        if (files.size === 0) {
+        if (changes.length === 0) {
           return []
         }
 
-        this.workspace.forget()
-        this.readersByRoot.clear()
-        this.deckOf = projectDeckOf()
+        const files = new Set(changes.map(c => c.file))
+        // the packages whose role or deck file changed: a document reading any file of one is analyzed again
+        const configRoots = changes.filter(c => CONFIG_FILE.test(c.file)).map(c => dirname(c.file))
+
+        for (const change of changes) {
+          if (change.type !== 2) {
+            this.workspace.forgetFile(change.file)
+          }
+        }
+
+        if (configRoots.length > 0) {
+          for (const root of [...this.readersByRoot.keys()]) {
+            if (changes.some(c => isUnder(c.file, root))) {
+              this.readersByRoot.delete(root)
+            }
+          }
+
+          this.deckOf = projectDeckOf()
+        }
 
         const out: Message[] = []
 
         for (const doc of this.documents.values()) {
           const touched = [...files].some(f => doc.closure.has(f) || doc.closure.has(canonical(f)))
-          const config = [...files].some(f => /(?:^|[\\/])(?:role|deck)\.tree$/.test(f))
+          const config =
+            configRoots.length > 0 &&
+            [doc.file, ...doc.closure].some(f => configRoots.some(root => isUnder(f, root) || isUnder(f, canonical(root))))
 
           if (touched || config) {
             doc.stale = true
@@ -2086,7 +2181,7 @@ export class LanguageServer {
       return undefined
     }
 
-    const group = parseTolerant({ file: file ?? located.uri, text }).tree.nodes.find(
+    const group = groupsOf(parseTolerant({ file: file ?? located.uri, text }).tree.nodes).find(
       node => spanOfNode(node)?.start.line === located.range.start.line,
     )
     const note = (group?.comments ?? [])

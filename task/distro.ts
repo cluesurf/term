@@ -2,18 +2,28 @@
 // payloads `pnpm term:release` built (note/term/plan/term-distro.md).
 //
 //   pnpm term:distro            build everything under tmp/release/<version>/distro/ and stop
-//   pnpm term:distro --commit   also write the signed apt and dnf repositories into deck/deck/docs/term/ (served at
-//                               https://deck.clue.surf/term/) and the winget manifests into deck/fork-winget-pkgs/.
-//                               It writes files and nothing else: every git step and the GitHub release are printed
-//                               for a person to run
+//   pnpm term:distro --commit   also write the signed apt and dnf indexes into the term.surf site's public/ (served at
+//                               https://term.surf/apt and /rpm) and the winget manifests into deck/fork-winget-pkgs/.
+//                               It writes files and nothing else: the GitHub release, the deploy and every git step
+//                               are printed for a person to run
 //
 // What it makes, all from tmp/release/<version>/term-<platform>.tar.gz, the bytes `@term/code` releases:
 //
-//   term_<v>_{amd64,arm64}.deb           /usr/lib/term, the payload as released, and /usr/bin/term a link to its
-//   term-<v>-1.{x86_64,aarch64}.rpm      launcher (task/distro/debian.sh, fedora.sh, term.spec, built in Docker)
-//   term-<v>-windows-{x64,arm64}.zip     term\, with bin\term.exe (task/launcher/term.go) for winget to link onto PATH
-//   winget/manifests/c/ClueSurf/Term/<v>/   ClueSurf.Term, its zips at a GitHub release of cluesurf/term
-//   repo/apt/, repo/rpm/                 the repositories as --commit writes them, with the versions they kept
+//   packages/term_<v>_{amd64,arm64}.deb          /usr/lib/term, the payload as released, and /usr/bin/term a link
+//   packages/term-<v>-1.{x86_64,aarch64}.rpm     to its launcher (task/distro/debian.sh, fedora.sh, term.spec)
+//   packages/term-<v>-windows-{x64,arm64}.zip    term\, with bin\term.exe (task/launcher/term.go) for winget
+//   winget/manifests/c/ClueSurf/Term/<v>/        ClueSurf.Term
+//   repo/                                        the repositories, packages included, as apt and dnf read them
+//   public/                                      the same without the packages: what --commit puts on term.surf
+//
+// NO PACKAGE IS STORED ON term.surf. Every file in packages/ is an asset of the GitHub release `v<version>` on
+// cluesurf/term, which winget downloads its zips from too. The indexes name each package under its version
+// (`pool/<v>/...`, `<v>/...`), and the term.surf Worker answers such a path with a redirect to that release asset
+// (mesh/site/term.surf/home/site/tool/release-redirect.ts). apt and dnf follow it and check the file against the
+// signed index. So a release costs no storage and no git history, and the indexes a deploy carries are kilobytes.
+//
+// THE INDEXES KEEP THE NEWEST THREE VERSIONS. The older two are read back from their GitHub releases, so an index can
+// be rebuilt on any machine from what is public, and a version whose release lacks its packages is not listed.
 //
 // THE KEY NEVER ENTERS A CONTAINER. The containers build packages and indexes and sign nothing; Release and repomd.xml
 // are signed here, by gpg, with TERM_DISTRO_KEY (the key `deck/task`'s repositories were made for, by default), which
@@ -32,28 +42,44 @@ import type * as Output from '@term/call/code/output'
 // the Term package root: this file is task/distro.ts under it
 const TERM = path.resolve(import.meta.dirname, '..')
 
-// the checkout of github.com/cluesurf/host, whose make branch GitHub Pages serves from docs/ at deck.clue.surf
-const PAGES = path.resolve(TERM, '../../../deck')
+// the repository root, four folders above
+const ROOT = path.resolve(TERM, '../../../..')
+
+// the term.surf site's static files, which Cloudflare serves before its Worker runs
+const SITE_PUBLIC = path.join(ROOT, 'mesh', 'site', 'term.surf', 'home', 'public')
 
 // the fork of microsoft/winget-pkgs a pull request is opened from
 const WINGET_FORK = path.resolve(TERM, '../../../fork-winget-pkgs')
 
-const PAGES_URL = 'https://deck.clue.surf/term'
+const SITE_URL = 'https://term.surf'
 
-const RELEASES_URL = 'https://github.com/cluesurf/term/releases/download'
+// the GitHub repository whose releases hold every package
+const REPOSITORY = 'cluesurf/term'
+
+const RELEASES_URL = `https://github.com/${REPOSITORY}/releases/download`
+
+// the generic agent this repository sends to a host that has not asked for ours (mesh/task/dataset/agent.ts)
+const AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
 
 // the oldest Node the CLI runs on (task/release.ts NODE_FLOOR)
 const NODE_FLOOR = '22.3.0'
 
 const SUMMARY = 'The Term language: compiler, package manager, test runner and language server'
 
-// how many versions each repository keeps. Pages serves at most a gigabyte, and every version is about 32 MB of .deb
-// and 32 MB of .rpm, so three is a rollback's worth with room to spare
+// how many versions each index lists: this one and the two before it, a rollback's worth
 const KEEP = 3
 
 const KEY = process.env.TERM_DISTRO_KEY || '82273CF783C46701'
 
 const IMAGES = { debian: 'term-distro-debian', fedora: 'term-distro-fedora' } as const
+
+// the Linux packages of one version, by file name. A version's release must hold all four to be listed
+const LINUX_PACKAGES = (version: string) => [
+  { kind: 'apt', name: `term_${version}_amd64.deb` },
+  { kind: 'apt', name: `term_${version}_arm64.deb` },
+  { kind: 'rpm', name: `term-${version}-1.x86_64.rpm` },
+  { kind: 'rpm', name: `term-${version}-1.aarch64.rpm` },
+]
 
 let output = undefined as unknown as typeof Output
 
@@ -103,12 +129,7 @@ async function main(): Promise<void> {
   reportMade('deb', made(packages, /\.deb$/), Date.now() - debs)
 
   const rpms = Date.now()
-  container({
-    image: IMAGES.fedora,
-    mounts: { '/in': release, '/out': packages, '/task': path.join(TERM, 'task', 'distro') },
-    env,
-    args: ['sh', '/task/fedora.sh', 'build'],
-  })
+  container({ image: IMAGES.fedora, mounts: { '/in': release, '/out': packages, '/task': path.join(TERM, 'task', 'distro') }, env, args: ['sh', '/task/fedora.sh', 'build'] })
   reportMade('rpm', made(packages, /\.rpm$/), Date.now() - rpms)
 
   // the Windows zips: the release's own staged folder, `term\` at the top, so winget's nested path is term\bin\term.exe
@@ -125,32 +146,24 @@ async function main(): Promise<void> {
   const manifests = writeWinget({ version, zips, into: path.join(out, 'winget') })
   output.report({ glyph: 'done', verb: 'winget', subject: `ClueSurf.Term ${version}`, fields: [output.location(output.showPath(manifests, TERM))] })
 
-  // the repositories: what is published now, the new packages beside it, the oldest dropped, indexed and signed
+  // the repositories: this version's packages, and the versions before it read back from their releases
   const repo = path.join(out, 'repo')
-  const published = path.join(PAGES, 'docs', 'term')
+  const fetched = Date.now()
+  const earlier = await earlierVersions({ version, into: repo })
+
+  for (const one of LINUX_PACKAGES(version)) {
+    place({ kind: one.kind, version, name: one.name, from: path.join(packages, one.name), repo })
+  }
+
+  output.report({
+    glyph: 'done',
+    verb: 'keep',
+    subject: earlier.length > 0 ? `${earlier.join(', ')} from their releases` : `no earlier release carries its packages`,
+    duration: Date.now() - fetched,
+    counts: [output.count(earlier.length + 1, 'versions listed', 'version listed')],
+  })
+
   const indexed = Date.now()
-
-  for (const kind of ['apt', 'rpm'] as const) {
-    const from = path.join(published, kind)
-
-    if (existsSync(from)) {
-      cpSync(from, path.join(repo, kind), { recursive: true })
-    }
-  }
-
-  const pool = path.join(repo, 'apt', 'pool', 'main', 't', 'term')
-  mkdirSync(pool, { recursive: true })
-  mkdirSync(path.join(repo, 'rpm'), { recursive: true })
-
-  for (const one of made(packages, /\.deb$/)) {
-    cpSync(one.file, path.join(pool, one.name))
-  }
-
-  for (const one of made(packages, /\.rpm$/)) {
-    cpSync(one.file, path.join(repo, 'rpm', one.name))
-  }
-
-  const dropped = [...prune(pool, /^term_(\d+\.\d+\.\d+)_/), ...prune(path.join(repo, 'rpm'), /^term-(\d+\.\d+\.\d+)-1\./)]
 
   container({ image: IMAGES.debian, mounts: { '/repo': path.join(repo, 'apt'), '/task': path.join(TERM, 'task', 'distro') }, env, args: ['sh', '/task/debian.sh', 'index'] })
   container({ image: IMAGES.fedora, mounts: { '/repo': path.join(repo, 'rpm'), '/task': path.join(TERM, 'task', 'distro') }, env, args: ['sh', '/task/fedora.sh', 'index'] })
@@ -160,18 +173,22 @@ async function main(): Promise<void> {
   gpg(['--armor', '--detach-sign', '--output', `${releaseFile}.gpg`, releaseFile])
   gpg(['--clearsign', '--output', path.join(repo, 'apt', 'dists', 'stable', 'InRelease'), releaseFile])
   gpg(['--armor', '--detach-sign', '--output', path.join(repo, 'rpm', 'repodata', 'repomd.xml.asc'), path.join(repo, 'rpm', 'repodata', 'repomd.xml')])
-  writeFileSync(path.join(repo, 'pubkey.asc'), run('gpg', ['--armor', '--export', KEY]))
-  writeFileSync(path.join(repo, 'term.repo'), DNF_REPO)
-  writeFileSync(path.join(repo, 'term.list'), APT_LIST)
+
+  // what term.surf serves: the indexes, the two source files and the key, and no package
+  const site = path.join(out, 'public')
+
+  cpSync(path.join(repo, 'apt', 'dists'), path.join(site, 'apt', 'dists'), { recursive: true })
+  cpSync(path.join(repo, 'rpm', 'repodata'), path.join(site, 'rpm', 'repodata'), { recursive: true })
+  writeFileSync(path.join(site, 'apt', 'term.list'), APT_LIST)
+  writeFileSync(path.join(site, 'rpm', 'term.repo'), DNF_REPO)
+  writeFileSync(path.join(site, 'term.asc'), run('gpg', ['--armor', '--export', KEY]))
 
   output.report({
     glyph: 'done',
     verb: 'index',
     subject: 'apt and dnf, signed',
     duration: Date.now() - indexed,
-    counts: [output.count(versionsIn(pool, /^term_(\d+\.\d+\.\d+)_/).length, 'versions kept', 'version kept'), output.count(dropped.length, 'files dropped', 'file dropped')],
-    fields: [output.field('key', KEY), output.location(output.showPath(repo, TERM))],
-    message: dropped.map(file => `dropped ${file}`),
+    fields: [output.field('key', KEY), output.location(output.showPath(site, TERM))],
   })
 
   if (!commit) {
@@ -181,12 +198,12 @@ async function main(): Promise<void> {
   }
 
   // --commit: the files, and nothing in git
-  for (const name of ['apt', 'rpm', 'pubkey.asc', 'term.repo', 'term.list']) {
-    rmSync(path.join(published, name), { recursive: true, force: true })
-    cpSync(path.join(repo, name), path.join(published, name), { recursive: true })
+  for (const name of ['apt', 'rpm', 'term.asc']) {
+    rmSync(path.join(SITE_PUBLIC, name), { recursive: true, force: true })
+    cpSync(path.join(site, name), path.join(SITE_PUBLIC, name), { recursive: true })
   }
 
-  output.report({ glyph: 'changed', kind: 'change', verb: 'write', subject: `${PAGES_URL}/`, fields: [output.location(output.showPath(published, TERM))] })
+  output.report({ glyph: 'changed', kind: 'change', verb: 'write', subject: `${SITE_URL}/apt, /rpm and /term.asc`, fields: [output.location(output.showPath(SITE_PUBLIC, TERM))] })
 
   const wingetTo = path.join(WINGET_FORK, 'manifests', 'c', 'ClueSurf', 'Term', version)
 
@@ -200,12 +217,13 @@ async function main(): Promise<void> {
   output.closeRun({
     verdict: 'Written. Publishing is three steps, in this order',
     message: [
-      '1. the GitHub release, which the winget manifests download from:',
-      `   gh release create v${version} --repo cluesurf/term --title "term ${version}" --notes "term ${version}" ${assets.join(' ')}`,
-      '2. the repositories, live at deck.clue.surf a minute after the push:',
-      `   git -C ${PAGES} add docs/term`,
-      `   git -C ${PAGES} commit -m "term ${version}"`,
-      `   git -C ${PAGES} push origin make`,
+      '1. the GitHub release, which holds every package the indexes and the winget manifests name:',
+      `   gh release create v${version} --repo ${REPOSITORY} --title "term ${version}" --notes "term ${version}" ${assets.join(' ')}`,
+      '2. term.surf, which then serves the new indexes (a deploy builds from what is pushed):',
+      `   git -C ${path.join(ROOT, 'mesh')} add site/term.surf/home/public/apt site/term.surf/home/public/rpm site/term.surf/home/public/term.asc`,
+      `   git -C ${path.join(ROOT, 'mesh')} commit -m "term ${version} for apt and dnf"`,
+      `   git -C ${path.join(ROOT, 'mesh')} push`,
+      `   pnpm --dir ${ROOT} host term:home`,
       '3. the winget pull request, on a branch of its own from upstream:',
       `   git -C ${WINGET_FORK} fetch upstream master`,
       `   git -C ${WINGET_FORK} switch -c ${branch} upstream/master`,
@@ -216,6 +234,85 @@ async function main(): Promise<void> {
     ],
     done: true,
   })
+}
+
+// ---- the repositories ----
+
+// what a Fedora or RHEL machine saves as /etc/yum.repos.d/term.repo. The packages are not signed one by one:
+// repomd.xml is, and it carries the sha256 of every package, so repo_gpgcheck covers each through the index
+const DNF_REPO = `[term]
+name=term
+baseurl=${SITE_URL}/rpm
+enabled=1
+gpgcheck=0
+repo_gpgcheck=1
+gpgkey=${SITE_URL}/term.asc
+`
+
+// what a Debian or Ubuntu machine saves as /etc/apt/sources.list.d/term.list, beside the key at /etc/apt/keyrings
+const APT_LIST = `deb [signed-by=/etc/apt/keyrings/term.asc] ${SITE_URL}/apt stable main
+`
+
+// One package where its index names it and the Worker's redirect expects it: apt's under pool/<v>/, dnf's under <v>/
+function place(input: { kind: string; version: string; name: string; from: string; repo: string }): void {
+  const dir = input.kind === 'apt' ? path.join(input.repo, 'apt', 'pool', input.version) : path.join(input.repo, 'rpm', input.version)
+
+  mkdirSync(dir, { recursive: true })
+  cpSync(input.from, path.join(dir, input.name))
+}
+
+// The KEEP - 1 newest versions before `version` whose GitHub release holds all four Linux packages, downloaded into
+// the repository so the index lists them. A release without them (every one before term:distro existed) is passed
+// over, and a GitHub that cannot be asked stops the run: an index that silently lost its older versions would take
+// a rollback away from every machine that reads it
+async function earlierVersions(input: { version: string; into: string }): Promise<string[]> {
+  const response = await fetch(`https://api.github.com/repos/${REPOSITORY}/releases?per_page=50`, { headers: { 'user-agent': AGENT } })
+
+  if (!response.ok) {
+    output.report({ glyph: 'failed', kind: 'problem', verb: 'keep', subject: `GitHub did not list the releases of ${REPOSITORY}`, http: response.status })
+    output.closeRun({ verdict: 'Stopped', failure: 'environment' })
+    process.exit(1)
+  }
+
+  const releases = (await response.json()) as { tag_name: string; draft: boolean; assets: { name: string }[] }[]
+  const candidates = releases
+    .filter(one => !one.draft && /^v\d+\.\d+\.\d+$/.test(one.tag_name))
+    .map(one => ({ version: one.tag_name.slice(1), assets: new Set(one.assets.map(asset => asset.name)) }))
+    .filter(one => compare(one.version, input.version) < 0 && LINUX_PACKAGES(one.version).every(file => one.assets.has(file.name)))
+    .sort((a, b) => compare(b.version, a.version))
+    .slice(0, KEEP - 1)
+
+  const cache = path.join(TERM, 'tmp', 'release', 'distro-cache')
+
+  mkdirSync(cache, { recursive: true })
+
+  for (const candidate of candidates) {
+    for (const one of LINUX_PACKAGES(candidate.version)) {
+      const cached = path.join(cache, one.name)
+
+      if (!existsSync(cached)) {
+        const download = await fetch(`${RELEASES_URL}/v${candidate.version}/${one.name}`, { headers: { 'user-agent': AGENT } })
+
+        if (!download.ok) {
+          output.report({ glyph: 'failed', kind: 'problem', verb: 'keep', subject: `${one.name} did not download from its release`, http: download.status })
+          output.closeRun({ verdict: 'Stopped', failure: 'environment' })
+          process.exit(1)
+        }
+
+        writeFileSync(cached, Buffer.from(await download.arrayBuffer()))
+      }
+
+      place({ kind: one.kind, version: candidate.version, name: one.name, from: cached, repo: input.into })
+    }
+  }
+
+  return candidates.map(one => one.version)
+}
+
+function compare(a: string, b: string): number {
+  const [x, y] = [a, b].map(one => one.split('.').map(Number))
+
+  return x![0]! - y![0]! || x![1]! - y![1]! || x![2]! - y![2]!
 }
 
 // ---- winget ----
@@ -291,51 +388,6 @@ function writeWinget(input: { version: string; zips: Made[]; into: string }): st
   )
 
   return dir
-}
-
-// ---- the repositories ----
-
-// what a Fedora, RHEL or openSUSE machine saves as /etc/yum.repos.d/term.repo. The packages are not signed one by one:
-// repomd.xml is, and it carries the sha256 of every package, so repo_gpgcheck covers each through the index
-const DNF_REPO = `[term]
-name=term
-baseurl=${PAGES_URL}/rpm
-enabled=1
-gpgcheck=0
-repo_gpgcheck=1
-gpgkey=${PAGES_URL}/pubkey.asc
-`
-
-// what a Debian or Ubuntu machine saves as /etc/apt/sources.list.d/term.list, beside the key at /etc/apt/keyrings
-const APT_LIST = `deb [signed-by=/etc/apt/keyrings/term.asc] ${PAGES_URL}/apt stable main
-`
-
-// Drop every package older than the newest KEEP versions in `dir`, and return what was dropped
-function prune(dir: string, pattern: RegExp): string[] {
-  const keep = new Set(versionsIn(dir, pattern).slice(0, KEEP))
-  const dropped: string[] = []
-
-  for (const name of readdirSync(dir)) {
-    const version = pattern.exec(name)?.[1]
-
-    if (version && !keep.has(version)) {
-      rmSync(path.join(dir, name))
-      dropped.push(name)
-    }
-  }
-
-  return dropped
-}
-
-// the versions packaged in `dir`, newest first
-function versionsIn(dir: string, pattern: RegExp): string[] {
-  const versions = new Set(readdirSync(dir).flatMap(name => pattern.exec(name)?.[1] ?? []))
-
-  return [...versions].sort((a, b) => {
-    const [x, y] = [a, b].map(one => one.split('.').map(Number))
-
-    return y![0]! - x![0]! || y![1]! - x![1]! || y![2]! - x![2]!
-  })
 }
 
 // ---- running things ----
