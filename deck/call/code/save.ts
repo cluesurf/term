@@ -1,4 +1,4 @@
-// `term save <deck>`: add a dependency to the manifest. Prints through the terminal output library (code/output.ts).
+// `term save <deck> [mark]`: add a dependency to the manifest, accepting the versions `mark` names (`0.x.x` without). Prints through the terminal output library (code/output.ts).
 
 import { addDependency } from '@cluesurf/deck.tree'
 import { closeRun, openRun, report } from '@term/call/code/output'
@@ -12,7 +12,7 @@ export async function callSave(input: {
 
   if (!input.deck) {
     report({ glyph: 'failed', kind: 'problem', subject: 'There is no deck to add' })
-    closeRun({ verdict: 'Nothing added', next: 'term save <deck>', failure: 'usage' })
+    closeRun({ verdict: 'Nothing added', next: 'term save <deck> [mark]', failure: 'usage' })
 
     return
   }

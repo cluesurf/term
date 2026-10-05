@@ -894,6 +894,24 @@ task both
   send back, run-twice(fetch-word)
 `)
     ok('an async task passed where the parameter is not async is refused', !plain.ok && plain.names.includes('async-argument'), plain.messages)
+
+    const done = build(`task later
+  take done
+    like task
+      like void
+  like void
+  done()
+
+task finish
+  mark async
+  like void
+  send back
+
+task start
+  like void
+  later(finish)
+`)
+    ok('but not where the parameter gives back nothing to read', done.ok, done.messages)
   }
 
   // ---- types/annotations: an unknown type is reported at the line that names it ----

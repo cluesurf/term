@@ -16,9 +16,15 @@
 // (test/compile/shared/compose-build.ts, compose-android.ts).
 
 import { execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync, copyFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync, copyFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { compile } from '@term/make/code/compile/compile'
+import type { CompileCache } from '@term/make/code/compile/cache'
+import { collectModules } from '@term/make/code/compile/load'
+import type { ParseMemo, Resolver } from '@term/make/code/compile/load'
+import { checkScope } from '@term/call/code/scope'
 import { nativePrelude } from '@term/make/code/compile/native'
 import { emitKotlin, hoistKotlinImports } from '@term/make/code/compile/kotlin'
 import { stdlibBase } from '@term/make/code/resolve'
@@ -79,25 +85,115 @@ function have(tool: string): boolean {
   return spawnSync('which', [tool], { encoding: 'utf8' }).status === 0
 }
 
+// the entry file a build compiles: the app's own `file` when it has one, so its relative loads (`load ./notes`) resolve
+// beside it, else `text` written into the build's folder (a test's program, which loads only packages)
+function entryOf(input: { file?: string; dir: string; name: string; text: string }): string {
+  if (input.file) {
+    return input.file
+  }
+
+  const entry = join(input.dir, `${input.name}.tree`)
+  writeFileSync(entry, input.text)
+
+  return entry
+}
+
+// an APP build's scope (deck/call/code/scope.ts): the capabilities the program reaches, from the modules its build
+// loads, each of which its `scope.tree` must name. Answers the refusal, or nothing when the program is within it. A
+// test's program is no app and is built with no scope. `memo` is the session's parse memo, keyed by content, so a
+// rebuild does not parse the closure twice
+export type AppScope = { root: string; memo?: ParseMemo }
+
+function refusedScope(scope: AppScope | undefined, entry: string, text: string, resolve: Resolver): string | undefined {
+  if (!scope) {
+    return undefined
+  }
+
+  try {
+    checkScope({ root: scope.root, files: collectModules({ file: entry, text }, resolve, scope.memo).sources.map(one => one.file) })
+  } catch (e) {
+    return (e as Error).message
+  }
+
+  return undefined
+}
+
+// where compiled Compose runtimes are kept between builds: the native toolchain's cache (task/term/native/common.sh)
+const RUNTIME_CACHE = join(process.env.TERM_NATIVE_CACHE ?? join(tmpdir(), 'term-native'), 'kotlin', 'compose-runtime')
+
+// the program's Kotlin compiled against its RUNTIME, the prelude, which is compiled once per distinct text into a jar
+// kept in RUNTIME_CACHE. The runtime is 1,700 lines that change only when the program's docks do, and the program a
+// fraction of that, so an edit pays for the program alone: 2 seconds where both together were 13 (live-reload). The
+// jar is written under a name of its own and then renamed, so two builds at once never read half of one. A runtime that
+// does not compile on its own is compiled with the program in one file, as every build was before. `header` opens each
+// file (Android's `package`); the answer names the jars the program needs beside it at run time
+function compileKotlin(input: {
+  compiler: KotlinCompiler
+  dir: string
+  name: string
+  header: string
+  runtime: string
+  program: string
+  classpath: string[]
+  flags: string[]
+  out: string
+}): { status: number; output: string; runtimeJars: string[] } {
+  const compile = (file: string, text: string, classpath: string[], out: string) => {
+    writeFileSync(file, `${input.header}${hoistKotlinImports(text)}\n`)
+
+    return input.compiler([file, '-classpath', classpath.join(':'), ...input.flags, '-d', out])
+  }
+  const runtime = `${input.header}${hoistKotlinImports(input.runtime)}`
+  const key = createHash('sha256').update([runtime, input.classpath.join(':'), input.flags.join(' ')].join('\0')).digest('hex').slice(0, 32)
+  const jar = join(RUNTIME_CACHE, `${key}.jar`)
+
+  if (!existsSync(jar)) {
+    mkdirSync(RUNTIME_CACHE, { recursive: true })
+    const fresh = join(RUNTIME_CACHE, `${key}.${process.pid}.${Date.now()}.jar`)
+    const built = compile(join(input.dir, `${input.name}-runtime.kt`), input.runtime, input.classpath, fresh)
+
+    if (built.status !== 0) {
+      const whole = compile(join(input.dir, `${input.name}.kt`), [input.runtime, input.program].join('\n'), input.classpath, input.out)
+
+      return { ...whole, runtimeJars: [] }
+    }
+
+    renameSync(fresh, jar)
+  }
+
+  const program = compile(join(input.dir, `${input.name}.kt`), input.program, [jar, ...input.classpath], input.out)
+
+  return { ...program, runtimeJars: [jar] }
+}
+
 export type ComposeBuilt =
   | { form: 'skipped'; reason: string }
   | { form: 'failed'; stage: 'compile' | 'prelude' | 'flags' | 'build'; reason: string }
   | { form: 'built'; jar: string; classpath: string; main: string }
 
 // compile `text` (entry file `<dir>/<name>.tree`) for Compose on the desktop JVM and build it into a jar. `root` is where
-// the program's packages resolve. `compiler` is `kotlinc` unless a session holds a warm one (./kotlin-worker.ts)
+// the program's packages resolve; `file` is the entry's own path when the program is an app's (see entryOf). A session
+// that builds again and again (`term work`) passes what it keeps warm: a
+// `compiler` (./kotlin-worker.ts, else `kotlinc`) and a `cache`, the Term compiler's parsed modules, so an edit reparses
+// only the files that changed
 export function buildCompose({
   root,
   dir,
   name,
   text,
+  file,
   compiler = kotlinc,
+  cache,
+  scope,
 }: {
   root: string
   dir: string
   name: string
   text: string
+  file?: string
   compiler?: KotlinCompiler
+  cache?: CompileCache
+  scope?: AppScope
 }): ComposeBuilt {
   if (!have('kotlinc') || !have('java')) {
     return { form: 'skipped', reason: 'kotlinc or java not installed' }
@@ -105,13 +201,19 @@ export function buildCompose({
 
   // the `compose` env: the toolkit dom, Kotlin's JVM natives, and the runtime the prelude finds for it,
   // deck/site/code/dom/native/toolkit/runtime/compose/native-view.kt (the shared Compose runtime and the desktop host)
-  const readRuntime = (file: string): string | undefined => (existsSync(file) ? readFileSync(file, 'utf8') : undefined)
-  const entry = join(dir, `${name}.tree`)
-  writeFileSync(entry, text)
-  const result = compile({ file: entry, text }, { resolve: projectResolver(root, 'compose'), env: 'compose' })
+  const readRuntime = (path: string): string | undefined => (existsSync(path) ? readFileSync(path, 'utf8') : undefined)
+  const entry = entryOf({ file, dir, name, text })
+  const resolve = projectResolver(root, 'compose')
+  const result = compile({ file: entry, text }, { resolve, env: 'compose', cache })
 
   if (!result.ok) {
     return { form: 'failed', stage: 'compile', reason: [...new Set(result.diagnostics.map(d => d.message))].slice(0, 6).join(' | ') }
+  }
+
+  const refused = refusedScope(scope, entry, text, resolve)
+
+  if (refused) {
+    return { form: 'failed', stage: 'scope', reason: refused }
   }
 
   const kotlin = emitKotlin(result.program)
@@ -121,9 +223,6 @@ export function buildCompose({
   if (!prelude.includes('fun CxTree(') || prelude.includes('android.widget')) {
     return { form: 'failed', stage: 'prelude', reason: 'the prelude does not hold the Compose runtime alone' }
   }
-
-  const file = join(dir, `${name}.kt`)
-  writeFileSync(file, `${hoistKotlinImports([prelude, kotlin].join('\n'))}\n`)
 
   let classpath = ''
   let plugin = ''
@@ -140,7 +239,17 @@ export function buildCompose({
   }
 
   const jar = join(dir, `${name}.jar`)
-  const built = compiler([file, '-classpath', classpath, `-Xplugin=${plugin}`, '-jvm-target', '17', '-nowarn', '-d', jar])
+  const built = compileKotlin({
+    compiler,
+    dir,
+    name,
+    header: '',
+    runtime: prelude,
+    program: kotlin,
+    classpath: classpath.split(':'),
+    flags: [`-Xplugin=${plugin}`, '-jvm-target', '17', '-nowarn'],
+    out: jar,
+  })
 
   if (built.status !== 0) {
     const errors = built.output.split('\n').filter(line => /error:/.test(line))
@@ -151,7 +260,8 @@ export function buildCompose({
   // kotlinc names a file's top-level class after the file: `<name>.kt` holds `<Name>Kt`
   const main = `${name.charAt(0).toUpperCase()}${name.slice(1).replace(/-(\w)/g, (_, c: string) => c.toUpperCase())}Kt`
 
-  return { form: 'built', jar, classpath, main }
+  // the runtime's jar first: the program is run, and packaged, with it beside the Compose libraries
+  return { form: 'built', jar, classpath: [...built.runtimeJars, classpath].join(':'), main }
 }
 
 export type ComposeAndroidBuilt =
@@ -161,7 +271,7 @@ export type ComposeAndroidBuilt =
 
 // compile `text` for Jetpack Compose and make a signed APK of it, `identifier` its package. `assets` are files the APK
 // carries, by name, which the program reads as `asset:<name>` (an emulator cannot read the build machine's paths).
-// `compiler` is `kotlinc` unless a session holds a warm one (./kotlin-worker.ts)
+// `compiler` and `cache` are what a session keeps warm, as for buildCompose
 export function buildComposeAndroid({
   root,
   dir,
@@ -169,7 +279,10 @@ export function buildComposeAndroid({
   text,
   identifier,
   assets = {},
+  file,
   compiler = kotlinc,
+  cache,
+  scope,
 }: {
   root: string
   dir: string
@@ -177,7 +290,10 @@ export function buildComposeAndroid({
   text: string
   identifier: string
   assets?: Record<string, string>
+  file?: string
   compiler?: KotlinCompiler
+  cache?: CompileCache
+  scope?: AppScope
 }): ComposeAndroidBuilt {
   let tools: ReturnType<typeof androidTools>
 
@@ -194,20 +310,24 @@ export function buildComposeAndroid({
   // the `compose-android` env: Android's natives, the toolkit dom, and the runtime the prelude finds for it,
   // deck/site/code/dom/native/toolkit/runtime/compose-android/native-view.kt (the shared Compose runtime and the Android
   // host)
-  const readRuntime = (file: string): string | undefined => (existsSync(file) ? readFileSync(file, 'utf8') : undefined)
-  const entry = join(work, `${name}.tree`)
-  writeFileSync(entry, text)
-  const result = compile({ file: entry, text }, { resolve: projectResolver(root, 'compose-android'), env: 'compose-android' })
+  const readRuntime = (path: string): string | undefined => (existsSync(path) ? readFileSync(path, 'utf8') : undefined)
+  const entry = entryOf({ file, dir: work, name, text })
+  const resolve = projectResolver(root, 'compose-android')
+  const result = compile({ file: entry, text }, { resolve, env: 'compose-android', cache })
 
   if (!result.ok) {
     return { form: 'failed', stage: 'compile', reason: [...new Set(result.diagnostics.map(d => d.message))].slice(0, 6).join(' | ') }
   }
 
+  const refused = refusedScope(scope, entry, text, resolve)
+
+  if (refused) {
+    return { form: 'failed', stage: 'scope', reason: refused }
+  }
+
   const kotlin = emitKotlin(result.program)
   const prelude = nativePrelude(result.program, 'compose-android', readRuntime, kotlin)
   const driver = ['class TermActivity : TermComposeActivity() {', '  override fun program() { main() }', '}'].join('\n')
-  const source = join(work, 'app.kt')
-  writeFileSync(source, `package ${identifier}\n\n${hoistKotlinImports([prelude, kotlin, driver].join('\n'))}\n`)
 
   // 1. the libraries and the compiler plugin
   const script = toolchainScript()
@@ -221,149 +341,93 @@ export function buildComposeAndroid({
     return { form: 'failed', stage: 'libraries', reason: failure(e) }
   }
 
-  // 2. each `.aar` unpacked: its classes and bundled jars onto the classpath, its resources compiled, its package kept
-  const jars = files.filter(file => file.endsWith('.jar'))
-  const flats: string[] = []
-  const packages = new Set<string>()
+  // EVERYTHING BEFORE THE PROGRAM IS KEPT, by what it is made from (live-reload). The libraries unpacked and their
+  // resources compiled depend on the library set alone; the link (the base APK and the R classes) on that, the app's
+  // package, label and assets; the libraries' dex on the library set. An edit changes none of them, so it pays for the
+  // program alone: its Kotlin, its dex, and the zip and signature. Each is built under a name of its own and renamed
+  // into place (`kept`), so two builds at once never read half of one
+  let libraries: AndroidLibraries
+  let linked: { base: string; rJar: string; rDex: string }
+  let libraryDex: string
 
   try {
-    files
-      .filter(file => file.endsWith('.aar'))
-      .forEach((aar, index) => {
-        const into = join(work, 'aar', String(index))
-        mkdirSync(into, { recursive: true })
-        run('unzip', ['-q', '-o', aar, '-d', into])
-        const classes = join(into, 'classes.jar')
-
-        if (existsSync(classes)) {
-          jars.push(classes)
-        }
-
-        jars.push(...filesUnder(join(into, 'libs'), '.jar'))
-        const manifest = join(into, 'AndroidManifest.xml')
-        const found = existsSync(manifest) ? /package="([^"]+)"/.exec(readFileSync(manifest, 'utf8')) : null
-
-        if (found) {
-          packages.add(found[1]!)
-        }
-
-        // 3. its resources compiled, when it has any
-        const res = join(into, 'res')
-
-        if (filesUnder(res, '').length > 0) {
-          const flat = join(work, 'flat', `${index}.zip`)
-          mkdirSync(join(work, 'flat'), { recursive: true })
-          run(join(tools.buildTools, 'aapt2'), ['compile', '--dir', res, '-o', flat])
-          flats.push(flat)
-        }
-      })
+    libraries = prepareAndroidLibraries(files, tools)
   } catch (e) {
     return { form: 'failed', stage: 'unpack', reason: failure(e) }
   }
 
-  // 3. one link: the app's manifest and every library's resources, an R class for the app and each library package
-  const manifest = join(work, 'AndroidManifest.xml')
-  writeFileSync(
-    manifest,
-    [
-      '<?xml version="1.0" encoding="utf-8"?>',
-      `<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="${identifier}" android:versionCode="1" android:versionName="0.0.2">`,
-      `  <uses-sdk android:minSdkVersion="${MINIMUM_SDK}" android:targetSdkVersion="${TARGET_SDK}" />`,
-      `  <application android:label="${name}" android:theme="@android:style/Theme.Material.Light.NoActionBar">`,
-      '    <activity android:name=".TermActivity" android:exported="true" android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|uiMode|fontScale|density">',
-      '      <intent-filter>',
-      '        <action android:name="android.intent.action.MAIN" />',
-      '        <category android:name="android.intent.category.LAUNCHER" />',
-      '      </intent-filter>',
-      '    </activity>',
-      '  </application>',
-      '</manifest>',
-      '',
-    ].join('\n'),
-  )
-  const base = join(work, `${name}-base.apk`)
-  const generated = join(work, 'gen')
-
-  // the files the APK carries, in one folder aapt2 adds as the APK's assets
-  const assetDir = join(work, 'assets')
-  mkdirSync(assetDir, { recursive: true })
-
-  for (const [asset, file] of Object.entries(assets)) {
-    copyFileSync(file, join(assetDir, asset))
-  }
-
   try {
-    run(join(tools.buildTools, 'aapt2'), [
-      'link',
-      '-o',
-      base,
-      '-I',
-      tools.platform,
-      '--manifest',
-      manifest,
-      '-A',
-      assetDir,
-      '--java',
-      generated,
-      '--auto-add-overlay',
-      ...(packages.size > 0 ? ['--extra-packages', [...packages].join(':')] : []),
-      ...flats.flatMap(flat => ['-R', flat]),
-    ])
+    linked = linkAndroidApp({ libraries, tools, identifier, name, assets })
   } catch (e) {
     return { form: 'failed', stage: 'resources', reason: failure(e) }
   }
 
-  // the R classes, compiled
-  const rClasses = join(work, 'r')
-  const rJar = join(work, 'r.jar')
-
   try {
-    mkdirSync(rClasses, { recursive: true })
-    run('javac', ['--release', '17', '-nowarn', '-d', rClasses, ...filesUnder(generated, '.java')])
-    run('jar', ['cf', rJar, '-C', rClasses, '.'])
+    libraryDex = kept(join(ANDROID_CACHE, 'dex'), libraries.key, into =>
+      run(join(tools.buildTools, 'd8'), ['--release', '--lib', tools.platform, '--min-api', String(MINIMUM_SDK), '--output', into, ...libraries.jars]),
+    )
   } catch (e) {
-    return { form: 'failed', stage: 'r classes', reason: failure(e) }
+    return { form: 'failed', stage: 'd8', reason: failure(e) }
   }
 
-  // 4. the program, with the Compose plugin, against android.jar, the libraries and the R classes
+  // 4. the program, with the Compose plugin, against android.jar, the libraries and the R classes, its runtime kept
   const appJar = join(work, 'app.jar')
-
-  const compiled = compiler([
-    source,
-    '-classpath',
-    [tools.platform, rJar, ...jars].join(':'),
-    `-Xplugin=${plugin}`,
-    '-jvm-target',
-    '17',
-    '-nowarn',
-    '-Xno-param-assertions',
-    '-Xno-call-assertions',
-    '-Xno-receiver-assertions',
-    '-d',
-    appJar,
-  ])
+  const compiled = compileKotlin({
+    compiler,
+    dir: work,
+    name: 'app',
+    header: `package ${identifier}\n\n`,
+    runtime: prelude,
+    program: [kotlin, driver].join('\n'),
+    classpath: [tools.platform, linked.rJar, ...libraries.jars],
+    flags: [`-Xplugin=${plugin}`, '-jvm-target', '17', '-nowarn', '-Xno-param-assertions', '-Xno-call-assertions', '-Xno-receiver-assertions'],
+    out: appJar,
+  })
 
   if (compiled.status !== 0) {
     return { form: 'failed', stage: 'kotlinc', reason: errorsOf(compiled.output) }
   }
 
-  // 5. everything dexed: d8 writes classes.dex, classes2.dex, ... as the method count needs
-  const dex = join(work, 'dex')
+  // 5. the program dexed, and its runtime's dex, kept beside that runtime's jar. Each against everything it calls, so
+  // d8 can desugar across the boundary as one dexing of the whole did
+  const d8 = (out: string, jar: string, against: string[]) =>
+    run(join(tools.buildTools, 'd8'), ['--release', '--lib', tools.platform, '--min-api', String(MINIMUM_SDK), ...against.flatMap(one => ['--classpath', one]), '--output', out, jar])
+  const programDex = join(work, 'dex')
 
   try {
-    mkdirSync(dex, { recursive: true })
-    run(join(tools.buildTools, 'd8'), ['--release', '--lib', tools.platform, '--min-api', String(MINIMUM_SDK), '--output', dex, appJar, rJar, ...jars])
+    mkdirSync(programDex, { recursive: true })
+    d8(programDex, appJar, [...compiled.runtimeJars, linked.rJar, ...libraries.jars])
   } catch (e) {
     return { form: 'failed', stage: 'd8', reason: failure(e) }
   }
 
-  // 6. the dex files into the base APK, aligned and signed with the debug key, as the cask signs its own
+  let runtimeDexes: string[]
+
+  try {
+    runtimeDexes = compiled.runtimeJars.map(jar => kept(join(ANDROID_CACHE, 'runtime-dex'), `${basename(jar, '.jar')}-${libraries.key}`, into => d8(into, jar, [linked.rJar, ...libraries.jars])))
+  } catch (e) {
+    return { form: 'failed', stage: 'd8', reason: failure(e) }
+  }
+
+  // 6. every dex into a copy of the base APK, numbered as Android loads them (classes.dex, classes2.dex, ...), aligned and
+  // signed with the debug key, as the cask signs its own
+  const staged = join(work, 'staged')
+  const base = join(work, `${name}-base.apk`)
   const aligned = join(work, `${name}-aligned.apk`)
   const apk = join(work, `${name}.apk`)
   const keystore = join(process.env.HOME ?? '', '.android', 'debug.keystore')
 
   try {
-    run('zip', ['-q', '-j', base, ...filesUnder(dex, '.dex')])
+    mkdirSync(staged, { recursive: true })
+    const dexes = [programDex, ...runtimeDexes, linked.rDex, libraryDex].flatMap(one => dexFiles(one))
+    const numbered = dexes.map((dex, index) => {
+      const to = join(staged, index === 0 ? 'classes.dex' : `classes${index + 1}.dex`)
+      copyFileSync(dex, to)
+
+      return to
+    })
+    copyFileSync(linked.base, base)
+    run('zip', ['-q', '-j', base, ...numbered])
     run(join(tools.buildTools, 'zipalign'), ['-f', '-p', '4', base, aligned])
 
     if (!existsSync(keystore)) {
@@ -377,6 +441,177 @@ export function buildComposeAndroid({
   }
 
   return { form: 'built', apk }
+}
+
+// the dex files d8 wrote into a folder, in its own order: classes.dex, then classes2.dex, classes3.dex, ...
+function dexFiles(dir: string): string[] {
+  const order = (file: string) => Number(/classes(\d*)\.dex$/.exec(file)?.[1] || '1')
+
+  return filesUnder(dir, '.dex').sort((a, b) => order(a) - order(b))
+}
+
+// where the Android stages that do not change between edits are kept: beside the Compose runtimes
+const ANDROID_CACHE = join(RUNTIME_CACHE, '..', 'compose-android')
+
+// a folder made once per `key` and kept under `root`: made under a name of its own and renamed into place, so a build
+// running beside this one never reads half of it, and a stage that failed leaves nothing behind. Answers its path
+function kept(root: string, key: string, make: (dir: string) => void): string {
+  const done = join(root, key)
+
+  if (existsSync(done)) {
+    return done
+  }
+
+  const fresh = join(root, `${key}.${process.pid}.${Date.now()}`)
+  mkdirSync(fresh, { recursive: true })
+
+  try {
+    make(fresh)
+  } catch (e) {
+    rmSync(fresh, { recursive: true, force: true })
+    throw e
+  }
+
+  try {
+    renameSync(fresh, done)
+  } catch {
+    // another build finished the same stage first: its folder is the same, and this one goes
+    rmSync(fresh, { recursive: true, force: true })
+  }
+
+  return done
+}
+
+// a key for what a stage is made from: its parts, and each FILE's size and time, so a library the toolchain replaced
+// is a new key
+function keyOf(parts: string[], files: string[] = []): string {
+  const stamps = files.map(one => {
+    const stat = statSync(one)
+
+    return `${one}:${stat.size}:${stat.mtimeMs}`
+  })
+
+  return createHash('sha256').update([...parts, ...stamps].join('\0')).digest('hex').slice(0, 32)
+}
+
+type AndroidLibraries = { key: string; jars: string[]; flats: string[]; packages: string[] }
+
+// 2. the libraries unpacked: each `.aar`'s classes and bundled jars onto the classpath, its resources compiled by aapt2
+// and its package kept, made once per library set
+function prepareAndroidLibraries(files: string[], tools: ReturnType<typeof androidTools>): AndroidLibraries {
+  const key = keyOf(['libraries', tools.buildTools], files)
+  const dir = kept(join(ANDROID_CACHE, 'libraries'), key, into => {
+    const jars = files.filter(one => one.endsWith('.jar'))
+    const flats: string[] = []
+    const packages = new Set<string>()
+
+    files
+      .filter(one => one.endsWith('.aar'))
+      .forEach((aar, index) => {
+        const unpacked = join(into, 'aar', String(index))
+        mkdirSync(unpacked, { recursive: true })
+        run('unzip', ['-q', '-o', aar, '-d', unpacked])
+        const classes = join(unpacked, 'classes.jar')
+
+        if (existsSync(classes)) {
+          jars.push(classes)
+        }
+
+        jars.push(...filesUnder(join(unpacked, 'libs'), '.jar'))
+        const manifest = join(unpacked, 'AndroidManifest.xml')
+        const found = existsSync(manifest) ? /package="([^"]+)"/.exec(readFileSync(manifest, 'utf8')) : null
+
+        if (found) {
+          packages.add(found[1]!)
+        }
+
+        // its resources compiled, when it has any
+        const res = join(unpacked, 'res')
+
+        if (filesUnder(res, '').length > 0) {
+          const flat = join(into, 'flat', `${index}.zip`)
+          mkdirSync(join(into, 'flat'), { recursive: true })
+          run(join(tools.buildTools, 'aapt2'), ['compile', '--dir', res, '-o', flat])
+          flats.push(flat)
+        }
+      })
+
+    // the paths are written relative to the kept folder, which is renamed into place after this
+    const inside = (one: string) => (one.startsWith(into) ? one.slice(into.length + 1) : one)
+    writeFileSync(join(into, 'libraries.json'), JSON.stringify({ jars: jars.map(inside), flats: flats.map(inside), packages: [...packages] }))
+  })
+  const listed = JSON.parse(readFileSync(join(dir, 'libraries.json'), 'utf8')) as { jars: string[]; flats: string[]; packages: string[] }
+  const at = (one: string) => (one.startsWith('/') ? one : join(dir, one))
+
+  return { key, jars: listed.jars.map(at), flats: listed.flats.map(at), packages: listed.packages }
+}
+
+// 3. one link: the app's manifest and every library's resources, an R class for the app and each library package, the
+// R classes compiled and dexed, made once per library set, package, label and assets
+function linkAndroidApp(input: {
+  libraries: AndroidLibraries
+  tools: ReturnType<typeof androidTools>
+  identifier: string
+  name: string
+  assets: Record<string, string>
+}): { base: string; rJar: string; rDex: string } {
+  const { libraries, tools, identifier, name, assets } = input
+  const manifestText = [
+    '<?xml version="1.0" encoding="utf-8"?>',
+    `<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="${identifier}" android:versionCode="1" android:versionName="0.0.2">`,
+    `  <uses-sdk android:minSdkVersion="${MINIMUM_SDK}" android:targetSdkVersion="${TARGET_SDK}" />`,
+    `  <application android:label="${name}" android:theme="@android:style/Theme.Material.Light.NoActionBar">`,
+    '    <activity android:name=".TermActivity" android:exported="true" android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|uiMode|fontScale|density">',
+    '      <intent-filter>',
+    '        <action android:name="android.intent.action.MAIN" />',
+    '        <category android:name="android.intent.category.LAUNCHER" />',
+    '      </intent-filter>',
+    '    </activity>',
+    '  </application>',
+    '</manifest>',
+    '',
+  ].join('\n')
+  const key = keyOf(['link', libraries.key, manifestText, ...Object.keys(assets).sort()], Object.keys(assets).sort().map(one => assets[one]!))
+  const dir = kept(join(ANDROID_CACHE, 'link'), key, into => {
+    const manifest = join(into, 'AndroidManifest.xml')
+    writeFileSync(manifest, manifestText)
+
+    // the files the APK carries, in one folder aapt2 adds as the APK's assets
+    const assetDir = join(into, 'assets')
+    mkdirSync(assetDir, { recursive: true })
+
+    for (const [asset, from] of Object.entries(assets)) {
+      copyFileSync(from, join(assetDir, asset))
+    }
+
+    const generated = join(into, 'gen')
+    run(join(tools.buildTools, 'aapt2'), [
+      'link',
+      '-o',
+      join(into, 'base.apk'),
+      '-I',
+      tools.platform,
+      '--manifest',
+      manifest,
+      '-A',
+      assetDir,
+      '--java',
+      generated,
+      '--auto-add-overlay',
+      ...(libraries.packages.length > 0 ? ['--extra-packages', libraries.packages.join(':')] : []),
+      ...libraries.flats.flatMap(flat => ['-R', flat]),
+    ])
+
+    // the R classes, compiled and dexed
+    const rClasses = join(into, 'r')
+    mkdirSync(rClasses, { recursive: true })
+    run('javac', ['--release', '17', '-nowarn', '-d', rClasses, ...filesUnder(generated, '.java')])
+    run('jar', ['cf', join(into, 'r.jar'), '-C', rClasses, '.'])
+    mkdirSync(join(into, 'r-dex'), { recursive: true })
+    run(join(tools.buildTools, 'd8'), ['--release', '--lib', tools.platform, '--min-api', String(MINIMUM_SDK), '--output', join(into, 'r-dex'), join(into, 'r.jar')])
+  })
+
+  return { base: join(dir, 'base.apk'), rJar: join(dir, 'r.jar'), rDex: join(dir, 'r-dex') }
 }
 
 // a built desktop jar packaged by jpackage as an app image with its own JVM, for the OS this runs on: the jar and every
@@ -464,7 +699,7 @@ export async function makeCompose(input: { root: string; target: 'compose' | 'co
     built.form === 'skipped' ? refusal(built.reason, 'environment') : refusal(`${built.stage}: ${built.reason}`, '')
 
   if (input.target === 'compose-android') {
-    const built = buildComposeAndroid({ root: input.root, dir: work, name: 'app', text, identifier })
+    const built = buildComposeAndroid({ root: input.root, dir: work, name: 'app', text, file: entry, identifier })
 
     if (built.form !== 'built') {
       throw refuse(built)
@@ -478,7 +713,7 @@ export async function makeCompose(input: { root: string; target: 'compose' | 'co
     return { app: apk }
   }
 
-  const built = buildCompose({ root: input.root, dir: work, name: 'app', text })
+  const built = buildCompose({ root: input.root, dir: work, name: 'app', text, file: entry })
 
   if (built.form !== 'built') {
     throw refuse(built)

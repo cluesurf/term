@@ -92,18 +92,40 @@ export async function callWake(input: {
     await fsp.mkdir(path.join(target, 'code'), { recursive: true })
     await fsp.mkdir(path.join(target, 'test'), { recursive: true })
 
-    const written: [string, string][] = [
+    const scaffold: [string, string][] = [
       ['deck.tree', DECK_TREE(label)],
       ['code/boot.tree', BOOT_TREE],
       ['readme.md', README(label)],
       ['.gitignore', GITIGNORE],
     ]
 
-    await Promise.all(written.map(([file, text]) => fsp.writeFile(path.join(target, file), text)))
+    // a file already there is the author's and is kept: wake in a folder that held a `readme.md` or a `.gitignore`
+    // replaced it without a word (guides: commands/wake, 2026-10-04). `wx` refuses to write over one
+    const kept = new Set<string>()
 
-    // one `add` change item per file written, in the order a reader opens them
-    for (const [file] of written) {
-      report({ glyph: 'added', kind: 'change', verb: 'add', subject: file })
+    await Promise.all(
+      scaffold.map(async ([file, text]) => {
+        try {
+          await fsp.writeFile(path.join(target, file), text, { flag: 'wx' })
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
+            throw error
+          }
+
+          kept.add(file)
+        }
+      }),
+    )
+
+    const written = scaffold.filter(([file]) => !kept.has(file))
+
+    // one item per file, in the order a reader opens them: `add` for each written, `keep` for each already there
+    for (const [file] of scaffold) {
+      if (kept.has(file)) {
+        report({ glyph: 'info', verb: 'keep', subject: file, facts: ['already here, left as it was'] })
+      } else {
+        report({ glyph: 'added', kind: 'change', verb: 'add', subject: file })
+      }
     }
 
     closeRun({

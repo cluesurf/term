@@ -603,6 +603,25 @@ async function main(): Promise<void> {
     }
   }
 
+  // tier C's budget scales with the input (regex-engine-0015): `(?>ab|a)c` does linear work, and over 2,000,000 code
+  // points with no match it takes more than the old constant 10,000,000 steps, which raised pattern-budget there
+  {
+    const long = 'ab'.repeat(1_000_000)
+    let answer: string
+
+    try {
+      answer = JSON.stringify(engine.chosenAt('(?>ab|a)c', long, 0))
+    } catch (error) {
+      answer = `raised: ${error instanceof Error ? error.message : String(error)}`
+    }
+
+    same('budget over a long input', '(?>ab|a)c', `"ab" x 1,000,000`, [], answer === '[]' ? [] : [-9])
+
+    if (answer !== '[]') {
+      console.log(`FAIL  tier C over a long input answered ${answer.slice(0, 80)}`)
+    }
+  }
+
   // the probe rows: each must read, and the public API must give the reference's answer on node
   const offNative: string[] = []
 

@@ -23,6 +23,7 @@ load @term/base/pattern
   find prepared-pattern
   find find-match-prepared
   find find-matches-prepared
+  find step-limit
 
 load @term/base/pattern/node
   find pattern-budget
@@ -425,6 +426,12 @@ test <a pattern that is not one is refused before any engine sees it>
 test <the backtracking tier raises pattern-budget instead of hanging>
   want hold
     call is-equal(call(budget-outcome), text(<budget>))
+
+test <the backtracking budget grows with the input, so linear work over a long text never reaches it>
+  want hold
+    call and
+      call is-equal(call(step-limit, code(20), code(0)), code(10000000))
+      call is-equal(call(step-limit, code(20), code(1000000)), code(1280001280))
 
 task budget-outcome
   like text

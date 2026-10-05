@@ -79,8 +79,11 @@ export function programOf(tree: RootNode, file: string, lean = false): string | 
   // compile/mint-bridge.ts), and position is exactly what formatting moves. The temporaries are renumbered in order
   // of first appearance, so a consistent renaming compares equal and a different structure still does not
   const temporaries = new Map<string, string>()
+  // a literal past 2^53 is milled as a bigint (check/literals.ts), which JSON.stringify refuses: written with an `n`,
+  // so `9007199254740993` and `9007199254740992` still compare different
+  const bigint = (_key: string, value: unknown) => (typeof value === 'bigint' ? `${value}n` : value)
 
-  return JSON.stringify(mergeParts(built.program)).replace(/walk-head-\d+-\d+/g, name => {
+  return JSON.stringify(mergeParts(built.program), bigint).replace(/walk-head-\d+-\d+/g, name => {
     if (!temporaries.has(name)) {
       temporaries.set(name, `walk-head-${temporaries.size}`)
     }

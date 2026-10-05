@@ -12,7 +12,8 @@ load @term/call/work/tint
   find mark
   find format-error
 
-# The verbs that build, run and publish an application: `term test`, `term walk`, `term cast` and `term host`.
+# The verbs that build, run and publish an application: `term test`, `term walk`, `term cast`, `term host`, and
+# `term bind`, which logs this machine in so `term host` credits what it publishes.
 #
 # Each is a thin verb over machinery that lives elsewhere -- the test runner, the REPL, the Cloudflare bundler and
 # the registry client -- so what is Term here is the shape of the command: its arguments, its checks, its messages
@@ -27,6 +28,7 @@ dock load
   load <@term/call/code/walk>, name walk-module
   load <@term/call/code/cast>, name cast-module
   load <@term/call/code/host>, name host-module
+  load <@term/call/code/bind>, name bind-module
   load <node:process>, name node-process
 
 form root-ask
@@ -135,6 +137,30 @@ task host
         bind registry, read registry
         bind trust, read trust
         bind untrust, read untrust
+      wait true
+  halt take
+    take error
+    log-fail format-error error
+    node-process/exit code 1
+
+form bind-ask
+  link root, like text
+  link toss, like boolean
+
+# `term bind`: log this machine in to term.surf with Google, so `term host` credits what it publishes
+task bind
+  mark async
+  take toss, like boolean
+
+  like void
+
+  # the project root is READ, not taken: a hook has no `root` argument to pass
+  save root, call project-root
+  mark unsafe
+    call bind-module/callBind
+      make bind-ask
+        bind root, read root
+        bind toss, read toss
       wait true
   halt take
     take error

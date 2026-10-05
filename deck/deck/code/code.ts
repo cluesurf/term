@@ -1,6 +1,7 @@
 import { Code, MarkBand, CodeHold, MarkTest, MarkWild } from './form'
 
-const MARK_PATTERN = /^(\d+)\.(\d+|x)\.(\d+|x)(?:-(.+))?$/
+// `1.2.3`, `1.2.3-rc.1`, `1.2.3+build.4`, `1.2.3-rc.1+build.4`
+const MARK_PATTERN = /^(\d+)\.(\d+|x)\.(\d+|x)(?:-([^+]+))?(?:\+([0-9A-Za-z.-]+))?$/
 
 export function parseCode(text: string): Code {
   const match = MARK_PATTERN.exec(text)
@@ -13,8 +14,9 @@ export function parseCode(text: string): Code {
   const minor = match[2] === 'x' ? 0 : parseInt(match[2]!, 10)
   const patch = match[3] === 'x' ? 0 : parseInt(match[3]!, 10)
   const prerelease = match[4]
+  const build = match[5]
 
-  return { major, minor, patch, prerelease }
+  return { major, minor, patch, prerelease, ...(build !== undefined ? { build } : {}) }
 }
 
 export function parseCodeHold(text: string): CodeHold {
@@ -109,11 +111,9 @@ export function parseCodeHold(text: string): CodeHold {
 export function showCode(code: Code): string {
   const base = `${code.major}.${code.minor}.${code.patch}`
 
-  if (code.prerelease) {
-    return `${base}-${code.prerelease}`
-  }
+  const tagged = code.prerelease ? `${base}-${code.prerelease}` : base
 
-  return base
+  return code.build ? `${tagged}+${code.build}` : tagged
 }
 
 export function compareCode(a: Code, b: Code): number {
@@ -128,14 +128,39 @@ export function compareCode(a: Code, b: Code): number {
   if (!a.prerelease && b.prerelease) {return 1}
 
   if (a.prerelease && b.prerelease) {
-    return a.prerelease < b.prerelease
-      ? -1
-      : a.prerelease > b.prerelease
-        ? 1
-        : 0
+    return comparePrerelease(a.prerelease, b.prerelease)
   }
 
   return 0
+}
+
+// Semver 2.0, section 11: dot-separated identifiers left to right, numbers by value, a number below a word, words in
+// ASCII order, and a shorter list below a longer one it begins. So `rc.2` < `rc.10` < `rc.10.1` < `rc.a`. It
+// compared the whole text, which put `rc.10` below `rc.2`
+function comparePrerelease(a: string, b: string): number {
+  const left = a.split('.')
+  const right = b.split('.')
+
+  for (let i = 0; i < Math.min(left.length, right.length); i++) {
+    const x = left[i]!
+    const y = right[i]!
+    const xNumber = /^\d+$/.test(x)
+    const yNumber = /^\d+$/.test(y)
+
+    if (xNumber && yNumber) {
+      const difference = Number(x) - Number(y)
+
+      if (difference !== 0) {
+        return difference
+      }
+    } else if (xNumber !== yNumber) {
+      return xNumber ? -1 : 1
+    } else if (x !== y) {
+      return x < y ? -1 : 1
+    }
+  }
+
+  return left.length - right.length
 }
 
 export function codeMatch(code: Code, hold: CodeHold): boolean {
@@ -194,11 +219,26 @@ export function bumpCode(input: {
         patch: 0,
       }
 
+    // a pre-release moves to its own release, npm's rule: `1.4.3-rc.2` is followed by `1.4.3`
     case 3:
       return {
         major: input.code.major,
         minor: input.code.minor,
-        patch: input.code.patch + 1,
+        patch: input.code.prerelease ? input.code.patch : input.code.patch + 1,
       }
   }
+}
+
+// `term move mark rc`: the next pre-release named `id`. `1.4.2` moves to `1.4.3-rc.1`, `1.4.3-rc.1` to `1.4.3-rc.2`,
+// and a pre-release under another name keeps its version and starts this one: `1.4.3-beta.4` to `1.4.3-rc.1`
+export function bumpPrerelease(input: { code: Code; id: string }): Code {
+  const { major, minor, patch, prerelease } = input.code
+
+  if (!prerelease) {
+    return { major, minor, patch: patch + 1, prerelease: `${input.id}.1` }
+  }
+
+  const count = new RegExp(`^${input.id}\\.(\\d+)$`).exec(prerelease)
+
+  return { major, minor, patch, prerelease: `${input.id}.${count ? Number(count[1]) + 1 : 1}` }
 }

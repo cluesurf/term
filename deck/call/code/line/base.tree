@@ -33,6 +33,7 @@
 # `root`, over `environment/directory`) instead of being handed it.
 
 load @term/call/work/app-verbs
+  find bind
   find cast
   find fill
   find host
@@ -328,6 +329,13 @@ hook host
   take untrust
     like text
   task host
+
+# Log in to term.surf with Google, for publishing
+hook bind
+  # Forget the term.surf token on this machine instead
+  take toss
+    like boolean
+  task bind
 
 # Build/compile the project
 hook make

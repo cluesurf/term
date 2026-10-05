@@ -23,6 +23,7 @@ export function bannerText(): string {
     '    term link              Link local package for dev',
     '    term seek              Check if decks are installed',
     '    term host              Publish to registry',
+    '    term bind              Log in to term.surf, for publishing',
     '',
     chalk.yellow('  Start'),
     '    term wake <name>       Scaffold a new project',
@@ -58,14 +59,13 @@ export function bannerText(): string {
 }
 
 export function infoText(version = '0.0.0'): string {
+  // no blank line before or after, so a paste into a bug report carries the block and nothing else
   return `${[
-    '',
     chalk.green.bold('term') + ' ' + chalk.gray(version),
     '',
     chalk.white('  Platform:  ') + os.platform() + ' ' + os.arch(),
     chalk.white('  Node:      ') + process.version,
     chalk.white('  Home:      ') + os.homedir(),
-    '',
   ].join('\n')}\n`
 }
 

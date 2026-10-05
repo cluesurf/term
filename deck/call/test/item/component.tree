@@ -1,7 +1,9 @@
-# Every component on its own, at 40 columns and wide: title line, facts line, fact, message, fields, code frame,
-# quote, progress bar, table, tree, list, choices, rule, status footer, item and run. Each is a pure task from its
-# props to lines within the room, and each is checked here against the text the spec gives it, then against the width.
-
+# Every component on its own, at 40 columns and wide: title line, facts line, fact,
+# message, fields, code frame,
+# quote, progress bar, table, tree, list, choices, rule, status footer, item and
+# run. Each is a pure task from its
+# props to lines within the room, and each is checked here against the text the spec
+# gives it, then against the width.
 load @term/base/text/unicode
   find rune-to-text
 
@@ -71,8 +73,16 @@ load ./kit
 
 task make-request
   like event
-  save one, make event, glyph(<done>), kind(<request>), verb(<GET>), source(<api:1>), clock(kit-clock(14, 2, 7, 412))
-  save one/subject, plain-subject(</api/shapes/search?query=regular-hexagon&limit=50>)
+
+  save one
+    make event
+      glyph(<done>)
+      kind(<request>)
+      verb(<GET>)
+      source(<api:1>)
+      clock(kit-clock(14, 2, 7, 412))
+  save one/subject
+    plain-subject(</api/shapes/search?query=regular-hexagon&limit=50>)
   save one/duration, 18
   save one/status/kind, <http>
   save one/status/value, 200
@@ -83,25 +93,41 @@ task make-request
 
 test <title line: glyph at 0, verb at 2, subject and tag at 11>
   save one, make-request()
-  want hold, is-equal(kit-join(draw-title-line(one, kit-room(80), true)), <✓ GET      /api/shapes/search?query=regular-hexagon&limit=50  api:1>)
+  want hold
+    is-equal kit-join(draw-title-line(one, kit-room(80), true))
+      <✓ GET      /api/shapes/search?query=regular-hexagon&limit=50  api:1>
 
 test <title line at 40 columns wraps at 11 with a hang of 2, the tag going with it>
   save lines, draw-title-line(make-request(), kit-room(40), true)
-  want hold, is-equal(kit-join(lines), <✓ GET      /api/shapes/search?\n             query=regular-hexagon&\n             limit=50  api:1>)
+  want hold
+    is-equal kit-join(lines)
+      <✓ GET      /api/shapes/search?\n             query=regular-hexagon&\n             limit=50  api:1>
   want hold, kit-within(lines, 40)
 
 test <title line leaves the tag out when the stream is filtered, or it repeats the subject>
   save one, make-request()
-  want hold, is-equal(kit-join(draw-title-line(one, kit-room(120), false)), <✓ GET      /api/shapes/search?query=regular-hexagon&limit=50>)
-  save same, make event, glyph(<info>), verb(<restart>), source(<api:2>), subject(plain-subject(<api:2>))
-  want hold, is-equal(kit-join(draw-title-line(same, kit-room(80), true)), <· restart  api:2>)
+  want hold
+    is-equal kit-join(draw-title-line(one, kit-room(120), false))
+      <✓ GET      /api/shapes/search?query=regular-hexagon&limit=50>
+  save same
+    make event
+      glyph(<info>)
+      verb(<restart>)
+      source(<api:2>)
+      subject(plain-subject(<api:2>))
+  want hold
+    is-equal kit-join(draw-title-line(same, kit-room(80), true)), <· restart  api:2>
 
 test <facts line: the clock first, then the fixed order, a dim dot between>
-  want hold, is-equal(kit-join(draw-facts-line(make-request(), kit-room(80))), <           14:02:07.412 · 18 ms · HTTP 200 · 84 B · 2 tries · cached>)
+  want hold
+    is-equal kit-join(draw-facts-line(make-request(), kit-room(80)))
+      <           14:02:07.412 · 18 ms · HTTP 200 · 84 B · 2 tries · cached>
 
 test <facts line at 40 columns ends a line on the dot and never splits a fact from its unit>
   save lines, draw-facts-line(make-request(), kit-room(40))
-  want hold, is-equal(kit-join(lines), <           14:02:07.412 · 18 ms ·\n             HTTP 200 · 84 B · 2 tries ·\n             cached>)
+  want hold
+    is-equal kit-join(lines)
+      <           14:02:07.412 · 18 ms ·\n             HTTP 200 · 84 B · 2 tries ·\n             cached>
   want hold, kit-within(lines, 40)
 
 test <fact: each fact is its own spans, in the standard's order>
@@ -120,16 +146,21 @@ test <message: each line wraps on its own with a hang of 2>
   lines/push <A retry is scheduled.>
   save room, narrow-room(kit-room(44), 11)
   save drawn, draw-message(lines, room, <text>)
-  want hold, is-equal(kit-join(drawn), <A number went past the i64 range\n  while summing 31 rows of report\n  totals\nA retry is scheduled.>)
+  want hold
+    is-equal kit-join(drawn)
+      <A number went past the i64 range\n  while summing 31 rows of report\n  totals\nA retry is scheduled.>
   save wide, draw-message(lines, narrow-room(kit-room(120), 11), <text>)
-  want hold, is-equal(kit-join(wide), <A number went past the i64 range while summing 31 rows of report totals\nA retry is scheduled.>)
+  want hold
+    is-equal kit-join(wide)
+      <A number went past the i64 range while summing 31 rows of report totals\nA retry is scheduled.>
 
 test <fields: keys dim and padded to the longest, values beside them>
   save fields, make list
   fields/push plain-field(<at>, <code/area.tree:14:12>)
   fields/push plain-field(<fix>, <multipy → multiply>)
   save drawn, draw-fields(fields, 3, narrow-room(kit-room(80), 11), <text>)
-  want hold, is-equal(kit-join(drawn), <at   code/area.tree:14:12\nfix  multipy → multiply>)
+  want hold
+    is-equal(kit-join(drawn), <at   code/area.tree:14:12\nfix  multipy → multiply>)
   save first, drawn/0
   save key, first/spans/0
   want hold, is-equal(key/role, <dim>)
@@ -138,15 +169,24 @@ test <fields at 40 columns: a value that does not fit moves under its key, 2 pas
   save fields, make list
   fields/push plain-field(<next>, <add an assumption that the list is not empty>)
   save drawn, draw-fields(fields, 4, narrow-room(kit-room(40), 11), <text>)
-  want hold, is-equal(kit-join(drawn), <next\n  add an assumption that the\n    list is not empty>)
+  want hold
+    is-equal kit-join(drawn)
+      <next\n  add an assumption that the\n    list is not empty>
 
 test <code frame: line numbers right-aligned, the primary span under the right cells>
   save one, make frame
   one/lines/push make frame-line, number(13), value(<  case square>)
   one/lines/push make frame-line, number(14), value(<    back multipy(side, side)>)
-  one/marks/push make frame-mark, line(14), column(10), length(7), label(<did you mean multiply?>)
+  one/marks/push
+    make frame-mark
+      line(14)
+      column(10)
+      length(7)
+      label(<did you mean multiply?>)
   save drawn, draw-frame(one, narrow-room(kit-room(80), 11), <failed>)
-  want hold, is-equal(kit-join(drawn), <13 │   case square\n14 │     back multipy(side, side)\n   │          ━━━━━━━ did you mean multiply?>)
+  want hold
+    is-equal kit-join(drawn)
+      <13 │   case square\n14 │     back multipy(side, side)\n   │          ━━━━━━━ did you mean multiply?>
   save under, drawn/2
   save bar, under/spans/2
   want hold, is-equal(bar/role, <failed>)
@@ -155,10 +195,19 @@ test <code frame: secondary spans dim, skipped lines shown with ⋮>
   save one, make frame
   one/lines/push make frame-line, number(3), value(<like number>)
   one/lines/push make frame-line, number(9), value(<    back "circle">)
-  one/marks/push make frame-mark, line(3), column(1), length(11), label(<area says it gives back a number>), primary(false)
-  one/marks/push make frame-mark, line(9), column(10), length(8), label(<this is a text>)
+  one/marks/push
+    make frame-mark
+      line(3)
+      column(1)
+      length(11)
+      label(<area says it gives back a number>)
+      primary(false)
+  one/marks/push
+    make frame-mark, line(9), column(10), length(8), label(<this is a text>)
   save drawn, draw-frame(one, narrow-room(kit-room(80), 11), <failed>)
-  want hold, is-equal(kit-join(drawn), <3 │ like number\n  │ ─────────── area says it gives back a number\n  ⋮\n9 │     back "circle"\n  │          ━━━━━━━━ this is a text>)
+  want hold
+    is-equal kit-join(drawn)
+      <3 │ like number\n  │ ─────────── area says it gives back a number\n  ⋮\n9 │     back "circle"\n  │          ━━━━━━━━ this is a text>
 
 test <code frame: at most two lines of context above a marked line>
   save one, make frame
@@ -172,18 +221,23 @@ test <code frame: at most two lines of context above a marked line>
 
 test <code frame at 40 columns is cropped with …, never wrapped>
   save one, make frame
-  one/lines/push make frame-line, number(4), value(<save total, add(total, measure-cluster(runes, standard, room))>)
+  one/lines/push
+    make frame-line
+      number(4)
+      value(<save total, add(total, measure-cluster(runes, standard, room))>)
   one/marks/push make frame-mark, line(4), column(1), length(4), label(<here>)
   save drawn, draw-frame(one, narrow-room(kit-room(40), 11), <failed>)
   want hold, is-equal(drawn/length, 2)
-  want hold, is-equal(kit-join(drawn), <4 │ save total, add(total, m…\n  │ ━━━━ here>)
+  want hold
+    is-equal(kit-join(drawn), <4 │ save total, add(total, m…\n  │ ━━━━ here>)
   want hold, kit-within(drawn, 29)
 
 test <code frame: a tab expands to the file's tab width and a wide character counts two, so the span lands right>
   save one, make frame
   one/lines/push make frame-line, number(2), value(<\t漢 = bad>)
   save one/tab-width, 4
-  # `bad` is characters 6 to 8: the tab, 漢, a space, `=`, a space come first, and take 4 + 2 + 1 + 1 + 1 cells
+  # `bad` is characters 6 to 8: the tab, 漢, a space, `=`, a space come first, and
+  # take 4 + 2 + 1 + 1 + 1 cells
   one/marks/push make frame-mark, line(2), column(6), length(3)
   save drawn, draw-frame(one, narrow-room(kit-room(80), 11), <failed>)
   want hold, is-equal(kit-join(drawn), <2 │     漢 = bad\n  │          ━━━>)
@@ -192,7 +246,9 @@ test <quote: behind a dim bar, a long line wrapped inside it with a hang of 2>
   save lines, make list
   lines/push <Error: ledger entry not found (acct_7Q2, 2026-09-30) while running the nightly reconciliation pass>
   save drawn, draw-quote(lines, 0, narrow-room(kit-room(80), 11))
-  want hold, is-equal(kit-join(drawn), <│ Error: ledger entry not found (acct_7Q2, 2026-09-30) while running\n│   the nightly reconciliation pass>)
+  want hold
+    is-equal kit-join(drawn)
+      <│ Error: ledger entry not found (acct_7Q2, 2026-09-30) while running\n│   the nightly reconciliation pass>
   save narrow, draw-quote(lines, 0, narrow-room(kit-room(40), 11))
   want hold, kit-within(narrow, 29)
 
@@ -237,7 +293,9 @@ test <table: column names dim, numbers right-aligned, two spaces apart>
   rows/push make-row(<typescript>, <stable>, <42>)
   rows/push make-row(<wgsl>, <experimental>, <3>)
   save drawn, draw-table(columns, rows, narrow-room(kit-room(80), 11))
-  want hold, is-equal(kit-join(drawn), <target      state         files\ntypescript  stable           42\nwgsl        experimental      3>)
+  want hold
+    is-equal kit-join(drawn)
+      <target      state         files\ntypescript  stable           42\nwgsl        experimental      3>
   save header, drawn/0
   save title, header/spans/0
   want hold, is-equal(title/role, <dim>)
@@ -251,7 +309,8 @@ test <table at 40 columns drops columns from the right and says how many>
   save rows, make list
   rows/push make-row4(<typescript>, <Node, browser, Workers>, <stable>, <42>)
   save drawn, draw-table(columns, rows, narrow-room(kit-room(40), 11))
-  # dropped from the right until it fits: files, then state, then platform, which alone is wider than what is left
+  # dropped from the right until it fits: files, then state, then platform, which
+  # alone is wider than what is left
   want hold, is-equal(kit-join(drawn), <target\ntypescript\n… 3 more columns>)
   want hold, kit-within(drawn, 29)
 
@@ -261,10 +320,13 @@ test <tree: drawn with dim branches, a repeated subtree marked deduped>
   geometry/children/push make tree-node, label(<numbers>), detail(<0.8.2>)
   nodes/push geometry
   save lists, make tree-node, label(<lists>), detail(<2.0.1>)
-  lists/children/push make tree-node, label(<numbers>), detail(<0.8.2>), deduped(true)
+  lists/children/push
+    make tree-node, label(<numbers>), detail(<0.8.2>), deduped(true)
   nodes/push lists
   save drawn, draw-tree(nodes, narrow-room(kit-room(80), 11))
-  want hold, is-equal(kit-join(drawn), <├─ geometry  1.4.0\n│  └─ numbers  0.8.2\n└─ lists  2.0.1\n   └─ numbers  0.8.2, deduped>)
+  want hold
+    is-equal kit-join(drawn)
+      <├─ geometry  1.4.0\n│  └─ numbers  0.8.2\n└─ lists  2.0.1\n   └─ numbers  0.8.2, deduped>
   save first, drawn/0
   save branch, first/spans/0
   want hold, is-equal(branch/role, <dim>)
@@ -287,10 +349,13 @@ test <list: ten entries, then how many more and the flag that lists them>
 test <choices: picked and not, a focused choice highlighted whole>
   save choices, make list
   choices/push make choice, label(<typescript>), picked(true)
-  choices/push make choice, label(<swift>), hint(<macOS, iOS simulator>), focused(true)
+  choices/push
+    make choice, label(<swift>), hint(<macOS, iOS simulator>), focused(true)
   choices/push make choice, label(<kotlin>)
   save drawn, draw-choices(choices, narrow-room(kit-room(80), 11))
-  want hold, is-equal(kit-join(drawn), <◉ typescript\n◯ swift  macOS, iOS simulator \n◯ kotlin>)
+  want hold
+    is-equal kit-join(drawn)
+      <◉ typescript\n◯ swift  macOS, iOS simulator \n◯ kotlin>
   save focused, drawn/1
   save lit, focused/spans/0
   want hold, lit/focus
@@ -300,51 +365,89 @@ test <choices: picked and not, a focused choice highlighted whole>
 
 test <rule: faint, as wide as the room>
   save drawn, draw-rule(kit-room(40))
-  want hold, is-equal(line-text(drawn/0), <────────────────────────────────────────>)
+  want hold
+    is-equal(line-text(drawn/0), <────────────────────────────────────────>)
   save first, drawn/0
   save rule, first/spans/0
   want hold, is-equal(rule/role, <faint>)
 
 test <status footer: a rule, then one up item per source with its uptime>
   save ups, make list
-  ups/push make-up-item(<:4001>, <api:1>, kit-clock(14, 2, 11, 300), 6000, 0, make-standard())
-  ups/push make-up-item(<:4002>, <api:2>, kit-clock(14, 2, 11, 300), 1000, 1, make-standard())
+  ups/push
+    make-up-item <:4001>
+      <api:1>
+      kit-clock(14, 2, 11, 300)
+      6000
+      0
+      make-standard()
+  ups/push
+    make-up-item <:4002>
+      <api:2>
+      kit-clock(14, 2, 11, 300)
+      1000
+      1
+      make-standard()
   save drawn, draw-footer(ups, kit-room(40), true)
-  want hold, is-equal(kit-join(drawn), <────────────────────────────────────────\n✓ up       :4001  api:1\n           14:02:11.300 · up 6.00 s\n✓ up       :4002  api:2\n           14:02:11.300 · up 1.00 s ·\n             1 restart>)
+  want hold
+    is-equal kit-join(drawn)
+      <────────────────────────────────────────\n✓ up       :4001  api:1\n           14:02:11.300 · up 6.00 s\n✓ up       :4002  api:2\n           14:02:11.300 · up 1.00 s ·\n             1 restart>
   want hold, kit-within(drawn, 40)
 
 test <item: title, facts and details together, at 40 and wide>
   save one, make-request()
   one/message/push <The response was served from the cache.>
-  want hold, is-equal(kit-draw(one, 120), <✓ GET      /api/shapes/search?query=regular-hexagon&limit=50  api:1\n           14:02:07.412 · 18 ms · HTTP 200 · 84 B · 2 tries · cached\n           The response was served from the cache.>)
-  want hold, is-equal(kit-draw(one, 40), <✓ GET      /api/shapes/search?\n             query=regular-hexagon&\n             limit=50  api:1\n           14:02:07.412 · 18 ms ·\n             HTTP 200 · 84 B · 2 tries ·\n             cached\n           The response was served from\n             the cache.>)
+  want hold
+    is-equal kit-draw(one, 120)
+      <✓ GET      /api/shapes/search?query=regular-hexagon&limit=50  api:1\n           14:02:07.412 · 18 ms · HTTP 200 · 84 B · 2 tries · cached\n           The response was served from the cache.>
+  want hold
+    is-equal kit-draw(one, 40)
+      <✓ GET      /api/shapes/search?\n             query=regular-hexagon&\n             limit=50  api:1\n           14:02:07.412 · 18 ms ·\n             HTTP 200 · 84 B · 2 tries ·\n             cached\n           The response was served from\n             the cache.>
 
 test <run: the opening, one blank line, the events, one blank line, the closing>
-  save opening, make-opening(<make>, <~/shape>, kit-clock(14, 42, 0, 5), <term 2.5.22>)
+  save opening
+    make-opening(<make>, <~/shape>, kit-clock(14, 42, 0, 5), <term 2.5.22>)
   save events, make list
-  save built, make event, glyph(<done>), verb(<build>), subject(plain-subject(<typescript>)), clock(kit-clock(14, 42, 0, 405))
+  save built
+    make event
+      glyph(<done>)
+      verb(<build>)
+      subject(plain-subject(<typescript>))
+      clock(kit-clock(14, 42, 0, 405))
   save built/duration, 400
   events/push built
-  save closing, make event, subject(plain-subject(<1 target built>)), clock(kit-clock(14, 42, 0, 705))
+  save closing
+    make event
+      subject(plain-subject(<1 target built>))
+      clock(kit-clock(14, 42, 0, 705))
   save closing/duration, 700
   save drawn, draw-run(opening, events, closing, kit-room(80), make-options(), true)
-  want hold, is-equal(kit-join(drawn), <· make     ~/shape\n           14:42:00.005 · term 2.5.22\n\n✓ build    typescript\n           14:42:00.405 · 400 ms\n\n✓ make     1 target built\n           14:42:00.705 · 700 ms>)
+  want hold
+    is-equal kit-join(drawn)
+      <· make     ~/shape\n           14:42:00.005 · term 2.5.22\n\n✓ build    typescript\n           14:42:00.405 · 400 ms\n\n✓ make     1 target built\n           14:42:00.705 · 700 ms>
   save last, drawn/6
   save verdict, last/spans/4
   want hold, verdict/strong
 
 test <run with no events: one blank line between opening and closing, never two>
-  save opening, make-opening(<make>, <~/shape>, kit-clock(14, 42, 0, 5), <term 2.5.22>)
-  save closing, make event, subject(plain-subject(<nothing to build>)), clock(kit-clock(14, 42, 0, 6))
+  save opening
+    make-opening(<make>, <~/shape>, kit-clock(14, 42, 0, 5), <term 2.5.22>)
+  save closing
+    make event
+      subject(plain-subject(<nothing to build>))
+      clock(kit-clock(14, 42, 0, 6))
   save events, make list
   save drawn, draw-run(opening, events, closing, kit-room(40), make-options(), true)
-  want hold, is-equal(kit-join(drawn), <· make     ~/shape\n           14:42:00.005 · term 2.5.22\n\n· make     nothing to build\n           14:42:00.006>)
+  want hold
+    is-equal kit-join(drawn)
+      <· make     ~/shape\n           14:42:00.005 · term 2.5.22\n\n· make     nothing to build\n           14:42:00.006>
 
 task make-row
   take a, like text
   take b, like text
   take c, like text
+
   like table-row
+
   save entries, make list
   entries/push make-span(a, <text>)
   entries/push make-span(b, <text>)
@@ -356,7 +459,9 @@ task make-row4
   take b, like text
   take c, like text
   take d, like text
+
   like table-row
+
   save entries, make list
   entries/push make-span(a, <text>)
   entries/push make-span(b, <text>)

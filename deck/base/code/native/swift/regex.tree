@@ -58,6 +58,7 @@ task engine-features
   save out, make list
   call out/push(text(<look-ahead>))
   call out/push(text(<look-behind>))
+  call out/push(text(<look-ahead-unbounded>))
   call out/push(text(<atomic>))
   call out/push(text(<possessive>))
   call out/push(text(<refer-set>))

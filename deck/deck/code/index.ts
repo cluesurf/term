@@ -42,6 +42,7 @@ export {
   codeMatch,
   pickBestCode,
   bumpCode,
+  bumpPrerelease,
 } from './code'
 export {
   fetchPackageMeta,

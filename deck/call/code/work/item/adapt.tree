@@ -1,15 +1,21 @@
-# Child processes and foreign output (section 15): a line another program wrote, adapted into an item or quoted,
+# Child processes and foreign output (section 15): a line another program wrote,
+# adapted into an item or quoted,
 # never mixed in as if it were the tool's own.
 #
-# A JSON object or a logfmt line becomes an item by the standard's mapping: `level` the glyph, `logger` / `module` /
-# `name` the verb (7 cells at most, `log` when missing), `msg` / `message` the subject, `time` / `ts` the clock,
-# `duration` / `ms` the duration, `stack` / `err.stack` quoted output, and any other key a field, or a fact when it
-# is a short number with a unit. The keys are read from the standard, so a child that names its level `severity`
+# A JSON object or a logfmt line becomes an item by the standard's mapping: `level`
+# the glyph, `logger` / `module` /
+# `name` the verb (7 cells at most, `log` when missing), `msg` / `message` the
+# subject, `time` / `ts` the clock,
+# `duration` / `ms` the duration, `stack` / `err.stack` quoted output, and any other
+# key a field, or a fact when it
+# is a short number with a unit. The keys are read from the standard, so a child
+# that names its level `severity`
 # is one more word there.
 #
-# ANYTHING ELSE IS QUOTED under the item that ran the program, and `--raw` passes it through untouched. A line that
-# looks like JSON and is not (a truncated write) is quoted, never an error: the adapter never fails a run.
-
+# ANYTHING ELSE IS QUOTED under the item that ran the program, and `--raw` passes it
+# through untouched. A line that
+# looks like JSON and is not (a truncated write) is quoted, never an error: the
+# adapter never fails a run.
 load @term/base/text
   find to-lower-case
   find starts-with
@@ -47,13 +53,15 @@ load ./format
 load ./measure
   find measure-text
 
-# what a line became: an <item> with its event, a <quote> line for the running item, or a <raw> line to pass through
+# what a line became: an <item> with its event, a <quote> line for the running item,
+# or a <raw> line to pass through
 form adapted
   link kind, like text
   link event, like event
   link line, like text
 
-# one key and its value, as a child wrote them. `node` is set for a JSON value, so a nested one keeps its shape
+# one key and its value, as a child wrote them. `node` is set for a JSON value, so a
+# nested one keeps its shape
 form child-pair
   link key, like text
   link value, like text
@@ -68,25 +76,33 @@ task count-days
   take year, like number
   take month, like number
   take day, like number
+
   like number
+
   save y, year
+
   fork test, is-maximum(month, 2)
     hold
       save y, subtract(y, 1)
   save era, divide(y, 400)
+
   fork test, is-below(y, 0)
     hold
       save era, divide(subtract(y, 399), 400)
   save yoe, subtract(y, multiply(era, 400))
   save shifted, add(month, 9)
+
   fork test, is-above(month, 2)
     hold
       save shifted, subtract(month, 3)
   save doy, add(divide(add(multiply(153, shifted), 2), 5), subtract(day, 1))
-  save doe, add(subtract(add(multiply(yoe, 365), divide(yoe, 4)), divide(yoe, 100)), doy)
+
+  save doe
+    add(subtract(add(multiply(yoe, 365), divide(yoe, 4)), divide(yoe, 100)), doy)
   back subtract(add(multiply(era, 146097), doe), 719468)
 
-# the digits of a text from `at` while they are digits: the value, and how many were read
+# the digits of a text from `at` while they are digits: the value, and how many were
+# read
 form digits-read
   link value, like number
   link count, like number
@@ -95,10 +111,13 @@ task read-digits
   take runes, like list, like number
   take at, like number
   take most, like number
+
   like digits-read
+
   save value, 0
   save count, 0
   save here, at
+
   walk test
     hook test, and(is-below(here, runes/length), is-below(count, most))
     hook hold
@@ -111,14 +130,18 @@ task read-digits
       save here, add(here, 1)
   back make digits-read, value(value), count(count)
 
-# an RFC 3339 / ISO 8601 time as epoch milliseconds: `2026-10-03T14:02:07.412-07:00`, `Z`, or no zone (read in the
+# an RFC 3339 / ISO 8601 time as epoch milliseconds:
+# `2026-10-03T14:02:07.412-07:00`, `Z`, or no zone (read in the
 # display zone, `offset` minutes east of UTC). -1 when it is not one
 task read-instant
   take value, like text
   take offset, like number
+
   like number
+
   save runes, to-runes(trim(value))
   save year, read-digits(runes, 0, 4)
+
   fork test, or(is-unequal(year/count, 4), is-below(runes/length, 16))
     hold
       back -1
@@ -126,18 +149,25 @@ task read-instant
   save day, read-digits(runes, 8, 2)
   save hour, read-digits(runes, 11, 2)
   save minute, read-digits(runes, 14, 2)
-  fork test, or(is-unequal(month/count, 2), or(is-unequal(day/count, 2), or(is-unequal(hour/count, 2), is-unequal(minute/count, 2))))
+
+  fork test
+    or is-unequal(month/count, 2)
+      or is-unequal(day/count, 2)
+        or(is-unequal(hour/count, 2), is-unequal(minute/count, 2))
     hold
       back -1
   save at, 16
   save second, 0
   save millis, 0
+
   fork test, and(is-below(at, runes/length), is-equal(runes/{at}, 58))
     hold
       save got, read-digits(runes, add(at, 1), 2)
       save second, got/value
       save at, add(at, 3)
-  fork test, and(is-below(at, runes/length), or(is-equal(runes/{at}, 46), is-equal(runes/{at}, 44)))
+  fork test
+    and is-below(at, runes/length)
+      or(is-equal(runes/{at}, 46), is-equal(runes/{at}, 44))
     hold
       save got, read-digits(runes, add(at, 1), 9)
       save scale, 1
@@ -157,6 +187,7 @@ task read-instant
       save millis, fraction
       save at, add(add(at, 1), got/count)
   save zone, offset
+
   fork test, is-below(at, runes/length)
     hold
       save sign, runes/{at}
@@ -167,7 +198,8 @@ task read-instant
         hold
           save zone-hours, read-digits(runes, add(at, 1), 2)
           save minutes-at, add(at, 3)
-          fork test, and(is-below(minutes-at, runes/length), is-equal(runes/{minutes-at}, 58))
+          fork test
+            and is-below(minutes-at, runes/length), is-equal(runes/{minutes-at}, 58)
             hold
               save minutes-at, add(minutes-at, 1)
           save zone-minutes, read-digits(runes, minutes-at, 2)
@@ -176,22 +208,30 @@ task read-instant
             hold
               save zone, subtract(0, zone)
   save days, count-days(year/value, month/value, day/value)
-  save seconds, add(add(multiply(days, 86400), multiply(hour/value, 3600)), add(multiply(minute/value, 60), second))
+
+  save seconds
+    add add(multiply(days, 86400), multiply(hour/value, 3600))
+      add(multiply(minute/value, 60), second)
   back subtract(add(multiply(seconds, 1000), millis), multiply(zone, 60000))
 
-# a decimal number as written, scaled by `scale` and rounded down: `1712345678.123` seconds at 1000 is milliseconds.
+# a decimal number as written, scaled by `scale` and rounded down: `1712345678.123`
+# seconds at 1000 is milliseconds.
 # -1 when it is not a plain decimal
 task read-decimal
   take value, like text
   take scale, like number
+
   like number
+
   save runes, to-runes(trim(value))
   save whole, read-digits(runes, 0, 16)
+
   fork test, is-equal(whole/count, 0)
     hold
       back -1
   save total, multiply(whole/value, scale)
   save at, whole/count
+
   fork test, and(is-below(at, runes/length), is-equal(runes/{at}, 46))
     hold
       save part, read-digits(runes, add(at, 1), 9)
@@ -199,7 +239,8 @@ task read-decimal
       save digits, part/count
       save index, 0
       save fraction, part/value
-      # the fraction's digits, most significant first, each worth a tenth of the one before
+      # the fraction's digits, most significant first, each worth a tenth of the one
+      # before
       save divisor, 1
       walk test
         hook test, is-below(index, digits)
@@ -213,16 +254,21 @@ task read-decimal
       back -1
   back total
 
-# a child's time as epoch milliseconds: a number is milliseconds when it is that large, seconds otherwise
+# a child's time as epoch milliseconds: a number is milliseconds when it is that
+# large, seconds otherwise
 task read-child-clock
   take value, like text
   take offset, like number
+
   like number
+
   save instant, read-instant(value, offset)
+
   fork test, is-minimum(instant, 0)
     hold
       back instant
   save seconds, read-decimal(value, 1000)
+
   fork test, is-below(seconds, 0)
     hold
       back -1
@@ -232,20 +278,26 @@ task read-child-clock
       back divide(seconds, 1000)
   back seconds
 
-# a child's duration as milliseconds: a number is milliseconds; `3s`, `120ms`, `1.5s`, `2m` carry their unit
+# a child's duration as milliseconds: a number is milliseconds; `3s`, `120ms`,
+# `1.5s`, `2m` carry their unit
 task read-child-duration
   take value, like text
+
   like number
+
   save plain, read-decimal(value, 1)
+
   fork test, is-minimum(plain, 0)
     hold
       back plain
   save runes, to-runes(trim(value))
   save number, <>
   save unit, <>
+
   walk runes
     take rune
-    fork test, or(and(is-minimum(rune, 48), is-maximum(rune, 57)), is-equal(rune, 46))
+    fork test
+      or(and(is-minimum(rune, 48), is-maximum(rune, 57)), is-equal(rune, 46))
       hold
         fork test, is-equal(unit, <>)
           hold
@@ -270,19 +322,26 @@ task read-child-duration
       back read-decimal(number, 3600000)
   back -1
 
-# a value that is a short number with a unit (`12ms`, `3.1 kB`, `61%`): a fact rather than a field
+# a value that is a short number with a unit (`12ms`, `3.1 kB`, `61%`): a fact
+# rather than a field
 task is-unit-number
   take value, like text
+
   like boolean
+
   save runes, to-runes(trim(value))
+
   fork test, or(is-below(runes/length, 2), is-above(runes/length, 12))
     hold
       back false
   save digits, 0
   save letters, 0
+
   walk runes
     take rune
-    save digit, or(and(is-minimum(rune, 48), is-maximum(rune, 57)), or(is-equal(rune, 46), is-equal(rune, 44)))
+    save digit
+      or and(is-minimum(rune, 48), is-maximum(rune, 57))
+        or(is-equal(rune, 46), is-equal(rune, 44))
     fork test, digit
       hold
         fork test, is-above(letters, 0)
@@ -293,22 +352,29 @@ task is-unit-number
     fork test, and(is-equal(rune, 32), is-equal(letters, 0))
       hold
         turn next
-    fork test, or(is-equal(rune, 37), or(and(is-minimum(rune, 65), is-maximum(rune, 90)), and(is-minimum(rune, 97), is-maximum(rune, 122))))
+    fork test
+      or is-equal(rune, 37)
+        or and(is-minimum(rune, 65), is-maximum(rune, 90))
+          and(is-minimum(rune, 97), is-maximum(rune, 122))
       hold
         save letters, add(letters, 1)
         turn next
     back false
   back and(is-above(digits, 0), and(is-above(letters, 0), is-maximum(letters, 3)))
 
-# the pairs of a logfmt line: `key=value`, `key="quoted value"`, a bare `key`. Failed when it is not logfmt: a token
+# the pairs of a logfmt line: `key=value`, `key="quoted value"`, a bare `key`.
+# Failed when it is not logfmt: a token
 # that is not a pair, or fewer than two pairs with `=`
 task read-logfmt
   take value, like text
+
   like child-pairs
+
   save pairs, make list
   save runes, to-runes(value)
   save at, 0
   save equals, 0
+
   walk test
     hook test, is-below(at, runes/length)
     hook hold
@@ -321,7 +387,9 @@ task read-logfmt
           halt
       save key, <>
       walk test
-        hook test, and(is-below(at, runes/length), and(is-unequal(runes/{at}, 61), is-unequal(runes/{at}, 32)))
+        hook test
+          and is-below(at, runes/length)
+            and(is-unequal(runes/{at}, 61), is-unequal(runes/{at}, 32))
         hook hold
           save rune, runes/{at}
           fork test, is-equal(rune, 34)
@@ -374,17 +442,22 @@ task read-logfmt
       pairs/push make child-pair, key(key), value(found)
   back make child-pairs, pairs(pairs), failed(is-below(equals, 2))
 
-# the pairs of a JSON object line, in the child's order; an `err` object's `stack` and `message` come out as
+# the pairs of a JSON object line, in the child's order; an `err` object's `stack`
+# and `message` come out as
 # `err.stack` and `err.message`
 task read-json-pairs
   take value, like text
+
   like child-pairs
+
   save pairs, make list
   save got, read-json(value)
+
   fork test, got/failed
     hold
       back make child-pairs, pairs(pairs), failed(true)
   save node, got/node
+
   sift node
     case json-object
       save at, 0
@@ -393,7 +466,8 @@ task read-json-pairs
         save one, values/{at}
         save at, add(at, 1)
         save nested, false
-        # an error object whose stack was lifted out says everything as its stack and message, not as a field too
+        # an error object whose stack was lifted out says everything as its stack
+        # and message, not as a field too
         save carried, false
         sift one
           case json-object
@@ -405,7 +479,10 @@ task read-json-pairs
               save inner-at, add(inner-at, 1)
               fork test, or(is-equal(inner, <stack>), is-equal(inner, <message>))
                 hold
-                  pairs/push make child-pair, key(<{key}.{inner}>), value(json-text-of(inner-value))
+                  pairs/push
+                    make child-pair
+                      key(<{key}.{inner}>)
+                      value(json-text-of(inner-value))
                   fork test, is-equal(inner, <stack>)
                     hold
                       save carried, true
@@ -425,7 +502,11 @@ task read-json-pairs
           miss
             fork test, nested
               hold
-                pairs/push make child-pair, key(key), value(write-json-node(one)), nested(true)
+                pairs/push
+                  make child-pair
+                    key(key)
+                    value(write-json-node(one))
+                    nested(true)
               miss
                 pairs/push make child-pair, key(key), value(json-text-of(one))
       back make child-pairs, pairs(pairs), failed(false)
@@ -446,8 +527,11 @@ task read-json-pairs
 task find-level
   take standard, like standard
   take word, like text
+
   like text
+
   save lower, to-lower-case(word)
+
   walk standard/children/levels
     take one
     fork test, is-equal(one/word, lower)
@@ -465,12 +549,15 @@ task adapt-pairs
   take offset, like number
   take standard, like standard
   take room, like room
+
   like event
+
   save rule, standard/children
   save one, make event, glyph(<info>), kind(<step>), clock(received)
   save verb, <>
   save subject, <>
   save stack, <>
+
   walk pairs
     take pair
     save key, pair/key
@@ -533,24 +620,30 @@ task adapt-pairs
       save verb, crop-text(verb, standard/layout/verb-width, room)
   save one/verb, verb
   save one/subject, plain-subject(subject)
+
   fork test, is-unequal(stack, <>)
     hold
       save one/quote, split-lines(stack)
   back one
 
-# one line a child wrote. `received` is the clock it arrived at, the item's clock when the line carries none
+# one line a child wrote. `received` is the clock it arrived at, the item's clock
+# when the line carries none
 task adapt-line
   take value, like text
   take received, like number
   take offset, like number
   take raw, like boolean
   take room, like room
+
   like adapted
+
   save blank, make event
+
   fork test, raw
     hold
       back make adapted, kind(<raw>), event(blank), line(value)
   save trimmed, trim(value)
+
   fork test, starts-with(trimmed, <\{>)
     hold
       save got, read-json-pairs(trimmed)
@@ -559,6 +652,7 @@ task adapt-line
           save one, adapt-pairs(got/pairs, received, offset, room/standard, room)
           back make adapted, kind(<item>), event(one), line(value)
   save got, read-logfmt(trimmed)
+
   fork test, got/failed
     miss
       save one, adapt-pairs(got/pairs, received, offset, room/standard, room)

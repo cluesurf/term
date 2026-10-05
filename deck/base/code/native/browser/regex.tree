@@ -50,7 +50,8 @@ task engine-features
   save out, make list
   call out/push(text(<look-ahead>))
   call out/push(text(<look-behind>))
-  call out/push(text(<look-unbounded>))
+  call out/push(text(<look-ahead-unbounded>))
+  call out/push(text(<look-behind-unbounded>))
   call out/push(text(<look-capture>))
   call out/push(text(<refer-set>))
   call out/push(text(<refer-unset>))

@@ -1,14 +1,20 @@
-# Machine output (section 19): one JSON object per event, the keys exactly the standard's, in the table's order.
+# Machine output (section 19): one JSON object per event, the keys exactly the
+# standard's, in the table's order.
 #
-# WRITTEN AND READ HERE, NOT THROUGH `@term/base/json`. That module hands objects to the host's JSON library, and on
-# Rust `serde_json` keeps a map's keys SORTED, so an object's keys come back in one order on node and another on Rust.
-# The writer must put the keys in the table's order on every backend, and the child adapter (section 15) must keep a
-# log line's keys in the order the child wrote them, because unknown keys become fields in that order. Logged in
+# WRITTEN AND READ HERE, NOT THROUGH `@term/base/json`. That module hands objects to
+# the host's JSON library, and on
+# Rust `serde_json` keeps a map's keys SORTED, so an object's keys come back in one
+# order on node and another on Rust.
+# The writer must put the keys in the table's order on every backend, and the child
+# adapter (section 15) must keep a
+# log line's keys in the order the child wrote them, because unknown keys become
+# fields in that order. Logged in
 # note/term/plan/silent-defects-third-batch.md.
 #
-# The human view and this one are two renderings of the same event (principle 7): every value here is read off the
-# event, the numbers as numbers, and `read-json-event` turns a line back into the event it came from.
-
+# The human view and this one are two renderings of the same event (principle 7):
+# every value here is read off the
+# event, the numbers as numbers, and `read-json-event` turns a line back into the
+# event it came from.
 load @term/base/text
   find char-count
 
@@ -49,10 +55,13 @@ load ./run
 # a text as a JSON string: quotes, backslashes and every control character escaped
 task write-json-text
   take value, like text
+
   like text
+
   save out, <>
   save quote, rune-to-text(34)
   save slash, rune-to-text(92)
+
   walk to-runes(value)
     take rune
     save piece, rune-to-text(rune)
@@ -71,7 +80,9 @@ task write-json-text
     fork test, is-equal(rune, 9)
       hold
         save piece, <{slash}t>
-    fork test, and(is-below(rune, 32), and(is-unequal(rune, 10), and(is-unequal(rune, 13), is-unequal(rune, 9))))
+    fork test
+      and is-below(rune, 32)
+        and(is-unequal(rune, 10), and(is-unequal(rune, 13), is-unequal(rune, 9)))
       hold
         save digits, pad-digits-hex(rune)
         save piece, <{slash}u{digits}>
@@ -83,9 +94,12 @@ task write-json-text
 
 task pad-digits-hex
   take rune, like number
+
   like text
+
   save digits, write-hex(rune)
   save have, char-count(digits)
+
   walk test
     hook test, is-below(have, 4)
     hook hold
@@ -93,11 +107,15 @@ task pad-digits-hex
       save have, add(have, 1)
   back digits
 
-# a JSON key from a noun: spaces and hyphens become underscores (snake case, as every JSON name in the repository)
+# a JSON key from a noun: spaces and hyphens become underscores (snake case, as
+# every JSON name in the repository)
 task make-json-key
   take noun, like text
+
   like text
+
   save out, <>
+
   walk to-runes(noun)
     take rune
     fork test, or(is-equal(rune, 32), is-equal(rune, 45))
@@ -111,16 +129,21 @@ task push-pair
   take parts, like list, like text
   take key, like text
   take value, like text
+
   like void
+
   parts/push <{write-json-text(key)}:{value}>
 
 task join-parts
   take parts, like list, like text
   take open, like text
   take close, like text
+
   like text
+
   save out, open
   save at, 0
+
   walk parts
     take one
     fork test, is-above(at, 0)
@@ -130,11 +153,14 @@ task join-parts
     save at, add(at, 1)
   back <{out}{close}>
 
-# the status as section 19 writes it: the HTTP status as a number, an exit or a signal as text (`exit 1`)
+# the status as section 19 writes it: the HTTP status as a number, an exit or a
+# signal as text (`exit 1`)
 task write-json-status
   take one, like status
   take standard, like standard
+
   like text
+
   fork test, is-equal(one/kind, <http>)
     hold
       back <{make-whole(one/value)}>
@@ -145,24 +171,30 @@ task write-json-status
   save label, standard/facts/signal-label
   back write-json-text(<{label} {one/name}>)
 
-# one event as one line of JSON. `offset` and `utc` are the display zone of the run, which the time's offset states
+# one event as one line of JSON. `offset` and `utc` are the display zone of the run,
+# which the time's offset states
 task write-json-event
   take one, like event
   take offset, like number
   take utc, like boolean
   take standard, like standard
+
   like text
+
   save keys, standard/keys
   save parts, make list
   push-pair(parts, keys/glyph, write-json-text(one/glyph))
   push-pair(parts, keys/verb, write-json-text(one/verb))
   push-pair(parts, keys/subject, write-json-text(spans-text(one/subject)))
+
   fork test, is-unequal(one/source, <>)
     hold
       push-pair(parts, keys/source, write-json-text(one/source))
   fork test, is-minimum(one/clock, 0)
     hold
-      push-pair(parts, keys/time, write-json-text(format-instant(one/clock, offset, utc)))
+      push-pair parts
+        keys/time
+        write-json-text(format-instant(one/clock, offset, utc))
   fork test, is-minimum(one/duration, 0)
     hold
       push-pair(parts, keys/milliseconds, <{make-whole(one/duration)}>)
@@ -183,7 +215,8 @@ task write-json-event
           hold
             push-pair(counts, <{key}_total>, <{make-whole(each/total)}>)
       push-pair(parts, keys/counts, join-parts(counts, <\{>, <\}>))
-  # the tool and the zone have no key of their own in section 19, so they lead `facts`, as they lead the facts line
+  # the tool and the zone have no key of their own in section 19, so they lead
+  # `facts`, as they lead the facts line
   save rest, make list
   walk one/tool
     take each
@@ -213,10 +246,13 @@ task write-json-event
         save at, add(at, 1)
       push-pair(parts, keys/message, write-json-text(joined))
   save fields, make list
+
   walk one/fields
     take each
     push-pair(fields, each/key, write-json-text(spans-text(each/value)))
-  fork test, and(is-minimum(one/budget, 0), and(is-minimum(one/duration, 0), is-above(one/duration, one/budget)))
+  fork test
+    and is-minimum(one/budget, 0)
+      and(is-minimum(one/duration, 0), is-above(one/duration, one/budget))
     hold
       push-pair(fields, standard/fields/budget-key, <{make-whole(one/budget)}>)
   fork test, is-unequal(one/quote-log, <>)
@@ -228,8 +264,10 @@ task write-json-event
   push-pair(parts, keys/kind, write-json-text(one/kind))
   back join-parts(parts, <\{>, <\}>)
 
-# a whole run as `--log json` writes it (section 19): every event, the hidden ones too, the first object the opening
-# and the last the closing, which carries the run's glyph exactly as the human view's closing item does
+# a whole run as `--log json` writes it (section 19): every event, the hidden ones
+# too, the first object the opening
+# and the last the closing, which carries the run's glyph exactly as the human
+# view's closing item does
 task write-json-run
   take opening, like event
   take events, like list, like event
@@ -237,21 +275,29 @@ task write-json-run
   take options, like run-options
   take standard, like standard
   take offset, like number
+
   like list, like text
+
   save out, make list
   save one, open-session(opening/verb, options)
   out/push write-json-event(opening, offset, options/utc, standard)
+
   walk events
     take event
     save one, note-event(one, event, standard)
     out/push write-json-event(event, offset, options/utc, standard)
-  out/push write-json-event(close-event(one, closing, standard), offset, options/utc, standard)
+  out/push
+    write-json-event close-event(one, closing, standard)
+      offset
+      options/utc
+      standard
   back out
 
 # ---- reading JSON, in order ----
-
-# a JSON value as written: its kind (<object>, <array>, <text>, <number>, <true>, <false>, <null>), the text of a
-# text or a number, and an object's keys beside its values in the order the text held them
+# a JSON value as written: its kind (<object>, <array>, <text>, <number>, <true>,
+# <false>, <null>), the text of a
+# text or a number, and an object's keys beside its values in the order the text
+# held them
 form json-node
   mark tag, name kind
   case json-object
@@ -276,13 +322,18 @@ form json-read
 task skip-space
   take runes, like list, like number
   take at, like number
+
   like number
+
   save here, at
+
   walk test
     hook test, is-below(here, runes/length)
     hook hold
       save rune, runes/{here}
-      fork test, or(is-equal(rune, 32), or(is-equal(rune, 9), or(is-equal(rune, 10), is-equal(rune, 13))))
+      fork test
+        or is-equal(rune, 32)
+          or(is-equal(rune, 9), or(is-equal(rune, 10), is-equal(rune, 13)))
         miss
           back here
       save here, add(here, 1)
@@ -290,23 +341,33 @@ task skip-space
 
 task fail-json
   take at, like number
+
   like json-read
+
   back make json-read, node(make json-null), at(at), failed(true)
 
-# a JSON string starting at its opening quote: the text, and where the reading stopped after the closing quote
+# a JSON string starting at its opening quote: the text, and where the reading
+# stopped after the closing quote
 task read-json-string
   take runes, like list, like number
   take at, like number
+
   like json-read
+
   save here, add(at, 1)
   save out, <>
+
   walk test
     hook test, is-below(here, runes/length)
     hook hold
       save rune, runes/{here}
       fork test, is-equal(rune, 34)
         hold
-          back make json-read, node(make json-text, value(out)), at(add(here, 1)), failed(false)
+          back
+            make json-read
+              node make json-text, value(out)
+              at(add(here, 1))
+              failed(false)
       fork test, is-equal(rune, 92)
         hold
           save next, add(here, 1)
@@ -354,7 +415,9 @@ task read-json-string
 
 task read-digit-hex
   take rune, like number
+
   like number
+
   fork test, and(is-minimum(rune, 48), is-maximum(rune, 57))
     hold
       back subtract(rune, 48)
@@ -371,8 +434,11 @@ task is-word-at
   take runes, like list, like number
   take at, like number
   take word, like text
+
   like boolean
+
   save here, at
+
   walk to-runes(word)
     take rune
     fork test, is-minimum(here, runes/length)
@@ -388,12 +454,16 @@ task is-word-at
 task read-json-value
   take runes, like list, like number
   take at, like number
+
   like json-read
+
   save here, skip-space(runes, at)
+
   fork test, is-minimum(here, runes/length)
     hold
       back fail-json(here)
   save rune, runes/{here}
+
   fork test, is-equal(rune, 34)
     hold
       back read-json-string(runes, here)
@@ -415,11 +485,16 @@ task read-json-value
   # a number: its characters as written, so nothing is lost to a float
   save out, <>
   save end, here
+
   walk test
     hook test, is-below(end, runes/length)
     hook hold
       save next, runes/{end}
-      fork test, or(and(is-minimum(next, 48), is-maximum(next, 57)), or(is-equal(next, 45), or(is-equal(next, 43), or(is-equal(next, 46), or(is-equal(next, 101), is-equal(next, 69))))))
+      fork test
+        or and(is-minimum(next, 48), is-maximum(next, 57))
+          or is-equal(next, 45)
+            or is-equal(next, 43)
+              or(is-equal(next, 46), or(is-equal(next, 101), is-equal(next, 69)))
         miss
           halt
       save out, <{out}{rune-to-text(next)}>
@@ -427,18 +502,29 @@ task read-json-value
   fork test, is-equal(end, here)
     hold
       back fail-json(here)
-  back make json-read, node(make json-number, value(out)), at(end), failed(false)
+  back
+    make json-read
+      node make json-number, value(out)
+      at(end)
+      failed(false)
 
 task read-json-object
   take runes, like list, like number
   take at, like number
+
   like json-read
+
   save keys, make list
   save values, make list
   save here, skip-space(runes, add(at, 1))
+
   fork test, and(is-below(here, runes/length), is-equal(runes/{here}, 125))
     hold
-      back make json-read, node(make json-object, keys(keys), values(values)), at(add(here, 1)), failed(false)
+      back
+        make json-read
+          node make json-object, keys(keys), values(values)
+          at(add(here, 1))
+          failed(false)
   walk test
     hook test, is-below(here, runes/length)
     hook hold
@@ -466,7 +552,11 @@ task read-json-object
           back fail-json(here)
       fork test, is-equal(runes/{here}, 125)
         hold
-          back make json-read, node(make json-object, keys(keys), values(values)), at(add(here, 1)), failed(false)
+          back
+            make json-read
+              node make json-object, keys(keys), values(values)
+              at(add(here, 1))
+              failed(false)
       fork test, is-unequal(runes/{here}, 44)
         hold
           back fail-json(here)
@@ -476,12 +566,19 @@ task read-json-object
 task read-json-array
   take runes, like list, like number
   take at, like number
+
   like json-read
+
   save values, make list
   save here, skip-space(runes, add(at, 1))
+
   fork test, and(is-below(here, runes/length), is-equal(runes/{here}, 93))
     hold
-      back make json-read, node(make json-array, values(values)), at(add(here, 1)), failed(false)
+      back
+        make json-read
+          node make json-array, values(values)
+          at(add(here, 1))
+          failed(false)
   walk test
     hook test, is-below(here, runes/length)
     hook hold
@@ -496,17 +593,24 @@ task read-json-array
           back fail-json(here)
       fork test, is-equal(runes/{here}, 93)
         hold
-          back make json-read, node(make json-array, values(values)), at(add(here, 1)), failed(false)
+          back
+            make json-read
+              node make json-array, values(values)
+              at(add(here, 1))
+              failed(false)
       fork test, is-unequal(runes/{here}, 44)
         hold
           back fail-json(here)
       save here, add(here, 1)
   back fail-json(here)
 
-# the text of a text node or the characters of a number node; empty for anything else
+# the text of a text node or the characters of a number node; empty for anything
+# else
 task json-text-of
   take node, like json-node
+
   like text
+
   sift node
     case json-text
       back value
@@ -526,22 +630,29 @@ task json-text-of
 # a whole text as one JSON value, with nothing but space after it
 task read-json
   take value, like text
+
   like json-read
+
   save runes, to-runes(value)
   save got, read-json-value(runes, 0)
+
   fork test, got/failed
     hold
       back got
   save end, skip-space(runes, got/at)
+
   fork test, is-below(end, runes/length)
     hold
       back fail-json(end)
   back got
 
-# a node as compact JSON text again, keys in their order: what an unknown nested value shows as a field
+# a node as compact JSON text again, keys in their order: what an unknown nested
+# value shows as a field
 task write-json-node
   take node, like json-node
+
   like text
+
   sift node
     case json-object
       save parts, make list

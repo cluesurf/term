@@ -1,13 +1,19 @@
-# Prompts (section 13): a question is a `?` item with the verb `ask`; its facts line shows the hint while it waits and
-# the answer once answered, when the glyph becomes ✓. Choices sit at column 11, `◉` picked and `◯` not, focus a
-# background highlight. A yes/no default is the capital letter. Secret input echoes `•`.
+# Prompts (section 13): a question is a `?` item with the verb `ask`; its facts line
+# shows the hint while it waits and
+# the answer once answered, when the glyph becomes ✓. Choices sit at column 11, `◉`
+# picked and `◯` not, focus a
+# background highlight. A yes/no default is the capital letter. Secret input echoes
+# `•`.
 #
-# A QUESTION IS A VALUE and a key is a pure step: `press-key` hands back the question after one key, so the whole
-# interaction is testable with no terminal, and the terminal loop (emit.tree) only reads keys and redraws.
+# A QUESTION IS A VALUE and a key is a pure step: `press-key` hands back the
+# question after one key, so the whole
+# interaction is testable with no terminal, and the terminal loop (emit.tree) only
+# reads keys and redraws.
 #
-# WITHOUT A TERMINAL THERE IS NO PROMPT. `fail-without-terminal` is the ✗ item whose `pass` field shows the flags that
-# answer every question, so the same command can be run again in a pipe. `--yes` accepts every default.
-
+# WITHOUT A TERMINAL THERE IS NO PROMPT. `fail-without-terminal` is the ✗ item whose
+# `pass` field shows the flags that
+# answer every question, so the same command can be run again in a pipe. `--yes`
+# accepts every default.
 load ./standard
   find standard
 
@@ -24,16 +30,18 @@ load @term/base/text/unicode
   find to-runes
   find rune-to-text
 
-# one question. `kind` is <text>, <secret>, <confirm>, <pick> (one choice) or <pick-many>. `flag` is the
-# command-line flag that answers it without asking (`--name`), empty when `--yes` is the way. `default` is the
-# answer taken by enter on an empty line, or by `--yes`: a text, <yes> / <no> for a confirm
+# one question. `kind` is <text>, <secret>, <confirm>, <pick> (one choice) or
+# <pick-many>. `flag` is the
+# command-line flag that answers it without asking (`--name`), empty when `--yes` is
+# the way. `default` is the
+# answer taken by enter on an empty line, or by `--yes`: a text, <yes> / <no> for a
+# confirm
 form question
   link kind, like text
   link label, like text
   link flag, like text, fall <>
   link default, like text, fall <>
-  link choices
-    like list, like choice
+  link choices, like list, like choice
     fall make list
   link focus, like number, fall 0
   link typed, like text, fall <>
@@ -43,8 +51,11 @@ form question
 # the answer a pick question has now: the picked choices' values, joined by commas
 task picked-values
   take one, like question
+
   like text
+
   save out, <>
+
   walk one/choices
     take each
     fork test, each/picked
@@ -60,11 +71,14 @@ task picked-values
             save out, <{out},{value}>
   back out
 
-# the label the answer is shown with: what was typed, `•` per character when secret, the picked labels for a pick
+# the label the answer is shown with: what was typed, `•` per character when secret,
+# the picked labels for a pick
 task shown-answer
   take one, like question
   take standard, like standard
+
   like text
+
   fork test, or(is-equal(one/kind, <pick>), is-equal(one/kind, <pick-many>))
     hold
       save out, <>
@@ -80,19 +94,24 @@ task shown-answer
       back out
   back one/answer
 
-# the question after one key. Keys are named: <up>, <down>, <space>, <enter>, <backspace>; anything else is the text
+# the question after one key. Keys are named: <up>, <down>, <space>, <enter>,
+# <backspace>; anything else is the text
 # of what was typed
 task press-key
   take one, like question
   take key, like text
   take standard, like standard
+
   like question
+
   save next, one
+
   fork test, one/answered
     hold
       back next
   save count, one/choices/length
   save picking, or(is-equal(one/kind, <pick>), is-equal(one/kind, <pick-many>))
+
   fork test, and(picking, is-equal(key, <up>))
     hold
       fork test, is-above(one/focus, 0)
@@ -162,7 +181,8 @@ task press-key
         save at, add(at, 1)
       save next/typed, kept
       back next
-  fork test, or(is-equal(key, <up>), or(is-equal(key, <down>), is-equal(key, <space>)))
+  fork test
+    or(is-equal(key, <up>), or(is-equal(key, <down>), is-equal(key, <space>)))
     hold
       fork test, picking
         hold
@@ -175,10 +195,13 @@ task press-key
 
 task focus-choices
   take one, like question
+
   like question
+
   save next, one
   save moved, make list
   save at, 0
+
   walk one/choices
     take each
     save copy, each
@@ -188,17 +211,24 @@ task focus-choices
   save next/choices, moved
   back next
 
-# a confirm's answer from what was typed: y or yes is yes, n or no is no, nothing is the default
+# a confirm's answer from what was typed: y or yes is yes, n or no is no, nothing is
+# the default
 task read-confirm
   take typed, like text
   take default, like text
   take standard, like standard
+
   like text
+
   save rule, standard/asks
-  fork test, or(is-equal(typed, <y>), or(is-equal(typed, <Y>), is-equal(typed, rule/yes-word)))
+
+  fork test
+    or is-equal(typed, <y>)
+      or(is-equal(typed, <Y>), is-equal(typed, rule/yes-word))
     hold
       back rule/yes-word
-  fork test, or(is-equal(typed, <n>), or(is-equal(typed, <N>), is-equal(typed, rule/no-word)))
+  fork test
+    or is-equal(typed, <n>), or(is-equal(typed, <N>), is-equal(typed, rule/no-word))
     hold
       back rule/no-word
   fork test, is-equal(default, <>)
@@ -210,8 +240,11 @@ task read-confirm
 task question-hint
   take one, like question
   take standard, like standard
+
   like text
+
   save rule, standard/asks
+
   fork test, is-equal(one/kind, <confirm>)
     hold
       fork test, is-equal(one/default, rule/yes-word)
@@ -226,14 +259,23 @@ task question-hint
       back rule/one-hint
   back one/default
 
-# the question as an item: `?` waiting with its hint, its choices and what is typed; `✓` with the answer once answered
+# the question as an item: `?` waiting with its hint, its choices and what is typed;
+# `✓` with the answer once answered
 task question-event
   take one, like question
   take clock, like number
   take standard, like standard
+
   like event
+
   save rule, standard/asks
-  save item, make event, kind(<question>), verb(rule/verb), subject(plain-subject(one/label)), clock(clock)
+
+  save item
+    make event
+      kind(<question>)
+      verb(rule/verb)
+      subject(plain-subject(one/label))
+      clock(clock)
   fork test, one/answered
     hold
       save item/glyph, <done>
@@ -247,6 +289,7 @@ task question-event
       back item
   save item/glyph, <asking>
   save hint, question-hint(one, standard)
+
   fork test, is-unequal(hint, <>)
     hold
       item/facts/push hint
@@ -264,8 +307,11 @@ task question-event
 task answer-all
   take questions, like list, like question
   take standard, like standard
+
   like list, like question
+
   save out, make list
+
   walk questions
     take one
     save next, one
@@ -282,15 +328,19 @@ task answer-all
     out/push next
   back out
 
-# the command that answers every question with no terminal: each flag with its answer or default, and `--yes` when a
+# the command that answers every question with no terminal: each flag with its
+# answer or default, and `--yes` when a
 # question has no flag of its own
 task pass-command
   take command, like text
   take questions, like list, like question
   take standard, like standard
+
   like text
+
   save out, command
   save yes, false
+
   walk questions
     take one
     fork test, is-equal(one/flag, <>)
@@ -306,23 +356,28 @@ task pass-command
             save value, picked-values(one)
     fork test, is-equal(value, <>)
       hold
-        save value, <\<{one/label}\>>
+        save value, <<{one/label}>>
     save out, <{out} {one/flag} {value}>
   fork test, yes
     hold
       save out, <{out} {standard/asks/yes-flag}>
   back out
 
-# no terminal, so no prompt (section 13): a ✗ item naming the command, with `pass` showing the flags that answer it
+# no terminal, so no prompt (section 13): a ✗ item naming the command, with `pass`
+# showing the flags that answer it
 task fail-without-terminal
   take verb, like text
   take command, like text
   take questions, like list, like question
   take clock, like number
   take standard, like standard
+
   like event
+
   save words, standard/asks/no-terminal
   save item, make event, glyph(<failed>), kind(<question>), verb(verb), clock(clock)
   save item/subject, plain-subject(<{command} {words}>)
-  item/fields/push plain-field(standard/fields/pass-key, pass-command(command, questions, standard))
+
+  item/fields/push
+    plain-field standard/fields/pass-key, pass-command(command, questions, standard)
   back item

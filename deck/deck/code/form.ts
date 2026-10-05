@@ -3,6 +3,8 @@ export type Code = {
   minor: number
   patch: number
   prerelease?: string
+  // `+build.4`: kept and printed, and ignored when two versions are compared, as semver says
+  build?: string
 }
 
 export type MarkBand = {

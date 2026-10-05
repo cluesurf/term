@@ -3,11 +3,11 @@
 // watcher. Each relaunched app says where it STARTED before it moves, which is the witness that the history crossed the
 // relaunch (deck/site/code/view/native/toolkit/address.tree):
 //
-//   run 1   starts at /, moves to /notes, draws `notes v1`
-//   edit    `notes v2`: rebuilt and relaunched, it starts at /notes and draws `notes v2`
-//   edit    a program that does not compile: a failure is reported and nothing is launched; the app is kept
-//   edit    `notes v3`, with a step back: relaunched at /notes, and back reaches /, the screen behind it, so the whole
-//           history crossed and not just the screen on top
+//   run 1   starts at /, moves to /notes, draws `notes v1` (the notes screen is notes.tree, which app.tree loads)
+//   edit    notes.tree to `notes v2`: rebuilt and relaunched, it starts at /notes and draws `notes v2`
+//   edit    app.tree to a program that does not compile: a failure is reported, nothing launched, the app is kept
+//   edit    both, `notes v3` and a step back: relaunched at /notes, and back reaches /, the screen behind it, so the
+//           whole history crossed and not just the screen on top
 //
 // The desktop app runs headless (TERM_WINDOW_AWAY=1) and exits after it has drawn, as every Compose test does; the loop
 // relaunches it on the next edit either way. The app folder is under this package's tmp/ (gitignored), so its `@term/*`
@@ -36,11 +36,22 @@ function ok(name: string, cond: boolean, info = ''): void {
 
 const ROOT = join(import.meta.dirname, '../..')
 
-// the app at one version: two screens, and a check that says where it started, moves to /notes on a first run, steps
-// back when asked, and says what it drew
-const program = (version: string, back: boolean): string => `load @term/site/code/dom/dom
+// the notes screen, in a file of its own that the app loads relatively: an edit to it is an edit the loop must see in a
+// file that is not the entry, and the entry's `load ./notes` must resolve beside the app, not inside its build folder
+const notes = (version: string): string => `view notes
+  take host, like view
+  view span
+    text <notes ${version}>
+`
+
+// the app: two screens, and a check that says where it started, moves to /notes on a first run, steps back when asked,
+// and says what it drew
+const program = (back: boolean): string => `load @term/site/code/dom/dom
   find view
   find page-body
+
+load ./notes
+  find notes
 
 load @term/site/code/dom/native/toolkit/dom
   find after-launch
@@ -58,11 +69,6 @@ view home
   take host, like view
   view span
     text <home>
-
-view notes
-  take host, like view
-  view span
-    text <notes ${version}>
 
 hook /
   view home
@@ -109,8 +115,8 @@ ${
     code 0
 `
 
-// a program that does not compile: a name nothing defines
-const BROKEN = program('v2', false).replace('call current-path', 'call current-place')
+// an app that does not compile: a name nothing defines
+const BROKEN = program(false).replace('call current-path', 'call current-place')
 
 function have(tool: string): boolean {
   return spawnSync('which', [tool], { encoding: 'utf8' }).status === 0
@@ -149,7 +155,9 @@ async function leg(target: ComposeTarget): Promise<void> {
   rmSync(app, { recursive: true, force: true })
   mkdirSync(app, { recursive: true })
   const entry = join(app, 'app.tree')
-  writeFileSync(entry, program('v1', false))
+  const screen = join(app, 'notes.tree')
+  writeFileSync(screen, notes('v1'))
+  writeFileSync(entry, program(false))
 
   const events: WorkEvent[] = []
   // what each run said, by its generation
@@ -207,11 +215,13 @@ async function leg(target: ComposeTarget): Promise<void> {
 
     const edited = Date.now()
     let before = results()
-    writeFileSync(entry, program('v2', false))
+    writeFileSync(screen, notes('v2'))
     const second = await settled(before)
     const seconds = ((Date.now() - edited) / 1000).toFixed(1)
-    console.log(`      ${target}: an edit to the app on screen in ${seconds}s, a full rebuild and relaunch`)
-    ok(`${target}: an edit is rebuilt and relaunched`, second > first, `${first} then ${second}`)
+    const build = events.find(e => e.kind === 'built' && e.generation === second)
+    const building = build?.kind === 'built' ? (build.duration / 1000).toFixed(1) : '?'
+    console.log(`      ${target}: an edit to the app on screen in ${seconds}s: the build ${building}s, the rest the old app stopped and the new one started`)
+    ok(`${target}: an edit to a file the entry loads is rebuilt and relaunched`, second > first, `${first} then ${second}`)
     ok(`${target}: the relaunched app STARTS at /notes, where the last one was`, step(second, 'start') === '/notes', step(second, 'start'))
     ok(`${target}: it draws the edit, notes v2`, step(second, 'drawn').includes('notes v2'), step(second, 'drawn'))
 
@@ -224,7 +234,8 @@ async function leg(target: ComposeTarget): Promise<void> {
     ok(`${target}: and nothing is launched for it`, events.filter(e => e.kind === 'launch').length === launchesBefore, String(launchesBefore))
 
     before = results()
-    writeFileSync(entry, program('v3', true))
+    writeFileSync(screen, notes('v3'))
+    writeFileSync(entry, program(true))
     const third = await settled(before)
     ok(`${target}: the fixed edit is relaunched at /notes`, step(third, 'start') === '/notes', step(third, 'start'))
     ok(`${target}: back from it reaches /, the screen behind it: the whole history crossed`, step(third, 'back') === 'true /', step(third, 'back'))

@@ -1,6 +1,7 @@
-# The detail blocks of section 7, each a component that draws at its own left edge within the room it is handed:
-# message lines, fields, the code frame, quoted output and the progress bar. `draw-item` places them at column 11.
-
+# The detail blocks of section 7, each a component that draws at its own left edge
+# within the room it is handed:
+# message lines, fields, the code frame, quoted output and the progress bar.
+# `draw-item` places them at column 11.
 load @term/base/text
   find trim
   find starts-with
@@ -54,21 +55,31 @@ load ./wrap
   find text-breaks
   find place-breaks
 
-# message lines (section 7): sentences in the text color, each line wrapped on its own with a 2-cell hang
+# message lines (section 7): sentences in the text color, each line wrapped on its
+# own with a 2-cell hang
 task draw-message
   take lines, like list, like text
   take room, like room
   take role, like text
+
   like list, like line
+
   save out, make list
   save hang, room/standard/layout/hang
+
   walk lines
     take written
     walk split-lines(written)
       take one
       save spans, make list
       spans/push make-span(clean-text(one, room), role)
-      walk wrap-spans(spans, room/width, subtract(room/width, hang), hang, text-breaks(room/standard), false)
+      walk
+        wrap-spans spans
+          room/width
+          subtract(room/width, hang)
+          hang
+          text-breaks(room/standard)
+          false
         take each
         out/push each
   back out
@@ -77,8 +88,11 @@ task draw-message
 task measure-keys
   take fields, like list, like item-field
   take room, like room
+
   like number
+
   save widest, 0
+
   walk fields
     take one
     save wide, measure-text(clean-text(one/key, room))
@@ -87,26 +101,33 @@ task measure-keys
         save widest, wide
   back widest
 
-# one field: `key  value`, the key dim and padded to `key-width`. A value that does not fit beside its key moves to
-# the next line, 2 past the key, and wraps there; a location breaks only after `/` (section 12)
+# one field: `key value`, the key dim and padded to `key-width`. A value that does
+# not fit beside its key moves to
+# the next line, 2 past the key, and wraps there; a location breaks only after `/`
+# (section 12)
 task draw-field
   take field, like item-field
   take key-width, like number
   take room, like room
   take role, like text
+
   like list, like line
+
   save layout, room/standard/layout
   save key, clean-text(field/key, room)
   save value, link-spans(clean-spans(field/value, room), field/location, room)
+
   fork test, is-unequal(role, <text>)
     hold
       save value, tint-spans(value, role)
   save rules, text-breaks(room/standard)
+
   fork test, field/location
     hold
       save rules, place-breaks(room/standard)
   save padded, <{key}{make-spaces(subtract(key-width, measure-text(key)))}>
   save beside, add(add(key-width, layout/key-gap), measure-spans(value))
+
   fork test, is-maximum(beside, room/width)
     hold
       save spans, make list
@@ -125,6 +146,7 @@ task draw-field
   save hang, layout/hang
   save cells, subtract(room/width, hang)
   save under, wrap-spans(value, cells, subtract(cells, hang), hang, rules, false)
+
   walk indent-lines(under, hang)
     take one
     out/push one
@@ -135,8 +157,11 @@ task draw-fields
   take key-width, like number
   take room, like room
   take role, like text
+
   like list, like line
+
   save out, make list
+
   walk fields
     take one
     walk draw-field(one, key-width, room, role)
@@ -148,10 +173,13 @@ task draw-fields
 task expand-tabs
   take value, like text
   take width, like number
+
   like text
+
   save out, <>
   save column, 0
   save stop, width
+
   fork test, is-below(stop, 1)
     hold
       save stop, 8
@@ -167,8 +195,10 @@ task expand-tabs
         save column, add(column, grain/wide)
   back out
 
-# the display column where a character column (1-based) of a source line starts, and the width of `length`
-# characters from there: tabs expanded and wide characters counted, so a span lands under the right cells
+# the display column where a character column (1-based) of a source line starts, and
+# the width of `length`
+# characters from there: tabs expanded and wide characters counted, so a span lands
+# under the right cells
 form frame-cells
   link start, like number
   link wide, like number
@@ -178,11 +208,14 @@ task locate-mark
   take column, like number
   take length, like number
   take tab-width, like number
+
   like frame-cells
+
   save runes, to-runes(source)
   save before, <>
   save inside, <>
   save at, 1
+
   walk runes
     take rune
     fork test, is-below(at, column)
@@ -196,6 +229,7 @@ task locate-mark
   save start, measure-text(expand-tabs(before, tab-width))
   save whole, measure-text(expand-tabs(<{before}{inside}>, tab-width))
   save wide, subtract(whole, start)
+
   fork test, is-below(wide, 1)
     hold
       save wide, 1
@@ -206,33 +240,45 @@ task is-shown-line
   take one, like frame-line
   take marks, like list, like frame-mark
   take context, like number
+
   like boolean
+
   walk marks
     take mark
-    fork test, and(is-maximum(one/number, mark/line), is-minimum(one/number, subtract(mark/line, context)))
+    fork test
+      and is-maximum(one/number, mark/line)
+        is-minimum(one/number, subtract(mark/line, context))
       hold
         back true
   back false
 
-# the code frame of section 7: right-aligned dim line numbers and a dim `│`, the primary span underlined `━` in the
-# item's color with its label, secondary spans `─` dim, `⋮` where lines are skipped, at most two lines of context
-# above a marked line. Cropped with `…`, never wrapped: a frame keeps the shape of the source
+# the code frame of section 7: right-aligned dim line numbers and a dim `│`, the
+# primary span underlined `━` in the
+# item's color with its label, secondary spans `─` dim, `⋮` where lines are skipped,
+# at most two lines of context
+# above a marked line. Cropped with `…`, never wrapped: a frame keeps the shape of
+# the source
 task draw-frame
   take one, like frame
   take room, like room
   take role, like text
+
   like list, like line
+
   save out, make list
   save rule, room/standard/frames
   save bar, find-symbol(room, <gutter>)
   save skip, find-symbol(room, <skip>)
   save shown, make list
+
   walk one/lines
     take each
-    fork test, or(is-equal(one/marks/length, 0), is-shown-line(each, one/marks, rule/context))
+    fork test
+      or is-equal(one/marks/length, 0), is-shown-line(each, one/marks, rule/context)
       hold
         shown/push each
   save digits, 1
+
   walk shown
     take each
     save wide, measure-text(<{each/number}>)
@@ -242,6 +288,7 @@ task draw-frame
   save gutter-wide, add(digits, 2)
   save cells, subtract(room/width, add(gutter-wide, 1))
   save previous, -1
+
   walk shown
     take each
     fork test, and(is-minimum(previous, 0), is-above(each/number, add(previous, 1)))
@@ -271,7 +318,9 @@ task draw-frame
 task pad-number
   take value, like number
   take digits, like number
+
   like text
+
   save shown, <{value}>
   back <{make-spaces(subtract(digits, measure-text(shown)))}{shown}>
 
@@ -284,11 +333,14 @@ task draw-mark
   take cells, like number
   take role, like text
   take room, like room
+
   like line
+
   save bar, find-symbol(room, <gutter>)
   save place, locate-mark(source/value, mark/column, mark/length, one/tab-width)
   save glyph, find-symbol(room, <secondary>)
   save mark-role, <dim>
+
   fork test, mark/primary
     hold
       save glyph, find-symbol(room, <primary>)
@@ -299,6 +351,7 @@ task draw-mark
   under/push make-span(make-spaces(add(place/start, 1)), <text>)
   under/push make-span(repeat-text(glyph, place/wide), mark-role)
   save label, clean-text(mark/label, room)
+
   fork test, is-unequal(label, <>)
     hold
       under/push make-span(< {label}>, mark-role)
@@ -307,17 +360,22 @@ task draw-mark
     spans/push piece
   back make line, spans(spans)
 
-# does a trimmed line of a stack trace name a frame, and is that frame in the user's code
+# does a trimmed line of a stack trace name a frame, and is that frame in the user's
+# code
 task is-stack-frame
   take value, like text
   take room, like room
+
   like boolean
+
   back starts-with(trim(value), room/standard/quotes/frame-start)
 
 task is-foreign-frame
   take value, like text
   take room, like room
+
   like boolean
+
   walk room/standard/quotes/foreign
     take marker
     fork test, contains(value, marker)
@@ -325,9 +383,12 @@ task is-foreign-frame
         back true
   back false
 
-# quoted output trimmed by section 7: a stack trace keeps its message lines, its top frame and the first frame in the
-# user's code, then `… n more frames`; anything longer than the standard's limit keeps its last lines and says how
-# many came before. Every line loses its escapes first, so another program's colors never reach the screen
+# quoted output trimmed by section 7: a stack trace keeps its message lines, its top
+# frame and the first frame in the
+# user's code, then `… n more frames`; anything longer than the standard's limit
+# keeps its last lines and says how
+# many came before. Every line loses its escapes first, so another program's colors
+# never reach the screen
 form quote-lines
   link lines, like list, like text
   link more-frames, like number
@@ -337,14 +398,18 @@ task trim-quote
   take written, like list, like text
   take earlier, like number
   take room, like room
+
   like quote-lines
+
   save plain, make list
+
   walk written
     take each
     walk split-lines(each)
       take one
       plain/push strip-escapes(one)
   save frames, 0
+
   walk plain
     take one
     fork test, is-stack-frame(one, room)
@@ -352,6 +417,7 @@ task trim-quote
         save frames, add(frames, 1)
   save kept, make list
   save more, 0
+
   fork test, is-above(frames, 1)
     hold
       save top-seen, false
@@ -385,6 +451,7 @@ task trim-quote
       save kept, plain
   save limit, room/standard/quotes/lines
   save before, earlier
+
   fork test, is-below(before, 0)
     hold
       save before, 0
@@ -403,19 +470,23 @@ task trim-quote
       save kept, last
   back make quote-lines, lines(kept), more-frames(more), earlier(before)
 
-# quoted output of section 7: behind a dim `│ `, its own colors removed, a long line wrapped inside the quote with a
+# quoted output of section 7: behind a dim `│ `, its own colors removed, a long line
+# wrapped inside the quote with a
 # 2-cell hang
 task draw-quote
   take written, like list, like text
   take earlier, like number
   take room, like room
+
   like list, like line
+
   save out, make list
   save trimmed, trim-quote(written, earlier, room)
   save bar, find-symbol(room, <gutter>)
   save more, find-symbol(room, <more>)
   save hang, room/standard/layout/hang
   save cells, subtract(room/width, 2)
+
   fork test, is-above(trimmed/earlier, 0)
     hold
       save count, group-number(trimmed/earlier, room/standard)
@@ -426,7 +497,13 @@ task draw-quote
     save spans, make list
     spans/push make-span(clean-text(one, room), <text>)
     save at, 0
-    walk wrap-spans(spans, cells, subtract(cells, hang), hang, text-breaks(room/standard), true)
+    walk
+      wrap-spans spans
+        cells
+        subtract(cells, hang)
+        hang
+        text-breaks(room/standard)
+        true
       take each
       save line-spans, make list
       line-spans/push make-span(<{bar} >, <dim>)
@@ -445,28 +522,36 @@ task draw-quote
 task quote-line
   take bar, like text
   take piece, like span
+
   like line
+
   save spans, make list
   spans/push make-span(<{bar} >, <dim>)
   spans/push piece
   back make line, spans(spans)
 
-# the progress bar of section 7: the standard's cell count, filled `━` in the active color, empty `─` faint. No total,
+# the progress bar of section 7: the standard's cell count, filled `━` in the active
+# color, empty `─` faint. No total,
 # no bar (section 10)
 task draw-bar
   take done, like number
   take total, like number
   take room, like room
+
   like list, like line
+
   save out, make list
+
   fork test, is-above(total, 0)
     miss
       back out
   save cells, room/standard/bars/width
+
   fork test, is-above(cells, room/width)
     hold
       save cells, room/width
   save count, done
+
   fork test, is-below(count, 0)
     hold
       save count, 0
@@ -475,12 +560,16 @@ task draw-bar
       save count, total
   save filled, divide-whole(multiply(count, cells), total)
   save spans, make list
+
   fork test, is-above(filled, 0)
     hold
-      spans/push make-span(repeat-text(find-symbol(room, <bar-full>), filled), <active>)
+      spans/push
+        make-span(repeat-text(find-symbol(room, <bar-full>), filled), <active>)
   save empty, subtract(cells, filled)
+
   fork test, is-above(empty, 0)
     hold
-      spans/push make-span(repeat-text(find-symbol(room, <bar-empty>), empty), <faint>)
+      spans/push
+        make-span(repeat-text(find-symbol(room, <bar-empty>), empty), <faint>)
   out/push make line, spans(spans)
   back out

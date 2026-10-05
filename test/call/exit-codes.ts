@@ -64,6 +64,45 @@ writeFileSync(
   const run = term(empty, 'show', 'mark')
 
   ok('`term show mark` outside a project exits non-zero', run.status !== 0, run.out)
+
+  // from the project's own `code/` folder, the nearest deck.tree above it
+  const shown = mkdtempSync(join(tmpdir(), 'term-show-'))
+  mkdirSync(join(shown, 'code'))
+  writeFileSync(join(shown, 'deck.tree'), 'deck @probe/show\n  mark <0.0.2>\n')
+
+  const nested = term(join(shown, 'code'), 'show', 'mark')
+
+  ok('`term show mark` from `code/` reads the deck.tree above it', nested.status === 0 && nested.out.trim() === '0.0.2', nested.out)
+
+  const json = term(shown, 'show', 'mark', '--back', 'json')
+
+  ok('`--back json` prints the version as JSON', json.out.trim() === '{"mark":"0.0.2"}', json.out)
+
+  const toolchain = term(empty, 'show', '--back', 'json')
+  const parsed = (() => {
+    try {
+      return JSON.parse(toolchain.out) as Record<string, string>
+    } catch {
+      return {}
+    }
+  })()
+
+  ok('and the toolchain as JSON', typeof parsed.term === 'string' && typeof parsed.node === 'string', toolchain.out)
+
+  const block = term(empty, 'show')
+
+  ok('the toolchain block has no blank line before or after it', block.out.startsWith('term ') && !block.out.endsWith('\n\n'), JSON.stringify(block.out))
+
+  const unknown = term(empty, 'show', 'nope')
+
+  ok('`term show nope` is refused, exit 2', unknown.status === 2 && /nothing named nope to show/.test(unknown.out), unknown.out)
+
+  const broken = mkdtempSync(join(tmpdir(), 'term-show-broken-'))
+  writeFileSync(join(broken, 'deck.tree'), 'deck @probe/broken\n  mark <not a version>\n')
+
+  const unread = term(broken, 'show', 'mark')
+
+  ok('a deck.tree that cannot be read says so, not that there is none', unread.status !== 0 && /could not be read/.test(unread.out), unread.out)
 }
 
 // ---- commands/time, tests/benchmarks: a baseline that does not exist ----
@@ -209,6 +248,52 @@ mine text-def
   const made = term(mills, 'make')
 
   ok('a mill grammar builds under the `mill` role', made.status === 0 && !/cannot tell whether this grammar reads/.test(made.out), made.out)
+}
+
+// ---- packages/versions: `term move mark rc` starts and moves a pre-release, and a bad level is refused ----
+{
+  const moved = mkdtempSync(join(tmpdir(), 'term-move-'))
+  writeFileSync(join(moved, 'deck.tree'), 'deck @probe/move\n  mark <1.4.2>\n')
+
+  const versions = ['rc', 'rc', '3'].map(level => {
+    term(moved, 'move', 'mark', level)
+
+    return /mark <([^>]+)>/.exec(readFileSync(join(moved, 'deck.tree'), 'utf8'))?.[1]
+  })
+
+  ok('`term move mark rc` goes 1.4.3-rc.1, 1.4.3-rc.2, and `3` releases 1.4.3', versions.join(' ') === '1.4.3-rc.1 1.4.3-rc.2 1.4.3', versions.join(' '))
+
+  const bad = term(moved, 'move', 'mark', '4')
+
+  ok('`term move mark 4` is refused with exit 2, and moves nothing', bad.status === 2 && /4 is not a part of the version/.test(bad.out) && readFileSync(join(moved, 'deck.tree'), 'utf8').includes('<1.4.3>'), bad.out)
+}
+
+// ---- packages/versions: `term save` takes the versions a link accepts ----
+{
+  const saved = mkdtempSync(join(tmpdir(), 'term-save-'))
+  writeFileSync(join(saved, 'deck.tree'), 'deck @probe/save\n  mark <0.0.1>\n')
+
+  // the install after it has no registry to reach here, so only the manifest is read
+  term(saved, 'save', '@probe/none', '^1.2.0')
+  const written = readFileSync(join(saved, 'deck.tree'), 'utf8')
+
+  ok('`term save @probe/none ^1.2.0` writes the range it means', /link @probe\/none, mark <1\.2\.0\.\.2\.0\.0>/.test(written), written)
+
+  const bad = term(saved, 'save', '@probe/other', 'nope')
+
+  ok('`term save` with a version that is none is refused, and writes nothing', bad.status !== 0 && !readFileSync(join(saved, 'deck.tree'), 'utf8').includes('@probe/other'), bad.out)
+}
+
+// ---- commands/wake: a file already in the folder is kept ----
+{
+  const woken = mkdtempSync(join(tmpdir(), 'term-wake-'))
+  writeFileSync(join(woken, 'readme.md'), '# mine\n')
+  writeFileSync(join(woken, '.gitignore'), 'secrets\n')
+
+  const run = term(woken, 'wake')
+
+  ok('`term wake` keeps a readme.md and a .gitignore already there', run.status === 0 && readFileSync(join(woken, 'readme.md'), 'utf8') === '# mine\n' && readFileSync(join(woken, '.gitignore'), 'utf8') === 'secrets\n', run.out)
+  ok('and writes the rest, saying which it kept', readFileSync(join(woken, 'deck.tree'), 'utf8').startsWith('deck ') && /keep\s+readme\.md/.test(run.out) && /2 files/.test(run.out), run.out)
 }
 
 console.log(`\nexit-codes: ${pass} pass, ${fail} fail`)

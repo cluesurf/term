@@ -7,7 +7,8 @@
 #
 #   look-ahead      a lookahead whose body matches text of a bounded length
 #   look-behind     a lookbehind whose body matches text of a bounded length
-#   look-unbounded  a lookaround whose body can match text of any length
+#   look-ahead-unbounded   a lookahead whose body can match text of any length
+#   look-behind-unbounded  a lookbehind whose body can match text of any length (ICU and Java refuse one)
 #   look-capture    a capturing group inside a lookaround
 #   refer-set       a back reference to a group that has surely taken part when it is reached: earlier in the same
 #                   chain, or an enclosing one, and not inside a choice, an optional repetition or a lookaround
@@ -334,11 +335,19 @@ task collect-features
       # the lookaround's own direction, renamed apart from the `behind` that says what encloses it
       link body
       link look-behind
+      save unbounded
+        call is-below(call(most-length, read(body)), code(0))
       fork test
         hook test
-          call is-below(call(most-length, read(body)), code(0))
+          call and
+            read unbounded
+            read look-behind
         hook hold
-          call note-feature(read(out), text(<look-unbounded>))
+          call note-feature(read(out), text(<look-behind-unbounded>))
+        hook test
+          read unbounded
+        hook hold
+          call note-feature(read(out), text(<look-ahead-unbounded>))
         hook test
           read look-behind
         hook hold

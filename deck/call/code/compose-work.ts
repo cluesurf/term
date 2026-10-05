@@ -19,6 +19,7 @@ import { join, relative, resolve } from 'node:path'
 import { androidDevice, androidTools, launchOnAndroid } from '@term/call/code/cask'
 import { buildCompose, buildComposeAndroid, composeIdentity } from '@term/call/code/compose'
 import { startKotlinWorker } from '@term/call/code/kotlin-worker'
+import { CompileCache } from '@term/make/code/compile/cache'
 import { closeRun, followChild, openRun, report } from '@term/call/code/output'
 
 export type ComposeTarget = 'compose' | 'compose-android'
@@ -62,8 +63,10 @@ export function startComposeWork(input: {
   const { identifier } = composeIdentity(root)
   const address = join(out, ADDRESS)
   mkdirSync(out, { recursive: true })
-  // one compiler for the session, warm after the first build: a rebuild pays for the code, not for starting a JVM
+  // what the session keeps warm between builds: one Kotlin compiler, so a rebuild pays for the code and not for
+  // starting a JVM, and the Term compiler's parsed modules, so an edit reparses only the files that changed
   const kotlin = startKotlinWorker(join(out, 'kotlin'))
+  const cache = new CompileCache()
 
   // a session starts at the app's first screen: the history of an earlier session is not this one's
   forgetAddress(input.target, address, identifier)
@@ -111,10 +114,11 @@ export function startComposeWork(input: {
     mkdirSync(dir, { recursive: true })
     const started = Date.now()
     const text = existsSync(entry) ? readFileSync(entry, 'utf8') : ''
+    const warm = { file: entry, compiler: kotlin.compile, cache }
     const built =
       input.target === 'compose'
-        ? buildCompose({ root, dir, name: 'app', text, compiler: kotlin.compile })
-        : buildComposeAndroid({ root, dir, name: 'app', text, identifier, compiler: kotlin.compile })
+        ? buildCompose({ root, dir, name: 'app', text, ...warm })
+        : buildComposeAndroid({ root, dir, name: 'app', text, identifier, ...warm })
     const duration = Date.now() - started
 
     if (built.form !== 'built') {

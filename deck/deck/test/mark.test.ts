@@ -7,6 +7,7 @@ import {
   codeMatch,
   pickBestCode,
   bumpCode,
+  bumpPrerelease,
 } from '../code/code'
 
 describe('parseCode', () => {
@@ -65,6 +66,61 @@ describe('compareCode', () => {
     const a = { major: 1, minor: 0, patch: 0, prerelease: 'beta' }
     const b = { major: 1, minor: 0, patch: 0 }
     expect(compareCode(a, b)).toBeLessThan(0)
+  })
+
+  // semver 2.0, section 11, in its own order (guides: packages/versions)
+  it('orders pre-releases by their identifiers, numbers by value', () => {
+    const order = [
+      '1.0.0-alpha',
+      '1.0.0-alpha.1',
+      '1.0.0-alpha.beta',
+      '1.0.0-beta',
+      '1.0.0-beta.2',
+      '1.0.0-beta.11',
+      '1.0.0-rc.1',
+      '1.0.0-rc.2',
+      '1.0.0-rc.10',
+      '1.0.0',
+    ]
+    const sorted = [...order].reverse().sort((a, b) => compareCode(parseCode(a), parseCode(b)))
+    expect(sorted).toEqual(order)
+  })
+
+  it('ignores a build suffix', () => {
+    expect(compareCode(parseCode('1.2.3+build.4'), parseCode('1.2.3'))).toBe(0)
+  })
+})
+
+describe('bumpPrerelease', () => {
+  const next = (from: string, id: string): string => showCode(bumpPrerelease({ code: parseCode(from), id }))
+
+  it('starts one past the release', () => {
+    expect(next('1.4.2', 'rc')).toBe('1.4.3-rc.1')
+  })
+
+  it('moves its own count', () => {
+    expect(next('1.4.3-rc.9', 'rc')).toBe('1.4.3-rc.10')
+  })
+
+  it('starts a new name at the same version', () => {
+    expect(next('1.4.3-beta.4', 'rc')).toBe('1.4.3-rc.1')
+  })
+
+  it('and a patch move releases it', () => {
+    expect(showCode(bumpCode({ code: parseCode('1.4.3-rc.2'), level: 3 }))).toBe('1.4.3')
+  })
+})
+
+describe('build suffix', () => {
+  it('parses and shows it', () => {
+    expect(parseCode('1.2.3-rc.1+build.4')).toEqual({
+      major: 1,
+      minor: 2,
+      patch: 3,
+      prerelease: 'rc.1',
+      build: 'build.4',
+    })
+    expect(showCode(parseCode('1.2.3+build.4'))).toBe('1.2.3+build.4')
   })
 })
 

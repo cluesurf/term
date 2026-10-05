@@ -1,12 +1,14 @@
 import { readFileSync } from 'node:fs'
 import yargs from 'yargs'
 import { hideBin } from 'yargs/helpers'
-import { bannerText, infoText } from '@term/make/code/show'
+import { bannerText } from '@term/make/code/show'
+import { callShow } from '@term/call/code/show'
 import { callLoad } from '@term/call/code/load'
 import { callSave } from '@term/call/code/save'
 import { callZone } from '@term/call/code/zone'
 import { callToss } from '@term/call/code/toss'
 import { callHost } from '@term/call/code/host'
+import { callBind } from '@term/call/code/bind'
 import { callSeek } from '@term/call/code/seek'
 import { callLink } from '@term/call/code/link'
 import { callMake } from '@term/call/code/make'
@@ -37,7 +39,7 @@ import { callLook } from '@term/call/code/look'
 import { callRoll } from '@term/call/code/roll'
 import { callMold } from '@term/call/code/mold'
 import { callView } from '@term/call/code/view'
-import { closeRun, failRun, field, openRun, printData, report, setOutput, showPath } from '@term/call/code/output'
+import { closeRun, failRun, openRun, printData, report, setOutput } from '@term/call/code/output'
 import type { OutputFlags } from '@term/call/code/output'
 import {
   callBaseCheck,
@@ -65,6 +67,7 @@ const COMMANDS = [
   'link',
   'seek',
   'host',
+  'bind',
   'make',
   'scan',
   'mind',
@@ -463,17 +466,23 @@ const cli = yargs(hideBin(process.argv))
     },
   )
   .command(
-    'save [deck]',
+    'save [deck] [mark]',
     'Add a dependency',
     yargs =>
-      yargs.positional('deck', {
-        type: 'string',
-        description: 'Package name to add',
-      }),
+      yargs
+        .positional('deck', {
+          type: 'string',
+          description: 'Package name to add',
+        })
+        .positional('mark', {
+          type: 'string',
+          description: 'The versions it accepts: 1.4.2, 1.x.x, ^1.2.0, ~1.2.0, 1.0.0..2.0.0 (default 0.x.x)',
+        }),
     async argv => {
       await callSave({
         root,
         deck: argv.deck,
+        constraint: argv.mark,
       })
     },
   )
@@ -577,6 +586,18 @@ const cli = yargs(hideBin(process.argv))
         trust: argv.trust,
         untrust: argv.untrust,
       })
+    },
+  )
+  .command(
+    'bind',
+    'Log in to term.surf with Google, for publishing',
+    yargs =>
+      yargs.option('toss', {
+        type: 'boolean',
+        description: 'Forget the term.surf token on this machine instead',
+      }),
+    async argv => {
+      await callBind({ root, toss: argv.toss })
     },
   )
   .command(
@@ -1063,7 +1084,7 @@ const cli = yargs(hideBin(process.argv))
         })
         .positional('level', {
           type: 'string',
-          description: 'Bump level: 1=major, 2=minor, 3=patch',
+          description: 'Bump level: 1=major, 2=minor, 3=patch, or a word (rc, beta) for a pre-release',
         }),
     async argv => {
       await callMove({
@@ -1341,22 +1362,7 @@ const cli = yargs(hideBin(process.argv))
         description: '`mark` for this package\'s version (`code` is the old spelling); omit for the toolchain version and platform',
       }),
     async argv => {
-      if (argv.what === 'mark' || argv.what === 'code') {
-        const { loadManifest, showCode } =
-          await import('@cluesurf/deck.tree')
-
-        try {
-          const manifest = await loadManifest({ dir: root })
-          printData(`${showCode(manifest.mark)}\n`)
-        } catch {
-          openRun({ verb: 'show', root })
-          report({ glyph: 'failed', kind: 'problem', subject: 'There is no deck.tree here', fields: [field('looked', showPath(root))] })
-          closeRun({ verdict: 'No version to show', next: 'term wake, to make a project here' })
-        }
-      } else {
-        // the toolchain's version and platform: the answer asked for, data on stdout
-        printData(infoText(readVersion()))
-      }
+      await callShow({ root, what: argv.what, back: argv.back, version: readVersion() })
     },
   )
   .command(

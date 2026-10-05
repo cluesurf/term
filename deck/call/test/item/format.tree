@@ -1,7 +1,9 @@
-# Facts and values (section 6) at their edges: the duration and size boundaries where a unit or a precision changes,
-# the thousands separator, counts and totals, statuses with their roles, the clock and date in a zone, versions, the
-# dependency chain's collapse, paths, and the no-break space that keeps a number with its unit.
-
+# Facts and values (section 6) at their edges: the duration and size boundaries
+# where a unit or a precision changes,
+# the thousands separator, counts and totals, statuses with their roles, the clock
+# and date in a zone, versions, the
+# dependency chain's collapse, paths, and the no-break space that keeps a number
+# with its unit.
 load @term/base/text
   find contains
 
@@ -39,12 +41,16 @@ load ./kit
 
 task said-duration
   take ms, like number
+
   like text
+
   back unglue-text(spans-text(format-duration(ms, make-standard(), <text>)))
 
 task said-size
   take bytes, like number
+
   like text
+
   back unglue-text(spans-text(format-size(bytes, make-standard())))
 
 test <a duration under a second is whole milliseconds>
@@ -114,7 +120,8 @@ test <numbers bright and units dim, the whole over budget in the warning color>
   save over, format-duration(1800, make-standard(), <warning>)
   save over-number, over/0
   save over-unit, over/2
-  want hold, and(is-equal(over-number/role, <warning>), is-equal(over-unit/role, <warning>))
+  want hold
+    and(is-equal(over-number/role, <warning>), is-equal(over-unit/role, <warning>))
 
 test <thousands separators in the human view>
   want hold, is-equal(group-number(31804, make-standard()), <31,804>)
@@ -124,16 +131,28 @@ test <thousands separators in the human view>
 
 test <counts take the singular for one and parts of a total>
   save standard, make-standard()
-  want hold, is-equal(unglue-text(spans-text(format-tally(1, <errors>, <error>, -1, standard))), <1 error>)
-  want hold, is-equal(unglue-text(spans-text(format-tally(2, <errors>, <error>, -1, standard))), <2 errors>)
-  want hold, is-equal(unglue-text(spans-text(format-tally(31, <files>, <>, 46, standard))), <31/46 files>)
-  want hold, is-equal(unglue-text(spans-text(format-tally(1, <tries>, <try>, 3, standard))), <1/3 tries>)
+  want hold
+    is-equal
+      unglue-text(spans-text(format-tally(1, <errors>, <error>, -1, standard)))
+      <1 error>
+  want hold
+    is-equal
+      unglue-text(spans-text(format-tally(2, <errors>, <error>, -1, standard)))
+      <2 errors>
+  want hold
+    is-equal unglue-text(spans-text(format-tally(31, <files>, <>, 46, standard)))
+      <31/46 files>
+  want hold
+    is-equal unglue-text(spans-text(format-tally(1, <tries>, <try>, 3, standard)))
+      <1/3 tries>
 
 test <a status keeps its label, its number in the status color>
   save standard, make-standard()
   save ok-spans, format-status(<http>, 200, <>, standard)
   save ok-number, ok-spans/2
-  want hold, and(is-equal(unglue-text(spans-text(ok-spans)), <HTTP 200>), is-equal(ok-number/role, <done>))
+  want hold
+    and is-equal(unglue-text(spans-text(ok-spans)), <HTTP 200>)
+      is-equal(ok-number/role, <done>)
   save missing, format-status(<http>, 404, <>, standard)
   save missing-number, missing/2
   want hold, is-equal(missing-number/role, <warning>)
@@ -146,11 +165,14 @@ test <a status keeps its label, its number in the status color>
   save exit-spans, format-status(<exit>, 1, <>, standard)
   save exit-label, exit-spans/0
   save exit-number, exit-spans/2
-  want hold, and(is-equal(exit-label/role, <dim>), is-equal(exit-number/role, <failed>))
+  want hold
+    and(is-equal(exit-label/role, <dim>), is-equal(exit-number/role, <failed>))
   save clean, format-status(<exit>, 0, <>, standard)
   save clean-number, clean/2
   want hold, is-equal(clean-number/role, <done>)
-  want hold, is-equal(unglue-text(spans-text(format-status(<signal>, 0, <TERM>, standard))), <signal TERM>)
+  want hold
+    is-equal unglue-text(spans-text(format-status(<signal>, 0, <TERM>, standard)))
+      <signal TERM>
 
 test <the clock is 24-hour local time with milliseconds>
   save clock, kit-clock(14, 2, 7, 412)
@@ -162,8 +184,10 @@ test <the date and the RFC 3339 instant in the zone>
   save clock, kit-clock(14, 2, 7, 412)
   want hold, is-equal(format-date(clock, -420), <2026-10-03>)
   want hold, is-equal(format-date(clock, 0), <2026-10-03>)
-  want hold, is-equal(format-instant(clock, -420, false), <2026-10-03T14:02:07.412-07:00>)
-  want hold, is-equal(format-instant(clock, 330, false), <2026-10-04T02:32:07.412+05:30>)
+  want hold
+    is-equal(format-instant(clock, -420, false), <2026-10-03T14:02:07.412-07:00>)
+  want hold
+    is-equal(format-instant(clock, 330, false), <2026-10-04T02:32:07.412+05:30>)
   want hold, is-equal(format-instant(clock, -420, true), <2026-10-03T21:02:07.412Z>)
 
 test <a date before 1970 and a leap day are still exact>
@@ -172,8 +196,10 @@ test <a date before 1970 and a leap day are still exact>
 
 test <the zone fact names the zone once>
   save room, kit-room(80)
-  want hold, is-equal(unglue-text(format-zone(<PDT>, -420, false, room)), <PDT, UTC−7>)
-  want hold, is-equal(unglue-text(format-zone(<IST>, 330, false, room)), <IST, UTC+5:30>)
+  want hold
+    is-equal(unglue-text(format-zone(<PDT>, -420, false, room)), <PDT, UTC−7>)
+  want hold
+    is-equal(unglue-text(format-zone(<IST>, 330, false, room)), <IST, UTC+5:30>)
   want hold, is-equal(format-zone(<>, 0, false, room), <UTC>)
   want hold, is-equal(format-zone(<PDT>, -420, true, room), <UTC>)
 
@@ -185,28 +211,44 @@ test <versions as published, a change as old to new>
 
 test <a dependency chain of four links is whole, more collapse the middle>
   save room, kit-room(80)
-  save four
-    make list
-      <app>, <@shape/ui>, <react-dom 19.1.0>, <react 18.3.1>
-  want hold, is-equal(spans-text(format-chain(four, room)), <app › @shape/ui › react-dom 19.1.0 › react 18.3.1>)
+  save four, make list, <app>, <@shape/ui>, <react-dom 19.1.0>, <react 18.3.1>
+  want hold
+    is-equal spans-text(format-chain(four, room))
+      <app › @shape/ui › react-dom 19.1.0 › react 18.3.1>
   save seven
     make list
-      <app>, <@shape/charts>, <victory>, <d3>, <react-smooth>, <react-reconciler 0.29.0>, <react 18.3.1>
-  want hold, is-equal(spans-text(format-chain(seven, room)), <app › @shape/charts › … 3 more › react-reconciler 0.29.0 › react 18.3.1>)
+      <app>
+      <@shape/charts>
+      <victory>
+      <d3>
+      <react-smooth>
+      <react-reconciler 0.29.0>
+      <react 18.3.1>
+  want hold
+    is-equal spans-text(format-chain(seven, room))
+      <app › @shape/charts › … 3 more › react-reconciler 0.29.0 › react 18.3.1>
   save chained, format-chain(four, room)
   save mark, chained/1
   want hold, is-equal(mark/role, <dim>)
 
 test <paths relative to the working directory, ~ for home>
-  want hold, is-equal(format-path(</Users/me/shape/code/area.tree>, </Users/me/shape>, </Users/me>), <code/area.tree>)
-  want hold, is-equal(format-path(</Users/me/other/x.tree>, </Users/me/shape>, </Users/me>), <~/other/x.tree>)
-  want hold, is-equal(format-path(</etc/hosts>, </Users/me/shape>, </Users/me>), </etc/hosts>)
-  want hold, is-equal(format-place(<code/area.tree>, 14, 12), <code/area.tree:14:12>)
+  want hold
+    is-equal
+      format-path(</Users/me/shape/code/area.tree>, </Users/me/shape>, </Users/me>)
+      <code/area.tree>
+  want hold
+    is-equal format-path(</Users/me/other/x.tree>, </Users/me/shape>, </Users/me>)
+      <~/other/x.tree>
+  want hold
+    is-equal format-path(</etc/hosts>, </Users/me/shape>, </Users/me>), </etc/hosts>
+  want hold
+    is-equal(format-place(<code/area.tree>, 14, 12), <code/area.tree:14:12>)
   want hold, is-equal(format-place(<Dockerfile>, 6, 0), <Dockerfile:6>)
 
 test <a source wider than 12 cells is cut in the middle>
   save room, kit-room(80)
-  want hold, is-equal(truncate-middle(<payments-reconciler>, 12, room), <paymen…ciler>)
+  want hold
+    is-equal(truncate-middle(<payments-reconciler>, 12, room), <paymen…ciler>)
   want hold, is-equal(truncate-middle(<api:1>, 12, room), <api:1>)
   want hold, is-equal(truncate-middle(<exactly-12ch>, 12, room), <exactly-12ch>)
 

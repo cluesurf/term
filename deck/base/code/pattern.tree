@@ -138,8 +138,25 @@ form pattern-match
     like list
       like text
 
-# the most instructions one search of the backtracking tier may run
+# the fewest instructions one search of the backtracking tier may run, whatever its input
 host pattern-step-limit, code 10000000
+
+# the most instructions one tier C search of this input may run: `pattern-step-limit`, or 64 per program instruction per
+# code point of the input when that is more. Tier B's worst case is one per instruction per code point, so a pattern
+# whose work is linear never reaches this, while one whose work grows faster (`(a+)+$`) passes it within a few dozen
+# code points. A constant alone raised `pattern-budget` on any long enough input, linear or not
+task step-limit
+  take instructions, like number
+  take length, like number
+  like number
+  save scaled
+    call multiply(call(multiply, read(instructions), code(64)), call(add, read(length), code(1)))
+  fork test
+    hook test
+      call is-above(read(scaled), read(pattern-step-limit))
+    hook hold
+      send back, read scaled
+  send back, read pattern-step-limit
 
 # this platform's regex engine, as the tier choice reads it: its capability set, whether it is linear, the widest
 # class it is fast on, and how it writes the end of the text and a line's edges (native/<platform>/regex.tree)
@@ -336,8 +353,10 @@ task term-search
     hook hold
       send back
         call pike-search-with(read(ready/program), read(open/scene), call(session-tables, read(ready), read(open)), read(from))
+  save limit
+    call step-limit(read(ready/program/ops/length), read(open/runes/length))
   send back
-    call back-search(read(ready/program), read(open/scene), read(from), read(pattern-step-limit))
+    call back-search(read(ready/program), read(open/scene), read(from), read(limit))
 
 task rune-slice
   take runes

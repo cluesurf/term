@@ -33,8 +33,8 @@ export function resolveAsync(program: Program): void {
   }
 }
 
-// An async task handed to a parameter typed as a task that is NOT async. The callee calls it without waiting and
-// reads the pending value as the result, so TypeScript printed `[object Promise]` (guides: language/async,
+// An async task handed to a parameter typed as a task that is NOT async, and gives back a value. The callee calls it
+// without waiting and reads the pending value as the result, so TypeScript printed `[object Promise]` (guides: language/async,
 // 2026-10-04). Runs after `resolveAsync`, when every async task is marked, inferred ones included. Only the tasks of
 // `file` are read, so a dependency is held to it where it is compiled itself.
 export function checkAsyncArguments(program: Program, file: string): Diagnostic[] {
@@ -70,10 +70,13 @@ export function checkAsyncArguments(program: Program, file: string): Diagnostic[
           const passed =
             (arg.form === 'variable' && visible.has(arg.name)) || (arg.form === 'closure' && arg.async === true)
 
+          // a callback whose result is `void` is not refused: nothing reads what it gives back, so calling it without
+          // waiting starts it the way `tick` does (cask's `snapshot` takes a `done` that calls an async `quit`)
           if (
             passed &&
             param?.type?.kind === 'function' &&
-            !param.type.effects?.includes('async')
+            !param.type.effects?.includes('async') &&
+            param.type.result.kind !== 'unit'
           ) {
             out.push(
               diagnose('async-argument', {
