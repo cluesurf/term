@@ -1,0 +1,147 @@
+note <a model's text reply read as an expression, and the repair loop proving or refusing what it proposes>
+
+# Ported from deck/test/code/demo-model.ts (self-hosting, 2026-10-05). Its part A, the parser on real model output, is
+# the first tests. Its part B ran a "model" whose reply is text through the asynchronous repair loop; here each such
+# model is a proposer task parsing a fixed reply, through repair-loop.tree. The asynchronous wrapper is ai-proposer.ts,
+# and stays TypeScript with the request in model.ts.
+
+load ../code/model-reply
+  find parse-reply
+  find reply-tokens
+
+load ../code/expression-grammar
+  find expression
+  find show-expr
+
+load ../code/repair-loop
+  find gap-report
+  find proposer
+  find repair
+  find cegis-propose
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+host names, make list(<a>, <b>)
+
+# the reply parsed and printed back, `none` when it holds no expression
+task read-back
+  take reply, like text
+  like text
+
+  sift parse-reply(reply, names)
+    case some
+      back show-expr(value, names)
+    case none
+      back <none>
+
+task is-max
+  take inputs, like list, like number
+  take output, like number
+  like boolean
+
+  host a, get(inputs, 0)
+  host b, get(inputs, 1)
+
+  back and(and(is-minimum(output, a), is-minimum(output, b)), or(is-equal(output, a), is-equal(output, b)))
+
+task max-gap
+  like gap-report
+
+  host none, make list
+
+  back
+    make gap-report
+      bind goal, <max>
+      bind var-count, 2
+      bind spec, is-max
+      bind counterexamples, none
+      bind bound, 8
+
+task fenced-model
+  take gap, like gap-report
+  like maybe, like expression
+
+  back parse-reply(<```\nmax(a, b)\n```>, names)
+
+task wrong-model
+  take gap, like gap-report
+  like maybe, like expression
+
+  back parse-reply(<a>, names)
+
+task unsure-model
+  take gap, like gap-report
+  like maybe, like expression
+
+  back parse-reply(<I am not sure, sorry!>, names)
+
+task cegis-six
+  take gap, like gap-report
+  like maybe, like expression
+
+  back cegis-propose(6, gap)
+
+task proposer-of
+  take name, like text
+  take propose
+    like task
+      take gap, like gap-report
+      like maybe, like expression
+  like proposer
+
+  back
+    make proposer
+      bind name, name
+      bind propose, propose
+
+test <a bare reply>
+  want hold, is-equal(read-back(<max(a, b)>), <max(a, b)>)
+
+test <a reply inside a code fence>
+  want hold, is-equal(read-back(<```\nmax(a, b)\n```>), <max(a, b)>)
+
+test <a fence naming its language>
+  want hold, is-equal(read-back(<```term\nmin(a, 1)\n```>), <min(a, 1)>)
+
+test <prose around it is passed over>
+  want hold, is-equal(read-back(<The answer is max(a, b).>), <max(a, b)>)
+
+test <a difference and a sum>
+  want hold, and(is-equal(read-back(<(0 - a)>), <(0 - a)>), is-equal(read-back(<(a + b)>), <(a + b)>))
+
+test <a constant>
+  want hold, is-equal(read-back(<min(a, 1)>), <min(a, 1)>)
+
+test <a minus joined to digits is one number, as the original's tokens were>
+  want hold, and(is-equal(join(reply-tokens(<a-1>), <,>), <a,-1>), is-equal(join(reply-tokens(<a - 1>), <,>), <a,-,1>))
+
+test <a fence is taken out of the whole reply first, so what stands either side of it joins up>
+  want hold, is-equal(read-back(<1```42_(>), <142>)
+
+test <a reply with no expression in it>
+  want hold, and(is-equal(read-back(<I am not sure, sorry!>), <none>), is-equal(read-back(<>), <none>))
+
+test <a correct text reply is parsed and proven, and the model is credited>
+  host proposers, make list
+  proposers/push(proposer-of(<model>, fenced-model))
+  proposers/push(proposer-of(<cegis>, cegis-six))
+  host result, repair(max-gap(), proposers, 20)
+  want hold, and(result/ok, is-equal(result/proposer, <model>))
+
+test <a wrong reply is refused by the proof, and synthesis recovers>
+  host proposers, make list
+  proposers/push(proposer-of(<model>, wrong-model))
+  proposers/push(proposer-of(<cegis>, cegis-six))
+  host result, repair(max-gap(), proposers, 20)
+  want hold, and(result/ok, is-equal(result/proposer, <cegis>))
+
+test <a reply that does not parse is no proposal, and synthesis answers>
+  host proposers, make list
+  proposers/push(proposer-of(<model>, unsure-model))
+  proposers/push(proposer-of(<cegis>, cegis-six))
+  host result, repair(max-gap(), proposers, 20)
+  want hold, and(result/ok, is-equal(result/proposer, <cegis>))

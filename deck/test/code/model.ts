@@ -15,72 +15,19 @@
 import type { Expr } from './synthesize'
 import { modelProposer, type AsyncProposer } from './ai-proposer'
 import { env } from '@term/call/code/home'
+import { parseReply } from '@term/test/code/model-reply'
 
 // --- parse a model's textual reply into an Expr ---
 
-/** Parse `max(a, b)`, `(0 - a)`, `min(x, 1)`, etc. into an Expr. */
+/**
+ * Parse `max(a, b)`, `(0 - a)`, `min(x, 1)`, etc. into an Expr. The parser is Term since 2026-10-05
+ * (deck/test/code/model-reply.tree, paired against this one's original over 50,000 replies by tmp/pair-model-reply.ts);
+ * this face answers `null` where the port answers none.
+ */
 export function parseExpr(text: string, names: string[]): Expr | null {
-  const tokens = tokenize(text)
-  if (!tokens.length) return null
-  let pos = 0
+  const read = parseReply(text, names) as { value?: Expr }
 
-  // skip leading prose: advance to the first token that can start an
-  // expression (a known name, min/max, an open paren, a number, or a
-  // leading minus). Robust to replies like "The answer is max(a, b)."
-  const startsExpr = (t: string | undefined): boolean =>
-    t === '(' || t === 'min' || t === 'max' || names.includes(t ?? '') || /^-?\d+$/.test(t ?? '')
-  while (pos < tokens.length && !startsExpr(tokens[pos])) pos++
-
-  const peek = () => tokens[pos]
-  const next = () => tokens[pos++]
-
-  function parsePrimary(): Expr | null {
-    const t = next()
-    if (t === undefined) return null
-    if (t === '(') {
-      const inner = parseAdditive()
-      if (peek() === ')') next()
-      return inner
-    }
-    if (t === 'min' || t === 'max') {
-      if (next() !== '(') return null
-      const a = parseAdditive()
-      if (peek() === ',') next()
-      const b = parseAdditive()
-      if (peek() === ')') next()
-      if (!a || !b) return null
-      return { form: t, left: a, right: b }
-    }
-    const idx = names.indexOf(t)
-    if (idx >= 0) return { form: 'var', index: idx }
-    if (/^-?\d+$/.test(t)) return { form: 'const', value: Number(t) }
-    return null
-  }
-
-  function parseAdditive(): Expr | null {
-    let left = parsePrimary()
-    if (!left) return null
-    while (peek() === '+' || peek() === '-') {
-      const op = next()
-      const right = parsePrimary()
-      if (!right) return null
-      left = { form: op === '+' ? 'add' : 'sub', left, right }
-    }
-    return left
-  }
-
-  const result = parseAdditive()
-  return result
-}
-
-function tokenize(text: string): string[] {
-  // keep only the first line/expression-ish chunk, strip code fences
-  const cleaned = text.replace(/```[a-z]*|```/g, '').trim()
-  const out: string[] = []
-  const re = /\s*([A-Za-z_][A-Za-z0-9_]*|-?\d+|[()+\-,])/g
-  let m: RegExpExecArray | null
-  while ((m = re.exec(cleaned)) !== null) out.push(m[1])
-  return out
+  return read && 'value' in read && read.value ? read.value : null
 }
 
 // --- the real model-backed proposer ---

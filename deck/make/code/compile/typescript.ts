@@ -804,6 +804,12 @@ const EXCEPTION_PRELUDE = `export class ${EXCEPTION_CLASS} extends Error {
     super(base.note)
     Object.assign(this, base)
     this.name = ${EXCEPTION_CLASS}.name
+    // the frames of the raise, innermost first, in \`capture-trace\`'s shape, where the raise gave none: every raise
+    // built \`flow: []\`, so an exception carried no stack (guides: library/exceptions, 2026-10-05)
+    const flow = (this as { flow?: unknown }).flow
+    if (!Array.isArray(flow) || flow.length === 0) {
+      ;(this as { flow?: unknown }).flow = (this.stack ?? '').split(String.fromCharCode(10)).slice(1).map(line => line.trim()).filter(line => line.length !== 0)
+    }
     // the hive hears every raise, once wakeHive has hooked it in
     const hive = (globalThis as { __termRaise?: (e: unknown) => void }).__termRaise
     if (hive) hive(this)

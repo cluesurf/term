@@ -401,6 +401,13 @@ function expr(node: Expression, asyncSet: Set<string>): Expression {
       return { ...node, target: expr(node.target, asyncSet) }
     case 'array':
       return { ...node, items: node.items.map(i => expr(i, asyncSet)) }
+    // a call inside a text's `{...}` is awaited like any other: this case was missing, so `log <with one: {fetch-it()}>`
+    // printed `with one: [object Promise]` (guides: library/network, 2026-10-04)
+    case 'template':
+      return {
+        ...node,
+        parts: node.parts.map(part => (typeof part === 'string' ? part : expr(part, asyncSet))),
+      }
     case 'map':
       return {
         ...node,

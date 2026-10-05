@@ -279,6 +279,40 @@ const MEASURE_NATIVE = `bind measure\n  take x, like number\n  like number\n  ca
   }
 }
 
+// an alias keeps two same-named FORMS apart: `element` from one module, `find element, name chart-element` from
+// another. The bridge dropped the alias on a `make` and a `like`, and form binding reached a bare name through every
+// find of it, so both spellings bound to the form merged last and `make element, bind name` failed as needing `size`
+// (guides: language/modules, 2026-10-04)
+{
+  const page = `form element\n  link name, like text\n`
+  const chart = `form element\n  link size, like number\n`
+  const main = `load @app/page\n  find element\n\nload @app/chart\n  find element, name chart-element\n\ntask title\n  like text\n  save e\n    make element\n      bind name, text <title>\n  send back, read e/name\n\ntask bar\n  take c, like chart-element\n  like number\n  send back, read c/size\n\ntask run\n  like number\n  save c\n    make chart-element\n      bind size, code 3\n  send back\n    call bar\n      read c\n`
+  const result = build({ '@app/page': page, '@app/chart': chart }, main)
+  ok('an alias keeps two same-named forms apart, in a `make` and in a `like`', result.ok, said(result))
+
+  if (result.ok) {
+    const mod = await runOf(result.typescript)
+    ok('the bare name builds the first module\'s form', mod.title?.() === 'title', String(mod.title?.()))
+    ok('the alias builds and takes the second\'s', mod.run?.() === 3, String(mod.run?.()))
+  }
+}
+
+// two same-named TASKS from two modules in one file, one under an alias: `json`'s and `csv`'s `parse`, `time`'s and
+// `clock`'s `now`. The guides said the build refused it as `duplicate-definition`; on 2026-10-04 it built, each name
+// reaching its own module, and this holds it
+{
+  const json = `task parse\n  take text, like text\n  like text\n  send back, text <json>\n`
+  const csv = `task parse\n  take text, like text\n  like text\n  send back, text <csv>\n`
+  const main = `load @app/json\n  find parse\n\nload @app/csv\n  find parse, name parse-csv\n\ntask both\n  like text\n  send back, <{parse(<a>)}{parse-csv(<b>)}>\n`
+  const result = build({ '@app/json': json, '@app/csv': csv }, main)
+  ok('one file loads two same-named tasks, one under an alias', result.ok, said(result))
+
+  if (result.ok) {
+    const mod = await runOf(result.typescript)
+    ok('each name reaches its own module', mod.both?.() === 'jsoncsv', String(mod.both?.()))
+  }
+}
+
 console.log(`\nmodule-scope: ${pass} pass, ${fail} fail`)
 
 if (fail > 0) {

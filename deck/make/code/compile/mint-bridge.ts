@@ -473,6 +473,20 @@ function typeOf(
   }
 
   if (name === 'hash') {
+    // THE ONE-LINE SPELLING, `like hash, like text, like number`: each comma nests the next `like` under the one
+    // before, so the value arrives as the KEY's own child, and was read as `text` applied to `number` with the value
+    // left free. Inference then filled it from a use when there was one and left it free when there was not, so a
+    // native backend emitted `SeedMap<String, T>` (deck/make/test/affected.tree on Swift, 2026-10-04). A key that is
+    // a primitive takes no argument, so a `like` under it can only be the hash's value
+    const only = children.length === 1 ? at(value, 'child')[0] : undefined
+    const keyWord = only && isForm(only) ? wordAt(only, 'name') : undefined
+    const keyBase = keyWord !== undefined && !keyWord.includes(' ') ? TYPE_NAME[keyWord] : undefined
+    const spilled = only && isForm(only) ? at(only, 'child') : []
+
+    if (keyBase && keyBase.kind !== 'named' && spilled.length === 1) {
+      return { kind: 'map', key: keyBase, value: typeOf(bridge, spilled[0]) ?? FREE_UNKNOWN }
+    }
+
     return {
       kind: 'map',
       key: children[0] ?? FREE_UNKNOWN,
@@ -3745,9 +3759,18 @@ function negated(claim: Expression, span: Span): Expression {
 function viewNodeOf(bridge: Bridge, value: Minted): ViewNode | undefined {
   const span = spanOf(value)
 
+  // a text with braces in it is a dynamic text node, its value the template, as it is anywhere else a text is read.
+  // It was its literal chunks alone: `view p, <Nothing at {path}>` served `<p>Nothing at </p>`, with no message
+  // (guides: applications/web/routes, 2026-10-04)
+  const textNode = (literal: Minted, fallback: string): ViewNode => {
+    const built = textExpression(bridge, literal, span)
+
+    return built.form === 'template' ? { form: 'read', value: built, span } : { form: 'text', value: fallback, span }
+  }
+
   // a bare text literal sitting in a body, rather than `text <...>`
   if (value.kind === 'text') {
-    return { form: 'text', value: value.value, span }
+    return textNode(value, value.value)
   }
 
   if (value.kind !== 'form') {
@@ -3763,7 +3786,9 @@ function viewNodeOf(bridge: Bridge, value: Minted): ViewNode | undefined {
   const text = firstAt(value, 'text')
 
   if (text) {
-    return { form: 'text', value: wordAt(text, 'value') ?? '', span }
+    const literal = firstAt(text, 'value')
+
+    return literal ? textNode(literal, wordAt(text, 'value') ?? '') : { form: 'text', value: wordAt(text, 'value') ?? '', span }
   }
 
   const read = firstAt(value, 'read')

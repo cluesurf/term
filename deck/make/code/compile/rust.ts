@@ -971,8 +971,8 @@ function emitRustPass(
   // whether the function or closure body being emitted is asynchronous, so a guard inside it can `.await`
   let currentAsync = false
   let guardDepth = 0
-  // set by an `await` around a raising call, so the `?` lands after `.await` and not before it
-  let awaitedRaise = false
+  // the raising calls an `await` wraps, so each one's `?` lands after `.await` and not before it
+  const awaitedCalls = new WeakSet<object>()
 
   // PREEMPTION BY BUDGET (note/term/research/beam-otp-lessons.md, design 5). BEAM switches a process out after 4,000
   // reductions, paying a check on every call. Here a loop in an ASYNCHRONOUS task checks a per-thread budget at the top
@@ -2723,8 +2723,10 @@ function emitRustPass(
         // a parameter called by name is the callback it holds, whose type says it returns a plain value: `list/find-index`
         // calling its `test` read as the raising `file/test` and got a `?` on a `bool` (2026-10-04)
         if (node.callee.form === 'variable' && raising.has(node.callee.name) && !currentParams.has(node.callee.name)) {
-          const suffix = awaitedRaise ? '' : raiseSuffix()
-          awaitedRaise = false
+          // the call an `await` wraps takes its `?` after `.await`, so none here. Keyed by the node: a flag the next
+          // raising call consumed went to the first raising ARGUMENT instead, which lost its `?`, and the awaited call
+          // kept one before `.await` (`encrypt(key(), ...)?.await?`, edge-cipher, 2026-10-04)
+          const suffix = awaitedCalls.has(node) ? '' : raiseSuffix()
 
           return lendWrap(`${expr(node.callee)}(${args})${suffix}`)
         }
@@ -2908,9 +2910,8 @@ function emitRustPass(
 
       case 'await': {
         if (node.expr.form === 'call' && node.expr.callee.form === 'variable' && raising.has(node.expr.callee.name)) {
-          awaitedRaise = true
+          awaitedCalls.add(node.expr)
           const inner = expr(node.expr)
-          awaitedRaise = false
 
           return `${inner}.await${raiseSuffix()}`
         }

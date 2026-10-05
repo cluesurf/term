@@ -178,6 +178,34 @@ async function findTestFiles(input: {
   return results
 }
 
+// what `run` prints to standard output and standard error, line by line, held back from the terminal while it runs
+async function capturePrinted<T>(run: () => Promise<T>): Promise<{ value: T; lines: string[] }> {
+  const chunks: string[] = []
+  const out = process.stdout.write.bind(process.stdout)
+  const err = process.stderr.write.bind(process.stderr)
+  const hold = (chunk: unknown): boolean => {
+    chunks.push(typeof chunk === 'string' ? chunk : Buffer.from(chunk as Uint8Array).toString('utf8'))
+    return true
+  }
+
+  process.stdout.write = hold as typeof process.stdout.write
+  process.stderr.write = hold as typeof process.stderr.write
+
+  try {
+    const value = await run()
+    const lines = chunks.join('').split('\n')
+
+    if (lines.at(-1) === '') {
+      lines.pop()
+    }
+
+    return { value, lines }
+  } finally {
+    process.stdout.write = out
+    process.stderr.write = err
+  }
+}
+
 async function runSeedTests(input: {
   root: string
   filter?: string
@@ -227,15 +255,19 @@ async function runSeedTests(input: {
 
     try {
       const source = await fs.readFile(file, 'utf-8')
-      const run = await runTestFile({
-        file,
-        source,
-        resolve,
-        env: 'node',
-        readRuntime,
-        roleOf,
-        leanOf,
-      })
+      // what the file's tests print, quoted under its item: a test's `log` was written bare above the item, outside
+      // the output standard (guides: tests/writing, 2026-10-05)
+      const { value: run, lines: printed } = await capturePrinted(() =>
+        runTestFile({
+          file,
+          source,
+          resolve,
+          env: 'node',
+          readRuntime,
+          roleOf,
+          leanOf,
+        }),
+      )
 
       if (run.failure) {
         broken++
@@ -273,6 +305,7 @@ async function runSeedTests(input: {
         subject: rel,
         duration: Date.now() - started,
         counts: [count(run.results.length, 'tests', 'test'), count(held, 'passed'), ...(missed > 0 ? [count(missed, 'failed')] : [])],
+        ...(printed.length > 0 ? { quote: printed } : {}),
       })
 
       // each test that did not hold is a Problem of its own, under the verb `case` (section 9)

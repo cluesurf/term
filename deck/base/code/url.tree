@@ -7,8 +7,30 @@
 
 mark stable
 
+load @term/base/exception
+  find mismatch
+
 dock type
   load <any>, name url-handle
+
+# whether `href` resolved against `base` parses at all, asked before `address-parse`, so a malformed address raises
+# `mismatch` on every backend. Rust stopped on `unwrap`, Swift on `!`, and node and Kotlin raised their host's error
+# with no `form` (guides: library/formats, 2026-10-04)
+bind address-valid
+  take href, like text
+  take base, like text
+  like boolean
+  case node
+    text <URL.canParse($href, $base)>
+  case browser
+    text <URL.canParse($href, $base)>
+  case rust
+    text <url::Url::parse(&$base).and_then(|b| b.join(&$href)).is_ok()>
+  case swift
+    load <Foundation>
+    text <(URL(string: $href, relativeTo: URL(string: $base)).flatMap \{ URLComponents(url: $0, resolvingAgainstBaseURL: true) \}) != nil>
+  case kotlin
+    text <runCatching \{ java.net.URI($base).resolve($href) \}.isSuccess>
 
 # parse `href` (resolved against `base`) into the platform's URL object
 bind address-parse
@@ -163,7 +185,8 @@ form url
       call address-fragment
         read self/dock
 
-# parse a URL. A relative `href` resolves against `base` (default `http://localhost`).
+# parse a URL. A relative `href` resolves against `base` (default `http://localhost`). One that does not parse raises
+# `mismatch`, its `thing` <url> and its `actual` the address
 task make-url
   take href, like text
   take
@@ -171,6 +194,16 @@ task make-url
     like text
     fall text <http://localhost>
   like url
+  fork test
+    hook test
+      call address-valid
+        read href
+        read base
+    hook miss
+      halt mismatch
+        bind thing, <url>
+        bind expected, <an address>
+        bind actual, read href
   send back
     make url
       bind dock

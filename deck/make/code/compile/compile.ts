@@ -20,6 +20,7 @@ import { resolve } from '@term/make/code/check/resolve'
 import { check } from '@term/make/code/check/infer'
 import { checkAsyncArguments, resolveAsync } from '@term/make/code/check/async-resolve'
 import { checkDockShadow } from '@term/make/code/check/dock-shadow'
+import { checkBuiltinShadow } from '@term/make/code/check/builtin-shadow'
 import {
   disambiguateOverloads,
   overloadGroups,
@@ -988,6 +989,8 @@ export function compileProgram(
     ...warnLostCollectionWrites(program, file),
     // a local named like a module its file docks, which hides the module (check/dock-shadow.ts)
     ...checkDockShadow(program),
+    // a task named like one of the compiler's own words, which no call reaches by that name (check/builtin-shadow.ts)
+    ...checkBuiltinShadow(program, file),
     // a host description's undeclared types and imports, counted rather than refused (HOST_DESCRIPTIONS)
     ...(describesHost ? [...typeNameDiagnostics, ...staleFinds].map(d => ({ ...d, severity: 'warning' as const })) : []),
   ].map(d => (d.span.file !== undefined && d.span.file !== d.file ? { ...d, file: d.span.file } : d))

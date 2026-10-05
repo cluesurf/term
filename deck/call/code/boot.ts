@@ -1066,14 +1066,16 @@ export async function callBoot(input: {
       }
     }
 
-    // a service (section 11): its `start` item names the address. No time to ready: the child does not say when it
-    // is listening, and the time to spawn it would be a wrong number. The server's own lines are ADAPTED (section 15)
+    // a service (section 11): its `start` item names the address, and the time from spawning the program to its port
+    // taking a connection (`listening`). It had no time, when `start` was printed at spawn and the only number was
+    // the wrong one (guides: commands/boot, 2026-10-04). The server's own lines are ADAPTED (section 15)
     // by `followChild`: a JSON or logfmt line becomes an item, a plain line an item of its own, each tagged `server`,
     // and `--raw` passes them through untouched
     const address = `http://localhost:${port}`
 
     // the server child: spawned now from the APP dir (where deck.tree + build/ live), killed + respawned by the dev
     // watcher on an app-code rebuild. stdin stays the terminal's; stdout and stderr are piped to be adapted
+    const spawned = Date.now()
     let child: ChildProcess = spawn('node', [runPath], {
       cwd: serverCwd,
       stdio: ['inherit', 'pipe', 'pipe'],
@@ -1086,7 +1088,7 @@ export async function callBoot(input: {
     // a script that waits for the line before asking met every time (2026-10-04, test/call/page-status.ts). Bounded,
     // so a server slow to listen still gets its line, and skipped when the child stopped instead
     if (await listening(port, child)) {
-      report({ glyph: 'done', kind: 'lifecycle', verb: 'start', subject: address })
+      report({ glyph: 'done', kind: 'lifecycle', verb: 'start', subject: address, duration: Date.now() - spawned })
     } else if (child.exitCode !== null || child.signalCode !== null) {
       // A ONE-SHOT RUN: the program returned without ever listening, so it was a program that does its work and
       // ends, not a server. The boot ends with it, its exit code passed on, and starts no watcher: it kept watching,

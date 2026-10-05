@@ -408,6 +408,12 @@ export const CATALOG = {
     severity: 'warning',
     fix: 'rename the local, so `name/...` reaches the module',
   },
+  'builtin-shadow': {
+    code: 0x34,
+    message: 'a task named like one of the compiler\'s own words is never reached by that name',
+    severity: 'warning',
+    fix: 'give the task a name of its own, such as `multiply-both`',
+  },
   'look-tint': {
     code: 0x32,
     message: 'this tint is not a CSS color',

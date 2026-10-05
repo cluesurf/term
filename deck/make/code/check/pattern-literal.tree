@@ -16,6 +16,9 @@ load @term/base/pattern/syntax
 load @term/base/pattern/node
   find pattern-mismatch
 
+load @term/base/exception
+  find failure
+
 # what the build learned about one literal: refused (with where, in code points, and why), or read, with the reason
 # it lands on the backtracking tier, empty when it does not
 form literal-pattern
@@ -50,6 +53,15 @@ task read-literal-pattern
             bind refused, true
             bind at, read at
             bind reason, read reason
+            bind backtracks, <>
+      # a native backend's reader can also raise the plain `failure`, and a match on an exception must name every
+      # one the body can raise (the base gate refused this file on Rust and Swift until it did, 2026-10-04)
+      case failure
+        back
+          make literal-pattern
+            bind refused, true
+            bind at, code -1
+            bind reason, <the reader stopped>
             bind backtracks, <>
     back
       make literal-pattern

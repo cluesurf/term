@@ -320,7 +320,11 @@ function bindByImport(program: Program, scope: ImportScope | undefined, entry?: 
           { span },
           ...among.flatMap(f => group.byFile.get(f)!.map(d => ({ span: d.span, label: `a "${group.name}" here` }))),
         ],
-        hint: `add \`find ${group.name}\` under the \`load\` of the one ${here} means. A name belongs to the module that defines it`,
+        // a file that finds the name from two modules already has the `find`: what tells them apart is an alias on one
+        // (`find label, name chart-label`), which keeps tasks and forms apart alike since 2026-10-04
+        hint: imported
+          ? `give one of them another name in ${here}: \`find ${group.name}, name <another>\` under its \`load\``
+          : `add \`find ${group.name}\` under the \`load\` of the one ${here} means. A name belongs to the module that defines it`,
       }),
     )
   }

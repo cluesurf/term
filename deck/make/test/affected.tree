@@ -16,7 +16,9 @@ load @term/base/hash
 
 # app depends on lib and log, lib on base, tool on base, log on nothing, base on nothing
 task packages
-  like hash, like text, like list, like text
+  like hash
+    like text
+    like list, like text
 
   host graph, make hash
   host app, make list(<lib>, <log>)
@@ -34,7 +36,9 @@ task packages
 
 # a depends on b, b on c, c on a
 task circle
-  like hash, like text, like list, like text
+  like hash
+    like text
+    like list, like text
 
   host graph, make hash
   host a, make list(<b>)

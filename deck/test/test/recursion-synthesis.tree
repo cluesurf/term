@@ -1,0 +1,123 @@
+note <the map and filter schemes: an element transform and a keep-predicate found from what a list becomes>
+
+# Ported from deck/test/code/demo-recursion.ts (self-hosting, 2026-10-05), which printed four results and held only
+# that each was found. These hold what was found, as written, and what it does.
+
+load ../code/recursion-synthesis
+  find map-result
+  find filter-result
+  find synthesize-map
+  find synthesize-filter
+  find random-lists
+
+load ../code/seeded-random
+  find next-random
+
+load ../code/expression-grammar
+  find show-expr
+
+load ../code/predicate-synthesis
+  find show-pred
+
+load @term/base/list
+  find list
+
+host names, make list(<elem>)
+
+task increment-all
+  take items, like list, like number
+  like list, like number
+
+  host out, make list
+  walk items
+    take each
+    out/push(add(each, 1))
+
+  back out
+
+task double-all
+  take items, like list, like number
+  like list, like number
+
+  host out, make list
+  walk items
+    take each
+    out/push(add(each, each))
+
+  back out
+
+task keep-nonneg
+  take items, like list, like number
+  like list, like number
+
+  host out, make list
+  walk items
+    take each
+    fork test, is-minimum(each, 0)
+      hold
+        out/push(each)
+
+  back out
+
+task drop-zeros
+  take items, like list, like number
+  like list, like number
+
+  host out, make list
+  walk items
+    take each
+    fork test, not(is-equal(each, 0))
+      hold
+        out/push(each)
+
+  back out
+
+# a spec no map can meet: every list becomes empty
+task empty-all
+  take items, like list, like number
+  like list, like number
+
+  host out, make list
+
+  back out
+
+test <mulberry32 from seed 1: the first draws are JavaScript's>
+  host state, make list(1)
+  host first, next-random(state)
+  host second, next-random(state)
+  want hold, and(is-equal(first, 0.6270739405881613), is-equal(second, 0.002735721180215478))
+
+test <the probes: 400 lists of up to five items in -4 to 7>
+  host lists, random-lists(1, 400)
+  save fits, true
+  walk lists
+    take items
+    fork test, is-above(items/length, 5)
+      hold
+        save fits, false
+    walk items
+      take each
+      fork test, or(is-below(each, -4), is-above(each, 7))
+        hold
+          save fits, false
+  want hold, and(is-equal(lists/length, 400), fits)
+
+test <increment-all is a map of elem + 1, after one counterexample>
+  host found, synthesize-map(increment-all, 4, 1)
+  want hold, and(and(found/ok, is-equal(show-expr(found/transform, names), <(elem + 1)>)), is-equal(found/counterexamples/length, 1))
+
+test <double-all is a map of elem + elem, after one counterexample>
+  host found, synthesize-map(double-all, 4, 1)
+  want hold, and(and(found/ok, is-equal(show-expr(found/transform, names), <(elem + elem)>)), is-equal(found/counterexamples/length, 1))
+
+test <keep-nonneg is a filter of elem \>= 0, after one counterexample>
+  host found, synthesize-filter(keep-nonneg, 2)
+  want hold, and(and(found/ok, is-equal(show-pred(found/keep, names), <elem \>= 0>)), is-equal(found/counterexamples/length, 1))
+
+test <drop-zeros is a filter of not elem == 0, after two counterexamples>
+  host found, synthesize-filter(drop-zeros, 2)
+  want hold, and(and(found/ok, is-equal(show-pred(found/keep, names), <not elem == 0>)), is-equal(found/counterexamples/length, 2))
+
+test <a spec no transform meets is refused, not answered>
+  host found, synthesize-map(empty-all, 2, 1)
+  want hold, and(not(found/ok), is-equal(found/reason, <no element transform fits>))

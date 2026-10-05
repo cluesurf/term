@@ -181,6 +181,83 @@ task guarded
     )
   }
 
+  // ---- library/exceptions: a raise on TypeScript carries its stack in `flow` ----
+  // every raise built `flow: []`; the class fills it from the Error's own stack where the raise gave none
+  {
+    const built = build(`load @term/base/exception
+  find absence
+
+load @term/base/list
+  find size
+
+task find-it
+  take name, like text
+  like text
+  halt absence
+    bind thing, read name
+
+task frames
+  like number
+  mark unsafe
+    save got, find-it(<x>)
+    send back, code 0
+  halt take
+    take problem
+    send back, size(problem/flow)
+`, undefined, true)
+    ok('a raise builds', built.ok, built.messages)
+
+    if (built.ok) {
+      const mod = await load(built.typescript)
+      const count = mod.frames?.() as number
+      ok('and the caught exception carries the frames of the raise in `flow`', typeof count === 'number' && count > 0, String(count))
+    }
+  }
+
+  // ---- language/naming: a task named like a compiler word is warned about ----
+  // `add` folds to `+` before names are bound, so a file's own `task add` was passed over with no message
+  {
+    const built = build(`task add
+  take a, like number
+  take b, like number
+  like number
+  send back
+    call multiply
+      read a
+      read b
+
+task five
+  like number
+  send back
+    call add
+      code 2
+      code 3
+`)
+    ok(
+      'a task named like a compiler word builds, and is warned as `builtin-shadow`',
+      built.ok && built.warnings.some(w => w.startsWith('builtin-shadow: a task named "add" is never called by that name')),
+      built.warnings.join(' | ') || built.messages,
+    )
+  }
+
+  // ---- applications/web/routes: braces in a component's text ----
+  // `view p, <Nothing at {path}>` built its literal chunks alone and served `<p>Nothing at </p>`, with no message
+  {
+    const built = build(`load @term/site/dom/dom
+  find view
+
+view missing
+  take host, like view
+  take path, like text
+  view p, <Nothing at {path}>
+`, undefined, true)
+    ok(
+      'a component text with braces is a dynamic text holding the value',
+      built.ok && /makeDynamicText\(\(\) => \(`Nothing at \$\{path\}`\)\)/.test(built.typescript),
+      built.messages || /function missing[\s\S]{0,200}/.exec(built.typescript)?.[0],
+    )
+  }
+
   // ---- language/loops: nested `walk size` loops each keep their own counter ----
   {
     const built = build(`task grid

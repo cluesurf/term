@@ -44,6 +44,7 @@ import { annotateEvent } from '@term/call/code/work/item/annotate'
 import { makeServiceOpening } from '@term/call/code/work/item/service'
 import type { Event } from '@term/call/code/work/item/event'
 import { problemOf } from '@term/call/code/output'
+import { nestLines } from '@term/call/code/work/item/emit'
 import { OFFSET, STANDARD, T, at, ev, field, frame, room, tally } from './build'
 
 let pass = 0
@@ -402,6 +403,21 @@ same('no terminal: and then again', isProgressDue(0, 10000, 20000, STANDARD), tr
   const crash = makeCrash('prove', 'Term crashed while checking code/area.tree', 'kernel/unify', '.term/crash.log', T('14:42:00.205'), STANDARD)
   same('a crash exits 70, names where and its log', [crash.status.value, crash.fields.map(one => one.key)], [70, ['in', 'log']])
   ok('a crash prints no stack trace', !texts(drawItem(crash, one, true)).some(text => /\bat .*:\d+:\d+\)/.test(text)))
+}
+
+// ---- section 15: a run inside another run nests under its elbow ----
+
+{
+  const one = room(80)
+  const item = drawItem(ev({ glyph: 'done', verb: 'boot', subject: 'zone built', clock: '14:42:00.300', duration: 1340 }), one, true)
+  const lines = [...item, { spans: [] }, ...item]
+  const nested = nestLines(lines, 1, true, one).map(lineText)
+  same('a nested run opens under the elbow at the body column', nested[0], `${' '.repeat(11)}⎿  ✓ boot     zone built`)
+  same('and the rest of it sits under the elbow', nested[1], `${' '.repeat(14)}${lineText(item[1]!)}`)
+  same('blank lines are dropped, so it reads as one block', nested.length, item.length * 2)
+  same('a later item of the same run carries no elbow', nestLines(item, 1, false, one).map(lineText)[0], `${' '.repeat(14)}✓ boot     zone built`)
+  same('two levels deep: one level of spaces, then the elbow', nestLines(item, 2, true, one).map(lineText)[0], `${' '.repeat(25)}⎿  ✓ boot     zone built`)
+  same('in ASCII the elbow is \\_', nestLines(item, 1, true, room(80, true)).map(lineText)[0]!.slice(11, 14), '\\_ ')
 }
 
 // ---- section 4 and 18: the worst glyph and the exit codes ----

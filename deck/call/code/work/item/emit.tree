@@ -1,25 +1,35 @@
-# The edge: the one module that touches the process (section 18). The human view goes to stderr, data the user asked
-# for (a generated file, `--log json`, CI annotations) to stdout. Everything else in the library is pure, and this
+# The edge: the one module that touches the process (section 18). The human view
+# goes to stderr, data the user asked
+# for (a generated file, `--log json`, CI annotations) to stdout. Everything else in
+# the library is pure, and this
 # module is the only one a test cannot drive without a process.
 #
-# A COMMAND USES IT THROUGH A RUNNER: `begin-run` opens the output and prints the opening item, `report` prints one
-# event as the flags say (an item, a sentence under `--plain`, a JSON line under `--log json`, and an annotation under
-# `CI`), `end-run` prints the closing item and hands back the exit code. A command never writes to stdout or stderr
+# A COMMAND USES IT THROUGH A RUNNER: `begin-run` opens the output and prints the
+# opening item, `report` prints one
+# event as the flags say (an item, a sentence under `--plain`, a JSON line under
+# `--log json`, and an annotation under
+# `CI`), `end-run` prints the closing item and hands back the exit code. A command
+# never writes to stdout or stderr
 # itself, except `print-data` for what the user asked for.
 #
-# THE NATIVE SHIMS, each one expression per backend, for what the stdlib does not have (logged in
-# note/term/plan/silent-defects-third-batch.md): whether STDERR is a terminal (the stdlib's `is-terminal` asks about
-# stdout, and the human view is on stderr), an unbuffered write without a newline to either stream (a live region
-# redraws in place), the width of the terminal stderr is on, the local zone's offset and short name at an instant,
+# THE NATIVE SHIMS, each one expression per backend, for what the stdlib does not
+# have (logged in
+# note/term/plan/silent-defects-third-batch.md): whether STDERR is a terminal (the
+# stdlib's `is-terminal` asks about
+# stdout, and the human view is on stderr), an unbuffered write without a newline to
+# either stream (a live region
+# redraws in place), the width of the terminal stderr is on, the local zone's offset
+# and short name at an instant,
 # and the platform's name.
-
 load @term/base/environment
   find variable
   find has-variable
   find current-directory
 
-# the WALL clock, epoch milliseconds. Not `@term/base/clock`, whose `now` is monotonic milliseconds since the process
-# started: read as an epoch it is a moment in January 1970, so the zone came out as winter time in October
+# the WALL clock, epoch milliseconds. Not `@term/base/clock`, whose `now` is
+# monotonic milliseconds since the process
+# started: read as an epoch it is a moment in January 1970, so the zone came out as
+# winter time in October
 load @term/base/time
   find now
 
@@ -30,6 +40,16 @@ load ./layout
   find room
   find line
   find make-room
+  find make-span
+  find make-spaces
+  find find-symbol
+
+load ./measure
+  find measure-text
+
+load ./clean
+  find measure-spans
+  find split-lines
 
 load ./event
   find event
@@ -66,23 +86,20 @@ load ./annotate
 load ./format
   find format-zone
 
-bind error-is-terminal
-  like boolean
+bind error-is-terminal, like boolean
   case node
     text <(process.stderr.isTTY === true)>
   case rust
     text <std::io::IsTerminal::is_terminal(&std::io::stderr())>
 
-bind write-error-text
-  take value, like text
+bind write-error-text, take value, like text
   like boolean
   case node
     text <(process.getBuiltinModule('node:fs').writeSync(2, $value), true)>
   case rust
     text <\{ use std::io::Write; let __term_text: String = $value; let mut __term_err = std::io::stderr(); __term_err.write_all(__term_text.as_bytes()).is_ok() && __term_err.flush().is_ok() \}>
 
-bind write-data-text
-  take value, like text
+bind write-data-text, take value, like text
   like boolean
   case node
     text <(process.getBuiltinModule('node:fs').writeSync(1, $value), true)>
@@ -90,33 +107,30 @@ bind write-data-text
     text <\{ use std::io::Write; let __term_text: String = $value; let mut __term_out = std::io::stdout(); __term_out.write_all(__term_text.as_bytes()).is_ok() && __term_out.flush().is_ok() \}>
 
 # the width of the terminal stderr is on, 0 when it is not one
-bind error-columns
-  like number
+bind error-columns, like number
   case node
     text <(process.stderr.columns ?? 0)>
   case rust
     text <std::process::Command::new("stty").arg("size").stdin(std::process::Stdio::inherit()).output().ok().and_then(|out| String::from_utf8(out.stdout).ok()).and_then(|size| size.split_whitespace().nth(1).and_then(|cells| cells.parse::\<i64\>().ok())).unwrap_or(0)>
 
 # the local zone's offset from UTC in minutes at an instant, east positive
-bind local-offset
-  take epoch, like number
+bind local-offset, take epoch, like number
   like number
   case node
     text <(-(new Date($epoch).getTimezoneOffset()))>
   case rust
     text <std::process::Command::new("date").arg("+%z").output().ok().and_then(|out| String::from_utf8(out.stdout).ok()).map(|zone| \{ let zone = zone.trim(); let sign: i64 = if zone.starts_with('-') \{ -1 \} else \{ 1 \}; let digits: String = zone.chars().filter(|c| c.is_ascii_digit()).collect(); if digits.len() == 4 \{ sign * (digits[0..2].parse::\<i64\>().unwrap_or(0) * 60 + digits[2..4].parse::\<i64\>().unwrap_or(0)) \} else \{ 0 \} \}).unwrap_or(0)>
 
-# the local zone's short name at an instant (`PDT`), empty when the platform has none
-bind local-zone-name
-  take epoch, like number
+# the local zone's short name at an instant (`PDT`), empty when the platform has
+# none
+bind local-zone-name, take epoch, like number
   like text
   case node
     text <(new Intl.DateTimeFormat('en-US', \{ timeZoneName: 'short' \}).formatToParts(new Date($epoch)).find(part =\> part.type === 'timeZoneName')?.value ?? '')>
   case rust
     text <std::process::Command::new("date").arg("+%Z").output().ok().and_then(|out| String::from_utf8(out.stdout).ok()).map(|zone| zone.trim().to_string()).unwrap_or_default()>
 
-bind platform-name
-  like text
+bind platform-name, like text
   case node
     text <(process.platform === 'win32' ? 'windows' : process.platform)>
   case rust
@@ -125,7 +139,9 @@ bind platform-name
 # the variables the standard's environment rule names, read once
 task read-variables
   take standard, like standard
+
   like list, like env-entry
+
   save rule, standard/environment
   save names, make list
   names/push rule/no-color
@@ -136,6 +152,7 @@ task read-variables
   names/push rule/force-hyperlink
   names/push rule/program-variable
   names/push rule/background-variable
+
   walk rule/locale-names
     take one
     names/push one
@@ -143,11 +160,15 @@ task read-variables
     take one
     names/push one
   save out, make list
+
   walk names
     take name
     fork test, has-variable(name)
       hold
-        out/push make env-entry, name(name), value(variable(name))
+        out/push
+          make env-entry
+            name name
+            value(variable(name))
   back out
 
 # where a run prints, and how
@@ -157,24 +178,34 @@ form output
   link palette, like palette
   link options, like run-options
 
-# the output of a run: the environment decided, the width read once (section 8), the zone fixed at the start
+# the output of a run: the environment decided, the width read once (section 8), the
+# zone fixed at the start
 task open-output
   take options, like run-options
   take standard, like standard
+
   like output
+
   save variables, read-variables(standard)
   save terminal, error-is-terminal()
-  save chosen, decide-style(variables, terminal, options/color, platform-name(), standard)
+
+  save chosen
+    decide-style(variables, terminal, options/color, platform-name(), standard)
   save width, error-columns()
+
   fork test, is-below(width, 1)
     hold
       save width, 80
+  # a nested run (section 15) draws in what is left right of its elbows
+  save width, subtract(width, multiply(options/depth, nest-step(standard)))
   save started, now()
   save offset, 0
+
   fork test, options/utc
     miss
       save offset, local-offset(started)
   save room, make-room(width, standard, chosen/ascii, offset, options/utc)
+
   # locations are linked only when links are emitted at all
   fork test, chosen/links
     hold
@@ -182,10 +213,13 @@ task open-output
   save palette, make-palette(chosen/depth, chosen/theme, chosen/links)
   back make output, style(chosen), room(room), palette(palette), options(options)
 
-# the zone fact of a service's opening item (section 11): `PDT, UTC−7`, or `UTC` under --utc
+# the zone fact of a service's opening item (section 11): `PDT, UTC−7`, or `UTC`
+# under --utc
 task describe-zone
   take one, like output
+
   like text
+
   save started, now()
   save room, one/room
   back format-zone(local-zone-name(started), room/offset, room/utc, room)
@@ -193,21 +227,117 @@ task describe-zone
 task print-lines
   take one, like output
   take lines, like list, like line
+  take first, like boolean
+
   like void
-  fork test, is-above(lines/length, 0)
+
+  save shown, lines
+
+  fork test, is-above(one/options/depth, 0)
     hold
-      write-error-text(paint-lines(lines, one/palette, one/room/standard))
+      save shown, nest-lines(lines, one/options/depth, first, one/room)
+  fork test, is-above(shown/length, 0)
+    hold
+      write-error-text(paint-lines(shown, one/palette, one/room/standard))
+
+# the cells one level of nesting takes: the body column, then the quote's indent
+task nest-step
+  take standard, like standard
+
+  like number
+
+  back add(standard/layout/body-column, standard/quotes/indent)
+
+# a run started inside another (section 15): every line under the outer run's `⎿`
+# elbow, at
+# its body column, one level per depth. The elbow is on the nested run's first line
+# only, the rest under it, as a quote is. Blank lines are dropped, so the nested run
+# reads as one block under the item that started it
+task nest-lines
+  take lines, like list, like line
+  take depth, like number
+  take first, like boolean
+  take room, like room
+
+  like list, like line
+
+  save out, make list
+  save step, nest-step(room/standard)
+  save column, room/standard/layout/body-column
+  save indent, room/standard/quotes/indent
+  save elbow, find-symbol(room, <elbow>)
+  save outer, make-spaces(multiply(subtract(depth, 1), step))
+
+  walk lines
+    take line
+    fork test, is-above(measure-spans(line/spans), 0)
+      hold
+        save lead, <{outer}{make-spaces(step)}>
+        fork test, and(first, is-equal(out/length, 0))
+          hold
+            save gap, make-spaces(subtract(indent, measure-text(elbow)))
+            save lead, <{outer}{make-spaces(column)}{elbow}{gap}>
+        save spans, make list
+        spans/push make-span(lead, <dim>)
+        walk line/spans
+          take each
+          spans/push each
+        out/push make line, spans(spans)
+  back out
 
 # data the user asked for, on stdout, as it is
 task print-data
   take value, like text
+
   like void
+
   write-data-text(value)
 
-# a child's own stderr passed through untouched, under `--raw` (section 15): the one other way text reaches stderr
+# data printed while a run is open and on the same terminal as it (section 15):
+# under the
+# last item's `⎿` elbow, so it does not break the run's left edge. Never wrapped, so
+# a
+# line copied from the terminal is the line. A pipe gets it as it is (print-data)
+task print-data-under
+  take one, like runner
+  take value, like text
+
+  like void
+
+  save room, one/output/room
+  save step, nest-step(room/standard)
+  save column, room/standard/layout/body-column
+  save indent, room/standard/quotes/indent
+  save elbow, find-symbol(room, <elbow>)
+  save outer, make-spaces(multiply(one/output/options/depth, step))
+  save lines, make list
+  save count, 0
+
+  walk split-lines(value)
+    take each
+    fork test, is-unequal(each, <>)
+      hold
+        save lead, <{outer}{make-spaces(step)}>
+        fork test, is-equal(count, 0)
+          hold
+            save gap, make-spaces(subtract(indent, measure-text(elbow)))
+            save lead, <{outer}{make-spaces(column)}{elbow}{gap}>
+        save spans, make list
+        spans/push make-span(lead, <dim>)
+        spans/push make-span(each, <text>)
+        lines/push make line, spans(spans)
+        save count, add(count, 1)
+  fork test, is-above(lines/length, 0)
+    hold
+      write-data-text(paint-lines(lines, one/output/palette, room/standard))
+
+# a child's own stderr passed through untouched, under `--raw` (section 15): the one
+# other way text reaches stderr
 task print-raw-error
   take value, like text
+
   like void
+
   write-error-text(value)
 
 form runner
@@ -219,18 +349,22 @@ task print-event
   take one, like runner
   take event, like event
   take lines, like list, like line
+  take first, like boolean
+
   like void
+
   save options, one/output/options
   save room, one/output/room
+
   fork test, options/json
     hold
-      write-data-text(<{write-json-event(event, room/offset, room/utc, room/standard)}\n>)
+      write-data-text <{write-json-event(event, room/offset, room/utc, room/standard)}\n>
       back
   fork test, options/plain
     hold
       write-error-text(<{speak-event(event, room)}\n>)
     miss
-      print-lines(one/output, lines)
+      print-lines(one/output, lines, first)
   fork test, one/output/style/annotate
     hold
       save note, annotate-event(event)
@@ -243,41 +377,62 @@ task begin-run
   take opening, like event
   take options, like run-options
   take standard, like standard
+
   like runner
+
   save out, open-output(options, standard)
   save session, open-session(verb, options)
   save step, draw-opening(session, opening, out/room)
   save one, make runner, output(out), session(step/session)
-  # `--quiet` drops the opening from every human view, sentences included; the JSON view carries every event
+
+  # `--quiet` drops the opening from every human view, sentences included; the JSON
+  # view carries every event
   fork test, or(options/json, is-equal(options/quiet, false))
     hold
-      print-event(one, opening, step/lines)
+      print-event(one, opening, step/lines, true)
   back one
 
 task report
   take one, like runner
   take event, like event
+
   like runner
+
   save tagged, is-equal(one/output/options/source, <>)
   save step, step-session(one/session, event, one/output/room, tagged)
   save next, one
   save next/session, step/session
+
   fork test, is-above(step/lines/length, 0)
     hold
-      print-event(next, event, step/lines)
+      # the first line a run prints carries its elbow when it is nested: the
+      # opening,
+      # unless --quiet left it out
+      print-event(next, event, step/lines, is-first(one/session))
     miss
-      # hidden from the human view by --quiet or a level, but machine output carries every event
+      # hidden from the human view by --quiet or a level, but machine output carries
+      # every event
       fork test, one/output/options/json
         hold
-          print-event(next, event, step/lines)
+          print-event(next, event, step/lines, false)
   back next
 
 # the closing item printed, and the exit code to end with
 task end-run
   take one, like runner
   take closing, like event
+
   like number
+
   save step, close-session(one/session, closing, one/output/room)
   save shown, close-event(one/session, closing, one/output/room/standard)
-  print-event(one, shown, step/lines)
+  print-event(one, shown, step/lines, is-first(one/session))
   back step/exit
+
+# nothing of the run is on screen yet: no opening (--quiet) and no event
+task is-first
+  take one, like session
+
+  like boolean
+
+  back and(is-equal(one/opened, false), is-equal(one/printed, 0))

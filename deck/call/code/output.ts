@@ -57,6 +57,9 @@ let version = ''
 let runner: Runner | undefined
 let started = 0
 let verb = ''
+// how deep in other runs this process's run is (section 15), passed to every child, and what it was before the run opened
+const DEPTH_VARIABLE = 'TERM_DEPTH'
+let outerDepth: string | undefined
 
 // the flags, read once before any command runs (line.ts, a yargs middleware), the tool's version for the opening item,
 // and the command's own verb (`argv._[0]`), so a failure before the command opens its run is still under its verb
@@ -173,6 +176,12 @@ export function showPath(where: string, root = ''): string {
 export function openRun(input: { verb: string; root: string; subject?: string; counts?: Tally[]; facts?: string[]; tool?: string; started?: number }): void {
   verb = input.verb
   started = input.started ?? Date.now()
+  // section 15: a run started by a command of another Term run is drawn under that run's elbow. The depth comes in through
+  // the environment, and every child this run starts while it is open is one level deeper
+  const depth = Math.max(0, Number(process.env[DEPTH_VARIABLE] ?? 0) || 0)
+  outerDepth = process.env[DEPTH_VARIABLE]
+  options = { ...options, depth }
+  process.env[DEPTH_VARIABLE] = String(depth + 1)
   const opening = makeOpening(input.verb, input.subject ?? showPath(input.root), started, input.tool ?? (version ? `term ${version}` : 'term'))
   opening.tallies = input.counts ?? []
   opening.facts = input.facts ?? []
@@ -230,6 +239,13 @@ export function closeRun(input: { verdict: string; counts?: Tally[]; facts?: str
   runner = undefined
   process.exitCode = code
 
+  // what starts after the run is closed is not inside it: `term boot` runs its program once its own run is over
+  if (outerDepth === undefined) {
+    delete process.env[DEPTH_VARIABLE]
+  } else {
+    process.env[DEPTH_VARIABLE] = outerDepth
+  }
+
   return code
 }
 
@@ -241,6 +257,14 @@ export function printData(value: string): void {
   if (runner?.session.owed && process.stdout.isTTY && process.stderr.isTTY) {
     process.stderr.write('\n')
     runner = { ...runner, session: { ...runner.session, owed: false } }
+  }
+
+  // section 15: after an item, on the terminal the run is on, data hangs under that item's elbow so the run keeps its left
+  // edge (`term self load` prints the `export PATH=...` line it names). A pipe, `--log json` and `--plain` get it as it is
+  if (runner && runner.session.printed > 0 && process.stdout.isTTY && process.stderr.isTTY && !options.json && !options.plain) {
+    emitPort.printDataUnder(runner, value)
+
+    return
   }
 
   printDataOut(value)

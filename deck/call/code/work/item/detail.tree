@@ -131,7 +131,6 @@ task draw-field
       save rules, place-breaks(room/standard)
   # the widest key when keys align, else this key's own width (measure-keys gives 0)
   save width, measure-text(key)
-
   fork test, is-above(key-width, width)
     hold
       save width, key-width
@@ -480,9 +479,12 @@ task trim-quote
       save kept, last
   back make quote-lines, lines(kept), more-frames(more), earlier(before)
 
-# quoted output of section 7, a child program's own lines: the first hangs off a dim `⎿` elbow and the rest sit under
-# it, the standard's `indent` cells right of the item's column (the user's choice on 2026-10-04, after Claude Code's
-# nesting of a tool's output, in place of the spec's `│` on every line). Its own colors removed, a long line wrapped
+# quoted output of section 7, a child program's own lines: the first hangs off a dim
+# `⎿` elbow and the rest sit under
+# it, the standard's `indent` cells right of the item's column (the user's choice on
+# 2026-10-04, after Claude Code's
+# nesting of a tool's output, in place of the spec's `│` on every line). Its own
+# colors removed, a long line wrapped
 # inside the quote with a 2-cell hang
 task draw-quote
   take written, like list, like text
@@ -503,7 +505,11 @@ task draw-quote
     hold
       save count, group-number(trimmed/earlier, room/standard)
       save word, room/standard/quotes/earlier-word
-      save out, push-quote-line(out, elbow, indent, make-span(<{more} {count} {word}>, <dim>))
+      save out
+        push-quote-line out
+          elbow
+          indent
+          make-span(<{more} {count} {word}>, <dim>)
   walk trimmed/lines
     take one
     save spans, make list
@@ -521,10 +527,15 @@ task draw-quote
     hold
       save count, group-number(trimmed/more-frames, room/standard)
       save word, room/standard/quotes/frames-word
-      save out, push-quote-line(out, elbow, indent, make-span(<{more} {count} {word}>, <dim>))
+      save out
+        push-quote-line out
+          elbow
+          indent
+          make-span(<{more} {count} {word}>, <dim>)
   back out
 
-# the lead of a quoted line: the elbow on the quote's first line, spaces under it after, `indent` cells either way
+# the lead of a quoted line: the elbow on the quote's first line, spaces under it
+# after, `indent` cells either way
 task quote-lead
   take first, like boolean
   take elbow, like text
@@ -536,12 +547,14 @@ task quote-lead
     miss
       back make-span(make-spaces(indent), <text>)
   save rest, subtract(indent, measure-text(elbow))
+
   fork test, is-below(rest, 1)
     hold
       save rest, 1
   back make-span(<{elbow}{make-spaces(rest)}>, <dim>)
 
-# `out` with one quoted line of spans added, its lead chosen by whether it is the quote's first (self-hosting-0026:
+# `out` with one quoted line of spans added, its lead chosen by whether it is the
+# quote's first (self-hosting-0026:
 # the list is sent back)
 task push-quote-spans
   take out, like list, like line
@@ -553,6 +566,7 @@ task push-quote-spans
 
   save spans, make list
   spans/push quote-lead(is-equal(out/length, 0), elbow, indent)
+
   walk pieces
     take piece
     spans/push piece

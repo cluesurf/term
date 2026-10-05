@@ -66,6 +66,10 @@ form run-options
   link raw, like boolean, fall false
   link source, like text, fall <>
   link color, like text, fall <auto>
+  # how many runs this one is inside (section 15): a Term run started by a command
+  # of another
+  # is drawn under that run's `⎿` elbow, one nest per level, never at the top level
+  link depth, like number, fall 0
 
 form session
   link options, like run-options

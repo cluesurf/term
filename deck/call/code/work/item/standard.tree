@@ -1,20 +1,30 @@
 # The Terminal Output Standard, as data (note/term/output/standard.md).
 #
-# EVERY DECISION THE SPEC MAKES IS A FIELD HERE: the columns, the glyphs and their ranks, the role palette, the fact
-# order, the duration and size rules, the wrap break tiers, the field keys, the frame and quote limits, the bar, the
-# live-region timing, the service rules, the caps, the exit codes, the environment names, the event catalog, the
-# child-log mapping and the JSON keys. The renderers read all of it from the `standard` they are handed and hard-code
-# none of it, so refining the standard is an edit to `make-standard` below, and a variant (a test, a later revision)
-# is the default with one field changed: `save mine, make-standard()` then `save mine/layout/verb-width, 9`.
+# EVERY DECISION THE SPEC MAKES IS A FIELD HERE: the columns, the glyphs and their
+# ranks, the role palette, the fact
+# order, the duration and size rules, the wrap break tiers, the field keys, the
+# frame and quote limits, the bar, the
+# live-region timing, the service rules, the caps, the exit codes, the environment
+# names, the event catalog, the
+# child-log mapping and the JSON keys. The renderers read all of it from the
+# `standard` they are handed and hard-code
+# none of it, so refining the standard is an edit to `make-standard` below, and a
+# variant (a test, a later revision)
+# is the default with one field changed: `save mine, make-standard()` then `save
+# mine/layout/verb-width, 9`.
 #
-# THE RULES THAT ARE NOT NUMBERS stay in the renderers as code, because a table cannot say them: "a token breaks
-# after the first tier, failing that the second" is an algorithm over the tiers listed here. Where a rule has a
+# THE RULES THAT ARE NOT NUMBERS stay in the renderers as code, because a table
+# cannot say them: "a token breaks
+# after the first tier, failing that the second" is an algorithm over the tiers
+# listed here. Where a rule has a
 # number or a word in it, the number or the word lives here.
 #
-# After any change here, run `pnpm term:test --only item` (note/term/output/readme.md).
-
-# one glyph of section 4: its JSON name, its two drawings, the role it is colored in, and its rank in the worst-glyph
-# order (higher is worse). A rank of 0 is outside the order: + − ~ describe a change, not an outcome
+# After any change here, run `pnpm term:test --only item`
+# (note/term/output/readme.md).
+# one glyph of section 4: its JSON name, its two drawings, the role it is colored
+# in, and its rank in the worst-glyph
+# order (higher is worse). A rank of 0 is outside the order: + − ~ describe a
+# change, not an outcome
 form glyph-rule
   link name, like text
   link unicode, like text
@@ -22,14 +32,16 @@ form glyph-rule
   link role, like text
   link rank, like number
 
-# one color role of section 16. `ansi` is the SGR parameter of the 16-color fallback, empty for the terminal's default
+# one color role of section 16. `ansi` is the SGR parameter of the 16-color
+# fallback, empty for the terminal's default
 form role-rule
   link name, like text
   link dark, like text
   link light, like text
   link ansi, like text
 
-# a drawing that is not a glyph (a separator, a gutter, a bar cell), in its two forms. Also a fold: a character of a
+# a drawing that is not a glyph (a separator, a gutter, a bar cell), in its two
+# forms. Also a fold: a character of a
 # subject or a message and the ASCII it becomes when the terminal cannot show it
 form symbol-rule
   link name, like text
@@ -94,16 +106,21 @@ form fact-rule
   link exit-label, like text
   link signal-label, like text
 
-# section 8's break tiers. Each tier is a text of the characters a long token may break AFTER; a token tries the first
-# tier, then the next, then the edge. `never` is the sequence nothing breaks inside. A location (section 12) breaks
-# only after `/`; its second tier is the last resort for a single path segment wider than the whole line, where a
-# break somewhere else cannot be avoided, and it puts that break between the path, the line and the column
+# section 8's break tiers. Each tier is a text of the characters a long token may
+# break AFTER; a token tries the first
+# tier, then the next, then the edge. `never` is the sequence nothing breaks inside.
+# A location (section 12) breaks
+# only after `/`; its second tier is the last resort for a single path segment wider
+# than the whole line, where a
+# break somewhere else cannot be avoided, and it puts that break between the path,
+# the line and the column
 form wrap-rule
   link tiers, like list, like text
   link never, like text
   link location-tiers, like list, like text
 
-# section 7's fields. `location-key` is drawn before the code frame, `action-keys` close the item, and the rest sit
+# section 7's fields. `location-key` is drawn before the code frame, `action-keys`
+# close the item, and the rest sit
 # between the frame and the quote, in the order given
 form field-rule
   link location-key, like text
@@ -131,8 +148,10 @@ form quote-rule
   link frame-start, like text
   # a frame that names one of these is not the user's code
   link foreign, like list, like text
-  # the cells quoted text sits right of the item's column: the `elbow` symbol on the first line, spaces under it on
-  # the rest (a child program's own lines, as Claude Code nests a tool's output; chosen by the user, 2026-10-04)
+  # the cells quoted text sits right of the item's column: the `elbow` symbol on the
+  # first line, spaces under it on
+  # the rest (a child program's own lines, as Claude Code nests a tool's output;
+  # chosen by the user, 2026-10-04)
   link indent, like number
 
 # section 7's progress bar
@@ -173,7 +192,8 @@ form exit-rule
   link name, like text
   link glyph, like text
 
-# section 17's environment: the names a decision reads, never a literal in the decision itself
+# section 17's environment: the names a decision reads, never a literal in the
+# decision itself
 form environment-rule
   link no-color, like text
   link force-color, like text
@@ -190,25 +210,29 @@ form environment-rule
   link hyperlink-variables, like list, like text
   link program-variable, like text
   link background-variable, like text
-  # section 8's links: a value that starts with one of these schemes is its own link target, and a location is linked
+  # section 8's links: a value that starts with one of these schemes is its own link
+  # target, and a location is linked
   # as the file scheme over the room's root
   link link-schemes, like list, like text
   link file-scheme, like text
 
-# one row of section 9's catalog: the kind, its verbs, the facts it may carry after the clock, and its detail blocks.
-# A verb list holding `*` takes any verb: the command's own, or an app logger's name. `order` is the kind's own fact
-# order where the spec gives one (the opening item, section 3: tool and version, zone, then counts), empty for the
+# one row of section 9's catalog: the kind, its verbs, the facts it may carry after
+# the clock, and its detail blocks.
+# A verb list holding `*` takes any verb: the command's own, or an app logger's
+# name. `order` is the kind's own fact
+# order where the spec gives one (the opening item, section 3: tool and version,
+# zone, then counts), empty for the
 # general order of section 6
 form kind-rule
   link name, like text
   link verbs, like list, like text
   link facts, like list, like text
   link details, like list, like text
-  link order
-    like list, like text
+  link order, like list, like text
     fall make list
 
-# a log level word of section 15 and the glyph it becomes. `quiet` makes the item a debug item
+# a log level word of section 15 and the glyph it becomes. `quiet` makes the item a
+# debug item
 form level-rule
   link word, like text
   link glyph, like text
@@ -241,7 +265,8 @@ form key-rule
   link fields, like text
   link kind, like text
 
-# section 13's prompts: the verb, the hints a question shows while it waits, and the words of the failure when there
+# section 13's prompts: the verb, the hints a question shows while it waits, and the
+# words of the failure when there
 # is no terminal to ask on
 form ask-rule
   link verb, like text
@@ -286,10 +311,12 @@ form standard
   link asks, like ask-rule
   link unit-words, like list, like unit-word
 
-# The standard as it is written, every value the spec states. A renderer is handed this unless a caller hands it
+# The standard as it is written, every value the spec states. A renderer is handed
+# this unless a caller hands it
 # another one.
 task make-standard
   like standard
+
   back
     make standard
       layout
@@ -306,73 +333,294 @@ task make-standard
           chain-links 4
           tab-stop 8
       glyphs
-        make glyph-rule, name(<done>), unicode(<✓>), ascii(<v>), role(<done>), rank(4)
-        make glyph-rule, name(<failed>), unicode(<✗>), ascii(<x>), role(<failed>), rank(7)
-        make glyph-rule, name(<warning>), unicode(<▲>), ascii(<!>), role(<warning>), rank(6)
-        make glyph-rule, name(<info>), unicode(<·>), ascii(<->), role(<dim>), rank(2)
-        make glyph-rule, name(<skipped>), unicode(<○>), ascii(<o>), role(<dim>), rank(3)
-        make glyph-rule, name(<running>), unicode(<◐>), ascii(<*>), role(<active>), rank(5)
-        make glyph-rule, name(<asking>), unicode(<?>), ascii(<?>), role(<active>), rank(5)
-        make glyph-rule, name(<added>), unicode(<+>), ascii(<+>), role(<done>), rank(0)
-        make glyph-rule, name(<removed>), unicode(<−>), ascii(<->), role(<failed>), rank(0)
-        make glyph-rule, name(<changed>), unicode(<~>), ascii(<~>), role(<warning>), rank(0)
+        make glyph-rule
+          name <done>
+          unicode(<✓>)
+          ascii(<v>)
+          role(<done>)
+          rank(4)
+        make glyph-rule
+          name <failed>
+          unicode(<✗>)
+          ascii(<x>)
+          role(<failed>)
+          rank(7)
+        make glyph-rule
+          name <warning>
+          unicode(<▲>)
+          ascii(<!>)
+          role(<warning>)
+          rank(6)
+        make glyph-rule
+          name <info>
+          unicode(<·>)
+          ascii(<->)
+          role(<dim>)
+          rank(2)
+        make glyph-rule
+          name <skipped>
+          unicode(<○>)
+          ascii(<o>)
+          role(<dim>)
+          rank(3)
+        make glyph-rule
+          name <running>
+          unicode(<◐>)
+          ascii(<*>)
+          role(<active>)
+          rank(5)
+        make glyph-rule
+          name <asking>
+          unicode(<?>)
+          ascii(<?>)
+          role(<active>)
+          rank(5)
+        make glyph-rule
+          name <added>
+          unicode(<+>)
+          ascii(<+>)
+          role(<done>)
+          rank(0)
+        make glyph-rule
+          name <removed>
+          unicode(<−>)
+          ascii(<->)
+          role(<failed>)
+          rank(0)
+        make glyph-rule
+          name <changed>
+          unicode(<~>)
+          ascii(<~>)
+          role(<warning>)
+          rank(0)
       roles
-        make role-rule, name(<text>), dark(<#E6E6E1>), light(<#1C1E20>), ansi(<>)
-        make role-rule, name(<dim>), dark(<#8A8F95>), light(<#6B6F75>), ansi(<90>)
-        make role-rule, name(<faint>), dark(<#3A3F44>), light(<#CFD1D4>), ansi(<2;90>)
-        make role-rule, name(<done>), dark(<#8FCB9B>), light(<#2E7D45>), ansi(<32>)
-        make role-rule, name(<failed>), dark(<#F08C8C>), light(<#B93A3A>), ansi(<31>)
-        make role-rule, name(<warning>), dark(<#E8C77A>), light(<#8A5A00>), ansi(<33>)
-        make role-rule, name(<active>), dark(<#8FB8E8>), light(<#2F5FA8>), ansi(<34>)
-        make role-rule, name(<source>), dark(<#8FB3D9>), light(<#3D6797>), ansi(<36>)
-        make role-rule, name(<focus>), dark(<#1D2630>), light(<#DCE6F1>), ansi(<7>)
+        make role-rule
+          name <text>
+          dark(<#E6E6E1>)
+          light(<#1C1E20>)
+          ansi(<>)
+        make role-rule
+          name <dim>
+          dark(<#8A8F95>)
+          light(<#6B6F75>)
+          ansi(<90>)
+        make role-rule
+          name <faint>
+          dark(<#3A3F44>)
+          light(<#CFD1D4>)
+          ansi(<2;90>)
+        make role-rule
+          name <done>
+          dark(<#8FCB9B>)
+          light(<#2E7D45>)
+          ansi(<32>)
+        make role-rule
+          name <failed>
+          dark(<#F08C8C>)
+          light(<#B93A3A>)
+          ansi(<31>)
+        make role-rule
+          name <warning>
+          dark(<#E8C77A>)
+          light(<#8A5A00>)
+          ansi(<33>)
+        make role-rule
+          name <active>
+          dark(<#8FB8E8>)
+          light(<#2F5FA8>)
+          ansi(<34>)
+        make role-rule
+          name <source>
+          dark(<#8FB3D9>)
+          light(<#3D6797>)
+          ansi(<36>)
+        make role-rule
+          name <focus>
+          dark(<#1D2630>)
+          light(<#DCE6F1>)
+          ansi(<7>)
       symbols
-        make symbol-rule, name(<separator>), unicode(<·>), ascii(<.>)
-        make symbol-rule, name(<chain>), unicode(<›>), ascii(<\>>)
-        make symbol-rule, name(<arrow>), unicode(<→>), ascii(<-\>>)
-        make symbol-rule, name(<more>), unicode(<…>), ascii(<...>)
-        make symbol-rule, name(<gutter>), unicode(<│>), ascii(<|>)
-        make symbol-rule, name(<elbow>), unicode(<⎿>), ascii(<\\_>)
-        make symbol-rule, name(<primary>), unicode(<━>), ascii(<~>)
-        make symbol-rule, name(<secondary>), unicode(<─>), ascii(<->)
-        make symbol-rule, name(<skip>), unicode(<⋮>), ascii(<:>)
-        make symbol-rule, name(<rule>), unicode(<─>), ascii(<->)
-        make symbol-rule, name(<bar-full>), unicode(<━>), ascii(<->)
-        make symbol-rule, name(<bar-empty>), unicode(<─>), ascii(< >)
-        make symbol-rule, name(<picked>), unicode(<◉>), ascii(<(*)>)
-        make symbol-rule, name(<unpicked>), unicode(<◯>), ascii(<( )>)
-        make symbol-rule, name(<secret>), unicode(<•>), ascii(<*>)
-        make symbol-rule, name(<prompt>), unicode(<❯>), ascii(<$>)
-        make symbol-rule, name(<times>), unicode(<×>), ascii(<x>)
-        make symbol-rule, name(<minus>), unicode(<−>), ascii(<->)
-        make symbol-rule, name(<branch>), unicode(<├─>), ascii(<|->)
-        make symbol-rule, name(<last>), unicode(<└─>), ascii(<`->)
-        make symbol-rule, name(<stem>), unicode(<│ >), ascii(<| >)
-        make symbol-rule, name(<spin-1>), unicode(<◐>), ascii(<*>)
-        make symbol-rule, name(<spin-2>), unicode(<◓>), ascii(<*>)
-        make symbol-rule, name(<spin-3>), unicode(<◑>), ascii(<*>)
-        make symbol-rule, name(<spin-4>), unicode(<◒>), ascii(<*>)
+        make symbol-rule
+          name <separator>
+          unicode(<·>)
+          ascii(<.>)
+        make symbol-rule
+          name <chain>
+          unicode(<›>)
+          ascii(<\>>)
+        make symbol-rule
+          name <arrow>
+          unicode(<→>)
+          ascii(<-\>>)
+        make symbol-rule
+          name <more>
+          unicode(<…>)
+          ascii(<...>)
+        make symbol-rule
+          name <gutter>
+          unicode(<│>)
+          ascii(<|>)
+        make symbol-rule
+          name <elbow>
+          unicode(<⎿>)
+          ascii(<\\_>)
+        make symbol-rule
+          name <primary>
+          unicode(<━>)
+          ascii(<~>)
+        make symbol-rule
+          name <secondary>
+          unicode(<─>)
+          ascii(<->)
+        make symbol-rule
+          name <skip>
+          unicode(<⋮>)
+          ascii(<:>)
+        make symbol-rule
+          name <rule>
+          unicode(<─>)
+          ascii(<->)
+        make symbol-rule
+          name <bar-full>
+          unicode(<━>)
+          ascii(<->)
+        make symbol-rule
+          name <bar-empty>
+          unicode(<─>)
+          ascii(< >)
+        make symbol-rule
+          name <picked>
+          unicode(<◉>)
+          ascii(<(*)>)
+        make symbol-rule
+          name <unpicked>
+          unicode(<◯>)
+          ascii(<( )>)
+        make symbol-rule
+          name <secret>
+          unicode(<•>)
+          ascii(<*>)
+        make symbol-rule
+          name <prompt>
+          unicode(<❯>)
+          ascii(<$>)
+        make symbol-rule
+          name <times>
+          unicode(<×>)
+          ascii(<x>)
+        make symbol-rule
+          name <minus>
+          unicode(<−>)
+          ascii(<->)
+        make symbol-rule
+          name <branch>
+          unicode(<├─>)
+          ascii(<|->)
+        make symbol-rule
+          name <last>
+          unicode(<└─>)
+          ascii(<`->)
+        make symbol-rule
+          name <stem>
+          unicode(<│ >)
+          ascii(<| >)
+        make symbol-rule
+          name <spin-1>
+          unicode(<◐>)
+          ascii(<*>)
+        make symbol-rule
+          name <spin-2>
+          unicode(<◓>)
+          ascii(<*>)
+        make symbol-rule
+          name <spin-3>
+          unicode(<◑>)
+          ascii(<*>)
+        make symbol-rule
+          name <spin-4>
+          unicode(<◒>)
+          ascii(<*>)
       folds
-        make symbol-rule, name(<arrow>), unicode(<→>), ascii(<-\>>)
-        make symbol-rule, name(<chain>), unicode(<›>), ascii(<\>>)
-        make symbol-rule, name(<more>), unicode(<…>), ascii(<...>)
-        make symbol-rule, name(<separator>), unicode(<·>), ascii(<.>)
-        make symbol-rule, name(<minus>), unicode(<−>), ascii(<->)
-        make symbol-rule, name(<en-dash>), unicode(<–>), ascii(<->)
-        make symbol-rule, name(<em-dash>), unicode(<—>), ascii(<-->)
-        make symbol-rule, name(<left-quote>), unicode(<‘>), ascii(<'>)
-        make symbol-rule, name(<right-quote>), unicode(<’>), ascii(<'>)
-        make symbol-rule, name(<left-double>), unicode(<“>), ascii(<">)
-        make symbol-rule, name(<right-double>), unicode(<”>), ascii(<">)
-        make symbol-rule, name(<times>), unicode(<×>), ascii(<x>)
-        make symbol-rule, name(<bullet>), unicode(<•>), ascii(<*>)
-        make symbol-rule, name(<done>), unicode(<✓>), ascii(<v>)
-        make symbol-rule, name(<failed>), unicode(<✗>), ascii(<x>)
-        make symbol-rule, name(<warning>), unicode(<▲>), ascii(<!>)
-        make symbol-rule, name(<skipped>), unicode(<○>), ascii(<o>)
-        make symbol-rule, name(<running>), unicode(<◐>), ascii(<*>)
-        make symbol-rule, name(<gutter>), unicode(<│>), ascii(<|>)
-        make symbol-rule, name(<elbow>), unicode(<⎿>), ascii(<\\_>)
+        make symbol-rule
+          name <arrow>
+          unicode(<→>)
+          ascii(<-\>>)
+        make symbol-rule
+          name <chain>
+          unicode(<›>)
+          ascii(<\>>)
+        make symbol-rule
+          name <more>
+          unicode(<…>)
+          ascii(<...>)
+        make symbol-rule
+          name <separator>
+          unicode(<·>)
+          ascii(<.>)
+        make symbol-rule
+          name <minus>
+          unicode(<−>)
+          ascii(<->)
+        make symbol-rule
+          name <en-dash>
+          unicode(<–>)
+          ascii(<->)
+        make symbol-rule
+          name <em-dash>
+          unicode(<—>)
+          ascii(<-->)
+        make symbol-rule
+          name <left-quote>
+          unicode(<‘>)
+          ascii(<'>)
+        make symbol-rule
+          name <right-quote>
+          unicode(<’>)
+          ascii(<'>)
+        make symbol-rule
+          name <left-double>
+          unicode(<“>)
+          ascii(<">)
+        make symbol-rule
+          name <right-double>
+          unicode(<”>)
+          ascii(<">)
+        make symbol-rule
+          name <times>
+          unicode(<×>)
+          ascii(<x>)
+        make symbol-rule
+          name <bullet>
+          unicode(<•>)
+          ascii(<*>)
+        make symbol-rule
+          name <done>
+          unicode(<✓>)
+          ascii(<v>)
+        make symbol-rule
+          name <failed>
+          unicode(<✗>)
+          ascii(<x>)
+        make symbol-rule
+          name <warning>
+          unicode(<▲>)
+          ascii(<!>)
+        make symbol-rule
+          name <skipped>
+          unicode(<○>)
+          ascii(<o>)
+        make symbol-rule
+          name <running>
+          unicode(<◐>)
+          ascii(<*>)
+        make symbol-rule
+          name <gutter>
+          unicode(<│>)
+          ascii(<|>)
+        make symbol-rule
+          name <elbow>
+          unicode(<⎿>)
+          ascii(<\\_>)
       durations
         make duration-rule
           figures 3
@@ -387,11 +635,17 @@ task make-standard
           units <B>, <kB>, <MB>, <GB>, <TB>, <PB>
           whole-from 100
           decimals 1
-      numbers
-        make number-rule, group(<,>), group-digits(3), part(</>)
+      numbers make number-rule, group(<,>), group-digits(3), part(</>)
       facts
         make fact-rule
-          order <clock>, <tool>, <zone>, <duration>, <status>, <size>, <counts>, <rest>
+          order <clock>
+            <tool>
+            <zone>
+            <duration>
+            <status>
+            <size>
+            <counts>
+            <rest>
           http-label <HTTP>
           exit-label <exit>
           signal-label <signal>
@@ -404,14 +658,25 @@ task make-standard
         make field-rule
           location-key <at>
           action-keys <fix>, <next>, <pass>
-          standard-keys <at>, <why>, <want>, <seen>, <gave>, <fix>, <next>, <reason>, <via>, <wait>, <budget>, <log>, <pass>
+          standard-keys <at>
+            <why>
+            <want>
+            <seen>
+            <gave>
+            <fix>
+            <next>
+            <reason>
+            <via>
+            <wait>
+            <budget>
+            <log>
+            <pass>
           budget-key <budget>
           pass-key <pass>
           log-key <log>
           next-key <next>
           sources-key <sources>
-      frames
-        make frame-rule, context(2), tab-width(8)
+      frames make frame-rule, context(2), tab-width(8)
       quotes
         make quote-rule
           lines 20
@@ -420,12 +685,14 @@ task make-standard
           frame-start <at >
           foreign <node_modules/>, <node:>, <internal/>, <\<anonymous\>>
           indent 3
-      bars
-        make bar-rule, width(24)
-      lives
-        make live-rule, redraw-ms(100), quiet-progress-ms(10000)
+      bars make bar-rule, width(24)
+      lives make live-rule, redraw-ms(100), quiet-progress-ms(10000)
       services
-        make service-rule, tag-width(12), collapse-ms(10000), date-verb(<date>), footer-verb(<up>)
+        make service-rule
+          tag-width(12)
+          collapse-ms(10000)
+          date-verb(<date>)
+          footer-verb(<up>)
       caps
         make cap-rule
           problems 20
@@ -438,12 +705,30 @@ task make-standard
           dropped-word <more columns>
           deduped-word <deduped>
       exits
-        make exit-rule, value(0), name(<success>), glyph(<done>)
-        make exit-rule, value(1), name(<input>), glyph(<failed>)
-        make exit-rule, value(2), name(<usage>), glyph(<failed>)
-        make exit-rule, value(3), name(<environment>), glyph(<failed>)
-        make exit-rule, value(70), name(<bug>), glyph(<failed>)
-        make exit-rule, value(130), name(<interrupted>), glyph(<skipped>)
+        make exit-rule
+          value(0)
+          name <success>
+          glyph(<done>)
+        make exit-rule
+          value(1)
+          name <input>
+          glyph(<failed>)
+        make exit-rule
+          value(2)
+          name <usage>
+          glyph(<failed>)
+        make exit-rule
+          value(3)
+          name <environment>
+          glyph(<failed>)
+        make exit-rule
+          value(70)
+          name <bug>
+          glyph(<failed>)
+        make exit-rule
+          value(130)
+          name <interrupted>
+          glyph(<skipped>)
       environment
         make environment-rule
           no-color <NO_COLOR>
@@ -457,18 +742,41 @@ task make-standard
           locale-names <LC_ALL>, <LC_CTYPE>, <LANG>
           utf-markers <utf-8>, <utf8>
           force-hyperlink <FORCE_HYPERLINK>
-          hyperlink-programs <iTerm.app>, <WezTerm>, <vscode>, <ghostty>, <Hyper>, <Tabby>
-          hyperlink-variables <WT_SESSION>, <KITTY_WINDOW_ID>, <KONSOLE_VERSION>, <DOMTERM>
+          hyperlink-programs <iTerm.app>
+            <WezTerm>
+            <vscode>
+            <ghostty>
+            <Hyper>
+            <Tabby>
+          hyperlink-variables <WT_SESSION>
+            <KITTY_WINDOW_ID>
+            <KONSOLE_VERSION>
+            <DOMTERM>
           program-variable <TERM_PROGRAM>
           background-variable <COLORFGBG>
           link-schemes <https://>, <http://>, <file://>
           file-scheme <file://>
       kinds
-        make kind-rule, name(<open>), verbs(<*>), facts(<tool>, <zone>, <counts>, <rest>), details(<fields>, <data>)
-        make kind-rule, name(<close>), verbs(<*>), facts(<duration>, <counts>, <rest>), details(<message>, <fields>)
+        make kind-rule
+          name <open>
+          verbs(<*>)
+          facts(<tool>, <zone>, <counts>, <rest>)
+          details(<fields>, <data>)
+        make kind-rule
+          name <close>
+          verbs(<*>)
+          facts(<duration>, <counts>, <rest>)
+          details(<message>, <fields>)
         make kind-rule
           name <lifecycle>
-          verbs <start>, <reload>, <stop>, <exit>, <restart>, <rotate>, <watch>, <up>
+          verbs <start>
+            <reload>
+            <stop>
+            <exit>
+            <restart>
+            <rotate>
+            <watch>
+            <up>
           facts <duration>, <status>, <counts>, <size>, <rest>
           details <message>, <fields>
           order <clock>, <duration>, <status>, <counts>, <size>, <rest>
@@ -483,22 +791,46 @@ task make-standard
           facts <duration>, <rest>, <counts>
           details <message>, <fields>, <quote>
           order <clock>, <duration>, <rest>, <counts>, <status>, <size>
-        make kind-rule, name(<query>), verbs(<query>), facts(<duration>, <counts>), details(<quote>)
-        make kind-rule, name(<health>), verbs(<health>), facts(<duration>, <size>, <counts>, <rest>), details(<fields>)
+        make kind-rule
+          name <query>
+          verbs(<query>)
+          facts(<duration>, <counts>)
+          details(<quote>)
+        make kind-rule
+          name <health>
+          verbs(<health>)
+          facts(<duration>, <size>, <counts>, <rest>)
+          details(<fields>)
         make kind-rule
           name <step>
           verbs <*>
           facts <duration>, <status>, <size>, <counts>, <rest>
           details <message>, <fields>, <frame>, <quote>, <data>
-        make kind-rule, name(<progress>), verbs(<*>), facts(<duration>, <counts>, <rest>), details(<bar>, <fields>)
-        make kind-rule, name(<change>), verbs(<add>, <remove>, <update>, <change>), facts(<rest>), details(<fields>)
+        make kind-rule
+          name <progress>
+          verbs(<*>)
+          facts(<duration>, <counts>, <rest>)
+          details(<bar>, <fields>)
+        make kind-rule
+          name <change>
+          verbs(<add>, <remove>, <update>, <change>)
+          facts(<rest>)
+          details(<fields>)
         make kind-rule
           name <problem>
           verbs <*>
           facts <duration>, <status>, <counts>, <rest>
           details <message>, <fields>, <frame>, <quote>
-        make kind-rule, name(<question>), verbs(<ask>), facts(<rest>), details(<choices>, <input>, <fields>)
-        make kind-rule, name(<date>), verbs(<date>), facts(<none>), details(<none>)
+        make kind-rule
+          name <question>
+          verbs(<ask>)
+          facts(<rest>)
+          details(<choices>, <input>, <fields>)
+        make kind-rule
+          name <date>
+          verbs(<date>)
+          facts(<none>)
+          details(<none>)
       children
         make child-rule
           level-keys <level>, <severity>

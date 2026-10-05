@@ -4,6 +4,9 @@
 //   pnpm term:release --dry      build tmp/release/<version>/term-<platform>.tar.gz and stop
 //   pnpm term:release            build, then publish to ghcr.io/cluesurf/term/code under the version tag
 //
+// Only the push needs a secret, so only the push runs under zone (`--push <version>`, a child of this run), and zone's
+// own output nests under this run instead of opening the terminal before it (section 15)
+//
 // THE PAYLOAD IS THE NODE BUILD, for now. 09's target is a native binary per platform, which the self-hosting port
 // has not produced yet, so each platform's tarball is `deck/call/code/line.ts` bundled for Node, and only the parts
 // that cannot be bundled travel beside it:
@@ -28,7 +31,8 @@
 // linux-x64 tarball and fail only on that machine.
 
 import { createHash } from 'node:crypto'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
+import { createInterface } from 'node:readline'
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync, chmodSync } from 'node:fs'
 import path from 'node:path'
 import { build } from 'esbuild'
@@ -413,56 +417,60 @@ async function loadOutput(): Promise<typeof Output> {
   }
 }
 
-// P2: push every platform under `@term/code`'s route, signed by this machine's publish key, which must be in (or will
-// found) the scope's key set. Credentials come from GHCR_TOKEN, which `pnpm term:release` loads from zone
+// What the push child tells the release, one JSON object a line on its stdout
+type Pushed =
+  | { form: 'key-set'; at: string }
+  | { form: 'push'; platform: string; layer: string; manifest: string }
+  | { form: 'note'; text: string }
+  | { form: 'index'; at: string; index: string }
+  | { form: 'failed'; message: string }
+
+// P2: the push, run under zone for its one secret. The release stays the one run on the terminal, and zone, a Term
+// program booted by `term boot`, prints its own run nested under it (section 15) rather than at the top level before it,
+// which is what `zone load cluesurf -- pnpm run release` did. The child reports each step on stdout, and the release
+// draws them as its own items
 async function publish(input: { version: string; built: Built[]; first: boolean }): Promise<void> {
   const route = releaseRoute({ package: PACKAGE })
-  const keypair = await loadPublishKeypair({ mint: false })
-
-  if (!keypair) {
-    throw new Error('there is no publish key on this machine; `term host` makes one on a first publish')
-  }
-
-  const transport = transportFor({ host: route.registry.host })
-  const keys = await ensurePublisher({ transport, repository: route.keysRepository, scope: route.scope, keypair })
-
-  if (keys.created) {
-    output.report({ glyph: 'added', kind: 'change', verb: 'add', subject: `the key set of ${route.scope}`, fields: [output.field('at', `${route.registry.host}/${route.keysRepository}`)] })
-  }
-
-  const released = await publishRelease({
-    transport,
-    repository: route.repository.name,
-    package: PACKAGE,
-    version: input.version,
-    payloads: input.built.map(one => ({ platform: one.platform, bytes: readFileSync(one.file) })),
-    keypair,
-    annotations: {
-      'org.opencontainers.image.source': SOURCE,
-      'org.opencontainers.image.licenses': 'MIT',
-      'org.opencontainers.image.description': 'The term command: the Term compiler, package manager and toolchain',
-    },
-    // one `push` item per platform: `darwin-arm64: layer sha256:..., manifest sha256:...` becomes the platform as the
-    // subject and its two digests as fields. Any other line the publisher says is an item of its own
-    log: message => {
-      const pushed = /^([\w-]+): layer (\S+), manifest (\S+)$/.exec(message.trim())
-
-      output.report(
-        pushed
-          ? { glyph: 'done', verb: 'push', subject: pushed[1], fields: [output.field('layer', pushed[2]!), output.field('manifest', pushed[3]!)] }
-          : { glyph: 'info', verb: 'push', subject: message.trim() },
-      )
-    },
+  const root = path.resolve(TERM, '../../../..')
+  const child = spawn(path.join(root, 'deck/zone/bin/zone'), ['load', 'cluesurf', '--', 'pnpm', '-s', '--dir', TERM, 'exec', 'tsx', 'task/release.ts', '--push', input.version], {
+    cwd: root,
+    stdio: ['ignore', 'pipe', 'inherit'],
   })
+  let index = ''
+  let failed = ''
+
+  for await (const line of createInterface({ input: child.stdout! })) {
+    let said: Pushed
+
+    try {
+      said = JSON.parse(line) as Pushed
+    } catch {
+      output.report({ glyph: 'info', verb: 'push', subject: line })
+      continue
+    }
+
+    if (said.form === 'key-set') {
+      output.report({ glyph: 'added', kind: 'change', verb: 'add', subject: `the key set of ${route.scope}`, fields: [output.field('at', said.at)] })
+    } else if (said.form === 'push') {
+      output.report({ glyph: 'done', verb: 'push', subject: said.platform, fields: [output.field('layer', said.layer), output.field('manifest', said.manifest)] })
+    } else if (said.form === 'note') {
+      output.report({ glyph: 'info', verb: 'push', subject: said.text })
+    } else if (said.form === 'index') {
+      index = said.index
+      output.report({ glyph: 'done', verb: 'push', subject: said.at, fields: [output.field('index', said.index)] })
+    } else {
+      failed = said.message
+    }
+  }
+
+  const status = await new Promise<number | null>(resolve => child.on('close', code => resolve(code)))
+
+  if (status !== 0 || !index) {
+    throw Object.assign(new Error(failed || `the push under zone exited ${status ?? 'on a signal'}`), { expected: true })
+  }
 
   const [owner, ...rest] = route.repository.name.split('/')
 
-  output.report({
-    glyph: 'done',
-    verb: 'push',
-    subject: `${route.registry.host}/${route.repository.name}:${input.version}`,
-    fields: [output.field('index', released.index)],
-  })
   // a FIRST release lands private on GHCR, and nothing installs from a private package, so it is made public once.
   // Every later release is public already, and saying so again on each one was noise
   output.closeRun({
@@ -477,8 +485,65 @@ async function publish(input: { version: string; built: Built[]; first: boolean 
   })
 }
 
+// `--push <version>`, the child `publish` starts under zone: push every platform built under tmp/release/<version>
+// to `@term/code`'s route, signed by this machine's publish key, which must be in (or will found) the scope's key set.
+// Credentials come from GHCR_TOKEN, which zone hands it. It opens no run: it says each step to the release as a line
+async function push(version: string): Promise<void> {
+  const say = (said: Pushed): void => {
+    process.stdout.write(`${JSON.stringify(said)}\n`)
+  }
+
+  try {
+    const { built } = JSON.parse(readFileSync(path.join(OUT_ROOT, version, 'release.json'), 'utf8')) as { built: Built[] }
+    const route = releaseRoute({ package: PACKAGE })
+    const keypair = await loadPublishKeypair({ mint: false })
+
+    if (!keypair) {
+      throw new Error('there is no publish key on this machine; `term host` makes one on a first publish')
+    }
+
+    const transport = transportFor({ host: route.registry.host })
+    const keys = await ensurePublisher({ transport, repository: route.keysRepository, scope: route.scope, keypair })
+
+    if (keys.created) {
+      say({ form: 'key-set', at: `${route.registry.host}/${route.keysRepository}` })
+    }
+
+    const released = await publishRelease({
+      transport,
+      repository: route.repository.name,
+      package: PACKAGE,
+      version,
+      payloads: built.map(one => ({ platform: one.platform, bytes: readFileSync(one.file) })),
+      keypair,
+      annotations: {
+        'org.opencontainers.image.source': SOURCE,
+        'org.opencontainers.image.licenses': 'MIT',
+        'org.opencontainers.image.description': 'The term command: the Term compiler, package manager and toolchain',
+      },
+      // `darwin-arm64: layer sha256:..., manifest sha256:...` is one platform pushed. Any other line is a note
+      log: message => {
+        const pushed = /^([\w-]+): layer (\S+), manifest (\S+)$/.exec(message.trim())
+
+        say(pushed ? { form: 'push', platform: pushed[1]!, layer: pushed[2]!, manifest: pushed[3]! } : { form: 'note', text: message.trim() })
+      },
+    })
+
+    say({ form: 'index', at: `${route.registry.host}/${route.repository.name}:${version}`, index: released.index })
+  } catch (error) {
+    say({ form: 'failed', message: error instanceof Error ? error.message : String(error) })
+    process.exitCode = 1
+  }
+}
+
 try {
-  await main()
+  const pushing = process.argv.indexOf('--push')
+
+  if (pushing >= 0) {
+    await push(process.argv[pushing + 1] ?? '')
+  } else {
+    await main()
+  }
 } catch (error) {
   // a failure once the run is open ends it; before that there is no library to print through yet
   if (output) {

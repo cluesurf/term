@@ -1,0 +1,41 @@
+# An address parses to the same parts on every backend, and one that does not parse raises `mismatch` on every backend
+# rather than stopping (Rust's `unwrap`, Swift's `!`) or raising a host error with no `form`. Held by
+# `pnpm term:base-gate`.
+
+load @term/base/url
+  find make-url
+  find host
+  find port
+  find path
+
+load @term/base/exception
+  find mismatch
+
+# the host of an address, or `refused` when it does not parse
+task host-of
+  take href, like text
+  like text
+  mark unsafe
+    save address, make-url(href)
+    send back, host(address)
+  halt take
+    take problem
+    sift problem
+      case mismatch
+        send back, <refused>
+      case failure
+        send back, <failure>
+
+test <an address reads its host>
+  want hold
+    call is-equal
+      call host-of
+        text <https://term.surf:8080/guides>
+      text <term.surf>
+
+test <an address with a space in its host is refused as mismatch>
+  want hold
+    call is-equal
+      call host-of
+        text <http://exa mple.com/>
+      text <refused>

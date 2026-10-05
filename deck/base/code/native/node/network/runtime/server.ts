@@ -1,8 +1,11 @@
 // node HTTP/HTTPS server runtime: start a server that reads each request, hands a normalized request object to the seed
 // handler, and writes the handler's response. The opaque handle a seed `server` holds is the node `http.Server`. Reached
 // only through the public network/server API. Mirrors the tcp / udp / websocket runtime shims.
-import * as http from 'node:http'
-import * as https from 'node:https'
+// `nodeHttp`, not `http`: this shim is prepended beside the HTTP client's (`runtime/http.ts`, `const http`), and a
+// program loading both `network/server` and `network/http` declared `http` twice, so it could not serve and fetch at
+// once (guides: library/network, 2026-10-04)
+import * as nodeHttp from 'node:http'
+import * as nodeHttps from 'node:https'
 
 type SeedRequest = {
   method: string
@@ -11,7 +14,7 @@ type SeedRequest = {
   query: string
   headers: Record<string, string | string[] | undefined>
   body: string
-  dock: http.IncomingMessage
+  dock: nodeHttp.IncomingMessage
 }
 
 type SeedResponse = {
@@ -31,11 +34,11 @@ const server = {
     secure: boolean,
     certificate: string,
     key: string,
-  ): Promise<http.Server> =>
+  ): Promise<nodeHttp.Server> =>
     new Promise(resolve => {
       const onRequest = (
-        raw: http.IncomingMessage,
-        res: http.ServerResponse,
+        raw: nodeHttp.IncomingMessage,
+        res: nodeHttp.ServerResponse,
       ): void => {
         const chunks: Buffer[] = []
         raw.on('data', chunk => chunks.push(chunk as Buffer))
@@ -65,14 +68,14 @@ const server = {
       }
 
       const raw = secure
-        ? https.createServer({ cert: certificate, key }, onRequest)
-        : http.createServer(onRequest)
+        ? nodeHttps.createServer({ cert: certificate, key }, onRequest)
+        : nodeHttp.createServer(onRequest)
 
       raw.listen(port, host, () => resolve(raw))
     }),
 
   // stop a running server, resolving when its port is released
-  stop: (raw: http.Server): Promise<void> =>
+  stop: (raw: nodeHttp.Server): Promise<void> =>
     new Promise(resolve => raw.close(() => resolve())),
 
   // start a server and keep the process alive (node's http.Server holds the event loop open while listening). The

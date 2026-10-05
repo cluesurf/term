@@ -199,6 +199,9 @@ export function bindFormsByImport(program: Program, scope: ImportScope | undefin
   }
 
   if (groups.size === 0) {
+    // nothing to bind, and the aliases a `make` or a `like` carries are dropped all the same
+    program.forEach(statement => rewrite(statement, statement.span, () => undefined))
+
     return []
   }
 
@@ -213,15 +216,22 @@ export function bindFormsByImport(program: Program, scope: ImportScope | undefin
   // nothing is refused yet (see the header): the strict step fills this
   const diagnostics: Diagnostic[] = []
 
-  // the name a reference to `group` in `file` binds to
-  const bind = (group: Group, file: string | undefined, _span: Span): string | undefined => {
-    if (file && group.byFile.has(file)) {
+  // the name a reference to `group` in `file` binds to. A reference written through an alias (`make chart-element`,
+  // with `find element, name chart-element`) reaches the files ITS find named, and a bare one the plain finds only, as
+  // a task's does (overload.ts `reached`). Both read every find of the name until 2026-10-04, so a file that loaded
+  // `element` from one module and aliased another's bound both spellings to the form merged last (guides:
+  // language/modules)
+  const bind = (group: Group, file: string | undefined, _span: Span, alias?: string): string | undefined => {
+    if (file && group.byFile.has(file) && alias === undefined) {
       return group.renamed.get(file)
     }
 
     const reach = new Set<string>()
+    const entry = file ? scope?.get(file) : undefined
+    const targets =
+      (alias !== undefined ? entry?.aliases?.get(alias) : entry?.plain?.get(group.name)) ?? entry?.finds.get(group.name) ?? []
 
-    for (const target of (file && scope?.get(file)?.finds.get(group.name)) || []) {
+    for (const target of targets) {
       exportedBy(scope, target, reach)
     }
 
@@ -245,10 +255,10 @@ export function bindFormsByImport(program: Program, scope: ImportScope | undefin
   for (const statement of program) {
     const file = statement.span.file
     const shadowed = typeParameters(statement)
-    const rebind = (name: string, span: Span): string | undefined => {
+    const rebind = (name: string, span: Span, alias?: string): string | undefined => {
       const group = groups.get(name)
 
-      return group && !shadowed.has(name) ? bind(group, file, span) : undefined
+      return group && !shadowed.has(name) ? bind(group, file, span, alias) : undefined
     }
 
     // a method, by the form it belongs to: the function's own name follows (`<form>_<method>`)
@@ -275,7 +285,7 @@ export function bindFormsByImport(program: Program, scope: ImportScope | undefin
 
 // every named type, construction and raise under a node, renamed where `rebind` says. Generic over the tree, so no
 // statement or expression shape that carries a type is missed; a span is the nearest one above, for the diagnostic
-function rewrite(node: unknown, span: Span, rebind: (name: string, span: Span) => string | undefined): void {
+function rewrite(node: unknown, span: Span, rebind: (name: string, span: Span, alias?: string) => string | undefined): void {
   if (!node || typeof node !== 'object') {
     return
   }
@@ -288,13 +298,20 @@ function rewrite(node: unknown, span: Span, rebind: (name: string, span: Span) =
 
   const record = node as Record<string, unknown>
   const here = (record.span as Span | undefined) ?? span
+  // the alias a `like` or a `make` was written with (mint-bridge.ts `applyAliases`): read here, then dropped, so a type
+  // compared field by field later carries nothing binding was the only reader of
+  const alias = typeof record.alias === 'string' && (record.kind === 'named' || record.form === 'record') ? record.alias : undefined
+
+  if (alias !== undefined) {
+    delete record.alias
+  }
 
   if (record.kind === 'named' && typeof record.name === 'string') {
-    record.name = rebind(record.name, here) ?? record.name
+    record.name = rebind(record.name, here, alias) ?? record.name
   }
 
   if (record.form === 'record' && typeof record.name === 'string') {
-    record.name = rebind(record.name, here) ?? record.name
+    record.name = rebind(record.name, here, alias) ?? record.name
   }
 
   if (record.form === 'throw' && typeof record.raise === 'string') {

@@ -8,6 +8,10 @@ mark draft
 # open question ("remaining-before-trailer... names a binding without solving it") the first time this grammar
 # was actually compiled, not left open indefinitely.
 
+# the flag tests below are ordinary Term, so the generated reader imports what they call, as any module does
+load @term/base/bit
+  find bitwise-and
+
 mine gzip
   mine byte, code 0x1f
   mine byte, code 0x8b

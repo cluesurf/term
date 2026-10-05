@@ -123,6 +123,9 @@ function load(extra: Record<string, string>): Promise<{ code: number; out: strin
           ...env,
           TERM_LOAD_REGISTRY: `http://${server.host}`,
           TERM_LOAD_MODULE: LOADER_MODULE,
+          // the profile the loader writes is the scratch home's, never the real one: one shell, and no ZDOTDIR leaking in
+          SHELL: '/bin/zsh',
+          ZDOTDIR: extra['HOME'] ?? home,
           ...extra,
         },
         encoding: 'utf8',
@@ -149,7 +152,17 @@ try {
   const loaded = await load({ TERM_LOAD_VERSION: VERSION })
   ok(`the loader installs ${VERSION}, checked and linked`, loaded.code === 0 && existsSync(bin) && readlinkSync(bin).includes(`/code/${VERSION}/`), loaded.out)
   ok('the loader wrote install.tree with the layer digest', existsSync(join(first, 'install.tree')) && readFileSync(join(first, 'install.tree'), 'utf8').includes(digest))
-  ok('the loader names the PATH line, and edits no profile', /export PATH=/.test(loaded.out), loaded.out)
+  ok('the loader names the PATH line for this terminal', /export PATH=/.test(loaded.out), loaded.out)
+
+  const profile = () => (existsSync(join(home, '.zshrc')) ? readFileSync(join(home, '.zshrc'), 'utf8') : '')
+  ok('the loader puts bin on PATH for new shells, one marked line in ~/.zshrc', profile().split('.base/@cluesurf/term/bin').length === 2 && /# term \(https:\/\/term\.surf\/load\)\nexport PATH="\$HOME\/\.base\/@cluesurf\/term\/bin:\$PATH"/.test(profile()) && /\+ path {5}~\/\.zshrc/.test(loaded.out), `${profile()}\n${loaded.out}`)
+
+  const reloaded = await load({ TERM_LOAD_VERSION: VERSION })
+  ok('   and a second install leaves it as it is', reloaded.code === 0 && profile().split('.base/@cluesurf/term/bin').length === 2 && /○ path {5}~\/\.zshrc/.test(reloaded.out), `${profile()}\n${reloaded.out}`)
+
+  const kept = mkdtempSync(join(tmpdir(), 'term-kept-'))
+  const off = await load({ HOME: kept, TERM_TRUST_DIR: join(kept, 'trust'), TERM_STORE: join(kept, 'store'), TERM_LOAD_VERSION: VERSION, TERM_LOAD_PATH: '0' })
+  ok('   and TERM_LOAD_PATH=0 edits no profile', off.code === 0 && !existsSync(join(kept, '.zshrc')) && /no profile was edited/.test(off.out), off.out)
   ok(
     'the loader prints one run in the output standard: opening and closing `load` items, every other line an item or under one',
     /(^|\n)· load {5}~\/\.base\/@cluesurf\/term\n {11}\d\d:\d\d:\d\d\.\d{3} · term\.surf\/load\n/.test(loaded.out) &&

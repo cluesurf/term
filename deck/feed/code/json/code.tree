@@ -144,6 +144,15 @@ task parse-json-number
     hook hold
       call read-text-cursor read cursor
       save negative, true
+  # a number starts with a digit. Anything else that reached here (`}` in `{"name": }`, the end of an empty text) read
+  # as 0, with no error (guides: parsers/text, 2026-10-05)
+  fork test
+    hook test
+      call or
+        call is-text-cursor-at-end read cursor
+        call not, call is-json-digit call peek-text-cursor-code read cursor
+    hook hold
+      halt <expected a JSON value>
   save magnitude, code 0.0
   walk test
     hook test
@@ -367,6 +376,13 @@ task parse-json-string
     hook test
       read continue
     hook hold
+      # the text ending before the closing quote is an unclosed string. It read on with empty characters until a host
+      # error with no `form` stopped it (guides: parsers/text, 2026-10-05)
+      fork test
+        hook test
+          call is-text-cursor-at-end read cursor
+        hook hold
+          halt <unclosed JSON string>
       save next
         call peek-text-cursor read cursor
       fork test
@@ -552,12 +568,24 @@ task parse-json-array
 
 # parses a whole document already held as one string — the common case, and the only one that existed before
 # streaming. Builds a materialized cursor and reads it in full.
+#
+# The whole text is the one value: text after it, `[1] trailing`, is refused, where it was read as `[1]` and the rest
+# dropped (guides: parsers/text, 2026-10-05). `read-json-stream` reads ONE value from a cursor and leaves the rest,
+# which is what a stream of values needs.
 task read-json
   take input, like text
   like json-value
-  send back
-    call parse-json-value
-      call make-text-cursor(read input)
+  save cursor
+    call make-text-cursor(read input)
+  save value
+    call parse-json-value(read cursor)
+  call skip-json-whitespace(read cursor)
+  fork test
+    hook test
+      call not, call is-text-cursor-at-end read cursor
+    hook hold
+      halt <unexpected text after the JSON value>
+  send back, read value
 
 # parses one JSON value from an already-built cursor, materialized or streaming — the entry point a caller with
 # a real streaming source uses, via `make-streaming-text-cursor`. `read-json` above is `read-json-stream` over a

@@ -1,0 +1,335 @@
+# A model's textual reply read as a synthesis expression: `max(a, b)`, `(0 - a)`, `min(x, 1)`, with any prose before
+# it skipped, so "The answer is max(a, b)." reads as `max(a, b)`. What the reply proposes, the synthesis loop then
+# proves, so a reply that parses to the wrong function is refused there, and one that does not parse is no proposal.
+#
+# Ported from `parseExpr` in deck/test/code/model.ts (self-hosting, 2026-10-05). The request to the model stays there.
+# The tokenizer was a regular expression, `\s*([A-Za-z_][A-Za-z0-9_]*|-?\d+|[()+\-,])` run with `exec` from where the
+# last match ended, so any character none of the three matches is passed over (a `.`, a `:`), and `-1` is one token
+# where `- 1` is two. It is written out here character by character, keeping both. The parser closed over its
+# position, and here the position is a one-item list the tasks share.
+
+load @term/base/list
+  find list
+
+load @term/base/text
+  find split
+  find char-code-at
+
+load @term/base/text/number
+  find parse-integer
+
+load @term/base/maybe
+  find maybe
+
+load ./expression-grammar
+  find expression
+  find variable-at
+  find constant-of
+
+task is-letter
+  take code, like number
+  like boolean
+
+  back or(or(and(is-minimum(code, 65), is-maximum(code, 90)), and(is-minimum(code, 97), is-maximum(code, 122))), is-equal(code, 95))
+
+task is-digit
+  take code, like number
+  like boolean
+
+  back and(is-minimum(code, 48), is-maximum(code, 57))
+
+task is-lower
+  take code, like number
+  like boolean
+
+  back and(is-minimum(code, 97), is-maximum(code, 122))
+
+task code-of
+  take chars, like list, like text
+  take at, like number
+  like number
+
+  fork test, is-below(at, chars/length)
+    hold
+      back char-code-at(get(chars, at), 0)
+
+  back -1
+
+# the reply's characters with every code fence taken out: three backticks and the lowercase language word after them.
+# Taken out of the WHOLE text before it is read, as the original's `replace` took them, so what stood either side of a
+# fence joins up: `1```42` is the number 142
+task without-fences
+  take text, like text
+  like list, like text
+
+  host chars, split(text, <>)
+  host kept, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, chars/length)
+    hook hold
+      fork test, and(and(is-equal(code-of(chars, at), 96), is-equal(code-of(chars, add(at, 1)), 96)), is-equal(code-of(chars, add(at, 2)), 96))
+        hold
+          save at, add(at, 3)
+          walk test
+            hook test, is-lower(code-of(chars, at))
+            hook hold
+              save at, add(at, 1)
+        miss
+          kept/push(get(chars, at))
+          save at, add(at, 1)
+
+  back kept
+
+# the reply's tokens: names, whole numbers (a leading minus joined to its digits), and `( ) + - ,`, read after the
+# code fences are taken out
+task reply-tokens
+  take text, like text
+  like list, like text
+
+  host chars, without-fences(text)
+  host tokens, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, chars/length)
+    hook hold
+      host code, code-of(chars, at)
+      save step, 1
+      # whether a branch below read a token here: they are tried in the regular expression's order, and only one may
+      save taken, false
+      fork test, and(not(taken), is-letter(code))
+        hold
+          save taken, true
+          save word, get(chars, at)
+          walk test
+            hook test, or(is-letter(code-of(chars, add(at, step))), is-digit(code-of(chars, add(at, step))))
+            hook hold
+              save word, <{word}{get(chars, add(at, step))}>
+              save step, add(step, 1)
+          tokens/push(word)
+      fork test, and(not(taken), or(is-digit(code), and(is-equal(code, 45), is-digit(code-of(chars, add(at, 1))))))
+        hold
+          save taken, true
+          save number, get(chars, at)
+          walk test
+            hook test, is-digit(code-of(chars, add(at, step)))
+            hook hold
+              save number, <{number}{get(chars, add(at, step))}>
+              save step, add(step, 1)
+          tokens/push(number)
+      fork test, and(not(taken), or(or(is-equal(code, 40), is-equal(code, 41)), or(or(is-equal(code, 43), is-equal(code, 45)), is-equal(code, 44))))
+        hold
+          tokens/push(get(chars, at))
+      save at, add(at, step)
+
+  back tokens
+
+task is-whole-number
+  take token, like text
+  like boolean
+
+  host chars, split(token, <>)
+  fork test, is-equal(chars/length, 0)
+    hold
+      back false
+  save at, 0
+  fork test, is-equal(get(chars, 0), <->)
+    hold
+      save at, 1
+  fork test, is-equal(at, chars/length)
+    hold
+      back false
+  walk test
+    hook test, is-below(at, chars/length)
+    hook hold
+      fork test, not(is-digit(char-code-at(get(chars, at), 0)))
+        hold
+          back false
+      save at, add(at, 1)
+
+  back true
+
+# the token at the position, `<>` past the end
+task peek-token
+  take tokens, like list, like text
+  take place, like list, like number
+  like text
+
+  host at, get(place, 0)
+  fork test, is-below(at, tokens/length)
+    hold
+      back get(tokens, at)
+
+  back <>
+
+task next-token
+  take tokens, like list, like text
+  take place, like list, like number
+  like text
+
+  host token, peek-token(tokens, place)
+  place/set(0, add(get(place, 0), 1))
+
+  back token
+
+task index-of-name
+  take names, like list, like text
+  take name, like text
+  like number
+
+  save at, 0
+  walk names
+    take each
+    fork test, is-equal(each, name)
+      hold
+        back at
+    save at, add(at, 1)
+
+  back -1
+
+task parse-primary
+  take tokens, like list, like text
+  take place, like list, like number
+  take names, like list, like text
+  like maybe, like expression
+
+  fork test, not(is-below(get(place, 0), tokens/length))
+    hold
+      back make none
+  host token, next-token(tokens, place)
+
+  fork test, is-equal(token, <(>)
+    hold
+      host inner, parse-additive(tokens, place, names)
+      fork test, is-equal(peek-token(tokens, place), <)>)
+        hold
+          next-token(tokens, place)
+      back inner
+
+  fork test, or(is-equal(token, <min>), is-equal(token, <max>))
+    hold
+      fork test, not(is-equal(next-token(tokens, place), <(>))
+        hold
+          back make none
+      host first, parse-additive(tokens, place, names)
+      fork test, is-equal(peek-token(tokens, place), <,>)
+        hold
+          next-token(tokens, place)
+      host second, parse-additive(tokens, place, names)
+      fork test, is-equal(peek-token(tokens, place), <)>)
+        hold
+          next-token(tokens, place)
+      sift first
+        case none
+          back make none
+        case some
+          link left
+          sift second
+            case none
+              back make none
+            case some
+              link right
+              fork test, is-equal(token, <min>)
+                hold
+                  back
+                    make some
+                      bind value
+                        make min
+                          bind left, left
+                          bind right, right
+              back
+                make some
+                  bind value
+                    make max
+                      bind left, left
+                      bind right, right
+
+  host index, index-of-name(names, token)
+  fork test, is-minimum(index, 0)
+    hold
+      back
+        make some
+          bind value, variable-at(index)
+
+  # a whole number, read by the stdlib, which raises on what is not one. The token was checked first, so it never
+  # does, but the handler keeps the reader one that raises nothing: a proposer is passed around as a value, and a task
+  # that can raise is no function value on Rust (log.md)
+  fork test, is-whole-number(token)
+    hold
+      mark unsafe
+        back
+          make some
+            bind value, constant-of(parse-integer(token))
+      halt take
+        take e
+        back make none
+
+  back make none
+
+# a sum or difference, left to right
+task parse-additive
+  take tokens, like list, like text
+  take place, like list, like number
+  take names, like list, like text
+  like maybe, like expression
+
+  host first, parse-primary(tokens, place, names)
+  save left, variable-at(0)
+  sift first
+    case none
+      back make none
+    case some
+      link found
+      save left, found
+
+  walk test
+    hook test, or(is-equal(peek-token(tokens, place), <+>), is-equal(peek-token(tokens, place), <->))
+    hook hold
+      host op, next-token(tokens, place)
+      host next, parse-primary(tokens, place, names)
+      sift next
+        case none
+          back make none
+        case some
+          link right
+          fork test, is-equal(op, <+>)
+            hold
+              save left
+                make add
+                  bind left, left
+                  bind right, right
+            miss
+              save left
+                make sub
+                  bind left, left
+                  bind right, right
+
+  back
+    make some
+      bind value, left
+
+task starts-expression
+  take token, like text
+  take names, like list, like text
+  like boolean
+
+  back or(or(or(is-equal(token, <(>), is-equal(token, <min>)), or(is-equal(token, <max>), is-minimum(index-of-name(names, token), 0))), is-whole-number(token))
+
+# a reply as an expression over `names`, the inputs in order, or none when it holds no expression
+task parse-reply
+  take text, like text
+  take names, like list, like text
+  like maybe, like expression
+
+  host tokens, reply-tokens(text)
+  fork test, is-equal(tokens/length, 0)
+    hold
+      back make none
+
+  host place, make list(0)
+  walk test
+    hook test, and(is-below(get(place, 0), tokens/length), not(starts-expression(peek-token(tokens, place), names)))
+    hook hold
+      place/set(0, add(get(place, 0), 1))
+
+  back parse-additive(tokens, place, names)

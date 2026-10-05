@@ -745,6 +745,50 @@ task boot
   )
 }
 
+// ---- library/network: one program serves and fetches ----
+// the server shim imported `node:http` as `http` and the client shim declared `const http`, both prepended, so a
+// program loading `network/server` and `network/http` declared `http` twice (2026-10-04)
+{
+  const both = mkdtempSync(join(tmpdir(), 'term-serve-fetch-'))
+  mkdirSync(join(both, 'code'))
+  writeFileSync(join(both, 'deck.tree'), 'deck probe\n  mark <0.0.1>\n')
+  writeFileSync(
+    join(both, 'code/boot.tree'),
+    `load @term/base/network/server
+  find start
+  find stop
+
+load @term/base/network/server/request
+  find request
+
+load @term/base/network/server/response
+  find response
+  find make-ok
+
+load @term/base/network/http
+  find fetch
+
+load @term/base/console
+  find log
+
+task answer
+  take request, like request
+  like response
+  back make-ok(<served>)
+
+task boot
+  save running, start(4832, <127.0.0.1>, answer)
+  save got, fetch(<http://127.0.0.1:4832/>)
+  log <{got/status} {got/body}>
+  stop running
+`,
+  )
+
+  const run = term(both, 'boot', 'code/boot.tree')
+
+  ok('one program loads `network/server` and `network/http`, serves and fetches itself', run.status === 0 && /200 served/.test(run.out), run.out)
+}
+
 console.log(`\nexit-codes: ${pass} pass, ${fail} fail`)
 
 if (fail > 0) {

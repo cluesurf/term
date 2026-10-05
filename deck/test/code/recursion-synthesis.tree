@@ -1,0 +1,277 @@
+# More recursion schemes: map and filter, distinct from the fold. Each reduces synthesis over a list to a small
+# per-element problem the grammars already handle: a map synthesizes the element transform `f(elem)`, a filter the
+# keep-predicate `p(elem)`. So list-to-list functions (increment-all, double-all) and selective ones (keep-nonneg,
+# drop-zeros) are found from input and output alone, and checked against 400 random lists.
+#
+# Ported from deck/test/code/recursion.ts (self-hosting, 2026-10-05). Two shapes changed. The spec was a closure, and
+# is a task `(list) -> list`, which a caller names. And each result was a union tagged on a boolean, and is one record
+# whose `transform` or `keep` is a placeholder (the constant 0, the always-true `0 >= 0`) when nothing fits.
+#
+# The random lists come from mulberry32 (seeded-random.tree), so they are the original's lists.
+
+load @term/base/list
+  find list
+
+load @term/base/float
+  find round-down
+  find to-number
+
+load ./seeded-random
+  find next-random
+  find seed-state
+
+load ./expression-grammar
+  find expression
+  find enumerate
+  find eval-expr
+  find constant-of
+
+load ./predicate-synthesis
+  find predicate
+  find enumerate-preds
+  find eval-pred
+  find compare-pred
+
+form map-result
+  link ok, like boolean
+  # the element transform, over the element as variable 0; the constant 0 when nothing fits
+  link transform, like expression
+  link counterexamples, like list, like list, like number
+  # why nothing was found, `<>` when something was
+  link reason, like text
+
+form filter-result
+  link ok, like boolean
+  # the keep-predicate, over the element as variable 0; `0 >= 0` when nothing fits
+  link keep, like predicate
+  link counterexamples, like list, like list, like number
+  link reason, like text
+
+# `count` lists of 0 to 5 items, each in [-4, 7]
+task random-lists
+  take seed, like number
+  take count, like number
+  like list, like list, like number
+
+  host state, seed-state(seed)
+  host lists, make list
+  save made, 0
+  walk test
+    hook test, is-below(made, count)
+    hook hold
+      host size, to-number(round-down(multiply(next-random(state), 6.0)))
+      host one, make list
+      save at, 0
+      walk test
+        hook test, is-below(at, size)
+        hook hold
+          one/push(subtract(to-number(round-down(multiply(next-random(state), 12.0))), 4))
+          save at, add(at, 1)
+      lists/push(one)
+      save made, add(made, 1)
+
+  back lists
+
+task same-list
+  take left, like list, like number
+  take right, like list, like number
+  like boolean
+
+  fork test, not(is-equal(left/length, right/length))
+    hold
+      back false
+  save at, 0
+  walk left
+    take each
+    fork test, not(is-equal(each, get(right, at)))
+      hold
+        back false
+    save at, add(at, 1)
+
+  back true
+
+task mapped
+  take transform, like expression
+  take items, like list, like number
+  like list, like number
+
+  host out, make list
+  walk items
+    take each
+    host point, make list(each)
+    out/push(eval-expr(transform, point))
+
+  back out
+
+task kept
+  take keep, like predicate
+  take items, like list, like number
+  like list, like number
+
+  host out, make list
+  walk items
+    take each
+    host point, make list(each)
+    fork test, eval-pred(keep, point)
+      hold
+        out/push(each)
+
+  back out
+
+task map-fits
+  take transform, like expression
+  take spec
+    like task
+      take items, like list, like number
+      like list, like number
+  take lists, like list, like list, like number
+  like boolean
+
+  walk lists
+    take items
+    fork test, not(same-list(mapped(transform, items), spec(items)))
+      hold
+        back false
+
+  back true
+
+task filter-fits
+  take keep, like predicate
+  take spec
+    like task
+      take items, like list, like number
+      like list, like number
+  take lists, like list, like list, like number
+  like boolean
+
+  walk lists
+    take items
+    fork test, not(same-list(kept(keep, items), spec(items)))
+      hold
+        back false
+
+  back true
+
+task map-missed
+  take reason, like text
+  take counterexamples, like list, like list, like number
+  like map-result
+
+  back
+    make map-result
+      bind ok, false
+      bind transform, constant-of(0)
+      bind counterexamples, counterexamples
+      bind reason, reason
+
+task filter-missed
+  take reason, like text
+  take counterexamples, like list, like list, like number
+  like filter-result
+
+  back
+    make filter-result
+      bind ok, false
+      bind keep, compare-pred(<ge>, constant-of(0), constant-of(0))
+      bind counterexamples, counterexamples
+      bind reason, reason
+
+# a transform `f` so that every list mapped by `f` is what `spec` gives. The candidates are the expressions of up to
+# `max-size` nodes over the element, smallest first, and each round takes the first that fits every counterexample so
+# far, then looks for a probe it gets wrong
+task synthesize-map
+  take spec
+    like task
+      take items, like list, like number
+      like list, like number
+  take max-size, like number
+  take seed, like number
+  like map-result
+
+  host candidates, enumerate(max-size, 1)
+  host probes, random-lists(seed, 400)
+  host counterexamples, make list
+
+  save round, 0
+  walk test
+    hook test, is-maximum(round, candidates/length)
+    hook hold
+      save found, false
+      save pick, constant-of(0)
+      walk candidates
+        take each
+        fork test, and(not(found), map-fits(each, spec, counterexamples))
+          hold
+            save pick, each
+            save found, true
+      fork test, not(found)
+        hold
+          back map-missed(<no element transform fits>, counterexamples)
+
+      save missed, false
+      walk probes
+        take items
+        fork test, and(not(missed), not(same-list(mapped(pick, items), spec(items))))
+          hold
+            counterexamples/push(items)
+            save missed, true
+      fork test, not(missed)
+        hold
+          back
+            make map-result
+              bind ok, true
+              bind transform, pick
+              bind counterexamples, counterexamples
+              bind reason, <>
+      save round, add(round, 1)
+
+  back map-missed(<did not converge>, counterexamples)
+
+# a keep-predicate `p` so that every list filtered by `p` is what `spec` gives, over the predicates of up to two
+# nodes comparing expressions of up to two
+task synthesize-filter
+  take spec
+    like task
+      take items, like list, like number
+      like list, like number
+  take seed, like number
+  like filter-result
+
+  host preds, enumerate-preds(1, 2, 2)
+  host probes, random-lists(seed, 400)
+  host counterexamples, make list
+
+  save round, 0
+  walk test
+    hook test, is-maximum(round, preds/length)
+    hook hold
+      save found, false
+      save pick, compare-pred(<ge>, constant-of(0), constant-of(0))
+      walk preds
+        take each
+        fork test, and(not(found), filter-fits(each, spec, counterexamples))
+          hold
+            save pick, each
+            save found, true
+      fork test, not(found)
+        hold
+          back filter-missed(<no keep-predicate fits>, counterexamples)
+
+      save missed, false
+      walk probes
+        take items
+        fork test, and(not(missed), not(same-list(kept(pick, items), spec(items))))
+          hold
+            counterexamples/push(items)
+            save missed, true
+      fork test, not(missed)
+        hold
+          back
+            make filter-result
+              bind ok, true
+              bind keep, pick
+              bind counterexamples, counterexamples
+              bind reason, <>
+      save round, add(round, 1)
+
+  back filter-missed(<did not converge>, counterexamples)

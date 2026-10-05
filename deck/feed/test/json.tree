@@ -4,6 +4,52 @@ load ../code/json/code
   find read-json
   find write-json
 
+# what a text reads as, written back, or `refused: <note>` when it is not JSON
+task read-or-refuse
+  take input, like text
+  like text
+  mark unsafe
+    send back, write-json(read-json(input))
+  halt take
+    take problem
+    send back, <refused: {problem/note}>
+
+# what is not JSON is refused, with a note: each of these read as a value with no error until 2026-10-05
+test <a missing value is refused>
+  want hold
+    call is-equal
+      call read-or-refuse
+        text <\{"name": \}>
+      text <refused: expected a JSON value>
+
+test <the empty text is refused>
+  want hold
+    call is-equal
+      call read-or-refuse
+        text <>
+      text <refused: expected a JSON value>
+
+test <text after the value is refused>
+  want hold
+    call is-equal
+      call read-or-refuse
+        text <[1] trailing>
+      text <refused: unexpected text after the JSON value>
+
+test <an unclosed string is refused>
+  want hold
+    call is-equal
+      call read-or-refuse
+        text <"abc>
+      text <refused: unclosed JSON string>
+
+test <whitespace around the value is still read>
+  want hold
+    call is-equal
+      call read-or-refuse
+        text <  [1]  >
+      text <[1]>
+
 test <a bare number reads and writes back>
   want hold
     call is-equal

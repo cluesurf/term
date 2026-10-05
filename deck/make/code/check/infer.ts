@@ -1415,6 +1415,13 @@ export function check(
                 // pushing `make void` into a fresh list: the slot holds anything, so the element is the
                 // gradual unknown, never the unit type
                 expect({ kind: 'unknown' }, el, arg.span, 'argument')
+              } else if (given && !ground(given) && (given.kind === 'array' || given.kind === 'map')) {
+                // a collection whose own parts are not known yet (an empty `make list`) stored in the slot IS of the
+                // slot's type, whether that is known now or only later. Left unlinked, `host none, make list` then
+                // `graph/set(<log>, none)` kept `none` a list of anything after `back graph` settled the hash, and
+                // Swift emitted `SeedList<Any>` where a `SeedList<String>` goes (deck/make/test/affected.tree,
+                // 2026-10-04). Rust and TypeScript never spell the element there, which hid it
+                expect(given, el, arg.span, 'argument')
               }
             }
 

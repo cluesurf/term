@@ -471,6 +471,29 @@ task caller
   same('5. ...and the fixed file emits what the written one emits', build(waits), build(dropped), false)
 }
 
+// a call to an async task inside a text's `{...}` is awaited like any other. The rewrite had no `template` case, so
+// `log <with one: {status-with(...)}>` printed `with one: [object Promise]` (guides: library/network, 2026-10-04)
+{
+  const built = build(`task later
+  mark async
+  take n, like number
+  like number
+  send back, read n
+
+task shown
+  like text
+  send back, <in a text: {later(3)}>
+`)
+  ok('an async call in a text interpolation builds', built.ok, built.ok ? '' : built.why)
+
+  if (built.ok) {
+    ok('and is awaited in the TypeScript', /\$\{await later\(3\)\}/.test(built.ts), built.ts.slice(-300))
+    ok('and in the Rust', /later\(3\)\.await/.test(built.rs), built.rs.slice(-400))
+    ok('and in the Swift', /await later\(3\)/.test(built.swift), built.swift.slice(-400))
+    ok('and the task holding it is async in the Kotlin', /suspend fun shown/.test(built.kotlin), built.kotlin.slice(-400))
+  }
+}
+
 console.log(`\nawait-mark: ${pass} pass, ${fail} fail`)
 
 if (fail > 0) {

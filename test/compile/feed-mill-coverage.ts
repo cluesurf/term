@@ -211,6 +211,13 @@ const resolver = (path: string, from: string): Source | undefined => {
   return sourceOf(resolvePackagePath({ dir: root, rest: match[2]! }))
 }
 
+// FMC_WHY=1 prints the first error of each generated reader that does not compile clean, with its grammar
+function why(at: string, reason: string): void {
+  if (process.env.FMC_WHY) {
+    console.log(`  not clean  ${at.split('/deck/').pop()}  ${reason}`)
+  }
+}
+
 function compilesClean(source: string, at: string): boolean {
   try {
     const { sources, scope } = collectModules(
@@ -237,7 +244,11 @@ function compilesClean(source: string, at: string): boolean {
     }
 
     // module scope and form extension, as `compileProgram` runs them (check/bind-modules.ts); a refusal is not clean
-    if (bindModules(program, scope, at).length) {
+    const unbound = bindModules(program, scope, at)
+
+    if (unbound.length) {
+      why(at, `scope: ${unbound[0]!.message}`)
+
       return false
     }
 
@@ -247,10 +258,16 @@ function compilesClean(source: string, at: string): boolean {
     const found = [
       ...resolveNames(program, at),
       ...check(program, at),
-    ]
+    ].filter(d => d.severity !== 'warning')
 
-    return found.every(d => d.severity === 'warning')
-  } catch {
+    if (found.length) {
+      why(at, found[0]!.message)
+    }
+
+    return found.length === 0
+  } catch (error) {
+    why(at, `threw: ${String(error).slice(0, 200)}`)
+
     return false
   }
 }

@@ -129,11 +129,11 @@ brew install cluesurf/tool/term
 Both install the same signed release, `@term/code`, from
 `ghcr.io/cluesurf/term/code`, built for `darwin-arm64`, `darwin-x64`,
 `linux-x64` and `linux-arm64`. Each checks the download's sha256
-against the registry's digest. The script then runs `term self check`,
-which verifies the release signature against the `@term` key set before
-anything goes on your `PATH`. It writes only under
-`~/.base/@cluesurf/term/`, and prints the `PATH` line to add rather than
-editing a shell profile.
+against the registry's digest, and the release signature against the
+`@term` key set, before anything goes on your `PATH`. It writes under
+`~/.base/@cluesurf/term/`, and adds one marked line to your shell's
+profile putting `bin` on `PATH` for new terminals, once.
+`TERM_LOAD_PATH=0` edits no profile and prints the line instead.
 
 Term runs on Node.js 22.3 or newer.
 

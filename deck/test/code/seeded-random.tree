@@ -1,0 +1,66 @@
+# mulberry32, the seeded generator every random choice in @term/test draws from (`makeRng` in property.ts), written
+# over 32-bit words: every step is masked to the low 32 bits, as JavaScript's `>>> 0` and `Math.imul` mask it, so a
+# seed draws the same numbers here as there, to the last digit.
+#
+# The state is a one-item list, stepped in place by each draw, because Term has no closure to hold it.
+
+load @term/base/list
+  find list
+
+load @term/base/bit
+  find bitwise-and
+  find bitwise-or
+  find bitwise-exclusive-or
+  find unsigned-shift-right
+  find multiply-32
+
+load @term/base/float
+  find round-down
+  find to-decimal
+  find to-number
+
+host word-mask, 4294967295
+
+task low-32
+  take value, like number
+  like number
+
+  back bitwise-and(value, word-mask)
+
+# `value >>> count` over a 32-bit word
+task shift-word
+  take value, like number
+  take count, like number
+  like number
+
+  back unsigned-shift-right(low-32(value), count)
+
+# a generator's state, from its seed
+task seed-state
+  take seed, like number
+  like list, like number
+
+  back make list(low-32(seed))
+
+# the next draw, in [0, 1), the state stepped
+task next-random
+  take state, like list, like number
+  like decimal
+
+  host stepped, low-32(add(get(state, 0), 1831565813))
+  state/set(0, stepped)
+  host mixed, low-32(multiply-32(low-32(bitwise-exclusive-or(stepped, shift-word(stepped, 15))), low-32(bitwise-or(stepped, 1))))
+  host folded, low-32(multiply-32(low-32(bitwise-exclusive-or(mixed, shift-word(mixed, 7))), low-32(bitwise-or(mixed, 61))))
+  host spread, low-32(bitwise-exclusive-or(mixed, low-32(add(mixed, folded))))
+  host out, low-32(bitwise-exclusive-or(spread, shift-word(spread, 14)))
+
+  back divide(to-decimal(out), 4294967296.0)
+
+# a whole number in [low, high], `intBetween` in property.ts
+task draw-between
+  take state, like list, like number
+  take low, like number
+  take high, like number
+  like number
+
+  back add(low, to-number(round-down(multiply(next-random(state), to-decimal(add(subtract(high, low), 1))))))
