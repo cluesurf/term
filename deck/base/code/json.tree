@@ -107,10 +107,26 @@ task json-kind
       send back, text <object>
   send back, text <number>
 
+# whether a value is of another kind than `wanted`. `null`, which a missing field also is, is not: it keeps the
+# accessor's default, the empty text, 0 or false, because reading an optional field that way is how callers ask for
+# one (the cask's scope check reads a `path` argument most commands do not send)
+task is-wrong-kind
+  take kind, like text
+  take wanted, like text
+  like boolean
+  send back
+    call and
+      call is-unequal
+        read kind
+        read wanted
+      call is-unequal
+        read kind
+        text <null>
+
 # AN ACCESSOR ON THE WRONG KIND RAISES `mismatch`, `expected` the kind asked for and `actual` the kind found, on
 # every backend. It answered a default: `as-text` of a number was the empty text and `as-number` of a text 0, so a
-# field holding the wrong kind read as a value nobody wrote (guides: library/formats, 2026-10-04). A missing field is
-# `null`, and so a mismatch too
+# field holding the wrong kind read as a value nobody wrote (guides: library/formats, 2026-10-04). A missing or
+# `null` field still answers the default
 task as-number
   take value, like dynamic
   like decimal
@@ -119,7 +135,7 @@ task as-number
       read value
   fork test
     hook test
-      call is-unequal
+      call is-wrong-kind
         read kind
         text <number>
     hook hold
@@ -139,7 +155,7 @@ task as-text
       read value
   fork test
     hook test
-      call is-unequal
+      call is-wrong-kind
         read kind
         text <text>
     hook hold
@@ -159,7 +175,7 @@ task as-boolean
       read value
   fork test
     hook test
-      call is-unequal
+      call is-wrong-kind
         read kind
         text <boolean>
     hook hold

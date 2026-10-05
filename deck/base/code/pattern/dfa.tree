@@ -7,15 +7,17 @@
 # leftmost-first match ENDS; a backward run of the reversed pattern from that end, longest-first, finds where it
 # STARTS; and only a pattern with groups is then run on the Pike VM, anchored at that start, for its slots.
 #
-# A program qualifies when all it does is read code points, choose and jump, record a slot (ignored here), and test an
-# edge. A lookaround, a back reference, an atomic group and the check that refuses an empty iteration depend on more
-# than the state, and leave the pattern to the Pike VM.
+# A program qualifies when all it does is read code points, choose and jump, record a slot (ignored here), test an
+# edge, and test a lookaround of one code point. A longer lookaround, a back reference, an atomic group and the check
+# that refuses an empty iteration depend on more than the state, and leave the pattern to the Pike VM.
 #
 # An edge is decided where the closure is taken, because the code points on both sides of that position are known
 # then: the one just read and the next one in the input (2026-10-04). Text edges hold only at 0 and n, whose closures
 # are taken fresh. A line or word edge depends on the neighbors, so a program with one remembers a transition per
 # class AND per context of the position it lands on, three bits: a line starts, a line ends, a word edge
-# (`context-at`). That is what lets `\b\w+\b` run here: 5,750 µs on the Pike VM before, on node.
+# (`context-at`). That is what lets `\b\w+\b` run here: 5,750 µs on the Pike VM before, on node. A lookaround whose
+# body is one code point or one set is decided the same way, by the one neighbor it reads, with a bit of its own (at
+# most three, `simple-look-bits`): `\w+(?=,)` went from 3,500 µs on the Pike VM to 1,428.
 #
 # Code points are grouped into classes every instruction treats alike, from the bounds of every set and letter the
 # program names, so a transition is remembered per class. A DFA past `most-states` states stops being used, and its
@@ -92,9 +94,15 @@ form dfa
   link bounds
     like list
       like number
-  # the transitions remembered per class: 1, or 8 when the program tests a line or word edge, one per context of the
-  # position the transition lands on (`context-at`)
+  # the transitions remembered per class: 1, or 2 to the number of context bits the program reads, one per context of
+  # the position the transition lands on (`context-at`)
   link width, like number
+  # whether the program tests a line or word edge, so `context-at` reads the three edge bits only then
+  link edges, like boolean
+  # per lookaround of the program, the context bit that decides it (8, 16 or 32), or 0 for one the DFA cannot decide
+  link look-bits
+    like list
+      like number
   # each state's key, its id
   link keys
     like hash
@@ -196,6 +204,8 @@ task no-dfa-pair
 task dfa-fits
   take g, like program
   like boolean
+  save bits
+    call simple-look-bits(read(g))
   save count, read g/ops/length
   save pc, code 0
   walk test
@@ -224,9 +234,16 @@ task dfa-fits
               call is-equal(read(op), read(op-mark))
       # every edge: the text's two at 0 and n, a line's and a word's by the context of the position
       save edge, call(is-equal, read(op), read(op-edge))
+      # a lookaround the context decides, one code point against one neighbor (`simple-look-bits`)
+      save look
+        call and
+          call is-equal(read(op), read(op-look))
+          call is-above
+            call number-at(read(bits), call(number-at, read(g/a), read(pc), code(-1)), code(0))
+            code 0
       fork test
         hook test
-          call not(call(or, read(plain), read(edge)))
+          call not(call(or, read(plain), call(or, read(edge), read(look))))
         hook hold
           send back, false
       save pc
@@ -358,6 +375,8 @@ task make-dfa
       bind entry, read entry
       bind bounds, call(class-bounds, read(g))
       bind width, call(context-width, read(g))
+      bind edges, call(has-context-edges, read(g))
+      bind look-bits, call(simple-look-bits, read(g))
       bind keys, make hash
       bind pcs, make list
       bind restarts, make list
@@ -368,10 +387,79 @@ task make-dfa
       bind stamp, read stamp
       bind full, read full
 
-# how many contexts a transition is remembered under: 8 when the program tests a line or word edge, else 1
-task context-width
+# the most lookarounds of one program the DFA decides by a context bit
+host most-simple-looks, code 3
+
+# per lookaround of the program, its context bit (8, 16, then 32) when the DFA can decide it from one neighbor, or 0:
+# a lookaround whose body is exactly one code point or one set, with no group inside. `(?=,)` holds where the next code
+# point is a comma and `(?<=\$)` where the one before is a dollar sign, so neither needs the Pike VM's tables
+task simple-look-bits
   take g, like program
-  like number
+  like list
+    like number
+  save bits, make list
+  save looks
+    call divide(read(g/looks/length), code(7))
+  save next-bit, code 8
+  save used, code 0
+  save i, code 0
+  walk test
+    down
+      call subtract(read(looks), read(i))
+    hook test
+      call is-below(read(i), read(looks))
+    hook step
+      save base
+        call multiply(read(i), code(7))
+      save behind
+        call is-equal(call(number-at, read(g/looks), call(add, read(base), code(2)), code(0)), code(1))
+      save part
+        call number-at(read(g/looks), read(base), code(-1))
+      fork test
+        hook test
+          read behind
+        hook hold
+          save part
+            call number-at(read(g/looks), call(add, read(base), code(1)), code(-1))
+      save entry
+        call number-at(read(g/part-entry), read(part), code(-1))
+      save first
+        call number-at(read(g/ops), read(entry), code(-1))
+      save then
+        call number-at(read(g/ops), call(add, read(entry), code(1)), code(-1))
+      save no-groups
+        call is-below
+          call number-at(read(g/looks), call(add, read(base), code(6)), code(-1))
+          call number-at(read(g/looks), call(add, read(base), code(5)), code(0))
+      save simple
+        call and
+          call and
+            call or
+              call is-equal(read(first), read(op-char))
+              call is-equal(read(first), read(op-set))
+            call is-equal(read(then), read(op-match))
+          call and
+            read no-groups
+            call is-below(read(used), read(most-simple-looks))
+      fork test
+        hook test
+          read simple
+        hook hold
+          call bits/push(read(next-bit))
+          save next-bit
+            call multiply(read(next-bit), code(2))
+          save used
+            call add(read(used), code(1))
+        hook miss
+          call bits/push(code(0))
+      save i
+        call add(read(i), code(1))
+  send back, read bits
+
+# whether the program tests a line or word edge, which the context of a position decides
+task has-context-edges
+  take g, like program
+  like boolean
   save count, read g/ops/length
   save pc, code 0
   walk test
@@ -391,10 +479,38 @@ task context-width
                 call is-equal(read(a), read(edge-text-start))
                 call is-equal(read(a), read(edge-text-end))
         hook hold
-          send back, code 8
+          send back, true
       save pc
         call add(read(pc), code(1))
-  send back, code 1
+  send back, false
+
+# how many contexts a transition is remembered under: 1 when the program reads no context, 8 for its line and word
+# edges, doubled for each lookaround it decides by a bit
+task context-width
+  take g, like program
+  like number
+  save width, code 1
+  fork test
+    hook test
+      call has-context-edges(read(g))
+    hook hold
+      save width, code 8
+  walk list
+    call simple-look-bits(read(g))
+    hook next
+      take site, name bit
+      fork test
+        hook test
+          call is-above(read(bit), code(0))
+        hook hold
+          fork test
+            hook test
+              call is-equal(read(width), code(1))
+            hook hold
+              save width, code 8
+          save width
+            call multiply(read(width), code(2))
+  send back, read width
 
 # the context of position `at` a line or word edge reads, as three bits: 1 a line starts there, 2 a line ends there, 4
 # a word edge is there. Always 0 for a DFA of width 1, whose program tests none of them
@@ -411,21 +527,80 @@ task context-at
   save bits, code 0
   fork test
     hook test
-      call edge-holds(read(s), read(edge-line-start), read(at))
+      read d/edges
     hook hold
-      save bits, code 1
-  fork test
-    hook test
-      call edge-holds(read(s), read(edge-line-end), read(at))
-    hook hold
-      save bits
-        call add(read(bits), code(2))
-  fork test
-    hook test
-      call edge-holds(read(s), read(edge-word), read(at))
-    hook hold
-      save bits
-        call add(read(bits), code(4))
+      fork test
+        hook test
+          call edge-holds(read(s), read(edge-line-start), read(at))
+        hook hold
+          save bits, code 1
+      fork test
+        hook test
+          call edge-holds(read(s), read(edge-line-end), read(at))
+        hook hold
+          save bits
+            call add(read(bits), code(2))
+      fork test
+        hook test
+          call edge-holds(read(s), read(edge-word), read(at))
+        hook hold
+          save bits
+            call add(read(bits), code(4))
+  # each lookaround decided by a bit: its one code point against the neighbor it reads, the next for a lookahead and
+  # the one before for a lookbehind (none past either end, where it cannot hold)
+  save g, read d/program
+  save i, code 0
+  walk list, read d/look-bits
+    hook next
+      take site, name bit
+      fork test
+        hook test
+          call is-above(read(bit), code(0))
+        hook hold
+          save base
+            call multiply(read(i), code(7))
+          save behind
+            call is-equal(call(number-at, read(g/looks), call(add, read(base), code(2)), code(0)), code(1))
+          save part
+            call number-at(read(g/looks), read(base), code(-1))
+          save c
+            call number-at(read(s/runes), read(at), code(-1))
+          fork test
+            hook test
+              read behind
+            hook hold
+              save part
+                call number-at(read(g/looks), call(add, read(base), code(1)), code(-1))
+              save c
+                call number-at(read(s/runes), call(subtract, read(at), code(1)), code(-1))
+          save entry
+            call number-at(read(g/part-entry), read(part), code(-1))
+          save op
+            call number-at(read(g/ops), read(entry), code(-1))
+          save a
+            call number-at(read(g/a), read(entry), code(-1))
+          save holds
+            call and
+              call is-minimum(read(c), code(0))
+              call or
+                call and
+                  call is-equal(read(op), read(op-char))
+                  call is-equal(read(a), read(c))
+                call and
+                  call is-equal(read(op), read(op-set))
+                  call and
+                    call and
+                      call is-minimum(read(a), code(0))
+                      call is-below(read(a), read(g/sets/length))
+                    call set-has(read(g/sets/{a}), read(c))
+          fork test
+            hook test
+              read holds
+            hook hold
+              save bits
+                call add(read(bits), read(bit))
+      save i
+        call add(read(i), code(1))
   send back, read bits
 
 # whether bit `bit` (1, 2 or 4) of a context is set
@@ -544,6 +719,19 @@ task closure
           fork test
             hook test
               read holds
+            hook hold
+              call stack/push(call(add, read(pc), code(1)))
+        hook test
+          call is-equal(read(op), read(op-look))
+        hook hold
+          # a lookaround `dfa-fits` admitted: its bit in the context, flipped when it is negative
+          save seen-it
+            call context-has(read(context), call(number-at, read(d/look-bits), read(a), code(0)))
+          save negative
+            call is-equal(call(number-at, read(g/looks), call(add, call(multiply, read(a), code(7)), code(3)), code(0)), code(1))
+          fork test
+            hook test
+              call not(call(is-equal, read(seen-it), read(negative)))
             hook hold
               call stack/push(call(add, read(pc), code(1)))
         hook miss

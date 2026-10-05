@@ -250,7 +250,7 @@ task file-exists
       text <file_test>
       read arguments
 
-task file-exists
+task test
   mark async
   take path
     like text

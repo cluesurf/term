@@ -2890,14 +2890,19 @@ export function emitKotlin(
             stable && takenSubjects.has(node.subject) && node.subject.type?.kind === 'named' && b.body.length > 0
               ? reuseVariants.get(b.label)
               : undefined
+          // the links are cleared only for the program's spare, which outlives the task and would keep a dead chain
+          // alive: a task's own spare is rebuilt in the task or dropped with it, and the store was 133 ms to 123 on
+          // Towers (`tmp/kotlin-towers-ab4.ts`)
           const spare =
             reused && reused.form === (node.subject.type as { name: string }).name
-              ? [
-                  ...reused.recursive.map(
-                    f => `${pad(d + 2)}${subject}.${camel(f)} = ${classFor(reused.empty, node.subject.type) ?? pascal(reused.empty)}`,
-                  ),
-                  localSpares.has(b.label) ? `${pad(d + 2)}__spare${cls} = ${subject}` : `${pad(d + 2)}termSpare${cls} = ${subject}`,
-                ]
+              ? localSpares.has(b.label)
+                ? [`${pad(d + 2)}__spare${cls} = ${subject}`]
+                : [
+                    ...reused.recursive.map(
+                      f => `${pad(d + 2)}${subject}.${camel(f)} = ${classFor(reused.empty, node.subject.type) ?? pascal(reused.empty)}`,
+                    ),
+                    `${pad(d + 2)}termSpare${cls} = ${subject}`,
+                  ]
               : []
           // the case of the subject's own form, where two forms name a case alike (engine/value port, 2026-10-04)
           const owned = node.subject.type?.kind === 'named' ? ownedFieldNames.get(`${node.subject.type.name}/${b.label}`) : undefined

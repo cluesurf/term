@@ -1,6 +1,6 @@
 import fsp from 'fs/promises'
 import path from 'path'
-import { Lockfile, LockEntry, Code } from './form'
+import { Lockfile, LockEntry, LockNeed, Code } from './form'
 import { parseCode, showCode } from './code'
 import { readTree, valueOf, formsWith } from './read'
 import { parseLockfileMill } from './mill'
@@ -38,8 +38,21 @@ export function parseLockfileByHand(input: { text: string }): Lockfile {
 
   let version = 1
   const decks: LockEntry[] = []
+  let need: LockNeed | undefined
 
   for (const form of result.forms) {
+    if (form.head === 'need') {
+      const name = form.terms[0]
+      const code = valueOf(form, 'code')
+      const hash = valueOf(form, 'hash')
+
+      if (name && code && hash) {
+        need = { name, code: parseCode(code), hash }
+      }
+
+      continue
+    }
+
     if (form.head === 'lock') {
       const stated = Number.parseInt(form.value ?? '', 10)
 
@@ -67,7 +80,7 @@ export function parseLockfileByHand(input: { text: string }): Lockfile {
     })
   }
 
-  return { version, decks }
+  return { version, decks, ...(need ? { need } : {}) }
 }
 
 export function writeLockfile(input: { lockfile: Lockfile }): string {
@@ -75,6 +88,14 @@ export function writeLockfile(input: { lockfile: Lockfile }): string {
 
   lines.push(`lock <${input.lockfile.version}>`)
   lines.push('')
+
+  // the toolchain first: it is what runs everything below it
+  if (input.lockfile.need) {
+    lines.push(`need ${input.lockfile.need.name}`)
+    lines.push(`  code <${showCode(input.lockfile.need.code)}>`)
+    lines.push(`  hash <${input.lockfile.need.hash}>`)
+    lines.push('')
+  }
 
   const sorted = [...input.lockfile.decks].sort((a, b) =>
     a.name.localeCompare(b.name),

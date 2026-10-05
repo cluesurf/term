@@ -81,10 +81,10 @@ test <a text read as a number is a mismatch, not 0>
         text <age>
       text <wanted number, found text>
 
-test <a missing field is null, and a mismatch>
+test <a missing field keeps the default, the empty text>
   want hold
     call is-equal
       call text-or-why
         text <\{"name": "ada"\}>
         text <email>
-      text <wanted text, found null>
+      text <>

@@ -184,6 +184,8 @@ export {
   verifyReleaseConfig,
 } from './oci/release'
 export type { ReleaseConfig, ReleaseEntry } from './oci/release'
+export { TOOLCHAIN, newestMatching, pinNeed, pinSatisfies, releasedVersions, showPin } from './oci/need'
+export type { DeckNeed, LockNeed } from './form'
 export { readTree, valueOf } from './read'
 export type { Form } from './read'
 export { pingIndex, publishStatement } from './oci/index-ping'

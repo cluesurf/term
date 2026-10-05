@@ -480,14 +480,19 @@ task edge-dfa-answers
   call out/push(call(on-dfa, text(<\Bl+\B>), text(<hello>), code(0)))
   call out/push(call(on-dfa, text(<(?m)^\w+$>), text(<a b\ncd\ne f>), code(0)))
   call out/push(call(on-dfa, text(<\bé\w*>), text(<aé éb>), code(0)))
+  # a lookaround of one code point is decided by the neighbor it reads: ahead, behind, and each negated
+  call out/push(call(on-dfa, text(<\w+(?=,)>), text(<ab, cd>), code(0)))
+  call out/push(call(on-dfa, text(<(?\<=\$)\d+>), text(<cost $10>), code(0)))
+  call out/push(call(on-dfa, text(<a(?!b)>), text(<ab ac>), code(0)))
+  call out/push(call(on-dfa, text(<(?\<!x)y>), text(<xy zy>), code(0)))
   send back
     call join(read(out), text(<|>))
 
-test <tier B's DFA runs word and line edges>
+test <tier B's DFA runs word and line edges, and lookarounds of one code point>
   want hold
     call is-equal
       call edge-dfa-answers
-      text <true 2:7|true 9:14|true none|true 2:4|true 4:6|true 3:5>
+      text <true 2:7|true 9:14|true none|true 2:4|true 4:6|true 3:5|true 0:2|true 6:8|true 3:4|true 4:5>
 
 test <a native engine that refuses its text is answered by Term's own tier, never as no match>
   want hold

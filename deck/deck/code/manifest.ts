@@ -321,6 +321,10 @@ export function writeManifest(input: {
     lines.push(`  base ${entry.scope.replace(/^@/, '')}, <${entry.registry}>`)
   }
 
+  if (m.need) {
+    lines.push(`  need ${m.need.name}, mark <${writeCodeHold({ hold: m.need.mark })}>`)
+  }
+
   for (const dep of m.link) {
     const codeStr = writeCodeHold({ hold: dep.mark })
 

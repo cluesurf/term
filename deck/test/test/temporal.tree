@@ -1,0 +1,120 @@
+note <CTL model checking as decision-diagram fixpoints: safety and liveness on two small systems>
+
+# Ported from deck/test/code/demo-ctl.ts (self-hosting, 2026-10-04). A two-bit state, the current variables 0 (high)
+# and 1 (low), the next state 2 and 3. A wrapping counter always progresses, so every path reaches 11. A stalling
+# system goes 00 to 01 and stays, so a path avoids 11 forever and "eventually 11" fails.
+
+load ../code/decision-diagram
+  find diagram-manager
+  find make-manager
+  find variable-of
+  find diagram-and
+  find diagram-or
+  find diagram-not
+
+load ../code/temporal
+  find ctl-checker
+  find make-ctl-checker
+  find ef
+  find eg
+  find ag
+  find af
+  find holds-initially
+
+task literal
+  take manager, like diagram-manager
+  take variable, like number
+  take on, like boolean
+  like number
+
+  host found, variable-of(manager, variable)
+  fork test, on
+    hold
+      back found
+
+  back diagram-not(manager, found)
+
+task current
+  take manager, like diagram-manager
+  take high, like boolean
+  take low, like boolean
+  like number
+
+  host h, literal(manager, 0, high)
+  host l, literal(manager, 1, low)
+
+  back diagram-and(manager, h, l)
+
+# as the demo built it: the current pair, then the next pair, then both
+task step-between
+  take manager, like diagram-manager
+  take from-high, like boolean
+  take from-low, like boolean
+  take to-high, like boolean
+  take to-low, like boolean
+  like number
+
+  host h, literal(manager, 0, from-high)
+  host l, literal(manager, 1, from-low)
+  host from, diagram-and(manager, h, l)
+  host h2, literal(manager, 2, to-high)
+  host l2, literal(manager, 3, to-low)
+  host to, diagram-and(manager, h2, l2)
+
+  back diagram-and(manager, from, to)
+
+# 00 to 01 to 10 to 11 to 00
+task wrapping
+  take manager, like diagram-manager
+  like ctl-checker
+
+  host one, step-between(manager, false, false, false, true)
+  host two, step-between(manager, false, true, true, false)
+  host three, step-between(manager, true, false, true, true)
+  host round, step-between(manager, true, true, false, false)
+  host last, diagram-or(manager, three, round)
+  host middle, diagram-or(manager, two, last)
+
+  back make-ctl-checker(manager, 2, diagram-or(manager, one, middle))
+
+# 00 to 01, then 01 to 01 forever
+task stalling
+  take manager, like diagram-manager
+  like ctl-checker
+
+  host one, step-between(manager, false, false, false, true)
+  host stuck, step-between(manager, false, true, false, true)
+
+  back make-ctl-checker(manager, 2, diagram-or(manager, one, stuck))
+
+test <wrapping: EF 11, 11 is reachable>
+  host m, make-manager()
+  host c, wrapping(m)
+  want hold, holds-initially(c, current(m, false, false), ef(c, current(m, true, true)))
+
+test <wrapping: AG not 11 fails, 11 is on some path>
+  host m, make-manager()
+  host c, wrapping(m)
+  host never, diagram-not(m, current(m, true, true))
+  want hold, not(holds-initially(c, current(m, false, false), ag(c, never)))
+
+test <wrapping: AF 11, every path reaches it>
+  host m, make-manager()
+  host c, wrapping(m)
+  want hold, holds-initially(c, current(m, false, false), af(c, current(m, true, true)))
+
+test <stalling: EF 01, 01 is reachable>
+  host m, make-manager()
+  host c, stalling(m)
+  want hold, holds-initially(c, current(m, false, false), ef(c, current(m, false, true)))
+
+test <stalling: AF 11 fails, it stays at 01>
+  host m, make-manager()
+  host c, stalling(m)
+  want hold, not(holds-initially(c, current(m, false, false), af(c, current(m, true, true))))
+
+test <stalling: EG not 11, a path avoids 11 forever>
+  host m, make-manager()
+  host c, stalling(m)
+  host never, diagram-not(m, current(m, true, true))
+  want hold, holds-initially(c, current(m, false, false), eg(c, never))

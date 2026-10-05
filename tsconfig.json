@@ -27,7 +27,8 @@
       "@term/scan/*": ["./deck/scan/*", "./deck/scan/host/port/*"],
       "@term/test/*": ["./deck/test/*", "./deck/test/host/port/*"],
       "@term/flow/*": ["./deck/flow/*", "./deck/flow/host/port/*"],
-      "@cluesurf/deck.tree": ["./deck/deck/code/index"]
+      "@cluesurf/deck.tree": ["./deck/deck/code/index"],
+      "@term/deck/*": ["./deck/deck/*"]
     }
   },
   "include": [

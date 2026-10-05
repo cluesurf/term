@@ -1,0 +1,220 @@
+note <partial-order reduction: four processes each counting to three, explored whole and one interleaving per class>
+
+# Ported from deck/test/code/demo-por.ts (self-hosting, 2026-10-04). Each process increments its OWN counter to 3. The
+# increments touch disjoint variables, so they are independent: the whole search explores every interleaving, 4^4 =
+# 256 states, while partial-order reduction explores one representative ordering. It must reach the same verdict on a
+# property every interleaving reaches, and it may prune a state that only some interleavings pass through. The demo
+# built each process's action as a closure over its index, which Term has no spelling for, so each is a named task.
+
+load ../code/interleaving
+  find action
+  find concurrent-system
+  find independent
+  find reach-full
+  find reach-por
+
+load @term/base/list
+  find list
+
+host top, code 3
+
+task can-step
+  take state, like list, like number
+  take at, like number
+  like boolean
+
+  back is-below(get(state, at), top)
+
+task step
+  take state, like list, like number
+  take at, like number
+  like list, like number
+
+  host after, copy(state)
+  after/set(at, add(get(state, at), 1))
+
+  back after
+
+task can-step-0
+  take state, like list, like number
+  like boolean
+
+  back can-step(state, 0)
+
+task can-step-1
+  take state, like list, like number
+  like boolean
+
+  back can-step(state, 1)
+
+task can-step-2
+  take state, like list, like number
+  like boolean
+
+  back can-step(state, 2)
+
+task can-step-3
+  take state, like list, like number
+  like boolean
+
+  back can-step(state, 3)
+
+task step-0
+  take state, like list, like number
+  like list, like number
+
+  back step(state, 0)
+
+task step-1
+  take state, like list, like number
+  like list, like number
+
+  back step(state, 1)
+
+task step-2
+  take state, like list, like number
+  like list, like number
+
+  back step(state, 2)
+
+task step-3
+  take state, like list, like number
+  like list, like number
+
+  back step(state, 3)
+
+task always
+  take state, like list, like number
+  like boolean
+
+  back true
+
+task unchanged
+  take state, like list, like number
+  like list, like number
+
+  back state
+
+task key-of
+  take state, like list, like number
+  like text
+
+  back join(state, <,>)
+
+# the action of process `at`, reading and writing its own counter
+task counter-action
+  take at, like number
+  take enabled
+    like task
+      take state, like list, like number
+      like boolean
+  take fire
+    like task
+      take state, like list, like number
+      like list, like number
+  like action, like list, like number
+
+  host touched, make list
+  touched/push(<c{at}>)
+
+  back
+    make action
+      bind id, <inc{at}>
+      bind enabled, enabled
+      bind fire, fire
+      bind reads, touched
+      bind writes, touched
+
+task counters
+  like concurrent-system, like list, like number
+
+  host actions, make list
+  actions/push(counter-action(0, can-step-0, step-0))
+  actions/push(counter-action(1, can-step-1, step-1))
+  actions/push(counter-action(2, can-step-2, step-2))
+  actions/push(counter-action(3, can-step-3, step-3))
+  host start, make list(0, 0, 0, 0)
+
+  back
+    make concurrent-system
+      bind init, start
+      bind actions, actions
+      bind key, key-of
+
+# every counter at its maximum
+task all-at-top
+  take state, like list, like number
+  like boolean
+
+  walk state
+    take each
+    fork test, is-below(each, top)
+      hold
+        back false
+
+  back true
+
+# process 0 at 2, which every interleaving passes through
+task first-at-two
+  take state, like list, like number
+  like boolean
+
+  back is-equal(get(state, 0), 2)
+
+# process 0 at 2 while process 1 is at 1, which only some interleavings pass through
+task first-two-second-one
+  take state, like list, like number
+  like boolean
+
+  back and(is-equal(get(state, 0), 2), is-equal(get(state, 1), 1))
+
+task bare-action
+  take id, like text
+  take variable, like text
+  like action, like list, like number
+
+  host touched, make list
+  touched/push(variable)
+
+  back
+    make action
+      bind id, id
+      bind enabled, always
+      bind fire, unchanged
+      bind reads, touched
+      bind writes, touched
+
+test <actions on disjoint variables are independent>
+  want hold, independent(bare-action(<a>, <c0>), bare-action(<b>, <c1>))
+
+test <actions touching one variable are dependent>
+  want hold, not(independent(bare-action(<a>, <c0>), bare-action(<c>, <c0>)))
+
+test <the whole search visits the product space, 4^4 = 256 states>
+  host found, reach-full(counters(), all-at-top)
+  want hold, is-equal(found/states, 256)
+
+test <partial-order reduction visits under a quarter of them>
+  host whole, reach-full(counters(), all-at-top)
+  host reduced, reach-por(counters(), all-at-top)
+  want hold, is-below(multiply(reduced/states, 4), whole/states)
+
+test <both reach the state with every counter at its maximum>
+  host whole, reach-full(counters(), all-at-top)
+  host reduced, reach-por(counters(), all-at-top)
+  want hold, and(whole/bad-reached, reduced/bad-reached)
+
+test <a state every interleaving reaches is kept>
+  host whole, reach-full(counters(), first-at-two)
+  host reduced, reach-por(counters(), first-at-two)
+  want hold, and(whole/bad-reached, reduced/bad-reached)
+
+test <a state only some interleavings reach may be pruned, by design>
+  host whole, reach-full(counters(), first-two-second-one)
+  host reduced, reach-por(counters(), first-two-second-one)
+  want hold, and(whole/bad-reached, not(reduced/bad-reached))
+
+test <the counts the demo printed: 13 states and 12 transitions reduced, 768 transitions whole>
+  host whole, reach-full(counters(), all-at-top)
+  host reduced, reach-por(counters(), all-at-top)
+  want hold, and(and(is-equal(reduced/states, 13), is-equal(reduced/transitions, 12)), is-equal(whole/transitions, 768))

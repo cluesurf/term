@@ -1,0 +1,249 @@
+note <decision diagrams: canonicity and the operators, then reachability over a two-bit counter>
+
+# Ported from deck/test/code/demo-bdd.ts (self-hosting, 2026-10-04). A: the operators and canonicity, where equal
+# functions are the same id. B: symbolic reachability over a two-bit counter whose state is the current variables
+# 0 (high) and 1 (low), the next state 2 and 3. Counting 00, 01, 10, 11 and wrapping, the bad state 11 is reachable;
+# saturating at 10, it is not.
+
+load ../code/decision-diagram
+  find diagram-manager
+  find make-manager
+  find variable-of
+  find diagram-and
+  find diagram-or
+  find diagram-not
+  find exists
+  find restrict
+
+load ../code/decision-diagram
+  find make-manager-ordered
+  find diagram-xor
+  find reachable
+  find sift-reorder
+
+load ../code/reachability
+  find symbolic-system
+  find is-safe
+
+load @term/base/list
+  find list
+
+# the equality function over six pairs, AND of (a_i <-> b_i), with a_i the variable 2i and b_i the variable 2i + 1,
+# under the SEPARATED order (every a, then every b), where its diagram is exponential in the pairs
+task pairs-equal-separated
+  like diagram-manager
+
+  host order, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, 6)
+    hook hold
+      order/push(multiply(2, at))
+      save at, add(at, 1)
+  save at, 0
+  walk test
+    hook test, is-below(at, 6)
+    hook hold
+      order/push(add(multiply(2, at), 1))
+      save at, add(at, 1)
+
+  back make-manager-ordered(order)
+
+task pairs-equal
+  take manager, like diagram-manager
+  like number
+
+  save f, 1
+  save at, 0
+  walk test
+    hook test, is-below(at, 6)
+    hook hold
+      host a, variable-of(manager, multiply(2, at))
+      host b, variable-of(manager, add(multiply(2, at), 1))
+      host same, diagram-not(manager, diagram-xor(manager, a, b))
+      save f, diagram-and(manager, f, same)
+      save at, add(at, 1)
+
+  back f
+
+# the function's value with every variable 0 to 11 set: true, except `b0` when `b0-off`
+task evaluate-pairs
+  take manager, like diagram-manager
+  take root, like number
+  take b0-off, like boolean
+  like boolean
+
+  save at, root
+  save variable, 0
+  walk test
+    hook test, is-below(variable, 12)
+    hook hold
+      save value, true
+      fork test, and(b0-off, is-equal(variable, 1))
+        hold
+          save value, false
+      save at, restrict(manager, at, variable, value)
+      save variable, add(variable, 1)
+
+  back is-equal(at, 1)
+
+task literal
+  take manager, like diagram-manager
+  take variable, like number
+  take on, like boolean
+  like number
+
+  host found, variable-of(manager, variable)
+  fork test, on
+    hold
+      back found
+
+  back diagram-not(manager, found)
+
+# a current state, high bit then low bit
+task current
+  take manager, like diagram-manager
+  take high, like boolean
+  take low, like boolean
+  like number
+
+  host h, literal(manager, 0, high)
+  host l, literal(manager, 1, low)
+
+  back diagram-and(manager, h, l)
+
+task next-state
+  take manager, like diagram-manager
+  take high, like boolean
+  take low, like boolean
+  like number
+
+  host h, literal(manager, 2, high)
+  host l, literal(manager, 3, low)
+
+  back diagram-and(manager, h, l)
+
+task step-between
+  take manager, like diagram-manager
+  take from-high, like boolean
+  take from-low, like boolean
+  take to-high, like boolean
+  take to-low, like boolean
+  like number
+
+  host from, current(manager, from-high, from-low)
+  host to, next-state(manager, to-high, to-low)
+
+  back diagram-and(manager, from, to)
+
+# 00 to 01 to 10 to 11 to 00
+task wrapping
+  take manager, like diagram-manager
+  like symbolic-system
+
+  host start, current(manager, false, false)
+  host one, step-between(manager, false, false, false, true)
+  host two, step-between(manager, false, true, true, false)
+  host three, step-between(manager, true, false, true, true)
+  host back-round, step-between(manager, true, true, false, false)
+  host last, diagram-or(manager, three, back-round)
+  host middle, diagram-or(manager, two, last)
+  host relation, diagram-or(manager, one, middle)
+  host bad, current(manager, true, true)
+
+  back
+    make symbolic-system
+      bind bits, 2
+      bind init, start
+      bind transition, relation
+      bind bad, bad
+
+# 00 to 01 to 10, then stuck at 10
+task saturating
+  take manager, like diagram-manager
+  like symbolic-system
+
+  host start, current(manager, false, false)
+  host one, step-between(manager, false, false, false, true)
+  host two, step-between(manager, false, true, true, false)
+  host stuck, step-between(manager, true, false, true, false)
+  host rest, diagram-or(manager, two, stuck)
+  host relation, diagram-or(manager, one, rest)
+  host bad, current(manager, true, true)
+
+  back
+    make symbolic-system
+      bind bits, 2
+      bind init, start
+      bind transition, relation
+      bind bad, bad
+
+test <canonicity: a and b built twice is the same id>
+  host m, make-manager()
+  host a, variable-of(m, 0)
+  host b, variable-of(m, 1)
+  want hold, is-equal(diagram-and(m, a, b), diagram-and(m, a, b))
+
+test <a or not a is true>
+  host m, make-manager()
+  host a, variable-of(m, 0)
+  want hold, is-equal(diagram-or(m, a, diagram-not(m, a)), 1)
+
+test <a and not a is false>
+  host m, make-manager()
+  host a, variable-of(m, 0)
+  want hold, is-equal(diagram-and(m, a, diagram-not(m, a)), 0)
+
+test <de Morgan: not (a and b) is (not a) or (not b)>
+  host m, make-manager()
+  host a, variable-of(m, 0)
+  host b, variable-of(m, 1)
+  host left, diagram-not(m, diagram-and(m, a, b))
+  host right, diagram-or(m, diagram-not(m, a), diagram-not(m, b))
+  want hold, is-equal(left, right)
+
+test <exists b. (a and b) is a>
+  host m, make-manager()
+  host a, variable-of(m, 0)
+  host b, variable-of(m, 1)
+  want hold, is-equal(exists(m, diagram-and(m, a, b), 1), a)
+
+test <(a and b) with a true is b>
+  host m, make-manager()
+  host a, variable-of(m, 0)
+  host b, variable-of(m, 1)
+  want hold, is-equal(restrict(m, diagram-and(m, a, b), 0, true), b)
+
+test <the wrapping counter reaches 11: unsafe>
+  host m, make-manager()
+  want hold, not(is-safe(m, 2, wrapping(m)))
+
+test <the saturating counter never reaches 11: safe>
+  host m, make-manager()
+  want hold, is-safe(m, 2, saturating(m))
+
+# from deck/test/code/demo-bdd-reorder.ts: sifting, the performance lever
+test <sifting strictly shrinks the equality function built under the separated order>
+  host m, pairs-equal-separated()
+  host f, pairs-equal(m)
+  host roots, make list(f)
+  host sifted, sift-reorder(m, roots)
+  want hold, is-below(sifted/after, reachable(m, roots))
+
+test <sifting reaches the linear size, at most 3 nodes per pair and 2>
+  host m, pairs-equal-separated()
+  host roots, make list(pairs-equal(m))
+  host sifted, sift-reorder(m, roots)
+  want hold, is-maximum(sifted/after, 20)
+
+test <the sifted diagram is the same function: true when every pair is equal>
+  host m, pairs-equal-separated()
+  host roots, make list(pairs-equal(m))
+  host sifted, sift-reorder(m, roots)
+  want hold, evaluate-pairs(sifted/manager, get(sifted/roots, 0), false)
+
+test <and false on one mismatch>
+  host m, pairs-equal-separated()
+  host roots, make list(pairs-equal(m))
+  host sifted, sift-reorder(m, roots)
+  want hold, not(evaluate-pairs(sifted/manager, get(sifted/roots, 0), true))

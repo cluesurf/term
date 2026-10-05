@@ -5483,6 +5483,14 @@ fn term_fail(note: impl Into<String>) -> TermException {
 fn term_fail_with<T>(held: T, note: impl Into<String>) -> TermException {
     drop(held);
     term_fail(note)
+}
+// the same for a raise built where it was (a record, a caught value passed on): only the drop goes out of line
+#[allow(dead_code)]
+#[cold]
+#[inline(never)]
+fn term_raise_with<T>(held: T, raised: TermException) -> TermException {
+    drop(held);
+    raised
 }`,
       ]
     : []
@@ -5644,6 +5652,8 @@ fn __term_drain() {
     if (spares.length > 0 && !out.includes('move |') && !out.includes('(|| ') && !out.includes('async {')) {
       const held = spares.length === 1 ? spares[0]! : `(${spares.join(', ')})`
       out = out.split('return std::result::Result::Err(term_fail(').join(`return std::result::Result::Err(term_fail_with(${held}, `)
+      // any other raise (a record, a caught value passed on) is built where it was, and the spares go with it
+      out = out.replace(/return std::result::Result::Err\((?!term_fail_with\()(.*)\);$/gm, `return std::result::Result::Err(term_raise_with(${held}, $1));`)
     }
 
     return out

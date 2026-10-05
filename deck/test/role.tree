@@ -1,0 +1,7 @@
+# Which files of the verification tooling are read with the LEAN surface (note/term/lean.md,
+# note/term/self-host/03-lean.md): every module ported to Term, and the tests written in Term, as in @term/make.
+
+role code
+  mark lean
+  take @/code/**/*.tree
+  take @/test/**/*.tree

@@ -3,7 +3,9 @@ import {
   DeckManifest,
   FetchConfig,
   InstallConfig,
+  LockNeed,
 } from './form'
+import { pinNeed } from './oci/need'
 import { loadManifest, writeManifest, parseManifest } from './manifest'
 import { loadLockfile, saveLockfile } from './lock'
 import { resolve, buildLockfile } from './resolve'
@@ -20,7 +22,7 @@ export async function install(input: {
   root: string
   clean?: boolean
   offline?: boolean
-}): Promise<{ decks: number }> {
+}): Promise<{ decks: number; need?: { pin?: LockNeed; kept: boolean; reason?: string } }> {
   const config: FetchConfig = makeDefaultFetchConfig()
 
   if (input.offline) {
@@ -73,13 +75,25 @@ export async function install(input: {
     config,
   })
 
-  // step 7: write lockfile
+  // step 7: pin the toolchain the manifest's `need` asks for, keeping the previous pin while it still satisfies the
+  // request (note/term/plan/term-versions.md). A manifest with no `need` writes none, and drops a stale one
+  const need = loaded.need
+    ? await pinNeed({ need: loaded.need, previous: lockfile?.need, offline: input.offline })
+    : undefined
+
+  // step 8: write lockfile
   const newLockfile = buildLockfile({ resolution })
+  const pinned = need?.pin ?? (loaded.need && lockfile?.need ? lockfile.need : undefined)
+
+  if (pinned) {
+    newLockfile.need = pinned
+  }
+
   await saveLockfile({ dir: input.root, lockfile: newLockfile })
 
   // the count goes back to the caller, which prints it as a fact of its run. It was a bare `Installed 1 packages`
   // line between the run's items, in the plural for one (guides: packages/install, 2026-10-04)
-  return { decks: resolution.decks.size }
+  return { decks: resolution.decks.size, ...(need ? { need } : {}) }
 }
 
 // The scope -> registry routes a manifest declares: its `base` lines, and its `host` groups, where every link in a

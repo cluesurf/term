@@ -1,0 +1,168 @@
+note <symmetry reduction: N processes contending for one critical section, explored whole and up to permutation>
+
+# Ported from deck/test/code/demo-symmetry.ts (self-hosting, 2026-10-04). Each process is idle (0), waiting (1) or
+# critical (2). Any process advances, and a waiting one enters only while none is critical. The whole exploration
+# visits every ordering of the process states; the reduced one sorts each state first, so permutation-equal states
+# are one. Both must give the same safety verdict, and the reduced one must visit fewer states.
+
+load ../code/symmetry-reduction
+  find reach
+  find sorted-canon
+  find unsafe-in
+  find symmetric-system
+
+load @term/base/list
+  find list
+
+load @term/base/text
+  find split
+  find char-code-at
+
+# every state one process's step reaches
+task successors
+  take state, like list, like number
+  like list, like list, like number
+
+  save critical, 0
+  walk state
+    take each
+    fork test, is-equal(each, 2)
+      hold
+        save critical, add(critical, 1)
+
+  host out, make list
+  save at, 0
+  walk state
+    take each
+    host after, copy(state)
+    fork test, is-equal(each, 0)
+      hold
+        after/set(at, 1)
+        out/push(after)
+      miss
+        fork test, is-equal(each, 1)
+          hold
+            fork test, is-equal(critical, 0)
+              hold
+                after/set(at, 2)
+                out/push(after)
+          miss
+            after/set(at, 0)
+            out/push(after)
+    save at, add(at, 1)
+
+  back out
+
+# two processes critical at once
+task is-bad
+  take state, like list, like number
+  like boolean
+
+  save critical, 0
+  walk state
+    take each
+    fork test, is-equal(each, 2)
+      hold
+        save critical, add(critical, 1)
+
+  back is-above(critical, 1)
+
+task key-of
+  take state, like list, like number
+  like text
+
+  save out, <>
+  save at, 0
+  walk state
+    take each
+    fork test, is-equal(at, 0)
+      hold
+        save out, <{each}>
+      miss
+        save out, <{out},{each}>
+    save at, add(at, 1)
+
+  back out
+
+# the state a key spells. Read digit by digit rather than through `parse-integer`, which can raise: a task that can
+# raise is not yet a function value on Rust (log.md, the open gap of a fallible task passed as a value)
+task parse-key
+  take key, like text
+  like list, like number
+
+  host out, make list
+  walk split(key, <,>)
+    take part
+    save value, 0
+    walk split(part, <>)
+      take digit
+      save value, add(multiply(value, 10), subtract(char-code-at(digit, 0), 48))
+    out/push(value)
+
+  back out
+
+task unchanged
+  take state, like list, like number
+  like list, like number
+
+  back state
+
+task idle
+  take count, like number
+  like list, like number
+
+  host out, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, count)
+    hook hold
+      out/push(0)
+      save at, add(at, 1)
+
+  back out
+
+task system-of
+  take count, like number
+  take canon
+    like task
+      take state, like list, like number
+      like list, like number
+  like symmetric-system, like list, like number
+
+  back
+    make symmetric-system
+      bind init, idle(count)
+      bind succ, successors
+      bind key, key-of
+      bind canon, canon
+
+# both explorations are safe, and the reduced one visits fewer states
+task agrees
+  take count, like number
+  like boolean
+
+  host whole, reach(system-of(count, unchanged))
+  host reduced, reach(system-of(count, sorted-canon))
+  host whole-safe, not(unsafe-in(whole/states, parse-key, is-bad))
+  host reduced-safe, not(unsafe-in(reduced/states, parse-key, is-bad))
+
+  back and(and(whole-safe, reduced-safe), is-below(reduced/states/length, whole/states/length))
+
+test <three processes: the same safety verdict, fewer states>
+  want hold, agrees(3)
+
+test <four processes: the same safety verdict, fewer states>
+  want hold, agrees(4)
+
+test <five processes: the same safety verdict, fewer states>
+  want hold, agrees(5)
+
+test <the state counts the demo printed: 20 against 7 for three processes>
+  host whole, reach(system-of(3, unchanged))
+  host reduced, reach(system-of(3, sorted-canon))
+  want hold, and(is-equal(whole/states/length, 20), is-equal(reduced/states/length, 7))
+
+test <five processes: 112 states whole, 11 up to permutation>
+  host whole, reach(system-of(5, unchanged))
+  host reduced, reach(system-of(5, sorted-canon))
+  want hold, and(is-equal(whole/states/length, 112), is-equal(reduced/states/length, 11))

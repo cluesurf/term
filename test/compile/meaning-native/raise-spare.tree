@@ -1,0 +1,179 @@
+load @term/base/list
+  find list
+  find push
+load @term/base/exception
+  find conflict
+
+# a task that keeps a box in its own spare and raises after opening it (compile/rust.ts, `term_fail_with` and
+# `term_raise_with`): `move-top`, with the pop and the push inlined into it, opens the popped disk's box and then
+# refuses the push, once by raising a record and once a text. It is called from a recursive task, which nothing is
+# inlined into, so `move-top` stays a task of its own holding the spare. Each raise is caught by its caller, which
+# answers the exception's note, and the piles are read after: the refused disk is gone, popped before the refusal,
+# and every other disk is where its moves left it
+
+form stack
+  case empty
+  case disk
+    link size, like number
+    link below, like stack
+
+form pile-clash
+  like conflict
+    bind note, <clash>
+    bind thing, <disk>
+    link size, like number
+
+task push-disk
+  take piles, like list, like stack
+  take size, like number
+  take pile, like number
+  host top, read piles/{pile}
+  fork case, read top
+    case disk
+      link on
+      fork test
+        hook test
+          call is-minimum
+            read size
+            read on
+        hook hold
+          halt pile-clash
+            bind size, read size
+    case empty
+  save piles/{pile}
+    make disk
+      bind size, read size
+      bind below, read top
+
+task pop-disk
+  take piles, like list, like stack
+  take pile, like number
+  like number
+  host top, read piles/{pile}
+  fork case, read top
+    case empty
+      halt <empty>
+    case disk
+      save piles/{pile}, read below
+      send back, read size
+
+task move-top
+  take piles, like list, like stack
+  take from, like number
+  take to, like number
+  call push-disk
+    read piles
+    call pop-disk
+      read piles
+      read from
+    read to
+
+task move-many
+  take piles, like list, like stack
+  take count, like number
+  take from, like number
+  take to, like number
+  like number
+  fork test
+    hook test
+      call is-equal
+        read count
+        code 0
+    hook hold
+      send back, code 0
+  call move-top
+    read piles
+    read from
+    read to
+  send back
+    call add
+      code 1
+      call move-many
+        read piles
+        call subtract
+          read count
+          code 1
+        read from
+        read to
+
+task try-move
+  take piles, like list, like stack
+  take count, like number
+  take from, like number
+  take to, like number
+  like text
+  mark unsafe
+    host moved
+      call move-many
+        read piles
+        read count
+        read from
+        read to
+    send back, text <moved>
+  halt take
+    take problem
+    send back, text <{problem/note}>
+
+# the sizes on a pile from the top down, joined
+task show
+  take s, like stack
+  like text
+  fork case, read s
+    case empty
+      send back, text <.>
+    case disk
+      send back, text <{size}{show(below)}>
+
+task compute
+  like text
+  save piles
+    make list
+  walk size
+    bind base, code 0
+    bind head, code 3
+    hook next
+      take site, name k
+      call push
+        bind list, read piles
+        bind item
+          make empty
+  save i, code 3
+  walk test
+    hook test
+      call is-above
+        read i
+        code 0
+    hook hold
+      call push-disk
+        read piles
+        read i
+        code 0
+      save i
+        call subtract
+          read i
+          code 1
+  host first
+    call try-move
+      read piles
+      code 1
+      code 0
+      code 1
+  host second
+    call try-move
+      read piles
+      code 1
+      code 0
+      code 1
+  host third
+    call try-move
+      read piles
+      code 1
+      code 2
+      code 0
+  host fourth
+    call try-move
+      read piles
+      code 2
+      code 0
+      code 2
+  send back, text <{first}:{second}:{third}:{fourth}:{show(piles/0)}|{show(piles/1)}|{show(piles/2)}>

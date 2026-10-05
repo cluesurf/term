@@ -116,13 +116,14 @@ task test
     call file-exists
       read path
 
-# whether a path exists, a file or a directory: `test` under the name `file/directory` already gives it
+# whether a path exists, a file or a directory: `test` under the name `file/directory` already gives it. Through
+# `test`, so the cask's generated bridge carries one command for the native, not two tasks of one name
 task exists
   mark async
   take path, like text
   like boolean
   send back
-    call file-exists
+    call test
       read path
 
 # a path's size and whether it is a directory, in one record

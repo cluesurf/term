@@ -233,6 +233,10 @@ const PAYLOAD_WANT = '66:1:66:3:30:-1:1234.:1.|32.|.'
 // tested, removed, written through a slot, a key past 22 bytes beside short ones, sized and summed
 const TEXT_KEYS = readFileSync(join(import.meta.dirname, 'meaning-native/text-keys.tree'), 'utf8')
 const TEXT_KEYS_WANT = '3:2:-1:true:true:false:7:3:12'
+// a task keeping a box in its own spare raises after opening it, a record and a text, each caught by its caller
+// (rust.ts, `term_fail_with` and `term_raise_with`): the refused disk is gone and every other where its moves left it
+const RAISE_SPARE = readFileSync(join(import.meta.dirname, 'meaning-native/raise-spare.tree'), 'utf8')
+const RAISE_SPARE_WANT = 'moved:clash:empty:empty:.|1.|3.'
 const CURSOR = readFileSync(join(import.meta.dirname, 'meaning-native/cursor.tree'), 'utf8')
 const CURSOR_WANT =
   '6:757073106:çb😀€éa::-1:aé/aé€.é€/é€😀.€😀/€😀b.😀b/😀bç.bç/bç.ç/ç. 5:214865557:nialp::-1:pl/pla.la/lai.ai/ain.in/in.n/n. 6:757073106'
@@ -417,6 +421,7 @@ for (const backend of ['typescript', 'rust', 'swift', 'kotlin']) {
   run(backend, 'inline', INLINE, INLINE_WANT)
   run(backend, 'payload', PAYLOAD, PAYLOAD_WANT)
   run(backend, 'text-keys', TEXT_KEYS, TEXT_KEYS_WANT)
+  run(backend, 'raise-spare', RAISE_SPARE, RAISE_SPARE_WANT)
 }
 
 console.log(`\nmeaning-native: ${pass} pass, ${fail} fail, ${skip} skipped`)
