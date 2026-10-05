@@ -1,0 +1,72 @@
+# AES-256-GCM opens what it sealed, and refuses a value sealed for another context the same way on every backend:
+# `refusal`, with the reason. Node raised its own error with no `form`, Rust panicked and Swift trapped until
+# 2026-10-04. Held by `pnpm term:base-gate`.
+
+load @term/base/cryptography/cipher
+  find encrypt
+  find decrypt
+
+load @term/base/bytes
+  find from-text
+  find to-text
+  find from-hex
+
+load @term/base/exception
+  find refusal
+
+# a fixed key and nonce, so every backend seals the same bytes
+task key
+  like bytes
+  send back
+    call from-hex
+      text <000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f>
+
+task nonce
+  like bytes
+  send back
+    call from-hex
+      text <000102030405060708090a0b>
+
+# the text a value sealed for `user 7` opens to under `slot`, or `refused` when it does not open
+task open-as
+  mark async
+  take slot, like text
+  like text
+  save sealed
+    call encrypt
+      call key
+      call nonce
+      call from-text
+        text <card 4242>
+      call from-text
+        text <user 7>
+  mark unsafe
+    send back
+      call to-text
+        call decrypt
+          call key
+          call nonce
+          read sealed
+          call from-text
+            read slot
+  halt take
+    take problem
+    sift problem
+      case refusal
+        send back, text <refused>
+      case failure
+        send back, text <failure>
+
+test <a value opens under the context it was sealed for>
+  want hold
+    call is-equal
+      call open-as
+        text <user 7>
+      text <card 4242>
+
+test <a value sealed for another context raises refusal>
+  want hold
+    call is-equal
+      call open-as
+        text <user 8>
+      text <refused>

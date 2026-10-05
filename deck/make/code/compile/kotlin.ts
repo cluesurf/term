@@ -6,6 +6,7 @@
 // construction infers cleanly. Pure, browser-safe. See note/research/vibe/computation/plans/07-codegen.md.
 
 import { armLocals } from '@term/make/code/check/arm'
+import { keepDocksApart } from '@term/make/code/compile/dock-apart'
 import { provenIncrements } from '@term/make/code/ir/facts/range'
 import { provenArithmetic, type Proven } from '@term/make/code/compile/proven'
 import { boundedLoops, listKey } from '@term/make/code/ir/facts/bounds'
@@ -526,9 +527,11 @@ export type WakeGroup = {
 }
 
 export function emitKotlin(
-  program: Program,
+  written: Program,
   options?: { wake?: WakeGroup[] },
 ): string {
+  // a task named like a docked module is renamed, since Kotlin reads `log.writeInfo` on a function `log` (dock-apart.ts)
+  const program = keepDocksApart(written)
   // the prelude helpers this program calls, recorded where each call is written (KOTLIN_HELPERS)
   const needs = new Set<KotlinHelper>()
   // the `+`, `-` and `*` nodes proven not to overflow (compile/proven.ts): written as the plain operator. The counted
@@ -1794,8 +1797,9 @@ export function emitKotlin(
 
           return kind && !(a.form === 'variable' && arrayNames.has(a.name)) ? (filled(a, kind) ?? toArray(kind, expr(a))) : expr(a)
         })
+        // a parameter or local shadows a task of its name, whose arity must not pad its calls (rust.ts, the same rule)
         const declaredParams =
-          node.callee.form === 'variable'
+          node.callee.form === 'variable' && !localNames.has(node.callee.name)
             ? functionParams.get(node.callee.name)
             : undefined
 

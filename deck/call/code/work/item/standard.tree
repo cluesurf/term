@@ -49,8 +49,13 @@ form layout-rule
   link least-width, like number
   # spaces between the subject and its source tag
   link tag-gap, like number
-  # spaces between a field's key and its value, and between table columns
+  # spaces between table columns
   link key-gap, like number
+  # spaces between a field's key and its value
+  link field-gap, like number
+  # pad every key of an item to its widest, so the values line up. Off, the user's
+  # choice 2026-10-04: a value sits one space after its own key
+  link align-keys, like boolean
   # a dependency chain longer than this collapses its middle
   link chain-links, like number
   # a tab in text expands to the next multiple of this
@@ -296,6 +301,8 @@ task make-standard
           least-width 40
           tag-gap 2
           key-gap 2
+          field-gap 1
+          align-keys false
           chain-links 4
           tab-stop 8
       glyphs

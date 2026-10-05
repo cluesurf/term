@@ -1,0 +1,56 @@
+note <the view dialect's bounds: the default numbers, and the message naming each cap a document hits>
+
+# compile/view-cap.tree holds the numbers and the messages. Counting a document against them is the view reader's,
+# compile/view.ts, so test/view/cap.ts keeps the documents that hit each cap. These hold the half that is Term.
+
+load ../code/compile/view-cap
+  find view-caps
+  find make-view-caps
+  find cap-message
+
+task tight
+  like view-caps
+
+  back
+    make view-caps
+      bind node, 6
+      bind deep, 3
+      bind call-deep, 2
+      bind call-sum, 3
+      bind walk-wide, 1000
+      bind walk-deep, 2
+      bind walk-sum, 40
+      bind find, 2
+      bind host, 2
+      bind view, 1
+
+test <the defaults: generous on size, low on nesting>
+  host caps, make-view-caps()
+  want hold, and(and(and(is-equal(caps/node, 4000), is-equal(caps/deep, 32)), and(is-equal(caps/call-deep, 4), is-equal(caps/call-sum, 500))), and(and(is-equal(caps/walk-deep, 3), is-equal(caps/walk-sum, 100000)), and(is-equal(caps/find, 64), and(is-equal(caps/host, 256), is-equal(caps/view, 64)))))
+
+test <the node cap says it counts after expansion>
+  want hold, is-equal(cap-message(<node>, 9, tight()), <this document builds 9 nodes and the cap is 6. Counted after macros expand, which is what a browser builds>)
+
+test <the depth cap>
+  want hold, is-equal(cap-message(<deep>, 4, tight()), <this document nests 4 deep and the cap is 3>)
+
+test <the nested-call cap, by the field name TypeScript writes>
+  want hold, is-equal(cap-message(<callDeep>, 3, tight()), <this value nests 3 calls and the cap is 2. A document formats a value, it does not compute one>)
+
+test <the operator cap>
+  want hold, is-equal(cap-message(<callSum>, 4, tight()), <this document applies 4 operators and the cap is 3>)
+
+test <the walk caps>
+  want hold, and(is-equal(cap-message(<walkDeep>, 3, tight()), <this document nests 3 walks and the cap is 2>), is-equal(cap-message(<walkSum>, 81, tight()), <these nested walks build up to 81 nodes and the cap is 40. One walk is bounded by its list, three are bounded by their product>))
+
+test <a list walk's assumed width names the number, not a count>
+  want hold, is-equal(cap-message(<walkWide>, 0, tight()), <a list walk is assumed to draw 1000 items when its length is only known once the query resolves>)
+
+test <the statement caps>
+  want hold, and(is-equal(cap-message(<find>, 3, tight()), <this document names 3 queries and the cap is 2>), and(is-equal(cap-message(<host>, 3, tight()), <this document names 3 values and the cap is 2>), is-equal(cap-message(<view>, 2, tight()), <this document declares 2 views and the cap is 1>)))
+
+test <the caps fall to the defaults>
+  want hold, is-equal(cap-message(<deep>, 40), <this document nests 40 deep and the cap is 32>)
+
+test <an unknown cap has no message>
+  want hold, is-equal(cap-message(<width>, 1, tight()), <>)

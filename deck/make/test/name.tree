@@ -1,0 +1,41 @@
+note <the identifier a Term name compiles to: camelCase, a SCREAMING_SNAKE constant, and the reserved words>
+
+# term/name.tree is also held against the TypeScript over every name in the tree (`pnpm term:self-host`). These
+# are the rules it follows, one case each.
+
+load ../code/term/name
+  find to-camel
+  find to-constant
+  find split-name
+  find is-reserved
+  find upper-head
+
+load @term/base/list
+  find list
+
+test <kebab to camel>
+  want hold, and(is-equal(to-camel(<for-each>), <forEach>), is-equal(to-camel(<read>), <read>))
+
+test <an acronym stays plain: a user's make-api is makeApi>
+  want hold, is-equal(to-camel(<make-api>), <makeApi>)
+
+test <snake and kebab both separate>
+  want hold, is-equal(to-camel(<to_base-36>), <toBase36>)
+
+test <a reserved word gets a trailing underscore>
+  want hold, and(is-equal(to-camel(<class>), <class_>), is-equal(to-camel(<window>), <window_>))
+
+test <a reserved word only when the whole name is one>
+  want hold, is-equal(to-camel(<class-name>), <className>)
+
+test <a constant is loud snake>
+  want hold, and(is-equal(to-constant(<database-url>), <DATABASE_URL>), is-equal(to-constant(<max_size-of>), <MAX_SIZE_OF>))
+
+test <a name splits on both separators>
+  want hold, is-equal(join(split-name(<a-b_c-d>), <,>), <a,b,c,d>)
+
+test <the reserved list holds the language and the browser globals>
+  want hold, and(and(is-reserved(<yield>), is-reserved(<structuredClone>)), not(is-reserved(<task>)))
+
+test <the head of a word upper-cased, an empty word left empty>
+  want hold, and(is-equal(upper-head(<base>), <Base>), is-equal(upper-head(<>), <>))

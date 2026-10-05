@@ -31,4 +31,13 @@ object cipher {
         }
         return instance.doFinal(sealed)
     }
+    // whether the sealed value opens under this key, nonce and extra: `decrypt` in Term asks first and raises
+    // `refusal` when it does not. Throwable, never a bare Exception, which the program's own `exception` form shadows
+    fun opens(key: ByteArray, nonce: ByteArray, sealed: ByteArray, extra: ByteArray): Boolean =
+        try {
+            decrypt(key, nonce, sealed, extra)
+            true
+        } catch (cause: Throwable) {
+            false
+        }
 }

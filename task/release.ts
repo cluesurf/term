@@ -248,12 +248,38 @@ async function main(): Promise<void> {
   const out = path.join(OUT_ROOT, version)
   const cache = path.join(OUT_ROOT, 'npm')
   const common = path.join(out, 'common')
+  const started = Date.now()
+
+  // THE REGISTRY FIRST. A release is write-once, so a version already there is refused before anything is built:
+  // this asked it last, after a minute of packing six platforms. A dry run builds all the same, and says so at the end
+  const taken = await releasedAlready(version)
+
+  if (!dry && taken.form !== 'free') {
+    output = await loadOutput()
+    output.openRun({ verb: 'release', root: TERM, facts: [`${PACKAGE} ${version}`], started })
+    output.report({
+      glyph: 'failed',
+      kind: 'problem',
+      verb: 'release',
+      subject:
+        taken.form === 'released'
+          ? `${PACKAGE}@${version} is already released, and releases are write-once`
+          : `the registry could not say whether ${PACKAGE}@${version} is released: ${taken.reason}`,
+      fields: [output.field('at', taken.at)],
+    })
+    output.closeRun({
+      verdict: 'Nothing built, nothing released',
+      failure: taken.form === 'released' ? 'usage' : 'environment',
+      next: taken.form === 'released' ? 'raise the version to the next even patch in package.json and deck.tree' : undefined,
+    })
+
+    return
+  }
 
   rmSync(out, { recursive: true, force: true })
   mkdirSync(cache, { recursive: true })
 
   // the port build first, on its own: the output library is loaded from the ports it writes
-  const started = Date.now()
   const port = portBuild()
   output = await import('@term/call/code/output')
   output.openRun({ verb: 'release', root: TERM, facts: [`${PACKAGE} ${version}`, ...(dry ? ['--dry'] : [])], started })
@@ -333,6 +359,10 @@ async function main(): Promise<void> {
   writeFileSync(path.join(out, 'release.json'), `${JSON.stringify({ package: '@term/code', version, built }, null, 2)}\n`)
 
   if (dry) {
+    if (taken.form === 'released') {
+      output.report({ glyph: 'warning', verb: 'release', subject: `${PACKAGE}@${version} is already released, so a release of this version would be refused`, fields: [output.field('at', taken.at)] })
+    }
+
     output.closeRun({
       verdict: 'Built, nothing published',
       counts: [output.count(built.length, 'platforms', 'platform')],
@@ -342,12 +372,50 @@ async function main(): Promise<void> {
     return
   }
 
-  await publish({ version, built })
+  await publish({ version, built, first: taken.form === 'free' && taken.first })
+}
+
+// Is this version on the registry already? One request for the index under the version tag, the same question
+// `publishRelease` asks, asked before the build instead of after it
+async function releasedAlready(
+  version: string,
+): Promise<{ form: 'free'; at: string; first: boolean } | { form: 'released'; at: string } | { form: 'unknown'; at: string; reason: string }> {
+  const route = releaseRoute({ package: PACKAGE })
+  const at = `${route.registry.host}/${route.repository.name}:${version}`
+
+  try {
+    const transport = transportFor({ host: route.registry.host })
+    const index = await transport.getManifest({ repository: route.repository.name, reference: version })
+
+    if (index) {
+      return { form: 'released', at }
+    }
+
+    // a repository with no version yet: this is the first release, which GHCR makes private
+    const tags = await transport.listTags({ repository: route.repository.name }).catch(() => [] as string[])
+
+    return { form: 'free', at, first: !tags.some(tag => /^\d+\.\d+\.\d+$/.test(tag)) }
+  } catch (error) {
+    return { form: 'unknown', at, reason: error instanceof Error ? error.message : String(error) }
+  }
+}
+
+// The output library before the port build, for a release refused before it. The ports it is made of are there from
+// the last build on any machine that has built before; on a fresh clone they are built first, so a refusal still
+// prints through the one library and never through a second printer
+async function loadOutput(): Promise<typeof Output> {
+  try {
+    return await import('@term/call/code/output')
+  } catch {
+    portBuild()
+
+    return await import('@term/call/code/output')
+  }
 }
 
 // P2: push every platform under `@term/code`'s route, signed by this machine's publish key, which must be in (or will
 // found) the scope's key set. Credentials come from GHCR_TOKEN, which `pnpm term:release` loads from zone
-async function publish(input: { version: string; built: Built[] }): Promise<void> {
+async function publish(input: { version: string; built: Built[]; first: boolean }): Promise<void> {
   const route = releaseRoute({ package: PACKAGE })
   const keypair = await loadPublishKeypair({ mint: false })
 
@@ -395,11 +463,17 @@ async function publish(input: { version: string; built: Built[] }): Promise<void
     subject: `${route.registry.host}/${route.repository.name}:${input.version}`,
     fields: [output.field('index', released.index)],
   })
+  // a FIRST release lands private on GHCR, and nothing installs from a private package, so it is made public once.
+  // Every later release is public already, and saying so again on each one was noise
   output.closeRun({
     verdict: `Released ${PACKAGE}@${input.version}`,
     counts: [output.count(input.built.length, 'platforms', 'platform')],
-    message: ['A new GHCR package is private, and nothing installs from a private one. A first release is made public once.'],
-    next: `https://github.com/orgs/${owner}/packages/container/${encodeURIComponent(rest.join('/'))}/settings`,
+    ...(input.first
+      ? {
+          message: ['A new GHCR package is private, and nothing installs from a private one. A first release is made public once.'],
+          next: `https://github.com/orgs/${owner}/packages/container/${encodeURIComponent(rest.join('/'))}/settings`,
+        }
+      : { done: true, next: 'term self update, on an installed term' }),
   })
 }
 

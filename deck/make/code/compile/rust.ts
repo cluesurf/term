@@ -2261,9 +2261,20 @@ function emitRustPass(
 
         // a left operand that is a block (a call hoisting its lent arguments) is parenthesized: once `bare` drops the
         // outer pair at a statement or a tail, a leading `{ .. }` would be read as a statement of its own
-        const left = literalText(node.left) ?? expr(node.left)
+        // and either side that is a construction keeps a pair of its own: `bare` drops the outer one at an `if`
+        // condition, and rustc refuses a struct literal there (`if a == Big { .. } {`), as it does a member read off one
+        const operand = (side: Expression): string => {
+          const text = literalText(side) ?? expr(side)
 
-        return `(${left.startsWith('{') ? `(${left})` : left} ${OP[node.op]} ${literalText(node.right) ?? expr(node.right)})`
+          // only a literal with a body: a field-less case is a path (`Ordering::Less`), and needs no pair
+          return side.form === 'record' && /^[A-Za-z_][\w:]*\s*\{/.test(text) ? `(${text})` : text
+        }
+        const left = operand(node.left)
+        // a left side that opens a block expression (an inlined `big-compare` is a `match`) is a statement of its own
+        // at the head of a tail, exactly as a bare `{ .. }` is: `match .. { .. } == 0` fails to parse
+        const opensBlock = /^(\{|(match|if|loop|unsafe)\b)/.test(left)
+
+        return `(${opensBlock ? `(${left})` : left} ${OP[node.op]} ${operand(node.right)})`
       }
 
       case 'call': {
@@ -2420,10 +2431,12 @@ function emitRustPass(
         // this use instead of cloned -- there is no later use to invalidate, so the borrow checker accepts it, and the
         // clone (a deep `String` copy or an `Rc` refcount bump) is saved.
         // a closure-typed local (a task parameter) boxes its unknown-typed arguments the same way a known
-        // function does: its param types come from the callee's own checked function type
+        // function does: its param types come from the callee's own checked function type. A local shadows a task of
+        // its name: the stdlib's `map` calls its parameter `fn`, and a program defining a task `fn` with `fall`
+        // parameters had every call of the parameter padded to that task's arity (test/compile/shadowed-callee.ts)
         const params =
           node.callee.form === 'variable'
-            ? (functionParams.get(node.callee.name) ??
+            ? ((localNames.has(node.callee.name) ? undefined : functionParams.get(node.callee.name)) ??
               (node.callee.type?.kind === 'function'
                 ? node.callee.type.params
                 : undefined))

@@ -76,6 +76,8 @@ const sent = join(TERM, 'tmp', 'self-release-windows')
 rmSync(sent, { recursive: true, force: true })
 mkdirSync(join(sent, 'sample', 'code'), { recursive: true })
 copyFileSync(LOADER, join(sent, 'load.ps1'))
+// the module the script hands over to, served beside it on term.surf: `pnpm run make:load` writes it
+copyFileSync(LOADER.replace(/\.ps1$/, '.mjs'), join(sent, 'load.mjs'))
 writeFileSync(join(sent, 'sample', 'deck.tree'), 'deck @sample/hello\nhead <A sample project the Windows install test builds>\nmark <0.0.0>\n')
 writeFileSync(join(sent, 'sample', 'code', 'base.tree'), 'task greet\n  take name, like text\n  like text\n  send back, text <hello {name}>\n')
 // before the registry starts: ship is synchronous, and nothing it does needs the registry
@@ -112,6 +114,7 @@ const env = [
   `New-Item -ItemType Directory -Force -Path '${home}' | Out-Null`,
   `$env:USERPROFILE = '${home}'`,
   `$env:TERM_LOAD_REGISTRY = 'http://${server.host}'`,
+  `$env:TERM_LOAD_MODULE = '${root}\\load.mjs'`,
   `$env:TERM_RELEASE_REGISTRY = 'oci://${server.host}/cluesurf/term'`,
   `$env:TERM_OCI_HOST = '${server.host}'`,
   "$env:TERM_OCI_USERNAME = 'tester'",

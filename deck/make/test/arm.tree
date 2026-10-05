@@ -1,0 +1,47 @@
+note <the locals a fork-case arm brings into scope: every field, a selection by name, or a renaming in order>
+
+load ../code/check/arm
+  find arm-local
+  find arm-locals
+
+load @term/base/list
+  find list
+
+# each local as `field=local`, joined, so a whole answer is one comparison
+task shown
+  take locals, like list, like arm-local
+  like text
+
+  host parts, make list
+  walk locals
+    take one
+    parts/push(<{one/field}={one/local}>)
+
+  back join(parts, <,>)
+
+host fields, make list(<left>, <op>, <right>)
+
+test <no link lines: every field, by its own name>
+  host binds, make list
+  want hold, is-equal(shown(arm-locals(fields, binds)), <left=left,op=op,right=right>)
+
+test <every name a field: those fields alone, in the order written>
+  host binds, make list(<right>, <left>)
+  want hold, is-equal(shown(arm-locals(fields, binds)), <right=right,left=left>)
+
+test <a name that is no field: the names rename the fields in declaration order>
+  host binds, make list(<a>, <b>, <c>)
+  want hold, is-equal(shown(arm-locals(fields, binds)), <left=a,op=b,right=c>)
+
+test <fewer names than fields: a field past the last name keeps its own>
+  host binds, make list(<lhs>)
+  want hold, is-equal(shown(arm-locals(fields, binds)), <left=lhs,op=op,right=right>)
+
+test <one field name among new ones still renames, since not every name is a field>
+  host binds, make list(<op>, <x>)
+  want hold, is-equal(shown(arm-locals(fields, binds)), <left=op,op=x,right=right>)
+
+test <a variant with no fields has no locals>
+  host none, make list
+  host binds, make list
+  want hold, is-equal(shown(arm-locals(none, binds)), <>)

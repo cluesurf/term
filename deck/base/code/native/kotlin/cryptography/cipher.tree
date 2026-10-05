@@ -30,3 +30,19 @@ task decrypt-aes-gcm
       read nonce
       read sealed
       read extra
+
+# whether the sealed value opens under this key, nonce and extra. `decrypt` asks first, so a value that does not
+# open raises `refusal` on every backend, where each host failed its own way
+task opens-aes-gcm
+  mark async
+  take key, like bytes
+  take nonce, like bytes
+  take sealed, like bytes
+  take extra, like bytes
+  like boolean
+  send back
+    call cipher/opens
+      read key
+      read nonce
+      read sealed
+      read extra

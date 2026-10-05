@@ -9,6 +9,9 @@ load @term/base/code/process/run
 load @term/base/code/list
   find list
 
+load @term/base/code/environment
+  find set-variable
+
 load @term/base/code/text
   find contains
 
@@ -71,6 +74,25 @@ test <a command that is not there raises command-absence>
       call outcome
         text <term-no-such-command>
       text <absent term-no-such-command>
+
+# a child gets the program's environment, its own writes included. On Kotlin a write went to a system property the
+# child never saw, because the JVM's environment cannot change (2026-10-04)
+test <a variable the program sets reaches the command it runs>
+  call set-variable
+    text <TERM_RUN_PROBE>
+    text <seen>
+  save words
+    make list
+  call words/push
+    text <TERM_RUN_PROBE>
+  save result
+    call run
+      text <printenv>
+      read words
+  want hold
+    call contains
+      read result/output
+      text <seen>
 
 test <run-with-input hands the text to standard input>
   save result

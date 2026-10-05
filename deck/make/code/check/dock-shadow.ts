@@ -59,7 +59,7 @@ export function checkDockShadow(program: Program): Diagnostic[] {
 
   for (const node of program) {
     if (node.form === 'native' && node.kind !== 'type') {
-      const file = node.file ?? node.span.file
+      const file = node.file ?? node.span.file ?? ''
       const names = docked.get(file) ?? new Set<string>()
       names.add(node.alias)
       docked.set(file, names)
@@ -73,7 +73,7 @@ export function checkDockShadow(program: Program): Diagnostic[] {
       continue
     }
 
-    const names = docked.get(node.span.file)
+    const names = docked.get(node.span.file ?? '')
 
     if (!names) {
       continue
@@ -86,7 +86,7 @@ export function checkDockShadow(program: Program): Diagnostic[] {
         seen.add(binding.name)
         found.push(
           diagnose('dock-shadow', {
-            file: binding.span.file,
+            file: binding.span.file ?? node.span.file ?? '',
             span: binding.span,
             message: `"${binding.name}" in "${node.name}" hides the module this file docks as "${binding.name}", so \`${binding.name}/...\` there reads the local`,
           }),

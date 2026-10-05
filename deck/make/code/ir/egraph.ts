@@ -373,19 +373,28 @@ class EGraph {
   }
 }
 
+// a constant fold, or undefined when the answer is not a safe integer. Unchecked, a product past 2^53 became a new
+// constant that folded again, out to `Infinity` and `NaN`, each one a class the next step multiplied by the rest, and
+// the graph grew until the build never finished: `u64-maximum-value`, `i64-maximum-value * 2 + 1` over the safe
+// literals of `-2^31 * 2^32`, hung `term boot` (2026-10-04). Such a fold was never emitted anyway (`fromExpr` in
+// egraph-arith.ts refuses an unsafe literal), so refusing it here loses no rewrite
 function fold(op: string, a: number, b: number): number | undefined {
-  switch (op) {
-    case '+':
-      return a + b
-    case '-':
-      return a - b
-    case '*':
-      return a * b
-    case '/':
-      return b === 0 ? undefined : Math.trunc(a / b)
-    default:
-      return undefined
-  }
+  const answer = (() => {
+    switch (op) {
+      case '+':
+        return a + b
+      case '-':
+        return a - b
+      case '*':
+        return a * b
+      case '/':
+        return b === 0 ? undefined : Math.trunc(a / b)
+      default:
+        return undefined
+    }
+  })()
+
+  return answer !== undefined && Number.isSafeInteger(answer) ? answer : undefined
 }
 
 // optimize an arithmetic expression by equality saturation

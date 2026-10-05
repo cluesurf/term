@@ -311,9 +311,20 @@ export function check(
   // opaque per-backend handle types declared by `dock type` shims: kept as named types during inference
   const opaqueTypes = new Set<string>()
 
+  // the module names each file docks (`dock load / load <global:log>, name log`), by file. Inside that file the name
+  // is the module, whatever another file defines under it: `native/rust/log.tree` docks `log` and calls
+  // `log/write-warn`, and a program that also found `console`'s task `log` read that call as a field of the task and
+  // was refused on Rust, Swift and Kotlin (guides: library/processes, 2026-10-04)
+  const docksByFile = new Map<string, Set<string>>()
+
   for (const statement of program) {
     if (statement.form === 'native' && statement.kind === 'type') {
       opaqueTypes.add(statement.alias)
+    } else if (statement.form === 'native') {
+      const file = statement.file ?? statement.span.file ?? ''
+      const docks = docksByFile.get(file) ?? new Set<string>()
+      docks.add(statement.alias)
+      docksByFile.set(file, docks)
     }
   }
 
@@ -684,6 +695,9 @@ export function check(
 
         if (local) {
           type = instantiateScheme(local)
+        } else if (docksByFile.get(currentFile)?.has(node.name)) {
+          // a module this file docks: the host's own value, typed by nothing the program declares
+          type = UNKNOWN
         } else if (functions.has(node.name)) {
           // a task referenced as a first-class value: its (freshly instantiated) function type
           const signature = instantiate(functions.get(node.name)!, sub)
@@ -1708,7 +1722,9 @@ export function check(
                 diagnose('non-exhaustive', {
                   file: currentFile,
                   span: node.span,
-                  message: `the guarded body can also raise ${missing.join(', ')}, which this fork case does not cover`,
+                  // no case names it, whichever spelling the match was written in: `sift` and `fork case` are one node
+                  // here, and the message said `fork case` under a `sift` (guides: library/exceptions, 2026-10-04)
+                  message: `the guarded body can also raise ${missing.join(', ')}, and no case here covers ${missing.length > 1 ? 'them' : 'it'}`,
                   hint: 'add a case for each, or an otherwise',
                 }),
               )

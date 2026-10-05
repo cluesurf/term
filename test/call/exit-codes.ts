@@ -733,6 +733,16 @@ task boot
   const run = term(stopped, 'boot', 'code/base.tree')
 
   ok('`term boot` exits 1 when the program stops on a defect', run.status === 1 && /defect/.test(run.out), `${run.status} ${run.out.slice(-600)}`)
+
+  // ---- commands/boot: `--out` on an entry with no commands, a sentence as its subject ----
+  // the subject began `--out writes ...`, lowercase, the one item subject that did not start a sentence (2026-10-04)
+  const out = term(stopped, 'boot', 'code/base.tree', '--out', 'host/x')
+
+  ok(
+    '`term boot --out` on an entry with no `hook` commands is refused, its subject a sentence',
+    out.status === 1 && /✗ boot\s+An `--out` folder holds a command-line program, and this entry\s+declares no `hook`\s+commands/.test(out.out),
+    out.out,
+  )
 }
 
 console.log(`\nexit-codes: ${pass} pass, ${fail} fail`)

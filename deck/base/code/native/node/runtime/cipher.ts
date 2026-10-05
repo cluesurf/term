@@ -45,5 +45,21 @@ const cipher = (() => {
       )
       return new Uint8Array(opened)
     },
+    // whether the sealed value opens under this key, nonce and extra: `decrypt` in Term asks first and raises
+    // `refusal` when it does not, since each host fails in its own way (node's error carries no `form`)
+    opens: async (
+      key: Uint8Array,
+      nonce: Uint8Array,
+      sealed: Uint8Array,
+      extra: Uint8Array,
+    ): Promise<boolean> => {
+      try {
+        const cryptoKey = await importKey(key)
+        await globalThis.crypto.subtle.decrypt({ name: 'AES-GCM', iv: nonce, additionalData: extra }, cryptoKey, sealed)
+        return true
+      } catch {
+        return false
+      }
+    },
   }
 })()

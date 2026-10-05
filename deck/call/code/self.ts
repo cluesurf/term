@@ -640,8 +640,8 @@ function refuseUnmanaged(held: Exclude<Held, { form: 'installed' }>): void {
   closeRun({ verdict: 'Nothing was changed', failure: 'usage' })
 }
 
-// every released version, newest first, or undefined with the reason reported
-async function releases(): Promise<string[] | undefined> {
+/** Every released version, newest first, or undefined with the reason reported. */
+export async function releases(): Promise<string[] | undefined> {
   try {
     return await listReleases()
   } catch (error) {
@@ -658,8 +658,8 @@ async function releases(): Promise<string[] | undefined> {
   }
 }
 
-// one `load` item for an install, or the problem; true when the version is here
-function reportLoaded(loaded: Loaded): loaded is Extract<Loaded, { ok: true }> {
+/** One `load` item for an install, or the problem; true when the version is here. */
+export function reportLoaded(loaded: Loaded): loaded is Extract<Loaded, { ok: true }> {
   if (!loaded.ok) {
     report({ glyph: 'failed', kind: 'problem', verb: 'load', subject: loaded.reason })
 

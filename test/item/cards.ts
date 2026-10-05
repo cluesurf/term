@@ -976,6 +976,8 @@ export const CARDS: Card[] = [
         row(I, d('sources'), '  ', 'api, payments-reconciler'),
       ),
       replace('D27', 9, 1, row(x('✗'), ' job      invoice 99231  ', s('paymen…ciler'))),
+      // one space after `at`, not padded to `ledger`, so the location fits beside its key
+      replace('D34', 14, 2, row(I, d('at'), ' ', 'services/payments/reconciler/src/jobs/reconcile-invoice.ts:118:22')),
     ],
   },
   {

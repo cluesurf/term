@@ -1770,11 +1770,19 @@ function makeEmitter(
 
         // a record passed to a task that writes its fields is the task's own copy (D1, `recordCopies`): a spread for a
         // one-level write, a deep copy where some written path goes further
-        const writes = node.callee.form === 'variable' ? copies.params.get(node.callee.name) : undefined
+        // a parameter or local shadows a task of its name: neither that task's copies nor its arity apply to its calls
+        // (the stdlib's `map` calls its parameter `fn`, beside a program's task `fn`, test/compile/shadowed-callee.ts)
+        const task =
+          node.callee.form === 'variable' &&
+          node.callee.binding?.kind !== 'parameter' &&
+          node.callee.binding?.kind !== 'local'
+            ? node.callee.name
+            : undefined
+        const writes = task === undefined ? undefined : copies.params.get(task)
         const rendered = node.args.map((arg, i) =>
           writes?.has(i) && arg.form !== 'record' ? copyRecord(expression(arg), writes.get(i)!) : expression(arg),
         )
-        const declared = node.callee.form === 'variable' ? tsFunctionParams.get(node.callee.name) : undefined
+        const declared = task === undefined ? undefined : tsFunctionParams.get(task)
 
         if (declared) {
           for (let i = rendered.length; i < declared.length && declared[i]!.optional; i++) {

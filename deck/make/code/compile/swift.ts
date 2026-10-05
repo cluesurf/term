@@ -7,6 +7,7 @@
 
 import { armLocals } from '@term/make/code/check/arm'
 import { raiseSets } from '@term/make/code/check/effects'
+import { keepDocksApart } from '@term/make/code/compile/dock-apart'
 import { provenIncrements } from '@term/make/code/ir/facts/range'
 import { provenArithmetic, type Proven } from '@term/make/code/compile/proven'
 import { boundedLoops } from '@term/make/code/ir/facts/bounds'
@@ -881,9 +882,11 @@ export type WakeGroup = {
 }
 
 export function emitSwift(
-  program: Program,
+  written: Program,
   options?: { wake?: WakeGroup[] },
 ): string {
+  // a task named like a docked module is renamed, since Swift refuses `enum log` beside `func log` (dock-apart.ts)
+  const program = keepDocksApart(written)
   const pad = (d: number) => '  '.repeat(d)
   // the `+`, `-` and `*` nodes proven not to overflow (compile/proven.ts): written as the wrapping `&+`, `&-`, `&*`.
   // The counted steps here, joined below by the interval fact once the list facts it reads are known
@@ -1571,10 +1574,22 @@ export function emitSwift(
   innerKeys = elementLists.keys
   // the plain records' list fields the record owns (backend.ts, `ownedFields`), a plain `[T]` where every list field
   // was a `SeedList`: read and written in place through the path (Particle, 720 ms to 328 measured by hand,
-  // `tmp/swift-particle-ab.ts`). Struct fields only: a variant's are bound by its arm, which this does not read yet
+  // `tmp/swift-particle-ab.ts`). And a variant's, keyed by the variant: `ownedFields` holds one only where every arm
+  // that binds it only reads it, so the arm's local is the plain array too (Storage's leaf items and node kids, 1368 ms
+  // to 1225 against the hand version's 1221, `tmp/swift-storage-ab.ts`). Not a generic form's, and not a variant held
+  // in a node class (`nodeClasses`), whose class keeps its fields as declared
   const structForms = new Set(program.flatMap(n => (n.form === 'record-type' && n.variants.length === 0 && !n.shared ? [n.name] : [])))
+  const plainVariants = new Set(
+    program.flatMap(n =>
+      n.form === 'record-type' && n.variants.length > 0 && !n.shared && n.params.length === 0 && !nodeClasses.has(n.name) ? n.variants.map(v => v.name) : [],
+    ),
+  )
   const fieldLists = new Set(
-    [...ownedFields(program, freshLists, lendParams, privateForms(program, lendParams, freshLists))].filter(key => structForms.has(key.split('/')[0]!)),
+    [...ownedFields(program, freshLists, lendParams, privateForms(program, lendParams, freshLists))].filter(key => {
+      const owner = key.split('/')[0]!
+
+      return structForms.has(owner) || plainVariants.has(owner)
+    }),
   )
   // a path `r/field` to a list field the record owns
   const ownedPath = (target: Expression): boolean =>
@@ -2042,8 +2057,9 @@ export function emitSwift(
 
           return raw ? made : `SeedList(${made})`
         }
+        // a parameter or local shadows a task of its name, whose arity must not pad its calls (rust.ts, the same rule)
         const declaredParams =
-          node.callee.form === 'variable'
+          node.callee.form === 'variable' && !boundNames.has(node.callee.name)
             ? functionParams.get(node.callee.name)
             : undefined
 
@@ -2150,8 +2166,21 @@ export function emitSwift(
 
         // leading-dot construction: Swift infers the enum/struct type from context
         if (variantSet.has(node.name)) {
+          // a list the variant owns (`fieldLists`) is the plain array, as a struct's is: an owned local as it is, a
+          // fresh task's answer taken as it is, an empty list `[]`
+          const owned = (value: Expression): string => {
+            if (value.form === 'call') {
+              rawFresh = true
+              const made = expr(value, bind)
+              rawFresh = false
+
+              return made
+            }
+
+            return value.form === 'variable' ? expr(value, bind) : '[]'
+          }
           const labelled = node.fields.map(
-            f => `${camel(f.name)}: ${expr(f.value, bind)}`,
+            f => `${camel(f.name)}: ${fieldLists.has(`${node.name}/${f.name}`) ? owned(f.value) : expr(f.value, bind)}`,
           )
 
           // a case held by node class (`nodeClasses`) builds its node: in the spare a match kept, in a task that keeps
@@ -2509,9 +2538,65 @@ export function emitSwift(
       if (line) {
         lines.push(`${pad(d)}${line}`)
       }
+
+      const reserve = reserveAt(body, at)
+
+      if (reserve) {
+        lines.push(`${pad(d)}${vname(reserve.list)}.reserveCapacity(${reserve.room})`)
+      }
     }
 
     return lines.join('\n')
+  }
+
+  // An owned list local (a plain array, `ownedNames`) made empty and then filled by a counted loop later in the same
+  // block, `while i < n` with `i` from a literal and k pushes onto it among the loop's own statements, is given room for
+  // k * (n - base) first, as Kotlin's `reserveAt` does: Storage's kids, four a node, 1225 ms to 924 measured by hand
+  // against the hand version's 1221 (`tmp/swift-storage-ab.ts`). A capacity is a hint nothing reads, so the estimate
+  // need only be safe to compute where the list is made: `n` a literal, or a name no statement between the list and the
+  // loop declares, clamped to [0, 2^20] since the loop may stop early
+  const reserveAt = (body: Statement[], at: number): { list: string; room: string } | undefined => {
+    const made = body[at]
+
+    if (made?.form !== 'let' || made.type?.kind !== 'array' || !ownedNames.get(made.name)) {
+      return undefined
+    }
+
+    const empty =
+      (made.init.form === 'array' && made.init.items.length === 0) || (made.init.form === 'record' && made.init.name === 'list' && made.init.fields.length === 0)
+    const loopAt = body.findIndex((s, i) => i > at && s.form === 'while')
+    const loop = body[loopAt]
+
+    if (!empty || loop?.form !== 'while' || loop.cond.form !== 'binary' || loop.cond.op !== '<' || loop.cond.left.form !== 'variable') {
+      return undefined
+    }
+
+    const counter = loop.cond.left.name
+    const between = body.slice(at + 1, loopAt)
+    const start = between.find((s): s is Extract<Statement, { form: 'let' }> => s.form === 'let' && s.name === counter)
+    const bound = loop.cond.right
+    const pushes = loop.body.filter(
+      s =>
+        s.form === 'expression' &&
+        s.expr.form === 'call' &&
+        s.expr.callee.form === 'variable' &&
+        s.expr.callee.name === 'list_push' &&
+        s.expr.args[0]?.form === 'variable' &&
+        s.expr.args[0].name === made.name,
+    ).length
+    const declaredBetween = (name: string): boolean => between.some(s => s.form === 'let' && s.name === name)
+
+    if (!start || start.init.form !== 'integer' || pushes === 0 || !(bound.form === 'integer' || (bound.form === 'variable' && !declaredBetween(bound.name)))) {
+      return undefined
+    }
+
+    const base = Number(start.init.value)
+    const room =
+      bound.form === 'integer'
+        ? `${Math.min(Math.max(Number(bound.value) - base, 0), 1 << 20) * pushes}`
+        : `min(max(${vname(bound.name)}${base === 0 ? '' : ` - ${base}`}, 0), ${1 << 20})${pushes === 1 ? '' : ` * ${pushes}`}`
+
+    return { list: made.name, room }
   }
 
   // a `switch` case with no statement in its body (Term's `fork case, ... / case none` with nothing under it, a
@@ -3021,11 +3106,19 @@ export function emitSwift(
                   .join(', ')}):`
               : `case .${camel(b.label)}:`
 
-          return `${pad(d + 1)}${pattern}\n${armBlock(
-            b.body,
-            d + 2,
-            branchBind,
-          )}`
+          // a field the variant owns as a plain array (`fieldLists`) binds a plain array, which the arm only reads
+          // (`ownedFields` held every arm to that): its local is read as one for the arm's body alone
+          const outerPlain = plainNames
+          const ownedLocals = fields.filter(field => read(field) && fieldLists.has(`${b.label}/${field}`)).map(field => locals.get(field) ?? field)
+
+          if (ownedLocals.length > 0) {
+            plainNames = new Map([...outerPlain, ...ownedLocals.map(local => [local, 'read'] as [string, Lend])])
+          }
+
+          const armText = armBlock(b.body, d + 2, branchBind)
+          plainNames = outerPlain
+
+          return `${pad(d + 1)}${pattern}\n${armText}`
         })
 
         if (node.otherwise) {
@@ -3224,8 +3317,9 @@ export function emitSwift(
         if (node.variants.length > 0) {
           // a native enum: each variant a case, its fields the associated values
           const cases = node.variants.map(v => {
+            // a list the variant owns is a plain array (`fieldLists`)
             const fields = v.fields.map(
-              f => `${camel(f.name)}: ${swiftType(f.type)}`,
+              f => `${camel(f.name)}: ${fieldLists.has(`${v.name}/${f.name}`) && f.type.kind === 'array' ? `[${swiftElement(f.type)}]` : swiftType(f.type)}`,
             )
 
             return `${pad(d + 1)}case ${camel(v.name)}${

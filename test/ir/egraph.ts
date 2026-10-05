@@ -139,6 +139,26 @@ function main(): void {
     '((a - b) - (a - c))',
   )
 
+  // a fold past 2^53 is refused, so the graph does not grow on it: `u64-maximum-value`'s `i64-maximum-value * 2 + 1`,
+  // over the safe literals of `-2^31 * 2^32`, folded out to Infinity and NaN and hung the build (2026-10-04)
+  {
+    const i64Max = op('-', op('-', int(0), op('*', int(-2147483648), int(4294967296))), int(1))
+    const started = Date.now()
+    const got = optimize(op('+', op('*', i64Max, int(2)), int(1)))
+    const shown = showExpr(got)
+    const ints = shown.match(/-?\d+(\.\d+)?(e[+-]?\d+)?|Infinity|NaN/g) ?? []
+    const safe = ints.every(text => Number.isSafeInteger(Number(text)))
+    const quick = Date.now() - started < 1000
+
+    if (safe && quick) {
+      pass++
+      console.log(`ok    a fold past 2^53 is left unfolded, in ${Date.now() - started} ms  (${shown})`)
+    } else {
+      fail++
+      console.log(`FAIL  a fold past 2^53 is left unfolded  (${Date.now() - started} ms, ${shown.slice(0, 200)})`)
+    }
+  }
+
   console.log(`\negraph: ${pass} pass, ${fail} fail`)
 
   if (fail > 0) {

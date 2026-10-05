@@ -9,6 +9,10 @@ mark stable
 load @term/base/native/{platform}/cryptography/cipher
   find encrypt-aes-gcm
   find decrypt-aes-gcm
+  find opens-aes-gcm
+
+load @term/base/exception
+  find refusal
 
 task encrypt
   mark async
@@ -25,7 +29,10 @@ task encrypt
       read extra
       wait true
 
-# open ciphertext || tag under the same key, nonce and extra, returning the plaintext (fails if the tag does not verify, which includes the case where `extra` differs from the one it was sealed with)
+# open ciphertext || tag under the same key, nonce and extra, returning the plaintext. A value whose tag does not verify,
+# which includes one sealed with another `extra`, raises `refusal` (`thing` <sealed>, `reason` the tag) on every backend.
+# Each host failed its own way until 2026-10-04: node raised its own error with no `form`, Rust panicked on `unwrap` and
+# Swift trapped on `try!`, so a forged value could not be told from any other failure (guides: library/cryptography)
 task decrypt
   mark async
   take key, like bytes
@@ -33,6 +40,18 @@ task decrypt
   take sealed, like bytes
   take extra, like bytes
   like bytes
+  fork test
+    hook test
+      call opens-aes-gcm
+        read key
+        read nonce
+        read sealed
+        read extra
+        wait true
+    hook miss
+      halt refusal
+        bind thing, <sealed>
+        bind reason, <the tag does not verify under this key, nonce and extra>
   send back
     call decrypt-aes-gcm
       read key

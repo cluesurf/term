@@ -199,6 +199,19 @@ describe('OCI transport', () => {
     expect(await anonymous.hasBlob({ repository: 't/a', digest: sha256Digest(Buffer.from('small blob')) })).toBe(true)
   })
 
+  it('reads anonymously when its credential is refused, and never pushes so', async () => {
+    // a stale `docker login` for the host: GHCR answers it with 403 where no credential at all would read
+    const stale = httpTransport({
+      host: server.host,
+      credentials: async () => ({ kind: 'basic', username: 'tester', password: 'expired' }),
+      retries: 0,
+    })
+    const bytes = Buffer.from('stale')
+
+    expect(await stale.hasBlob({ repository: 't/a', digest: sha256Digest(Buffer.from('small blob')) })).toBe(true)
+    await expect(stale.putBlob({ repository: 't/a', digest: sha256Digest(bytes), bytes })).rejects.toThrow(/token request .* failed: 401/)
+  })
+
   it('pages the tag list', async () => {
     const config = Buffer.from('{}')
     await transport.putBlob({ repository: 't/tags', digest: sha256Digest(config), bytes: config })

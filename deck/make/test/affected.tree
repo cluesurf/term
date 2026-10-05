@@ -1,0 +1,106 @@
+note <incremental scheduling: what a change makes rebuild, what is reused, and the order to build in>
+
+load ../code/compile/affected
+  find reverse-deps
+  find affected-set
+  find reusable-set
+  find find-cycle
+  find topo-order
+  find is-acyclic
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+# app depends on lib and log, lib on base, tool on base, log on nothing, base on nothing
+task packages
+  like hash, like text, like list, like text
+
+  host graph, make hash
+  host app, make list(<lib>, <log>)
+  host lib, make list(<base>)
+  host tool, make list(<base>)
+  host log, make list
+  host base, make list
+  graph/set(<app>, app)
+  graph/set(<lib>, lib)
+  graph/set(<tool>, tool)
+  graph/set(<log>, log)
+  graph/set(<base>, base)
+
+  back graph
+
+# a depends on b, b on c, c on a
+task circle
+  like hash, like text, like list, like text
+
+  host graph, make hash
+  host a, make list(<b>)
+  host b, make list(<c>)
+  host c, make list(<a>)
+  graph/set(<a>, a)
+  graph/set(<b>, b)
+  graph/set(<c>, c)
+
+  back graph
+
+# an edit to `base` that only `lib` can observe: the body changed, its interface did not
+task only-lib-observes
+  take node, like text
+  like boolean
+
+  back not(is-equal(node, <base>))
+
+task joined
+  take items, like list, like text
+  like text
+
+  back join(items, <,>)
+
+test <every node's dependents, in the order they are met>
+  host reverse, reverse-deps(packages())
+  host none, make list
+  want hold, and(is-equal(joined(get-or-default(reverse, <base>, none)), <lib,tool>), is-equal(joined(get-or-default(reverse, <lib>, none)), <app>))
+
+test <a node nothing depends on has no dependents>
+  host reverse, reverse-deps(packages())
+  host none, make list(<missing>)
+  want hold, is-equal(joined(get-or-default(reverse, <app>, none)), <>)
+
+test <a change rebuilds the node and everything above it>
+  host changed, make list(<base>)
+  want hold, is-equal(joined(affected-set(packages(), changed)), <base,lib,tool,app>)
+
+test <a change at the top rebuilds only itself>
+  host changed, make list(<app>)
+  want hold, is-equal(joined(affected-set(packages(), changed)), <app>)
+
+test <early cutoff: an interface nobody can observe spares the dependents>
+  host changed, make list(<base>)
+  want hold, is-equal(joined(affected-set(packages(), changed, only-lib-observes)), <base>)
+
+test <what is not rebuilt is reused, in the graph's order>
+  host changed, make list(<lib>)
+  host affected, affected-set(packages(), changed)
+  want hold, and(is-equal(joined(affected), <lib,app>), is-equal(joined(reusable-set(packages(), affected)), <tool,log,base>))
+
+test <dependencies build before their dependents>
+  want hold, is-equal(joined(topo-order(packages())), <base,lib,log,app,tool>)
+
+test <a dependency graph without a cycle is acyclic>
+  want hold, is-acyclic(packages())
+
+test <a cycle is found, as the path into it and the node met twice>
+  host walked, find-cycle(circle())
+  want hold, and(not(is-acyclic(circle())), is-equal(joined(walked/cycle), <a,b,c,a>))
+
+test <a build order refuses a cycle>
+  save refused, false
+  mark unsafe
+    host order, topo-order(circle())
+  halt take
+    take e
+    save refused, true
+  want hold, refused

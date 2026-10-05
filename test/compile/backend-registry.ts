@@ -1,5 +1,8 @@
-// Backend registry test: the stability registry is the single source of truth for which backends are production-ready
-// and which are experimental, and the experimental backends (WGSL, HVM) stamp their output with a banner stating why.
+// Backend registry test: the experimental emitters stamp their output with the registry's banner.
+//
+// The registry itself is Term (compile/backend-registry.tree) and so are its checks, deck/make/test/backend-registry.tree
+// (self-hosting, 2026-10-04): which backends are stable, the notices, the banner in a given prefix, the order. What
+// stays here runs the WGSL emitter, which is TypeScript, to see the banner reach what it writes.
 // Run: npx tsx test/compile/backend-registry.ts
 
 import { parse } from '@term/make/code/parser/tree'
@@ -7,12 +10,6 @@ import { mill } from '@term/make/code/compile/mill'
 import { resolve } from '@term/make/code/check/resolve'
 import { check } from '@term/make/code/check/infer'
 import { emitWgsl } from '@term/make/code/compile/wgsl'
-import {
-  listBackends,
-  isExperimentalBackend,
-  experimentalNotice,
-  experimentalBanner,
-} from '@term/make/code/compile/backend-registry'
 import type { Program } from '@term/make/code/compile/node'
 
 let pass = 0
@@ -26,11 +23,6 @@ function ok(name: string, cond: boolean, info = ''): void {
     fail++
     console.log(`FAIL  ${name}  ${info}`)
   }
-}
-
-// the registry is a list since its port to Term (compile/backend-registry.tree), so a name is looked up here
-function backendInfo(name: string) {
-  return listBackends().find(info => info.name === name)
 }
 
 function frontEnd(text: string): Program {
@@ -52,56 +44,6 @@ function frontEnd(text: string): Program {
   return built.program
 }
 
-// the four production backends are stable with no limitations
-for (const name of ['typescript', 'rust', 'swift', 'kotlin']) {
-  ok(`${name} is stable`, backendInfo(name)?.stability === 'stable')
-  ok(`${name} is not experimental`, !isExperimentalBackend(name))
-  ok(`${name} lists no limitations`, backendInfo(name)?.limitations.length === 0)
-}
-
-// wgsl, hvm are experimental and each documents at least one concrete limitation
-for (const name of ['wgsl', 'hvm']) {
-  ok(`${name} is experimental`, isExperimentalBackend(name))
-  ok(
-    `${name} documents limitations`,
-    (backendInfo(name)?.limitations.length ?? 0) >= 1,
-  )
-  ok(
-    `${name} notice leads with EXPERIMENTAL`,
-    experimentalNotice(name)[0]?.startsWith('EXPERIMENTAL backend:') ===
-      true,
-  )
-}
-
-// the documented limitations name the headline constraints
-ok(
-  'hvm notice mentions the pure fragment',
-  experimentalNotice('hvm').some(l => l.toLowerCase().includes('fragment')),
-)
-ok(
-  'wgsl notice mentions numeric-only',
-  experimentalNotice('wgsl').some(l =>
-    l.toLowerCase().includes('numeric-only'),
-  ),
-)
-
-// a stable backend has no banner; an experimental one uses the requested comment prefix
-ok('stable backend has empty banner', experimentalBanner('rust', '//') === '')
-ok(
-  'hvm banner uses the // comment prefix',
-  experimentalBanner('hvm', '//').startsWith('// EXPERIMENTAL backend: HVM'),
-)
-ok(
-  'wgsl banner uses the // comment prefix',
-  experimentalBanner('wgsl', '//').startsWith(
-    '// EXPERIMENTAL backend: WGSL',
-  ),
-)
-
-// an unknown backend is treated as having no banner / notice (never throws)
-ok('unknown backend has no notice', experimentalNotice('java').length === 0)
-ok('unknown backend is not experimental', !isExperimentalBackend('java'))
-
 // the emitters actually stamp their output with the banner
 const DOUBLE = `task double
   take n, like number
@@ -115,19 +57,6 @@ const program = frontEnd(DOUBLE)
 ok(
   'emitted WGSL begins with the experimental banner',
   emitWgsl(program).startsWith('// EXPERIMENTAL backend: WGSL'),
-)
-
-// every backend is registered exactly once, in the order the CLI lists them
-const names = listBackends().map(info => info.name)
-ok(
-  'every backend is registered exactly once',
-  new Set(names).size === names.length,
-  names.join(', '),
-)
-ok(
-  'the registry lists the six backends in order',
-  names.join(',') === 'typescript,rust,swift,kotlin,wgsl,hvm',
-  names.join(', '),
 )
 
 console.log(`\nbackend-registry: ${pass} pass, ${fail} fail`)

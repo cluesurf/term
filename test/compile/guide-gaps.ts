@@ -119,6 +119,68 @@ task route
     ok('`home host` alone in `route` places the component', built.ok && /function route\([^)]*\)[^{]*\{\s*home\(host\)/.test(built.typescript), built.messages || /function route[\s\S]{0,120}/.exec(built.typescript)?.[0])
   }
 
+  // ---- library/processes: `console`'s `log` beside `log`'s `warn` ----
+  // native/<platform>/log.tree docks its module as `log` and calls `log/write-warn`. With `console`'s task `log` in the
+  // program, that call read as a field of the task and Rust, Swift and Kotlin refused the file. A name a file docks is
+  // the module inside that file
+  {
+    const text = `load @term/base/console
+  find log
+
+load @term/base/log
+  find warn
+
+task boot
+  log <out>
+  warn <err>
+`
+    for (const env of ['rust', 'swift', 'kotlin'] as const) {
+      const out = compile({ file: join(TERM, 'test/compile/guide-gaps.tree'), text }, { resolve: projectResolver(TERM, env), env })
+      ok(`\`console\`'s \`log\` beside \`log\`'s \`warn\` builds for ${env}`, out.ok, out.ok ? '' : out.diagnostics.map(d => d.message).join(' | '))
+    }
+  }
+
+  // ---- library/exceptions: a `sift` over a caught value that leaves a raise out names neither spelling ----
+  // the message said `this fork case` under a `sift`, which is the same node
+  {
+    const built = build(`load @term/base/exception
+  find absence
+  find mismatch
+
+task risky
+  take n, like number
+  like number
+  fork test
+    hook test
+      call is-above
+        read n
+        code 0
+    hook hold
+      halt absence
+        bind thing, <n>
+  halt mismatch
+    bind thing, <n>
+    bind expected, <a>
+    bind actual, <b>
+
+task guarded
+  take n, like number
+  like number
+  mark unsafe
+    send back, risky(n)
+  halt take
+    take problem
+    sift problem
+      case absence
+        send back, code 0
+`, undefined, true)
+    ok(
+      'a `sift` that leaves a raise uncovered says no case covers it, and never `fork case`',
+      !built.ok && /can also raise mismatch, and no case here covers it/.test(built.messages) && !/fork case/.test(built.messages),
+      built.messages,
+    )
+  }
+
   // ---- language/loops: nested `walk size` loops each keep their own counter ----
   {
     const built = build(`task grid

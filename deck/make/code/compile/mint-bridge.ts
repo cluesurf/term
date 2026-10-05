@@ -4940,8 +4940,11 @@ function applyAliases(
       // kept, so binding sends it to the import even where the file defines the imported name itself
       record.alias = record.name
       record.name = aliases.get(record.name)!
-    } else if (record.form === 'record' && typeof record.name === 'string') {
-      record.name = aliases.get(record.name) ?? record.name
+    } else if (record.form === 'record' && typeof record.name === 'string' && aliases.has(record.name)) {
+      // kept as a variable's is, so form binding sends `make chart-element` to the file its `find` named: it was
+      // dropped, and both spellings bound to the form merged last (guides: language/modules, 2026-10-04)
+      record.alias = record.name
+      record.name = aliases.get(record.name)!
     } else if (record.form === 'call' && record.lean && Array.isArray(record.names)) {
       // a lean label that is an alias may be a nested call of the import: noted beside the label, left as written
       const names = record.names as (string | undefined)[]
@@ -4951,9 +4954,12 @@ function applyAliases(
       }
     } else if (
       record.kind === 'named' &&
-      typeof record.name === 'string'
+      typeof record.name === 'string' &&
+      aliases.has(record.name)
     ) {
-      record.name = aliases.get(record.name) ?? record.name
+      // `like chart-element`, kept for form binding the same way
+      record.alias = record.name
+      record.name = aliases.get(record.name)!
     }
 
     for (const key in record) {

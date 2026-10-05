@@ -23,4 +23,16 @@ enum cipher {
         let box = try! AES.GCM.SealedBox(nonce: gcmNonce, ciphertext: cipherText, tag: tag)
         return try! AES.GCM.open(box, using: symmetricKey, authenticating: extra)
     }
+    // whether the sealed value opens under this key, nonce and extra: `decrypt` in Term asks first and raises
+    // `refusal` when it does not, where `decrypt` here traps on `try!`
+    static func opens(_ key: Data, _ nonce: Data, _ sealed: Data, _ extra: Data) -> Bool {
+        guard sealed.count >= 16, let gcmNonce = try? AES.GCM.Nonce(data: nonce) else {
+            return false
+        }
+        let symmetricKey = SymmetricKey(data: key)
+        guard let box = try? AES.GCM.SealedBox(nonce: gcmNonce, ciphertext: sealed.prefix(sealed.count - 16), tag: sealed.suffix(16)) else {
+            return false
+        }
+        return (try? AES.GCM.open(box, using: symmetricKey, authenticating: extra)) != nil
+    }
 }

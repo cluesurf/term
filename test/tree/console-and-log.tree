@@ -1,0 +1,15 @@
+note <`console`'s `log` and `log`'s `warn` in one file build on every backend. Each native `log.tree` docks its module as `log` and calls `log/write-warn`, and with `console`'s task `log` in the same program that call was read as a field of the task: the file built on node and was refused on Rust, Swift and Kotlin until 2026-10-04. Held by `pnpm term:base-gate`.>
+
+load @term/base/console
+  find log
+
+load @term/base/log
+  find warn
+
+test <a line logged and a warning, from the two modules>
+  call log
+    text <to standard output>
+  call warn
+    text <to standard error>
+  want hold
+    true

@@ -19,4 +19,15 @@ mod cipher {
         let nonce = Nonce::from_slice(&nonce);
         gcm.decrypt(nonce, Payload { msg: sealed.as_ref(), aad: extra.as_ref() }).unwrap()
     }
+    // whether the sealed value opens under this key, nonce and extra: `decrypt` in Term asks first and raises
+    // `refusal` when it does not, where `decrypt` here panics on `unwrap`
+    pub fn opens(key: Vec<u8>, nonce: Vec<u8>, sealed: Vec<u8>, extra: Vec<u8>) -> bool {
+        if key.len() != 32 || nonce.len() != 12 {
+            return false;
+        }
+        let key = Key::<Aes256Gcm>::clone_from_slice(&key);
+        let gcm = Aes256Gcm::new(&key);
+        let nonce = Nonce::from_slice(&nonce);
+        gcm.decrypt(nonce, Payload { msg: sealed.as_ref(), aad: extra.as_ref() }).is_ok()
+    }
 }

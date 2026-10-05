@@ -45,8 +45,8 @@ ok('every card on the page has a golden test, and in page order', mockups.length
 
 // every difference from the mockup is written down, and every one written down is still applied
 const written = new Set([...readFileSync(MOCKUP_DIFFERENCES, 'utf8').matchAll(/^### (D\d+)$/gm)].map(match => match[1]!))
-// D33 is applied to every card by `elbowQuotes`, not by a patch, so it is cited here
-const cited = new Set(['D33',...CARDS.flatMap(card => [...card.patches.flatMap(patch => patch.entry.split(' ')), ...(card.entry ? [card.entry] : [])])])
+// D33 and D34 are applied to every card by `elbowQuotes` and `oneSpaceFields`, not by a patch, so they are cited here
+const cited = new Set(['D33', 'D34',...CARDS.flatMap(card => [...card.patches.flatMap(patch => patch.entry.split(' ')), ...(card.entry ? [card.entry] : [])])])
 const unwritten = [...cited].filter(entry => !written.has(entry))
 const unapplied = [...written].filter(entry => !cited.has(entry))
 const unjustified = CARDS.filter(card => card.whole && !card.entry).map(card => card.caption)
@@ -94,7 +94,7 @@ function applyPatches(lines: Expected[], patches: Patch[]): Expected[] {
 
 function expectedOf(card: Card, mockup: Mockup): Expected[] {
   if (card.whole) {
-    return card.whole
+    return oneSpaceFields(card.whole, card.colorless === true)
   }
 
   const lines: Expected[] = mockup.lines.map(line => ({
@@ -102,7 +102,35 @@ function expectedOf(card: Card, mockup: Mockup): Expected[] {
     marks: line.marks.map(mark => (mark.role === 'cursor' ? null : mark)),
   }))
 
-  return elbowQuotes(applyPatches(lines, card.patches))
+  return oneSpaceFields(elbowQuotes(applyPatches(lines, card.patches)), card.colorless === true)
+}
+
+// D34: a field's value sits one space after its own key, where the mockups pad every key of an item to the widest
+// (the user's choice, 2026-10-04). A field line opens at the body column with a dim key and 2 or more spaces before
+// a value that is not dim; a table's header row is dim all along, so its gaps are left alone
+const FIELD = /^( {11}[a-z][\w-]*)( {2,})(?=\S)/
+
+function oneSpaceFields(lines: Expected[], colorless: boolean): Expected[] {
+  return lines.map(line => {
+    const found = FIELD.exec(line.text)
+
+    if (!found) {
+      return line
+    }
+
+    const keyEnd = found[1]!.length
+    const valueAt = keyEnd + found[2]!.length
+
+    // a card drawn without color has no marks to tell a key by, and its fields are the same shape
+    if (!colorless && (line.marks[keyEnd - 1]?.role !== 'dim' || line.marks[valueAt]?.role === 'dim')) {
+      return line
+    }
+
+    return {
+      text: `${found[1]} ${line.text.slice(valueAt)}`,
+      marks: [...line.marks.slice(0, keyEnd), null, ...line.marks.slice(valueAt)],
+    }
+  })
 }
 
 // D33: a quote is a child program's own lines, and hangs off a dim `⎿` elbow on its first line with the rest under it,

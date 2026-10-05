@@ -68,6 +68,7 @@ load @term/base/integer/big
   find big-integer
   find big-from-number
   find big-multiply
+  find big-compare
 
 load @term/base/float
   find absolute
@@ -85,6 +86,15 @@ task big
   like big-integer
 
   back big-from-number(n)
+
+# two big integers equal by value. `is-equal` on a `big-integer` compares the record, whose one field is an opaque
+# handle: node compares the `BigInt`s inside it, and Rust's handle has no `==`, so the record has none
+task same-big
+  take a, like big-integer
+  take b, like big-integer
+  like boolean
+
+  back is-equal(big-compare(a, b), 0)
 
 task integer-of
   take n, like number
@@ -173,7 +183,7 @@ test <trit: the balanced-ternary roundtrip from -200 to 200>
     hook test, is-maximum(v, 200)
     hook hold
       host back-again, from-trits(to-trits(big(v)))
-      fork test, not(is-equal(back-again, big(v)))
+      fork test, not(same-big(back-again, big(v)))
         hold
           save all, false
       save v, add(v, 1)
@@ -183,10 +193,10 @@ test <trit: 5 is +-->
   want hold, is-equal(trit-string(big(5)), <+-->)
 
 test <trit: from-trit-string undoes trit-string>
-  want hold, is-equal(from-trit-string(trit-string(big(1234))), big(1234))
+  want hold, same-big(from-trit-string(trit-string(big(1234))), big(1234))
 
 test <trit: negation flips the sign, for free>
-  want hold, is-equal(from-trits(negate-trits(to-trits(big(42)))), big(-42))
+  want hold, same-big(from-trits(negate-trits(to-trits(big(42)))), big(-42))
 
 test <integer: add>
   want hold, is-equal(integer-number(integer-add(integer-of(123), integer-of(-45))), 78)

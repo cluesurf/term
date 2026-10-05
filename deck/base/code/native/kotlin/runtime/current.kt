@@ -7,14 +7,22 @@
 object current {
   fun id(): Long = ProcessHandle.current().pid()
 
-  // the program's own arguments, as on every backend. Only `main(args)` sees them on the JVM (ProcessHandle's are the
-  // JVM's own: -cp, the class), so an entry point stores them in `given`. Without one, the launcher's command line
-  // (`sun.java.command`, the main class or jar then the arguments) is the nearest answer, and splits on spaces
+  // the program's own arguments, as on every backend. `main(args)` sees them, and an entry point may store them in
+  // `given`. Without one, they are what follows the main class or jar in the JVM's own argument array
+  // (`ProcessHandle`'s, after `-cp` and the other options), each argument whole. The main is the first word of the
+  // launcher's line, `sun.java.command`. That line, split on spaces, was the whole answer until 2026-10-04, and an
+  // argument holding a space arrived as two (guides: library/processes). It is the answer still where the JVM
+  // cannot report its arguments
   @JvmStatic var given: Array<String>? = null
 
-  fun arguments(): MutableList<String> =
-    given?.toMutableList()
-      ?: (System.getProperty("sun.java.command") ?: "").split(" ").filter { it.isNotEmpty() }.drop(1).toMutableList()
+  fun arguments(): MutableList<String> {
+    given?.let { return it.toMutableList() }
+    val words = (System.getProperty("sun.java.command") ?: "").split(" ").filter { it.isNotEmpty() }
+    val main = words.firstOrNull()
+    val raw = ProcessHandle.current().info().arguments().orElse(null)
+    val at = if (main != null && raw != null) raw.indexOf(main) else -1
+    return if (at >= 0) raw!!.drop(at + 1).toMutableList() else words.drop(1).toMutableList()
+  }
 
   fun directory(): String = System.getProperty("user.dir") ?: ""
 

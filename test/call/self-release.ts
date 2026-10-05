@@ -30,6 +30,8 @@ import { startOciServer } from '../../deck/deck/test/oci-server'
 const TERM = join(import.meta.dirname, '..', '..')
 // the installer term.surf serves at /load
 const LOADER = join(TERM, '..', '..', '..', '..', 'mesh', 'site', 'term.surf', 'home', 'public', 'load')
+// the module the script hands over to, served beside it: `pnpm run make:load` writes it
+const LOADER_MODULE = `${LOADER}.mjs`
 const VERSION = (JSON.parse(readFileSync(join(TERM, 'package.json'), 'utf8')) as { version: string }).version
 const NEXT = VERSION.replace(/\.(\d+)$/, (_, patch: string) => `.${Number(patch) + 2}`)
 const PLATFORM = currentPlatform()
@@ -120,6 +122,7 @@ function load(extra: Record<string, string>): Promise<{ code: number; out: strin
         env: {
           ...env,
           TERM_LOAD_REGISTRY: `http://${server.host}`,
+          TERM_LOAD_MODULE: LOADER_MODULE,
           ...extra,
         },
         encoding: 'utf8',
@@ -147,6 +150,13 @@ try {
   ok(`the loader installs ${VERSION}, checked and linked`, loaded.code === 0 && existsSync(bin) && readlinkSync(bin).includes(`/code/${VERSION}/`), loaded.out)
   ok('the loader wrote install.tree with the layer digest', existsSync(join(first, 'install.tree')) && readFileSync(join(first, 'install.tree'), 'utf8').includes(digest))
   ok('the loader names the PATH line, and edits no profile', /export PATH=/.test(loaded.out), loaded.out)
+  ok(
+    'the loader prints one run in the output standard: opening and closing `load` items, every other line an item or under one',
+    /(^|\n)· load {5}~\/\.base\/@cluesurf\/term\n {11}\d\d:\d\d:\d\d\.\d{3} · term\.surf\/load\n/.test(loaded.out) &&
+      new RegExp(`✓ load {5}term ${VERSION.replace(/\./g, '\\.')} is installed`).test(loaded.out) &&
+      loaded.out.split('\n').every(line => line === '' || /^[✓✗▲·○◐?+−~] [a-zA-Z]+ *  \S/.test(line) || line.startsWith('           ') || line.startsWith('export PATH=')),
+    loaded.out,
+  )
 
   const checked = await term(['self', 'check'])
   ok(`check passes on the loader's install of ${VERSION}`, checked.code === 0 && /signed release/.test(checked.out), checked.out)
@@ -278,7 +288,7 @@ try {
 
   // a platform the release does not carry is named, and nothing is installed
   const absent = await load({ HOME: fresh, TERM_LOAD_VERSION: '9.9.9' })
-  ok('the loader refuses a version that was never released', absent.code !== 0 && /term 9\.9\.9/.test(absent.out), absent.out)
+  ok('the loader refuses a version that was never released', absent.code !== 0 && /9\.9\.9 is not released/.test(absent.out) && /Nothing was installed/.test(absent.out), absent.out)
 
   // every blob GET above was redirected to the registry's separate storage host, which records any token it is sent
   ok('no pull token ever reached the storage host', server.leakedAuth.length === 0, server.leakedAuth.join(', '))

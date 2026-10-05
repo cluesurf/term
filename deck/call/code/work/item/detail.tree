@@ -93,6 +93,9 @@ task measure-keys
 
   save widest, 0
 
+  fork test, not(room/standard/layout/align-keys)
+    hold
+      back 0
   walk fields
     take one
     save wide, measure-text(clean-text(one/key, room))
@@ -101,7 +104,8 @@ task measure-keys
         save widest, wide
   back widest
 
-# one field: `key value`, the key dim and padded to `key-width`. A value that does
+# one field: `key value`, the key dim and padded to `key-width` when keys align,
+# then `field-gap` spaces. A value that does
 # not fit beside its key moves to
 # the next line, 2 past the key, and wraps there; a location breaks only after `/`
 # (section 12)
@@ -125,14 +129,20 @@ task draw-field
   fork test, field/location
     hold
       save rules, place-breaks(room/standard)
-  save padded, <{key}{make-spaces(subtract(key-width, measure-text(key)))}>
-  save beside, add(add(key-width, layout/key-gap), measure-spans(value))
+  # the widest key when keys align, else this key's own width (measure-keys gives 0)
+  save width, measure-text(key)
+
+  fork test, is-above(key-width, width)
+    hold
+      save width, key-width
+  save padded, <{key}{make-spaces(subtract(width, measure-text(key)))}>
+  save beside, add(add(width, layout/field-gap), measure-spans(value))
 
   fork test, is-maximum(beside, room/width)
     hold
       save spans, make list
       spans/push make-span(padded, <dim>)
-      spans/push make-span(make-spaces(layout/key-gap), <text>)
+      spans/push make-span(make-spaces(layout/field-gap), <text>)
       walk value
         take piece
         spans/push piece

@@ -1,0 +1,89 @@
+note <the backend registry: which backends are stable, and the banner an experimental one is stamped with>
+
+# Ported from test/compile/backend-registry.ts (self-hosting, 2026-10-04). What stays there runs the WGSL emitter,
+# which is TypeScript, to see the banner reach its output.
+
+load ../code/compile/backend-registry
+  find backend-info
+  find list-backends
+  find is-experimental-backend
+  find experimental-notice
+  find experimental-banner
+
+load @term/base/list
+  find list
+
+load @term/base/text
+  find index-of
+
+# the entry a name has, or one named `<none>` when the registry has no such backend
+task info-of
+  take name, like text
+  like backend-info
+
+  walk list-backends()
+    take info
+    fork test, is-equal(info/name, name)
+      hold
+        back info
+
+  back
+    make backend-info
+      bind name, <none>
+      bind language, <>
+      bind stability, <>
+      bind limitations, make list
+
+task stable-and-plain
+  take name, like text
+  like boolean
+
+  host info, info-of(name)
+
+  back and(and(is-equal(info/stability, <stable>), not(is-experimental-backend(name))), is-equal(info/limitations/length, 0))
+
+task any-line-holds
+  take lines, like list, like text
+  take part, like text
+  like boolean
+
+  walk lines
+    take line
+    fork test, is-minimum(index-of(line, part), 0)
+      hold
+        back true
+
+  back false
+
+test <the four production backends are stable, with no limitations>
+  want hold, and(and(stable-and-plain(<typescript>), stable-and-plain(<rust>)), and(stable-and-plain(<swift>), stable-and-plain(<kotlin>)))
+
+test <wgsl and hvm are experimental, and each states a limitation>
+  host wgsl, info-of(<wgsl>)
+  host hvm, info-of(<hvm>)
+  want hold, and(and(is-experimental-backend(<wgsl>), is-experimental-backend(<hvm>)), and(is-minimum(wgsl/limitations/length, 1), is-minimum(hvm/limitations/length, 1)))
+
+test <an experimental notice leads with EXPERIMENTAL>
+  host wgsl, experimental-notice(<wgsl>)
+  host hvm, experimental-notice(<hvm>)
+  want hold, and(is-equal(index-of(get(wgsl, 0), <EXPERIMENTAL backend:>), 0), is-equal(index-of(get(hvm, 0), <EXPERIMENTAL backend:>), 0))
+
+test <the notices name their headline constraint>
+  want hold, and(any-line-holds(experimental-notice(<hvm>), <fragment>), any-line-holds(experimental-notice(<wgsl>), <Numeric-only>))
+
+test <a stable backend has no banner>
+  want hold, is-equal(experimental-banner(<rust>, <//>), <>)
+
+test <an experimental banner is written in the prefix it is given>
+  want hold, and(is-equal(index-of(experimental-banner(<hvm>, <//>), <// EXPERIMENTAL backend: HVM>), 0), is-equal(index-of(experimental-banner(<wgsl>, <#>), <# EXPERIMENTAL backend: WGSL>), 0))
+
+test <an unknown backend has no notice, and is not experimental>
+  host notice, experimental-notice(<java>)
+  want hold, and(is-equal(notice/length, 0), not(is-experimental-backend(<java>)))
+
+test <the six backends, each once, in the order the CLI lists them>
+  host names, make list
+  walk list-backends()
+    take info
+    names/push(info/name)
+  want hold, is-equal(join(names, <,>), <typescript,rust,swift,kotlin,wgsl,hvm>)

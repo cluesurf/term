@@ -164,14 +164,20 @@ export function httpTransport(input: {
   const scopeKey = (scope: string[] | undefined): string => (scope ?? []).slice().sort().join(' ')
 
   // Trade credentials for a token at the realm a challenge named.
-  const fetchToken = async (challenge: { realm: string; service?: string }, scope: string[]): Promise<TokenEntry> => {
+  //
+  // A READ WHOSE CREDENTIAL IS REFUSED IS ASKED AGAIN WITH NONE. A public package needs no credential, and GHCR answers
+  // a stale or foreign one with 403 rather than with an anonymous token: an old `docker login` for ghcr.io made every
+  // install of a public release fail with `403 DENIED`, while the same request with no credential succeeded. A pull
+  // that only a credential can make (a private package) still fails, naming the refusal, and a push never falls back,
+  // because there is no anonymous push
+  const fetchToken = async (challenge: { realm: string; service?: string }, scope: string[], anonymous = false): Promise<TokenEntry> => {
     const realm = new URL(challenge.realm)
 
     if (realm.protocol !== 'https:' && !(realm.protocol === 'http:' && plain)) {
       throw new OciError(`token realm ${realm.origin} is not https, refusing to send credentials to it`)
     }
 
-    const creds = await loadCredentials()
+    const creds = anonymous ? undefined : await loadCredentials()
     const headers: Record<string, string> = { 'user-agent': 'term' }
     let response: Response
 
@@ -209,7 +215,18 @@ export function httpTransport(input: {
     }
 
     if (!response.ok) {
-      throw new OciError(`token request to ${realm.origin} failed: ${response.status}${await errorText(response)}`, response.status)
+      const refusal = new OciError(`token request to ${realm.origin} failed: ${response.status}${await errorText(response)}`, response.status)
+      const pullOnly = scope.length > 0 && scope.every(entry => /:pull$/.test(entry))
+
+      if (creds && pullOnly && (response.status === 401 || response.status === 403)) {
+        try {
+          return await fetchToken(challenge, scope, true)
+        } catch {
+          // neither the credential nor none: the credential's refusal is the one worth naming
+        }
+      }
+
+      throw refusal
     }
 
     const body = JSON.parse((await readLimited(response, 1024 * 1024)).toString('utf8')) as {

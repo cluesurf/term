@@ -834,7 +834,8 @@ export async function callBoot(input: {
         report({
           glyph: 'failed',
           kind: 'problem',
-          subject: '--out writes a command-line program, and this entry declares no `hook` commands',
+          // a subject is a sentence and starts capitalized, so it leads with the word, not the flag (guides: commands/boot)
+          subject: 'An `--out` folder holds a command-line program, and this entry declares no `hook` commands',
           fields: [location(showPath(entry, cwd))],
         })
 
