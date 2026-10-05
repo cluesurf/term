@@ -218,9 +218,11 @@ rule secret-is-identity
       read a
 `)
 
+  // since 2026-10-05 the build RUNS `secret`, a one-expression task, at small values and finds the law false there
+  // (check/explain.ts), so it is refused as `unproven` with the values rather than as out of reach
   ok(
-    'a false law about a task the prover cannot reach is refused',
-    out.refused && out.errors.includes('unchecked-hold'),
+    'a false law about a task the prover cannot reach is refused, and shown false at values',
+    out.refused && out.errors.includes('unproven'),
     `refused=${out.refused} ${out.errors.join(',')}`,
   )
 }

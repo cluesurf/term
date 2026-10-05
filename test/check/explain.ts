@@ -76,6 +76,27 @@ function ok(name: string, good: boolean, detail: string[]): void {
   )
 }
 
+// a goal that calls a task whose body is one `back <expression>` is run with that task
+{
+  const out = said(`task double
+  take n, like integer
+
+  like integer
+
+  back multiply(n, 2)
+
+rule double-is-one-more
+  mark n, like integer
+  show is-equal double(n), add(n, 1)
+`)
+
+  ok(
+    'a goal that calls a one-expression task runs it: double(n) == n + 1 is false at n = 0',
+    out.some(m => m.includes('FALSE: at n = 0 the goal does not hold (goal: double(n) == n + 1)')),
+    out,
+  )
+}
+
 // a mark that is a FUNCTION has no small values to try: described, never called false
 {
   const out = said(`rule function-mark

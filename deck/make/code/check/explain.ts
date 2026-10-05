@@ -76,16 +76,43 @@ export function printExpression(e: Expression, outer = 0): string {
 
 type Value = number | boolean | undefined
 
-// an expression's value at an assignment of its variables, or undefined where it reads anything else (a call, a
-// field, a division that does not come out whole)
-function evaluate(e: Expression, at: Map<string, number>): Value {
+// a task the search may run: one whose whole body is `back <expression>` of its parameters (`double`, `square`)
+export type SmallTask = { params: string[]; body: Expression }
+
+// calls nested deeper than this are not followed, so a recursive task cannot hold the search
+const CALL_DEPTH = 32
+
+// an expression's value at an assignment of its variables, or undefined where it reads anything else (a call of a
+// task it may not run, a field, a division that does not come out whole)
+function evaluate(e: Expression, at: Map<string, number>, tasks: Map<string, SmallTask> = new Map(), depth = 0): Value {
   switch (e.form) {
+    case 'call': {
+      const task = e.callee.form === 'variable' ? tasks.get(e.callee.name) : undefined
+
+      if (!task || depth >= CALL_DEPTH || task.params.length !== e.args.length) {
+        return undefined
+      }
+
+      const inner = new Map<string, number>()
+
+      for (const [i, arg] of e.args.entries()) {
+        const v = evaluate(arg, at, tasks, depth)
+
+        if (typeof v !== 'number') {
+          return undefined
+        }
+
+        inner.set(task.params[i]!, v)
+      }
+
+      return evaluate(task.body, inner, tasks, depth + 1)
+    }
     case 'variable':
       return at.get(e.name)
     case 'integer':
       return Number(e.value)
     case 'unary': {
-      const v = evaluate(e.operand, at)
+      const v = evaluate(e.operand, at, tasks, depth)
 
       if (e.op === '!') {
         return typeof v === 'boolean' ? !v : undefined
@@ -94,8 +121,8 @@ function evaluate(e: Expression, at: Map<string, number>): Value {
       return typeof v === 'number' && e.op === '-' ? -v : undefined
     }
     case 'binary': {
-      const l = evaluate(e.left, at)
-      const r = evaluate(e.right, at)
+      const l = evaluate(e.left, at, tasks, depth)
+      const r = evaluate(e.right, at, tasks, depth)
 
       if (e.op === '&&' || e.op === '||') {
         return typeof l === 'boolean' && typeof r === 'boolean' ? (e.op === '&&' ? l && r : l || r) : undefined
@@ -141,6 +168,8 @@ export function counterexample(
   names: { name: string; natural: boolean }[],
   hypotheses: Expression[],
   goal: Expression,
+  // the tasks the rule's statement may call, each run as written
+  tasks: Map<string, SmallTask> = new Map(),
 ): Map<string, number> | undefined {
   if (names.length === 0 || names.length > 6) {
     return undefined
@@ -171,7 +200,7 @@ export function counterexample(
     }
 
     if (i === names.length) {
-      if (hypotheses.every(h => evaluate(h, at) === true) && evaluate(goal, at) === false) {
+      if (hypotheses.every(h => evaluate(h, at, tasks) === true) && evaluate(goal, at, tasks) === false) {
         found = new Map(at)
       }
 

@@ -39,6 +39,7 @@ load ../compile/node
   find expression
   find field-value
   find statement
+  find statement-span
 
 load ../compile/node-walk
   find expressions-in
@@ -147,13 +148,13 @@ task literal-of
   back make none
 
 task plain-literal
-  take value, like expression
+  take given, like expression
   like maybe, like expression
   mark private
 
-  sift value
+  sift given
     case string
-      back make(some, value)
+      back make(some, given)
     miss
       back make none
 
@@ -204,7 +205,7 @@ task check-patterns
   save in-file, make list
   walk program
     take one
-    fork test, is-in-file(one/span, file)
+    fork test, is-in-file(statement-span(one), file)
       hold
         push(in-file, one)
 

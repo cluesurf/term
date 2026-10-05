@@ -46,6 +46,7 @@ import {
 import { hashText } from '@term/make/code/term/hash'
 import { checkGram, gramKey } from '@term/make/code/check/certificate'
 import { counterexample, printAssignment, printExpression } from '@term/make/code/check/explain'
+import type { SmallTask } from '@term/make/code/check/explain'
 import type { Fact } from '@term/make/code/check/product'
 import { budgetSpent, fromNumbers, openBudget, productProfile, productProves, workSpent } from '@term/make/code/check/product'
 import {
@@ -633,6 +634,8 @@ let theorems = new Map<string, Extract<Statement, { form: 'function' }>>()
 let provenTheorems = new Map<string, 'field' | 'integer'>()
 // the names the theorem being walked binds: its marks and its finds. A cited rule's marks are read BY NAME here
 let theoremScope = new Set<string>()
+// the program's tasks whose whole body is `back <expression>`, which the counterexample search runs (explain.ts)
+let smallTasks = new Map<string, SmallTask>()
 
 // `TERM_PRODUCT_PROFILE=1`: each theorem goal prints its time and its share of the product search (product.ts)
 const PROFILE_GOALS = typeof process !== 'undefined' && Boolean(process.env?.TERM_PRODUCT_PROFILE)
@@ -2760,7 +2763,7 @@ function explainRule(
     return { asked, ...(hint ? { hint } : {}) }
   }
 
-  const at = counterexample(names, hypotheses, goal)
+  const at = counterexample(names, hypotheses, goal, smallTasks)
 
   return at
     ? {
@@ -3191,6 +3194,13 @@ export function checkHolds(
 
   theorems = new Map(
     program.flatMap(s => (s.form === 'function' && s.theorem ? [[s.name, s] as const] : [])),
+  )
+  smallTasks = new Map(
+    program.flatMap(s =>
+      s.form === 'function' && !s.theorem && s.body.length === 1 && s.body[0]!.form === 'return' && s.body[0]!.value
+        ? [[s.name, { params: s.params.map(p => p.name), body: s.body[0]!.value }] as const]
+        : [],
+    ),
   )
 
   // the pass limited to the file's own tasks keeps what the unlimited pass before it proved (see `provenTheorems`)

@@ -503,7 +503,9 @@ export function makeRollMerger(): { add: (roll: Roll) => void; done: () => Roll 
       out[kind] ??= []
 
       for (const entry of roll[kind] ?? []) {
-        const key = `${entry.host} ${entry.kind} ${entry.name}`
+        // the site too: a name is scoped to its module, so two files' `task true-reads-and-writes-back` are two tasks,
+        // and keyed by name alone the second was dropped from the merged roll (task/term/roll-cover.ts, 2026-10-05)
+        const key = `${entry.host} ${entry.kind} ${entry.name} ${entry.site}`
 
         if (seen.has(key)) {
           continue

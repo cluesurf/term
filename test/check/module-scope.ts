@@ -313,6 +313,29 @@ const MEASURE_NATIVE = `bind measure\n  take x, like number\n  like number\n  ca
   }
 }
 
+// an exception form named like another form's case is renamed apart (`clash__form`), and so are its raises. The arm of
+// a match over the caught exception was not, so it named nothing, and its fields were unknown names: that is how
+// check/pattern-literal.tree's `case pattern-mismatch` failed once parser/diagnostic.tree's case of the name was in the
+// program (2026-10-05)
+{
+  const fault = `load @term/base/exception\n  find exception\n\nform clash\n  like exception\n    bind note, <Clashed>\n    link at, like number\n\ntask fail-it\n  like number\n  halt clash\n    bind at, code 7\n`
+  const names = `form label\n  mark text\n  case clash\n  case other\n`
+  // main imports the case's form too: an arm still means the exception it imports by name
+  const main = `load @app/fault\n  find clash\n  find fail-it\n\nload @app/names\n  find label\n\ntask run\n  like number\n  mark unsafe\n    call fail-it\n    send back, code 0\n  halt take\n    take error\n    sift error\n      case clash\n        send back, read at\n    send back, code -1\n`
+  const files = { '@app/fault': fault, '@app/names': names }
+  const resolve = (path: string, from: string): Source | undefined =>
+    files[path as keyof typeof files] !== undefined
+      ? { file: `${path.slice('@app/'.length)}.tree`, text: files[path as keyof typeof files] }
+      : projectResolve(path, from)
+  const result = compile({ file: 'main.tree', text: main }, { resolve })
+  ok('an arm over a caught exception reaches a form renamed apart from a case', result.ok, said(result))
+
+  if (result.ok) {
+    const mod = await runOf(result.typescript)
+    ok('the arm catches it and reads its field', mod.run?.() === 7, String(mod.run?.()))
+  }
+}
+
 console.log(`\nmodule-scope: ${pass} pass, ${fail} fail`)
 
 if (fail > 0) {

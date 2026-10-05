@@ -934,6 +934,64 @@ form statement
       need false
     link span, like span
 
+# every statement's span, which every case carries: a pass that asks which file a statement came from reads it here,
+# since a field is read off a union only inside an arm
+task statement-span
+  take one, like statement
+  like span
+
+  sift one
+    case let
+      back span
+    case assign
+      back span
+    case expression
+      back span
+    case if
+      back span
+    case while
+      back span
+    case match
+      back span
+    case for-each
+      back span
+    case break
+      back span
+    case continue
+      back span
+    case return
+      back span
+    case exit
+      back span
+    case debug
+      back span
+    case guard
+      back span
+    case throw
+      back span
+    case hold
+      back span
+    case function
+      back span
+    case record-type
+      back span
+    case mask
+      back span
+    case instance
+      back span
+    case native
+      back span
+    case bind
+      back span
+    case view
+      back span
+    case dock
+      back span
+    case roll
+      back span
+    case tell
+      back span
+
 # ---- the view (component) AST ----
 
 form view-attribute

@@ -18,7 +18,8 @@ task current-position
     call read-position
 
 # the answer above now and at every change the platform reports, to `handler`, until the task it answers is called.
-# One watcher at a time: a second replaces the first
+# Any number at once, each dropped by its own task, and one subscription to the platform between them, ended by
+# the last drop. A watcher started while others run hears the current answer at once
 task watch-position
   take handler
     like task

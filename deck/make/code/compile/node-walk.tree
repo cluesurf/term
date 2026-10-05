@@ -24,11 +24,12 @@ load ./node
   find form-extend
   find dock-component
 
-# the expressions gathered so far: every step pushes to the one list the walk holds, so it is `mark shared` (D1), a
-# reference rather than a value copied into each call
+# the expressions and the statements gathered so far: every step pushes to the lists the walk holds, so it is
+# `mark shared` (D1), a reference rather than a value copied into each call
 form gathered
   mark shared
   link items, like list, like expression
+  link blocks, like list, like statement
 
 # every expression in these statements, nested blocks and nested tasks included
 task expressions-in
@@ -38,8 +39,22 @@ task expressions-in
   save out
     make gathered
       bind items, make list
+      bind blocks, make list
   gather-block(statements, out)
   back out/items
+
+# every statement in these statements, in the same order, each before the statements inside it: nested blocks, nested
+# tasks and the bodies of closures included
+task statements-in
+  take statements, like list, like statement
+  like list, like statement
+
+  save out
+    make gathered
+      bind items, make list
+      bind blocks, make list
+  gather-block(statements, out)
+  back out/blocks
 
 task gather-maybe
   take value, like maybe, like expression
@@ -146,6 +161,7 @@ task gather-statement
   like void
   mark private
 
+  push(out/blocks, value)
   sift value
     case let
       gather-expression(init, out)

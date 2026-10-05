@@ -81,6 +81,36 @@ function separateCaseNames(program: Program, scope: ImportScope | undefined, ent
     }
   }
 
+  // every match over a caught exception: its subject is the variable a guard's handler binds
+  const caughtMatches = new Set<unknown>()
+  const findCaught = (node: unknown, caught: Set<string>): void => {
+    if (!node || typeof node !== 'object') return
+    if (Array.isArray(node)) return node.forEach(child => findCaught(child, caught))
+    const record = node as Record<string, unknown>
+    const subject = record.subject as { form?: string; name?: string } | undefined
+
+    if (record.form === 'match' && subject?.form === 'variable' && caught.has(subject.name!)) {
+      caughtMatches.add(record)
+    }
+
+    if (record.form === 'guard') {
+      const handler = record.catch as { name: string; body: unknown } | undefined
+      findCaught(record.body, caught)
+
+      if (handler) {
+        findCaught(handler.body, new Set([...caught, handler.name]))
+      }
+
+      return
+    }
+
+    for (const [key, value] of Object.entries(record)) {
+      if (key !== 'span' && key !== 'type') findCaught(value, caught)
+    }
+  }
+
+  findCaught(program, new Set())
+
   for (const [name, defining] of forms) {
     const owners = cases.get(name)
 
@@ -153,13 +183,13 @@ function separateCaseNames(program: Program, scope: ImportScope | undefined, ent
           record.raise = renamed
         }
 
-        // an arm of a match over a caught exception names the form its raise was renamed to. A match label is told
-        // apart like a construction with no fields, by what its file defines or imports, so an arm over the case's own
-        // form keeps the case: check/pattern-literal.tree's `case pattern-mismatch` named nothing once
-        // parser/diagnostic.tree's `diagnostic-name` case of that name was in the program (2026-10-05)
-        if (record.form === 'match' && Array.isArray(record.cases)) {
+        // an arm of a match over a CAUGHT exception (the name a `halt take` handler binds) names a raised form, so it
+        // names the form its raise was renamed to. Any other match is over a value, and its arm keeps the case.
+        // check/pattern-literal.tree's `case pattern-mismatch` named nothing once parser/diagnostic.tree's
+        // `diagnostic-name` case of that name was in the program (2026-10-05)
+        if (record.form === 'match' && caughtMatches.has(record)) {
           for (const arm of record.cases as { label: string }[]) {
-            if (arm.label === name && meansForm(file, [])) {
+            if (arm.label === name) {
               arm.label = renamed
             }
           }

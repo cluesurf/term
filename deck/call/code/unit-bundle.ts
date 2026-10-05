@@ -46,9 +46,21 @@ export function writeUnitBundle(input: {
   writeFileSync(path.join(host, 'prelude.ts'), `${input.prelude}\n;\nexport { ${[...offered].join(', ')} }\n`)
 
   const app = path.join(host, 'app.ts')
-  writeFileSync(app, entryShim(input.dir, path.join(input.dir, 'app.tree'), input.exports, input.slug))
+  writeFileSync(app, entryShim(input.dir, path.join(input.dir, 'app.tree'), runtimeExports(input.entry, input.exports), input.slug))
 
   return app
+}
+
+// the names the program's run reaches it by, which are all the bundler may keep: the entry's own (its commands' tasks,
+// its tests, a server's `boot`), as the merged build's roots are, and the hive's wake wherever it is defined. THE BUNDLE
+// IS SHAKEN BY ITS ENTRY: esbuild keeps every export of the module it starts from, and this entry re-exported the
+// whole closure, so a command that trims one text shipped every task of the text module (19 of 20 functions unused,
+// tmp/shake-probe.sh, 2026-10-05). The artifact `term make` writes under host/ keeps the whole closure: a TypeScript
+// importer reads any name off it
+const RUNTIME_NAMES = new Set(['wake-hive', 'boot', 'start', 'main'])
+
+export function runtimeExports<T extends { name: string; file: string }>(entry: string, exports: T[]): T[] {
+  return exports.filter(one => one.file === entry || RUNTIME_NAMES.has(one.name))
 }
 
 // whether the prelude binds `name` at its top level, as a shim binds its namespace (`const path = { ... }`)

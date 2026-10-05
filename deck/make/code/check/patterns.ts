@@ -64,7 +64,9 @@ export function checkPatterns(program: Program, file: string): { errors: Diagnos
           read.set(literal.value, reading)
         }
 
-        const shown = literal.value.length > 60 ? `${literal.value.slice(0, 57)}...` : literal.value
+        // shortened by code points, so a character outside the BMP is never cut in half
+        const points = [...literal.value]
+        const shown = points.length > 60 ? `${points.slice(0, 57).join('')}...` : literal.value
 
         if (reading.refused) {
           errors.push(

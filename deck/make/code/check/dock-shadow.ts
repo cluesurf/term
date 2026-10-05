@@ -79,19 +79,30 @@ export function checkDockShadow(program: Program): Diagnostic[] {
       continue
     }
 
-    const seen = new Set<string>()
+    // each hidden name once, at its FIRST binding in the source, and in source order: the walk's own order put a
+    // closure's parameter before a `let` written above it whenever the closure sat earlier in the tree
+    const first = new Map<string, { name: string; span: Span }>()
+    const before = (a: Span, b: Span): boolean =>
+      a.start.line < b.start.line || (a.start.line === b.start.line && a.start.column < b.start.column)
 
     for (const binding of bindings(node)) {
-      if (names.has(binding.name) && !seen.has(binding.name)) {
-        seen.add(binding.name)
-        found.push(
-          diagnose('dock-shadow', {
-            file: binding.span.file ?? node.span.file ?? '',
-            span: binding.span,
-            message: `"${binding.name}" in "${node.name}" hides the module this file docks as "${binding.name}", so \`${binding.name}/...\` there reads the local`,
-          }),
-        )
+      const held = first.get(binding.name)
+
+      if (names.has(binding.name) && (!held || before(binding.span, held.span))) {
+        first.set(binding.name, binding)
       }
+    }
+
+    const ordered = [...first.values()].sort((a, b) => (before(a.span, b.span) ? -1 : before(b.span, a.span) ? 1 : 0))
+
+    for (const binding of ordered) {
+      found.push(
+        diagnose('dock-shadow', {
+          file: binding.span.file ?? node.span.file ?? '',
+          span: binding.span,
+          message: `"${binding.name}" in "${node.name}" hides the module this file docks as "${binding.name}", so \`${binding.name}/...\` there reads the local`,
+        }),
+      )
     }
   }
 

@@ -44,8 +44,9 @@ const BUILT_IN = new Set([
   'form',
 ])
 
-// the suffix module scope gives each file's definition of a name two files define
-const SPLIT = /__in\d+_\d+$/
+// the suffixes module scope gives a definition: `__in<g>_<k>` to each file's definition of a name two files define,
+// and `__form` before it to a form named like some form's case (check/scope.ts `separateCaseNames`)
+const SPLIT = /(?:__form)?(?:__in\d+_\d+)?$/
 
 // a module's own name: its file's, or its directory's for a `base.tree` or `note.tree` entry
 function moduleName(file: string): string {
@@ -74,7 +75,8 @@ export function checkFinds(program: Program, file: string, scope: ImportScope | 
     const names = defined.get(where) ?? new Set<string>()
     names.add(name)
     // a form or task two files define is split by file before this runs (`point__in0_0`, check/scope.ts and
-    // check/overload.ts), so it is defined under the name it was written with too
+    // check/overload.ts), and a form named like a case is renamed apart (`clash__form`), so it is defined under the
+    // name it was written with too
     names.add(name.replace(SPLIT, ''))
     defined.set(where, names)
   }
