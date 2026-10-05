@@ -197,6 +197,7 @@ const cli = yargs(hideBin(process.argv))
   .option('yes', { alias: 'y', type: 'boolean', description: 'Accept every default instead of asking' })
   .option('raw', { type: 'boolean', description: "Pass a child process's output through untouched" })
   .option('source', { type: 'string', description: 'Show one service of a stream, without tags' })
+  .option('all', { type: 'boolean', description: 'Show every problem and list entry past the cap' })
   .middleware(argv => setOutput(argv as OutputFlags, readVersion()))
   .command('base', 'The base record system', yargs =>
     yargs

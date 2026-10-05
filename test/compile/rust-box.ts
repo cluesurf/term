@@ -106,6 +106,19 @@ ok(
   JSON.stringify(heldFacts),
 )
 
+// 5. Towers: the move keeps the box it opens in its own spare, and a text it raises hands the spare to the cold
+// function, so the raise path drops nothing of its own; a task with no spare raises through `term_fail` alone
+const towersRust = emitRust(build(join(TERM, 'bench/towers/term.tree')))
+const moveTop = towersRust.slice(towersRust.indexOf('fn move_top('), towersRust.indexOf('\n}\n', towersRust.indexOf('fn move_top(')))
+const buildTower = towersRust.slice(towersRust.indexOf('fn build_tower('), towersRust.indexOf('\n}\n', towersRust.indexOf('fn build_tower(')))
+ok(
+  'a raise in the task holding a spare hands it to `term_fail_with`',
+  (moveTop.match(/Err\(term_fail_with\(__spare_stack, "/g) ?? []).length === 2 && !/Err\(term_fail\(/.test(moveTop),
+  moveTop.split('\n').filter(l => /term_fail/.test(l)).join(' | '),
+)
+ok('a raise in a task with no spare is `term_fail`', /Err\(term_fail\("/.test(buildTower) && !/term_fail_with/.test(buildTower))
+ok('`term_fail_with` is cold and out of line', /#\[cold\]\n#\[inline\(never\)\]\nfn term_fail_with<T>/.test(towersRust))
+
 console.log(`\nrust-box: ${pass} pass, ${fail} fail`)
 
 if (fail > 0) {

@@ -271,6 +271,8 @@ task prepare-anew
       bind names, read parsed/names
   save program
     call compile-pattern(read(source))
+  save dfas
+    call dfas-for(read(found/tier), read(program), read(source))
   send back
     make prepared-pattern
       bind source, read value/text
@@ -282,7 +284,7 @@ task prepare-anew
       bind program, read program
       bind folds, read found/folds
       bind words, call(uses-word-edge, read(program))
-      bind dfas, call(dfas-for, read(found/tier), read(program), read(source))
+      bind dfas, read dfas
 
 # the prepared pattern with the program Term's own tiers run, built now if it was left out for a native pattern: for a
 # native engine's refusal, and for the benchmark, which times every tier
@@ -305,6 +307,8 @@ task with-program
       bind names, read parsed/names
   save program
     call compile-pattern(read(source))
+  save dfas
+    call dfas-for(read(ready/fallback), read(program), read(source))
   send back
     make prepared-pattern
       bind source, read ready/source
@@ -316,7 +320,7 @@ task with-program
       bind program, read program
       bind folds, read ready/folds
       bind words, call(uses-word-edge, read(program))
-      bind dfas, call(dfas-for, read(ready/fallback), read(program), read(source))
+      bind dfas, read dfas
 
 # tier B's DFAs for a pattern Term runs on tier B, else the empty pair
 task dfas-for

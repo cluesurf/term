@@ -143,3 +143,69 @@ test <april has thirty days>
         code 2026
         code 4
       code 30
+
+test <a date before year 1: 0000-01-01 (1 BC) is day -719528>
+  want hold
+    call is-equal
+      call to-day-number
+        call from-parts
+          code 0
+          code 1
+          code 1
+      code -719528
+
+test <and the day before it is -1/12/31, read back whole>
+  save date
+    call from-day-number
+      code -719529
+  want hold
+    call and
+      call and
+        call is-equal
+          read date/year
+          code -1
+        call is-equal
+          read date/month
+          code 12
+      call is-equal
+        read date/day
+        code 31
+
+test <every day of 2 BC through AD 1 round-trips>
+  save ok, true
+  save n, code -720259
+  walk test
+    hook test
+      call is-below
+        read n
+        code -718797
+    hook hold
+      fork test
+        hook test
+          call is-unequal
+            call to-day-number
+              call from-day-number
+                read n
+            read n
+        hook hold
+          save ok, false
+      save n
+        call add
+          read n
+          code 1
+  want hold, read ok
+
+test <leap years before year 1: 0, -4, -96 and -400 are, -100 is not>
+  want hold
+    call and
+      call and
+        call is-leap-year
+          code 0
+        call is-leap-year
+          code -96
+      call and
+        call is-leap-year
+          code -400
+        call not
+          call is-leap-year
+            code -100

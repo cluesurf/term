@@ -126,6 +126,9 @@ form quote-rule
   link frame-start, like text
   # a frame that names one of these is not the user's code
   link foreign, like list, like text
+  # the cells quoted text sits right of the item's column: the `elbow` symbol on the first line, spaces under it on
+  # the rest (a child program's own lines, as Claude Code nests a tool's output; chosen by the user, 2026-10-04)
+  link indent, like number
 
 # section 7's progress bar
 form bar-rule
@@ -322,6 +325,7 @@ task make-standard
         make symbol-rule, name(<arrow>), unicode(<→>), ascii(<-\>>)
         make symbol-rule, name(<more>), unicode(<…>), ascii(<...>)
         make symbol-rule, name(<gutter>), unicode(<│>), ascii(<|>)
+        make symbol-rule, name(<elbow>), unicode(<⎿>), ascii(<\\_>)
         make symbol-rule, name(<primary>), unicode(<━>), ascii(<~>)
         make symbol-rule, name(<secondary>), unicode(<─>), ascii(<->)
         make symbol-rule, name(<skip>), unicode(<⋮>), ascii(<:>)
@@ -361,6 +365,7 @@ task make-standard
         make symbol-rule, name(<skipped>), unicode(<○>), ascii(<o>)
         make symbol-rule, name(<running>), unicode(<◐>), ascii(<*>)
         make symbol-rule, name(<gutter>), unicode(<│>), ascii(<|>)
+        make symbol-rule, name(<elbow>), unicode(<⎿>), ascii(<\\_>)
       durations
         make duration-rule
           figures 3
@@ -407,6 +412,7 @@ task make-standard
           frames-word <more frames>
           frame-start <at >
           foreign <node_modules/>, <node:>, <internal/>, <\<anonymous\>>
+          indent 3
       bars
         make bar-rule, width(24)
       lives

@@ -10,157 +10,20 @@
  * correct means) and a grammar (the shape of allowed code), and it
  * returns a program the verifier accepts.
  *
- * The grammar here is a small integer-expression language over named
- * inputs. The verifier is the property engine in ./property. The loop
- * is the classic CEGIS skeleton, deterministic throughout.
+ * The grammar is a small integer-expression language over named inputs,
+ * Term since 2026-10-04 (deck/test/code/expression-grammar.tree). The
+ * verifier is the property engine in ./property. The loop is the classic
+ * CEGIS skeleton, deterministic throughout.
  */
 
 import { check, genInt, genTuple, type Gen } from './property'
+import { enumerate, evalExpr, showExpr } from '@term/test/code/expression-grammar'
+import type { Condition, Expression } from '@term/test/code/expression-grammar'
 
-// --- the expression grammar (the synthesis target) ---
-
-export type Expr =
-  | { form: 'var'; index: number }
-  | { form: 'const'; value: number }
-  | { form: 'add'; left: Expr; right: Expr }
-  | { form: 'sub'; left: Expr; right: Expr }
-  | { form: 'min'; left: Expr; right: Expr }
-  | { form: 'max'; left: Expr; right: Expr }
-  | { form: 'ite'; test: Cond; then: Expr; else: Expr }
-
-/** A boolean condition over two expressions. */
-export type Cond =
-  | { form: 'ge'; left: Expr; right: Expr }
-  | { form: 'gt'; left: Expr; right: Expr }
-  | { form: 'eq'; left: Expr; right: Expr }
-
-/** Evaluate an expression against a tuple of input values. */
-export function evalExpr(expr: Expr, inputs: number[]): number {
-  switch (expr.form) {
-    case 'var':
-      return inputs[expr.index]
-    case 'const':
-      return expr.value
-    case 'add':
-      return evalExpr(expr.left, inputs) + evalExpr(expr.right, inputs)
-    case 'sub':
-      return evalExpr(expr.left, inputs) - evalExpr(expr.right, inputs)
-    case 'min':
-      return Math.min(evalExpr(expr.left, inputs), evalExpr(expr.right, inputs))
-    case 'max':
-      return Math.max(evalExpr(expr.left, inputs), evalExpr(expr.right, inputs))
-    case 'ite':
-      return evalCond(expr.test, inputs)
-        ? evalExpr(expr.then, inputs)
-        : evalExpr(expr.else, inputs)
-  }
-}
-
-function evalCond(cond: Cond, inputs: number[]): boolean {
-  const l = evalExpr(cond.left, inputs)
-  const r = evalExpr(cond.right, inputs)
-  switch (cond.form) {
-    case 'ge':
-      return l >= r
-    case 'gt':
-      return l > r
-    case 'eq':
-      return l === r
-  }
-}
-
-/** Render an expression as readable Seed-ish pseudocode. */
-export function showExpr(expr: Expr, names: string[]): string {
-  switch (expr.form) {
-    case 'var':
-      return names[expr.index]
-    case 'const':
-      return String(expr.value)
-    case 'add':
-      return `(${showExpr(expr.left, names)} + ${showExpr(expr.right, names)})`
-    case 'sub':
-      return `(${showExpr(expr.left, names)} - ${showExpr(expr.right, names)})`
-    case 'min':
-      return `min(${showExpr(expr.left, names)}, ${showExpr(expr.right, names)})`
-    case 'max':
-      return `max(${showExpr(expr.left, names)}, ${showExpr(expr.right, names)})`
-    case 'ite':
-      return `(${showCond(expr.test, names)} ? ${showExpr(expr.then, names)} : ${showExpr(expr.else, names)})`
-  }
-}
-
-function showCond(cond: Cond, names: string[]): string {
-  const op = cond.form === 'ge' ? '>=' : cond.form === 'gt' ? '>' : '=='
-  return `${showExpr(cond.left, names)} ${op} ${showExpr(cond.right, names)}`
-}
-
-// --- the enumerator: all expressions up to a size, smallest first ---
-
-const CONSTS = [0, 1]
-
-/** Enumerate every expression of exactly `size` nodes. Memoized. */
-function exprsOfSize(
-  size: number,
-  varCount: number,
-  cache: Map<number, Expr[]>,
-): Expr[] {
-  const hit = cache.get(size)
-  if (hit) return hit
-
-  const out: Expr[] = []
-
-  if (size === 1) {
-    for (let i = 0; i < varCount; i++) out.push({ form: 'var', index: i })
-    for (const value of CONSTS) out.push({ form: 'const', value })
-    cache.set(size, out)
-    return out
-  }
-
-  // binary ops: left of size a, right of size b, a + b + 1 = size
-  for (let a = 1; a < size; a++) {
-    const b = size - 1 - a
-    if (b < 1) continue
-    const lefts = exprsOfSize(a, varCount, cache)
-    const rights = exprsOfSize(b, varCount, cache)
-    for (const left of lefts) {
-      for (const right of rights) {
-        out.push({ form: 'add', left, right })
-        out.push({ form: 'sub', left, right })
-        out.push({ form: 'min', left, right })
-        out.push({ form: 'max', left, right })
-      }
-    }
-  }
-
-  // if-then-else: test (cond over two size-1 exprs) + then + else
-  // keep it cheap: test compares two atoms, branches are atoms
-  if (size >= 4) {
-    const atoms = exprsOfSize(1, varCount, cache)
-    for (const tl of atoms) {
-      for (const tr of atoms) {
-        for (const thenE of atoms) {
-          for (const elseE of atoms) {
-            out.push({ form: 'ite', test: { form: 'ge', left: tl, right: tr }, then: thenE, else: elseE })
-            out.push({ form: 'ite', test: { form: 'gt', left: tl, right: tr }, then: thenE, else: elseE })
-          }
-        }
-      }
-    }
-  }
-
-  cache.set(size, out)
-  return out
-}
-
-/** All expressions up to `maxSize`, smallest first. */
-export function enumerate(maxSize: number, varCount: number): Expr[] {
-  const cache = new Map<number, Expr[]>()
-  const out: Expr[] = []
-  for (let size = 1; size <= maxSize; size++) {
-    out.push(...exprsOfSize(size, varCount, cache))
-  }
-  return out
-}
+// the grammar's names, as this module's callers (variant, predicate, smt, model) import them
+export type Expr = Expression
+export type Cond = Condition
+export { enumerate, evalExpr, showExpr }
 
 // --- the specification + the CEGIS loop ---
 

@@ -18,10 +18,23 @@ load @term/base/native/{platform}/file
 load @term/base/file/stat
   find path-info
 
+load @term/base/exception
+  find absence
+
+# a file that is not there is `absence`, its `thing` the path, on every backend: node threw its own error, with no
+# form, and Rust, Swift and Kotlin read it as the empty text, so a missing file and an empty one could not be told
+# apart (guides: library/files, 2026-10-04). Asked of the path first, in Term, so all five agree
 task read
   mark async
   take path, like text
   like text
+  fork test
+    hook test
+      call file-exists
+        read path
+    hook miss
+      halt absence
+        bind thing, read path
   send back
     call read-file
       read path
@@ -41,6 +54,13 @@ task read-bytes
   mark async
   take path, like text
   like bytes
+  fork test
+    hook test
+      call file-exists
+        read path
+    hook miss
+      halt absence
+        bind thing, read path
   send back
     call read-file-bytes
       read path

@@ -28,13 +28,15 @@ function ok(what: string, held: boolean, note = ''): void {
   }
 }
 
+// the table is the form, and `pattern` says the index matches text patterns (the TypeScript original named them
+// `form` and `like`, both Term words: compile/catalog-derive.tree)
 const row = (over: Partial<IndexRow>): IndexRow => ({
-  form: 'phoneme',
+  table: 'phoneme',
   site: 'kind',
   kind: 'btree',
   sort: true,
   bond: false,
-  like: false,
+  pattern: false,
   ...over,
 })
 
@@ -55,7 +57,7 @@ ok(
 )
 ok('and sorts', btree.sort === true)
 
-const pattern = deriveSites([row({ site: 'symbol', like: true })]).get('phoneme')![0]!
+const pattern = deriveSites([row({ site: 'symbol', pattern: true })]).get('phoneme')![0]!
 
 ok('a pattern index answers containment', pattern.hold.includes('is-within'))
 
@@ -79,7 +81,7 @@ ok(
 // two indexes on one column union their answers rather than the last one winning
 const both = deriveSites([
   row({ site: 'symbol', kind: 'hash', sort: false }),
-  row({ site: 'symbol', kind: 'gin', sort: false, like: true }),
+  row({ site: 'symbol', kind: 'gin', sort: false, pattern: true }),
 ]).get('phoneme')![0]!
 
 ok('two indexes on one column union their answers', both.hold.includes('is-within'))

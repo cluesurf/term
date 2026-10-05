@@ -25,12 +25,16 @@ load @term/base/pattern
   find find-matches-prepared
   find step-limit
   find prepared-memo
+  find with-program
+  find term-search
+  find open-session
 
 load @term/base/pattern/node
   find pattern-budget
 
 load @term/base/pattern/analyze
   find tier-native
+  find tier-linear
 
 load @term/base/native/{platform}/regex
   find engine-name
@@ -444,6 +448,46 @@ test <tier B's DFA finds what the Pike VM finds, groups and edges included>
     call is-equal
       call dfa-answers
       text <2:9:me@here|me|here / 5:8:    / 1:4:aab / 0:0: / singing,ringing>
+
+# tier B on its DFA, forced whatever this platform's engine would take: whether the DFA fits, then where the first
+# match from `from` starts and ends
+task on-dfa
+  take source, like text
+  take input, like text
+  take from, like number
+  like text
+  save full
+    call with-program(call(prepare, make(pattern, read(source))))
+  save slots
+    call term-search(read(full), call(open-session, read(full), read(input)), read(from), read(tier-linear))
+  save found, text <none>
+  fork test
+    hook test
+      call is-above(read(slots/length), code(1))
+    hook hold
+      save found, text <{call(get, read(slots), code(0))}:{call(get, read(slots), code(1))}>
+  send back, text <{full/dfas/fits} {found}>
+
+# a word or line edge is decided where the DFA takes its closure, from the code points on both sides (2026-10-04):
+# `\b\w+\b` ran on the Pike VM until then
+task edge-dfa-answers
+  like text
+  save out, make list
+  call out/push(call(on-dfa, text(<\b\w+\b>), text(<  hello, world>), code(0)))
+  call out/push(call(on-dfa, text(<\b\w+\b>), text(<  hello, world>), code(4)))
+  # `\w` is ASCII and a word edge Unicode: in `héllo` the `é` is a word character no `\w` takes, so nothing matches
+  call out/push(call(on-dfa, text(<\b\w+\b>), text(<héllo>), code(0)))
+  call out/push(call(on-dfa, text(<\Bl+\B>), text(<hello>), code(0)))
+  call out/push(call(on-dfa, text(<(?m)^\w+$>), text(<a b\ncd\ne f>), code(0)))
+  call out/push(call(on-dfa, text(<\bé\w*>), text(<aé éb>), code(0)))
+  send back
+    call join(read(out), text(<|>))
+
+test <tier B's DFA runs word and line edges>
+  want hold
+    call is-equal
+      call edge-dfa-answers
+      text <true 2:7|true 9:14|true none|true 2:4|true 4:6|true 3:5>
 
 test <a native engine that refuses its text is answered by Term's own tier, never as no match>
   want hold

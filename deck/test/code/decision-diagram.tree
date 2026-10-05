@@ -1,0 +1,514 @@
+# Reduced Ordered Binary Decision Diagrams (ROBDDs): a canonical, compressed representation of a boolean function as a
+# DAG. The breakthrough behind SYMBOLIC model checking: a SET of states is manipulated as one diagram instead of being
+# enumerated, so billions of states fit. Canonicity, from the two reduction rules and hash-consing, makes equivalence
+# an id compare.
+#
+# The classic operations: `make-node` (the reduce rule), `if-then-else` (the universal operator), and, or, not, xor,
+# `exists` (quantify a variable out, the engine of image computation) and `restrict`, over a unique table and an
+# if-then-else cache.
+#
+# VARIABLE ORDERING is the performance lever: the same function can be linear under one order and exponential under
+# another. A manager carries an explicit order (a variable's level is its position, not its index), and `sift-reorder`
+# searches for a better one by moving each variable to its best level (Rudell's sifting), measuring the rebuilt size.
+# Without an order a variable's level is its own index.
+#
+# Ported from deck/test/code/bdd.ts (self-hosting, 2026-10-04). The class is a `mark shared` manager and its methods are
+# tasks taking it, and bdd.ts keeps the class as a thin face over them, so its callers are unchanged. A diagram is a
+# number: 0 is false, 1 is true, and any other is a node's index plus 2.
+
+load @term/base/list
+  find list
+  find sort
+
+load @term/base/hash
+  find hash
+
+load @term/base/ordering
+  find ordering
+  find from-numbers
+
+form diagram-node
+  link variable, like number
+  link low, like number
+  link high, like number
+
+form diagram-manager
+  mark shared
+  link nodes, like list, like diagram-node
+  # the unique table: a node by its variable and children, so no node is ever made twice
+  link unique
+    like hash
+      like text
+      like number
+  link ite-cache
+    like hash
+      like text
+      like number
+  # a variable's level, by its index. A variable not here is at the level of its own index
+  link position
+    like hash
+      like number
+      like number
+
+form reordered
+  link manager, like diagram-manager
+  link roots, like list, like number
+  link order, like list, like number
+  link before, like number
+  link after, like number
+
+form copied
+  link manager, like diagram-manager
+  link roots, like list, like number
+
+task make-manager
+  like diagram-manager
+
+  host none, make list
+
+  back make-manager-ordered(none)
+
+# a manager whose variables are ordered root to leaf as `order` lists them: the variable at index i is at level i
+task make-manager-ordered
+  take order, like list, like number
+  like diagram-manager
+
+  host position, make hash
+  save level, 0
+  walk order
+    take each
+    position/set(each, level)
+    save level, add(level, 1)
+
+  back
+    make diagram-manager
+      bind nodes, make list
+      bind unique, make hash
+      bind ite-cache, make hash
+      bind position, position
+
+task level-of
+  take manager, like diagram-manager
+  take variable, like number
+  like number
+
+  back get-or-default(manager/position, variable, variable)
+
+# the reduce rule and hash-consing: never a redundant test (low is high), never a node made twice
+task make-node
+  take manager, like diagram-manager
+  take variable, like number
+  take low, like number
+  take high, like number
+  like number
+
+  fork test, is-equal(low, high)
+    hold
+      back low
+  host key, <{variable}:{low}:{high}>
+  fork test, has(manager/unique, key)
+    hold
+      back get-or-default(manager/unique, key, 0)
+  host id, add(manager/nodes/length, 2)
+  manager/nodes/push(make-diagram-node(variable, low, high))
+  manager/unique/set(key, id)
+
+  back id
+
+task make-diagram-node
+  take variable, like number
+  take low, like number
+  take high, like number
+  like diagram-node
+
+  back
+    make diagram-node
+      bind variable, variable
+      bind low, low
+      bind high, high
+
+task node-of
+  take manager, like diagram-manager
+  take diagram, like number
+  like diagram-node
+
+  back get(manager/nodes, subtract(diagram, 2))
+
+task is-terminal
+  take diagram, like number
+  like boolean
+
+  back or(is-equal(diagram, 0), is-equal(diagram, 1))
+
+# the diagram of one variable, its positive literal
+task variable-of
+  take manager, like diagram-manager
+  take index, like number
+  like number
+
+  back make-node(manager, index, 0, 1)
+
+# the universal operator. Every other one reduces to it
+task if-then-else
+  take manager, like diagram-manager
+  take f, like number
+  take g, like number
+  take h, like number
+  like number
+
+  fork test, is-equal(f, 1)
+    hold
+      back g
+  fork test, is-equal(f, 0)
+    hold
+      back h
+  fork test, is-equal(g, h)
+    hold
+      back g
+  fork test, and(is-equal(g, 1), is-equal(h, 0))
+    hold
+      back f
+
+  host key, <{f}?{g}:{h}>
+  fork test, has(manager/ite-cache, key)
+    hold
+      back get-or-default(manager/ite-cache, key, 0)
+
+  # split on the topmost variable among the three
+  host top, lowest-variable(manager, f, g, h)
+  host low, if-then-else(manager, restrict-top(manager, f, top, false), restrict-top(manager, g, top, false), restrict-top(manager, h, top, false))
+  host high, if-then-else(manager, restrict-top(manager, f, top, true), restrict-top(manager, g, top, true), restrict-top(manager, h, top, true))
+  host result, make-node(manager, top, low, high)
+  manager/ite-cache/set(key, result)
+
+  back result
+
+# the variable with the smallest level among the roots of f, g and h that are not terminals, the first one on a tie
+task lowest-variable
+  take manager, like diagram-manager
+  take f, like number
+  take g, like number
+  take h, like number
+  like number
+
+  save best, -1
+  walk make list(f, g, h)
+    take each
+    fork test, is-terminal(each)
+      miss
+        host found, node-of(manager, each)
+        fork test, or(is-equal(best, -1), is-below(level-of(manager, found/variable), level-of(manager, best)))
+          hold
+            save best, found/variable
+
+  back best
+
+# the cofactor of a diagram for one value of `variable`, taken only at its root
+task restrict-top
+  take manager, like diagram-manager
+  take diagram, like number
+  take variable, like number
+  take value, like boolean
+  like number
+
+  fork test, is-terminal(diagram)
+    hold
+      back diagram
+  host found, node-of(manager, diagram)
+  fork test, is-equal(found/variable, variable)
+    miss
+      back diagram
+  fork test, value
+    hold
+      back found/high
+
+  back found/low
+
+task diagram-not
+  take manager, like diagram-manager
+  take f, like number
+  like number
+
+  back if-then-else(manager, f, 0, 1)
+
+task diagram-and
+  take manager, like diagram-manager
+  take f, like number
+  take g, like number
+  like number
+
+  back if-then-else(manager, f, g, 0)
+
+task diagram-or
+  take manager, like diagram-manager
+  take f, like number
+  take g, like number
+  like number
+
+  back if-then-else(manager, f, 1, g)
+
+task diagram-xor
+  take manager, like diagram-manager
+  take f, like number
+  take g, like number
+  like number
+
+  back if-then-else(manager, f, diagram-not(manager, g), g)
+
+task diagram-implies
+  take manager, like diagram-manager
+  take f, like number
+  take g, like number
+  like number
+
+  back if-then-else(manager, f, g, 1)
+
+# a variable fixed to a value, everywhere beneath
+task restrict
+  take manager, like diagram-manager
+  take diagram, like number
+  take variable, like number
+  take value, like boolean
+  like number
+
+  fork test, is-terminal(diagram)
+    hold
+      back diagram
+  host found, node-of(manager, diagram)
+  # the variable sits below this node's level, so it cannot appear underneath
+  fork test, is-above(level-of(manager, found/variable), level-of(manager, variable))
+    hold
+      back diagram
+  fork test, is-equal(found/variable, variable)
+    hold
+      fork test, value
+        hold
+          back found/high
+      back found/low
+
+  back make-node(manager, found/variable, restrict(manager, found/low, variable, value), restrict(manager, found/high, variable, value))
+
+# existential quantification: exists v. f is f[v=0] or f[v=1], the core of image computation
+task exists
+  take manager, like diagram-manager
+  take diagram, like number
+  take variable, like number
+  like number
+
+  back diagram-or(manager, restrict(manager, diagram, variable, false), restrict(manager, diagram, variable, true))
+
+task exists-many
+  take manager, like diagram-manager
+  take diagram, like number
+  take variables, like list, like number
+  like number
+
+  save result, diagram
+  walk variables
+    take each
+    save result, exists(manager, result, each)
+
+  back result
+
+task node-count
+  take manager, like diagram-manager
+  like number
+
+  back manager/nodes/length
+
+# the distinct nodes reachable from the roots, low before high, in the order first met
+task reachable-nodes
+  take manager, like diagram-manager
+  take roots, like list, like number
+  like list, like number
+
+  host seen, make hash
+  host order, make list
+  host stack, make list
+  walk roots
+    take root
+    stack/push(root)
+    walk test
+      hook test, is-above(stack/length, 0)
+      hook hold
+        host at, stack/pop()
+        fork test, or(is-terminal(at), has(seen, at))
+          miss
+            seen/set(at, true)
+            order/push(at)
+            host found, node-of(manager, at)
+            # high first onto the stack, so low is visited first, as a recursive walk visits it
+            stack/push(found/high)
+            stack/push(found/low)
+
+  back order
+
+task reachable
+  take manager, like diagram-manager
+  take roots, like list, like number
+  like number
+
+  host nodes, reachable-nodes(manager, roots)
+
+  back nodes/length
+
+# every variable under the roots, in the order a depth-first walk, low before high, first meets it
+task variables-in
+  take manager, like diagram-manager
+  take roots, like list, like number
+  like list, like number
+
+  host seen, make hash
+  host variables, make list
+  walk reachable-nodes(manager, roots)
+    take at
+    host found, node-of(manager, at)
+    fork test, has(seen, found/variable)
+      miss
+        seen/set(found/variable, true)
+        variables/push(found/variable)
+
+  back variables
+
+# the roots rebuilt into a fresh manager under `order`. The functions are kept exactly: only the order, and so the
+# node count, changes
+task copy-under
+  take manager, like diagram-manager
+  take order, like list, like number
+  take roots, like list, like number
+  like copied
+
+  host target, make-manager-ordered(order)
+  host memo, make hash
+  host copied-roots, make list
+  walk roots
+    take root
+    copied-roots/push(copy-node(manager, target, memo, root))
+
+  back
+    make copied
+      bind manager, target
+      bind roots, copied-roots
+
+task copy-node
+  take manager, like diagram-manager
+  take target, like diagram-manager
+  take memo
+    like hash
+      like number
+      like number
+  take diagram, like number
+  like number
+
+  fork test, is-terminal(diagram)
+    hold
+      back diagram
+  fork test, has(memo, diagram)
+    hold
+      back get-or-default(memo, diagram, 0)
+  host found, node-of(manager, diagram)
+  # the variable selects high when true and low when false. The variable's node, then high, then low, as the
+  # original's arguments were evaluated: a node's id is its place in creation order
+  host chosen, variable-of(target, found/variable)
+  host high, copy-node(manager, target, memo, found/high)
+  host low, copy-node(manager, target, memo, found/low)
+  host result, if-then-else(target, chosen, high, low)
+  memo/set(diagram, result)
+
+  back result
+
+# this manager's order, root to leaf, of the variables under the roots
+task order-of
+  take manager, like diagram-manager
+  take roots, like list, like number
+  like list, like number
+
+  host ranked, make list
+  walk variables-in(manager, roots)
+    take each
+    ranked/push(make-ranked(level-of(manager, each), each))
+
+  host out, make list
+  walk sort(ranked, by-level)
+    take each
+    out/push(each/variable)
+
+  back out
+
+form ranked-variable
+  link level, like number
+  link variable, like number
+
+task make-ranked
+  take level, like number
+  take variable, like number
+  like ranked-variable
+
+  back
+    make ranked-variable
+      bind level, level
+      bind variable, variable
+
+task by-level
+  take left, like ranked-variable
+  take right, like ranked-variable
+  like ordering
+
+  back from-numbers(left/level, right/level)
+
+# Rudell's sifting: each variable is moved to every level, the best position is kept, then the next variable is
+# sifted. A fresh manager holds the roots under the best order found, with the sizes before and after. This is the
+# rebuild form (re-derive under each candidate order): production engines swap adjacent levels in place, but the
+# search and the result are the same
+task sift-reorder
+  take manager, like diagram-manager
+  take roots, like list, like number
+  like reordered
+
+  host before, reachable(manager, roots)
+  save best-order, order-of(manager, roots)
+  save best, copy-under(manager, best-order, roots)
+  save best-size, reachable(best/manager, best/roots)
+
+  host variables, copy(best-order)
+  walk variables
+    take each
+    save position, 0
+    walk test
+      hook test, is-below(position, best-order/length)
+      hook hold
+        # the order without this variable, with it put back at `position`
+        host rest, make list
+        walk best-order
+          take other
+          fork test, is-equal(other, each)
+            miss
+              rest/push(other)
+        host candidate, make list
+        save at, 0
+        walk rest
+          take other
+          fork test, is-equal(at, position)
+            hold
+              candidate/push(each)
+          candidate/push(other)
+          save at, add(at, 1)
+        fork test, is-maximum(rest/length, position)
+          hold
+            candidate/push(each)
+        host built, copy-under(manager, candidate, roots)
+        host size, reachable(built/manager, built/roots)
+        fork test, is-below(size, best-size)
+          hold
+            save best-size, size
+            save best-order, candidate
+            save best, built
+        save position, add(position, 1)
+
+  back
+    make reordered
+      bind manager, best/manager
+      bind roots, best/roots
+      bind order, best-order
+      bind before, before
+      bind after, best-size

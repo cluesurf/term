@@ -10,7 +10,7 @@ object responseRuntime {
             val field = raw.javaClass.getDeclaredField("body")
             field.isAccessible = true
             field.get(raw) as? String ?: ""
-        } catch (e: Exception) {
+        } catch (e: kotlin.Exception) {
             ""
         }
     }

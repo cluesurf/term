@@ -41,7 +41,10 @@ export function synthesizeVariant(input: {
   const handlers: Record<string, Expr> = {}
 
   for (const variant of variants) {
-    const candidates = enumerate(maxSize, Math.max(1, variant.arity))
+    // over the inputs the variant HAS: `Math.max(1, arity)` gave a variant with no payload the candidate `var(0)`,
+    // which read past the empty payload as `undefined` and carried NaN on, and Term's list read refuses it (the
+    // expression-grammar port, 2026-10-04). Its candidates are the constants and what they build
+    const candidates = enumerate(maxSize, variant.arity)
     const pick = candidates.find(handler =>
       provedOverBound(variant.arity, bound, payload =>
         spec({ tag: variant.tag, payload }, evalExpr(handler, payload)),

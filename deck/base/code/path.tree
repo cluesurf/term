@@ -13,20 +13,31 @@ load @term/base/list
   find get
 
 load @term/base/native/{platform}/path
-  find path-join
   find path-directory
   find path-file-name
   find path-file-extension
   find path-is-absolute
 
+# `name` under `base`, normalized, over `/` on every backend: `join(<a/b>, <../c>)` is `a/c`, and a `name` that
+# starts with `/` still goes under `base`. It was each platform's own join, so the separator was `\` on Windows
+# while `normalize-path` split on `/`, and Rust's join with an absolute `name` dropped `base` (guides: library/files,
+# 2026-10-04). An empty `base` is `name` alone
 task join
   take base, like text
   take name, like text
   like text
+  fork test
+    hook test
+      call is-equal
+        read base
+        text <>
+    hook hold
+      send back
+        call normalize-path
+          read name
   send back
-    call path-join
-      read base
-      read name
+    call normalize-path
+      text <{base}/{name}>
 
 task directory
   take target, like text

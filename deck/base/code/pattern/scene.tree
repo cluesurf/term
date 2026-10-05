@@ -17,6 +17,7 @@ load @term/base/pattern/node
 load @term/base/pattern/set
   find number-at
   find set-has
+  find put-number
 
 load @term/base/pattern/unicode-read
   find word-set
@@ -27,6 +28,12 @@ form scene
     like list
       like number
   link word
+    like list
+      like number
+  # per code point of the input, whether it is a word character: 1, 0, or -1 until first asked. The table is
+  # thousands of ranges, so a search that asks at every position (a DFA's context, the Pike VM's threads, tier C's
+  # tries) searched it again each time; now once per code point per input
+  link word-at
     like list
       like number
   link folds
@@ -53,12 +60,17 @@ task make-scene-for
   take needs-folds, like boolean
   like scene
   save word, make list
+  save word-at, make list
   fork test
     hook test
       read needs-word
     hook hold
       save word
         call word-set
+      walk list, read runes
+        hook next
+          take site, name rune
+          call word-at/push(code(-1))
   save folds, make list
   fork test
     hook test
@@ -70,6 +82,7 @@ task make-scene-for
     make scene
       bind runes, read runes
       bind word, read word
+      bind word-at, read word-at
       bind folds, read folds
 
 # whether the code point at `at` is a word character; outside the text it is not
@@ -84,10 +97,29 @@ task is-word-at
         call is-minimum(read(at), read(s/runes/length))
     hook hold
       send back, false
-  send back
+  save known
+    call number-at(read(s/word-at), read(at), code(-1))
+  fork test
+    hook test
+      call is-minimum(read(known), code(0))
+    hook hold
+      send back, call(is-equal, read(known), code(1))
+  save holds
     call set-has
       read s/word
       call number-at(read(s/runes), read(at), code(-1))
+  fork test
+    hook test
+      call is-below(read(at), read(s/word-at/length))
+    hook hold
+      fork test
+        hook test
+          read holds
+        hook hold
+          call put-number(read(s/word-at), read(at), code(1))
+        hook miss
+          call put-number(read(s/word-at), read(at), code(0))
+  send back, read holds
 
 task edge-holds
   take s, like scene

@@ -1,0 +1,176 @@
+# The filesystem the compiler sees in a browser: a snapshot of the standard library, held in memory, read-only. Every
+# path is posix and absolute, and a directory exists when some file lies under it.
+#
+# Ported from the state and the decisions of browser/disk.ts (self-hosting, 2026-10-04). disk.ts stays, because the
+# bundle aliases `fs` and `node:fs` to it, so it must be shaped like Node's module: a default export, a URL accepted
+# where a path is, an Error carrying `code` for a missing path, and the writes that throw `read-only`. It holds one
+# snapshot and asks this module everything else. A file's size stays there too, as JavaScript's `.length`, which is
+# what a Node caller reads.
+
+load @term/base/list
+  find list
+  find sort
+
+load @term/base/hash
+  find hash
+
+load @term/base/ordering
+  find ordering
+  find from-texts
+
+load @term/base/text
+  find split
+  find starts-with
+  find substring
+  find last-index-of
+  find char-count
+
+form snapshot
+  mark shared
+  # each file's text, by its normal path
+  link files
+    like hash
+      like text
+      like text
+  # every directory that holds a file, by its normal path, the root among them
+  link directories
+    like hash
+      like text
+      like boolean
+
+task make-snapshot
+  like snapshot
+
+  host directories, make hash
+  directories/set(</>, true)
+
+  back
+    make snapshot
+      bind files, make hash
+      bind directories, directories
+
+# a path made absolute and plain: `.` and empty parts dropped, `..` takes one part back, and never above the root
+task normal-path
+  take path, like text
+  like text
+
+  host parts, make list
+  walk split(path, </>)
+    take part
+    fork test, or(is-equal(part, <>), is-equal(part, <.>))
+      miss
+        fork test, is-equal(part, <..>)
+          hold
+            fork test, is-above(parts/length, 0)
+              hold
+                parts/pop()
+          miss
+            parts/push(part)
+
+  back </{join(parts, </>)}>
+
+# the directory a path sits in, the root above the root
+task parent-of
+  take path, like text
+  like text
+
+  host above, substring(path, 0, last-index-of(path, </>))
+  fork test, is-equal(above, <>)
+    hold
+      back </>
+
+  back above
+
+# put one file under `root` at its path relative to it, and every directory above it
+task mount-file
+  take disk, like snapshot
+  take root, like text
+  take relative, like text
+  take text, like text
+
+  host path, normal-path(<{root}/{relative}>)
+  disk/files/set(path, text)
+
+  save at, parent-of(path)
+  walk test
+    hook test, not(has(disk/directories, at))
+    hook hold
+      disk/directories/set(at, true)
+      save at, parent-of(at)
+
+task file-count
+  take disk, like snapshot
+  like number
+
+  back disk/files/size
+
+task has-file
+  take disk, like snapshot
+  take path, like text
+  like boolean
+
+  back has(disk/files, normal-path(path))
+
+task is-directory
+  take disk, like snapshot
+  take path, like text
+  like boolean
+
+  back has(disk/directories, normal-path(path))
+
+task has-path
+  take disk, like snapshot
+  take path, like text
+  like boolean
+
+  back or(has-file(disk, path), is-directory(disk, path))
+
+# a file's text. Ask `has-file` first: disk.ts raises the missing path
+task file-text
+  take disk, like snapshot
+  take path, like text
+  like text
+
+  back get-or-default(disk/files, normal-path(path), <>)
+
+task by-text
+  take left, like text
+  take right, like text
+  like ordering
+
+  back from-texts(left, right)
+
+# the names directly inside a directory, once each and in order. Ask `is-directory` first
+task list-directory
+  take disk, like snapshot
+  take path, like text
+  like list, like text
+
+  host at, normal-path(path)
+  save prefix, <{at}/>
+  fork test, is-equal(at, </>)
+    hold
+      save prefix, </>
+
+  host names, make list
+  host seen, make hash
+  host every, make list
+  walk disk/files/keys()
+    take each
+    every/push(each)
+  walk disk/directories/keys()
+    take each
+    every/push(each)
+
+  walk every
+    take each
+    fork test, and(starts-with(each, prefix), is-above(char-count(each), char-count(prefix)))
+      hold
+        host rest, substring(each, char-count(prefix))
+        host name, get(split(rest, </>), 0)
+        fork test, has(seen, name)
+          miss
+            seen/set(name, true)
+            names/push(name)
+
+  back sort(names, by-text)

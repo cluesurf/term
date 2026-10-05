@@ -34,9 +34,17 @@
 // it accepts and whether it sorts. That last part is not taste: a predicate the resolver cannot push down to an
 // index is a full table read wearing the costume of a filter, and this repository has a measured 125,076 ms answer
 // to what that costs. See note/term/view/03-find.md and 04-catalog.md.
+//
+// Deriving the per-field table from a database's own indexes (`deriveSites`, `writeCatalog`, `readRows`) is Term
+// since 2026-10-04, compile/catalog-derive.tree. This file reads a catalog, through the data reader.
 
 import { readDataText, toJsonValue } from '@term/make/code/compile/host'
+import { writeCatalogSized } from '@term/make/code/compile/catalog-derive'
+import type { SiteEntry } from '@term/make/code/compile/catalog-derive'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
+
+export { deriveSites, readRows } from '@term/make/code/compile/catalog-derive'
+export type { IndexRow, SiteEntry } from '@term/make/code/compile/catalog-derive'
 
 export type ViewField = {
   // the predicates this field accepts, because its index can answer them
@@ -127,146 +135,10 @@ export function readCatalog(source: { file: string; text: string }): CatalogResu
   return { ok: true, catalog }
 }
 
-// ---- deriving the per-field table from a database's own indexes ----
-// A `hold` is refused unless the catalog says the field accepts that predicate, and it says so because an index
-// answers it. By hand that is two hundred rows for ten forms and it goes stale the day an index changes.
-//
-// Pure, so it is testable without a database. That matters here: local development points at production, so a
-// script that opens a connection is a script that can surprise someone. task/term/view-catalog-derive.ts is a
-// thin command over this, and the query it needs is checked in beside it.
-
-export type IndexRow = {
-  // the table the index is on, which is the form
-  form: string
-  // the column, which is the field
-  site: string
-  // btree, hash, gin, gist, brin
-  kind: string
-  // whether the index can answer a range, which btree can and hash cannot
-  sort: boolean
-  // whether the column is a foreign key
-  bond: boolean
-  // whether the index supports text pattern matching (a *_pattern_ops or trigram index)
-  like: boolean
-}
-
-export type SiteEntry = { site: string; hold: string[]; sort: boolean }
-
-/**
- * The whole decision, as a pure function, so it is testable without a database.
- */
-export function deriveSites(rows: IndexRow[]): Map<string, SiteEntry[]> {
-  const byForm = new Map<string, Map<string, SiteEntry>>()
-
-  for (const row of rows) {
-    const form = byForm.get(row.form) ?? new Map<string, SiteEntry>()
-    byForm.set(row.form, form)
-
-    const held = form.get(row.site) ?? { site: row.site, hold: [], sort: false }
-    const hold = new Set(held.hold)
-
-    // an index answers equality, whatever kind it is
-    hold.add('is-equal')
-    hold.add('is-unequal')
-
-    if (row.bond) {
-      // a foreign key resolves to a key lookup. A range over opaque identifiers is never what an author means,
-      // and offering it would invite one.
-      form.set(row.site, { site: row.site, hold: [...hold].sort(), sort: false })
-      continue
-    }
-
-    if (row.sort) {
-      hold.add('is-above')
-      hold.add('is-below')
-    }
-
-    if (row.like) {
-      hold.add('is-within')
-    }
-
-    form.set(row.site, {
-      site: row.site,
-      hold: [...hold].sort(),
-      sort: held.sort || row.sort,
-    })
-  }
-
-  const out = new Map<string, SiteEntry[]>()
-
-  for (const [form, sites] of byForm) {
-    out.set(
-      form,
-      [...sites.values()].sort((a, b) => a.site.localeCompare(b.site)),
-    )
-  }
-
-  return out
-}
-
-/**
- * The `list task` section of a catalog, in the host dialect: a `select:` and a `filter:` per form.
- */
+// the `list task` section of a catalog, in the host dialect: a `select:` and a `filter:` per form. The default size
+// lives here, where a TypeScript caller can leave it out
 export function writeCatalog(sites: Map<string, SiteEntry[]>, size = 500): string {
-  const out: string[] = ['list task']
-
-  for (const [form, fields] of [...sites].sort((a, b) => a[0].localeCompare(b[0]))) {
-    for (const kind of ['select', 'filter'] as const) {
-      out.push('  mesh')
-      out.push(`    host name, <${kind}:${form}>`)
-      out.push(`    host back, <${kind === 'select' ? 'one' : 'list'}>`)
-
-      if (kind === 'filter') {
-        out.push(`    host size, ${size}`)
-      }
-
-      out.push('    list site')
-
-      for (const field of fields) {
-        out.push('      mesh')
-        out.push(`        host name, <${field.site}>`)
-        out.push('        list hold')
-
-        for (const one of field.hold) {
-          out.push(`          <${one}>`)
-        }
-
-        out.push(`        host sort, ${field.sort ? 'true' : 'false'}`)
-      }
-    }
-  }
-
-  return out.join('\n') + '\n'
-}
-
-/**
- * Read the tab-separated rows the query emits. Six columns, in the order the .sql file selects them.
- */
-export function readRows(text: string): IndexRow[] {
-  const rows: IndexRow[] = []
-
-  for (const line of text.split('\n')) {
-    if (!line.trim()) {
-      continue
-    }
-
-    const [form, site, kind, sort, bond, like] = line.split('\t')
-
-    if (!form || !site) {
-      continue
-    }
-
-    rows.push({
-      form,
-      site,
-      kind: kind ?? 'btree',
-      sort: sort === 't' || sort === 'true',
-      bond: bond === 't' || bond === 'true',
-      like: like === 't' || like === 'true',
-    })
-  }
-
-  return rows
+  return writeCatalogSized(sites, size)
 }
 
 function asList(value: unknown): unknown[] {

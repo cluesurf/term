@@ -30,6 +30,9 @@ load @term/base/native/{platform}/json
 load @term/base/json/check
   find check-json
 
+load @term/base/exception
+  find mismatch
+
 # parse one JSON value. A text that is not JSON raises `json-mismatch` with the code point position and the reason,
 # the same on every backend: `check-json` decides, written once in Term, and the host parser only ever sees a text it
 # accepts (note/term/stdlib/semantics.md). The host parsers disagreed at the edges: JavaScript threw, Rust and Swift
@@ -68,9 +71,62 @@ task get-item
       read value
       read index
 
+# the kind of a JSON value, as a word: `null`, `text`, `boolean`, `array`, `object` or `number`
+task json-kind
+  take value, like dynamic
+  like text
+  fork test
+    hook test
+      call json-is-null
+        read value
+    hook hold
+      send back, text <null>
+  fork test
+    hook test
+      call json-is-text
+        read value
+    hook hold
+      send back, text <text>
+  fork test
+    hook test
+      call json-is-boolean
+        read value
+    hook hold
+      send back, text <boolean>
+  fork test
+    hook test
+      call json-is-array
+        read value
+    hook hold
+      send back, text <array>
+  fork test
+    hook test
+      call json-is-object
+        read value
+    hook hold
+      send back, text <object>
+  send back, text <number>
+
+# AN ACCESSOR ON THE WRONG KIND RAISES `mismatch`, `expected` the kind asked for and `actual` the kind found, on
+# every backend. It answered a default: `as-text` of a number was the empty text and `as-number` of a text 0, so a
+# field holding the wrong kind read as a value nobody wrote (guides: library/formats, 2026-10-04). A missing field is
+# `null`, and so a mismatch too
 task as-number
   take value, like dynamic
   like decimal
+  save kind
+    call json-kind
+      read value
+  fork test
+    hook test
+      call is-unequal
+        read kind
+        text <number>
+    hook hold
+      halt mismatch
+        bind thing, text <a JSON value>
+        bind expected, text <number>
+        bind actual, read kind
   send back
     call json-as-number
       read value
@@ -78,6 +134,19 @@ task as-number
 task as-text
   take value, like dynamic
   like text
+  save kind
+    call json-kind
+      read value
+  fork test
+    hook test
+      call is-unequal
+        read kind
+        text <text>
+    hook hold
+      halt mismatch
+        bind thing, text <a JSON value>
+        bind expected, text <text>
+        bind actual, read kind
   send back
     call json-as-text
       read value
@@ -85,6 +154,19 @@ task as-text
 task as-boolean
   take value, like dynamic
   like boolean
+  save kind
+    call json-kind
+      read value
+  fork test
+    hook test
+      call is-unequal
+        read kind
+        text <boolean>
+    hook hold
+      halt mismatch
+        bind thing, text <a JSON value>
+        bind expected, text <boolean>
+        bind actual, read kind
   send back
     call json-as-boolean
       read value

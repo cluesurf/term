@@ -18,7 +18,7 @@ import {
   independent,
   type ConcurrentSystem,
   type Action,
-} from './por'
+} from '@term/test/code/interleaving'
 
 let pass = 0
 let fail = 0

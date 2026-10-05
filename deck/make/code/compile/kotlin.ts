@@ -866,8 +866,21 @@ export function emitKotlin(
   // no type variable (an `Array<T>` of a type parameter cannot be made without reifying it). A fixed list is an owned
   // local or a lent parameter, mentioned only for its size, a slot, a walk or a lent argument (`ownedLocals`), so it is
   // never compared or printed, where an array would differ from the list by comparing by reference
+  // a type parameter is not concrete in any spelling: an inference variable, or the `named` type a declared generic
+  // (`head t` on a task, a form's own parameter) reaches here as. Read as a named type, `list t`'s `last` was held as an
+  // `Array<T>` and every caller with a list of numbers handed it a `LongArray` (edge-list.tree, 2026-10-04)
+  const typeParameters = new Set(
+    program.flatMap(n =>
+      n.form === 'function'
+        ? n.generics.map(g => g.name)
+        : n.form === 'record-type'
+          ? n.params
+          : [],
+    ),
+  )
   const concrete = (t: Type | undefined): boolean => {
     if (!t || t.kind === 'variable') return false
+    if (t.kind === 'named' && typeParameters.has(t.name) && !(t as { args?: Type[] }).args?.length) return false
     // every type a type nests: an element, a key and a value, type arguments, a function's parameters and result
     const loose = t as unknown as { element?: Type; key?: Type; value?: Type; args?: Type[]; params?: Type[]; result?: Type }
     const nested = [loose.element, loose.key, loose.value, loose.result, ...(loose.args ?? []), ...(loose.params ?? [])].filter((x): x is Type => x !== undefined)

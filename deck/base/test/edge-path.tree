@@ -2,6 +2,7 @@
 # `pnpm term:base-gate`.
 
 load @term/base/path
+  find join
   find normalize-path
   find resolve-path
   find relative-path
@@ -78,3 +79,27 @@ test <segments drop empty runs>
       call size
         call path-segments, text </a//b/>
       code 2
+
+test <join puts a name under its base with a slash, normalized>
+  want hold
+    call is-equal
+      call join
+        text <a/b>
+        text <../c>
+      text <a/c>
+
+test <join keeps an absolute base, and a name with a slash still goes under it>
+  want hold
+    call is-equal
+      call join
+        text </srv>
+        text </log.txt>
+      text </srv/log.txt>
+
+test <join of an empty base is the name>
+  want hold
+    call is-equal
+      call join
+        text <>
+        text <x/y>
+      text <x/y>

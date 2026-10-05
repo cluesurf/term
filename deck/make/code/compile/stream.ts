@@ -8,10 +8,9 @@
  * before the last byte is read - the foundation for unbounded file size
  * and viewport-windowed editor parsing (note/seed/tree-streaming-and-perf.md).
  *
- * The block boundary rule is purely lexical (a column-0, non-comment,
- * non-blank head starts a new block; the blank/comment trivia directly
- * above a head rides forward onto it), so it needs only the current line
- * and a small trailing-trivia buffer - never the whole file.
+ * The block boundary rule is Term since 2026-10-04, compile/block-split.tree,
+ * a splitter fed one line at a time. These are its two drivers: an iterable
+ * of lines, and a file read through node's `readline`.
  *
  * Invariant (tested): `splitStreaming([...source.split('\n')])` is
  * byte-for-byte the same block list as `splitTopLevel(source)`.
@@ -19,21 +18,8 @@
 
 import { createReadStream } from 'node:fs'
 import { createInterface } from 'node:readline'
-import { hashText } from '@term/make/code/term/hash'
+import { feedLine, finishBlocks, makeBlockSplitter } from '@term/make/code/compile/block-split'
 import type { TopBlock } from '@term/make/code/compile/incremental-parse'
-
-function isHead(line: string): boolean {
-  return (
-    line.length > 0 &&
-    !line.startsWith(' ') &&
-    !line.startsWith('\t') &&
-    !line.startsWith('#')
-  )
-}
-
-function isLeadingTrivia(line: string): boolean {
-  return line.trim() === '' || line.trimStart().startsWith('#')
-}
 
 /**
  * Split a line stream into top-level blocks, emitting each via `onBlock`
@@ -45,46 +31,16 @@ export function splitStreaming(
   lines: Iterable<string>,
   onBlock: (block: TopBlock) => void,
 ): void {
-  let block: string[] = []
-  let blockStartLine = 0
-  let lineNo = 0
-  let seenHead = false
-
-  const emit = (lineCount: number): void => {
-    const text = block.slice(0, lineCount).join('\n')
-    onBlock({ text, startLine: blockStartLine, hash: hashText(text) })
-  }
+  const splitter = makeBlockSplitter()
 
   for (const line of lines) {
-    if (isHead(line) && seenHead) {
-      // a new definition begins. The blank/comment run at the END of the
-      // current block rides forward onto this new one. Find how many lines
-      // ride forward (mirror splitTopLevel: never empty the current block).
-      let trailing = 0
-
-      while (
-        block.length - trailing > 1 &&
-        isLeadingTrivia(block[block.length - 1 - trailing]!)
-      ) {
-        trailing++
-      }
-
-      const keep = block.length - trailing
-      const trivia = block.slice(keep)
-      emit(keep)
-      blockStartLine += keep
-      block = trivia
+    for (const block of feedLine(splitter, line)) {
+      onBlock(block)
     }
-
-    if (isHead(line)) {seenHead = true}
-
-    block.push(line)
-    lineNo++
   }
 
   // the final block (everything still buffered)
-  emit(block.length)
-  void lineNo
+  onBlock(finishBlocks(splitter))
 }
 
 /** Collect the streamed blocks into an array (equivalent to splitTopLevel). */
@@ -106,8 +62,7 @@ export function splitStreamingToArray(
  * PUSH, NOT AN ASYNC GENERATOR (self-hosting-0002). Term has no
  * `yield`, so the pull shape is one the compiler cannot be written in.
  * `readline`'s async iterator stays, because reading a file line by line
- * is a node capability at the edge rather than a shape in the language,
- * and the Term port replaces it with the stdlib's own line reader.
+ * is a node capability at the edge rather than a shape in the language.
  */
 export async function walkFileBlocks(
   path: string,
@@ -118,41 +73,18 @@ export async function walkFileBlocks(
     crlfDelay: Infinity,
   })
 
-  let block: string[] = []
-  let blockStartLine = 0
-  let seenHead = false
+  const splitter = makeBlockSplitter()
 
   for await (const line of rl) {
-    if (isHead(line) && seenHead) {
-      let trailing = 0
-
-      while (
-        block.length - trailing > 1 &&
-        isLeadingTrivia(block[block.length - 1 - trailing]!)
-      ) {
-        trailing++
-      }
-
-      const keep = block.length - trailing
-      const text = block.slice(0, keep).join('\n')
-
-      if (take({ text, startLine: blockStartLine, hash: hashText(text) }) === false) {
+    for (const block of feedLine(splitter, line)) {
+      if (take(block) === false) {
         rl.close()
 
         return
       }
-
-      blockStartLine += keep
-      block = block.slice(keep)
     }
-
-    if (isHead(line)) {seenHead = true}
-
-    block.push(line)
   }
 
   // the final block (everything still buffered)
-  const text = block.join('\n')
-
-  take({ text, startLine: blockStartLine, hash: hashText(text) })
+  take(finishBlocks(splitter))
 }

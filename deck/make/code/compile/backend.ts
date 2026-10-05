@@ -1792,6 +1792,9 @@ export function ownedElements(
     }
   }
 
+  // every task by name, for the parameter a lent outer list is handed to
+  const tasks = new Map(program.flatMap(n => (n.form === 'function' ? [[n.name, n] as const] : [])))
+
   // a list of lists that reaches native code (`nativeForms`), anywhere inside a type a native call or a bodiless task
   // takes or answers, keeps its shared inner lists: a shim builds them in the host's own terms
   const records = new Map(program.flatMap(n => (n.form === 'record-type' ? [[n.name, n] as const] : [])))
@@ -2007,9 +2010,17 @@ export function ownedElements(
           const taken = name !== undefined ? lend.get(name) : undefined
 
           if (taken) {
+            const params = name !== undefined ? tasks.get(name)?.params : undefined
+
             args.forEach((a, i) => {
-              if (!(outerVar(a) !== undefined && taken.has(i))) {
+              const key = outerVar(a)
+
+              if (!(key !== undefined && taken.has(i))) {
                 visit(a)
+              } else if (outer(params?.[i]?.type) !== key) {
+                // the task's parameter holds its inner lists under another key, a type parameter's (`flatten`'s
+                // `list (list t)`), so it keeps them shared, and a plain `[[Int]]` cannot be handed to it
+                refuse(key)
               }
             })
 

@@ -12,6 +12,7 @@ load @term/base/regex
   find escape-pattern
   find is-valid-pattern
   find regex-match
+  find match-named
 
 load @term/base/text/unicode
   find rune-to-text
@@ -79,6 +80,24 @@ task all-texts
     call join
       read texts
       text <,>
+
+# the group the first match holds under `name`, `~` for none, or `none` when nothing matches
+task named-of
+  take pattern, like text
+  take input, like text
+  take name, like text
+  like text
+  fork case, call(find-match, read(pattern), read(input))
+    case some
+      link hit
+      send back
+        call unwrap-or
+          call match-named
+            read hit
+            read name
+          text <~>
+    case none
+      send back, text <none>
 
 task bracket
   take hit, like regex-match
@@ -308,6 +327,36 @@ test <a raw literal is the pattern as written>
           text <<\p{Lu}\p{Ll}+>>
           text <an Émile>
         text <3:8:Émile>
+
+test <a named group is read by its name>
+  want hold
+    call and
+      call and
+        call is-equal
+          call named-of
+            text <<(?<year>\d{4})-(?<month>\d\d)>>
+            text <on 2026-10>
+            text <year>
+          text <2026>
+        call is-equal
+          call named-of
+            text <<(?<year>\d{4})-(?<month>\d\d)>>
+            text <on 2026-10>
+            text <month>
+          text <10>
+      call and
+        call is-equal
+          call named-of
+            text <<(?<year>\d{4})-(?<month>\d\d)>>
+            text <on 2026-10>
+            text <day>
+          text <~>
+        call is-equal
+          call named-of
+            text <<(?:(?<a>a)|(?<b>b))>>
+            text <b>
+            text <a>
+          text <~>
 
 test <a text that is not a pattern is refused on every backend>
   want hold

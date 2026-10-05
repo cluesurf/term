@@ -18,6 +18,9 @@ import type { AddressInfo } from 'net'
 
 export type OciServer = {
   host: string
+  // the storage host's port: a blob GET is redirected to `localhost:<storagePort>`. A test that serves the registry to
+  // another machine through a tunnel forwards this port too
+  storagePort: number
   close(): Promise<void>
   blobs: Map<string, Buffer>
   // repository -> tag -> digest
@@ -391,6 +394,7 @@ export async function startOciServer(options?: {
 
   return {
     host: `127.0.0.1:${port}`,
+    storagePort,
     blobs,
     tags,
     manifests,

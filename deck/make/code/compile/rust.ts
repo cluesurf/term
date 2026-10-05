@@ -920,6 +920,8 @@ function emitRustPass(
   // `Err(e)` runs the handler with `e` bound.
   const raising = new Set<string>()
   let currentRaising = false
+  // the parameters of the function being emitted: a call to one is that parameter, never the raising task of its name
+  let currentParams = new Set<string>()
   let currentResult: Type | undefined
   // the result a call site's parameter declares for the closure argument being rendered (see the call case)
   let closureHint: Type | undefined
@@ -2660,7 +2662,9 @@ function emitRustPass(
             : `${callee}(${args})`
         }
 
-        if (node.callee.form === 'variable' && raising.has(node.callee.name)) {
+        // a parameter called by name is the callback it holds, whose type says it returns a plain value: `list/find-index`
+        // calling its `test` read as the raising `file/test` and got a `?` on a `bool` (2026-10-04)
+        if (node.callee.form === 'variable' && raising.has(node.callee.name) && !currentParams.has(node.callee.name)) {
           const suffix = awaitedRaise ? '' : raiseSuffix()
           awaitedRaise = false
 
@@ -4695,6 +4699,8 @@ function emitRustPass(
         const previousAsync = currentAsync
         currentAsync = Boolean(node.async)
         const previousResult = currentResult
+        const previousParams = currentParams
+        currentParams = new Set(node.params.map(p => p.name))
         currentRaising = raising.has(node.name)
         currentResult = declaredResult
 
@@ -4912,6 +4918,7 @@ function emitRustPass(
                 .join('\n')
 
         tailMatches = previousTailMatches
+        currentParams = previousParams
         currentRaising = previousRaising
         currentAsync = previousAsync
         currentResult = previousResult
@@ -5467,6 +5474,15 @@ impl std::error::Error for TermException {}
 #[inline(never)]
 fn term_fail(note: impl Into<String>) -> TermException {
     TermException(Box::new(TermRaised { host: String::new(), form: "failure".to_string(), note: note.into(), code: String::new(), time: 0, link: std::rc::Rc::new(()), base: std::rc::Rc::new(()) }))
+}
+// the same, given what the raising task held that it would otherwise drop on the way out (its spare boxes, rust.ts
+// \`localForms\`), so the raise path drops nothing inline
+#[allow(dead_code)]
+#[cold]
+#[inline(never)]
+fn term_fail_with<T>(held: T, note: impl Into<String>) -> TermException {
+    drop(held);
+    term_fail(note)
 }`,
       ]
     : []
@@ -5601,6 +5617,7 @@ fn __term_drain() {
   }
   const localBody = body.map(text => {
     let out = text
+    const spares: string[] = []
 
     for (const form of localForms) {
       const name = snake(form)
@@ -5616,6 +5633,17 @@ fn __term_drain() {
       const kept = payload ? `std::mem::MaybeUninit<${payload}>` : pascal(form)
       out = `${out.slice(0, open + 2)}    let mut ${spare}: Option<Box<${kept}>> = None;\n${out.slice(open + 2)}`
       localUsed.add(form)
+      spares.push(spare)
+    }
+
+    // a text raised in such a task hands its spares to the cold function, which drops them: the raise path then drops
+    // nothing of its own, and LLVM lays the task out as tight as one whose raises never return. Towers' `move_top`
+    // inlined into the recursion, its `Result` kept, 54 ms to 38 against the hand version's 40
+    // (`tmp/rust-towers-rest5-ab.ts`). Not in a task holding a closure, a guard (`(|| ...)()`) or an async block, whose
+    // `return` may be its own
+    if (spares.length > 0 && !out.includes('move |') && !out.includes('(|| ') && !out.includes('async {')) {
+      const held = spares.length === 1 ? spares[0]! : `(${spares.join(', ')})`
+      out = out.split('return std::result::Result::Err(term_fail(').join(`return std::result::Result::Err(term_fail_with(${held}, `)
     }
 
     return out

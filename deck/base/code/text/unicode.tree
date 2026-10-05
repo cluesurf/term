@@ -67,7 +67,7 @@ bind grapheme-slice
     text <(function () \{ const g = [...new Intl.Segmenter().segment($value)].map(function (s) \{ return s.segment \}); const a = Math.min(Math.max($start, 0), g.length); const b = Math.min(Math.max($end, a), g.length); return g.slice(a, b).join("") \})()>
   case rust
     load <unicode_segmentation/UnicodeSegmentation>
-    text <\{ let g: Vec\<&str\> = $value.graphemes(true).collect(); let a = ($start).clamp(0, g.len() as i64) as usize; let b = ($end).clamp(a as i64, g.len() as i64) as usize; g[a..b].concat() \}>
+    text <\{ let v = $value; let g: Vec\<&str\> = v.graphemes(true).collect(); let a = ($start).clamp(0, g.len() as i64) as usize; let b = ($end).clamp(a as i64, g.len() as i64) as usize; g[a..b].concat() \}>
   case swift
     text <\{ () -\> String in let g = Array($value); let a = min(max(Int($start), 0), g.count); let b = min(max(Int($end), a), g.count); return String(g[a..\<b]) \}()>
   case kotlin

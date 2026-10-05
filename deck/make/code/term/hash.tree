@@ -23,6 +23,7 @@ load @term/base/bit
 load @term/base/text
   find split
   find char-code-at
+  find char-at
 
 # the two seeds cyrb53 starts from
 host seed-one, code 3735928559
@@ -83,10 +84,28 @@ task shift-32
   back
     unsigned-shift-right bitwise-and(value, code 4294967295), count
 
-# a non-negative integer in base 36, which is how the key is spelled on disk
+# the 36 digits, in JavaScript's order: `toString(36)` spells ten as `a`
+host base-36-digits, text <0123456789abcdefghijklmnopqrstuvwxyz>
+
+# a non-negative integer in base 36, which is how the key is spelled on disk. Written out digit by digit: it was
+# JavaScript's `value.toString(36)`, which no native backend has, so the hash did not build on Rust, Swift or Kotlin
+# (found when compile/block-split imported it, 2026-10-04). The value is below 2^53, so `(rest - digit) / 36` is exact
+# even where a number is a double
 task to-base-36
   take value, like number
 
   like text
 
-  back call value/toString, code 36
+  fork test, is-equal(value, 0)
+    hold
+      back <0>
+  save digits, <>
+  save rest, value
+  walk test
+    hook test, is-above(rest, 0)
+    hook hold
+      save digit, modulo(rest, 36)
+      save digits, <{char-at(base-36-digits, digit)}{digits}>
+      save rest, divide(subtract(rest, digit), 36)
+
+  back digits

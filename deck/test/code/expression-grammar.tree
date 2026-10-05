@@ -1,0 +1,259 @@
+# The synthesis target: a small integer-expression language over named inputs, its evaluator, its printer, and an
+# enumerator of every expression up to a size, smallest first. Counterexample-guided synthesis (synthesize.ts)
+# searches it, and variant synthesis (variant.ts) searches it once per variant.
+#
+# Ported from the grammar half of deck/test/code/synthesize.ts (self-hosting, 2026-10-04). The search loop stays there
+# until the property engine it calls is ported. The unions are tagged on `form`, as the original's were, so a
+# TypeScript caller builds `{ form: 'add', left, right }` unchanged.
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+form expression
+  case var
+    link index, like number
+  case const
+    link value, like number
+  case add
+    link left, like expression
+    link right, like expression
+  case sub
+    link left, like expression
+    link right, like expression
+  case min
+    link left, like expression
+    link right, like expression
+  case max
+    link left, like expression
+    link right, like expression
+  case ite
+    link test, like condition
+    link then, like expression
+    link else, like expression
+
+# a boolean condition over two expressions
+form condition
+  case ge
+    link left, like expression
+    link right, like expression
+  case gt
+    link left, like expression
+    link right, like expression
+  case eq
+    link left, like expression
+    link right, like expression
+
+task variable-at
+  take index, like number
+  like expression
+
+  back
+    make var
+      bind index, index
+
+task constant-of
+  take value, like number
+  like expression
+
+  back
+    make const
+      bind value, value
+
+# an expression's value for a tuple of inputs
+task eval-expr
+  take expr, like expression
+  take inputs, like list, like number
+  like number
+
+  sift expr
+    case var
+      back get(inputs, index)
+    case const
+      back value
+    case add
+      back add(eval-expr(left, inputs), eval-expr(right, inputs))
+    case sub
+      back subtract(eval-expr(left, inputs), eval-expr(right, inputs))
+    case min
+      host l, eval-expr(left, inputs)
+      host r, eval-expr(right, inputs)
+      fork test, is-below(r, l)
+        hold
+          back r
+      back l
+    case max
+      host l, eval-expr(left, inputs)
+      host r, eval-expr(right, inputs)
+      fork test, is-above(r, l)
+        hold
+          back r
+      back l
+    case ite
+      fork test, eval-cond(test, inputs)
+        hold
+          back eval-expr(then, inputs)
+      back eval-expr(else, inputs)
+
+task eval-cond
+  take cond, like condition
+  take inputs, like list, like number
+  like boolean
+
+  sift cond
+    case ge
+      back is-minimum(eval-expr(left, inputs), eval-expr(right, inputs))
+    case gt
+      back is-above(eval-expr(left, inputs), eval-expr(right, inputs))
+    case eq
+      back is-equal(eval-expr(left, inputs), eval-expr(right, inputs))
+
+# an expression as readable pseudocode
+task show-expr
+  take expr, like expression
+  take names, like list, like text
+  like text
+
+  sift expr
+    case var
+      back get(names, index)
+    case const
+      back <{value}>
+    case add
+      back <({show-expr(left, names)} + {show-expr(right, names)})>
+    case sub
+      back <({show-expr(left, names)} - {show-expr(right, names)})>
+    case min
+      back <min({show-expr(left, names)}, {show-expr(right, names)})>
+    case max
+      back <max({show-expr(left, names)}, {show-expr(right, names)})>
+    case ite
+      back <({show-cond(test, names)} ? {show-expr(then, names)} : {show-expr(else, names)})>
+
+task show-cond
+  take cond, like condition
+  take names, like list, like text
+  like text
+
+  sift cond
+    case ge
+      back <{show-expr(left, names)} \>= {show-expr(right, names)}>
+    case gt
+      back <{show-expr(left, names)} \> {show-expr(right, names)}>
+    case eq
+      back <{show-expr(left, names)} == {show-expr(right, names)}>
+
+# every expression of exactly `size` nodes, built once per size. The atoms are the inputs then the constants 0 and 1.
+# A binary node splits the rest between its two sides every way. An if-then-else, from size 4, compares two atoms and
+# picks between two atoms: kept cheap on purpose
+task exprs-of-size
+  take size, like number
+  take var-count, like number
+  take cache
+    like hash
+      like number
+      like list, like expression
+  like list, like expression
+
+  fork test, has(cache, size)
+    hold
+      back get-or-default(cache, size, make list)
+
+  host out, make list
+
+  fork test, is-equal(size, 1)
+    hold
+      save index, 0
+      walk test
+        hook test, is-below(index, var-count)
+        hook hold
+          out/push(variable-at(index))
+          save index, add(index, 1)
+      out/push(constant-of(0))
+      out/push(constant-of(1))
+      cache/set(size, out)
+      back out
+
+  save a, 1
+  walk test
+    hook test, is-below(a, size)
+    hook hold
+      host b, subtract(subtract(size, 1), a)
+      fork test, is-minimum(b, 1)
+        hold
+          host lefts, exprs-of-size(a, var-count, cache)
+          host rights, exprs-of-size(b, var-count, cache)
+          walk lefts
+            take left
+            walk rights
+              take right
+              out/push
+                make add
+                  bind left, left
+                  bind right, right
+              out/push
+                make sub
+                  bind left, left
+                  bind right, right
+              out/push
+                make min
+                  bind left, left
+                  bind right, right
+              out/push
+                make max
+                  bind left, left
+                  bind right, right
+      save a, add(a, 1)
+
+  fork test, is-minimum(size, 4)
+    hold
+      host atoms, exprs-of-size(1, var-count, cache)
+      walk atoms
+        take tl
+        walk atoms
+          take tr
+          walk atoms
+            take then-expr
+            walk atoms
+              take else-expr
+              out/push
+                make ite
+                  bind test
+                    make ge
+                      bind left, tl
+                      bind right, tr
+                  bind then, then-expr
+                  bind else, else-expr
+              out/push
+                make ite
+                  bind test
+                    make gt
+                      bind left, tl
+                      bind right, tr
+                  bind then, then-expr
+                  bind else, else-expr
+
+  cache/set(size, out)
+
+  back out
+
+# every expression up to `max-size`, smallest first
+task enumerate
+  take max-size, like number
+  take var-count, like number
+  like list, like expression
+
+  host cache, make hash
+  host out, make list
+  save size, 1
+  walk test
+    hook test, is-maximum(size, max-size)
+    hook hold
+      walk exprs-of-size(size, var-count, cache)
+        take each
+        out/push(each)
+      save size, add(size, 1)
+
+  back out

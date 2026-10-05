@@ -69,7 +69,10 @@ export function effectRows(program: Program): Map<string, Set<string>> {
     }
 
     rows.set(name, row)
-    calls.set(name, calledNames(statement.body, names))
+    // a call to one of its own parameters is that parameter, whose effects were added just above, never the
+    // top-level task of the same name: `list/find-index` calling its `test` read as `file/test`, and a native backend
+    // then put `?` on a callback that returns a plain `bool` (2026-10-04)
+    calls.set(name, new Set([...calledNames(statement.body, names)].filter(callee => !paramNames.has(callee))))
   }
 
   // least fixed point: a function throws if it calls (transitively) a throwing function
@@ -934,6 +937,11 @@ export function raiseSets(
     // `call fill / <data> / like <form>` raises the data package's `data-mismatch` when the value does not fit
     if (calledNames(statement.body, new Set(['fill-form'])).size > 0) {
       direct.add('data-mismatch')
+    }
+
+    // a call to one of its own parameters is that parameter, not the task of the same name (see the effect rows above)
+    for (const param of statement.params) {
+      called.delete(param.name)
     }
 
     raises.set(name, direct)

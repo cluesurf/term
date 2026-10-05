@@ -7,8 +7,23 @@ mine lock-file
     mine any
       mine form, like lock-head
         site head
+      mine form, like lock-need
+        site need
       mine form, like lock-deck
         site deck
+
+# `need @term/code` with its `code <2.6.4>` and `hash <sha256:…>`: the toolchain release the manifest's `need`
+# resolved to, the hash being the release's image index digest (note/term/plan/term-versions.md)
+mine lock-need
+  mine term, term need
+    mine path
+      site name
+    mine list
+      mine any
+        mine form, like lock-code
+          site code
+        mine form, like lock-hash
+          site hash
 
 mine lock-head
   mine term, term lock

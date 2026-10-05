@@ -1,7 +1,11 @@
-# Node.js UUID implementation (host node:crypto randomUUID). Internal: reached only through the public uuid API.
+# Node.js UUID implementation: the platform's own `crypto.randomUUID`, reached as the host global as the browser's is.
+# Term needs Node 22.3 or later (note/term/plan/term-load-install.md), and the global `crypto` is there from 19. It was
+# `load <node:crypto>`, which put a Node import into every module that can raise an exception (the exception code is a
+# UUID), so the browser compiler's bundle could not be built once a ported compiler module raised one (2026-10-04).
+# Internal: reached only through the public uuid API.
 
 dock load
-  load <node:crypto>, name crypto
+  load <global:crypto>, name crypto
 
 task generate-v4
   like text

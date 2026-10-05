@@ -94,7 +94,8 @@ function fits(name: string, lines: Line[], width: number): void {
 // value's. A quoted line wrapped inside its quote carries the gutter on every piece
 function holdsWhole(name: string, lines: Line[], value: string): void {
   const flat = texts(lines)
-    .map(text => text.replace(/^(\s*)[│|] /, '$1'))
+    // a quote's elbow (`⎿`, `\_` in ASCII) on its first line; the old `│` gutter too, still drawn by a code frame
+    .map(text => text.replace(/^(\s*)(?:[│|]|⎿|\\_) /, '$1'))
     .join('')
     .replace(/\s/g, '')
   ok(name, flat.includes(value.replace(/\s/g, '')), `  value ${value}\n${show(lines)}`)
@@ -370,6 +371,27 @@ same('no terminal: and then again', isProgressDue(0, 10000, 20000, STANDARD), tr
   const summary = arranged[20]!
   same('the summary says how many more, with the flag that shows all', [summary.glyph, spansText(summary.subject), summary.facts], ['info', '… 5 more problems', ['--all']])
 
+  // 2026-10-04: a build with 12 errors and 36 warnings showed 20 warnings and cut every error, because the sort
+  // was by place alone. An error now sorts before a warning wherever it is, so the cap never cuts one first
+  const mixed: Event[] = Array.from({ length: 25 }, (_, at) =>
+    ev({
+      glyph: at >= 22 ? 'failed' : 'warning',
+      kind: 'problem',
+      verb: 'check',
+      subject: `problem ${at}`,
+      clock: '14:42:00.300',
+      place: { path: `code/${String.fromCharCode(97 + at)}.tree`, line: 1, column: 1 },
+    }),
+  )
+  const capped = arrangeProblems(mixed, STANDARD, one)
+  same('errors sort before warnings, so the cap keeps every error', capped.slice(0, 3).map(problem => [problem.glyph, problem.place.path]), [
+    ['failed', 'code/w.tree'],
+    ['failed', 'code/x.tree'],
+    ['failed', 'code/y.tree'],
+  ])
+  same('and the warnings follow by path', capped[3]!.place.path, 'code/a.tree')
+  same('a cap below 1 shows every problem, which is what --all sets', arrangeProblems(mixed, { ...STANDARD, caps: { ...STANDARD.caps, problems: 0 } }, one).length, 25)
+
   const cause = ev({ glyph: 'failed', kind: 'problem', verb: 'check', subject: 'There is no task named multipy', clock: '14:42:00.300', id: 'a', place: { path: 'code/a.tree', line: 1, column: 1 } })
   const effects = [1, 2, 3].map(at => ev({ glyph: 'failed', kind: 'problem', verb: 'check', subject: `follows ${at}`, clock: '14:42:00.300', cause: 'a', place: { path: 'code/a.tree', line: at + 1, column: 1 } }))
   const hidden = arrangeProblems([cause, ...effects], STANDARD, one)
@@ -598,7 +620,7 @@ function runChild(flags: string[], environment: Record<string, string> = {}) {
   ok('a JSON line is an item: level the glyph, logger the verb cut to 7 cells, msg the subject, tagged', /✗ databa… +Connection lost +server/.test(adapted.stderr), adapted.stderr)
   ok('its other keys are fields', /host +db1/.test(adapted.stderr), adapted.stderr)
   ok('a logfmt line on stderr is an item too, with its duration', /▲ smtp +slow to respond +server[\s\S]*?3\.00 s/.test(adapted.stderr), adapted.stderr)
-  ok('plain text is QUOTED under one `log` item named for the child', /· log +server\n[\s\S]*?│ listening on 4000/.test(adapted.stderr), adapted.stderr)
+  ok('plain text is QUOTED under one `log` item named for the child, off the `⎿` elbow', /· log +server\n[\s\S]*?⎿ +listening on 4000/.test(adapted.stderr), adapted.stderr)
   same('nothing the child wrote reaches stdout', adapted.stdout, '')
 
   const raw = follow(['--raw'])

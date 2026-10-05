@@ -1,0 +1,109 @@
+# Symbolic model checking over decision diagrams: the set of reachable states is one diagram, grown by IMAGE
+# COMPUTATION until a fixpoint, and no state is ever enumerated.
+#
+# A system has `bits` boolean state variables: the current state is variables 0 to bits - 1, the next one bits to
+# 2 * bits - 1, and the transition relation is a diagram over both. Reachability iterates
+#   reach := reach or image(reach)
+# where image(S) is the next state renamed to the current one, of (exists current. S and T).
+#
+# Ported from deck/test/code/symbolic.ts (self-hosting, 2026-10-04), whose class keeps its face over these tasks.
+
+load @term/base/list
+  find list
+
+load ./decision-diagram
+  find diagram-manager
+  find variable-of
+  find if-then-else
+  find restrict
+  find diagram-and
+  find diagram-or
+  find exists-many
+
+form symbolic-system
+  link bits, like number
+  # the initial states, over the current variables
+  link init, like number
+  # the transition relation, over the current and the next variables
+  link transition, like number
+  # the unsafe states, over the current variables
+  link bad, like number
+
+task current-variables
+  take bits, like number
+  like list, like number
+
+  host out, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, bits)
+    hook hold
+      out/push(at)
+      save at, add(at, 1)
+
+  back out
+
+# each next variable bits + i replaced by the current variable i. The variable's node first, then the restriction to
+# true, then to false, as the original's arguments were evaluated: a node's id is its place in creation order
+task rename-next-to-current
+  take manager, like diagram-manager
+  take bits, like number
+  take diagram, like number
+  like number
+
+  save result, diagram
+  save at, 0
+  walk test
+    hook test, is-below(at, bits)
+    hook hold
+      host chosen, variable-of(manager, at)
+      host when-true, restrict(manager, result, add(bits, at), true)
+      host when-false, restrict(manager, result, add(bits, at), false)
+      save result, if-then-else(manager, chosen, when-true, when-false)
+      save at, add(at, 1)
+
+  back result
+
+# the states reachable in one step from `states`
+task image
+  take manager, like diagram-manager
+  take bits, like number
+  take states, like number
+  take transition, like number
+  like number
+
+  host both, diagram-and(manager, states, transition)
+  host projected, exists-many(manager, both, current-variables(bits))
+
+  back rename-next-to-current(manager, bits, projected)
+
+# every reachable state: the least fixpoint of init or image
+task reachable-states
+  take manager, like diagram-manager
+  take bits, like number
+  take system, like symbolic-system
+  like number
+
+  save reach, system/init
+  walk test
+    hook test, true
+    hook hold
+      host step, image(manager, bits, reach, system/transition)
+      host next, diagram-or(manager, reach, step)
+      fork test, is-equal(next, reach)
+        hold
+          back reach
+      save reach, next
+
+  back reach
+
+# safety: no bad state is reachable
+task is-safe
+  take manager, like diagram-manager
+  take bits, like number
+  take system, like symbolic-system
+  like boolean
+
+  host reach, reachable-states(manager, bits, system)
+
+  back is-equal(diagram-and(manager, reach, system/bad), 0)

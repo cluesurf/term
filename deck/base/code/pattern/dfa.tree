@@ -7,9 +7,15 @@
 # leftmost-first match ENDS; a backward run of the reversed pattern from that end, longest-first, finds where it
 # STARTS; and only a pattern with groups is then run on the Pike VM, anchored at that start, for its slots.
 #
-# A program qualifies when all it does is read code points, choose and jump, record a slot (ignored here), and test
-# the start or end of the text. A lookaround, a word or line edge, a back reference, an atomic group and the check
-# that refuses an empty iteration all depend on more than the state, and leave the pattern to the Pike VM.
+# A program qualifies when all it does is read code points, choose and jump, record a slot (ignored here), and test an
+# edge. A lookaround, a back reference, an atomic group and the check that refuses an empty iteration depend on more
+# than the state, and leave the pattern to the Pike VM.
+#
+# An edge is decided where the closure is taken, because the code points on both sides of that position are known
+# then: the one just read and the next one in the input (2026-10-04). Text edges hold only at 0 and n, whose closures
+# are taken fresh. A line or word edge depends on the neighbors, so a program with one remembers a transition per
+# class AND per context of the position it lands on, three bits: a line starts, a line ends, a word edge
+# (`context-at`). That is what lets `\b\w+\b` run here: 5,750 µs on the Pike VM before, on node.
 #
 # Code points are grouped into classes every instruction treats alike, from the bounds of every set and letter the
 # program names, so a transition is remembered per class. A DFA past `most-states` states stops being used, and its
@@ -43,6 +49,10 @@ load @term/base/pattern/node
   find piece
   find edge-text-start
   find edge-text-end
+  find edge-line-start
+  find edge-line-end
+  find edge-word
+  find edge-not-word
 
 load @term/base/pattern/syntax
   find parsed
@@ -64,6 +74,7 @@ load @term/base/pattern/program
 
 load @term/base/pattern/scene
   find scene
+  find edge-holds
 
 load @term/base/pattern/pike
   find run-part
@@ -81,6 +92,9 @@ form dfa
   link bounds
     like list
       like number
+  # the transitions remembered per class: 1, or 8 when the program tests a line or word edge, one per context of the
+  # position the transition lands on (`context-at`)
+  link width, like number
   # each state's key, its id
   link keys
     like hash
@@ -192,8 +206,6 @@ task dfa-fits
     hook step
       save op
         call number-at(read(g/ops), read(pc), code(-1))
-      save a
-        call number-at(read(g/a), read(pc), code(-1))
       save plain
         call or
           call or
@@ -210,15 +222,11 @@ task dfa-fits
             call or
               call is-equal(read(op), read(op-clear))
               call is-equal(read(op), read(op-mark))
-      save text-edge
-        call and
-          call is-equal(read(op), read(op-edge))
-          call or
-            call is-equal(read(a), read(edge-text-start))
-            call is-equal(read(a), read(edge-text-end))
+      # every edge: the text's two at 0 and n, a line's and a word's by the context of the position
+      save edge, call(is-equal, read(op), read(op-edge))
       fork test
         hook test
-          call not(call(or, read(plain), read(text-edge)))
+          call not(call(or, read(plain), read(edge)))
         hook hold
           send back, false
       save pc
@@ -349,6 +357,7 @@ task make-dfa
       bind program, read g
       bind entry, read entry
       bind bounds, call(class-bounds, read(g))
+      bind width, call(context-width, read(g))
       bind keys, make hash
       bind pcs, make list
       bind restarts, make list
@@ -359,8 +368,77 @@ task make-dfa
       bind stamp, read stamp
       bind full, read full
 
+# how many contexts a transition is remembered under: 8 when the program tests a line or word edge, else 1
+task context-width
+  take g, like program
+  like number
+  save count, read g/ops/length
+  save pc, code 0
+  walk test
+    down
+      call subtract(read(count), read(pc))
+    hook test
+      call is-below(read(pc), read(count))
+    hook step
+      save a
+        call number-at(read(g/a), read(pc), code(-1))
+      fork test
+        hook test
+          call and
+            call is-equal(call(number-at, read(g/ops), read(pc), code(-1)), read(op-edge))
+            call not
+              call or
+                call is-equal(read(a), read(edge-text-start))
+                call is-equal(read(a), read(edge-text-end))
+        hook hold
+          send back, code 8
+      save pc
+        call add(read(pc), code(1))
+  send back, code 1
+
+# the context of position `at` a line or word edge reads, as three bits: 1 a line starts there, 2 a line ends there, 4
+# a word edge is there. Always 0 for a DFA of width 1, whose program tests none of them
+task context-at
+  take d, like dfa
+  take s, like scene
+  take at, like number
+  like number
+  fork test
+    hook test
+      call is-equal(read(d/width), code(1))
+    hook hold
+      send back, code 0
+  save bits, code 0
+  fork test
+    hook test
+      call edge-holds(read(s), read(edge-line-start), read(at))
+    hook hold
+      save bits, code 1
+  fork test
+    hook test
+      call edge-holds(read(s), read(edge-line-end), read(at))
+    hook hold
+      save bits
+        call add(read(bits), code(2))
+  fork test
+    hook test
+      call edge-holds(read(s), read(edge-word), read(at))
+    hook hold
+      save bits
+        call add(read(bits), code(4))
+  send back, read bits
+
+# whether bit `bit` (1, 2 or 4) of a context is set
+task context-has
+  take context, like number
+  take bit, like number
+  like boolean
+  send back
+    call is-minimum(call(modulo, read(context), call(multiply, read(bit), code(2))), read(bit))
+
 # every instruction the seeds reach without reading a code point, in priority order, each once: instructions that
-# read, and MATCH. `at` and `n` decide the text edges, which hold only at 0 and at n
+# read, and MATCH. `at` and `n` decide the text edges, which hold only at 0 and at n, and `context` (`context-at`) the
+# line and word edges
 task closure
   take d, like dfa
   take seeds
@@ -368,6 +446,7 @@ task closure
       like number
   take at, like number
   take n, like number
+  take context, like number
   like list
     like number
   save g, read d/program
@@ -440,12 +519,28 @@ task closure
         hook hold
           save holds
             call or
-              call and
-                call is-equal(read(a), read(edge-text-start))
-                call is-equal(read(at), code(0))
-              call and
-                call is-equal(read(a), read(edge-text-end))
-                call is-equal(read(at), read(n))
+              call or
+                call or
+                  call and
+                    call is-equal(read(a), read(edge-text-start))
+                    call is-equal(read(at), code(0))
+                  call and
+                    call is-equal(read(a), read(edge-text-end))
+                    call is-equal(read(at), read(n))
+                call or
+                  call and
+                    call is-equal(read(a), read(edge-line-start))
+                    call context-has(read(context), code(1))
+                  call and
+                    call is-equal(read(a), read(edge-line-end))
+                    call context-has(read(context), code(2))
+              call or
+                call and
+                  call is-equal(read(a), read(edge-word))
+                  call context-has(read(context), code(4))
+                call and
+                  call is-equal(read(a), read(edge-not-word))
+                  call not(call(context-has, read(context), code(4)))
           fork test
             hook test
               read holds
@@ -549,22 +644,33 @@ task state-of
   call all-matches/push(read(first-match))
   save all-cuts, read d/cuts
   call all-cuts/push(code(-1))
+  # one entry per class and context
   save row, make list
-  walk list, read d/bounds
-    hook next
-      take site, name bound
+  save cells
+    call multiply(read(d/bounds/length), read(d/width))
+  save c, code 0
+  walk test
+    down
+      call subtract(read(cells), read(c))
+    hook test
+      call is-below(read(c), read(cells))
+    hook step
       call row/push(code(-1))
+      save c
+        call add(read(c), code(1))
   save all-moves, read d/moves
   call all-moves/push(read(row))
   send back, read id
 
-# the state reached from `state` by a code point of class `kind`, its closure taken at `at` (the position after it)
+# the state reached from `state` by a code point of class `kind`, its closure taken at `at` (the position after it),
+# whose context is `context`
 task step
   take d, like dfa
   take state, like number
   take kind, like number
   take at, like number
   take n, like number
+  take context, like number
   like number
   save g, read d/program
   save rep
@@ -601,7 +707,7 @@ task step
     hook hold
       call seeds/push(read(d/entry))
   send back
-    call state-of(read(d), call(closure, read(d), read(seeds), read(at), read(n)), read(restarts))
+    call state-of(read(d), call(closure, read(d), read(seeds), read(at), read(n), read(context)), read(restarts))
 
 # the state without the threads below its first MATCH, and restarting no more: what is left to extend that match
 task cut
@@ -635,10 +741,11 @@ task cut
   call put-number(read(d/cuts), read(state), read(id))
   send back, read id
 
-# the next state, remembered when the position after is strictly inside the text, where neither text edge holds:
-# a forward run reaches n, a backward run 0, and those closures are taken fresh
+# the next state, remembered per class and context when the position after is strictly inside the text, where
+# neither text edge holds: a forward run reaches n, a backward run 0, and those closures are taken fresh
 task move
   take d, like dfa
+  take s, like scene
   take state, like number
   take c, like number
   take at, like number
@@ -646,6 +753,8 @@ task move
   like number
   save kind
     call class-of(read(d/bounds), read(c))
+  save context
+    call context-at(read(d), read(s), read(at))
   fork test
     hook test
       call or
@@ -653,38 +762,39 @@ task move
         call is-maximum(read(at), code(0))
     hook hold
       send back
-        call step(read(d), read(state), read(kind), read(at), read(n))
+        call step(read(d), read(state), read(kind), read(at), read(n), read(context))
   save row
     call row-of(read(d), read(state))
+  save cell
+    call add(call(multiply, read(kind), read(d/width)), read(context))
   save known
-    call number-at(read(row), read(kind), code(-1))
+    call number-at(read(row), read(cell), code(-1))
   fork test
     hook test
       call is-minimum(read(known), code(0))
     hook hold
       send back, read known
   save next
-    call step(read(d), read(state), read(kind), read(at), read(n))
+    call step(read(d), read(state), read(kind), read(at), read(n), read(context))
   fork test
     hook test
       call is-minimum(read(next), code(0))
     hook hold
-      call put-number(read(row), read(kind), read(next))
+      call put-number(read(row), read(cell), read(next))
   send back, read next
 
 # where the leftmost-first match from `from` ends, -1 for none, or -2 when the DFA filled up on the way
 task dfa-end
   take d, like dfa
-  take runes
-    like list
-      like number
+  take s, like scene
   take from, like number
   like number
+  save runes, read s/runes
   save n, read runes/length
   save seeds, make list
   call seeds/push(read(d/entry))
   save state
-    call state-of(read(d), call(closure, read(d), read(seeds), read(from), read(n)), true)
+    call state-of(read(d), call(closure, read(d), read(seeds), read(from), read(n), call(context-at, read(d), read(s), read(from))), true)
   save ended, code -1
   save at, read from
   save going, true
@@ -737,7 +847,7 @@ task dfa-end
           save going, false
           turn next
       save state
-        call move(read(d), read(state), call(number-at, read(runes), read(at), code(-1)), call(add, read(at), code(1)), read(n))
+        call move(read(d), read(s), read(state), call(number-at, read(runes), read(at), code(-1)), call(add, read(at), code(1)), read(n))
       save at
         call add(read(at), code(1))
   send back, read ended
@@ -748,17 +858,16 @@ task dfa-end
 # began at the floor, never saw)
 task dfa-start
   take d, like dfa
-  take runes
-    like list
-      like number
+  take s, like scene
   take end, like number
   take floor, like number
   like number
+  save runes, read s/runes
   save n, read runes/length
   save seeds, make list
   call seeds/push(read(d/entry))
   save state
-    call state-of(read(d), call(closure, read(d), read(seeds), read(end), read(n)), false)
+    call state-of(read(d), call(closure, read(d), read(seeds), read(end), read(n), call(context-at, read(d), read(s), read(end))), false)
   save started, code -1
   save at, read end
   save turns, code 0
@@ -792,7 +901,7 @@ task dfa-start
         hook hold
           send back, read started
       save state
-        call move(read(d), read(state), call(number-at, read(runes), call(subtract, read(at), code(1)), code(-1)), call(subtract, read(at), code(1)), read(n))
+        call move(read(d), read(s), read(state), call(number-at, read(runes), call(subtract, read(at), code(1)), code(-1)), call(subtract, read(at), code(1)), read(n))
       save at
         call subtract(read(at), code(1))
   send back, read started
@@ -815,7 +924,7 @@ task dfa-search
   save full, make list
   call full/push(code(-2))
   save end
-    call dfa-end(read(forward), read(s/runes), read(from))
+    call dfa-end(read(forward), read(s), read(from))
   fork test
     hook test
       call is-equal(read(end), code(-2))
@@ -827,7 +936,7 @@ task dfa-search
     hook hold
       send back, read none
   save start
-    call dfa-start(read(backward), read(s/runes), read(end), read(from))
+    call dfa-start(read(backward), read(s), read(end), read(from))
   fork test
     hook test
       call is-below(read(start), code(0))

@@ -1,0 +1,90 @@
+# A JSON accessor on the wrong kind raises `mismatch`, naming the kind asked for and the kind found, the same on every
+# backend; the right kind reads as before. Held by `pnpm term:base-gate`.
+
+load @term/base/json
+  find parse
+  find field-text
+  find field-number
+  find as-text
+
+load @term/base/exception
+  find mismatch
+  find failure
+
+load @term/base/json/check
+  find json-mismatch
+
+# what reading `key` as text gives: the text, or what a raised `mismatch` says
+task text-or-why
+  take input, like text
+  take key, like text
+  like text
+  mark unsafe
+    save got
+      call field-text
+        call parse
+          read input
+        read key
+    send back, read got
+  halt take
+    take problem
+    fork case, read problem
+      case mismatch
+        send back, text <wanted {expected}, found {actual}>
+      case json-mismatch
+        send back, text <not JSON>
+      case failure
+        send back, text <failed>
+
+task number-or-why
+  take input, like text
+  take key, like text
+  like text
+  mark unsafe
+    save got
+      call field-number
+        call parse
+          read input
+        read key
+    send back, text <{got}>
+  halt take
+    take problem
+    fork case, read problem
+      case mismatch
+        send back, text <wanted {expected}, found {actual}>
+      case json-mismatch
+        send back, text <not JSON>
+      case failure
+        send back, text <failed>
+
+test <a text field reads as its text>
+  want hold
+    call is-equal
+      call text-or-why
+        text <\{"name": "ada"\}>
+        text <name>
+      text <ada>
+
+test <a number read as text is a mismatch, not the empty text>
+  want hold
+    call is-equal
+      call text-or-why
+        text <\{"name": 7\}>
+        text <name>
+      text <wanted text, found number>
+
+test <a text read as a number is a mismatch, not 0>
+  want hold
+    call is-equal
+      call number-or-why
+        text <\{"age": "seven"\}>
+        text <age>
+      text <wanted number, found text>
+
+test <a missing field is null, and a mismatch>
+  want hold
+    call is-equal
+      call text-or-why
+        text <\{"name": "ada"\}>
+        text <email>
+      text <wanted text, found null>

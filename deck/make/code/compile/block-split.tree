@@ -1,0 +1,119 @@
+# The top-level block boundary of a `.tree` file, read one line at a time. A `.tree` file is a sequence of independent
+# top-level definitions, and this splits it into them while holding only the current block: that is what lets an
+# arbitrarily large file open in constant memory and start yielding definitions before the last byte is read
+# (note/seed/tree-streaming-and-perf.md).
+#
+# The rule is purely lexical. A line at column 0 that is not blank and not a comment starts a new block, and the blank
+# and comment lines directly above it ride forward onto it, though never so far that the block before is left empty.
+# So it needs only the current line and the current block, never the whole file.
+#
+# Ported from compile/stream.ts (self-hosting, 2026-10-04), where the rule was written twice, once in `splitStreaming`
+# over an iterable and once in `walkFileBlocks` over node's `readline`. Here it is written once, as a splitter fed one
+# line at a time that answers the block a line completes. The two loops stay there and feed it, because reading a file
+# line by line is a node capability at the edge.
+
+load @term/base/list
+  find list
+
+load @term/base/text
+  find starts-with
+  find trim
+  find trim-start
+
+load ../term/hash
+  find hash-text
+
+form top-block
+  link text, like text
+  link start-line, like number
+  link hash, like text
+
+form block-splitter
+  mark shared
+  # the lines of the block being read, with any trivia that may ride forward onto the next
+  link lines, like list, like text
+  # the line the block being read starts on, counted from 0
+  link start-line, like number
+  # whether a head has been read yet: the lines before the first one belong to it
+  link seen-head, like boolean
+
+task make-block-splitter
+  like block-splitter
+
+  back
+    make block-splitter
+      bind lines, make list
+      bind start-line, 0
+      bind seen-head, false
+
+# a line that starts a definition: at column 0, not blank, not a comment
+task is-head
+  take line, like text
+  like boolean
+
+  fork test, is-equal(line, <>)
+    hold
+      back false
+  fork test, starts-with(line, < >)
+    hold
+      back false
+  fork test, starts-with(line, <\t>)
+    hold
+      back false
+
+  back not(starts-with(line, <#>))
+
+# a blank or comment line, which rides forward onto the definition below it
+task is-leading-trivia
+  take line, like text
+  like boolean
+
+  back or(is-equal(trim(line), <>), starts-with(trim-start(line), <#>))
+
+task make-top-block
+  take text, like text
+  take start-line, like number
+  like top-block
+
+  back
+    make top-block
+      bind text, text
+      bind start-line, start-line
+      bind hash, hash-text(text)
+
+# read one line. A head after the first ends the block before it: the blocks it completes come back, none or one
+task feed-line
+  take splitter, like block-splitter
+  take line, like text
+  like list, like top-block
+
+  host done, make list
+  host lines, splitter/lines
+
+  fork test, and(is-head(line), splitter/seen-head)
+    hold
+      save trailing, 0
+      walk test
+        hook test, and(is-above(subtract(lines/length, trailing), 1), is-leading-trivia(get(lines, subtract(subtract(lines/length, 1), trailing))))
+        hook hold
+          save trailing, add(trailing, 1)
+
+      save keep, subtract(lines/length, trailing)
+      done/push(make-top-block(join(slice(lines, 0, keep), <\n>), splitter/start-line))
+      save splitter/start-line, add(splitter/start-line, keep)
+      save splitter/lines, slice(lines, keep, lines/length)
+
+  fork test, is-head(line)
+    hold
+      save splitter/seen-head, true
+
+  splitter/lines/push(line)
+
+  back done
+
+# the block still being read, once the lines run out
+task finish-blocks
+  take splitter, like block-splitter
+  like top-block
+
+  back make-top-block(join(splitter/lines, <\n>), splitter/start-line)

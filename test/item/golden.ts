@@ -45,7 +45,8 @@ ok('every card on the page has a golden test, and in page order', mockups.length
 
 // every difference from the mockup is written down, and every one written down is still applied
 const written = new Set([...readFileSync(MOCKUP_DIFFERENCES, 'utf8').matchAll(/^### (D\d+)$/gm)].map(match => match[1]!))
-const cited = new Set(CARDS.flatMap(card => [...card.patches.flatMap(patch => patch.entry.split(' ')), ...(card.entry ? [card.entry] : [])]))
+// D33 is applied to every card by `elbowQuotes`, not by a patch, so it is cited here
+const cited = new Set(['D33',...CARDS.flatMap(card => [...card.patches.flatMap(patch => patch.entry.split(' ')), ...(card.entry ? [card.entry] : [])])])
 const unwritten = [...cited].filter(entry => !written.has(entry))
 const unapplied = [...written].filter(entry => !cited.has(entry))
 const unjustified = CARDS.filter(card => card.whole && !card.entry).map(card => card.caption)
@@ -101,7 +102,31 @@ function expectedOf(card: Card, mockup: Mockup): Expected[] {
     marks: line.marks.map(mark => (mark.role === 'cursor' ? null : mark)),
   }))
 
-  return applyPatches(lines, card.patches)
+  return elbowQuotes(applyPatches(lines, card.patches))
+}
+
+// D33: a quote is a child program's own lines, and hangs off a dim `⎿` elbow on its first line with the rest under it,
+// 3 cells right of the body column, where the mockups draw a `│ ` gutter on every line (the user's choice, 2026-10-04).
+// A quote line is one that opens with the body column's 11 spaces and then `│`; a code frame has its line number there,
+// and a tree's stem (`│  └─`) goes on with the tree's own characters
+const QUOTE = /^ {11}│ (?! *[├└│])/
+const ELBOW: Mark = { role: 'dim', strong: false, focus: false }
+
+function elbowQuotes(lines: Expected[]): Expected[] {
+  return lines.map((line, at) => {
+    if (!QUOTE.test(line.text)) {
+      return line
+    }
+
+    const first = at === 0 || !QUOTE.test(lines[at - 1]!.text)
+    const lead = first ? '⎿  ' : '   '
+    const rest = [...line.text].slice(13)
+
+    return {
+      text: `${' '.repeat(11)}${lead}${rest.join('')}`,
+      marks: [...line.marks.slice(0, 11), first ? ELBOW : null, null, null, ...line.marks.slice(13)],
+    }
+  })
 }
 
 // ---- drawing a card ----

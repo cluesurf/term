@@ -56,6 +56,10 @@ form regex-match
   link spans
     like list
       like number
+  # each group's name in the same order, the empty text for a group without one (`match-named` reads by it)
+  link names
+    like list
+      like text
 
 # the pattern read and analyzed once (the engine keeps it for later calls); a text that is not a pattern raises
 # `regex-mismatch`, as this module always has, with the engine's position and reason
@@ -94,6 +98,7 @@ task record-of
       bind end, read hit/end
       bind groups, read hit/groups
       bind spans, read hit/spans
+      bind names, read hit/names
 
 task rune-slice
   mark private
@@ -237,6 +242,26 @@ task match-group
           call subtract
             read index
             code 1
+
+# the group a match holds under a name (`(?<year>\d+)`), or none when no group has the name or it took no part
+task match-named
+  take match, like regex-match
+  take name, like text
+  like maybe
+    head text
+  save k, code 1
+  walk list, read match/names
+    hook next
+      take site, name each
+      fork test
+        hook test
+          call is-equal(read(each), read(name))
+        hook hold
+          send back
+            call match-group(read(match), read(k))
+      save k
+        call add(read(k), code(1))
+  send back, make none
 
 # the input with each match replaced by what `make` returns for it
 task rewrite-matches

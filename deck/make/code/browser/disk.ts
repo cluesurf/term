@@ -8,6 +8,22 @@
 //
 // Every path is posix and absolute. A directory exists when some file lies under it. Anything that would write, watch
 // or spawn throws `read-only`: the browser compile reads, and nothing in its path writes.
+//
+// The snapshot and every decision on it are Term since 2026-10-04, browser/snapshot.tree. This file is what makes it
+// look like Node's module: a URL taken where a path is, an Error with `code` for a missing path, the read-only writes,
+// and a file's size as `.length`.
+
+import {
+  fileCount,
+  fileText,
+  hasFile,
+  hasPath,
+  isDirectory,
+  listDirectory,
+  makeSnapshot,
+  mountFile,
+  normalPath,
+} from '@term/make/code/browser/snapshot'
 
 type Stat = {
   isFile: () => boolean
@@ -17,9 +33,7 @@ type Stat = {
   size: number
 }
 
-const FILE = new Map<string, string>()
-
-const DIRECTORY = new Set<string>(['/'])
+const DISK = makeSnapshot()
 
 // the error a Node caller expects from a missing path: an Error with `code` set, which the compiler's callers catch
 function absence(path: string): Error {
@@ -30,111 +44,70 @@ function readOnly(): never {
   throw Object.assign(new Error('the browser filesystem is read-only'), { code: 'EROFS' })
 }
 
-function normal(path: string | URL): string {
-  const text = typeof path === 'string' ? path : path.pathname
-  const parts: string[] = []
-
-  for (const part of text.split('/')) {
-    if (part === '' || part === '.') {
-      continue
-    }
-
-    if (part === '..') {
-      parts.pop()
-      continue
-    }
-
-    parts.push(part)
-  }
-
-  return `/${parts.join('/')}`
+function textOf(path: string | URL): string {
+  return typeof path === 'string' ? path : path.pathname
 }
 
 // put a set of files under `root`, keyed by their path relative to it. Called once, when the snapshot arrives
 export function mountFiles(input: { root: string; file: Record<string, string> }): void {
   for (const [relative, text] of Object.entries(input.file)) {
-    const path = normal(`${input.root}/${relative}`)
-
-    FILE.set(path, text)
-
-    let at = path.slice(0, path.lastIndexOf('/')) || '/'
-
-    while (!DIRECTORY.has(at)) {
-      DIRECTORY.add(at)
-      at = at.slice(0, at.lastIndexOf('/')) || '/'
-    }
+    mountFile(DISK, input.root, relative, text)
   }
 }
 
 // how many files are mounted, for the worker's report
 export function mountedCount(): number {
-  return FILE.size
+  return fileCount(DISK)
 }
 
 export function existsSync(path: string | URL): boolean {
-  const at = normal(path)
-
-  return FILE.has(at) || DIRECTORY.has(at)
+  return hasPath(DISK, textOf(path))
 }
 
 export function readFileSync(path: string | URL, _encoding?: unknown): string {
-  const text = FILE.get(normal(path))
-
-  if (text === undefined) {
+  if (!hasFile(DISK, textOf(path))) {
     throw absence(String(path))
   }
 
-  return text
+  return fileText(DISK, textOf(path))
 }
 
 export function statSync(path: string | URL, _options?: unknown): Stat {
-  const at = normal(path)
-  const text = FILE.get(at)
+  const file = hasFile(DISK, textOf(path))
 
-  if (text === undefined && !DIRECTORY.has(at)) {
+  if (!file && !isDirectory(DISK, textOf(path))) {
     throw absence(String(path))
   }
 
+  const size = file ? fileText(DISK, textOf(path)).length : 0
+
   return {
-    isFile: () => text !== undefined,
-    isDirectory: () => text === undefined,
+    isFile: () => file,
+    isDirectory: () => !file,
     isSymbolicLink: () => false,
     // a snapshot never changes while it is mounted, so every file is as old as every other
     mtimeMs: 0,
-    size: text?.length ?? 0,
+    size,
   }
 }
 
 export const lstatSync = statSync
 
 export function readdirSync(path: string | URL, _options?: unknown): string[] {
-  const at = normal(path)
-
-  if (!DIRECTORY.has(at)) {
+  if (!isDirectory(DISK, textOf(path))) {
     throw absence(String(path))
   }
 
-  const prefix = at === '/' ? '/' : `${at}/`
-  const names = new Set<string>()
-
-  for (const each of [...FILE.keys(), ...DIRECTORY]) {
-    if (each.startsWith(prefix) && each.length > prefix.length) {
-      names.add(each.slice(prefix.length).split('/')[0]!)
-    }
-  }
-
-  return [...names].sort()
+  return listDirectory(DISK, textOf(path))
 }
 
 // there are no links in a snapshot, so every path is already its own real path
 export function realpathSync(path: string | URL): string {
-  const at = normal(path)
-
-  if (!existsSync(at)) {
+  if (!hasPath(DISK, textOf(path))) {
     throw absence(String(path))
   }
 
-  return at
+  return normalPath(textOf(path))
 }
 
 export const writeFileSync = readOnly

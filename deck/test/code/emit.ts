@@ -9,7 +9,8 @@
  * The emitter lowers the expression grammar to Seed: `add`/`subtract`
  * are global calls, `max`/`min` resolve through the math module (so it
  * emits the matching `load`), `ite` lowers to `fork test`. Literals are
- * `mark`, variables are `read <param>`.
+ * `code`, variables are `read <param>`. (Literals were `mark 42`, the
+ * retired spelling, which the compiler reads as metadata since 2026-10-03.)
  */
 
 import type { Expr, Cond } from './synthesize'
@@ -31,7 +32,7 @@ function emitExpr(expr: Expr, depth: number, names: string[]): string[] {
     case 'var':
       return [`${pad}read ${names[expr.index]}`]
     case 'const':
-      return [`${pad}mark ${expr.value}`]
+      return [`${pad}code ${expr.value}`]
     case 'add':
       return [`${pad}call add`, ...emitExpr(expr.left, depth + 1, names), ...emitExpr(expr.right, depth + 1, names)]
     case 'sub':

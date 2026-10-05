@@ -1,0 +1,176 @@
+# CTL model checking as decision-diagram fixpoints over a transition relation. Each temporal operator is a set of
+# states, computed symbolically:
+#
+#   EX p    one step: a successor satisfies p          (preimage)
+#   EF p    some path eventually reaches p             (least fixpoint)
+#   EG p    some path keeps p forever                  (greatest fixpoint)
+#   EU p q  some path holds p until q                  (least fixpoint)
+#   AG p    every path keeps p forever, not EF not p   (safety)
+#   AF p    every path eventually reaches p, not EG not p
+#
+# This is how "eventually" and "always" become decidable on a finite state space: each operator is a fixpoint, and
+# canonicity makes "did it converge" an id compare.
+#
+# Ported from deck/test/code/ctl.ts (self-hosting, 2026-10-04). The checker is a form and its methods are tasks, and
+# ctl.ts keeps the class as a face over them.
+
+load @term/base/list
+  find list
+
+load ./decision-diagram
+  find diagram-manager
+  find variable-of
+  find if-then-else
+  find restrict
+  find diagram-and
+  find diagram-or
+  find diagram-not
+  find exists-many
+
+form ctl-checker
+  link manager, like diagram-manager
+  # the state bits: the current state is variables 0 to bits - 1, the next one bits to 2 * bits - 1
+  link bits, like number
+  # the transition relation, over the current and the next variables
+  link transition, like number
+
+task make-ctl-checker
+  take manager, like diagram-manager
+  take bits, like number
+  take transition, like number
+  like ctl-checker
+
+  back
+    make ctl-checker
+      bind manager, manager
+      bind bits, bits
+      bind transition, transition
+
+task next-variables
+  take checker, like ctl-checker
+  like list, like number
+
+  host out, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, checker/bits)
+    hook hold
+      out/push(add(checker/bits, at))
+      save at, add(at, 1)
+
+  back out
+
+# each current variable i replaced by the next variable bits + i. The variable's node first, then the restriction to
+# true, then to false, as the original's arguments were evaluated: a node's id is its place in creation order
+task to-next
+  take checker, like ctl-checker
+  take p, like number
+  like number
+
+  host manager, checker/manager
+  save result, p
+  save at, 0
+  walk test
+    hook test, is-below(at, checker/bits)
+    hook hold
+      host chosen, variable-of(manager, add(checker/bits, at))
+      host when-true, restrict(manager, result, at, true)
+      host when-false, restrict(manager, result, at, false)
+      save result, if-then-else(manager, chosen, when-true, when-false)
+      save at, add(at, 1)
+
+  back result
+
+# EX p: the states with a successor in p, the preimage of p
+task ex
+  take checker, like ctl-checker
+  take p, like number
+  like number
+
+  host next, to-next(checker, p)
+  host both, diagram-and(checker/manager, checker/transition, next)
+
+  back exists-many(checker/manager, both, next-variables(checker))
+
+# EF p: the least fixpoint of p or EX x
+task ef
+  take checker, like ctl-checker
+  take p, like number
+  like number
+
+  save x, p
+  walk test
+    hook test, true
+    hook hold
+      host next, diagram-or(checker/manager, x, ex(checker, x))
+      fork test, is-equal(next, x)
+        hold
+          back x
+      save x, next
+
+  back x
+
+# EG p: the greatest fixpoint of p and EX x
+task eg
+  take checker, like ctl-checker
+  take p, like number
+  like number
+
+  save x, p
+  walk test
+    hook test, true
+    hook hold
+      host next, diagram-and(checker/manager, p, ex(checker, x))
+      fork test, is-equal(next, x)
+        hold
+          back x
+      save x, next
+
+  back x
+
+# E[p U q]: the least fixpoint of q or (p and EX x)
+task eu
+  take checker, like ctl-checker
+  take p, like number
+  take q, like number
+  like number
+
+  save x, q
+  walk test
+    hook test, true
+    hook hold
+      host step, ex(checker, x)
+      host next, diagram-or(checker/manager, q, diagram-and(checker/manager, p, step))
+      fork test, is-equal(next, x)
+        hold
+          back x
+      save x, next
+
+  back x
+
+# AG p: p holds on every path forever, not EF not p
+task ag
+  take checker, like ctl-checker
+  take p, like number
+  like number
+
+  back diagram-not(checker/manager, ef(checker, diagram-not(checker/manager, p)))
+
+# AF p: every path eventually reaches p, not EG not p
+task af
+  take checker, like ctl-checker
+  take p, like number
+  like number
+
+  back diagram-not(checker/manager, eg(checker, diagram-not(checker/manager, p)))
+
+# does the formula hold in every initial state: init and not formula is unsatisfiable
+task holds-initially
+  take checker, like ctl-checker
+  take init, like number
+  take formula, like number
+  like boolean
+
+  host negated, diagram-not(checker/manager, formula)
+
+  back is-equal(diagram-and(checker/manager, init, negated), 0)

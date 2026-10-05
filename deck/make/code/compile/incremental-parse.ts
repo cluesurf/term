@@ -51,11 +51,14 @@ export function splitTopLevel(source: string): TopBlock[] {
 
   for (let i = 0; i < lines.length; i++) {
     if (isHead(lines[i]!) && seenHead) {
-      // a new definition begins; the comment / blank run immediately above it rides forward into the new block
+      // a new definition begins; the comment / blank run immediately above it rides forward into the new block, but
+      // never so far that the block before is left empty. A head that is ALSO trivia (a line of non-ASCII space, which
+      // `trim` empties) used to ride forward whole and leave an empty definition behind, where the streaming splitter
+      // kept it (compile/block-split.tree, found by tmp/pair-stream.ts, 2026-10-04)
       let boundary = i
 
       while (
-        boundary > start &&
+        boundary > start + 1 &&
         isLeadingTrivia(lines[boundary - 1]!)
       ) {
         boundary--

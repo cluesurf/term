@@ -47,9 +47,12 @@ export type OutputFlags = {
   yes?: boolean
   raw?: boolean
   source?: string
+  all?: boolean
 }
 
 let options: RunOptions = makeOptions()
+// `--all`: no cap on problems. The `… n more problems` item names it, and until 2026-10-04 nothing read it
+let showAll = false
 let version = ''
 let runner: Runner | undefined
 let started = 0
@@ -59,6 +62,7 @@ let verb = ''
 // and the command's own verb (`argv._[0]`), so a failure before the command opens its run is still under its verb
 export function setOutput(flags: OutputFlags & { _?: (string | number)[] }, toolVersion: string): void {
   version = toolVersion
+  showAll = flags.all ?? false
 
   if (!verb && flags._ && flags._.length > 0) {
     verb = String(flags._[0])
@@ -484,7 +488,9 @@ export function reportProblems(list: { diagnostic: Diagnostic; text?: string }[]
     return true
   })
 
-  for (const one of arrangeProblems(unique.map(each => problemOf(each.diagnostic, root, each.text)), STANDARD, runner!.output.room)) {
+  const standard = showAll ? { ...STANDARD, caps: { ...STANDARD.caps, problems: 0 } } : STANDARD
+
+  for (const one of arrangeProblems(unique.map(each => problemOf(each.diagnostic, root, each.text)), standard, runner!.output.room)) {
     report(one)
   }
 

@@ -5,6 +5,27 @@ load @term/base/code/file
   find read
   find exists
 
+load @term/base/exception
+  find absence
+  find failure
+
+# what reading `path` gives: its text, or the path a raised `absence` names
+task read-or-why
+  take path, like text
+  like text
+  mark unsafe
+    save text
+      call read
+        read path
+    send back, read text
+  halt take
+    take problem
+    fork case, read problem
+      case absence
+        send back, text <absent {thing}>
+      case failure
+        send back, text <failed>
+
 test <a file round-trips its contents>
   call write
     text </tmp/seed-test-roundtrip.txt>
@@ -46,3 +67,20 @@ test <exists answers false for a path nothing made>
       call exists
         text </tmp/seed-test-nothing-made-here.txt>
       false
+
+test <reading a file nothing made raises absence, naming the path>
+  want hold
+    call is-equal
+      call read-or-why
+        text </tmp/seed-test-nothing-made-here.txt>
+      text <absent /tmp/seed-test-nothing-made-here.txt>
+
+test <and an empty file reads as the empty text, not as absent>
+  call write
+    text </tmp/seed-test-empty.txt>
+    text <>
+  want hold
+    call is-equal
+      call read-or-why
+        text </tmp/seed-test-empty.txt>
+      text <>

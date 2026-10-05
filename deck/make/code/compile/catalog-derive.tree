@@ -1,0 +1,263 @@
+# Deriving a view catalog's per-field table from a database's own indexes. A `hold` is refused unless the catalog says
+# the field accepts that predicate, and it says so because an index answers it. By hand that is two hundred rows for ten
+# forms, and it goes stale the day an index changes.
+#
+# Pure, so it is testable without a database. That matters here: local development points at production, so a script
+# that opens a connection is a script that can surprise someone. task/term/view-catalog-derive.ts is a thin command
+# over this, and the query it needs is checked in beside it.
+#
+# Ported from the derive half of compile/view-catalog.ts (self-hosting, 2026-10-04). `readCatalog` stays there, with
+# the data reader it calls. Two shapes changed:
+#   - forms and fields are ordered by code point (`from-texts`), where the original used `localeCompare`, which orders
+#     by the machine's locale: the same catalog written on two machines could differ. They disagree only where a
+#     locale ranks punctuation, digits or case apart from their code points, and the pairing counts those apart
+#   - an index row's two fields named for Term words are `table` and `pattern`, where the original said `form` and
+#     `like`. Only test/view/derive.ts built rows by those names, and it moved. The tab-separated input is unchanged
+
+load @term/base/list
+  find sort
+
+load @term/base/ordering
+  find ordering
+  find from-texts
+
+load @term/base/text
+  find split
+  find trim
+
+form index-row
+  # the table the index is on, which is the form
+  link table, like text
+  # the column, which is the field
+  link site, like text
+  # btree, hash, gin, gist, brin
+  link kind, like text
+  # whether the index can answer a range, which btree can and hash cannot
+  link sort, like boolean
+  # whether the column is a foreign key
+  link bond, like boolean
+  # whether the index supports text pattern matching (a *_pattern_ops or trigram index)
+  link pattern, like boolean
+
+form site-entry
+  link site, like text
+  link hold, like list, like text
+  link sort, like boolean
+
+task by-text
+  take left, like text
+  take right, like text
+  like ordering
+
+  back from-texts(left, right)
+
+task by-site
+  take left, like site-entry
+  take right, like site-entry
+  like ordering
+
+  back from-texts(left/site, right/site)
+
+# a list of texts once each, in code point order, as `[...set].sort()` gave them
+task sorted-once
+  take items, like list, like text
+  like list, like text
+
+  host once, make list
+  walk items
+    take item
+    fork test, contains(once, item)
+      miss
+        once/push(item)
+
+  back sort(once, by-text)
+
+# the whole decision. An index answers equality, whatever its kind. A foreign key resolves to a key lookup, so it
+# offers no range and no sort: a range over opaque identifiers is never what an author means. A range index adds the
+# ordering predicates, a pattern index `is-within`
+task derive-sites
+  take rows, like list, like index-row
+  like hash
+    like text
+    like list, like site-entry
+
+  host by-form, make hash
+  host forms, make list
+  walk rows
+    take row
+    fork test, has(by-form, row/table)
+      miss
+        forms/push(row/table)
+        by-form/set(row/table, make hash)
+    host form, get-or-default(by-form, row/table, make hash)
+
+    save hold, make list
+    save held-sort, false
+    fork test, has(form, row/site)
+      hold
+        host held, get-or-default(form, row/site, blank-entry(row/site))
+        save hold, copy(held/hold)
+        save held-sort, held/sort
+    hold/push(<is-equal>)
+    hold/push(<is-unequal>)
+
+    fork test, row/bond
+      hold
+        form/set(row/site, make-entry(row/site, sorted-once(hold), false))
+      miss
+        fork test, row/sort
+          hold
+            hold/push(<is-above>)
+            hold/push(<is-below>)
+        fork test, row/pattern
+          hold
+            hold/push(<is-within>)
+        form/set(row/site, make-entry(row/site, sorted-once(hold), or(held-sort, row/sort)))
+    by-form/set(row/table, form)
+
+  host out, make hash
+  walk forms
+    take name
+    host sites, get-or-default(by-form, name, make hash)
+    host entries, make list
+    walk sites/values()
+      take entry
+      entries/push(entry)
+    out/set(name, sort(entries, by-site))
+
+  back out
+
+task blank-entry
+  take site, like text
+  like site-entry
+
+  host none, make list
+
+  back make-entry(site, none, false)
+
+task make-entry
+  take site, like text
+  take hold, like list, like text
+  take sort, like boolean
+  like site-entry
+
+  back
+    make site-entry
+      bind site, site
+      bind hold, hold
+      bind sort, sort
+
+task write-catalog
+  take sites
+    like hash
+      like text
+      like list, like site-entry
+  like text
+
+  back write-catalog-sized(sites, 500)
+
+# the `list task` section of a catalog, in the host dialect: a `select:` and a `filter:` per form, each filter capped
+# at `size`
+task write-catalog-sized
+  take sites
+    like hash
+      like text
+      like list, like site-entry
+  take size, like number
+  like text
+
+  host out, make list
+  out/push(<list task>)
+
+  host forms, make list
+  walk sites/keys()
+    take form
+    forms/push(form)
+
+  walk sort(forms, by-text)
+    take form
+    host fields, get-or-default(sites, form, make list)
+    walk make list(<select>, <filter>)
+      take kind
+      out/push(<  mesh>)
+      out/push(<    host name, \<{kind}:{form}\>>)
+      save back-kind, <list>
+      fork test, is-equal(kind, <select>)
+        hold
+          save back-kind, <one>
+      out/push(<    host back, \<{back-kind}\>>)
+      fork test, is-equal(kind, <filter>)
+        hold
+          out/push(<    host size, {size}>)
+      out/push(<    list site>)
+      walk fields
+        take field
+        out/push(<      mesh>)
+        out/push(<        host name, \<{field/site}\>>)
+        out/push(<        list hold>)
+        walk field/hold
+          take one
+          out/push(<          \<{one}\>>)
+        save shown, <false>
+        fork test, field/sort
+          hold
+            save shown, <true>
+        out/push(<        host sort, {shown}>)
+
+  back <{join(out, <\n>)}\n>
+
+task is-yes
+  take value, like text
+  like boolean
+
+  back or(is-equal(value, <t>), is-equal(value, <true>))
+
+# the tab-separated rows the query emits: six columns, in the order the .sql file selects them. A blank line, or a
+# line without a form or a field, is skipped
+task read-rows
+  take text, like text
+  like list, like index-row
+
+  host rows, make list
+  walk split(text, <\n>)
+    take line
+    fork test, is-equal(trim(line), <>)
+      miss
+        host cells, split(line, <\t>)
+        save table, cell-at(cells, 0, <>)
+        save site, cell-at(cells, 1, <>)
+        fork test, or(is-equal(table, <>), is-equal(site, <>))
+          miss
+            rows/push(make-row(table, site, cell-at(cells, 2, <btree>), is-yes(cell-at(cells, 3, <>)), is-yes(cell-at(cells, 4, <>)), is-yes(cell-at(cells, 5, <>))))
+
+  back rows
+
+# the cell at `at`, or `fallback` past the end of the line
+task cell-at
+  take cells, like list, like text
+  take at, like number
+  take fallback, like text
+  like text
+
+  fork test, is-below(at, cells/length)
+    hold
+      back get(cells, at)
+  back fallback
+
+task make-row
+  take table, like text
+  take site, like text
+  take kind, like text
+  take sort, like boolean
+  take bond, like boolean
+  take pattern, like boolean
+  like index-row
+
+  back
+    make index-row
+      bind table, table
+      bind site, site
+      bind kind, kind
+      bind sort, sort
+      bind bond, bond
+      bind pattern, pattern

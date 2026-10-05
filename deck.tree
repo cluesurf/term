@@ -1,6 +1,6 @@
 deck @term/code
   head <A TreeCode Programming Framework>
-  mark <2.6.2>
+  mark <2.6.4>
   sort tool
   lock mit
   site <https://github.com/cluesurf/term>

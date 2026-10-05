@@ -11,7 +11,7 @@
  * reduced state count is dramatically smaller. Deterministic, no deps.
  */
 
-import { reach, sortedCanon, unsafeIn } from './symmetry'
+import { reach, sortedCanon, unsafeIn } from '@term/test/code/symmetry-reduction'
 
 let pass = 0
 let fail = 0
@@ -48,7 +48,7 @@ for (const N of [3, 4, 5]) {
   const symSafe = !unsafeIn(sym.states, parse, bad)
 
   ok(`N=${N}: same safety verdict (full vs symmetry-reduced)`, fullSafe === symSafe && fullSafe,
-    `full=${full.states.size} states, reduced=${sym.states.size} states (${(full.states.size / sym.states.size).toFixed(1)}x smaller)`)
+    `full=${full.states.length} states, reduced=${sym.states.length} states (${(full.states.length / sym.states.length).toFixed(1)}x smaller)`)
 }
 
 console.log(`\nseed-verify symmetry demo: ${pass} pass, ${fail} fail`)

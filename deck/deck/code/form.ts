@@ -74,6 +74,21 @@ export type DeckLink = {
   have?: number
 }
 
+// `need @term/code, mark <2.6.x>`: the toolchain this project builds with, a range in the constraint syntax a `link`
+// uses. `term` reads it at startup and runs a matching version (note/term/plan/term-versions.md). One per manifest
+export type DeckNeed = {
+  name: string
+  mark: CodeHold
+}
+
+// The `need` a lockfile pins: the exact release the request resolved to, and the digest of that release's image
+// index, which covers every platform's build at once, so two machines on two platforms pin the same bytes
+export type LockNeed = {
+  name: string
+  code: Code
+  hash: string
+}
+
 export type DeckManifest = {
   host: string
   name: string
@@ -121,6 +136,8 @@ export type DeckManifest = {
   make?: string[]
   // `cite <Name>, base <email>`: attribution, the same shape as `mind`
   cite?: DeckMind[]
+  // `need @term/code, mark <2.6.x>`: the toolchain the project builds with
+  need?: DeckNeed
 }
 
 export type ResolvedDeck = {
@@ -154,6 +171,8 @@ export type LockEntry = {
 export type Lockfile = {
   version: number
   decks: LockEntry[]
+  // the toolchain release the manifest's `need` resolved to, absent when it states none
+  need?: LockNeed
 }
 
 export type StoreConfig = {

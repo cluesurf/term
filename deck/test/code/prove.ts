@@ -2,22 +2,17 @@
  * Bounded exhaustive verification: instead of sampling random inputs
  * (which can miss a hole), enumerate EVERY input in a bounded domain
  * and decide the claim. Over the bound it is a proof, not a guess -
- * the "decide up to bound B" discipline from concepts.md (the same
- * idea as bounded model checking, without an SMT backend yet).
+ * the "decide up to bound B" discipline from concepts.md.
  *
- * Use `prove` when the input space is small integers (guards,
- * comparisons, arithmetic over a few variables): it returns a real
- * "holds for all |x| <= B" or the exact counterexample. Fall back to
- * sampling (./property) when the space is too large to enumerate.
- *
- * This is what lets the synthesizer (./synthesize) verify a candidate
- * by PROOF over the bound, so a synthesized program is correct on the
- * whole bounded domain, not merely on the samples it happened to see.
+ * The enumeration is Term since 2026-10-04, deck/test/code/bounded-proof.tree.
+ * This keeps the object-shaped signature and the default bound of 8 its
+ * callers (gap, contract, ai-proposer, demo-loop) use.
  */
 
-export type ProveResult =
-  | { ok: true; checked: number }
-  | { ok: false; counterexample: number[]; checked: number }
+import { proveOver } from '@term/test/code/bounded-proof'
+import type { ProveResult } from '@term/test/code/bounded-proof'
+
+export type { ProveResult }
 
 /**
  * Decide `claim` over every integer tuple of length `arity` with each
@@ -29,45 +24,5 @@ export function prove(input: {
   claim: (inputs: number[]) => boolean
   bound?: number
 }): ProveResult {
-  const { arity, claim } = input
-  const bound = input.bound ?? 8
-
-  const point = new Array<number>(arity).fill(-bound)
-  let checked = 0
-
-  for (;;) {
-    checked++
-
-    if (!safe(claim, point)) {
-      return { ok: false, counterexample: point.slice(), checked }
-    }
-
-    if (!increment(point, -bound, bound)) {
-      return { ok: true, checked }
-    }
-  }
-}
-
-/** A claim that throws counts as failing, not crashing. */
-function safe(claim: (inputs: number[]) => boolean, point: number[]): boolean {
-  try {
-    return claim(point)
-  } catch {
-    return false
-  }
-}
-
-/**
- * Odometer-increment the point through [lo, hi]^n. Returns false when
- * it has wrapped past the last tuple (enumeration complete).
- */
-function increment(point: number[], lo: number, hi: number): boolean {
-  for (let i = point.length - 1; i >= 0; i--) {
-    if (point[i] < hi) {
-      point[i]++
-      return true
-    }
-    point[i] = lo
-  }
-  return false
+  return proveOver(input.arity, input.claim, input.bound ?? 8)
 }

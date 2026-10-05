@@ -265,6 +265,11 @@ export function parseManifestMill(input: {
   const siteCapture = first(fields.get('site'))
   const viewCapture = first(fields.get('view'))
 
+  // `need @term/code, mark <2.6.x>`: the toolchain, at most one
+  const needMatch = matches(fields.get('need'))[0]
+  const needName = needMatch ? word(first(needMatch.get('name'))) : undefined
+  const needMark = needMatch ? word(first(needMatch.get('mark'))) : undefined
+
   return {
     host,
     name,
@@ -299,6 +304,7 @@ export function parseManifestMill(input: {
     text: siteWord(first(fields.get('text')), 'text'),
     make: make.length > 0 ? make : undefined,
     cite: cite.length > 0 ? cite : undefined,
+    need: needName && needMark ? { name: needName, mark: parseCodeHold(needMark) } : undefined,
   }
 }
 
@@ -419,5 +425,12 @@ export function parseLockfileMill(input: {
     },
   )
 
-  return { version, decks }
+  // `need @term/code` / `code <2.6.4>` / `hash <sha256:…>`: the toolchain release the manifest's `need` resolved to
+  const needMatch = matches(mined.match.get('need'))[0]
+  const needName = needMatch ? word(first(needMatch.get('name'))) : undefined
+  const needCode = needMatch ? siteWord(first(needMatch.get('code')), 'text') : undefined
+  const needHash = needMatch ? siteWord(first(needMatch.get('hash')), 'text') : undefined
+  const need = needName && needCode && needHash ? { name: needName, code: parseCode(needCode), hash: needHash } : undefined
+
+  return { version, decks, ...(need ? { need } : {}) }
 }

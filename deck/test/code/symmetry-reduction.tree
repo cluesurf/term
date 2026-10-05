@@ -1,0 +1,117 @@
+# Symmetry reduction: when components are interchangeable, explore one representative per symmetry (permutation) class
+# instead of every ordering. For N identical processes the reachable states collapse from all tuples to all multisets,
+# a factor of up to N!.
+#
+# The mechanism is a canonicalizer: each state maps to a canonical form (here, its per-process local states sorted), so
+# states equal under a permutation are visited once. Reachability over the canonical states explores far fewer states
+# and proves the same safety property.
+#
+# Ported from deck/test/code/symmetry.ts (self-hosting, 2026-10-04), retired whole. One shape changed: the visited
+# states were a JavaScript `Set` of keys, and they are a list of the keys in the order first visited, which is the
+# order the set kept.
+
+load @term/base/list
+  find list
+  find sort
+
+load @term/base/hash
+  find hash
+
+load @term/base/ordering
+  find ordering
+  find from-numbers
+
+# a system to explore: where it starts, each state's successors, a state's key, and the canonicalizer. The identity
+# canonicalizer is full exploration, and a real one applies the symmetry
+form symmetric-system
+  head s
+  link init, like s
+  link succ
+    like task
+      take state, like s
+      like list, like s
+  link key
+    like task
+      take state, like s
+      like text
+  link canon
+    like task
+      take state, like s
+      like s
+
+form explored-states
+  # the canonical states' keys, in the order first visited
+  link states, like list, like text
+  # how many states were expanded
+  link explored, like number
+
+# breadth-first reachability over the canonical states
+task reach
+  head s
+  take system, like symmetric-system s
+  like explored-states
+
+  host seen, make hash
+  host states, make list
+  host frontier, make list
+  host start, call(system/canon, system/init)
+  host start-key, call(system/key, start)
+  seen/set(start-key, true)
+  states/push(start-key)
+  frontier/push(start)
+
+  save at, 0
+  walk test
+    hook test, is-below(at, frontier/length)
+    hook hold
+      host state, get(frontier, at)
+      save at, add(at, 1)
+      walk call(system/succ, state)
+        take after
+        host canonical, call(system/canon, after)
+        host key, call(system/key, canonical)
+        fork test, has(seen, key)
+          miss
+            seen/set(key, true)
+            states/push(key)
+            frontier/push(canonical)
+
+  back
+    make explored-states
+      bind states, states
+      bind explored, at
+
+task by-number
+  take left, like number
+  take right, like number
+  like ordering
+
+  back from-numbers(left, right)
+
+# a tuple of process states, sorted: the canonical form under process permutation symmetry
+task sorted-canon
+  take state, like list, like number
+  like list, like number
+
+  back sort(state, by-number)
+
+# does any reachable state violate the safety predicate
+task unsafe-in
+  take states, like list, like text
+  take parse
+    like task
+      take key, like text
+      like list, like number
+  take bad
+    like task
+      take state, like list, like number
+      like boolean
+  like boolean
+
+  walk states
+    take key
+    fork test, call(bad, call(parse, key))
+      hold
+        back true
+
+  back false

@@ -1,6 +1,9 @@
-# Plain date: a calendar date (year, month, day) with no time zone. Pure proleptic-Gregorian arithmetic, identical on every backend. The day-number conversions are Howard Hinnant's branch-free civil algorithm. Division must be exact integer division: `divide` is floating on some backends and `round-down` is a no-op on whole numbers, so all flooring goes through `quotient` (a - a modulo b, then divide), which is exact for non-negative operands (the algorithm stays non-negative for years from the common era on). Month is 1-12, day is 1-31, day-of-week is 0 (Sunday) through 6 (Saturday).
+# Plain date: a calendar date (year, month, day) with no time zone. Pure proleptic-Gregorian arithmetic, identical on every backend. The day-number conversions are Howard Hinnant's branch-free civil algorithm. Division must be exact integer division: `divide` is floating on some backends and `round-down` is a no-op on whole numbers, so all flooring goes through `quotient` (a less its floor remainder, then divide), which is exact for any `a`, so a year before 1 (astronomical numbering: 0 is 1 BC, -1 is 2 BC) converts as any other. Month is 1-12, day is 1-31, day-of-week is 0 (Sunday) through 6 (Saturday).
 
-# exact integer (floor) division for non-negative operands: subtract the remainder, then divide evenly
+# exact integer floor division for a positive `b`: subtract the FLOOR remainder, then divide evenly. The remainder is
+# `((a mod b) + b) mod b`, which is the floor one whether a backend's `modulo` truncates or floors, so a negative `a`
+# floors too. It subtracted `a mod b` alone, which floors only for `a` from 0, and every date before year 1 came out
+# wrong (guides: library/time, 2026-10-04)
 
 mark stable
 
@@ -13,7 +16,11 @@ task quotient
       call subtract
         read a
         call modulo
-          read a
+          call add
+            call modulo
+              read a
+              read b
+            read b
           read b
       read b
 
@@ -260,7 +267,8 @@ task is-leap-year
             read year
             code 4
           code 0
-        call is-above
+        # not a multiple of 100: `is-above 0` read a truncated remainder, negative for a year before 1, as false
+        call is-unequal
           call modulo
             read year
             code 100

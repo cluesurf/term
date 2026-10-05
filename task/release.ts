@@ -29,6 +29,13 @@ import path from 'node:path'
 import { build } from 'esbuild'
 import { ensurePublisher, publishRelease, releaseRoute, transportFor } from '@cluesurf/deck.tree'
 import { loadPublishKeypair } from '@term/call/code/host'
+// the terminal output library, as a TYPE only: the module itself is loaded after the port build has run, because the
+// port build is what writes the modules it is made of (see `main`)
+import type * as Output from '@term/call/code/output'
+
+// the release's run, once the library is loaded: every line goes through it, as every term command's does. Unset
+// until `main` has run the port build
+let output = undefined as unknown as typeof Output
 
 // the package a release is: the toolchain (09, "The name")
 const PACKAGE = '@term/code'
@@ -166,11 +173,38 @@ async function fetchPackage(input: { name: string; version: string; dir: string;
   execFileSync('tar', ['-xzf', cached, '-C', input.dir, '--strip-components=1'])
 }
 
+// the ported toolchain modules line.ts imports, written by port-build (the step make:line runs first). Its output is
+// captured, not inherited, so it is reported as an item and quoted under it only when it failed
+function portBuild(): { ok: boolean; built: number; unchanged: number; failed: number; lines: string[] } {
+  let text = ''
+  let ok = true
+
+  try {
+    // `-s`: pnpm's own `$ ...` echo line is not this release's output
+    text = execFileSync('pnpm', ['-s', 'exec', 'tsx', 'task/port-build.ts'], {
+      cwd: TERM,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+  } catch (error) {
+    const failed = error as { stdout?: string; stderr?: string }
+    text = `${failed.stdout ?? ''}${failed.stderr ?? ''}`
+    ok = false
+  }
+
+  const summary = /(\d+) built, (\d+) unchanged.*?(\d+) failed/.exec(text)
+
+  return {
+    ok,
+    built: Number(summary?.[1] ?? 0),
+    unchanged: Number(summary?.[2] ?? 0),
+    failed: Number(summary?.[3] ?? (ok ? 0 : 1)),
+    lines: text.split('\n').filter(line => line.trim() !== ''),
+  }
+}
+
 // line.js and dock.mjs, bundled once: they are the same for every platform
 async function bundle(into: string): Promise<void> {
-  // the ported toolchain modules line.ts imports, written by port-build (the step make:line runs first)
-  execFileSync('pnpm', ['run', 'make:port'], { cwd: TERM, stdio: 'inherit' })
-
   const common = {
     absWorkingDir: TERM,
     bundle: true,
@@ -210,12 +244,35 @@ async function main(): Promise<void> {
   rmSync(out, { recursive: true, force: true })
   mkdirSync(cache, { recursive: true })
 
-  console.log(`@term/code ${version}: bundling`)
+  // the port build first, on its own: the output library is loaded from the ports it writes
+  const started = Date.now()
+  const port = portBuild()
+  output = await import('@term/call/code/output')
+  output.openRun({ verb: 'release', root: TERM, facts: [`${PACKAGE} ${version}`, ...(dry ? ['--dry'] : [])], started })
+  output.report({
+    glyph: port.ok && port.failed === 0 ? 'done' : 'failed',
+    verb: 'port',
+    subject: 'toolchain modules',
+    duration: Date.now() - started,
+    counts: [output.count(port.built, 'built'), output.count(port.unchanged, 'unchanged'), ...(port.failed ? [output.count(port.failed, 'failed')] : [])],
+    // a child's own lines nest under the item that ran it, only when they say why it failed
+    quote: port.ok && port.failed === 0 ? [] : port.lines,
+  })
+
+  if (!port.ok || port.failed > 0) {
+    output.closeRun({ verdict: 'Nothing released', next: 'pnpm --dir deck/term/deck/term run make:port' })
+
+    return
+  }
+
+  const bundled = Date.now()
   await bundle(common)
+  output.report({ glyph: 'done', verb: 'bundle', subject: 'line.js and dock.mjs', duration: Date.now() - bundled })
 
   const built: Built[] = []
 
   for (const platform of PLATFORMS) {
+    const packed = Date.now()
     const stage = path.join(out, platform.name)
     const root = path.join(stage, 'term')
 
@@ -257,13 +314,18 @@ async function main(): Promise<void> {
     const digest = `sha256:${createHash('sha256').update(bytes).digest('hex')}`
 
     built.push({ platform: platform.name, file, digest, bytes: statSync(file).size })
-    console.log(`  ${platform.name}  ${(bytes.length / 1024 / 1024).toFixed(1)} MB  ${digest}`)
+    // the digest is an identifier of 71 characters: a field, on its own line, not a fact
+    output.report({ glyph: 'done', verb: 'pack', subject: platform.name, duration: Date.now() - packed, bytes: bytes.length, fields: [output.field('digest', digest)] })
   }
 
   writeFileSync(path.join(out, 'release.json'), `${JSON.stringify({ package: '@term/code', version, built }, null, 2)}\n`)
 
   if (dry) {
-    console.log(`\nbuilt ${built.length} platforms in ${path.relative(TERM, out)}, nothing published (--dry)`)
+    output.closeRun({
+      verdict: 'Built, nothing published',
+      counts: [output.count(built.length, 'platforms', 'platform')],
+      next: `ls ${path.relative(process.cwd(), out) || out}`,
+    })
 
     return
   }
@@ -285,7 +347,7 @@ async function publish(input: { version: string; built: Built[] }): Promise<void
   const keys = await ensurePublisher({ transport, repository: route.keysRepository, scope: route.scope, keypair })
 
   if (keys.created) {
-    console.log(`created the key set of ${route.scope} at ${route.registry.host}/${route.keysRepository}`)
+    output.report({ glyph: 'added', kind: 'change', verb: 'add', subject: `the key set of ${route.scope}`, fields: [output.field('at', `${route.registry.host}/${route.keysRepository}`)] })
   }
 
   const released = await publishRelease({
@@ -300,17 +362,42 @@ async function publish(input: { version: string; built: Built[] }): Promise<void
       'org.opencontainers.image.licenses': 'MIT',
       'org.opencontainers.image.description': 'The term command: the Term compiler, package manager and toolchain',
     },
-    log: message => console.log(`  ${message}`),
+    // one `push` item per platform: `darwin-arm64: layer sha256:..., manifest sha256:...` becomes the platform as the
+    // subject and its two digests as fields. Any other line the publisher says is an item of its own
+    log: message => {
+      const pushed = /^([\w-]+): layer (\S+), manifest (\S+)$/.exec(message.trim())
+
+      output.report(
+        pushed
+          ? { glyph: 'done', verb: 'push', subject: pushed[1], fields: [output.field('layer', pushed[2]!), output.field('manifest', pushed[3]!)] }
+          : { glyph: 'info', verb: 'push', subject: message.trim() },
+      )
+    },
   })
 
   const [owner, ...rest] = route.repository.name.split('/')
 
-  console.log(`\nreleased ${PACKAGE}@${input.version} as ${route.registry.host}/${route.repository.name}:${input.version}`)
-  console.log(`  index ${released.index}`)
-  console.log(
-    `\nA new GHCR package is private, and nothing installs from a private one. If this is the first release, make it public once at`,
-  )
-  console.log(`  https://github.com/orgs/${owner}/packages/container/${encodeURIComponent(rest.join('/'))}/settings`)
+  output.report({
+    glyph: 'done',
+    verb: 'push',
+    subject: `${route.registry.host}/${route.repository.name}:${input.version}`,
+    fields: [output.field('index', released.index)],
+  })
+  output.closeRun({
+    verdict: `Released ${PACKAGE}@${input.version}`,
+    counts: [output.count(input.built.length, 'platforms', 'platform')],
+    message: ['A new GHCR package is private, and nothing installs from a private one. A first release is made public once.'],
+    next: `https://github.com/orgs/${owner}/packages/container/${encodeURIComponent(rest.join('/'))}/settings`,
+  })
 }
 
-await main()
+try {
+  await main()
+} catch (error) {
+  // a failure once the run is open ends it; before that there is no library to print through yet
+  if (output) {
+    process.exit(output.failRun(error, TERM))
+  }
+
+  throw error
+}

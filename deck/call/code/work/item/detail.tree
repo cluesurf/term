@@ -470,9 +470,10 @@ task trim-quote
       save kept, last
   back make quote-lines, lines(kept), more-frames(more), earlier(before)
 
-# quoted output of section 7: behind a dim `│ `, its own colors removed, a long line
-# wrapped inside the quote with a
-# 2-cell hang
+# quoted output of section 7, a child program's own lines: the first hangs off a dim `⎿` elbow and the rest sit under
+# it, the standard's `indent` cells right of the item's column (the user's choice on 2026-10-04, after Claude Code's
+# nesting of a tool's output, in place of the spec's `│` on every line). Its own colors removed, a long line wrapped
+# inside the quote with a 2-cell hang
 task draw-quote
   take written, like list, like text
   take earlier, like number
@@ -482,21 +483,21 @@ task draw-quote
 
   save out, make list
   save trimmed, trim-quote(written, earlier, room)
-  save bar, find-symbol(room, <gutter>)
+  save elbow, find-symbol(room, <elbow>)
+  save indent, room/standard/quotes/indent
   save more, find-symbol(room, <more>)
   save hang, room/standard/layout/hang
-  save cells, subtract(room/width, 2)
+  save cells, subtract(room/width, indent)
 
   fork test, is-above(trimmed/earlier, 0)
     hold
       save count, group-number(trimmed/earlier, room/standard)
       save word, room/standard/quotes/earlier-word
-      out/push quote-line(bar, make-span(<{more} {count} {word}>, <dim>))
+      save out, push-quote-line(out, elbow, indent, make-span(<{more} {count} {word}>, <dim>))
   walk trimmed/lines
     take one
     save spans, make list
     spans/push make-span(clean-text(one, room), <text>)
-    save at, 0
     walk
       wrap-spans spans
         cells
@@ -505,30 +506,60 @@ task draw-quote
         text-breaks(room/standard)
         true
       take each
-      save line-spans, make list
-      line-spans/push make-span(<{bar} >, <dim>)
-      walk each/spans
-        take piece
-        line-spans/push piece
-      out/push make line, spans(line-spans)
-      save at, add(at, 1)
+      save out, push-quote-spans(out, elbow, indent, each/spans)
   fork test, is-above(trimmed/more-frames, 0)
     hold
       save count, group-number(trimmed/more-frames, room/standard)
       save word, room/standard/quotes/frames-word
-      out/push quote-line(bar, make-span(<{more} {count} {word}>, <dim>))
+      save out, push-quote-line(out, elbow, indent, make-span(<{more} {count} {word}>, <dim>))
   back out
 
-task quote-line
-  take bar, like text
-  take piece, like span
+# the lead of a quoted line: the elbow on the quote's first line, spaces under it after, `indent` cells either way
+task quote-lead
+  take first, like boolean
+  take elbow, like text
+  take indent, like number
 
-  like line
+  like span
+
+  fork test, first
+    miss
+      back make-span(make-spaces(indent), <text>)
+  save rest, subtract(indent, measure-text(elbow))
+  fork test, is-below(rest, 1)
+    hold
+      save rest, 1
+  back make-span(<{elbow}{make-spaces(rest)}>, <dim>)
+
+# `out` with one quoted line of spans added, its lead chosen by whether it is the quote's first (self-hosting-0026:
+# the list is sent back)
+task push-quote-spans
+  take out, like list, like line
+  take elbow, like text
+  take indent, like number
+  take pieces, like list, like span
+
+  like list, like line
 
   save spans, make list
-  spans/push make-span(<{bar} >, <dim>)
-  spans/push piece
-  back make line, spans(spans)
+  spans/push quote-lead(is-equal(out/length, 0), elbow, indent)
+  walk pieces
+    take piece
+    spans/push piece
+  out/push make line, spans(spans)
+  back out
+
+task push-quote-line
+  take out, like list, like line
+  take elbow, like text
+  take indent, like number
+  take piece, like span
+
+  like list, like line
+
+  save pieces, make list
+  pieces/push piece
+  back push-quote-spans(out, elbow, indent, pieces)
 
 # the progress bar of section 7: the standard's cell count, filled `━` in the active
 # color, empty `─` faint. No total,

@@ -1,0 +1,231 @@
+# Partial-order reduction: the cure for state explosion caused by INTERLEAVING concurrency. When n processes take
+# independent steps, a naive search explores all n! orderings of them, though every one reaches the same states (they
+# are one Mazurkiewicz trace). Partial-order reduction explores ONE representative ordering per equivalence class, so an
+# exponential interleaving space collapses to a linear one, and the properties being checked are kept.
+#
+# The persistent-set method (Godefroid, Peled). At each state only a PERSISTENT SET of the enabled actions is expanded,
+# a subset T such that anything reachable by going around T is independent of T, with a cycle PROVISO so a reduction
+# never ignores an action forever. Independence is read statically off each action's read and write sets: two actions
+# are independent when neither writes a variable the other touches.
+#
+# Ported from deck/test/code/por.ts (self-hosting, 2026-10-04). One shape changed: choosing a persistent set compared
+# the other enabled actions with the current one by IDENTITY (`b !== a`), and Term has none, so they are told apart by
+# position. The two differ only for a system that lists one action object twice.
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+# an action of one process: when it is enabled, how it fires, and which state variables it reads and writes
+form action
+  head s
+  link id, like text
+  link enabled
+    like task
+      take state, like s
+      like boolean
+  link fire
+    like task
+      take state, like s
+      like s
+  link reads, like list, like text
+  link writes, like list, like text
+
+form concurrent-system
+  head s
+  link init, like s
+  link actions, like list, like action s
+  # a canonical text for a state, for the visited set
+  link key
+    like task
+      take state, like s
+      like text
+
+form exploration
+  # the distinct states visited
+  link states, like number
+  # the transitions taken
+  link transitions, like number
+  # whether a state satisfying `bad` was reached
+  link bad-reached, like boolean
+
+form search
+  mark shared
+  link seen
+    like hash
+      like text
+      like boolean
+  link on-stack
+    like hash
+      like text
+      like boolean
+  link transitions, like number
+  link bad-reached, like boolean
+
+# two actions are independent when neither writes a variable the other reads or writes. Independent actions commute and
+# cannot enable or disable each other, so their order does not matter
+task independent
+  head s
+  take a, like action s
+  take b, like action s
+  like boolean
+
+  walk a/writes
+    take written
+    fork test, or(contains(b/reads, written), contains(b/writes, written))
+      hold
+        back false
+  walk b/writes
+    take written
+    fork test, or(contains(a/reads, written), contains(a/writes, written))
+      hold
+        back false
+
+  back true
+
+# every enabled action expanded at every state: the baseline partial-order reduction is measured against
+task reach-full
+  head s
+  take system, like concurrent-system s
+  take bad
+    like task
+      take state, like s
+      like boolean
+  like exploration
+
+  host seen, make hash
+  host stack, make list
+  stack/push(system/init)
+  seen/set(call(system/key, system/init), true)
+  save transitions, 0
+  save bad-reached, call(bad, system/init)
+
+  walk test
+    hook test, is-above(stack/length, 0)
+    hook hold
+      host state, stack/pop()
+      walk system/actions
+        take each
+        fork test, call(each/enabled, state)
+          hold
+            save transitions, add(transitions, 1)
+            host after, call(each/fire, state)
+            host key, call(system/key, after)
+            fork test, has(seen, key)
+              miss
+                seen/set(key, true)
+                fork test, call(bad, after)
+                  hold
+                    save bad-reached, true
+                stack/push(after)
+
+  back
+    make exploration
+      bind states, seen/size
+      bind transitions, transitions
+      bind bad-reached, bad-reached
+
+# reachability through persistent sets with the stack proviso: one representative interleaving per equivalence class,
+# far fewer states than `reach-full`, the same `bad` verdict
+task reach-por
+  head s
+  take system, like concurrent-system s
+  take bad
+    like task
+      take state, like s
+      like boolean
+  like exploration
+
+  host found
+    make search
+      bind seen, make hash
+      bind on-stack, make hash
+      bind transitions, 0
+      bind bad-reached, call(bad, system/init)
+  search-from(system, bad, found, system/init)
+
+  back
+    make exploration
+      bind states, found/seen/size
+      bind transitions, found/transitions
+      bind bad-reached, found/bad-reached
+
+# the depth-first search, so the proviso can see the current path
+task search-from
+  head s
+  take system, like concurrent-system s
+  take bad
+    like task
+      take state, like s
+      like boolean
+  take found, like search
+  take state, like s
+
+  host key, call(system/key, state)
+  found/seen/set(key, true)
+  found/on-stack/set(key, true)
+
+  host enabled, make list
+  walk system/actions
+    take each
+    fork test, call(each/enabled, state)
+      hold
+        enabled/push(each)
+
+  walk ample-set(system, state, enabled, found/on-stack)
+    take each
+    save found/transitions, add(found/transitions, 1)
+    host after, call(each/fire, state)
+    host after-key, call(system/key, after)
+    fork test, call(bad, after)
+      hold
+        save found/bad-reached, true
+    fork test, has(found/seen, after-key)
+      miss
+        search-from(system, bad, found, after)
+
+  found/on-stack/remove(key)
+
+# an ample (persistent) set at a state. A singleton {a} is persistent when `a` is independent of every OTHER enabled
+# action: deferring the others loses nothing, since they commute with `a` and stay enabled. The stack proviso rejects a
+# singleton whose successor is already on the search's path while others are enabled, so none is ignored around a
+# cycle. With no such singleton, every enabled action, which is always sound
+task ample-set
+  head s
+  take system, like concurrent-system s
+  take state, like s
+  take enabled, like list, like action s
+  take on-stack
+    like hash
+      like text
+      like boolean
+  like list, like action s
+
+  fork test, is-maximum(enabled/length, 1)
+    hold
+      back enabled
+
+  save at, 0
+  walk enabled
+    take each
+    save alone, true
+    save other, 0
+    walk enabled
+      take rest
+      fork test, and(not(is-equal(other, at)), not(independent(each, rest)))
+        hold
+          save alone, false
+      save other, add(other, 1)
+    fork test, alone
+      hold
+        # the proviso: never close a cycle while the other enabled actions wait
+        fork test, has(on-stack, call(system/key, call(each/fire, state)))
+          miss
+            host chosen, make list
+            chosen/push(each)
+            back chosen
+    save at, add(at, 1)
+
+  back enabled

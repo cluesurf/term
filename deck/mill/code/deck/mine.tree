@@ -84,6 +84,8 @@ mine deck-def
           site cite
         mine form, like deck-sort
           site sort
+        mine form, like deck-need
+          site need
         mine node
 
 # `head <one line about the package>`
@@ -312,6 +314,16 @@ mine deck-cite
       mine term, term base
         mine text
           site base
+
+# `need @term/code, mark <2.6.x>`: the toolchain the project builds with, a range in a `link`'s constraint syntax.
+# `term` reads it at startup and runs a matching version (note/term/plan/term-versions.md)
+mine deck-need
+  mine term, term need
+    mine path
+      site name
+    mine term, term mark
+      mine text
+        site mark
 
 # `sort library`
 mine deck-sort

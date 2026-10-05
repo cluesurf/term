@@ -157,6 +157,11 @@ export function parseManifestByHand(input: { text: string }): DeckManifest {
 
   const cite = formsWith(root, 'cite').map(toMind)
 
+  // `need @term/code, mark <2.6.x>`: the toolchain, at most one
+  const needForm = formOf(root, 'need')
+  const needName = needForm?.terms[0]
+  const needMark = needForm ? valueOf(needForm, 'mark') : undefined
+
   const dir = (h: string): string | undefined => termOf(root, h)
 
   return {
@@ -193,6 +198,7 @@ export function parseManifestByHand(input: { text: string }): DeckManifest {
     text: valueOf(root, 'text'),
     make: make.length > 0 ? make : undefined,
     cite: cite.length > 0 ? cite : undefined,
+    need: needName && needMark ? { name: needName, mark: parseCodeHold(needMark) } : undefined,
   }
 }
 

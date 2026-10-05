@@ -22,12 +22,12 @@ object pipeRuntime {
           into.write(buffer, 0, read)
           into.flush()
         }
-      } catch (error: Exception) {
+      } catch (error: kotlin.Exception) {
         return@withContext
       } finally {
         try {
           into.close()
-        } catch (error: Exception) {
+        } catch (error: kotlin.Exception) {
           Unit
         }
       }

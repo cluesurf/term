@@ -117,13 +117,21 @@ export function runComposeRemote(input: {
     return { form: 'ran', output: `${ran.stdout}${ran.stderr}`, picture: droplet.fetch(`${remoteRoot}/run/${input.shot}`, input.pulled) }
   }
 
-  windows.ship(folder, `${remoteRoot.replace(/\//g, '\\')}\\input`)
   const root = remoteRoot.replace(/\//g, '\\')
-  const args = jpackageArguments({ input: 'input', jar: built.jar, main: built.main, name: input.name, dest: 'out', console: true }).join(' ')
-  const ran = windows.remote(
-    `cd /d %USERPROFILE%\\${root} && (if exist out rmdir /s /q out) & (if exist run rmdir /s /q run) & mkdir run && "${reached.jpackage}" ${args} && cd run && set TERM_WINDOW_AWAY=1&& ..\\out\\${input.name}\\${input.name}.exe 2>&1`,
-    { timeout: 900_000 },
-  )
+  windows.ship(folder, `${root}\\input`)
 
-  return { form: 'ran', output: `${ran.stdout}${ran.stderr}`, picture: windows.fetch(`${remoteRoot}/run/${input.shot}`, input.pulled) }
+  // two steps, each reporting what it ran and what it said, so a failure names the step: one chained cmd line answered
+  // a failure with a single line of cmd's and nothing to say which part it came from
+  const args = jpackageArguments({ input: 'input', jar: built.jar, main: built.main, name: input.name, dest: 'out', console: true }).join(' ')
+  const packaging = `cd /d %USERPROFILE%\\${root} && (if exist out rmdir /s /q out) & (if exist run rmdir /s /q run) & mkdir run && "${reached.jpackage}" ${args} 2>&1`
+  const packaged = windows.remote(packaging, { timeout: 900_000 })
+
+  if (packaged.status !== 0) {
+    return { form: 'failed', stage: 'jpackage', reason: `${packaging}\n${packaged.stdout}${packaged.stderr}`.slice(-1600) }
+  }
+
+  const running = `cd /d %USERPROFILE%\\${root}\\run && set TERM_WINDOW_AWAY=1&& ..\\out\\${input.name}\\${input.name}.exe 2>&1`
+  const ran = windows.remote(running, { timeout: 900_000 })
+
+  return { form: 'ran', output: `${ran.status === 0 ? '' : `${running}\n`}${ran.stdout}${ran.stderr}`, picture: windows.fetch(`${remoteRoot}/run/${input.shot}`, input.pulled) }
 }

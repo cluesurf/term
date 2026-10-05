@@ -1,0 +1,101 @@
+# Bounded exhaustive verification: instead of sampling random inputs, which can miss a hole, every input in a bounded
+# domain is enumerated and the claim decided. Over the bound it is a proof, not a guess: "holds for all |x| <= B", or
+# the exact counterexample. The synthesizer verifies a candidate this way, so a synthesized program is correct on the
+# whole bounded domain and not merely on the samples it happened to see.
+#
+# Ported from deck/test/code/prove.ts (self-hosting, 2026-10-04), which keeps the default bound for its TypeScript
+# callers. One shape changed: the result was a union tagged on a boolean (`ok: true` or `ok: false` with a
+# counterexample), which a form cannot spell, and is one record whose counterexample is empty when the claim holds.
+# A caller that tests `ok` before reading the counterexample reads the same.
+
+load @term/base/list
+  find list
+
+form prove-result
+  link ok, like boolean
+  link counterexample, like list, like number
+  # how many points were decided
+  link checked, like number
+
+# decide `claim` over every integer tuple of length `arity` with each component in [-bound, bound], in odometer order
+# from the lowest: the first counterexample, or the proof that none exists over the bound
+task prove-over
+  take arity, like number
+  take claim
+    like task
+      take inputs, like list, like number
+      like boolean
+  take bound, like number
+  like prove-result
+
+  host point, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, arity)
+    hook hold
+      point/push(subtract(0, bound))
+      save at, add(at, 1)
+
+  save checked, 0
+  walk test
+    hook test, true
+    hook hold
+      save checked, add(checked, 1)
+      fork test, holds(claim, point)
+        miss
+          back
+            make prove-result
+              bind ok, false
+              bind counterexample, copy(point)
+              bind checked, checked
+      fork test, step-point(point, subtract(0, bound), bound)
+        miss
+          host none, make list
+          back
+            make prove-result
+              bind ok, true
+              bind counterexample, none
+              bind checked, checked
+
+  host none, make list
+
+  back
+    make prove-result
+      bind ok, true
+      bind counterexample, none
+      bind checked, checked
+
+# a claim that raises counts as failing, not crashing
+task holds
+  take claim
+    like task
+      take inputs, like list, like number
+      like boolean
+  take point, like list, like number
+  like boolean
+
+  mark unsafe
+    back call(claim, point)
+  halt take
+    take e
+    back false
+
+# the next point in odometer order through [low, high]^n, changed in place. False once it has wrapped past the last
+task step-point
+  take point, like list, like number
+  take low, like number
+  take high, like number
+  like boolean
+
+  save at, subtract(point/length, 1)
+  walk test
+    hook test, is-minimum(at, 0)
+    hook hold
+      fork test, is-below(get(point, at), high)
+        hold
+          point/set(at, add(get(point, at), 1))
+          back true
+      point/set(at, low)
+      save at, subtract(at, 1)
+
+  back false

@@ -1,17 +1,24 @@
-# The run (section 3): the command's verb opens it with its context, events follow as items, and the verb closes it
-# with the worst glyph of the run and the verdict. Also the exit codes and flags of section 18 and the problem rules
+# The run (section 3): the command's verb opens it with its context, events follow
+# as items, and the verb closes it
+# with the worst glyph of the run and the verdict. Also the exit codes and flags of
+# section 18 and the problem rules
 # of section 12.
 #
-# A RUN IS A VALUE. `open-session` makes one, `step-session` takes an event and hands back the session and the lines
-# to print now, `close-session` hands back the closing lines and the exit code. Nothing is held anywhere else, so a
-# caller in any language drives it the same way, and a test drives it with no terminal at all. `draw-run` is the
+# A RUN IS A VALUE. `open-session` makes one, `step-session` takes an event and
+# hands back the session and the lines
+# to print now, `close-session` hands back the closing lines and the exit code.
+# Nothing is held anywhere else, so a
+# caller in any language drives it the same way, and a test drives it with no
+# terminal at all. `draw-run` is the
 # whole run at once, for a batch that already has every event.
 #
-# THE BLANK LINES. Exactly one after the opening item and one before the closing item, never two in a row, none
-# between items. The one after the opening is printed with the first event, so a run with no events prints one blank
-# line between its opening and its closing, not two. Under `--quiet` the opening is not printed and the blank before
+# THE BLANK LINES. Exactly one after the opening item and one before the closing
+# item, never two in a row, none
+# between items. The one after the opening is printed with the first event, so a run
+# with no events prints one blank
+# line between its opening and its closing, not two. Under `--quiet` the opening is
+# not printed and the blank before
 # the closing still is.
-
 load @term/base/text/unicode
   find to-runes
 
@@ -44,7 +51,8 @@ load ./item
 load ./clean
   find clean-text
 
-# the global flags of sections 18 and 20, as data. `color` is <auto>, <always> or <never>
+# the global flags of sections 18 and 20, as data. `color` is <auto>, <always> or
+# <never>
 form run-options
   link quiet, like boolean, fall false
   link verbose, like boolean, fall false
@@ -62,32 +70,36 @@ form run-options
 form session
   link options, like run-options
   link verb, like text, fall <>
-  # the opening was printed, and the blank line after it is still owed to the first event
+  # the opening was printed, and the blank line after it is still owed to the first
+  # event
   link opened, like boolean, fall false
   link owed, like boolean, fall false
   link printed, like number, fall 0
   # the worst rank seen, and the glyph that has it
   link worst, like number, fall 0
   link worst-glyph, like text, fall <info>
-  # a failure that decides the exit by itself: <usage>, <environment>, <bug> or <interrupted>. Empty otherwise
+  # a failure that decides the exit by itself: <usage>, <environment>, <bug> or
+  # <interrupted>. Empty otherwise
   link failure, like text, fall <>
 
 form stepped
   link session, like session
-  link lines
-    like list, like line
+  link lines, like list, like line
     fall make list
   link exit, like number, fall 0
 
 task make-options
   like run-options
+
   back make run-options
 
 # a glyph's rank in the worst-glyph order (section 4); 0 is outside the order
 task rank-glyph
   take standard, like standard
   take name, like text
+
   like number
+
   save rule, find-glyph(standard, name)
   back rule/rank
 
@@ -95,9 +107,12 @@ task rank-glyph
 task worst-glyph
   take events, like list, like event
   take standard, like standard
+
   like text
+
   save best, 0
   save name, <info>
+
   walk events
     take one
     save rank, rank-glyph(standard, one/glyph)
@@ -107,12 +122,15 @@ task worst-glyph
         save name, one/glyph
   back name
 
-# is an event printed under these flags (section 18): `--quiet` keeps the failed items, a debug item needs
+# is an event printed under these flags (section 18): `--quiet` keeps the failed
+# items, a debug item needs
 # `--verbose` or `--trace`, a trace item `--trace`
 task is-shown
   take event, like event
   take options, like run-options
+
   like boolean
+
   fork test, options/quiet
     hold
       back is-equal(event/glyph, <failed>)
@@ -124,15 +142,24 @@ task is-shown
       back options/trace
   back true
 
-# the opening item: the command's verb, `·`, the working directory or root, the tool and its version, the zone in a
+# the opening item: the command's verb, `·`, the working directory or root, the tool
+# and its version, the zone in a
 # service, up to three context counts (section 3)
 task make-opening
   take verb, like text
   take subject, like text
   take clock, like number
   take tool, like text
+
   like event
-  save one, make event, glyph(<info>), kind(<open>), verb(verb), subject(plain-subject(subject)), clock(clock)
+
+  save one
+    make event
+      glyph(<info>)
+      kind(<open>)
+      verb(verb)
+      subject(plain-subject(subject))
+      clock(clock)
   fork test, is-unequal(tool, <>)
     hold
       one/tool/push tool
@@ -141,7 +168,9 @@ task make-opening
 task open-session
   take verb, like text
   take options, like run-options
+
   like session
+
   back make session, options(options), verb(verb)
 
 # the opening's lines: nothing under `--quiet`
@@ -149,9 +178,12 @@ task draw-opening
   take one, like session
   take opening, like event
   take room, like room
+
   like stepped
+
   save next, one
   save lines, make list
+
   fork test, one/options/quiet
     miss
       save lines, draw-item(opening, room, true)
@@ -164,9 +196,12 @@ task note-event
   take one, like session
   take event, like event
   take standard, like standard
+
   like session
+
   save next, one
   save rank, rank-glyph(standard, event/glyph)
+
   fork test, is-above(rank, one/worst)
     hold
       save next/worst, rank
@@ -179,9 +214,12 @@ task step-session
   take event, like event
   take room, like room
   take tagged, like boolean
+
   like stepped
+
   save next, note-event(one, event, room/standard)
   save lines, make list
+
   fork test, is-shown(event, one/options)
     hold
       fork test, next/owed
@@ -198,7 +236,9 @@ task step-session
 task fail-session
   take one, like session
   take failure, like text
+
   like session
+
   save next, one
   save next/failure, failure
   back next
@@ -207,7 +247,9 @@ task fail-session
 task exit-value
   take standard, like standard
   take name, like text
+
   like number
+
   walk standard/exits
     take one
     fork test, is-equal(one/name, name)
@@ -215,12 +257,15 @@ task exit-value
         back one/value
   back 1
 
-# the closing glyph: the worst in the run, ○ when stopped by Ctrl-C, ✗ for any failure, and ✗ for a warning under
+# the closing glyph: the worst in the run, ○ when stopped by Ctrl-C, ✗ for any
+# failure, and ✗ for a warning under
 # `--strict`, so the glyph always matches the exit code
 task closing-glyph
   take one, like session
   take standard, like standard
+
   like text
+
   fork test, is-equal(one/failure, <interrupted>)
     hold
       back <skipped>
@@ -230,20 +275,27 @@ task closing-glyph
   fork test, and(one/options/strict, is-equal(one/worst-glyph, <warning>))
     hold
       back <failed>
-  # a run whose worst item was skipped or cached did its work, so it closes ✓: `○` closes a run only when Ctrl-C
-  # stopped it (above). A fully cached build closed `○ boot  shelf built`, which reads as not done
+  # a run whose worst item was skipped or cached did its work, so it closes ✓: `○`
+  # closes a run only when Ctrl-C
+  # stopped it (above). A fully cached build closed `○ boot shelf built`, which
+  # reads as not done
   fork test, is-equal(one/worst-glyph, <skipped>)
     hold
       back <done>
-  # the worst glyph by section 4's order, `·` included: a run that only planned, or found nothing, closes `·`, as the
-  # mockups' Planned changes card does. Section 18's table pairs exit 0 with ✓ or ▲ and is the one place the spec
-  # disagrees; section 4 and the mockup win, and a `·` close says that nothing was done
+  # the worst glyph by section 4's order, `·` included: a run that only planned, or
+  # found nothing, closes `·`, as the
+  # mockups' Planned changes card does. Section 18's table pairs exit 0 with ✓ or ▲
+  # and is the one place the spec
+  # disagrees; section 4 and the mockup win, and a `·` close says that nothing was
+  # done
   back one/worst-glyph
 
 task exit-code
   take one, like session
   take standard, like standard
+
   like number
+
   fork test, is-unequal(one/failure, <>)
     hold
       back exit-value(standard, one/failure)
@@ -255,42 +307,56 @@ task exit-code
       back exit-value(standard, <input>)
   back exit-value(standard, <success>)
 
-# the closing item as it is printed: the command's verb, the run's glyph, the verdict bold. Every view prints this
+# the closing item as it is printed: the command's verb, the run's glyph, the
+# verdict bold. Every view prints this
 # same event, the human view and the JSON alike
 task close-event
   take one, like session
   take closing, like event
   take standard, like standard
+
   like event
+
   save shown, closing
   save shown/kind, <close>
   save shown/verdict, true
+
   fork test, is-equal(shown/verb, <>)
     hold
       save shown/verb, one/verb
   save shown/glyph, closing-glyph(one, standard)
   back shown
 
-# the closing: the blank line, then the command's verb with the run's glyph and the bold verdict. Its own facts are
-# the event's: the end clock, the total time, the counts, and a `next` field when there is one
+# the closing: the blank line, then the command's verb with the run's glyph and the
+# bold verdict. Its own facts are
+# the event's: the end clock, the total time, the counts, and a `next` field when
+# there is one
 task close-session
   take one, like session
   take closing, like event
   take room, like room
+
   like stepped
+
   save next, one
   save shown, close-event(one, closing, room/standard)
   save lines, make list
-  # the blank line BEFORE the closing, always: under `--quiet` with nothing above it, it parts the closing from the
-  # command line the terminal echoed, as the mockups' Quiet card shows (and this file's header says)
+
+  # the blank line BEFORE the closing, always: under `--quiet` with nothing above
+  # it, it parts the closing from the
+  # command line the terminal echoed, as the mockups' Quiet card shows (and this
+  # file's header says)
   lines/push blank-line()
   walk draw-item(shown, room, true)
     take each
     lines/push each
   save next/owed, false
-  back make stepped, session(next), lines(lines), exit(exit-code(one, room/standard))
 
-# a whole run at once: the opening, every event, the closing. `closing` with no verb and no subject is a run still
+  back
+    make stepped, session(next), lines(lines), exit(exit-code(one, room/standard))
+
+# a whole run at once: the opening, every event, the closing. `closing` with no verb
+# and no subject is a run still
 # going (a service that has not stopped, a live region): no closing is drawn
 task draw-run
   take opening, like event
@@ -299,11 +365,14 @@ task draw-run
   take room, like room
   take options, like run-options
   take tagged, like boolean
+
   like list, like line
+
   save out, make list
   save one, open-session(opening/verb, options)
   save step, draw-opening(one, opening, room)
   save one, step/session
+
   walk step/lines
     take each
     out/push each
@@ -318,16 +387,20 @@ task draw-run
     hold
       back out
   save step, close-session(one, closing, room)
+
   walk step/lines
     take each
     out/push each
   back out
 
-# the command line as the terminal echoes it: `❯ term make`, the command bold (section 16)
+# the command line as the terminal echoes it: `❯ term make`, the command bold
+# (section 16)
 task draw-command
   take command, like text
   take room, like room
+
   like line
+
   save spans, make list
   spans/push make-span(find-symbol(room, <prompt>), <active>)
   spans/push make-span(< >, <text>)
@@ -340,10 +413,13 @@ task draw-command
 task compare-text
   take a, like text
   take b, like text
+
   like number
+
   save left, to-runes(a)
   save right, to-runes(b)
   save at, 0
+
   walk test
     hook test, and(is-below(at, left/length), is-below(at, right/length))
     hook hold
@@ -364,12 +440,38 @@ task compare-text
       back 1
   back 0
 
-# does problem `a` sort before problem `b`: by path, then line, then column (section 12)
+# does problem `a` sort before problem `b`: by path, then line, then column (section
+# 12)
+# ✗ before ▲ before the rest: the cap cuts from the end, so an error sorted by place
+# alone could be cut behind twenty warnings, and a build reporting 12 errors showed
+# none of them
+task problem-rank
+  take glyph, like text
+
+  like number
+
+  fork test, is-equal(glyph, <failed>)
+    hold
+      back 0
+  fork test, is-equal(glyph, <warning>)
+    hold
+      back 1
+  back 2
+
 task is-problem-before
   take a, like event
   take b, like event
+
   like boolean
+
+  save rank-a, problem-rank(a/glyph)
+  save rank-b, problem-rank(b/glyph)
+
+  fork test, is-unequal(rank-a, rank-b)
+    hold
+      back is-below(rank-a, rank-b)
   save order, compare-text(a/place/path, b/place/path)
+
   fork test, is-unequal(order, 0)
     hold
       back is-below(order, 0)
@@ -378,13 +480,18 @@ task is-problem-before
       back is-below(a/place/line, b/place/line)
   back is-below(a/place/column, b/place/column)
 
-# problems as section 12 prints them: one caused by an earlier one hidden, its cause gaining `n hidden`; sorted by
-# path, line and column, stably; after the standard's cap, one `·` item `… n more problems` with the flag that shows all
+# problems as section 12 prints them: one caused by an earlier one hidden, its cause
+# gaining `n hidden`; sorted by
+# severity, then path, line and column, stably; after the standard's cap, one `·`
+# item `… n more problems` with the
+# flag that shows all. A cap below 1 shows every one, which is what that flag sets
 task arrange-problems
   take problems, like list, like event
   take standard, like standard
   take room, like room
+
   like list, like event
+
   # the causes, and how many each hides
   save kept, make list
   walk problems
@@ -410,7 +517,8 @@ task arrange-problems
         save copy, one
         fork test, is-above(count, 0)
           hold
-            # a new list, never a push onto the copy's: a copied record may share its lists with the original
+            # a new list, never a push onto the copy's: a copied record may share
+            # its lists with the original
             save word, standard/caps/hidden-word
             save tallies, make list
             walk one/tallies
@@ -437,11 +545,13 @@ task arrange-problems
         placed/push one
     save sorted, placed
   save cap, standard/caps/problems
+
   fork test, or(is-maximum(sorted/length, cap), is-below(cap, 1))
     hold
       back sorted
   save out, make list
   save at, 0
+
   walk sorted
     take one
     fork test, is-below(at, cap)
@@ -453,13 +563,16 @@ task arrange-problems
   save more, find-symbol(room, <more>)
   save rest, group-number(subtract(sorted/length, cap), standard)
   save word, standard/caps/more-problems-word
-  save summary, make event, glyph(<info>), kind(<problem>), verb(last/verb), clock(last/clock)
+
+  save summary
+    make event, glyph(<info>), kind(<problem>), verb(last/verb), clock(last/clock)
   save summary/subject, plain-subject(<{more} {rest} {word}>)
   summary/facts/push standard/caps/all-flag
   out/push summary
   back out
 
-# a bug in the tool itself (section 12): it says so, names where it broke and the saved crash log, and the run exits
+# a bug in the tool itself (section 12): it says so, names where it broke and the
+# saved crash log, and the run exits
 # 70. Never a raw stack trace in the human view: the trace is in the log
 task make-crash
   take verb, like text
@@ -468,10 +581,19 @@ task make-crash
   take log, like text
   take clock, like number
   take standard, like standard
+
   like event
-  save one, make event, glyph(<failed>), kind(<problem>), verb(verb), subject(plain-subject(subject)), clock(clock)
+
+  save one
+    make event
+      glyph(<failed>)
+      kind(<problem>)
+      verb(verb)
+      subject(plain-subject(subject))
+      clock(clock)
   save one/status/kind, <exit>
   save one/status/value, exit-value(standard, <bug>)
+
   fork test, is-unequal(where, <>)
     hold
       one/fields/push plain-field(<in>, where)
