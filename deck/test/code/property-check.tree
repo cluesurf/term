@@ -1,0 +1,408 @@
+# Property-based testing: a claim run over generated inputs, and on the first failure the input shrunk to the smallest
+# that still fails. The generator is DERIVED FROM A TYPE: a shape (a whole number, an integer, a flag, a text, a list,
+# a record, a choice between shapes) is folded into sampling and shrinking, so any value a shape describes is testable
+# with no generator written by hand.
+#
+# Ported from deck/test/code/property.ts and deck/test/code/type.ts (self-hosting, 2026-10-05). There a generator was
+# a pair of closures, `sample` and `shrink`, and a claim a closure over a generic value. Here the generator is the
+# shape itself, data, and sampling and shrinking are tasks over it; the value a shape describes is one union, and a
+# claim is a task from that value to a boolean. Every draw is taken in the original's order and every shrink listed in
+# its order, so a seed finds the original's counterexample and shrinks it the original's way. `genTuple` is a shape
+# here too, the record of its components by position.
+
+load @term/base/list
+  find list
+
+load @term/base/text
+  find split
+  find char-count
+  find substring
+
+load @term/base/float
+  find round-down
+  find to-decimal
+  find to-number
+
+load @term/base/math
+  find absolute
+
+load ./seeded-random
+  find seed-state
+  find next-random
+  find draw-between
+
+# what generates a value
+form shape
+  case whole
+  case int
+  case wave
+  case text
+  case list
+    link item, like shape
+  # a tuple: one value per component, by position
+  case tuple
+    link items, like list, like shape
+  # a record: one value per named field
+  case record
+    link names, like list, like text
+    link types, like list, like shape
+  # a union: one of the options
+  case pick
+    link options, like list, like shape
+
+# a value a shape describes
+form sample
+  case number
+    link value, like number
+  case flag
+    link value, like boolean
+  case words
+    link value, like text
+  case items
+    link values, like list, like sample
+  case fields
+    link names, like list, like text
+    link values, like list, like sample
+
+form check-result
+  link ok, like boolean
+  # the smallest failing input, a number 0 when every run held
+  link counterexample, like sample
+  # how many shrinks reached it
+  link shrinks, like number
+  # how many runs were made
+  link runs, like number
+
+host text-alphabet, <abc \<\>/\n>
+
+task number-of
+  take value, like number
+  like sample
+
+  back
+    make number
+      bind value, value
+
+task text-of
+  take value, like text
+  like sample
+
+  back
+    make words
+      bind value, value
+
+task items-of
+  take values, like list, like sample
+  like sample
+
+  back
+    make items
+      bind values, values
+
+# a value of the shape, `sample` in property.ts and type.ts
+task sample-of
+  take kind, like shape
+  take state, like list, like number
+  take size, like number
+  like sample
+
+  sift kind
+    case whole
+      host roll, next-random(state)
+      fork test, is-below(roll, 0.2)
+        hold
+          back number-of(0)
+      fork test, is-below(roll, 0.35)
+        hold
+          back number-of(1)
+      save high, size
+      fork test, is-below(high, 1)
+        hold
+          save high, 1
+      back number-of(draw-between(state, 0, high))
+    case int
+      host roll, next-random(state)
+      fork test, is-below(roll, 0.15)
+        hold
+          back number-of(0)
+      fork test, is-below(roll, 0.25)
+        hold
+          back number-of(-1)
+      fork test, is-below(roll, 0.35)
+        hold
+          back number-of(1)
+      back number-of(draw-between(state, subtract(0, size), size))
+    case wave
+      back
+        make flag
+          bind value, is-below(next-random(state), 0.5)
+    case text
+      save room, size
+      fork test, is-above(room, 12)
+        hold
+          save room, 12
+      host length, to-number(round-down(multiply(next-random(state), to-decimal(room))))
+      host letters, split(text-alphabet, <>)
+      save out, <>
+      save at, 0
+      walk test
+        hook test, is-below(at, length)
+        hook hold
+          host letter, get(letters, to-number(round-down(multiply(next-random(state), to-decimal(letters/length)))))
+          save out, <{out}{letter}>
+          save at, add(at, 1)
+      back text-of(out)
+    case list
+      host length, draw-between(state, 0, size)
+      host values, make list
+      save at, 0
+      walk test
+        hook test, is-below(at, length)
+        hook hold
+          values/push(sample-of(item, state, size))
+          save at, add(at, 1)
+      back items-of(values)
+    case tuple
+      host values, make list
+      walk items
+        take each
+        values/push(sample-of(each, state, size))
+      back items-of(values)
+    case record
+      host values, make list
+      walk types
+        take each
+        values/push(sample-of(each, state, size))
+      back
+        make fields
+          bind names, names
+          bind values, values
+    case pick
+      host arm, to-number(round-down(multiply(next-random(state), to-decimal(options/length))))
+      back sample-of(get(options, arm), state, size)
+
+task number-in
+  take value, like sample
+  like number
+
+  sift value
+    case number
+      link n
+      back n
+    miss
+      back 0
+
+task text-in
+  take value, like sample
+  like text
+
+  sift value
+    case words
+      link written
+      back written
+    miss
+      back <>
+
+task values-in
+  take value, like sample
+  like list, like sample
+
+  host none, make list
+  sift value
+    case items
+      back values
+    case fields
+      back values
+    miss
+      back none
+
+# each of `values` with the one at `at` replaced by each smaller value it shrinks to
+task one-at-a-time
+  take values, like list, like sample
+  take kinds, like list, like shape
+  like list, like list, like sample
+
+  host out, make list
+  save at, 0
+  walk values
+    take each
+    walk shrink-of(get(kinds, at), each)
+      take smaller
+      host copied, copy(values)
+      copied/set(at, smaller)
+      out/push(copied)
+    save at, add(at, 1)
+
+  back out
+
+# the smaller values a failing one is retried as, in the original's order: `shrink` in property.ts and type.ts
+task shrink-of
+  take kind, like shape
+  take value, like sample
+  like list, like sample
+
+  host out, make list
+  sift kind
+    case whole
+      host n, number-in(value)
+      fork test, is-equal(n, 0)
+        hold
+          back out
+      out/push(number-of(0))
+      fork test, is-above(n, 1)
+        hold
+          out/push(number-of(to-number(round-down(divide(to-decimal(n), 2.0)))))
+          out/push(number-of(subtract(n, 1)))
+      back out
+    case int
+      host n, number-in(value)
+      fork test, is-equal(n, 0)
+        hold
+          back out
+      out/push(number-of(0))
+      fork test, is-above(absolute(n), 1)
+        hold
+          fork test, is-above(n, 0)
+            hold
+              out/push(number-of(subtract(n, 1)))
+            miss
+              out/push(number-of(add(n, 1)))
+      fork test, is-below(n, 0)
+        hold
+          out/push(number-of(subtract(0, n)))
+      back out
+    case wave
+      sift value
+        case flag
+          link on
+          fork test, on
+            hold
+              out/push
+                make flag
+                  bind value, false
+        miss
+      back out
+    case text
+      host written, text-in(value)
+      host length, char-count(written)
+      fork test, is-equal(length, 0)
+        hold
+          back out
+      out/push(text-of(<>))
+      out/push(text-of(substring(written, 0, to-number(round-down(divide(to-decimal(length), 2.0))))))
+      out/push(text-of(substring(written, 1, length)))
+      back out
+    case list
+      host values, values-in(value)
+      fork test, is-equal(values/length, 0)
+        hold
+          back out
+      host none, make list
+      out/push(items-of(none))
+      save at, 0
+      walk values
+        take each
+        host rest, make list
+        save other, 0
+        walk values
+          take kept
+          fork test, not(is-equal(other, at))
+            hold
+              rest/push(kept)
+          save other, add(other, 1)
+        out/push(items-of(rest))
+        save at, add(at, 1)
+      fork test, is-above(values/length, 2)
+        hold
+          host half, make list
+          host count, to-number(round-down(divide(to-decimal(values/length), 2.0)))
+          save taken, 0
+          walk values
+            take kept
+            fork test, is-below(taken, count)
+              hold
+                half/push(kept)
+            save taken, add(taken, 1)
+          out/push(items-of(half))
+      back out
+    case tuple
+      walk one-at-a-time(values-in(value), items)
+        take changed
+        out/push(items-of(changed))
+      back out
+    case record
+      walk one-at-a-time(values-in(value), types)
+        take changed
+        out/push
+          make fields
+            bind names, names
+            bind values, changed
+      back out
+    case pick
+      back out
+
+# the claim at a value. A claim that raises counts as failing, not crashing
+task holds-at
+  take claim
+    like task
+      take value, like sample
+      like boolean
+  take value, like sample
+  like boolean
+
+  mark unsafe
+    back claim(value)
+  halt take
+    take e
+    back false
+
+# `claim` over `runs` values of `kind` from `seed`, sizes growing to `max-size`: `check` in property.ts
+task check
+  take kind, like shape
+  take claim
+    like task
+      take value, like sample
+      like boolean
+  take runs, like number
+  take seed, like number
+  take max-size, like number
+  like check-result
+
+  host state, seed-state(seed)
+  save run, 0
+  walk test
+    hook test, is-below(run, runs)
+    hook hold
+      host size, add(1, to-number(round-down(multiply(divide(to-decimal(run), to-decimal(runs)), to-decimal(max-size)))))
+      host value, sample-of(kind, state, size)
+      fork test, not(holds-at(claim, value))
+        hold
+          # shrunk greedily to a local minimum: the first smaller value that still fails, again, until none does
+          save current, value
+          save shrinks, 0
+          save progressed, true
+          walk test
+            hook test, progressed
+            hook hold
+              save progressed, false
+              walk shrink-of(kind, current)
+                take smaller
+                fork test, and(not(progressed), not(holds-at(claim, smaller)))
+                  hold
+                    save current, smaller
+                    save shrinks, add(shrinks, 1)
+                    save progressed, true
+          back
+            make check-result
+              bind ok, false
+              bind counterexample, current
+              bind shrinks, shrinks
+              bind runs, add(run, 1)
+      save run, add(run, 1)
+
+  back
+    make check-result
+      bind ok, true
+      bind counterexample, number-of(0)
+      bind shrinks, 0
+      bind runs, runs

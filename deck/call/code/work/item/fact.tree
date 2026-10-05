@@ -51,7 +51,8 @@ load ./measure
 form fact-spans
   link spans, like list, like span
 
-# whether an item shows its clock (section 6): when it took a while, when it is a line
+# whether an item shows its clock (section 6): when it took a while, when it is a
+# line
 # of a live log (a kind the standard names, or tagged with its source), and on a
 # service's opening, which carries the display zone. A quick step's clock says
 # nothing the line above it did not, and twelve of them were most of `term wake`
@@ -359,13 +360,18 @@ task draw-facts-line
               current/push piece
             save used, wide
           miss
-            walk wrap-spans(one/spans, cells, subtract(cells, hang), hang, text-breaks(room/standard), false)
+            walk
+              wrap-spans one/spans
+                cells
+                subtract(cells, hang)
+                hang
+                text-breaks(room/standard)
+                false
               take part
               lines/push part
   fork test, is-above(current/length, 0)
     hold
       lines/push make line, spans(current)
-
   fork test, is-unequal(event/level, <>)
     hold
       save dimmed, make list

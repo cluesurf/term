@@ -157,6 +157,35 @@ const roots: string[] = []
   )
 }
 
+// a `mark roam` task that reaches no native code is counted once, as roaming. It was counted impure as well (guides:
+// proofs/contracts, 2026-10-05)
+{
+  const root = project({
+    'spin.tree': `task spin
+  mark roam
+  take n, like number
+  like number
+  save total, read n
+  walk test
+    hook test
+      true
+    hook hold
+      save total
+        call add
+          read total
+          code 1
+  send back, read total
+`,
+  })
+  roots.push(root)
+  const summary = hold(root)
+  ok(
+    'a `mark roam` task is counted as roaming and not as impure',
+    summary.ledger.roaming.length === 1 && summary.ledger.native.length === 0,
+    JSON.stringify(summary.ledger),
+  )
+}
+
 for (const root of roots) {
   rmSync(root, { recursive: true, force: true })
 }

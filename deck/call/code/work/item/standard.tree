@@ -656,12 +656,7 @@ task make-standard
           exit-label <exit>
           signal-label <signal>
           clock-from 1000
-          clock-kinds <lifecycle>
-            <request>
-            <job>
-            <query>
-            <health>
-            <date>
+          clock-kinds <lifecycle>, <request>, <job>, <query>, <health>, <date>
       wraps
         make wrap-rule
           tiers </?&>, <:.=->

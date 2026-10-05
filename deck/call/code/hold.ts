@@ -210,9 +210,12 @@ export function holdProject(root: string, files: string[], found?: HoldFound): H
           ledger.roaming.push(`${rel} ${name}`)
         }
 
+        // a `mark roam` task is counted once, as roaming: the prover reads it as no function (it may never return),
+        // and it was also counted impure, beside its own count, though it reaches no native code (guides:
+        // proofs/contracts, 2026-10-05)
         if (task.axiom) {
           ledger.axioms.push(`${rel} ${name}`)
-        } else if (!pure.has(task.name)) {
+        } else if (!task.roam && !pure.has(task.name)) {
           ledger.native.push(`${rel} ${name}`)
         }
       }
