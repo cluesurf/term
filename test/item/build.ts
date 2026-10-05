@@ -75,8 +75,9 @@ export function field(key: string, value: string | Span[], location = false): It
   return { key, value: typeof value === 'string' ? plainSubject(value) : value, location }
 }
 
+// a location field, under the standard's own key (`file` since 2026-10-05, `at` before), as the CLI's `location()`
 export function at(value: string): ItemField {
-  return field('at', value, true)
+  return field(SHIPPED.fields.locationKey, value, true)
 }
 
 export function frame(lines: [number, string][], marks: { line: number; column: number; length: number; label?: string; primary?: boolean }[], tabWidth = 8): Frame {

@@ -1,0 +1,12 @@
+# open where there is none (device-layer-0008): the abstract module beside the env dirs, reached by
+# every env with no device (node, the server, the memory host). Conforms to ../open.
+
+task hand-address
+  take address, like text
+  like text
+  send back, text <unavailable>
+
+task present-share
+  take text, like text
+  like text
+  send back, text <unavailable>

@@ -10,7 +10,7 @@ import path from 'path'
 import { startDevServer } from '@term/call/code/dev/server'
 import { findEntry, portIsFree } from '@term/call/code/boot'
 import type { NativeEnv } from '@term/make/code/compile/native'
-import { closeRun, failRun, field, openRun, report, showPath } from '@term/call/code/output'
+import { closeRun, failRun, field, location, openRun, report, showPath } from '@term/call/code/output'
 import { readTree } from '@term/deck/code/read'
 
 export async function callFeed(input: {
@@ -40,7 +40,7 @@ export async function callFeed(input: {
         glyph: 'failed',
         kind: 'problem',
         subject: entry ? 'The entry file does not exist' : 'There is no entry: none was given and deck.tree has no `boot <path>`',
-        fields: entry ? [field('at', showPath(entry, input.root))] : [],
+        fields: entry ? [location(showPath(entry, input.root))] : [],
       })
       // an entry the command line or the manifest owed: wrong usage, exit 2, as `term boot` ends on the same miss
       closeRun({ verdict: 'Not started', failure: 'usage' })

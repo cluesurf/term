@@ -1,0 +1,19 @@
+# The clipboard in a browser (device-layer-0005): navigator.clipboard, which a page reaches only when it is secure and
+# has the browser's grant. Conforms to ../clipboard. Both calls are promises, awaited here.
+
+dock load
+  load <global:native-clipboard>, name native-clipboard
+
+task read-clipboard-text
+  like text
+  send back
+    call native-clipboard/read
+      wait true
+
+task write-clipboard-text
+  take text, like text
+  like text
+  send back
+    call native-clipboard/write
+      read text
+      wait true

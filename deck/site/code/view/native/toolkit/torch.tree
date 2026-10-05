@@ -1,0 +1,21 @@
+# torch on the platform's own toolkit (device-layer-0002): AVCaptureDevice on macOS and iOS, CameraManager on Android, unavailable under Compose on the desktop.
+# Conforms to ../torch. The runtime is native-torch.swift, native-torch.kt (both Android hosts) and compose/native-torch.kt.
+# The permission runtime is docked too: this capability reads its grant through it (../permission).
+
+dock load
+  load <global:native-torch>, name native-torch
+  load <global:native-permission>, name native-permission
+
+task read-torch
+  like text
+  send back
+    call native-torch/state
+      wait true
+
+task write-torch
+  take state, like text
+  like text
+  send back
+    call native-torch/set
+      read state
+      wait true

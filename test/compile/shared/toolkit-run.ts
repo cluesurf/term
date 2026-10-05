@@ -58,6 +58,10 @@ export type ToolkitRun = {
   compose?: boolean
   // the same for Jetpack Compose on the Android emulator (compose-target-0006), the `compose-android` leg
   composeAndroid?: boolean
+  // run once the app is installed on a simulator or emulator and before it starts: a grant through `simctl privacy` or
+  // `pm grant`, or a value the device is told (a position, a battery level). `udid` on the iOS leg, `serial` on the
+  // Android ones, and the app's identifier on each (device-features.ts)
+  prepare?: (leg: Leg, target: { udid?: string; serial?: string; identifier: string }) => void
 }
 
 const TOOLKIT: Record<Leg, string> = {
@@ -137,7 +141,8 @@ function runIos(run: ToolkitRun): void {
 
   const shot = run.shots.ios ?? join(run.dir, 'ios.png')
   const file = swiftFor(run, 'ios', shot)
-  const bundle = assembleIosBundle({ out: join(run.dir, 'ios'), name: run.name, identifier: run.iosIdentifier, version: '0.0.2' })
+  // the usage strings the program's device capabilities need, in Info.plist (device-layer-0012)
+  const bundle = assembleIosBundle({ out: join(run.dir, 'ios'), name: run.name, identifier: run.iosIdentifier, version: '0.0.2', native: file ? readFileSync(file, 'utf8') : '' })
   const sdk = execFileSync('xcrun', ['-sdk', 'iphonesimulator', '--show-sdk-path'], { encoding: 'utf8' }).trim()
 
   if (!file || !builds(run, 'ios', 'xcrun', ['-sdk', 'iphonesimulator', 'swiftc', '-target', 'arm64-apple-ios17.0-simulator', '-sdk', sdk, '-o', bundle.exe, file])) {
@@ -147,6 +152,7 @@ function runIos(run: ToolkitRun): void {
   spawnSync('xcrun', ['simctl', 'terminate', found.udid, run.iosIdentifier], { stdio: 'ignore' })
   spawnSync('xcrun', ['simctl', 'uninstall', found.udid, run.iosIdentifier], { stdio: 'ignore' })
   execFileSync('xcrun', ['simctl', 'install', found.udid, bundle.app], { stdio: 'pipe' })
+  run.prepare?.('ios', { udid: found.udid, identifier: run.iosIdentifier })
   const result = spawnSync('xcrun', ['simctl', 'launch', '--console', '--terminate-running-process', found.udid, run.iosIdentifier], {
     encoding: 'utf8',
     timeout: 120_000,
@@ -183,7 +189,7 @@ function runAndroid(run: ToolkitRun): void {
   let apk: string
 
   try {
-    const { dex } = buildAndroidProgram({
+    const { dex, native } = buildAndroidProgram({
       root: run.root,
       entry,
       identifier: run.androidIdentifier,
@@ -192,12 +198,15 @@ function runAndroid(run: ToolkitRun): void {
       work,
       env: 'android',
     })
-    apk = assembleApk({ out: work, name: run.name, identifier: run.androidIdentifier, version: '0.0.2', dex, assets, work })
+    // the permissions the program's device capabilities need, declared, so they can be granted (device-layer-0012)
+    apk = assembleApk({ out: work, name: run.name, identifier: run.androidIdentifier, version: '0.0.2', dex, assets, work, native })
     run.ok('android: builds', true)
   } catch (e) {
     // kotlinc's lines, or else the whole message: a Term compile failure says neither `error` nor `e: `, and the
-    // filtered note came back empty for it
-    const text = String((e as { stderr?: Buffer }).stderr ?? e)
+    // filtered note came back empty for it. A tool's output rides on the error as `quote` (output.ts `runTool`), which
+    // reading `stderr` alone missed, leaving only "kotlinc exited 1"
+    const failed = e as { stderr?: Buffer; quote?: string[]; message?: string }
+    const text = failed.quote?.length ? [failed.message ?? '', ...failed.quote].join('\n') : String(failed.stderr ?? e)
     const errors = text.split('\n').filter(l => /error|e: /.test(l)).join('\n')
     run.ok('android: builds', false, (errors || text).slice(0, 1600))
 
@@ -208,6 +217,7 @@ function runAndroid(run: ToolkitRun): void {
   adb('logcat', '-c')
   const installed = adb('install', '-r', apk)
   run.ok('android: installs', installed.status === 0, `${installed.stdout}${installed.stderr}`.slice(0, 400))
+  run.prepare?.('android', { serial: found.serial, identifier: run.androidIdentifier })
   adb('shell', 'am', 'start', '-n', `${run.androidIdentifier}/.TermActivity`)
 
   // the app logs every line under `native-dom` and says when it exits
@@ -289,7 +299,13 @@ function runComposeAndroidLeg(run: ToolkitRun): void {
     return
   }
 
-  const ran = runComposeAndroid({ apk: built.apk, identifier, shot: 'compose.png', pulled: shot })
+  const ran = runComposeAndroid({
+    apk: built.apk,
+    identifier,
+    shot: 'compose.png',
+    pulled: shot,
+    prepare: serial => run.prepare?.('compose-android', { serial, identifier }),
+  })
 
   if (ran.form === 'skipped') {
     console.log(`skip  compose-android  (${ran.reason})`)

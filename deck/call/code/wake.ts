@@ -24,7 +24,7 @@
 
 import fsp from 'fs/promises'
 import path from 'path'
-import { closeRun, count, field, openRun, report, showPath } from '@term/call/code/output'
+import { closeRun, count, field, location, openRun, report, showPath } from '@term/call/code/output'
 import { BOOT_TREE, DECK_TREE, GITIGNORE, README } from '@term/call/code/wake-text'
 
 // the text of every file it writes: wake-text.ts, which imports nothing, so the scaffold's own test can read it
@@ -49,7 +49,7 @@ export async function callWake(input: {
     const existing = await fsp.readdir(target)
 
     if (existing.includes('deck.tree')) {
-      report({ glyph: 'failed', kind: 'problem', subject: 'A deck.tree is already here', fields: [field('at', `${showPath(target)}/deck.tree`)] })
+      report({ glyph: 'failed', kind: 'problem', subject: 'A deck.tree is already here', fields: [location(`${showPath(target)}/deck.tree`)] })
       closeRun({ verdict: 'Nothing written' })
 
       return

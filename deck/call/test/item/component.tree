@@ -206,23 +206,22 @@ test <message: each line wraps on its own with a hang of 2>
 
 test <fields: keys dim, each value one space after its own key (D34)>
   save fields, make list
-  fields/push plain-field(<at>, <code/area.tree:14:12>)
+  fields/push plain-field(<file>, <code/area.tree:14:12>)
   fields/push plain-field(<fix>, <multipy → multiply>)
   # 0: keys do not align (measure-keys gives 0 under `align-keys false`)
   save drawn, draw-fields(fields, 0, narrow-room(kit-room(80), 2), <text>)
   want hold
-    is-equal(kit-join(drawn), <at code/area.tree:14:12\nfix multipy → multiply>)
+    is-equal(kit-join(drawn), <file code/area.tree:14:12\nfix multipy → multiply>)
   save first, drawn/0
   save key, first/spans/0
   want hold, is-equal(key/role, <dim>)
 
-test <fields at 40 columns: a value that does not fit moves under its key, 2 past it>
+test <fields at 40 columns: a value that does not fit starts beside its key and wraps 2 past it>
   save fields, make list
   fields/push plain-field(<next>, <add an assumption that the list is not empty>)
   save drawn, draw-fields(fields, 4, narrow-room(kit-room(40), 2), <text>)
   want hold
-    is-equal kit-join(drawn)
-      <next\n  add an assumption that the list is\n    not empty>
+    is-equal kit-join(drawn), <next add an assumption that the list\n  is not empty>
 
 test <code frame: line numbers right-aligned, the primary span under the right cells>
   save one, make frame

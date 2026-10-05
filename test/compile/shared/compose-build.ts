@@ -8,11 +8,14 @@ import { spawnSync } from 'node:child_process'
 
 export type ComposeRan = { status: number | null; output: string; error: string }
 
-// run a built program headless, answering what it printed
+// run a built program with no window, answering what it printed. NOT `java.awt.headless`: a headless JVM has no
+// desktop services at all, so the clipboard and the rest of the device layer answered `unavailable` where a person's
+// run would answer. TERM_WINDOW_AWAY already keeps the app from drawing a window (the test host) and, on macOS, out of
+// the Dock and from taking focus (`apple.awt.UIElement`, set by the runtime), which is what the flag was standing in for
 export function runCompose(built: { jar: string; classpath: string; main: string }): ComposeRan {
   const ran = spawnSync(
     'java',
-    ['-Djava.awt.headless=true', '--enable-native-access=ALL-UNNAMED', '-classpath', `${built.jar}:${built.classpath}`, built.main],
+    ['--enable-native-access=ALL-UNNAMED', '-classpath', `${built.jar}:${built.classpath}`, built.main],
     { encoding: 'utf8', env: { ...process.env, TERM_WINDOW_AWAY: '1' }, timeout: 180_000 },
   )
 

@@ -318,6 +318,38 @@ task run
     expect('and runs, written into its caller', await runEmitted(bound.modules, dir6).catch(e => String(e)), 42)
   }
 
+  // a record of a form another module declares is a value all the same: `save copy, one` and a field write through
+  // `copy` leaves `one` as it was. The unit alone has no `record-type` for the form, and every such alias went
+  // uncopied until recordCopies read the stubs (2026-10-05, item/run.tree's hidden tally reaching its caller's event)
+  const FORM_DEP = `form box
+  link count, like number, fall 0
+`
+  const FORM_ENTRY = `load ./dep
+  find box
+
+task bump
+  take one, like box
+  like box
+  save copy, one
+  save copy/count, 20
+  send back, read copy
+
+task run
+  like number
+  save first, make box
+  save first/count, 1
+  save second, bump(first)
+  send back, add(second/count, first/count)
+`
+  const formed = compileSeparate({ file: 'entry.tree', text: FORM_ENTRY }, options(FORM_DEP))
+
+  expect('a record of an imported form builds', formed.ok, true)
+
+  if (formed.ok) {
+    const dir7 = mkdtempSync(join(tmpdir(), 'seed-separate-'))
+    expect('and an alias of it is a copy (20 + 1, not 20 + 20)', await runEmitted(formed.modules, dir7).catch(e => String(e)), 21)
+  }
+
   console.log(`\nseparate: ${pass} pass, ${fail} fail`)
 
   if (fail) {

@@ -1,0 +1,13 @@
+# location on the platform's own toolkit (device-layer-0004): CoreLocation on macOS and iOS, LocationManager on Android, unavailable under Compose on the desktop.
+# Conforms to ../location. The runtime is native-location.swift, native-location.kt (both Android hosts) and compose/native-location.kt.
+# The permission runtime is docked too: this capability reads its grant through it (../permission).
+
+dock load
+  load <global:native-location>, name native-location
+  load <global:native-permission>, name native-permission
+
+task read-position
+  like text
+  send back
+    call native-location/position
+      wait true

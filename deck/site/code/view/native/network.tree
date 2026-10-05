@@ -1,0 +1,6 @@
+# network where there is none (device-layer-0010): the abstract module beside the env dirs, reached by
+# every env with no device (node, the server, the memory host). Conforms to ../network.
+
+task read-network
+  like text
+  send back, text <unavailable>

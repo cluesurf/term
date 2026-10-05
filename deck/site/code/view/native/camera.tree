@@ -1,0 +1,6 @@
+# camera where there is none (device-layer-0003): the abstract module beside the env dirs, reached by
+# every env with no device (node, the server, the memory host). Conforms to ../camera.
+
+task capture-photo
+  like text
+  send back, text <unavailable>

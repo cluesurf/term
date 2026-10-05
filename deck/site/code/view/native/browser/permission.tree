@@ -1,0 +1,22 @@
+# Permissions in a browser (device-layer-0001): the Permissions API to read, and each capability's own request to ask
+# (getUserMedia for the camera, getCurrentPosition for location, Notification.requestPermission). Conforms to
+# ../permission.
+
+dock load
+  load <global:native-permission>, name native-permission
+
+task read-permission
+  take name, like text
+  like text
+  send back
+    call native-permission/status
+      read name
+      wait true
+
+task ask-permission
+  take name, like text
+  like text
+  send back
+    call native-permission/request
+      read name
+      wait true

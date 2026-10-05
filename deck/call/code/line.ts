@@ -945,12 +945,27 @@ const cli = yargs(hideBin(process.argv))
         .option('merged', {
           type: 'boolean',
           description: 'Compile each test file whole, instead of one unit at a time with the units shared across files',
+        })
+        .option('case', {
+          type: 'string',
+          description: 'Run only the tests whose phrase or name holds this, in any case',
+        })
+        .option('env', {
+          type: 'string',
+          description: 'The backend the tests run on: node (the default), rust, swift or kotlin',
+        })
+        .option('ride', {
+          type: 'boolean',
+          description: 'Run, then run again on every edit the tests whose files the edit reaches, until ctrl-c',
         }),
     async argv => {
       await callTest({
         root,
         filter: argv.filter,
         merged: argv.merged,
+        case: argv.case,
+        env: argv.env,
+        ride: argv.ride,
       })
     },
   )

@@ -105,9 +105,8 @@ task measure-keys
   back widest
 
 # one field: `key value`, the key dim and padded to `key-width` when keys align,
-# then `field-gap` spaces. A value that does
-# not fit beside its key moves to
-# the next line, 2 past the key, and wraps there; a location breaks only after `/`
+# then `field-gap` spaces. A value that does not fit starts beside its key and
+# wraps, its further lines 2 past the key. A location breaks only after `/`
 # (section 12)
 task draw-field
   take field, like item-field
@@ -148,17 +147,31 @@ task draw-field
       save lines, make list
       lines/push make line, spans(spans)
       back lines
+  # a value that does not fit starts beside its key all the same and wraps, each
+  # further line two cells past the key's column (the user's choice, 2026-10-05,
+  # where it moved under its key whole): `next rewrite it as ...` / `  the dependent
+  # kernel ...`. A location still breaks only after `/` (place-breaks above)
   save out, make list
-  save head, make list
-  head/push make-span(key, <dim>)
-  out/push make line, spans(head)
   save hang, layout/hang
-  save cells, subtract(room/width, hang)
-  save under, wrap-spans(value, cells, subtract(cells, hang), hang, rules, false)
+  save first, subtract(room/width, add(width, layout/field-gap))
+  save rest, subtract(room/width, hang)
+  save wrapped, wrap-spans(value, first, rest, hang, rules, false)
+  save at, 0
 
-  walk indent-lines(under, hang)
+  walk wrapped
     take one
-    out/push one
+    fork test, is-equal(at, 0)
+      hold
+        save spans, make list
+        spans/push make-span(padded, <dim>)
+        spans/push make-span(make-spaces(layout/field-gap), <text>)
+        walk one/spans
+          take piece
+          spans/push piece
+        out/push make line, spans(spans)
+      miss
+        out/push one
+    save at, add(at, 1)
   back out
 
 task draw-fields

@@ -27,7 +27,7 @@ import { finish, first, makeSchedule } from '@term/make/code/compile/schedule'
 import { stdlibBase } from '@term/make/code/resolve'
 import { projectRoleOf } from '@term/call/code/role-of'
 
-type Reply = { file: string; result?: SeparateResult; error?: string; built?: number }
+type Reply = { file: string; result?: SeparateResult; error?: string; built?: number; spent?: { building: number; rolling: number } }
 
 export async function compileUnitsParallel(
   root: string,
@@ -41,7 +41,10 @@ export async function compileUnitsParallel(
   failures: string[]
   // the units built for modules outside the project, which no entry's answer counts
   built: number
+  // the workers' time, summed: walking the closures before the pool starts, building units, computing rolls
+  spent: { walking: number; building: number; rolling: number }
 }> {
+  const walkedAt = Date.now()
   const cache = projectCache(root)
   const roleOf = projectRoleOf(root)
 
@@ -81,6 +84,7 @@ export async function compileUnitsParallel(
   }
 
   const units = unitsOf([...modules], edges)
+  const spent = { walking: Date.now() - walkedAt, building: 0, rolling: 0 }
   const unitOf = new Map<string, string>()
 
   for (const unit of units) {
@@ -124,7 +128,16 @@ export async function compileUnitsParallel(
     process.env.TERM_STDLIB = stdlib
   }
 
-  const workers = Array.from({ length: size }, () => new Worker(bundle, { workerData: { version: compilerVersions() } }))
+  // `TERM_POOL_PROFILE=<dir>` writes each worker's CPU profile there, to see where a pool's time goes
+  const profile = process.env.TERM_POOL_PROFILE
+  const workers = Array.from(
+    { length: size },
+    () =>
+      new Worker(bundle, {
+        workerData: { version: compilerVersions() },
+        ...(profile ? { execArgv: ['--cpu-prof', `--cpu-prof-dir=${profile}`] } : {}),
+      }),
+  )
   const plan = makeSchedule(graph)
   const ready = first(plan)
   const results = new Map<string, SeparateResult>()
@@ -172,6 +185,9 @@ export async function compileUnitsParallel(
           failures.push(`${reply.file}: ${reply.error}`)
         }
 
+        spent.building += reply.spent?.building ?? 0
+        spent.rolling += reply.spent?.rolling ?? 0
+
         release(reply.file)
         idle.push(worker)
         dispatch()
@@ -204,5 +220,5 @@ export async function compileUnitsParallel(
 
   await Promise.all(workers.map(worker => worker.terminate()))
 
-  return { results, jobs: graph.size, workers: size, failures, built }
+  return { results, jobs: graph.size, workers: size, failures, built, spent }
 }

@@ -21,11 +21,15 @@ export function runComposeAndroid({
   identifier,
   shot,
   pulled,
+  prepare,
 }: {
   apk: string
   identifier: string
   shot: string
   pulled: string
+  // run with the device's serial once the app is installed and before it starts: a grant, or a value the emulator is
+  // told (device-features.ts)
+  prepare?: (serial: string) => void
 }): ComposeAndroidRan {
   const found = androidDevice()
 
@@ -37,6 +41,7 @@ export function runComposeAndroid({
   const adb = (...args: string[]) => spawnSync(tools.adb, ['-s', found.serial, ...args], { encoding: 'utf8' })
   adb('uninstall', identifier)
   const installed = adb('install', '-r', apk).status === 0
+  prepare?.(found.serial)
   adb('shell', 'am', 'start', '-n', `${identifier}/.TermActivity`)
 
   // THIS APP'S lines only, by its process: another app on the emulator (another suite's) logs under the same

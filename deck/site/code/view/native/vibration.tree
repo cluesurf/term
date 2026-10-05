@@ -1,0 +1,7 @@
+# vibration where there is none (device-layer-0006): the abstract module beside the env dirs, reached by
+# every env with no device (node, the server, the memory host). Conforms to ../vibration.
+
+task play-vibration
+  take kind, like text
+  like text
+  send back, text <unavailable>

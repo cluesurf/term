@@ -40,7 +40,7 @@ import {
   writeBuildId,
 } from '@term/call/code/boot'
 import { projectCache } from '@term/call/code/cache-store'
-import { closeRun, failRun, field, openRun, report, reportProblems, showPath } from '@term/call/code/output'
+import { closeRun, failRun, field, location, openRun, report, reportProblems, showPath } from '@term/call/code/output'
 
 // does the program's `boot` hand back a fetch handler. A handler is made by `serve` (`@term/site/http/serve`), which the
 // cloudflare `host` returns, so `back host(route, port)` passes one on. The types cannot say so, since `serve` is
@@ -141,7 +141,7 @@ export async function callCast(input: {
         glyph: 'failed',
         kind: 'problem',
         subject: entry ? 'The entry file does not exist' : 'There is no entry: none was given and deck.tree has no `boot <path>`',
-        fields: entry ? [field('at', showPath(entry, input.root))] : [],
+        fields: entry ? [location(showPath(entry, input.root))] : [],
       })
       closeRun({ verdict: 'Nothing cast' })
 
@@ -184,7 +184,7 @@ export async function callCast(input: {
         glyph: 'failed',
         kind: 'problem',
         subject: '`boot` returns no fetch handler, so the Worker would have none',
-        fields: [field('at', `${showPath(entry, input.root)}${line}`), field('next', 'end boot with `back host(route, port)`')],
+        fields: [location(`${showPath(entry, input.root)}${line}`), field('next', 'end boot with `back host(route, port)`')],
       })
       report({ glyph: 'failed', verb: 'build', subject: showPath(entry, input.root), duration: Date.now() - started, facts: ['cloudflare'] })
       closeRun({ verdict: 'Nothing cast' })

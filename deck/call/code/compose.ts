@@ -30,6 +30,7 @@ import { emitKotlin, hoistKotlinImports } from '@term/make/code/compile/kotlin'
 import { stdlibBase } from '@term/make/code/resolve'
 import { projectResolver } from '@term/call/code/make'
 import { androidTools } from '@term/call/code/cask'
+import { permissionLines } from '@term/call/code/device-declare'
 import { closeRun, location, openRun, report, showPath } from '@term/call/code/output'
 import { kotlinc } from '@term/call/code/kotlin-worker'
 import type { KotlinCompiler } from '@term/call/code/kotlin-worker'
@@ -380,7 +381,7 @@ export function buildComposeAndroid({
   }
 
   try {
-    linked = stage(stages, 'link', () => linkAndroidApp({ libraries, tools, identifier, name, assets }))
+    linked = stage(stages, 'link', () => linkAndroidApp({ libraries, tools, identifier, name, assets, native: prelude }))
   } catch (e) {
     return { form: 'failed', stage: 'resources', reason: failure(e) }
   }
@@ -601,12 +602,16 @@ function linkAndroidApp(input: {
   identifier: string
   name: string
   assets: Record<string, string>
+  // the program's native half, whose device capabilities decide the permissions declared (device-declare.ts). Part of
+  // the manifest's text, so of the link's key: a capability added or removed re-links
+  native: string
 }): { base: string; rJar: string; rDex: string } {
   const { libraries, tools, identifier, name, assets } = input
   const manifestText = [
     '<?xml version="1.0" encoding="utf-8"?>',
     `<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="${identifier}" android:versionCode="1" android:versionName="0.0.2">`,
     `  <uses-sdk android:minSdkVersion="${MINIMUM_SDK}" android:targetSdkVersion="${TARGET_SDK}" />`,
+    ...permissionLines(input.native),
     `  <application android:label="${name}" android:theme="@android:style/Theme.Material.Light.NoActionBar">`,
     '    <activity android:name=".TermActivity" android:exported="true" android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|uiMode|fontScale|density">',
     '      <intent-filter>',

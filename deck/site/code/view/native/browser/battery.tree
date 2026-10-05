@@ -1,0 +1,11 @@
+# battery on a browser (device-layer-0009): navigator.getBattery.
+# Conforms to ../battery. The runtime is runtime/native-battery.ts.
+
+dock load
+  load <global:native-battery>, name native-battery
+
+task read-battery
+  like text
+  send back
+    call native-battery/read
+      wait true

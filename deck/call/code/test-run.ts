@@ -181,6 +181,31 @@ function bundleUnits(built: Extract<UnitsBuilt, { ok: true }>, prelude: string, 
 // 3: the prelude is a module of the bundle, imported by each module that docks a shim, and the entry the closure's shim
 const BUNDLE_EPOCH = 'test-bundle-3'
 
+// a test file's tests in source order, each with its label and the line its `test` stands on as written, and the
+// file as `term test` rewrites it (`term test --case`, `term test --env`)
+export function testsOf(
+  file: string,
+  source: string,
+  // as `preprocessTests` takes it: a native run writes every `want` as the plain marker
+  options: { plainWants?: boolean } = {},
+): { text: string; tests: { name: string; label: string; line?: number }[] } {
+  const { text, labels, heads } = preprocessTests(source, options)
+  const tests = discoverTests(text, file).map(name => {
+    const head = heads.get(name)
+
+    return { name, label: labels.get(name) ?? name.replace(/-/g, ' '), ...(head === undefined ? {} : { line: head + 1 }) }
+  })
+
+  return { text, tests }
+}
+
+// whether a test is one `term test --case <phrase>` asked for: the phrase in its label or its task's name, in any case
+export function caseMatches(phrase: string, test: { name: string; label: string }): boolean {
+  const wanted = phrase.toLowerCase()
+
+  return test.label.toLowerCase().includes(wanted) || test.name.toLowerCase().includes(wanted)
+}
+
 // a test file's diagnostics moved back onto the lines as written, and rendered against them: the rewritten text holds
 // lines the reader never wrote (guides: commands/test, 2026-10-04)
 function asWritten(
@@ -209,11 +234,15 @@ export async function runTestFile(input: {
   // kept for the next (note/term/plan/incremental-best-in-class.md, step 10). A project's test files all reach the
   // standard library, and each merged compile checked it again
   units?: TestUnits
+  // run only the tests this answers yes for (`term test --case`); every test when absent
+  select?: (test: { name: string; label: string }) => boolean
 }): Promise<TestRun> {
   // expand `test <phrase>` blocks into top-level tasks; a file with none passes through unchanged
   // `heads`: each test task's 0-based line in the file as written, so a test that does not hold is placed (`at`)
   const { text, labels, heads } = preprocessTests(input.source)
-  const names = discoverTests(text, input.file)
+  const names = discoverTests(text, input.file).filter(
+    name => !input.select || input.select({ name, label: labels.get(name) ?? name.replace(/-/g, ' ') }),
+  )
   const result = input.units
     ? compileUnits({ file: input.file, text }, input, input.units)
     : compile(

@@ -524,6 +524,15 @@ hook test
   # Compile each test file whole, instead of one unit at a time with the units shared across files
   take merged
     like boolean
+  # Run only the tests whose phrase or name holds this, in any case
+  take case
+    like text
+  # The backend the tests run on: node (the default), rust, swift or kotlin
+  take env
+    like text
+  # Run, then run again on every edit the tests whose files the edit reaches, until ctrl-c
+  take ride
+    like boolean
   task test
 
 # Run benchmarks, or profile a file with --cpu / --memory

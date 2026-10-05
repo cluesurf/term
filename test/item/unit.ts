@@ -42,6 +42,7 @@ import type { Question } from '@term/call/code/work/item/ask'
 import { writeJsonEvent } from '@term/call/code/work/item/json'
 import { annotateEvent } from '@term/call/code/work/item/annotate'
 import { makeServiceOpening } from '@term/call/code/work/item/service'
+import { plainSubject } from '@term/call/code/work/item/event'
 import type { Event } from '@term/call/code/work/item/event'
 import { problemOf } from '@term/call/code/output'
 import { nestLines } from '@term/call/code/work/item/emit'
@@ -481,7 +482,7 @@ same('the closing item carries the exit', closeSession(runOf(['failed']), ev({ s
   ok('progress is a count, never a bar or a spinner', !/[━─◐◓◑◒]/.test(progress) && progress.includes('31 of 46'), `  ${progress}`)
   same('a size of 1 byte is singular', speakEvent(ev({ glyph: 'done', verb: 'write', subject: 'x', bytes: 1 }), one), 'done: write x, 1 byte')
   const problem = speakEvent(ev({ glyph: 'failed', kind: 'problem', verb: 'check', subject: 'There is no task named multipy', fields: [at('code/area.tree:14:12')] }), one)
-  same('fields follow as key value', problem, 'failed: check There is no task named multipy. at code/area.tree:14:12')
+  same('fields follow as key value', problem, 'failed: check There is no task named multipy. file code/area.tree:14:12')
 }
 
 // ---- section 15: the child-log adapter ----
@@ -673,13 +674,19 @@ function runChild(flags: string[], environment: Record<string, string> = {}) {
   }
   const one = problemOf(diagnostic, '/home/me/shape', text)
   same('a diagnostic is a failed problem, its message the subject, capital first', [one.glyph, one.kind, one.verb, spansText(one.subject)], ['failed', 'problem', 'check', 'The name "multipy" is not defined'])
-  same('its location is an `at` field, 1-based and relative to the root', one.fields.map(each => `${each.key} ${spansText(each.value)}`), ['at code/area.tree:4:10', 'next define it, import it, or check the spelling'])
+  same('its location is a `file` field, 1-based and relative to the root', one.fields.map(each => `${each.key} ${spansText(each.value)}`), ['file code/area.tree:4:10','next define it, import it, or check the spelling'])
   same('its place sorts by path, line and column', one.place, { path: 'code/area.tree', line: 4, column: 10 })
   same('its frame is the line and the one before, 1-based', one.frames[0]!.lines.map(line => line.number), [3, 4])
   same('its mark is the span, with the marker label', one.frames[0]!.marks, [{ line: 4, column: 10, length: 7, label: 'did you mean multiply?', primary: true }])
   const drawn = texts(drawItem(one, room(80), true))
-  ok('it draws as section 12 shows', drawn[0] === '✗ check The name "multipy" is not defined' && drawn.some(line => line.includes('━━━━━━━ did you mean multiply?')), drawn.join('\n'))
-  same('a proof diagnostic is verb prove', problemOf({ ...diagnostic, name: 'unchecked-hold' }, '/home/me/shape', text).verb, 'prove')
+  ok('it draws as section 12 shows', drawn[0] === '✗ check The name "multipy" is not defined unknown-name' &&drawn.some(line => line.includes('━━━━━━━ did you mean multiply?')), drawn.join('\n'))
+  const title = drawItem(one, room(80), true)[0]!
+  same('the diagnostic code closes the title, in the source role', title.spans.filter(span => span.value === 'unknown-name').map(span => span.role), ['source'])
+  const long = drawItem({ ...one, fields: [one.fields[0]!, { ...one.fields[1]!, value: plainSubject('rewrite it as a linear comparison (<, <=, >, >=, ==), prove it in the dependent kernel with calm, fold or cite') }] }, room(60), true)
+  const drawnLong = texts(long)
+  const next = drawnLong.slice(drawnLong.findIndex(line => line.startsWith('  next ')))
+  ok('a long field value starts beside its key and wraps 2 past it', next.length >= 2 && next[0]!.startsWith('  next rewrite') && next[1]!.startsWith('    ') && !next[1]!.startsWith('     '), texts(long).join('\n'))
+  same('a proof diagnostic is verb prove',problemOf({ ...diagnostic, name: 'unchecked-hold' }, '/home/me/shape', text).verb, 'prove')
   same('a warning is ▲', problemOf({ ...diagnostic, severity: 'warning' }, '/home/me/shape', text).glyph, 'warning')
   const twoLines = problemOf({ ...diagnostic, message: 'kernel: type mismatch:\n  expected number\n  found text' }, '/home/me/shape', text)
   same('a message of several lines keeps its breaks: the first the subject, the rest message lines', [spansText(twoLines.subject), twoLines.message], [

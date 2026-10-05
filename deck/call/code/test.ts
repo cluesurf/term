@@ -5,8 +5,11 @@
 
 import { existsSync, readFileSync } from 'node:fs'
 import { spawn } from 'node:child_process'
-import { buildSession, projectResolver } from '@term/call/code/make'
-import { runTestFile } from '@term/call/code/test-run'
+import { buildSession, projectResolver, watchTreeFiles } from '@term/call/code/make'
+import { caseMatches, runTestFile, testsOf } from '@term/call/code/test-run'
+import { missingTools, NATIVE_TEST_ENVS, runNativeTestFile } from '@term/call/code/test-native'
+import type { NativeTestEnv } from '@term/call/code/test-native'
+import { staleEntries } from '@term/make/code/compile/reach'
 import type { TestUnits } from '@term/call/code/test-run'
 import { projectCache, projectCacheDir } from '@term/call/code/cache-store'
 import { projectDeckOf } from '@term/call/code/deck-of'
@@ -19,6 +22,12 @@ export async function callTest(input: {
   filter?: string
   // each test file compiled whole, the standard library checked again for every one, instead of through units
   merged?: boolean
+  // run only the tests whose phrase or name holds this, in any case
+  case?: string
+  // the backend the tests run on: node (the default), rust, swift or kotlin
+  env?: string
+  // run, then run again on every edit the tests whose files the edit reaches, until ctrl-c
+  ride?: boolean
 }): Promise<void> {
   try {
     const fs = await import('fs/promises')
@@ -27,7 +36,14 @@ export async function callTest(input: {
     const isSeedProject = await hasDeckTree({ root: input.root })
 
     if (isSeedProject) {
-      await runSeedTests({ root: input.root, filter: input.filter, merged: input.merged })
+      await runSeedTests({
+        root: input.root,
+        filter: input.filter,
+        merged: input.merged,
+        case: input.case,
+        env: input.env,
+        ride: input.ride,
+      })
 
       return
     }
@@ -215,40 +231,64 @@ async function runSeedTests(input: {
   root: string
   filter?: string
   merged?: boolean
+  case?: string
+  env?: string
+  ride?: boolean
 }): Promise<void> {
   const path = await import('path')
   const fs = await import('fs/promises')
-  const files = await findTestFiles({
+  let files = await findTestFiles({
     root: input.root,
     filter: input.filter,
   })
+  const native = input.env && input.env !== 'node' ? (input.env as NativeTestEnv) : undefined
 
   openRun({
     verb: 'test',
     root: input.root,
     counts: [count(files.length, 'files', 'file')],
-    facts: input.filter ? [input.filter] : [],
+    facts: [
+      ...(input.filter ? [input.filter] : []),
+      ...(input.case ? [`case ${input.case}`] : []),
+      ...(native ? [`on ${native}`] : []),
+      ...(input.ride ? ['watching'] : []),
+    ],
   })
 
-  if (files.length === 0) {
+  // a backend this command does not run on, and one whose toolchain this machine does not have, are said before
+  // anything is built
+  if (input.env && input.env !== 'node' && !NATIVE_TEST_ENVS.includes(input.env as NativeTestEnv)) {
+    report({ glyph: 'failed', kind: 'problem', subject: `term test runs on node, rust, swift and kotlin, and not on ${input.env}` })
+    process.exitCode = closeRun({ verdict: 'Nothing was tested', failure: 'usage', next: 'term test --env rust' })
+
+    return
+  }
+
+  const missing = native ? missingTools(native) : []
+
+  if (missing.length > 0) {
+    report({ glyph: 'failed', kind: 'problem', subject: `Testing on ${native} needs ${missing.join(' and ')}, which this machine does not have` })
+    process.exitCode = closeRun({ verdict: 'Nothing was tested', failure: 'environment' })
+
+    return
+  }
+
+  if (files.length === 0 && !input.ride) {
     // a zero is data (section 6): the run says what it looked for and found none
     closeRun({ verdict: 'No tests to run', message: ['No file under code/ or test/ holds a test, a hold or a rule.'] })
 
     return
   }
 
-  // every test file compiles and runs in-process with the project resolver, so each `test` block executes and its
-  // `want hold` / `want miss` assertion is reported, not merely that the file compiled. The native runtime is read by
-  // the path nativePrelude derives from each module's RESOLVED file (the `term link` / import location), not a
-  // hardcoded base.tree path, exactly as `term boot` runs compiled code.
-  const resolve = projectResolver(input.root)
   // the same role and lean readers `term make` compiles with, so a lean grammar's tests read it lean
   const roleOf = projectRoleOf(input.root)
   const leanOf = projectLeanOf(input.root)
+  const deckOf = projectDeckOf()
   const readRuntime = (p: string): string | undefined =>
     existsSync(p) ? readFileSync(p, 'utf8') : undefined
   // one build session for every test file (note/term/plan/incremental-best-in-class.md, step 10): the units every file
-  // reaches, the standard library's above all, are checked once for the run and read from the cache after that
+  // reaches, the standard library's above all, are checked once for the run and read from the cache after that. Its
+  // resolver checks each file it hands out against the disk once a round, so a watch reads every edit
   const session = buildSession(input.root)
   const units: TestUnits | undefined = input.merged
     ? undefined
@@ -256,108 +296,186 @@ async function runSeedTests(input: {
         root: input.root,
         cache: projectCache(input.root),
         bundles: path.join(projectCacheDir(input.root), 'test'),
-        deckOf: projectDeckOf(),
+        deckOf,
         parsed: session.parsed,
         units: session.units,
         walked: session.walked,
       }
 
-  let pass = 0
-  let fail = 0
-  // files of laws alone, whose proofs the build checked
-  let proved = 0
-  // files that did not build, which ran no test at all
-  let broken = 0
+  // one round over the files given: every test file compiles and runs, so each `test` block executes and its
+  // `want hold` / `want miss` is reported, not merely that the file compiled. The native runtime is read by the path
+  // nativePrelude derives from each module's RESOLVED file, exactly as `term boot` runs compiled code
+  const round = async (
+    roundFiles: string[],
+  ): Promise<{ pass: number; fail: number; proved: number; broken: number; skipped: number }> => {
+    // through units the session's resolver, which reads an edited file again; whole, a fresh one each round
+    const resolve = units ? session.resolve : projectResolver(input.root)
 
-  for (const file of files) {
-    const rel = path.relative(input.root, file)
-    const started = Date.now()
+    let pass = 0
+    let fail = 0
+    // files of laws alone, whose proofs the build checked
+    let proved = 0
+    // files that did not build, which ran no test at all
+    let broken = 0
+    // files holding no test `--case` asked for
+    let skipped = 0
 
-    try {
-      const source = await fs.readFile(file, 'utf-8')
-      // what the file's tests print, quoted under its item: a test's `log` was written bare above the item, outside
-      // the output standard (guides: tests/writing, 2026-10-05)
-      const { value: run, lines: printed } = await capturePrinted(() =>
-        runTestFile({
-          file,
-          source,
-          resolve,
-          env: 'node',
-          readRuntime,
-          roleOf,
-          leanOf,
-          units,
-        }),
-      )
+    for (const file of roundFiles) {
+      const rel = path.relative(input.root, file)
+      const started = Date.now()
 
-      if (run.failure) {
-        broken++
-        // the compile diagnostics or the unproven holds, each a Problem item with its frame, not a bare "did not
-        // compile", so a real error (an unknown name, an invalid proof) is visible
-        reportProblems((run.diagnostics ?? []).map(diagnostic => ({ diagnostic, text: diagnostic.file === file ? run.text : undefined })), input.root)
+      try {
+        const source = await fs.readFile(file, 'utf-8')
+        const listed = testsOf(file, source, native ? { plainWants: true } : {})
+        const chosen = input.case ? listed.tests.filter(test => caseMatches(input.case!, test)) : listed.tests
+
+        // `--case` runs the tests whose phrase or name holds it, so a file holding none of them is not run at all, and
+        // a file of laws alone holds none
+        if (input.case && chosen.length === 0) {
+          skipped++
+          continue
+        }
+
+        // what the file's tests print, quoted under its item: a test's `log` was written bare above the item, outside
+        // the output standard (guides: tests/writing, 2026-10-05)
+        const { value: run, lines: printed } = await capturePrinted(() =>
+          native && chosen.length > 0
+            ? runNativeTestFile({ root: input.root, file, text: listed.text, source, tests: chosen, env: native, roleOf, leanOf, deckOf })
+            : runTestFile({
+                file,
+                source,
+                resolve,
+                env: 'node',
+                readRuntime,
+                roleOf,
+                leanOf,
+                units,
+                ...(input.case ? { select: (test: { name: string; label: string }) => caseMatches(input.case!, test) } : {}),
+              }),
+        )
+
+        if (run.failure) {
+          broken++
+          // the compile diagnostics or the unproven holds, each a Problem item with its frame, not a bare "did not
+          // compile", so a real error (an unknown name, an invalid proof) is visible
+          reportProblems((run.diagnostics ?? []).map(diagnostic => ({ diagnostic, text: diagnostic.file === file ? run.text : undefined })), input.root)
+          report({
+            glyph: 'failed',
+            verb: 'test',
+            subject: rel,
+            duration: Date.now() - started,
+            facts: [run.failure.split('\n').pop() ?? 'did not compile'],
+          })
+          continue
+        }
+
+        const held = run.results.filter(one => one.held).length
+        const missed = run.results.length - held
+
+        // a proof-only file compiled clean, so its `hold` / `rule` proofs were kernel-checked. Counted as such, not as a
+        // test: it added one to the tests, and a run of two tests and a file of laws closed `3 tests` (guides:
+        // commands/test, 2026-10-04)
+        if (run.results.length === 0) {
+          proved++
+          report({ glyph: 'done', verb: 'test', subject: rel, duration: Date.now() - started, facts: ['proofs checked'] })
+          continue
+        }
+
+        pass += held
+        fail += missed
+
         report({
-          glyph: 'failed',
+          glyph: missed > 0 ? 'failed' : 'done',
           verb: 'test',
           subject: rel,
           duration: Date.now() - started,
-          facts: [run.failure.split('\n').pop() ?? 'did not compile'],
+          counts: [count(run.results.length, 'tests', 'test'), count(held, 'passed'), ...(missed > 0 ? [count(missed, 'failed')] : [])],
+          ...(printed.length > 0 ? { quote: printed } : {}),
         })
-        continue
+
+        // each test that did not hold is a Problem of its own, under the verb `case` (section 9)
+        for (const one of run.results.filter(each => !each.held)) {
+          report({
+            glyph: 'failed',
+            kind: 'problem',
+            verb: 'case',
+            subject: one.label.charAt(0).toUpperCase() + one.label.slice(1),
+            duration: one.ms,
+            // where the test is, `file:line` of its `test` line as written (section 12), and what it threw
+            fields: [one.line ? location(`${rel}:${one.line}`) : field('in', rel), ...(one.error ? [field('why', one.error)] : [])],
+            place: one.line ? { path: rel, line: one.line, column: 1 } : undefined,
+          })
+        }
+      } catch (err) {
+        broken++
+        report({ glyph: 'failed', verb: 'test', subject: rel, duration: Date.now() - started, message: [err instanceof Error ? err.message : String(err)] })
       }
-
-      const held = run.results.filter(one => one.held).length
-      const missed = run.results.length - held
-
-      // a proof-only file compiled clean, so its `hold` / `rule` proofs were kernel-checked. Counted as such, not as a
-      // test: it added one to the tests, and a run of two tests and a file of laws closed `3 tests` (guides:
-      // commands/test, 2026-10-04)
-      if (run.results.length === 0) {
-        proved++
-        report({ glyph: 'done', verb: 'test', subject: rel, duration: Date.now() - started, facts: ['proofs checked'] })
-        continue
-      }
-
-      pass += held
-      fail += missed
-
-      report({
-        glyph: missed > 0 ? 'failed' : 'done',
-        verb: 'test',
-        subject: rel,
-        duration: Date.now() - started,
-        counts: [count(run.results.length, 'tests', 'test'), count(held, 'passed'), ...(missed > 0 ? [count(missed, 'failed')] : [])],
-        ...(printed.length > 0 ? { quote: printed } : {}),
-      })
-
-      // each test that did not hold is a Problem of its own, under the verb `case` (section 9)
-      for (const one of run.results.filter(each => !each.held)) {
-        report({
-          glyph: 'failed',
-          kind: 'problem',
-          verb: 'case',
-          subject: one.label.charAt(0).toUpperCase() + one.label.slice(1),
-          duration: one.ms,
-          // where the test is, `file:line` of its `test` line as written (section 12), and what it threw
-          fields: [one.line ? location(`${rel}:${one.line}`) : field('in', rel), ...(one.error ? [field('why', one.error)] : [])],
-          place: one.line ? { path: rel, line: one.line, column: 1 } : undefined,
-        })
-      }
-    } catch (err) {
-      broken++
-      report({ glyph: 'failed', verb: 'test', subject: rel, duration: Date.now() - started, message: [err instanceof Error ? err.message : String(err)] })
     }
+
+    session.close()
+
+    return { pass, fail, proved, broken, skipped }
   }
 
-  const counts = [
-    count(pass + fail, 'tests', 'test'),
-    count(pass, 'passed'),
-    ...(fail > 0 ? [count(fail, 'failed')] : []),
-    ...(proved > 0 ? [count(proved, 'proof files checked', 'proof file checked')] : []),
+  const countsOf = (totals: { pass: number; fail: number; proved: number; broken: number; skipped: number }) => [
+    count(totals.pass + totals.fail, 'tests', 'test'),
+    count(totals.pass, 'passed'),
+    ...(totals.fail > 0 ? [count(totals.fail, 'failed')] : []),
+    ...(totals.proved > 0 ? [count(totals.proved, 'proof files checked', 'proof file checked')] : []),
+    ...(totals.broken > 0 ? [count(totals.broken, 'files did not build', 'file did not build')] : []),
+    ...(totals.skipped > 0 ? [count(totals.skipped, 'files with no such case', 'file with no such case')] : []),
   ]
 
-  if (broken > 0) {
-    counts.push(count(broken, 'files did not build', 'file did not build'))
+  // the session's first round: everything it was handed
+  session.turn(files)
+  const first = await round(files)
+
+  if (!input.ride) {
+    // `--case` that matched no test anywhere ran nothing, which is not a pass
+    if (input.case && first.pass + first.fail === 0 && first.broken === 0) {
+      process.exitCode = closeRun({
+        verdict: 'No test matched',
+        failure: 'usage',
+        message: [`No test's phrase or name holds "${input.case}".`],
+      })
+
+      return
+    }
+
+    closeRun({ verdict: first.fail > 0 || first.broken > 0 ? 'Test run failed' : 'Tests passed', counts: countsOf(first) })
+
+    return
   }
 
-  closeRun({ verdict: fail > 0 || broken > 0 ? 'Test run failed' : 'Tests passed', counts })
+  // WATCH (`term test --ride`): after an edit, the test files whose closure holds a file that moved run again, and no
+  // other. Which files moved is the session's to say (the stamp of every module a round walked), so a burst of saves
+  // touching several files reruns everything any of them reaches. A test file added or removed, or a test file whose
+  // closure the session cannot see (a round compiled whole, `--merged`), runs every file again. The run never closes
+  // until ctrl-c: it is a stream, as `term make --ride` is
+  report({ glyph: first.fail > 0 || first.broken > 0 ? 'failed' : 'done', verb: 'test', subject: 'every file', counts: countsOf(first) })
+
+  process.once('SIGINT', () => {
+    process.exit(closeRun({ verdict: 'Stopped', failure: 'interrupted', uptime: true }))
+  })
+
+  watchTreeFiles(input.root, async () => {
+    files = await findTestFiles({ root: input.root, filter: input.filter })
+
+    const moved = session.turn(files)
+    const graph = new Map([...session.walked].map(([file, one]) => [file, one.edges]))
+    // a round on a native backend, or one compiled whole, walks no closure the session can read
+    const reached = moved === undefined || input.merged || native ? files : staleEntries(graph, files, moved)
+
+    if (reached.length === 0) {
+      return
+    }
+
+    const totals = await round(reached)
+    report({
+      glyph: totals.fail > 0 || totals.broken > 0 ? 'failed' : 'done',
+      verb: 'test',
+      subject: reached.length === files.length ? 'every file' : `${reached.length} of ${files.length} files`,
+      counts: countsOf(totals),
+    })
+  })
 }

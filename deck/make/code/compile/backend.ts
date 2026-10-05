@@ -3093,11 +3093,14 @@ export function textCursors(fn: Extract<Statement, { form: 'function' }>, ascii:
 //   - `plain`: the record forms all this reads, every one with fields that is not `mark shared` and has no variants
 export type RecordCopies = { params: Map<string, Map<number, boolean>>; lets: Map<Statement, boolean>; plain: Set<string> }
 
-export function recordCopies(program: Statement[]): RecordCopies {
+// `context` is what a unit of the separate build imports (compile/separate.ts): a form declared in another module is a
+// record all the same, and reading the unit alone left every alias of one uncopied (`save copy, one` then a field
+// write through `copy` changed the caller's record, 2026-10-05)
+export function recordCopies(program: Statement[], context: Statement[] = []): RecordCopies {
   type Fn = Extract<Statement, { form: 'function' }>
   type Loose = Record<string, unknown> & { form?: string }
   const plain = new Set(
-    program.flatMap(n => (n.form === 'record-type' && !n.shared && n.fields.length && !n.variants.length ? [n.name] : [])),
+    [...context, ...program].flatMap(n => (n.form === 'record-type' && !n.shared && n.fields.length && !n.variants.length ? [n.name] : [])),
   )
   const isRecord = (t: Type | undefined): boolean => t?.kind === 'named' && plain.has(t.name)
   const fns = program.filter((n): n is Fn => n.form === 'function')

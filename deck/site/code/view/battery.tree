@@ -1,0 +1,17 @@
+# device-layer-0009.
+# The battery: how full it is and whether it is charging, through UIDevice on iOS, the power sources on macOS
+# (IOKit), BatteryManager on Android and navigator.getBattery in a browser.
+#
+#   battery-status   `<level> <state>`: the level from 0 to 1 to two places (or `unknown`), and charging, full,
+#                    unplugged or unknown. `unavailable` with no battery (a desktop, the simulator)
+#
+# A host with no such capability (the server, the memory host) answers `unavailable`. Every answer is text from the
+# closed set above, so an app compares strings and no platform enum ever reaches it.
+
+load ./native/{platform}/battery
+  find read-battery
+
+task battery-status
+  like text
+  send back
+    call read-battery

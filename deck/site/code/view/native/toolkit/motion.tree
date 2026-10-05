@@ -1,0 +1,11 @@
+# motion on the platform's own toolkit (device-layer-0011): CoreMotion on iOS, SensorManager on Android, unavailable on macOS and under Compose on the desktop.
+# Conforms to ../motion. The runtime is native-motion.swift, native-motion.kt (both Android hosts) and compose/native-motion.kt.
+
+dock load
+  load <global:native-motion>, name native-motion
+
+task sample-motion
+  like text
+  send back
+    call native-motion/sample
+      wait true

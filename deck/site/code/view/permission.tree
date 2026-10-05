@@ -1,0 +1,30 @@
+# Permissions (device-layer-0001): whether the person has let the app use a capability, and asking them. Every
+# capability that needs a grant asks through here, and the platform's own prompt is the only prompt.
+#
+#   names    camera, location, notification
+#
+#   permission-status(name)    granted, denied, not-determined (never asked), restricted (the device's owner or a
+#                              policy decides), or unavailable (this platform has no such grant, or no such capability)
+#   request-permission(name)   asks once, through the platform's prompt, and answers the status after it. Asking
+#                              again after a refusal answers `denied` without a prompt, as every platform does
+#
+# A platform reads its usage declaration before it prompts (an iOS Info.plist string, an Android manifest permission),
+# which the build writes for the capabilities an app reaches (device-layer-0012).
+
+load ./native/{platform}/permission
+  find read-permission
+  find ask-permission
+
+task permission-status
+  take name, like text
+  like text
+  send back
+    call read-permission
+      read name
+
+task request-permission
+  take name, like text
+  like text
+  send back
+    call ask-permission
+      read name

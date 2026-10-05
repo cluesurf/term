@@ -31,7 +31,11 @@ import { compileProgram, entryWarnings, graphTemplates, milledModule } from '@te
 import type { ModuleEmit } from '@term/make/code/compile/modules'
 import { nameDefs, namesUsed, stubKnown, stubProgram, surfaceHash } from '@term/make/code/compile/stub'
 import type { NameDef } from '@term/make/code/compile/stub'
-import { namesPrinted, namesReached } from '@term/make/code/compile/names'
+import { namesPrinted, namesReachedIndexed } from '@term/make/code/compile/names'
+import type { DefAt } from '@term/make/code/compile/names'
+
+// more definitions than any one unit holds, so a place's key (`unit * span + at`) sorts by unit and then by place
+const NAME_SPAN = 1_000_000
 import { why } from '@term/make/code/compile/explain'
 import type { UnitInputs } from '@term/make/code/compile/explain'
 
@@ -296,6 +300,33 @@ export function compileSeparate(
 
   const builds: UnitBuild[] = []
   const built: string[] = []
+
+  // THE BUILD'S NAME INDEX (step 4, compile/names.tree `names-reached-indexed`): each name to where it is defined,
+  // unit by unit, grown as units are answered. A unit reaches only units answered before it, so the index holds
+  // everything its walk can take
+  const nameIndex = new Map<string, DefAt[]>()
+  const unitDefs: NameDef[][] = []
+
+  const indexNames = (upTo: number): void => {
+    while (unitDefs.length < upTo) {
+      const unit = unitDefs.length
+      const defs = builds[unit]!.defs ?? nameDefs(builds[unit]!.stubs.flatMap(([, list]) => list), portable.out)
+      unitDefs.push(defs)
+
+      defs.forEach((def, at) => {
+        for (const name of def.gives) {
+          let places = nameIndex.get(name)
+
+          if (!places) {
+            places = []
+            nameIndex.set(name, places)
+          }
+
+          places.push({ unit, at })
+        }
+      })
+    }
+  }
   const reused: string[] = []
   const allModules = new Map<string, ModuleEmit>()
   const allWarnings: Diagnostic[] = []
@@ -380,10 +411,15 @@ export function compileSeparate(
       return { used, defs }
     }
 
+    // the same fingerprints `namesReached` gives over `reached().defs`, from the build's index (`indexNames`), so a
+    // unit's walk costs the names it reaches and not every definition of everything it reaches
     const namedKeyAs = (checkedAs: string): string => {
-      const { used, defs } = reached()
+      used ??= namesOfUnit()
+      indexNames(i)
 
-      return hashFields(['names', ...ownKey(checkedAs), ...namesReached(defs, used)])
+      const sees = new Map([...reach[i]!].map(d => [d, true]))
+
+      return hashFields(['names', ...ownKey(checkedAs), ...namesReachedIndexed(nameIndex, unitDefs, sees, used, NAME_SPAN)])
     }
 
     // the name key, through a pointer kept under the whole-surface key. The same surface always gives the same name

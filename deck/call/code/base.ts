@@ -40,7 +40,7 @@ import { parseTree } from '@cluesurf/save/tree/parse'
 import { formatTree } from '@cluesurf/save/tree/format'
 import { datasetOf, type Dataset } from '@cluesurf/save/diff/change'
 import type { RecordNode } from '@cluesurf/save/base/type'
-import { closeRun, count, field, isRunOpen, openRun, printData, report } from '@term/call/code/output'
+import { closeRun, count, field, isRunOpen, location, openRun, printData, report } from '@term/call/code/output'
 import type { ItemField } from '@term/call/code/work/item/event'
 
 // THE OUTPUT (note/term/output/readme.md). Each verb opens a run with its own verb and closes it with a verdict on
@@ -447,7 +447,7 @@ function working(root: string): Dataset {
         // only the form, which in a directory of five hundred records is not something a
         // person can act on.
         if (node.mark === undefined) {
-          refuse('This record has no mark line, so it has no identity', { fields: [{ ...field('at', path.relative(root, full)), location: true }] })
+          refuse('This record has no mark line, so it has no identity', { fields: [location(path.relative(root, full))] })
         }
 
         records.push(node)
@@ -456,7 +456,7 @@ function working(root: string): Dataset {
         // record a DELETION of that record, because the dataset is the whole working state
         // rather than a list of edits.
         const message = error instanceof Error ? error.message : String(error)
-        refuse(message.charAt(0).toUpperCase() + message.slice(1), { fields: [{ ...field('at', path.relative(root, full)), location: true }] })
+        refuse(message.charAt(0).toUpperCase() + message.slice(1), { fields: [location(path.relative(root, full))] })
       }
     }
   }

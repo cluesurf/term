@@ -1,0 +1,13 @@
+# vibration on a browser (device-layer-0006): navigator.vibrate.
+# Conforms to ../vibration. The runtime is runtime/native-vibration.ts.
+
+dock load
+  load <global:native-vibration>, name native-vibration
+
+task play-vibration
+  take kind, like text
+  like text
+  send back
+    call native-vibration/play
+      read kind
+      wait true

@@ -1,0 +1,21 @@
+# The clipboard on the platform's own toolkit (device-layer-0005): NSPasteboard on macOS, UIPasteboard on iOS,
+# ClipboardManager on Android, and the AWT system clipboard under Compose on the desktop. Conforms to ../clipboard. The
+# runtime is native-clipboard.swift, native-clipboard.kt (both Android hosts) and compose/native-clipboard.kt.
+
+dock load
+  load <global:native-clipboard>, name native-clipboard
+
+# awaited: Android's read waits for the window's input focus, the only time Android lets an app read the clipboard.
+# The Apple reads answer at once
+task read-clipboard-text
+  like text
+  send back
+    call native-clipboard/read
+      wait true
+
+task write-clipboard-text
+  take text, like text
+  like text
+  send back
+    call native-clipboard/write
+      read text

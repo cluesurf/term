@@ -17,7 +17,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import path from 'node:path'
-import { closeRun, count, field, openRun, printData, report } from '@term/call/code/output'
+import { closeRun, count, field, location, openRun, printData, report } from '@term/call/code/output'
 import { keptAt, projectHome, legacyProjectHome } from '@term/call/code/home'
 
 const KINDS = [
@@ -203,9 +203,9 @@ export async function callMind(input: {
 
       // a name already used replaces its fact: a `change` naming what it was, never an `add` like a new one
       if (saved.replaced !== undefined) {
-        report({ glyph: 'changed', kind: 'change', verb: 'change', subject: saved.name, facts: [saved.kind, `was: ${saved.replaced}`], fields: [field('at', saved.file)] })
+        report({ glyph: 'changed', kind: 'change', verb: 'change', subject: saved.name, facts: [saved.kind, `was: ${saved.replaced}`], fields: [location(saved.file)] })
       } else {
-        report({ glyph: 'added', kind: 'change', verb: 'add', subject: saved.name, facts: [saved.kind], fields: [field('at', saved.file)] })
+        report({ glyph: 'added', kind: 'change', verb: 'add', subject: saved.name, facts: [saved.kind], fields: [location(saved.file)] })
       }
 
       closeRun({ verdict: saved.replaced !== undefined ? 'Replaced' : 'Remembered' })

@@ -200,6 +200,12 @@ abstract class TermViewActivity : Activity() {
         for (body in nativeView.configurationChanged.toList()) body()
     }
 
+    // the platform's answer to a permission request (view/native/toolkit/runtime/native-permission.kt)
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        for (body in hostPermissionAnswers.toList()) body(requestCode)
+    }
+
     // every key a hardware keyboard sends reaches the window's `listen-key` listeners under its web name, then goes on to
     // whatever has focus (swiftui-target-0003)
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
@@ -237,6 +243,16 @@ object OnMain : kotlin.coroutines.AbstractCoroutineContextElement(kotlin.corouti
             }
         }
 }
+
+// The Activity a device capability's runtime asks the platform through (view/native/toolkit/runtime/native-*.kt,
+// device-layer). Compose on Android defines the same function over its own host (compose/runtime/host-android.kt), so
+// one capability runtime serves both Android hosts
+fun hostActivity(): Activity? = nativeView.activity
+
+// Called with the request code whenever the platform answers a permission request: Android delivers the answer to the
+// Activity (onRequestPermissionsResult), and the permission runtime (view/native/toolkit/runtime/native-permission.kt)
+// waits on it here. The Compose host keeps the same list (compose/runtime/host-android.kt)
+val hostPermissionAnswers = mutableListOf<(Int) -> Unit>()
 
 object nativeView {
     var activity: Activity? = null

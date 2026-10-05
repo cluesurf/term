@@ -1,0 +1,23 @@
+# Permissions on the platform's own toolkit (device-layer-0001): AVFoundation, CoreLocation and UserNotifications on
+# macOS and iOS, the runtime permission model on Android, and `unavailable` under Compose on the desktop. Conforms to
+# ../permission. The runtime is native-permission.swift, native-permission.kt and compose/native-permission.kt.
+
+dock load
+  load <global:native-permission>, name native-permission
+
+task read-permission
+  take name, like text
+  like text
+  send back
+    call native-permission/status
+      read name
+      wait true
+
+# awaited: the platform's prompt answers when the person does
+task ask-permission
+  take name, like text
+  like text
+  send back
+    call native-permission/request
+      read name
+      wait true

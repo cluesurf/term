@@ -1,0 +1,21 @@
+# torch on a browser (device-layer-0002): a camera track and its torch constraint.
+# Conforms to ../torch. The runtime is runtime/native-torch.ts.
+# The permission runtime is docked too: this capability reads its grant through it (../permission).
+
+dock load
+  load <global:native-torch>, name native-torch
+  load <global:native-permission>, name native-permission
+
+task read-torch
+  like text
+  send back
+    call native-torch/state
+      wait true
+
+task write-torch
+  take state, like text
+  like text
+  send back
+    call native-torch/set
+      read state
+      wait true

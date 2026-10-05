@@ -1,0 +1,12 @@
+# Permissions where there are none to grant (device-layer-0001): the abstract module beside the env dirs, reached by
+# every env with no device (node, the server, the memory host). Conforms to ../permission.
+
+task read-permission
+  take name, like text
+  like text
+  send back, text <unavailable>
+
+task ask-permission
+  take name, like text
+  like text
+  send back, text <unavailable>

@@ -1,0 +1,13 @@
+# vibration on the platform's own toolkit (device-layer-0006): NSHapticFeedbackManager on macOS, the feedback generators on iOS, VibrationEffect on Android, unavailable under Compose on the desktop.
+# Conforms to ../vibration. The runtime is native-vibration.swift, native-vibration.kt (both Android hosts) and compose/native-vibration.kt.
+
+dock load
+  load <global:native-vibration>, name native-vibration
+
+task play-vibration
+  take kind, like text
+  like text
+  send back
+    call native-vibration/play
+      read kind
+      wait true

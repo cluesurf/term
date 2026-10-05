@@ -38,7 +38,7 @@ import {
 import { diffDataset } from '@cluesurf/save/diff/diff'
 import { need, refuse } from './base'
 import type { Dataset } from '@cluesurf/save/diff/change'
-import { closeRun, count, field, openRun, printData, report } from '@term/call/code/output'
+import { closeRun, count, field, location, openRun, printData, report } from '@term/call/code/output'
 
 // What a source's extension says it is. A directory is walked for these and nothing else,
 // so a readme or a licence beside the data is skipped rather than failing the run.
@@ -135,7 +135,7 @@ export function callBaseImport(input: {
       rows.push(...found)
       report({ glyph: 'done', verb: 'read', subject: path.basename(file), counts: [count(found.length, 'rows', 'row')] })
     } catch (error) {
-      refuse(error instanceof Error ? error.message : String(error), { fields: [{ ...field('at', file), location: true }] })
+      refuse(error instanceof Error ? error.message : String(error), { fields: [location(file)] })
     }
   }
 

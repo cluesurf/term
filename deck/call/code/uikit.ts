@@ -23,6 +23,7 @@ import { compile } from '@term/make/code/compile/compile'
 import { collectModules } from '@term/make/code/compile/load'
 import { nativePrelude } from '@term/make/code/compile/native'
 import { checkScope } from '@term/call/code/scope'
+import { appleUsage } from '@term/call/code/device-declare'
 import { emitSwift } from '@term/make/code/compile/swift'
 import { projectResolver } from '@term/call/code/make'
 import { closeRun, location, openRun, report, showPath } from '@term/call/code/output'
@@ -72,7 +73,7 @@ const id = (name: string): string => createHash('sha256').update(name).digest('h
 
 // The smallest project.pbxproj for one app target with one Swift file and a generated Info.plist. Its build settings
 // are the simulator build's flags (cask.ts `buildProgram`): -O, whole module, exclusivity checks off, Swift 5 mode
-export function xcodeProject(input: { name: string; identifier: string; version: string; team?: string }): string {
+export function xcodeProject(input: { name: string; identifier: string; version: string; team?: string; usage?: Record<string, string> }): string {
   const { name } = input
   const ids = {
     file: id(`${name}:file`),
@@ -117,6 +118,8 @@ export function xcodeProject(input: { name: string; identifier: string; version:
       SWIFT_OPTIMIZATION_LEVEL: optimize ? '-O' : '-Onone',
       SWIFT_VERSION: '5.0',
       TARGETED_DEVICE_FAMILY: '1,2',
+      // the usage strings the app's device capabilities need (device-declare.ts), into the generated Info.plist
+      ...Object.fromEntries(Object.entries(input.usage ?? {}).map(([key, text]) => [`INFOPLIST_KEY_${key}`, text])),
     })
   const project = settings({ SDKROOT: 'iphoneos', IPHONEOS_DEPLOYMENT_TARGET: IOS_MINIMUM })
 
@@ -222,8 +225,9 @@ export async function makeUikit(input: { root: string; entry?: string; team?: st
   rmSync(projectDir, { recursive: true, force: true })
   mkdirSync(join(out, name), { recursive: true })
   mkdirSync(projectDir, { recursive: true })
-  writeFileSync(join(out, name, 'main.swift'), programSource({ root: input.root, entry }))
-  writeFileSync(join(projectDir, 'project.pbxproj'), xcodeProject({ name, identifier, version, team }))
+  const source = programSource({ root: input.root, entry })
+  writeFileSync(join(out, name, 'main.swift'), source)
+  writeFileSync(join(projectDir, 'project.pbxproj'), xcodeProject({ name, identifier, version, team, usage: appleUsage(source) }))
   report({ glyph: 'done', verb: 'write', subject: 'Xcode project', fields: [location(showPath(projectDir, input.root))] })
 
   const archive = join(out, `${name}.xcarchive`)

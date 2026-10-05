@@ -1,0 +1,6 @@
+# motion where there is none (device-layer-0011): the abstract module beside the env dirs, reached by
+# every env with no device (node, the server, the memory host). Conforms to ../motion.
+
+task sample-motion
+  like text
+  send back, text <unavailable>

@@ -14,7 +14,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { infoText } from '@term/make/code/show'
-import { closeRun, field, openRun, printData, report, showPath } from '@term/call/code/output'
+import { closeRun, field, location, openRun, printData, report, showPath } from '@term/call/code/output'
 
 export async function callShow(input: {
   root: string
@@ -71,7 +71,7 @@ export async function callShow(input: {
       glyph: 'failed',
       kind: 'problem',
       subject: 'The deck.tree could not be read',
-      fields: [field('at', showPath(manifest))],
+      fields: [location(showPath(manifest))],
       message: [error instanceof Error ? error.message : String(error)],
     })
     closeRun({ verdict: 'No version to show' })

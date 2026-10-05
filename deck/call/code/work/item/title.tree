@@ -117,6 +117,18 @@ task draw-subject
   fork test, is-unequal(event/level, <>)
     hold
       save spans, tint-spans(spans, <dim>)
+  # a diagnostic's name at the end of the title, one space after the message, in the
+  # source color, so the sentence reads first and the name stands apart from it
+  save code, clean-text(event/code, room)
+  fork test, is-unequal(code, <>)
+    hold
+      save coded, make list
+      walk spans
+        take one
+        coded/push one
+      coded/push make-span(< >, <text>)
+      coded/push make-span(code, <source>)
+      save spans, coded
   fork test, and(tagged, is-above(room/standard/layout/tag-gap, 0))
     miss
       back spans

@@ -1,0 +1,11 @@
+# battery on the platform's own toolkit (device-layer-0009): IOKit power sources on macOS, UIDevice on iOS, BatteryManager on Android, unavailable under Compose on the desktop.
+# Conforms to ../battery. The runtime is native-battery.swift, native-battery.kt (both Android hosts) and compose/native-battery.kt.
+
+dock load
+  load <global:native-battery>, name native-battery
+
+task read-battery
+  like text
+  send back
+    call native-battery/read
+      wait true

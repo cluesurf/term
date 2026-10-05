@@ -620,6 +620,43 @@ expect(
   true,
 )
 
+// THE SAVE NEVER SEARCHES. A save asks for `source.fixAll` alone, and a lint finding names no unknown name, yet both
+// used to start the auto-import search through the stdlib and every linked package: 8.6 s for each save of the Term
+// root's deck.tree, whose one diagnostic was a long comment line (2026-10-05)
+const actionsFor = async (id: number, context: unknown) =>
+  (
+    await projServer.dispatch({
+      jsonrpc: '2.0',
+      id,
+      method: 'textDocument/codeAction',
+      params: { textDocument: { uri: projUri }, range: unknownRange, context },
+    })
+  )[0]!.result as { title: string }[]
+
+expect(
+  'codeAction: a save (`source.fixAll` only) offers no import',
+  (await actionsFor(45, { diagnostics: [{ range: unknownRange }], only: ['source.fixAll'] })).some(a =>
+    a.title.startsWith('Import '),
+  ),
+  false,
+)
+
+expect(
+  'codeAction: a lint finding is not searched for as a name',
+  (await actionsFor(46, { diagnostics: [{ range: unknownRange, code: 'L019' }] })).some(a =>
+    a.title.startsWith('Import '),
+  ),
+  false,
+)
+
+expect(
+  'codeAction: an `unknown-name` diagnostic still offers the import',
+  (await actionsFor(47, { diagnostics: [{ range: unknownRange, code: 'unknown-name' }] })).some(a =>
+    a.title.includes('@term/base/text'),
+  ),
+  true,
+)
+
 // argument-type ranking: in a call, a scope value of the expected type sorts ahead of one that does not
 const rankDoc =
   'task double\n  take value, like number\n  like number\n  send back\n    call add\n      read value\n      read value\n\ntask use\n  take amount, like number\n  take label, like text\n  like number\n  send back\n    call double\n      a\n'

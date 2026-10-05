@@ -101,6 +101,8 @@ export type ItemInput = {
   verb?: string
   subject?: string
   source?: string
+  // a diagnostic's stable name, at the end of the title in the source color
+  code?: string
   // epoch milliseconds, now when left out
   clock?: number
   duration?: number
@@ -128,6 +130,7 @@ export function makeItem(input: ItemInput): Event {
   if (input.verb !== undefined) one.verb = input.verb
   if (input.subject !== undefined) one.subject = plainSubject(input.subject)
   if (input.source !== undefined) one.source = input.source
+  if (input.code !== undefined) one.code = input.code
   if (input.duration !== undefined) one.duration = input.duration
   if (input.budget !== undefined) one.budget = input.budget
   if (input.http !== undefined) one.status = { kind: 'http', value: input.http, name: '' }
@@ -479,8 +482,9 @@ export function problemOf(diagnostic: Diagnostic, root: string, text?: string): 
     subject,
     message: rest.map(line => line.trim()).filter(line => line !== ''),
     // the name, and a lint rule's stable code beside it (`prefer-host-for-constant L004`), which is what
-    // `# lint off` takes, so a reader learns from the run what to write
-    facts: [(diagnostic as { rule?: string }).rule ? `${diagnostic.name} ${(diagnostic as { rule?: string }).rule}` : diagnostic.name],
+    // `# lint off` takes, so a reader learns from the run what to write. At the end of the title in the source color
+    // (the user's choice, 2026-10-05), where it was the facts line's one fact
+    code: (diagnostic as { rule?: string }).rule ? `${diagnostic.name} ${(diagnostic as { rule?: string }).rule}` : diagnostic.name,
     fields,
     frames: frame ? [frame] : [],
     place: { path: showPath(diagnostic.file, root), line: diagnostic.span.start.line + 1, column: diagnostic.span.start.column + 1 },

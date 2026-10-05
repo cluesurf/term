@@ -3457,7 +3457,7 @@ export function emitTypeScript(
     tsProven(program),
     boundedLoops(program, lentLists(program)),
     recordPlaces(program).writes,
-    recordCopies(program),
+    recordCopies(program, options?.context),
     asciiTexts(program),
     fillTasks(program),
     recordReuse(program),

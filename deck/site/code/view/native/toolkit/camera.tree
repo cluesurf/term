@@ -1,0 +1,13 @@
+# camera on the platform's own toolkit (device-layer-0003): AVCapturePhotoOutput on macOS and iOS, Camera2 on Android, unavailable under Compose on the desktop.
+# Conforms to ../camera. The runtime is native-camera.swift, native-camera.kt (both Android hosts) and compose/native-camera.kt.
+# The permission runtime is docked too: this capability reads its grant through it (../permission).
+
+dock load
+  load <global:native-camera>, name native-camera
+  load <global:native-permission>, name native-permission
+
+task capture-photo
+  like text
+  send back
+    call native-camera/capture
+      wait true

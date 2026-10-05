@@ -1,0 +1,11 @@
+# network on the platform's own toolkit (device-layer-0010): NWPathMonitor on macOS and iOS, ConnectivityManager on Android, the network interfaces under Compose on the desktop.
+# Conforms to ../network. The runtime is native-network.swift, native-network.kt (both Android hosts) and compose/native-network.kt.
+
+dock load
+  load <global:native-network>, name native-network
+
+task read-network
+  like text
+  send back
+    call native-network/read
+      wait true

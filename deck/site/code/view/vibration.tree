@@ -1,0 +1,20 @@
+# device-layer-0006.
+# Vibration and haptics: a tap or a pattern the person feels, through the feedback generators on iOS,
+# NSHapticFeedbackManager on macOS (a Force Touch trackpad), VibrationEffect on Android, navigator.vibrate in a
+# browser.
+#
+#   vibrate(kind)   kind is light, medium, heavy, success, warning or error. Answers `played`, or `unavailable`
+#                   with nothing to play it on
+#
+# A host with no such capability (the server, the memory host) answers `unavailable`. Every answer is text from the
+# closed set above, so an app compares strings and no platform enum ever reaches it.
+
+load ./native/{platform}/vibration
+  find play-vibration
+
+task vibrate
+  take kind, like text
+  like text
+  send back
+    call play-vibration
+      read kind

@@ -1,0 +1,11 @@
+# motion on a browser (device-layer-0011): DeviceMotionEvent.
+# Conforms to ../motion. The runtime is runtime/native-motion.ts.
+
+dock load
+  load <global:native-motion>, name native-motion
+
+task sample-motion
+  like text
+  send back
+    call native-motion/sample
+      wait true

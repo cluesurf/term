@@ -1,0 +1,16 @@
+# device-layer-0011.
+# Motion: the acceleration the device feels, gravity included, through CoreMotion on iOS, SensorManager on
+# Android and DeviceMotionEvent in a browser. A Mac, a desktop JVM and the iOS simulator have no accelerometer.
+#
+#   read-motion   `<x> <y> <z>` in metres per second squared, to two places, or unavailable
+#
+# A host with no such capability (the server, the memory host) answers `unavailable`. Every answer is text from the
+# closed set above, so an app compares strings and no platform enum ever reaches it.
+
+load ./native/{platform}/motion
+  find sample-motion
+
+task read-motion
+  like text
+  send back
+    call sample-motion

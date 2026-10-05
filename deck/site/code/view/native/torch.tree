@@ -1,0 +1,11 @@
+# torch where there is none (device-layer-0002): the abstract module beside the env dirs, reached by
+# every env with no device (node, the server, the memory host). Conforms to ../torch.
+
+task read-torch
+  like text
+  send back, text <unavailable>
+
+task write-torch
+  take state, like text
+  like text
+  send back, text <unavailable>

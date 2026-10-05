@@ -85,6 +85,8 @@ parentPort?.on('message', (job: Job) => {
       text = unit.text
     }
 
+    // what this job spent building units and computing the roll, which the pool's line reports summed
+    const builtAt = Date.now()
     const result = compileSeparate(
       { file: job.file, text },
       {
@@ -100,12 +102,12 @@ parentPort?.on('message', (job: Job) => {
       },
     )
 
-    // each module's code once per worker: an entry's answer carries every module of its closure, and on @term/bind
-    // 3,091 answers each holding the standard library's 600 modules was more than the parent could hold. The parent
-    // writes a module the first time any answer carries it, so one copy is all it needs
-    // and the entry's roll, from the whole-program compile it is read from, kept where the roll pass after the build
-    // looks for it (call/code/roll.ts `projectRoll`). On a cold cache that pass was a whole-program build of every
-    // entry, on the main thread, after the units: here it is spread across the pool with them
+    const building = Date.now() - builtAt
+    const rolledAt = Date.now()
+
+    // the entry's roll, kept where the roll pass after the build looks for it (call/code/roll.ts `projectRoll`). On a
+    // cold cache that pass was a whole-program build of every entry, on the main thread, after the units: here it is
+    // spread across the pool with them
     if (job.entry && result.ok) {
       cache!.output(rollKey(result.closureKey), () =>
         // it built, so its roll is read off the typed program alone (compile's `rollFast`, task/term/roll-fast.ts)
@@ -116,18 +118,23 @@ parentPort?.on('message', (job: Job) => {
       )
     }
 
-    // and the entry's shim as the text it is, in place of every public name of its closure it is made from
+    const spent = { building, rolling: Date.now() - rolledAt }
+
+    // each module's code once per worker: an entry's answer carries every module of its closure, and on @term/bind
+    // 3,091 answers each holding the standard library's 600 modules was more than the parent could hold. The parent
+    // writes a module the first time any answer carries it, so one copy is all it needs. And the entry's shim as the
+    // text it is, in place of every public name of its closure it is made from
     if (job.entry && result.ok) {
       const fresh = new Map([...result.modules].filter(([file]) => !sent.has(file)))
       fresh.forEach((_, file) => sent.add(file))
 
       const shim = entryShim(job.root, job.file, result.exports, file => unitSlug(job.root, file, deckOf!))
-      parentPort!.postMessage({ file: job.file, result: { ...result, modules: fresh, exports: [], shim }, built: result.built.length })
+      parentPort!.postMessage({ file: job.file, result: { ...result, modules: fresh, exports: [], shim }, built: result.built.length, spent })
 
       return
     }
 
-    parentPort!.postMessage({ file: job.file, result: job.entry ? result : undefined, built: result.ok ? result.built.length : 0 })
+    parentPort!.postMessage({ file: job.file, result: job.entry ? result : undefined, built: result.ok ? result.built.length : 0, spent })
   } catch (error) {
     parentPort!.postMessage({ file: job.file, error: String((error as Error)?.stack ?? error) })
   }

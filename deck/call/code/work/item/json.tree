@@ -194,6 +194,9 @@ task write-json-event
   fork test, is-unequal(one/source, <>)
     hold
       save parts, push-pair(parts, keys/source, write-json-text(one/source))
+  fork test, is-unequal(one/code, <>)
+    hold
+      save parts, push-pair(parts, keys/code, write-json-text(one/code))
   fork test, is-minimum(one/clock, 0)
     hold
       save time, write-json-text(format-instant(one/clock, offset, utc))

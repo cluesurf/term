@@ -1,0 +1,17 @@
+# device-layer-0004.
+# Location: where the device is, once, through the platform's own location service: CoreLocation on macOS and
+# iOS, LocationManager on Android (the platform's, no Play Services), navigator.geolocation in a browser.
+#
+#   current-position   `<latitude> <longitude> <accuracy>`, degrees to six places and metres, or not-determined
+#                      (ask first: request-permission location), denied, unavailable, or failed
+#
+# A host with no such capability (the server, the memory host) answers `unavailable`. Every answer is text from the
+# closed set above, so an app compares strings and no platform enum ever reaches it.
+
+load ./native/{platform}/location
+  find read-position
+
+task current-position
+  like text
+  send back
+    call read-position

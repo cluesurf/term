@@ -1,0 +1,29 @@
+# device-layer-0008.
+# Handing things to the platform: an address opened by whatever handles it, and text offered through the share
+# sheet. UIApplication.open and UIActivityViewController on iOS, NSWorkspace and NSSharingServicePicker on macOS,
+# an ACTION_VIEW intent and the ACTION_SEND chooser on Android, java.awt.Desktop on a desktop JVM, window.open and
+# navigator.share in a browser.
+#
+#   open-address(address)   opened, or unavailable when nothing handles it, or denied when the platform refused
+#   share-text(text)        shown (the sheet is up, and the person decides), or unavailable
+#
+# A host with no such capability (the server, the memory host) answers `unavailable`. Every answer is text from the
+# closed set above, so an app compares strings and no platform enum ever reaches it.
+
+load ./native/{platform}/open
+  find hand-address
+  find present-share
+
+task open-address
+  take address, like text
+  like text
+  send back
+    call hand-address
+      read address
+
+task share-text
+  take text, like text
+  like text
+  send back
+    call present-share
+      read text

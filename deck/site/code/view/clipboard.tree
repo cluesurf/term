@@ -1,0 +1,28 @@
+# The clipboard (device-layer-0005): text in and out of the platform's own pasteboard, the one a person copies and
+# pastes with in every other app. The same two calls on every target; each platform answers with its own:
+#
+#   macOS     NSPasteboard.general        iOS       UIPasteboard.general
+#   Android   ClipboardManager            desktop   the AWT system clipboard (Compose on Linux, Windows, macOS)
+#   browser   navigator.clipboard (a secure page, and the browser's own permission)
+#
+# A host with no clipboard (the server, a worker, the memory host) answers `unavailable` and reads empty text.
+#
+#   read-clipboard           the text on the clipboard now, or empty text when it holds none
+#   write-clipboard(text)    `written`, `denied` (the platform refused, a browser page out of focus or without the
+#                            grant) or `unavailable`
+
+load ./native/{platform}/clipboard
+  find read-clipboard-text
+  find write-clipboard-text
+
+task read-clipboard
+  like text
+  send back
+    call read-clipboard-text
+
+task write-clipboard
+  take text, like text
+  like text
+  send back
+    call write-clipboard-text
+      read text

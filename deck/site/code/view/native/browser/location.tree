@@ -1,0 +1,13 @@
+# location on a browser (device-layer-0004): navigator.geolocation.
+# Conforms to ../location. The runtime is runtime/native-location.ts.
+# The permission runtime is docked too: this capability reads its grant through it (../permission).
+
+dock load
+  load <global:native-location>, name native-location
+  load <global:native-permission>, name native-permission
+
+task read-position
+  like text
+  send back
+    call native-location/position
+      wait true

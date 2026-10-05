@@ -54,7 +54,22 @@ abstract class TermComposeActivity : androidx.activity.ComponentActivity() {
         super.onConfigurationChanged(config)
         for (body in composeHost.configurationChanged.toList()) body()
     }
+
+    // the platform's answer to a permission request (view/native/toolkit/runtime/native-permission.kt)
+    @Deprecated("the framework's callback, which a ComponentActivity still delivers")
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        @Suppress("DEPRECATION")
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        for (body in hostPermissionAnswers.toList()) body(requestCode)
+    }
 }
+
+// The Activity a device capability's runtime asks the platform through, the twin of the Android views host's
+// (dom/native/toolkit/runtime/native-view.kt), so one capability runtime serves both Android hosts (device-layer)
+fun hostActivity(): android.app.Activity? = composeHost.activity
+
+// called with the request code whenever the platform answers a permission request, the Android views host's twin
+val hostPermissionAnswers = mutableListOf<(Int) -> Unit>()
 
 object composeHost {
     var activity: androidx.activity.ComponentActivity? = null

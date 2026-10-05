@@ -1,0 +1,8 @@
+# notification where there is none (device-layer-0007): the abstract module beside the env dirs, reached by
+# every env with no device (node, the server, the memory host). Conforms to ../notification.
+
+task post-notification
+  take title, like text
+  take body, like text
+  like text
+  send back, text <unavailable>

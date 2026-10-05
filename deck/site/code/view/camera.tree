@@ -1,0 +1,17 @@
+# device-layer-0003.
+# The camera: one photo, through AVCapturePhotoOutput on macOS and iOS, Camera2 on Android (the platform's API,
+# no CameraX) and getUserMedia with a canvas in a browser.
+#
+#   take-photo   `photo <where>`: a JPEG file's path on a device, a blob: address in a browser. Or not-determined
+#                (ask first: request-permission camera), denied, unavailable (no camera), or failed
+#
+# A host with no such capability (the server, the memory host) answers `unavailable`. Every answer is text from the
+# closed set above, so an app compares strings and no platform enum ever reaches it.
+
+load ./native/{platform}/camera
+  find capture-photo
+
+task take-photo
+  like text
+  send back
+    call capture-photo

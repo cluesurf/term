@@ -1,0 +1,21 @@
+# device-layer-0007.
+# Local notifications: a message the platform shows outside the app, through UNUserNotificationCenter on macOS
+# and iOS, NotificationManager on Android, and the Notification API in a browser.
+#
+#   show-notification(title, body)   shown, not-determined (ask first: request-permission notification), denied,
+#                                    unavailable, or failed
+#
+# A host with no such capability (the server, the memory host) answers `unavailable`. Every answer is text from the
+# closed set above, so an app compares strings and no platform enum ever reaches it.
+
+load ./native/{platform}/notification
+  find post-notification
+
+task show-notification
+  take title, like text
+  take body, like text
+  like text
+  send back
+    call post-notification
+      read title
+      read body

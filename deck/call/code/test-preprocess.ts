@@ -85,7 +85,7 @@ function statements(
 // values are found by the compiler's own parser, never a pattern, and each is the source text of its node, so it
 // means what it meant inside the comparison. Any other condition, or one whose value spans lines, raises the marker
 // alone. Each line comes back with the source line it came from.
-function guard(group: string[], numbers: number[]): { lines: string[]; from: number[] } {
+function guard(group: string[], numbers: number[], plain = false): { lines: string[]; from: number[] } {
   const line = numbers[0]!
   // the head line is `want <mode>` with the condition indented under it, or the one-line form
   // `want <mode>, <expr>` with the condition inline after the comma. The inline expression used to
@@ -102,11 +102,13 @@ function guard(group: string[], numbers: number[]): { lines: string[]; from: num
   const conditionFrom = inline ? [line] : numbers.slice(1)
 
   const failOn = mode === 'miss' ? 'hook hold' : 'hook miss'
-  const compared = comparison(
-    inline
-      ? [{ text: inline, from: line }]
-      : group.slice(1).map((text, at) => ({ text, from: numbers[at + 1]! })).filter(row => !blank(row.text)),
-  )
+  const compared = plain
+    ? undefined
+    : comparison(
+        inline
+          ? [{ text: inline, from: line }]
+          : group.slice(1).map((text, at) => ({ text, from: numbers[at + 1]! })).filter(row => !blank(row.text)),
+      )
 
   if (compared) {
     const left = `want-left-${line + 1}`
@@ -455,7 +457,11 @@ export function readable(source: string): {
   }
 }
 
-export function preprocessTests(source: string): Preprocessed {
+// `plainWants`: every `want` raises the plain marker (`halt <want:12>`), never the two values it compared. A native
+// backend's report reads a raise's `note` and cannot read the values a `want-missed` carries in its `link`, a generic
+// field that is a boxed dynamic there, so a run on Rust, Swift or Kotlin (`term test --env`) names the line that did not
+// hold and not the values (call/code/test-native.ts)
+export function preprocessTests(source: string, options: { plainWants?: boolean } = {}): Preprocessed {
   const lines = source.split('\n')
   const out: string[] = []
   const origin: number[] = []
@@ -511,7 +517,7 @@ export function preprocessTests(source: string): Preprocessed {
       const head = lines[group[0]!]!.trim().split(/[\s,]/)[0]!
 
       if (head === ASSERTION) {
-        const written = guard(group.map(n => lines[n]!), group)
+        const written = guard(group.map(n => lines[n]!), group, options.plainWants === true)
 
         compares ||= written.lines.some(text => text.trim() === 'halt want-missed')
         written.lines.forEach((text, n) => emit(text, written.from[n] ?? group[0]!))

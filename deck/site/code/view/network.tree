@@ -1,0 +1,16 @@
+# device-layer-0010.
+# The network: whether the device is online and how, through NWPathMonitor on macOS and iOS, ConnectivityManager
+# on Android, the network interfaces on a desktop JVM, and navigator.onLine in a browser.
+#
+#   network-status   `<online|offline> <kind>`, the kind wifi, cellular, wired, other or none
+#
+# A host with no such capability (the server, the memory host) answers `unavailable`. Every answer is text from the
+# closed set above, so an app compares strings and no platform enum ever reaches it.
+
+load ./native/{platform}/network
+  find read-network
+
+task network-status
+  like text
+  send back
+    call read-network

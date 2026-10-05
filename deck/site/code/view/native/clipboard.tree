@@ -1,0 +1,11 @@
+# The clipboard where there is none (device-layer-0005): the abstract module beside the env dirs, reached by every env
+# with no clipboard of its own (node, the server, the memory host). Conforms to ../clipboard.
+
+task read-clipboard-text
+  like text
+  send back, text <>
+
+task write-clipboard-text
+  take text, like text
+  like text
+  send back, text <unavailable>

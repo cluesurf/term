@@ -273,6 +273,8 @@ form key-rule
   link verb, like text
   link subject, like text
   link source, like text
+  # a diagnostic's stable name (`unknown-name`), the event's `code`
+  link code, like text
   link time, like text
   link milliseconds, like text
   link status, like text
@@ -694,9 +696,10 @@ task make-standard
           location-tiers </>, <:>
       fields
         make field-rule
-          location-key <at>
+          # `file` (the user's choice, 2026-10-05): v3 calls it `at`
+          location-key <file>
           action-keys <fix>, <next>, <pass>
-          standard-keys <at>
+          standard-keys <file>
             <why>
             <want>
             <seen>
@@ -903,6 +906,7 @@ task make-standard
           verb <verb>
           subject <subject>
           source <source>
+          code <code>
           time <time>
           milliseconds <ms>
           status <status>

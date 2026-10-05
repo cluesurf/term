@@ -28,6 +28,7 @@ import { generateBridge } from '@term/call/code/cask-generate'
 import { toolVersion } from '@term/call/code/show'
 import { runtimeVersion, toolchainOf, type RuntimeVersion } from '@term/call/code/runtime-version'
 import { publishUpdate, stampUpdateKey } from '@term/call/code/update'
+import { appleUsage, permissionLines } from '@term/call/code/device-declare'
 import { closeRun, count, field, followChild, isRunOpen, location, openRun, report, runTool, showPath } from '@term/call/code/output'
 
 export type CaskTarget = 'macos' | 'ios' | 'android' | 'linux' | 'windows'
@@ -80,7 +81,7 @@ const readRuntime = (file: string): string | undefined =>
 // The swift flags the stdlib's standard stack needs (swift-nio, Hummingbird), written by task/term/native/swift.sh
 // into the native cache. Read when present; an app whose closure never reaches the asynchronous file or server
 // modules builds without them. The path is the script's own convention, so the two cannot disagree.
-function swiftFlags(): string[] {
+export function swiftFlags(): string[] {
   const cache = process.env.TERM_NATIVE_CACHE ?? path.join(process.env.TMPDIR ?? tmpdir(), 'term-native')
   const file = path.join(cache, 'swift', 'flags.txt')
 
@@ -339,7 +340,7 @@ export function crateOf(name: string): string {
 // the manifest of the app's cargo project: the stdlib's own crate list (deck/base/code/native/rust/Cargo.toml) read
 // at build time so the two cannot drift, plus SQLite, plus each platform's toolkit under its own `cfg`, so a
 // project written on one platform checks on any other with the runtime's stub half
-function cargoManifest(crate: string, source: string): string {
+export function cargoManifest(crate: string, source: string): string {
   const stdlib = stdlibBase()
   const own = stdlib ? path.join(stdlib, 'code/native/rust/Cargo.toml') : undefined
   // the `[dependencies]` table alone: what follows the header up to the next table
@@ -755,6 +756,7 @@ export function assembleApk({
   dex,
   assets,
   work,
+  native = '',
 }: {
   out: string
   name: string
@@ -763,6 +765,9 @@ export function assembleApk({
   dex: string
   assets: string
   work: string
+  // the program's native half (buildAndroidProgram's `native`), whose device capabilities decide the permissions the
+  // manifest declares (device-declare.ts)
+  native?: string
 }): string {
   const tools = androidTools()
   const manifest = path.join(work, 'AndroidManifest.xml')
@@ -773,6 +778,7 @@ export function assembleApk({
       `<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="${identifier}" android:versionCode="1" android:versionName="${version}">`,
       `  <uses-sdk android:minSdkVersion="${ANDROID_MINIMUM}" android:targetSdkVersion="${ANDROID_PLATFORM}" />`,
       '  <uses-permission android:name="android.permission.INTERNET" />',
+      ...permissionLines(native),
       // no action bar: the page owns the whole screen, the way it does on every other platform
       `  <application android:label="${name}" android:usesCleartextTraffic="true" android:theme="@android:style/Theme.DeviceDefault.NoActionBar">`,
       // every device trait change is handled in place (native-dom-0012): Android otherwise destroys the Activity, and
@@ -857,12 +863,17 @@ export function assembleIosBundle({
   name,
   identifier,
   version,
+  native = '',
 }: {
   out: string
   name: string
   identifier: string
   version: string
+  // the program's native half, whose device capabilities decide the usage strings Info.plist carries
+  // (device-declare.ts): iOS ends an app that asks for a privacy grant without one
+  native?: string
 }): { app: string; exe: string; resources: string } {
+  const usage = Object.entries(appleUsage(native)).map(([key, text]) => `<key>${key}</key><string>${text}</string>`)
   const app = path.join(out, `${name}.app`)
   rmSync(app, { recursive: true, force: true })
   mkdirSync(app, { recursive: true })
@@ -889,6 +900,7 @@ export function assembleIosBundle({
       // an empty launch screen dictionary is what tells iOS the app is built for the full display; without it the
       // app runs letterboxed in a compatibility window
       '<key>UILaunchScreen</key><dict/>',
+      ...usage,
       '</dict></plist>',
       '',
     ].join('\n'),

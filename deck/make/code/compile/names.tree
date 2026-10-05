@@ -15,6 +15,7 @@
 
 load @term/base/list
   find list
+  find sort-by
 
 load @term/base/hash
   find hash
@@ -67,6 +68,84 @@ task names-printed
           set(printed, name, <{before}{def/print}>)
     save at, add(at, 1)
   back printed
+
+# where a definition sits in a build: its unit, and its place among that unit's definitions
+form def-at
+  link unit, like number
+  link at, like number
+
+# THE SAME FINGERPRINTS, FROM AN INDEX KEPT FOR THE BUILD. `names-reached` builds an index of every definition it is
+# handed, and a unit is handed every definition it reaches: on @term/bind every unit reached the standard library's
+# thousands, and building that index again for each of 3,091 units was most of a cold build (2,447 s of the pool's
+# CPU, 2026-10-05). Here `index` is kept by the caller for the whole build, each name to where it is defined, and grown
+# as units are built; a unit's walk touches only the names it reaches, and keeps a place only in a unit it reaches.
+# The answer is `names-reached`'s over the reached units' definitions in dependency order: a place's key is
+# `unit * span + at`, so the keys sort into that order
+task names-reached-indexed
+  take index
+    like hash
+      like text
+      like list, like def-at
+  # each unit's definitions, by unit
+  take defs
+    like list
+      like list, like name-def
+  # the units this one reaches
+  take reach
+    like hash
+      like number
+      like boolean
+  take used, like list, like text
+  # more than any unit's count of definitions
+  take span, like number
+  like list, like text
+
+  save named, make hash
+  # each place taken, by its key, to the fingerprint there
+  save taken, make hash
+  save queue, make list
+  save none, make list
+  walk used
+    take name
+    fork test, is-equal(has(named, name), false)
+      hold
+        set(named, name, true)
+        push(queue, name)
+
+  walk test
+    hook test
+      is-above(queue/length, 0)
+    hook hold
+      save name, pop(queue)
+      walk get-or-default(index, name, none)
+        take place
+        fork test, has(reach, place/unit)
+          hold
+            save key, add(multiply(place/unit, span), place/at)
+            fork test, is-equal(has(taken, key), false)
+              hold
+                save def, get(get(defs, place/unit), place/at)
+                set(taken, key, def/print)
+                walk def/reads
+                  take read
+                  fork test, is-equal(has(named, read), false)
+                    hold
+                      set(named, read, true)
+                      push(queue, read)
+
+  save prints, make list
+  walk sort-by(keys(taken), itself)
+    take key
+    push(prints, get-or-default(taken, key, <>))
+  back prints
+
+# a place's key, as the order it sorts in
+task itself
+  mark private
+  take key, like number
+  like number
+
+  back key
 
 # The definitions `used` reaches, by their place in `defs`
 task taken-defs

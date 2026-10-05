@@ -47,7 +47,8 @@ ok('every card on the page has a golden test, and in page order', mockups.length
 const written = new Set([...readFileSync(MOCKUP_DIFFERENCES, 'utf8').matchAll(/^### (D\d+)$/gm)].map(match => match[1]!))
 // D33 and D34 are applied to every card by `elbowQuotes` and `oneSpaceFields`, not by a patch, so they are cited here.
 // D35 and D41 are the other way round: the cards are drawn with the mockups' clocks and gray verb (build.ts `STANDARD`)
-const cited = new Set(['D33', 'D34', 'D35', 'D41',...CARDS.flatMap(card => [...card.patches.flatMap(patch => patch.entry.split(' ')), ...(card.entry ? [card.entry] : [])])])
+// D43 (a problem's code on its title) is on no card, and test/item/unit.ts holds it
+const cited = new Set(['D33', 'D34', 'D35', 'D41', 'D42', 'D43',...CARDS.flatMap(card => [...card.patches.flatMap(patch => patch.entry.split(' ')), ...(card.entry ? [card.entry] : [])])])
 const unwritten = [...cited].filter(entry => !written.has(entry))
 const unapplied = [...written].filter(entry => !cited.has(entry))
 const unjustified = CARDS.filter(card => card.whole && !card.entry).map(card => card.caption)
@@ -95,7 +96,7 @@ function applyPatches(lines: Expected[], patches: Patch[]): Expected[] {
 
 function expectedOf(card: Card, mockup: Mockup): Expected[] {
   if (card.whole) {
-    return oneSpaceFields(card.whole, card.colorless === true)
+    return fileKey(oneSpaceFields(card.whole, card.colorless === true), card.colorless === true)
   }
 
   const lines: Expected[] = mockup.lines.map(line => ({
@@ -103,7 +104,34 @@ function expectedOf(card: Card, mockup: Mockup): Expected[] {
     marks: line.marks.map(mark => (mark.role === 'cursor' ? null : mark)),
   }))
 
-  return oneSpaceFields(elbowQuotes(applyPatches(lines, card.patches)), card.colorless === true)
+  return fileKey(oneSpaceFields(elbowQuotes(applyPatches(lines, card.patches)), card.colorless === true), card.colorless === true)
+}
+
+// D42: a location's key is `file`, where the mockups write `at` (the user's choice, 2026-10-05). An `at` key is a dim
+// `at` opening a child line, alone or before its value; a quoted stack frame (`at reconcile (...)`) is text, not dim
+const AT_KEY = /^( {2,})at( |$)/
+
+function fileKey(lines: Expected[], colorless: boolean): Expected[] {
+  return lines.map(line => {
+    const found = AT_KEY.exec(line.text)
+
+    if (!found) {
+      return line
+    }
+
+    const at = found[1]!.length
+
+    if (!colorless && line.marks[at]?.role !== 'dim') {
+      return line
+    }
+
+    const mark = line.marks[at] ?? null
+
+    return {
+      text: `${found[1]}file${line.text.slice(at + 2)}`,
+      marks: [...line.marks.slice(0, at), mark, mark, mark, mark, ...line.marks.slice(at + 2)],
+    }
+  })
 }
 
 // D34: a field's value sits one space after its own key, where the mockups pad every key of an item to the widest

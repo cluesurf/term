@@ -1,0 +1,11 @@
+# network on a browser (device-layer-0010): navigator.onLine and navigator.connection.
+# Conforms to ../network. The runtime is runtime/native-network.ts.
+
+dock load
+  load <global:native-network>, name native-network
+
+task read-network
+  like text
+  send back
+    call native-network/read
+      wait true

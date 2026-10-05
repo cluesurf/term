@@ -893,7 +893,7 @@ export const CARDS: Card[] = [
         '{"glyph":"done","verb":"GET","subject":"/shape","source":"api:1","time":"2026-10-03T14:02:07.412-07:00","ms":18,"status":200,"bytes":84,"kind":"request"}',
       ),
       plain(
-        '{"glyph":"failed","verb":"exit","subject":"code 1","source":"api:2","time":"2026-10-03T14:02:09.660-07:00","message":"A number went past the i64 range","fields":{"at":"code/report.tree:8:14"},"kind":"lifecycle"}',
+        '{"glyph":"failed","verb":"exit","subject":"code 1","source":"api:2","time":"2026-10-03T14:02:09.660-07:00","message":"A number went past the i64 range","fields":{"file":"code/report.tree:8:14"},"kind":"lifecycle"}',
       ),
       plain(
         '{"glyph":"warning","verb":"job","subject":"send-email","source":"worker","time":"2026-10-03T14:02:11.020-07:00","ms":3000,"counts":{"retries":1,"retries_total":3},"facts":["#4813"],"kind":"job"}',
@@ -990,7 +990,8 @@ export const CARDS: Card[] = [
       replace('D39', 10, 2, row(I, 'Could not reconcile invoice 99231 against the ledger because the ledger entry'), row('    ', 'for 2026-09-30 was missing.')),
       // one space after `at`, not padded to `ledger`, so the location fits beside its key
       replace('D37', 13, 2, row(I, d('at'), ' ', 'services/payments/reconciler/src/jobs/reconcile-invoice.ts:118:22')),
-      replace('D39', 16, 2, row('    ', 'https://ledger.internal.shape.dev/accounts/acct_7Q2/entries?from=2026-09-30&'), row('      ', 'to=2026-10-01')),
+      // a value that does not fit starts beside its key and goes on 2 past it (the user's choice, 2026-10-05)
+      replace('D37 D39', 15, 3, row(I, d('ledger'), ' ', 'https://ledger.internal.shape.dev/accounts/acct_7Q2/entries?'), row('    ', 'from=2026-09-30&to=2026-10-01')),
       replace(
         'D37',
         18,
