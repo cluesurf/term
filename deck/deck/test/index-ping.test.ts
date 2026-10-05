@@ -122,12 +122,12 @@ describe('pingIndex', () => {
   })
 
   it('names the key set too, the second package the index reads, when only it is private', async () => {
-    const index = fakeIndex({ status: 200, ghcr: { 'cluesurf/term/keys': 401 } })
+    const index = fakeIndex({ status: 200, ghcr: { 'cluesurf/term/name': 401 } })
     const ping = await pingIndex({ repository: REPOSITORY, digest: DIGEST, env: {}, fetch: index.fetch })
     const reason = (ping as { reason: string }).reason
 
     expect(ping.form).toBe('failed')
-    expect(reason).toContain('https://github.com/orgs/cluesurf/packages/container/term%2Fkeys/settings')
+    expect(reason).toContain('https://github.com/orgs/cluesurf/packages/container/term%2Fname/settings')
     expect(reason).not.toContain('term%2Fbind')
     expect(index.seen).toHaveLength(0)
   })

@@ -145,6 +145,47 @@ task describe
     uncovered.ok ? 'compiled' : uncovered.diagnostics.map(d => d.message).join(' | '),
   )
 
+  // a raise INSIDE a handler (and inside a guarded body): the exception filler walks both, so the raise's props are
+  // wrapped and checked as anywhere else. Until 2026-10-04 it skipped a guard entirely, and a raise there failed as
+  // "`absence` has no field `thing`", which is how translating one exception into another was impossible
+  const TRANSLATE = `${STDLIB}
+form user-absence
+  like absence
+    bind note, <No such user>
+
+task find-user
+  take key, like text
+  like text
+  mark unsafe
+    halt user-absence
+      bind thing, read key
+  halt take
+    take problem
+    halt absence
+      bind thing, text <translated {{key}}>
+
+task describe
+  take key, like text
+  like text
+  mark unsafe
+    send back
+      call find-user
+        read key
+  halt take
+    take problem
+    send back, read problem/link/thing
+`
+  const translate = compile({ file: 't.tree', text: TRANSLATE })
+  ok('a raise inside a handler compiles', translate.ok, translate.ok ? '' : translate.diagnostics.map(d => d.message).join(' | '))
+
+  if (translate.ok) {
+    const dir = mkdtempSync(join(tmpdir(), 'term-guard-translate-'))
+    const file = join(dir, 't.mjs')
+    writeFileSync(file, transformSync(translate.typescript, { loader: 'ts', format: 'esm' }).code)
+    const mod = await import(pathToFileURL(file).href)
+    ok('the handler\'s raise carries its own props', mod.describe('zed') === 'translated zed', String(mod.describe('zed')))
+  }
+
   const ORPHAN = `${STDLIB}
 task orphan
   halt take

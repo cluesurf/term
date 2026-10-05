@@ -742,13 +742,17 @@ task dfa-end
         call add(read(at), code(1))
   send back, read ended
 
-# where the longest match of the reversed pattern, run backwards from `end`, starts: the leftmost-first match's start
+# where the longest match of the reversed pattern, run backwards from `end` and no further back than `floor`, starts:
+# the leftmost-first match's start. The floor is where the search began, so a later search of `find-matches` cannot
+# reach back into text an earlier match already covered (a start below it would be a match the forward run, which
+# began at the floor, never saw)
 task dfa-start
   take d, like dfa
   take runes
     like list
       like number
   take end, like number
+  take floor, like number
   like number
   save n, read runes/length
   save seeds, make list
@@ -783,7 +787,7 @@ task dfa-start
       fork test
         hook test
           call or
-            call is-maximum(read(at), code(0))
+            call is-maximum(read(at), read(floor))
             call is-equal(read(threads/length), code(0))
         hook hold
           send back, read started
@@ -823,7 +827,7 @@ task dfa-search
     hook hold
       send back, read none
   save start
-    call dfa-start(read(backward), read(s/runes), read(end))
+    call dfa-start(read(backward), read(s/runes), read(end), read(from))
   fork test
     hook test
       call is-below(read(start), code(0))

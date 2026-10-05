@@ -3,6 +3,11 @@
 object regex {
     private val compiled = HashMap<String, java.util.regex.Pattern>()
 
+    // the code point offset of UTF-16 offset `at`, counted on from a known pair, or from the text's start for a group
+    // a lookbehind found before it (counting backwards from the pair would throw)
+    private fun pointAt(text: String, at: Int, fromUnit: Int, fromPoint: Long): Long =
+        if (at < fromUnit) text.codePointCount(0, at).toLong() else fromPoint + text.codePointCount(fromUnit, at)
+
     fun search(pattern: String, text: String, from: Long): MutableList<Long> {
         val out = mutableListOf<Long>()
         val engine = compiled[pattern] ?: try {
@@ -22,8 +27,8 @@ object regex {
                 out.add(-1L)
                 out.add(-1L)
             } else {
-                out.add(from + text.codePointCount(unit, start))
-                out.add(from + text.codePointCount(unit, found.end(group)))
+                out.add(pointAt(text, start, unit, from))
+                out.add(pointAt(text, found.end(group), unit, from))
             }
         }
         return out
@@ -59,8 +64,8 @@ object regex {
                     out.add(-1L)
                     out.add(-1L)
                 } else {
-                    out.add(startPoint + text.codePointCount(start, s))
-                    out.add(startPoint + text.codePointCount(start, found.end(group)))
+                    out.add(pointAt(text, s, start, startPoint))
+                    out.add(pointAt(text, found.end(group), start, startPoint))
                 }
             }
             unit = if (end > start) end else if (end < text.length) text.offsetByCodePoints(end, 1) else text.length + 1

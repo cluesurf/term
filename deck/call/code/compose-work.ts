@@ -143,7 +143,7 @@ export function startComposeWork(input: {
     const onExit = () => input.onEvent({ kind: 'exit', generation: current })
     const launched =
       'jar' in built
-        ? launchDesktop({ jar: built.jar, classpath: built.classpath, main: built.main, address, env: input.env ?? {}, onExit })
+        ? launchDesktop({ root, jar: built.jar, classpath: built.classpath, main: built.main, address, env: input.env ?? {}, onExit })
         : await launchAndroid({ apk: built.apk, identifier, onExit })
     running = launched.running
     input.onEvent({ kind: 'launch', generation: current, child: launched.child })
@@ -201,8 +201,12 @@ function forgetAddress(target: ComposeTarget, address: string, identifier: strin
   }
 }
 
-// the app on this machine's JVM, its history at `address`. Stopping asks it to end and, after three seconds, makes it
+// the app on this machine's JVM, its history at `address`, started IN the app's folder (`root`, named by path): a JVM
+// cannot start in a folder that no longer exists, and inheriting the loop's own let a folder deleted under the loop
+// stop every relaunch after it. It is also the desktop's bundle path (`bundlePath`, the folder the app started from).
+// Stopping asks it to end and, after three seconds, makes it
 function launchDesktop(input: {
+  root: string
   jar: string
   classpath: string
   main: string
@@ -211,6 +215,7 @@ function launchDesktop(input: {
   onExit: () => void
 }): { running: Running; child: ChildProcess } {
   const child = spawn('java', ['--enable-native-access=ALL-UNNAMED', '-classpath', `${input.jar}:${input.classpath}`, input.main], {
+    cwd: input.root,
     env: { ...process.env, ...input.env, TERM_DEV_ADDRESS: input.address },
     stdio: ['ignore', 'pipe', 'pipe'],
   })

@@ -1,15 +1,22 @@
-# One item (section 2): the title line, the facts line, then the details at column 11.
+# One item (section 2): the title line, the facts line, then the details at column
+# 11.
 #
-# THE ORDER OF THE DETAILS. Section 2 lists them as message lines, fields, code frame, quoted output, progress bar.
-# Section 12's own example and every mockup refine that: the location field `at` comes before the code frame it
-# points into, and the fields that say what to DO (`fix`, `next`, `pass`) come last, after the quote, so the item
-# ends on the action. So: message, `at`, frame, the other fields, quote, plain data, choices and the answer being
-# typed, the action fields, the bar. The standard's field rule names which key is the location and which are actions.
+# THE ORDER OF THE DETAILS. Section 2 lists them as message lines, fields, code
+# frame, quoted output, progress bar.
+# Section 12's own example and every mockup refine that: the location field `at`
+# comes before the code frame it
+# points into, and the fields that say what to DO (`fix`, `next`, `pass`) come last,
+# after the quote, so the item
+# ends on the action. So: message, `at`, frame, the other fields, quote, plain data,
+# choices and the answer being
+# typed, the action fields, the bar. The standard's field rule names which key is
+# the location and which are actions.
 # note/term/output/mockup-differences.md records it.
 #
-# EVERY KEY IN THE ITEM IS PADDED TO THE WIDEST (section 7), the ones the library adds included: `budget` when the
-# duration is over it (section 11), `log` when quoted output was cut and the full log has a path (section 7).
-
+# EVERY KEY IN THE ITEM IS PADDED TO THE WIDEST (section 7), the ones the library
+# adds included: `budget` when the
+# duration is over it (section 11), `log` when quoted output was cut and the full
+# log has a path (section 7).
 load ./standard
   find standard
 
@@ -57,17 +64,24 @@ load ./data
 load ./clean
   find trim-lines
 
-# the fields an item draws: its own, then `budget` and `log` when the library adds them
+# the fields an item draws: its own, then `budget` and `log` when the library adds
+# them
 task list-fields
   take event, like event
   take room, like room
+
   like list, like item-field
+
   save out, make list
+
   walk event/fields
     take one
     out/push one
   save rule, room/standard/fields
-  fork test, and(is-minimum(event/budget, 0), and(is-minimum(event/duration, 0), is-above(event/duration, event/budget)))
+
+  fork test
+    and is-minimum(event/budget, 0)
+      and(is-minimum(event/duration, 0), is-above(event/duration, event/budget))
     hold
       save budget, spans-text(format-duration(event/budget, room/standard, <text>))
       out/push plain-field(rule/budget-key, budget)
@@ -78,14 +92,18 @@ task list-fields
       out/push log-field
   back out
 
-# the fields in one of the three places an item puts them: `location` (before the frame), `action` (last), or `other`
+# the fields in one of the three places an item puts them: `location` (before the
+# frame), `action` (last), or `other`
 task pick-fields
   take fields, like list, like item-field
   take place, like text
   take room, like room
+
   like list, like item-field
+
   save rule, room/standard/fields
   save out, make list
+
   walk fields
     take one
     save where, <other>
@@ -100,69 +118,105 @@ task pick-fields
         out/push one
   back out
 
-# the details of an item, drawn at their own left edge in a room as wide as the line less the body column
+# the details of an item, drawn at their own left edge in a room as wide as the line
+# less the body column
 task draw-details
   take event, like event
   take room, like room
+
   like list, like line
+
   save out, make list
   save detail-room, narrow-room(room, room/standard/layout/body-column)
   save debug, is-unequal(event/level, <>)
   save text-role, <text>
+
   fork test, debug
     hold
       save text-role, <dim>
   save fields, list-fields(event, room)
   save key-width, measure-keys(fields, room)
-  push-lines(out, draw-message(event/message, detail-room, text-role))
-  push-lines(out, draw-fields(pick-fields(fields, <location>, room), key-width, detail-room, text-role))
+  save out, push-lines(out, draw-message(event/message, detail-room, text-role))
+
+  save out
+    push-lines out
+      draw-fields pick-fields(fields, <location>, room)
+        key-width
+        detail-room
+        text-role
   save role, glyph-role(room/standard, event/glyph)
+
   walk event/frames
     take one
-    push-lines(out, draw-frame(one, detail-room, role))
-  push-lines(out, draw-fields(pick-fields(fields, <other>, room), key-width, detail-room, text-role))
+    save out, push-lines(out, draw-frame(one, detail-room, role))
+  save out
+    push-lines out
+      draw-fields pick-fields(fields, <other>, room)
+        key-width
+        detail-room
+        text-role
   fork test, is-above(event/quote/length, 0)
     hold
-      push-lines(out, draw-quote(event/quote, event/quote-earlier, detail-room))
+      save out
+        push-lines(out, draw-quote(event/quote, event/quote-earlier, detail-room))
   fork test, is-above(event/columns/length, 0)
     hold
-      push-lines(out, draw-table(event/columns, event/rows, detail-room))
+      save out, push-lines(out, draw-table(event/columns, event/rows, detail-room))
   fork test, is-above(event/nodes/length, 0)
     hold
-      push-lines(out, draw-tree(event/nodes, detail-room))
+      save out, push-lines(out, draw-tree(event/nodes, detail-room))
   fork test, is-above(event/entries/length, 0)
     hold
-      push-lines(out, draw-list(event/entries, event/entry-total, detail-room))
+      save out
+        push-lines(out, draw-list(event/entries, event/entry-total, detail-room))
   fork test, is-above(event/choices/length, 0)
     hold
-      push-lines(out, draw-choices(event/choices, detail-room))
+      save out, push-lines(out, draw-choices(event/choices, detail-room))
   fork test, event/asking
     hold
-      push-lines(out, draw-input(event/typed, event/secret, detail-room))
-  push-lines(out, draw-fields(pick-fields(fields, <action>, room), key-width, detail-room, text-role))
-  push-lines(out, draw-bar(event/done, event/total, detail-room))
+      save out, push-lines(out, draw-input(event/typed, event/secret, detail-room))
+  save out
+    push-lines out
+      draw-fields pick-fields(fields, <action>, room)
+        key-width
+        detail-room
+        text-role
+  save out, push-lines(out, draw-bar(event/done, event/total, detail-room))
   back indent-lines(out, room/standard/layout/body-column)
 
+# `out` with `lines` added, sent BACK: the caller saves it (`save out,
+# push-lines(out, ...)`), so the write is not lost
+# once a list is a value rather than a shared handle (self-hosting-0026,
+# check/lost-writes.ts)
 task push-lines
   take out, like list, like line
   take lines, like list, like line
-  like void
+
+  like list, like line
+
   walk lines
     take one
     out/push one
+  back out
 
-# the whole item: title line, facts line (none on a `date` item, section 2), details. `tagged` is false when a
+# the whole item: title line, facts line (none on a `date` item, section 2),
+# details. `tagged` is false when a
 # service stream is filtered to one source and the tags are left out (section 11)
 task draw-item
   take event, like event
   take room, like room
   take tagged, like boolean
+
   like list, like line
+
   save out, make list
-  push-lines(out, draw-title-line(event, room, tagged))
-  save dated, or(is-equal(event/kind, <date>), is-equal(event/verb, room/standard/services/date-verb))
+  save out, push-lines(out, draw-title-line(event, room, tagged))
+
+  save dated
+    or is-equal(event/kind, <date>)
+      is-equal(event/verb, room/standard/services/date-verb)
   fork test, dated
     miss
-      push-lines(out, draw-facts-line(event, room))
-  push-lines(out, draw-details(event, room))
+      save out, push-lines(out, draw-facts-line(event, room))
+  save out, push-lines(out, draw-details(event, room))
   back trim-lines(out)

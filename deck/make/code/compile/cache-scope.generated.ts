@@ -42,6 +42,7 @@ export const CACHE_SCOPE: Record<string, string[]> = {
     'deck/make/code/check/constants.ts',
     'deck/make/code/check/contract.ts',
     'deck/make/code/check/deprecated.ts',
+    'deck/make/code/check/dock-shadow.ts',
     'deck/make/code/check/duplicates.ts',
     'deck/make/code/check/effects.ts',
     'deck/make/code/check/elaborate.ts',

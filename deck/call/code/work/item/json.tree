@@ -125,14 +125,17 @@ task make-json-key
         save out, <{out}{rune-to-text(rune)}>
   back out
 
+# `parts` with one `"key":value` added, sent BACK for the caller to save
+# (self-hosting-0026)
 task push-pair
   take parts, like list, like text
   take key, like text
   take value, like text
 
-  like void
+  like list, like text
 
   parts/push <{write-json-text(key)}:{value}>
+  back parts
 
 task join-parts
   take parts, like list, like text
@@ -183,38 +186,40 @@ task write-json-event
 
   save keys, standard/keys
   save parts, make list
-  push-pair(parts, keys/glyph, write-json-text(one/glyph))
-  push-pair(parts, keys/verb, write-json-text(one/verb))
-  push-pair(parts, keys/subject, write-json-text(spans-text(one/subject)))
+  save parts, push-pair(parts, keys/glyph, write-json-text(one/glyph))
+  save parts, push-pair(parts, keys/verb, write-json-text(one/verb))
 
+  save parts
+    push-pair(parts, keys/subject, write-json-text(spans-text(one/subject)))
   fork test, is-unequal(one/source, <>)
     hold
-      push-pair(parts, keys/source, write-json-text(one/source))
+      save parts, push-pair(parts, keys/source, write-json-text(one/source))
   fork test, is-minimum(one/clock, 0)
     hold
-      push-pair parts
-        keys/time
-        write-json-text(format-instant(one/clock, offset, utc))
+      save time, write-json-text(format-instant(one/clock, offset, utc))
+      save parts, push-pair(parts, keys/time, time)
   fork test, is-minimum(one/duration, 0)
     hold
-      push-pair(parts, keys/milliseconds, <{make-whole(one/duration)}>)
+      save parts, push-pair(parts, keys/milliseconds, <{make-whole(one/duration)}>)
   fork test, is-unequal(one/status/kind, <>)
     hold
-      push-pair(parts, keys/status, write-json-status(one/status, standard))
+      save parts
+        push-pair(parts, keys/status, write-json-status(one/status, standard))
   fork test, is-minimum(one/bytes, 0)
     hold
-      push-pair(parts, keys/bytes, <{make-whole(one/bytes)}>)
+      save parts, push-pair(parts, keys/bytes, <{make-whole(one/bytes)}>)
   fork test, is-above(one/tallies/length, 0)
     hold
       save counts, make list
       walk one/tallies
         take each
         save key, make-json-key(each/noun)
-        push-pair(counts, key, <{make-whole(each/amount)}>)
+        save counts, push-pair(counts, key, <{make-whole(each/amount)}>)
         fork test, is-minimum(each/total, 0)
           hold
-            push-pair(counts, <{key}_total>, <{make-whole(each/total)}>)
-      push-pair(parts, keys/counts, join-parts(counts, <\{>, <\}>))
+            save counts
+              push-pair(counts, <{key}_total>, <{make-whole(each/total)}>)
+      save parts, push-pair(parts, keys/counts, join-parts(counts, <\{>, <\}>))
   # the tool and the zone have no key of their own in section 19, so they lead
   # `facts`, as they lead the facts line
   save rest, make list
@@ -232,7 +237,7 @@ task write-json-event
       rest/push write-json-text(<×{make-whole(one/repeat)}>)
   fork test, is-above(rest/length, 0)
     hold
-      push-pair(parts, keys/facts, join-parts(rest, <[>, <]>))
+      save parts, push-pair(parts, keys/facts, join-parts(rest, <[>, <]>))
   fork test, is-above(one/message/length, 0)
     hold
       save joined, <>
@@ -244,24 +249,27 @@ task write-json-event
             save joined, <{joined}\n>
         save joined, <{joined}{each}>
         save at, add(at, 1)
-      push-pair(parts, keys/message, write-json-text(joined))
+      save parts, push-pair(parts, keys/message, write-json-text(joined))
   save fields, make list
 
   walk one/fields
     take each
-    push-pair(fields, each/key, write-json-text(spans-text(each/value)))
+    save fields
+      push-pair(fields, each/key, write-json-text(spans-text(each/value)))
   fork test
     and is-minimum(one/budget, 0)
       and(is-minimum(one/duration, 0), is-above(one/duration, one/budget))
     hold
-      push-pair(fields, standard/fields/budget-key, <{make-whole(one/budget)}>)
+      save fields
+        push-pair(fields, standard/fields/budget-key, <{make-whole(one/budget)}>)
   fork test, is-unequal(one/quote-log, <>)
     hold
-      push-pair(fields, standard/fields/log-key, write-json-text(one/quote-log))
+      save fields
+        push-pair(fields, standard/fields/log-key, write-json-text(one/quote-log))
   fork test, is-above(fields/length, 0)
     hold
-      push-pair(parts, keys/fields, join-parts(fields, <\{>, <\}>))
-  push-pair(parts, keys/kind, write-json-text(one/kind))
+      save parts, push-pair(parts, keys/fields, join-parts(fields, <\{>, <\}>))
+  save parts, push-pair(parts, keys/kind, write-json-text(one/kind))
   back join-parts(parts, <\{>, <\}>)
 
 # a whole run as `--log json` writes it (section 19): every event, the hidden ones

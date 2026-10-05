@@ -266,41 +266,49 @@ test <escape makes a pattern of literal text>
           text <axb>
         false
 
-test <what is not in the dialect is refused on every backend>
+# what the dialect refused until 2026-10-04, read now with the pattern engine's meaning on every backend: a lookahead,
+# a Unicode word edge, a back reference, and a group in a repetition reporting its last iteration
+test <the whole pattern syntax, the same on every backend>
   want hold
     call and
       call and
-        call and
-          call is-equal
-            call is-valid-pattern
-              text <(?=a)>
-            false
-          call is-equal
-            call is-valid-pattern
-              text <\bword>
-            false
-        call and
-          call is-equal
-            call is-valid-pattern
-              text <(a)\1>
-            false
-          call is-equal
-            call is-valid-pattern
-              text <(?:(a)|b)+>
-            false
+        call is-equal
+          call describe-hit
+            text <\w+(?=,)>
+            text <ab, cd>
+          text <0:2:ab>
+        call is-equal
+          call describe-hit
+            text <\bé\w*>
+            text <aé éb>
+          text <3:5:éb>
       call and
-        call and
-          call is-equal
-            call is-valid-pattern
-              text <[a>
-            false
-          call is-equal
-            call is-valid-pattern
-              text <a{3,1}>
-            false
-        call and
+        call is-equal
+          call describe-hit
+            text <(\w)\1>
+            text <abccd>
+          text <2:4:cc|c>
+        call is-equal
+          call describe-hit
+            text <(?:(a)|b)+>
+            text <ab>
+          text <0:2:ab|~>
+
+test <a text that is not a pattern is refused on every backend>
+  want hold
+    call and
+      call and
+        call is-equal
           call is-valid-pattern
-            text <(a|b)+[&~-]>
-          call matches
-            text <^[&~]+$>
-            text <&~&>
+            text <[a>
+          false
+        call is-equal
+          call is-valid-pattern
+            text <a{3,1}>
+          false
+      call and
+        call is-valid-pattern
+          text <(a|b)+[&~-]>
+        call matches
+          text <^[&~]+$>
+          text <&~&>

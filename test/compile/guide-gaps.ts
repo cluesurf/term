@@ -1152,6 +1152,29 @@ task use
     ok('a sheet that does not parse is refused, not written empty', !unparsed.ok, unparsed.ok ? JSON.stringify(unparsed.css) : '')
   }
 
+  // ---- a local named like a docked module hides it: the browser `set-title`'s `title.set is not a function` ----
+  {
+    const hidden = build(`dock load
+  load <global:title>, name title
+
+task set-title
+  take title, like text
+  call title/set
+    read title
+`)
+    ok('a parameter named like the module its file docks warns, at the parameter', hidden.warnings.some(w => /^dock-shadow: "title" in "set-title" hides the module this file docks as "title"/.test(w)), hidden.warnings.join(' | ') || hidden.messages)
+
+    const renamed = build(`dock load
+  load <global:title>, name title
+
+task set-title
+  take text, like text
+  call title/set
+    read text
+`)
+    ok('renamed, it does not', !renamed.warnings.some(w => w.startsWith('dock-shadow')), renamed.warnings.join(' | ') || renamed.messages)
+  }
+
   // ---- library/collections: the method form of a hash task runs on a native `Map` ----
   {
     const built = build(`load @term/base/hash

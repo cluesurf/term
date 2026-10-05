@@ -72,9 +72,9 @@ public class KotlinWorker {
 const THREAD = `
 const { spawn } = require('node:child_process')
 const { workerData } = require('node:worker_threads')
-const { java, args, port, flag } = workerData
+const { java, args, cwd, port, flag } = workerData
 const signal = new Int32Array(flag)
-const child = spawn(java, args, { stdio: ['pipe', 'pipe', 'inherit'] })
+const child = spawn(java, args, { cwd, stdio: ['pipe', 'pipe', 'inherit'] })
 let buffer = ''
 let ended = false
 const answer = reply => {
@@ -131,7 +131,16 @@ function kotlinHome(): string {
   return home
 }
 
-// a warm compiler, its source written into `dir`. `close` ends the JVM; a compile after it answers as failed
+// the major version of the `java` on the PATH: `openjdk version "25.0.2"` is 25, `"1.8.0"` is 8
+function javaMajor(): number {
+  const said = spawnSync('java', ['-version'], { encoding: 'utf8' }).stderr ?? ''
+  const found = /version "(\d+)(?:\.(\d+))?/.exec(said)
+
+  return !found ? 0 : found[1] === '1' ? Number(found[2] ?? 0) : Number(found[1])
+}
+
+// a warm compiler, its source written into `dir`, which is also where it runs. `close` ends the JVM; a compile after
+// it answers as failed
 export function startKotlinWorker(dir: string): { compile: KotlinCompiler; close(): void } {
   const home = kotlinHome()
   mkdirSync(dir, { recursive: true })
@@ -143,14 +152,16 @@ export function startKotlinWorker(dir: string): { compile: KotlinCompiler; close
   const { port1: mine, port2: theirs } = new MessageChannel()
   const args = [
     '-Xmx3g',
-    '--enable-native-access=ALL-UNNAMED',
+    // what `kotlinc` passes from Java 24, which knows these flags: native access for the compiler, and no
+    // `sun.misc.Unsafe` deprecation warnings printed into the session's output (KT-76799)
+    ...(javaMajor() >= 24 ? ['--enable-native-access=ALL-UNNAMED', '--sun-misc-unsafe-memory-access=allow'] : []),
     `-Dkotlin.home=${home}`,
     '-Dkotlin.environment.keepalive=true',
     '-cp',
     join(home, 'lib', 'kotlin-compiler.jar'),
     source,
   ]
-  const thread = new Worker(THREAD, { eval: true, workerData: { java: 'java', args, port: theirs, flag }, transferList: [theirs] })
+  const thread = new Worker(THREAD, { eval: true, workerData: { java: 'java', args, cwd: dir, port: theirs, flag }, transferList: [theirs] })
   thread.unref()
 
   return {

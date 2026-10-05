@@ -762,6 +762,11 @@ export function extendForms(
       case 'function':
         node.body.forEach(x => walkStatement(s, x))
         break
+      // a `mark unsafe` body and its `halt take` handler, where a raise is as ordinary as anywhere
+      case 'guard':
+        node.body.forEach(x => walkStatement(s, x))
+        node.catch?.body.forEach(x => walkStatement(s, x))
+        break
       default:
         break
     }

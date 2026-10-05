@@ -53,6 +53,38 @@ for (const [label, text, want] of cases) {
   ok(label, Array.isArray(got) && JSON.stringify(got) === JSON.stringify(want), typeof got === 'string' ? got : JSON.stringify(got))
 }
 
+// the second and third patterns: one collection, two holders, a write through one and a read of the other. Each is
+// counted by the message it raises
+function holders(text: string): string[] | string {
+  const result = compile({ file: '/gate/code/holders.tree', text }, { resolve, leanOf: () => true })
+
+  if (!result.ok) {
+    return result.diagnostics.map(d => d.message).join(' | ')
+  }
+
+  return result.warnings
+    .filter(d => /never sees the write|keeps the collection as it was stored/.test(d.message))
+    .map(d => (/holds the same collection/.test(d.message) ? 'alias' : 'store'))
+}
+
+const LOG = 'load @term/base/console\n  find log\n\n'
+const BOX = 'form box\n  link items, like list, like number\n\n'
+
+const holderCases: [string, string, string[]][] = [
+  ['an alias written through one name and read through the other', `${LOG}task run\n  save a, make list\n  save b, a\n  b/push(1)\n  log(<{a/length}>)\n`, ['alias']],
+  ['an alias written and read through the same name is left alone', `${LOG}task run\n  save a, make list\n  save b, a\n  b/push(1)\n  log(<{b/length}>)\n`, []],
+  ['an alias the other name never reads again is left alone', `${LOG}task run\n  save a, make list\n  log(<{a/length}>)\n  save b, a\n  b/push(1)\n`, []],
+  ['a list written after it was stored in a record, the record read after', `${LOG}${BOX}task run\n  save xs, make list\n  save r\n    make box\n      bind items, xs\n  xs/push(1)\n  log(<{r/items/length}>)\n`, ['store']],
+  ['an alias bound again to a copy before the write is left alone (pattern/pike.tree)', `${LOG}task run\n  save a, make list\n  save b, a\n  save b, make list\n  b/push(1)\n  log(<{a/length}>)\n`, []],
+  ['a list written before it was stored is left alone', `${LOG}${BOX}task run\n  save xs, make list\n  xs/push(1)\n  save r\n    make box\n      bind items, xs\n  log(<{r/items/length}>)\n`, []],
+  ['a list written after it was pushed into another, the other read after', `${LOG}task run\n  save rows, make list\n  save row, make list\n  rows/push(row)\n  row/push(1)\n  log(<{rows/length}>)\n`, ['store']],
+]
+
+for (const [label, text, want] of holderCases) {
+  const got = holders(text)
+  ok(label, Array.isArray(got) && JSON.stringify(got) === JSON.stringify(want), typeof got === 'string' ? got : JSON.stringify(got))
+}
+
 console.log(`\ncollection-writes: ${pass} pass, ${fail} fail`)
 
 if (fail > 0) {

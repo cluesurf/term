@@ -19,6 +19,7 @@ import { checkMillDefinition } from '@term/make/code/compile/mill-check'
 import { resolve } from '@term/make/code/check/resolve'
 import { check } from '@term/make/code/check/infer'
 import { checkAsyncArguments, resolveAsync } from '@term/make/code/check/async-resolve'
+import { checkDockShadow } from '@term/make/code/check/dock-shadow'
 import {
   disambiguateOverloads,
   overloadGroups,
@@ -977,6 +978,8 @@ export function compileProgram(
     ...warnDeprecated(program, file),
     // a write to a list or hash parameter its caller never sees under value semantics (check/lost-writes.ts, 0026)
     ...warnLostCollectionWrites(program, file),
+    // a local named like a module its file docks, which hides the module (check/dock-shadow.ts)
+    ...checkDockShadow(program),
     // a host description's undeclared types and imports, counted rather than refused (HOST_DESCRIPTIONS)
     ...(describesHost ? [...typeNameDiagnostics, ...staleFinds].map(d => ({ ...d, severity: 'warning' as const })) : []),
   ].map(d => (d.span.file !== undefined && d.span.file !== d.file ? { ...d, file: d.span.file } : d))

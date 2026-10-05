@@ -339,6 +339,209 @@ function eachWrite(
   visit(node)
 }
 
+// ONE COLLECTION, TWO HOLDERS (self-hosting-0026, the second and third value-semantics patterns). Inside one task:
+//
+//   save b, a           then a write through `b`, then a read of `a`: under values `a` never saw the write
+//   save r, make box    then a write to `xs`, then a read of `r`: the record kept the list as it was when stored
+//     bind items, xs
+//
+// Every backend shares the collection today, so both read the write now, and neither will once a list is a value.
+// Found in source order: the alias or the store, then a write through one holder, then a read of the OTHER. A write
+// the other holder never reads afterwards changes nothing anybody sees, and is left alone. WARNED, like the first
+function holdersOf(task: Task, file: string, byName: Map<string, Task[]>, writes: Map<Task, Set<number>>): Diagnostic[] {
+  type Event = { at: number; span: unknown }
+  // `pairs`: two names holding one collection, from the moment they were joined
+  const pairs: { one: string; other: string; at: number; kind: 'alias' | 'store' }[] = []
+  const written = new Map<string, Event[]>()
+  const reads = new Map<string, number[]>()
+  // every time a name is bound again: from then on it holds whatever it was given, and a pair it was in has ended
+  const rebinds = new Map<string, number[]>()
+  let clock = 0
+
+  const collection = (node: unknown): boolean => isCollection((node as { type?: Type })?.type)
+  const variableName = (node: unknown): string | undefined => {
+    const one = node as Loose
+
+    return one?.form === 'variable' && typeof one.name === 'string' ? one.name : undefined
+  }
+
+  // the collection variables a value stores into a container it builds: a record's fields, a list's items
+  const storedIn = (value: unknown): string[] => {
+    const one = value as Loose
+
+    if (one?.form === 'record') {
+      return ((one.fields as { value: unknown }[]) ?? []).flatMap(f => {
+        const name = variableName(f.value)
+
+        return name !== undefined && collection(f.value) ? [name] : []
+      })
+    }
+
+    if (one?.form === 'array') {
+      return ((one.items as unknown[]) ?? []).flatMap(item => {
+        const name = variableName(item)
+
+        return name !== undefined && collection(item) ? [name] : []
+      })
+    }
+
+    return []
+  }
+
+  const bind = (holder: string, value: unknown): void => {
+    rebinds.set(holder, [...(rebinds.get(holder) ?? []), clock])
+
+    const source = variableName(value)
+
+    if (source !== undefined && source !== holder && collection(value)) {
+      pairs.push({ one: holder, other: source, at: clock, kind: 'alias' })
+    }
+
+    for (const stored of storedIn(value)) {
+      pairs.push({ one: stored, other: holder, at: clock, kind: 'store' })
+    }
+  }
+
+  const visit = (node: unknown): void => {
+    if (node === null || typeof node !== 'object') {
+      return
+    }
+
+    if (Array.isArray(node)) {
+      node.forEach(visit)
+
+      return
+    }
+
+    const record = node as Loose
+
+    if (record.form === 'closure' || record.form === 'function') {
+      return
+    }
+
+    if (record.form === 'let') {
+      visit(record.init)
+      clock++
+      bind(record.name as string, record.init)
+
+      return
+    }
+
+    if (record.form === 'assign') {
+      const target = record.target as Loose
+      const holder = variableName(target)
+
+      if (holder !== undefined) {
+        visit(record.value)
+        clock++
+        bind(holder, record.value)
+
+        return
+      }
+
+      // `save r/items, xs`: the collection stored into the record `r`
+      const root = writtenPath(target)?.root
+      const stored = variableName(record.value)
+
+      if (root !== undefined && stored !== undefined && collection(record.value)) {
+        clock++
+        pairs.push({ one: stored, other: root, at: clock, kind: 'store' })
+
+        return
+      }
+    }
+
+    // a collection pushed or set into another: `list/push(xs)`, `m/set(k, xs)`, `push(list, xs)`
+    if (record.form === 'call') {
+      const callee = record.callee as Loose
+      const receiver = callee?.form === 'member' ? variableName(callee.target) : undefined
+
+      if (receiver !== undefined && MUTATORS.has(callee.name as string)) {
+        for (const arg of (record.args as unknown[]) ?? []) {
+          const stored = variableName(arg)
+
+          if (stored !== undefined && collection(arg)) {
+            clock++
+            pairs.push({ one: stored, other: receiver, at: clock, kind: 'store' })
+          }
+        }
+      }
+    }
+
+    // the writes and reads under this node, in order, through the same reading the first pattern uses
+    if (record.form === 'call' || record.form === 'assign') {
+      eachWrite(
+        record,
+        byName,
+        writes,
+        (name, span) => {
+          clock++
+          written.set(name, [...(written.get(name) ?? []), { at: clock, span }])
+        },
+        name => {
+          clock++
+          reads.set(name, [...(reads.get(name) ?? []), clock])
+        },
+      )
+
+      return
+    }
+
+    if (record.form === 'variable' && typeof record.name === 'string') {
+      clock++
+      reads.set(record.name, [...(reads.get(record.name) ?? []), clock])
+    }
+
+    for (const [key, child] of Object.entries(record)) {
+      if (key !== 'span' && key !== 'type') {
+        visit(child)
+      }
+    }
+  }
+
+  visit(task.body)
+
+  const out: Diagnostic[] = []
+  const told = new Set<unknown>()
+
+  for (const pair of pairs) {
+    // an alias joins both ways: a write through either, then a read of the other. A store is one way: the stored
+    // collection written, then its container read
+    const ways: [string, string][] = pair.kind === 'alias' ? [[pair.one, pair.other], [pair.other, pair.one]] : [[pair.one, pair.other]]
+
+    // a pair lasts until either name is bound again: `save next, read slots` then `save next, copy-numbers(slots)`
+    // writes a fresh copy, which pattern/pike.tree does on the path that writes
+    const end = (name: string): number => (rebinds.get(name) ?? []).find(at => at > pair.at) ?? Infinity
+
+    for (const [through, other] of ways) {
+      const write = (written.get(through) ?? []).find(w => w.at > pair.at && w.at < end(through))
+
+      if (!write || told.has(write.span) || !(reads.get(other) ?? []).some(at => at > write.at && at < end(other))) {
+        continue
+      }
+
+      told.add(write.span)
+      out.push({
+        ...diagnose('type-mismatch', {
+          file,
+          span: write.span as Diagnostic['span'],
+          message:
+            pair.kind === 'alias'
+              ? `this writes \`${through}\`, which holds the same collection as \`${other}\`, and \`${other}\` is read afterwards: under value semantics (D1) \`${other}\` never sees the write`
+              : `this writes \`${through}\` after it was stored in \`${other}\`, and \`${other}\` is read afterwards: under value semantics (D1) \`${other}\` keeps the collection as it was stored`,
+          hint:
+            pair.kind === 'alias'
+              ? `write through the one name that is read, or hold the collection in a \`mark shared\` form so both see one object`
+              : `store \`${through}\` after its last write, or hold it in a \`mark shared\` form so both see one object`,
+        }),
+        severity: 'warning',
+      })
+    }
+  }
+
+  return out
+}
+
 export function warnLostCollectionWrites(program: Program, file: string): Diagnostic[] {
   const writes = collectionWrites(program)
   const byName = new Map<string, Task[]>()
@@ -348,6 +551,12 @@ export function warnLostCollectionWrites(program: Program, file: string): Diagno
   }
 
   const out: Diagnostic[] = []
+
+  for (const task of writes.keys()) {
+    if (task.span.file === file) {
+      out.push(...holdersOf(task, file, byName, writes))
+    }
+  }
 
   for (const [task, positions] of writes) {
     if (task.span.file !== file || !returnsNothing(task) || positions.size === 0) {

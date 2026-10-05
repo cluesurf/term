@@ -1,6 +1,6 @@
-# Plain data (section 14), the parts of a question (section 13) and the rule (section 11), each a component drawn
+# Plain data (section 14), the parts of a question (section 13) and the rule
+# (section 11), each a component drawn
 # at its own left edge within its room.
-
 load ./standard
   find standard
 
@@ -33,17 +33,21 @@ load ./clean
   find crop-spans
   find pad-spans
 
-# a table (section 14): column names dim, numbers right-aligned, columns the standard's gap apart. A table wider than
+# a table (section 14): column names dim, numbers right-aligned, columns the
+# standard's gap apart. A table wider than
 # the room drops columns from the right and says how many it dropped
 task draw-table
   take columns, like list, like column
   take rows, like list, like table-row
   take room, like room
+
   like list, like line
+
   save out, make list
   save gap, room/standard/layout/key-gap
   save widths, make list
   save at, 0
+
   walk columns
     take one
     save wide, measure-text(clean-text(one/title, room))
@@ -58,10 +62,12 @@ task draw-table
               save wide, size
     widths/push wide
     save at, add(at, 1)
-  # how many columns fit, from the left: at least one, which is cropped if it alone is too wide
+  # how many columns fit, from the left: at least one, which is cropped if it alone
+  # is too wide
   save kept, 0
   save used, 0
   save at, 0
+
   walk widths
     take wide
     save need, wide
@@ -76,18 +82,22 @@ task draw-table
             save kept, add(kept, 1)
     save at, add(at, 1)
   save dropped, subtract(columns/length, kept)
+
   # the header
   save header, make list
   save at, 0
+
   walk columns
     take one
     fork test, is-below(at, kept)
       hold
         save title, make list
         title/push make-span(clean-text(one/title, room), <dim>)
-        push-entry(header, title, widths/{at}, one/numeric, is-equal(at, subtract(kept, 1)), gap)
+        save last, is-equal(at, subtract(kept, 1))
+        save header, push-entry(header, title, widths/{at}, one/numeric, last, gap)
     save at, add(at, 1)
   out/push make line, spans(crop-spans(header, room/width, room))
+
   walk rows
     take row
     save spans, make list
@@ -102,7 +112,8 @@ task draw-table
               save given, row/entries/{at}
               save shown, clean-spans(make-entry(given), room)
               save entry, shown
-          push-entry(spans, entry, widths/{at}, one/numeric, is-equal(at, subtract(kept, 1)), gap)
+          save last, is-equal(at, subtract(kept, 1))
+          save spans, push-entry(spans, entry, widths/{at}, one/numeric, last, gap)
       save at, add(at, 1)
     out/push make line, spans(crop-spans(spans, room/width, room))
   fork test, is-above(dropped, 0)
@@ -116,12 +127,16 @@ task draw-table
 
 task make-entry
   take one, like span
+
   like list, like span
+
   save spans, make list
   spans/push one
   back spans
 
-# one table entry into a row: right-aligned when numeric, left-aligned and unpadded when it is the last column
+# one table entry into a row: right-aligned when numeric, left-aligned and unpadded
+# when it is the last column. The row
+# is sent BACK for the caller to save (self-hosting-0026)
 task push-entry
   take spans, like list, like span
   take entry, like list, like span
@@ -129,9 +144,12 @@ task push-entry
   take numeric, like boolean
   take last, like boolean
   take gap, like number
-  like void
+
+  like list, like span
+
   save wide, measure-spans(entry)
   save pad, subtract(width, wide)
+
   fork test, is-below(pad, 0)
     hold
       save pad, 0
@@ -144,28 +162,35 @@ task push-entry
   walk entry
     take piece
     spans/push piece
-  fork test, and(is-equal(numeric, false), and(is-equal(last, false), is-above(pad, 0)))
+  fork test
+    and(is-equal(numeric, false), and(is-equal(last, false), is-above(pad, 0)))
     hold
       spans/push make-span(make-spaces(pad), <text>)
+  back spans
 
 # a tree (section 14) drawn with dim `├─ └─ │`, a repeated subtree marked `deduped`
 task draw-tree
   take nodes, like list, like tree-node
   take room, like room
+
   like list, like line
+
   back draw-branch(nodes, <>, room)
 
 task draw-branch
   take nodes, like list, like tree-node
   take prefix, like text
   take room, like room
+
   like list, like line
+
   save out, make list
   save branch, find-symbol(room, <branch>)
   save last-mark, find-symbol(room, <last>)
   save stem, find-symbol(room, <stem>)
   save count, nodes/length
   save at, 0
+
   walk nodes
     take one
     save last, is-equal(at, subtract(count, 1))
@@ -200,21 +225,26 @@ task draw-branch
     save at, add(at, 1)
   back out
 
-# a list (section 14): the standard's number of entries, then `… n more, --all lists them`. `total` is how many there
+# a list (section 14): the standard's number of entries, then `… n more, --all lists
+# them`. `total` is how many there
 # are in all, or -1 when `entries` is all of them
 task draw-list
   take entries, like list, like list-entry
   take total, like number
   take room, like room
+
   like list, like line
+
   save out, make list
   save cap, room/standard/caps/entries
   save all, entries/length
+
   fork test, is-minimum(total, 0)
     hold
       save all, total
   save widest, 0
   save at, 0
+
   walk entries
     take one
     fork test, is-below(at, cap)
@@ -226,6 +256,7 @@ task draw-list
     save at, add(at, 1)
   save gap, room/standard/layout/key-gap
   save at, 0
+
   walk entries
     take one
     fork test, is-below(at, cap)
@@ -243,6 +274,7 @@ task draw-list
         out/push make line, spans(crop-spans(spans, room/width, room))
     save at, add(at, 1)
   save shown, at
+
   fork test, is-above(shown, cap)
     hold
       save shown, cap
@@ -258,15 +290,19 @@ task draw-list
       out/push make line, spans(crop-spans(note, room/width, room))
   back out
 
-# the choices of a question (section 13): `◉` picked, `◯` not, a hint dim beside. Focus is a background highlight on
+# the choices of a question (section 13): `◉` picked, `◯` not, a hint dim beside.
+# Focus is a background highlight on
 # the whole choice, never an extra glyph
 task draw-choices
   take choices, like list, like choice
   take room, like room
+
   like list, like line
+
   save out, make list
   save picked, find-symbol(room, <picked>)
   save unpicked, find-symbol(room, <unpicked>)
+
   walk choices
     take one
     save spans, make list
@@ -296,19 +332,24 @@ task draw-choices
     out/push make line, spans(crop-spans(spans, room/width, room))
   back out
 
-# the answer being typed (section 13): as typed, or one `•` per character when it is secret
+# the answer being typed (section 13): as typed, or one `•` per character when it is
+# secret
 task draw-input
   take typed, like text
   take secret, like boolean
   take room, like room
+
   like list, like line
+
   save out, make list
   save shown, clean-text(typed, room)
+
   fork test, secret
     hold
       save dot, find-symbol(room, <secret>)
       save shown, repeat-text(dot, measure-text(typed))
   save spans, make list
+
   fork test, is-unequal(shown, <>)
     hold
       spans/push make-span(shown, <text>)
@@ -318,7 +359,9 @@ task draw-input
 # a faint rule across the room (section 11's status footer sits under one)
 task draw-rule
   take room, like room
+
   like list, like line
+
   save out, make list
   save spans, make list
   spans/push make-span(repeat-text(find-symbol(room, <rule>), room/width), <faint>)

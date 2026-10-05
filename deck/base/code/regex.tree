@@ -1,19 +1,35 @@
-# Regular expressions in one dialect (regex/dialect.tree). A pattern is checked and rewritten in Term, the host engine
-# runs one primitive (search from a code point position), and everything else is written here once, so a pattern
-# matches the same text with the same groups on every backend. Positions are code points, as everywhere in `text`.
-# A replacement is literal text: no $1 or \1 is read in it, because each engine reads those differently. To build the
-# replacement from the match, use `rewrite-matches`.
+# Regular expressions, the v1 interface over the pattern engine (@term/base/pattern, note/term/stdlib/regex-engine.md).
+# A pattern takes the engine's whole syntax and means one thing on every backend: lookaround of any length, back
+# references, named groups, atomic groups and possessive repetition, \b with Unicode word characters, \p{...}, and
+# the i, m, s and x flags. Each search runs on the fastest engine that computes exactly that meaning there. Positions
+# are code points, as everywhere in `text`.
+#
+# What this module keeps from the dialect it was until 2026-10-04, so code written against it reads the same: the
+# `regex-match` record, a pattern that is not one raises `regex-mismatch` with the code point position and the reason,
+# and a replacement is literal text (no $1 or \1 is read in it; to build one from the match, use `rewrite-matches`).
+# Every pattern the dialect accepted means what it meant: the dialect was the part of the syntax every engine read
+# alike, and the engine defines those features the same way.
 
 mark stable
 
-load @term/base/native/{platform}/regex
-  find engine-search
-  find end-anchor
-
 load @term/base/regex/dialect
-  find canonical-pattern
   find regex-literal
   find regex-mismatch
+
+# the base `regex-mismatch` extends, so its fields (`thing`, `at`, `reason`) are known where it is raised here
+load @term/base/exception
+  find mismatch
+
+load @term/base/pattern
+  find pattern
+  find prepare
+  find prepared-pattern
+  find pattern-match
+  find find-match-prepared
+  find find-matches-prepared
+
+load @term/base/pattern/node
+  find pattern-mismatch
 
 load @term/base/text/unicode
   find to-runes
@@ -41,114 +57,40 @@ form regex-match
     like list
       like number
 
-# the pattern as the host engine runs it; raises regex-mismatch when it is not in the dialect
-task compile-pattern
+# the pattern read and analyzed once (the engine keeps it for later calls); a text that is not a pattern raises
+# `regex-mismatch`, as this module always has, with the engine's position and reason
+task prepared-for
   mark private
-  take pattern, like text
-  like text
-  save canonical
-    call canonical-pattern
-      read pattern
-      call end-anchor
-  send back, read canonical/text
+  take source, like text
+  like prepared-pattern
+  mark unsafe
+    send back
+      call prepare(make(pattern, read(source)))
+  halt take
+    take error
+    sift error
+      case pattern-mismatch
+        halt regex-mismatch
+          bind thing, text <regex>
+          bind at, read at
+          bind reason, read reason
+    halt regex-mismatch
+      bind thing, text <regex>
+      bind at, code -1
+      bind reason, text <the pattern could not be read>
 
-# the first match at or after `from`, or none
-task search-from
+# the engine's match as this module's record
+task record-of
   mark private
-  take engine, like text
-  take runes
-    like list
-      like number
-  take input, like text
-  take from, like number
-  like maybe
-    head regex-match
-  save found
-    call engine-search
-      read engine
-      read input
-      read from
-  fork test
-    hook test
-      call is-below
-        call size
-          read found
-        code 2
-    hook hold
-      send back, make none
-  save start
-    call get
-      read found
-      code 0
-  save end
-    call get
-      read found
-      code 1
-  save groups
-    make list
-  save spans
-    make list
-  # the length read once: a push in the body leaves the prover unsure of every list's size
-  save count
-    call size
-      read found
-  save k, code 2
-  walk test
-    down
-      call subtract
-        read count
-        read k
-    hook test
-      call is-below
-        call add
-          read k
-          code 1
-        read count
-    hook step
-      save a
-        call get
-          read found
-          read k
-      save b
-        call get
-          read found
-          call add
-            read k
-            code 1
-      call spans/push
-        read a
-      call spans/push
-        read b
-      fork test
-        hook test
-          call is-below
-            read a
-            code 0
-        hook hold
-          call groups/push, text <>
-        hook miss
-          call groups/push
-            call rune-slice
-              read runes
-              read a
-              read b
-      save k
-        call add
-          read k
-          code 2
+  take hit, like pattern-match
+  like regex-match
   send back
-    make some
-      bind value
-        make regex-match
-          bind text
-            call rune-slice
-              read runes
-              read start
-              read end
-          bind start, read start
-          bind end, read end
-          bind groups, read groups
-          bind spans, read spans
+    make regex-match
+      bind text, read hit/text
+      bind start, read hit/start
+      bind end, read hit/end
+      bind groups, read hit/groups
+      bind spans, read hit/spans
 
 task rune-slice
   mark private
@@ -199,19 +141,11 @@ task matches
   take pattern, like text
   take input, like text
   like boolean
-  save engine
-    call compile-pattern
-      read pattern
-  save found
-    call engine-search
-      read engine
-      read input
-      code 0
-  send back
-    call is-minimum
-      call size
-        read found
-      code 2
+  fork case, call(find-match-prepared, call(prepared-for, read(pattern)), read(input))
+    case some
+      send back, true
+    case none
+      send back, false
 
 # the first match, or none
 task find-match
@@ -219,14 +153,14 @@ task find-match
   take input, like text
   like maybe
     head regex-match
-  send back
-    call search-from
-      call compile-pattern
-        read pattern
-      call to-runes
-        read input
-      read input
-      code 0
+  fork case, call(find-match-prepared, call(prepared-for, read(pattern)), read(input))
+    case some
+      link hit
+      send back
+        make some
+          bind value, call(record-of, read(hit))
+    case none
+      send back, make none
 
 # every match, left to right, none overlapping. After an empty match the search moves on one code point, so a
 # pattern that can match nothing still ends.
@@ -235,81 +169,13 @@ task find-matches
   take input, like text
   like list
     like regex-match
-  save engine
-    call compile-pattern
-      read pattern
-  save runes
-    call to-runes
-      read input
-  save n
-    call size
-      read runes
   save out
     make list
-  save at, code 0
-  # `at` moves to a match's end, or one past an empty match. The host reports the end, and a match never ends before
-  # the position it was searched from; `at` is moved on by one should one ever do so, which is what lets each turn be
-  # seen to rise
-  walk test
-    down
-      call subtract
-        call add
-          read n
-          code 1
-        read at
-    hook test
-      call is-maximum
-        read at
-        read n
-    hook step
-      save next
-        call search-from
-          read engine
-          read runes
-          read input
-          read at
-      fork case, read next
-        case some
-          link hit
-          call out/push
-            read hit
-          save after, read hit/end
-          fork test
-            hook test
-              call is-equal
-                read hit/end
-                read hit/start
-            hook hold
-              save after
-                call add
-                  read hit/end
-                  code 1
-          fork test
-            hook test
-              call and
-                call is-above
-                  read after
-                  read at
-                call is-maximum
-                  read after
-                  call add
-                    read n
-                    code 1
-            hook hold
-              save at, read after
-              turn next
-            hook miss
-              save at
-                call add
-                  read at
-                  code 1
-              turn next
-        case none
-          save at
-            call add
-              read n
-              code 1
-          turn next
+  walk list
+    call find-matches-prepared(call(prepared-for, read(pattern)), read(input))
+    hook next
+      take site, name hit
+      call out/push(call(record-of, read(hit)))
   send back, read out
 
 # group `index` of a match (1 is the first group, 0 the whole match), or none when the group took no part
@@ -397,7 +263,7 @@ task rewrite-matches
       save made
         call make
           read hit
-      save out, text <{{out}}{{before}}{{made}}>
+      save out, text <{out}{before}{made}>
       save at, read hit/end
   save rest
     call rune-slice
@@ -405,7 +271,7 @@ task rewrite-matches
       read at
       call size
         read runes
-  send back, text <{{out}}{{rest}}>
+  send back, text <{out}{rest}>
 
 # the input with every match replaced by the literal replacement
 task replace-matches
@@ -429,7 +295,7 @@ task replace-matches
           read runes
           read at
           read hit/start
-      save out, text <{{out}}{{before}}{{replacement}}>
+      save out, text <{out}{before}{replacement}>
       save at, read hit/end
   save rest
     call rune-slice
@@ -437,7 +303,7 @@ task replace-matches
       read at
       call size
         read runes
-  send back, text <{{out}}{{rest}}>
+  send back, text <{out}{rest}>
 
 # the input with the first match replaced by the literal replacement
 task replace-first-match
@@ -448,14 +314,7 @@ task replace-first-match
   save runes
     call to-runes
       read input
-  save hit
-    call search-from
-      call compile-pattern
-        read pattern
-      read runes
-      read input
-      code 0
-  fork case, read hit
+  fork case, call(find-match, read(pattern), read(input))
     case some
       link first
       save before
@@ -469,7 +328,7 @@ task replace-first-match
           read first/end
           call size
             read runes
-      send back, text <{{before}}{{replacement}}{{after}}>
+      send back, text <{before}{replacement}{after}>
     case none
       send back, read input
 
@@ -536,15 +395,15 @@ task escape-pattern
       save written
         call regex-literal
           read c
-      save out, text <{{out}}{{written}}>
+      save out, text <{out}{written}>
   send back, read out
 
-# whether the pattern is in the dialect
+# whether the text is a pattern
 task is-valid-pattern
   take pattern, like text
   like boolean
   mark unsafe
-    call compile-pattern
+    call prepared-for
       read pattern
     send back, true
   halt take

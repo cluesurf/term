@@ -24,9 +24,10 @@ enum regex {
         guard let found = engine.firstMatch(in: text, options: [.withoutAnchoringBounds], range: NSRange(location: unit, length: length - unit)) else {
             return []
         }
+        // counted on from where the search began, or from the text's start for a group a lookbehind found before it
         func toPoint(_ at: Int) -> Int {
-            var u = unit
-            var p = from
+            var u = at < unit ? 0 : unit
+            var p = at < unit ? 0 : from
             while u < at {
                 u += scalars[p].value > 0xFFFF ? 2 : 1
                 p += 1
@@ -66,9 +67,10 @@ enum regex {
         // a cursor: the code point count at a UTF-16 offset, moved forwards only
         var cursorUnit = 0
         var cursorPoint = 0
+        // counted on from a known offset, or from the text's start for a group a lookbehind found before that offset
         func pointAt(_ at: Int, _ fromUnit: Int, _ fromPoint: Int) -> Int {
-            var u = fromUnit
-            var p = fromPoint
+            var u = at < fromUnit ? 0 : fromUnit
+            var p = at < fromUnit ? 0 : fromPoint
             while u < at && p < scalars.count {
                 u += scalars[p].value > 0xFFFF ? 2 : 1
                 p += 1

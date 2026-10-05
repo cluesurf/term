@@ -26,9 +26,10 @@ const regex = {
     engine.lastIndex = unit
     const found = engine.exec(text)
     if (found === null || found.indices === undefined) return []
+    // counted on from where the search began, or from the text's start for a group a lookbehind found before it
     const toPoint = (at: number): number => {
-      let u = unit
-      let p = from
+      let u = at < unit ? 0 : unit
+      let p = at < unit ? 0 : from
       while (u < at) {
         u += (text.codePointAt(u) ?? 0) > 0xffff ? 2 : 1
         p += 1
@@ -64,9 +65,10 @@ const regex = {
     // a cursor: the code point count at a UTF-16 offset, moved forwards only
     let cursorUnit = 0
     let cursorPoint = 0
+    // counted on from a known offset, or from the text's start for a group a lookbehind found before that offset
     const pointAt = (at: number, fromUnit: number, fromPoint: number): number => {
-      let u = fromUnit
-      let p = fromPoint
+      let u = at < fromUnit ? 0 : fromUnit
+      let p = at < fromUnit ? 0 : fromPoint
       while (u < at) {
         u += (text.codePointAt(u) ?? 0) > 0xffff ? 2 : 1
         p += 1

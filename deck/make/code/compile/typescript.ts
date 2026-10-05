@@ -491,10 +491,91 @@ function tagFor(variant: string, type?: Type): string {
   return toMember(tsTagByVariant.get(variant) ?? 'form')
 }
 
+// the guard that tests a field-less case by identity (`identityCases`), its constant registered so the prelude declares
+// it even where the program never builds that case
+function guardFor(variant: string): string {
+  tsFieldless.set(variant, tsFieldless.get(variant) ?? `__termVariant${toPascal(variant)}`)
+
+  const guard = `__termIs${toPascal(variant)}`
+  tsGuards.set(variant, guard)
+
+  return guard
+}
+
 // the variants this module constructs with no fields, each ONE frozen constant (name -> constant): a field-less value
 // carries nothing a construction could set and nothing a program could write, so every `make leaf` can be the same
 // object. A fresh `{ form: "leaf" }` per construction was most of binary-trees' gap to hand-written code
 let tsFieldless = new Map<string, string>()
+
+// THE FIELD-LESS CASE TESTED BY IDENTITY, `form/case` keys (`identityCases`). Where every value of a field-less case is
+// the one frozen constant, a match tests the value against it (`__termIsEnd(c)`, a type guard so the other branch
+// still narrows), never reading the tag: List's every test read `c.form`, polymorphic across the frozen constant's
+// shape and a link's, 128 ms to 89 against the hand version's `=== null` at 75 (`tmp/ts-list-identity-ab.ts`)
+let tsIdentity = new Set<string>()
+// the guards a program's matches called, case -> its guard's name, emitted beside the constants
+let tsGuards = new Map<string, string>()
+
+// the forms whose field-less cases are only ever their constant: never in the answer of a call into a native module
+// (a shim builds its own `{ form: "none" }`), in no program that fills or melts data into forms, holds a stub of
+// another unit's task, or is emitted one module at a time (each module its own constant)
+export function identityCases(program: Program, perModule: boolean): Set<string> {
+  type Loose = Record<string, unknown> & { form?: string; type?: Type }
+  const cases = new Set<string>()
+
+  if (perModule || program.some(n => n.form === 'function' && n.stub)) {
+    return cases
+  }
+
+  const aliases = new Set(program.flatMap(n => (n.form === 'native' && n.kind !== 'type' ? [n.alias] : [])))
+  const fromNative = new Set<string>()
+  let filled = false
+  const namesIn = (t: Type | undefined, into: Set<string>): void => {
+    if (!t) return
+    if (t.kind === 'named') {
+      into.add(t.name)
+      t.args?.forEach(a => namesIn(a, into))
+    } else if (t.kind === 'array') namesIn(t.element, into)
+    else if (t.kind === 'map') {
+      namesIn(t.key, into)
+      namesIn(t.value, into)
+    } else if (t.kind === 'function') {
+      t.params.forEach(p => namesIn(p, into))
+      namesIn(t.result, into)
+    }
+  }
+  const rootOf = (e: Loose | undefined): string | undefined =>
+    e?.form === 'variable' ? (e.name as string) : e?.form === 'member' ? rootOf(e.target as Loose) : undefined
+  const visit = (value: unknown): void => {
+    if (typeof value !== 'object' || value === null) return
+    if (Array.isArray(value)) return value.forEach(visit)
+    const node = value as Loose
+
+    if (node.form === 'call') {
+      const callee = node.callee as Loose
+      const name = callee.form === 'variable' || callee.form === 'member' ? (callee.name as string) : ''
+      const root = rootOf(callee)
+
+      if (name === 'fill' || name === 'melt') filled = true
+      if (callee.form === 'member' && root !== undefined && aliases.has(root)) namesIn(node.type, fromNative)
+    }
+
+    for (const [key, child] of Object.entries(node)) if (key !== 'type' && key !== 'span') visit(child)
+  }
+
+  visit(program)
+
+  if (filled) {
+    return cases
+  }
+
+  for (const n of program) {
+    if (n.form === 'record-type' && n.variants.length > 0 && !n.shared && !fromNative.has(n.name)) {
+      n.variants.filter(v => v.fields.length === 0).forEach(v => cases.add(`${n.name}/${v.name}`))
+    }
+  }
+
+  return cases
+}
 
 // every function's declared parameters, so a left-out trailing `need false` argument is filled with its type's empty
 // value, as the Rust, Swift and Kotlin backends fill it: left as `undefined`, a left-out text printed "undefined" here
@@ -2699,13 +2780,17 @@ function makeEmitter(
 
           // the only arm of an exhaustive match runs unconditionally: a form of one case has one shape, so its fields
           // read as they are, and an `if` with no `else` read to TypeScript as a task that can fall out of the bottom
+          // a field-less case only ever its constant is tested by identity, through its guard (`identityCases`)
+          const owner = node.subject.type?.kind === 'named' ? node.subject.type.name : ''
+          const test = tsIdentity.has(`${owner}/${branch.label}`)
+            ? `${guardFor(branch.label)}(${subject})`
+            : `${subject}.${tagFor(branch.label, node.subject.type)} === ${JSON.stringify(branch.label)}`
+
           out += last && i === 0
             ? body
             : last
             ? ` else ${body}`
-            : `${i ? ' else ' : ''}if (${subject}.${tagFor(branch.label, node.subject.type)} === ${JSON.stringify(
-                branch.label,
-              )}) ${body}`
+            : `${i ? ' else ' : ''}if (${test}) ${body}`
         })
 
         if (node.otherwise) {
@@ -2994,6 +3079,8 @@ export function emitTypeScript(
   tsTextUsed = false
   tsListUsed = false
   tsFieldless = new Map()
+  tsIdentity = identityCases(program, options?.variants !== undefined)
+  tsGuards = new Map()
   tsSharedForms = new Set(
     program.flatMap(n => (n.form === 'record-type' && n.shared ? [n.name] : [])),
   )
@@ -3240,6 +3327,15 @@ export function emitTypeScript(
   // the field-less variants' constants, ahead of every use
   for (const [name, constant] of tsFieldless) {
     prelude.push(`const ${constant} = Object.freeze({ ${tagFor(name)}: ${JSON.stringify(name)} as const })`)
+  }
+
+  // the identity tests of field-less cases (`identityCases`), each a type guard so the other branch still narrows
+  for (const [name, guard] of tsGuards) {
+    const tag = tagFor(name)
+
+    prelude.push(
+      `function ${guard}(value: { ${tag}: string }): value is { ${tag}: ${JSON.stringify(name)} } { return value === ${tsFieldless.get(name)} }`,
+    )
   }
 
   // the wake chain: one `hiveWake` per deck with its static entries, then the raise hook, when the program has the

@@ -1504,7 +1504,10 @@ task possessive-of-set
   take most, like number
   take backward, like boolean
   like piece
-  # "not one more" looks the way the repetition reads: behind, inside a lookbehind's body
+  # "not one more" looks the way the repetition reads, and stands where it would take that one more: behind and to
+  # the LEFT of it inside a lookbehind's body, which is read right to left, ahead and to the right everywhere else.
+  # Written to the right inside a lookbehind (`\w+(?<!\w)`) it could never hold, which until 2026-10-04 made every
+  # possessive repetition of one class in a lookbehind fail on tier B
   save stop
     make look
       bind body
@@ -1516,17 +1519,15 @@ task possessive-of-set
     hook test
       call is-below(read(most), code(0))
     hook hold
+      save unbounded
+        make loop
+          bind body, read body
+          bind least, read least
+          bind most, code -1
+          bind greedy, true
+          bind possessive, false
       send back
-        make chain
-          bind parts
-            make list
-              make loop
-                bind body, read body
-                bind least, read least
-                bind most, code -1
-                bind greedy, true
-                bind possessive, false
-              read stop
+        call stopped(read(backward), read(stop), read(unbounded))
   fork test
     hook test
       call is-equal(read(least), read(most))
@@ -1538,6 +1539,14 @@ task possessive-of-set
           bind most, read most
           bind greedy, true
           bind possessive, false
+  save fewer
+    make loop
+      bind body, read body
+      bind least, read least
+      bind most
+        call subtract(read(most), code(1))
+      bind greedy, true
+      bind possessive, false
   send back
     make choice
       bind parts
@@ -1548,17 +1557,28 @@ task possessive-of-set
             bind most, read most
             bind greedy, true
             bind possessive, false
-          make chain
-            bind parts
-              make list
-                make loop
-                  bind body, read body
-                  bind least, read least
-                  bind most
-                    call subtract(read(most), code(1))
-                  bind greedy, true
-                  bind possessive, false
-                read stop
+          call stopped(read(backward), read(stop), read(fewer))
+
+# a repetition and the "not one more" after it in reading order: the look first in a lookbehind's body, last elsewhere
+task stopped
+  mark private
+  take backward, like boolean
+  take stop, like piece
+  take run, like piece
+  like piece
+  save parts, make list
+  fork test
+    hook test
+      read backward
+    hook hold
+      call parts/push(read(stop))
+      call parts/push(read(run))
+    hook miss
+      call parts/push(read(run))
+      call parts/push(read(stop))
+  send back
+    make chain
+      bind parts, read parts
 
 # the most ranges any one class in the piece holds, which is what a native engine that tests a class range by range
 # pays at every position (a `\p{...}` is written out as a class, hundreds of ranges, so its meaning is the table's on

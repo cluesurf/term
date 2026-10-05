@@ -15,6 +15,7 @@ import {
   normalizeRegistry,
   hostScopeRegistries,
   pingIndex,
+  ensurePublisher,
 } from '@cluesurf/deck.tree'
 import type { DeckManifest, Keypair, OciRoute } from '@cluesurf/deck.tree'
 
@@ -123,6 +124,20 @@ export async function callHost(input: {
       }
 
       report({ glyph: 'info', verb: 'read', subject: `${name}@${version}`, fields: [field('digest', held.digest)] })
+
+      // the index checks the signer against the scope's key set, so it must exist, and this key must be in it. The
+      // same step a publish runs: created on the scope's first use, a refusal when this key is not a member. A ping
+      // after the key set's repository is renamed is the case that needs it
+      const keys = await ensurePublisher({
+        transport: transportFor({ host: route.registry.host }),
+        repository: route.keysRepository,
+        scope: route.scope,
+        keypair,
+      })
+
+      if (keys.created) {
+        report({ glyph: 'changed', kind: 'change', verb: 'create', subject: `key set of ${route.scope}`, fields: [field('ref', `${route.registry.host}/${route.keysRepository}`)] })
+      }
 
       const sent = await announce({ route, digest: held.digest, keypair })
 

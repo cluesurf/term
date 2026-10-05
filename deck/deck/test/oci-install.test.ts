@@ -44,7 +44,7 @@ describe('term load over OCI', () => {
       }),
       repository: { host: server.host, namespace: 'alice', name: 'alice/demo' },
       scope: '@alice',
-      keysRepository: 'alice/keys',
+      keysRepository: 'alice/name',
       local: layoutObjectStore({ dir: path.join(work, 'publisher') }),
       keypair: generateKeypair(),
       author: 'alice',
@@ -121,10 +121,12 @@ describe('term load over OCI', () => {
     expect(ociRouteOf({ name: '@carol/foo', config })).toMatchObject({
       registry: { host: 'ghcr.io', namespace: 'carol' },
       repository: { name: 'carol/foo' },
-      keysRepository: 'carol/keys',
+      keysRepository: 'carol/name',
     })
     expect(ociRouteOf({ name: 'left-pad', config })).toBeUndefined()
-    expect(() => ociRouteOf({ name: '@carol/keys', config })).toThrow(/reserved/)
+    expect(() => ociRouteOf({ name: '@carol/name', config })).toThrow(/reserved/)
+    // `keys` is an ordinary package name again since the key set moved to `name`
+    expect(ociRouteOf({ name: '@carol/keys', config })!.repository.name).toBe('carol/keys')
   })
 
   it('refuses one scope routed to two registries', () => {

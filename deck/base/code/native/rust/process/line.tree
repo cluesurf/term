@@ -23,12 +23,12 @@ task line-open
 task line-ask
   mark async
   take tool, like tool
-  take prompt, like text
+  take question, like text
   like text
   send back
     call prompt/line-ask
       read tool/dock
-      read prompt
+      read question
       wait true
 
 task line-read

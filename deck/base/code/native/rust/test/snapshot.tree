@@ -27,14 +27,15 @@ task match
     like text
     fall text <json>
 
-  save path
+  # `file`, not `path`: a local named `path` hid the docked `std::path::Path`, so `path/exists` read the text (dock-shadow)
+  save file
     call resolve
       bind name, read name
       bind format, read format
 
   save exists
     call path/exists
-      bind path, read path
+      bind path, read file
 
   fork test
     hook test, read exists
@@ -46,13 +47,13 @@ task match
           bind value, read value
           bind format, read format
       call fs/write
-        bind path, read path
+        bind path, read file
         bind contents, read data
       send back
 
   save raw
     call fs/read-to-string
-      bind path, read path
+      bind path, read file
 
   save stored
     call deserialize
@@ -87,7 +88,8 @@ task update
     like text
     fall text <json>
 
-  save path
+  # `file`, not `path`: a local named `path` hid the docked `std::path::Path`, so `path/exists` read the text (dock-shadow)
+  save file
     call resolve
       bind name, read name
       bind format, read format
@@ -101,5 +103,5 @@ task update
       bind format, read format
 
   call fs/write
-    bind path, read path
+    bind path, read file
     bind contents, read data

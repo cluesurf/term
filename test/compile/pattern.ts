@@ -27,6 +27,7 @@ type Engine = {
   pikeAt: (source: string, runes: number[], from: number) => number[]
   backAt: (source: string, runes: number[], from: number) => number[]
   chosenAt: (source: string, input: string, from: number) => number[]
+  allAt: (source: string, input: string) => number[]
   tierOf: (source: string) => string
   nativeOf: (source: string) => string
   needsBack: (source: string) => boolean
@@ -59,6 +60,7 @@ load @term/base/pattern
   find pattern-tier
   find search-slots
   find open-session
+  find find-matches-prepared
 
 task reference-at
   take source, like text
@@ -128,6 +130,26 @@ task chosen-at
     call prepare(make(pattern, read(source)))
   send back
     call search-slots(read(ready), call(open-session, read(ready), read(input)), read(from))
+
+# every match through the public API, flattened: each match's slots (group 0, then each group) one after another
+task all-at
+  take source, like text
+  take input, like text
+  like list
+    like number
+  save out, make list
+  walk list
+    call find-matches-prepared(call(prepare, make(pattern, read(source))), read(input))
+    hook next
+      take site, name hit
+      call out/push(read(hit/start))
+      call out/push(read(hit/end))
+      walk list
+        read hit/spans
+        hook next
+          take site, name at
+          call out/push(read(at))
+  send back, read out
 `
 
 async function loadEngine(): Promise<Engine> {
@@ -200,6 +222,8 @@ const SHARED: [string, string[]][] = [
 
 // 2. fixtures for the two tiers Term runs itself
 const LINEAR: [string, string[]][] = [
+  // from 3, the DFA's backward run once went past the search's start and answered 0..7 (2026-10-04)
+  ['<.+?>', ['<a><bb>']],
   ['(?:a|())*', ['aab']],
   ['(a|)*b', ['aab']],
   ['(?<=(a|ab))c', ['abc']],
@@ -394,6 +418,7 @@ function replayProgram(cases: typeof replay): string {
   find prepare
   find search-slots
   find open-session
+  find find-matches-prepared
   find capable-native-text
   find written-native-text
 
@@ -434,6 +459,20 @@ task answer-of
     call prepare(make(pattern, read(source)))
   save chosen
     call slots-text(call(search-slots, read(ready), call(open-session, read(ready), read(input)), code(0)))
+  save every, make list
+  walk list
+    call find-matches-prepared(read(ready), read(input))
+    hook next
+      take site, name hit
+      call every/push(read(hit/start))
+      call every/push(read(hit/end))
+      walk list
+        read hit/spans
+        hook next
+          take site, name at
+          call every/push(read(at))
+  save all
+    call slots-text(read(every))
   save native, text <x>
   fork test
     hook test
@@ -453,7 +492,7 @@ task answer-of
               call is-equal(read(native), text(<-2,>))
             hook hold
               save native, text <refused>
-  send back, text <{chosen}#{native}>
+  send back, text <{chosen}#{native}#{all}>
 
 task compute
   like text
@@ -514,9 +553,11 @@ type Backend = 'node' | 'rust' | 'swift' | 'kotlin'
 
 // replays every case on one backend; answers each probe feature's forced tally as `agreeing/total`, `-` where the
 // engine does not claim the feature, or nothing when the replay could not build or run
-function replayOn(backend: Backend): Map<string, string> | undefined {
+function replayOn(engine: Engine, backend: Backend): Map<string, string> | undefined {
   const cases = replay
   const want = cases.map(c => answerOf(c.want))
+  // every match, which on a native tier is the host engine's own walk and not one search per match
+  const wantAll = cases.map(c => answerOf(referenceAll(engine, c.pattern, runesOf(c.input))))
   let output: string
 
   try {
@@ -528,7 +569,7 @@ function replayOn(backend: Backend): Map<string, string> | undefined {
     return
   }
 
-  const got = output.split('|').slice(0, -1).map(answer => answer.split('#') as [string, string])
+  const got = output.split('|').slice(0, -1).map(answer => answer.split('#') as [string, string, string])
 
   if (got.length !== want.length) {
     fail++
@@ -543,17 +584,19 @@ function replayOn(backend: Backend): Map<string, string> | undefined {
   const refused = new Set<string>()
 
   for (let k = 0; k < cases.length; k++) {
-    const [chosen, native] = got[k]!
+    const [chosen, native, all] = got[k]!
     const { feature, pattern, input } = cases[k]!
 
-    if (chosen === want[k]) {
+    if (chosen === want[k] && all === wantAll[k]) {
       pass++
     } else {
       fail++
       wrong++
 
       if (wrong <= 20) {
-        console.log(`FAIL  native ${backend} /${pattern}/ on ${JSON.stringify(input)}: want ${want[k]} got ${chosen}`)
+        console.log(chosen === want[k]
+          ? `FAIL  native ${backend} every match /${pattern}/ on ${JSON.stringify(input)}: want ${wantAll[k]} got ${all}`
+          : `FAIL  native ${backend} /${pattern}/ on ${JSON.stringify(input)}: want ${want[k]} got ${chosen}`)
       }
     }
 
@@ -677,6 +720,52 @@ function linearWitness(engine: Engine, patterns: Set<string>): void {
   console.log(`linear witness: ${checked} native patterns timed on V8 at ${WITNESS_N} and ${2 * WITNESS_N} code points, ${slow} grew faster than linear`)
 }
 
+// a few positions past the start for a search to begin at, as `find-matches` begins each search after the one before:
+// the second code point, the middle and the last. Every leg above searched from 0 alone until 2026-10-04, which hid a
+// DFA whose backward run went below the search's start and answered a match that overlapped the one before it
+function laterStarts(runes: number[]): number[] {
+  return [...new Set([1, Math.floor(runes.length / 2), runes.length - 1])].filter(at => at > 0 && at <= runes.length)
+}
+
+// every match by the reference, searched as `find-matches-prepared` searches: on from where a match ended, or one
+// code point past an empty one
+function referenceAll(engine: Engine, pattern: string, runes: number[]): number[] {
+  const out: number[] = []
+  let at = 0
+
+  while (at <= runes.length) {
+    const slots = engine.referenceAt(pattern, runes, at)
+
+    if (slots.length === 0) {
+      break
+    }
+
+    out.push(...slots)
+    const after = slots[1] === slots[0] ? slots[1]! + 1 : slots[1]!
+    at = after > at ? after : at + 1
+  }
+
+  return out
+}
+
+// the chosen engine and the Pike VM against the reference from each later start, and every match through the public
+// API, which on a native tier is the host engine's own walk (`searchAll`) rather than one search per match
+function sameFromLater(engine: Engine, label: string, pattern: string, input: string, linear: boolean): void {
+  const runes = runesOf(input)
+
+  same(`${label} every match`, pattern, input, referenceAll(engine, pattern, runes), engine.allAt(pattern, input))
+
+  for (const from of laterStarts(runes)) {
+    const want = engine.referenceAt(pattern, runes, from)
+
+    same(`${label} from ${from}`, pattern, input, want, engine.chosenAt(pattern, input, from))
+
+    if (linear) {
+      same(`${label} linear from ${from}`, pattern, input, want, engine.pikeAt(pattern, runes, from))
+    }
+  }
+}
+
 async function main(): Promise<void> {
   const engine = await loadEngine()
 
@@ -702,6 +791,7 @@ async function main(): Promise<void> {
 
       same('backtrack', pattern, input, want, engine.backAt(pattern, runesOf(input), 0))
       same('chosen', pattern, input, want, engine.chosenAt(pattern, input, 0))
+      sameFromLater(engine, 'chosen', pattern, input, !engine.needsBack(pattern))
       replay.push({ pattern, input, want })
     }
   }
@@ -764,6 +854,7 @@ async function main(): Promise<void> {
           same('corpus linear', pattern, input, want, engine.pikeAt(pattern, runes, 0))
         }
 
+        sameFromLater(engine, `corpus ${tier}`, pattern, input, !backOnly)
         replay.push({ pattern, input, want })
       }
     }
@@ -838,6 +929,8 @@ async function main(): Promise<void> {
       if (!backOnly) {
         same('generated linear', pattern, input, want, engine.pikeAt(pattern, runes, 0))
       }
+
+      sameFromLater(engine, `generated ${tier}`, pattern, input, !backOnly)
     }
   }
 
@@ -852,7 +945,7 @@ async function main(): Promise<void> {
       throw new Error(`PATTERN_NATIVE names ${backend}: node, rust, swift or kotlin`)
     }
 
-    const tally = replayOn(backend)
+    const tally = replayOn(engine, backend)
 
     if (tally) {
       matrix.set(backend, tally)
