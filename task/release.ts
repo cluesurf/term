@@ -9,6 +9,7 @@
 // that cannot be bundled travel beside it:
 //
 //   term/bin/term            sh launcher: follows its own link to find the install, then `exec node host/line.js`
+//                            (bin\term.cmd on the two Windows platforms, the same check and call in cmd.exe)
 //   term/host/line.js        the CLI, every pure-JS dependency (yargs, chalk) BUNDLED
 //   term/host/dock.mjs       the hook dispatcher, chalk bundled
 //   term/package.json        the name and version `--version` and the build cache key read
@@ -51,6 +52,8 @@ export const PLATFORMS = [
   { name: 'darwin-x64', esbuild: '@esbuild/darwin-x64' },
   { name: 'linux-x64', esbuild: '@esbuild/linux-x64' },
   { name: 'linux-arm64', esbuild: '@esbuild/linux-arm64' },
+  { name: 'windows-x64', esbuild: '@esbuild/win32-x64' },
+  { name: 'windows-arm64', esbuild: '@esbuild/win32-arm64' },
 ] as const
 
 // What stays OUT of the bundle and travels in node_modules. `pg` is the optional Postgres driver `base-engine.ts`
@@ -93,6 +96,18 @@ if ! command -v node >/dev/null 2>&1; then
 fi
 exec node "$root/host/line.js" "$@"
 `
+
+// The Windows launcher, bin\term.cmd: the same check and the same call. `%~dp0` is the folder this file is in, and
+// `bin\term.cmd` under ~/.base/@cluesurf/term is a shim that calls this one (self.ts `link`), so this file is never the
+// one replaced while it runs. CRLF, which cmd.exe reads either way and Notepad shows right
+const WINDOWS_LAUNCHER = [
+  '@echo off',
+  'rem The term command. Installed by https://term.surf/load.ps1; see note/term/plan/term-load-install.md.',
+  'where node >nul 2>nul',
+  `if errorlevel 1 (echo term needs Node.js ${NODE_FLOOR} or newer on PATH: https://nodejs.org 1>&2 & exit /b 69)`,
+  'node "%~dp0..\\host\\line.js" %*',
+  '',
+].join('\r\n')
 
 type Built = { platform: string; file: string; digest: string; bytes: number }
 
@@ -213,8 +228,13 @@ async function main(): Promise<void> {
     )
 
     mkdirSync(path.join(root, 'bin'), { recursive: true })
-    writeFileSync(path.join(root, 'bin', 'term'), LAUNCHER)
-    chmodSync(path.join(root, 'bin', 'term'), 0o755)
+
+    if (platform.name.startsWith('windows-')) {
+      writeFileSync(path.join(root, 'bin', 'term.cmd'), WINDOWS_LAUNCHER)
+    } else {
+      writeFileSync(path.join(root, 'bin', 'term'), LAUNCHER)
+      chmodSync(path.join(root, 'bin', 'term'), 0o755)
+    }
 
     for (const name of SHIPPED) {
       await fetchPackage({ name, version: installedVersion(name), dir: path.join(root, 'node_modules', name), cache })

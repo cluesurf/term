@@ -4,6 +4,8 @@
 // THE LAYOUT, written by https://term.surf/load and by `self update`:
 //
 //   ~/.base/@cluesurf/term/bin/term                 a link to code/<version>/term/bin/term, the one thing on PATH
+//                                                   (on Windows bin\term.cmd, a one-line shim to that version's
+//                                                   term.cmd, written by https://term.surf/load.ps1 and `link` below)
 //   ~/.base/@cluesurf/term/code/<version>/term/     the unpacked release payload
 //   ~/.base/@cluesurf/term/code/<version>/install.tree   version, platform, and the layer digest it was unpacked from
 //
@@ -47,6 +49,10 @@ const PACKAGE = '@term/code'
 const PAYLOAD_LIMIT = 512 * 1024 * 1024
 
 const VERSION = /^\d+\.\d+\.\d+$/
+
+// On Windows the system's own tar.exe, by its full path: Git for Windows puts GNU tar on PATH, which reads the `C:` of
+// `-C C:\...` as a remote host name and fails
+const TAR = process.platform === 'win32' ? nodePath.join(process.env['SystemRoot'] ?? 'C:\\Windows', 'System32', 'tar.exe') : 'tar'
 
 type Install = {
   version: string
@@ -219,7 +225,7 @@ function whatRuns(): Held {
     return { form: 'installed', install }
   }
 
-  return { form: /\/(Caskroom|Cellar)\//.test(payload) ? 'homebrew' : 'source', version }
+  return { form: /[\\/](Caskroom|Cellar)[\\/]/.test(payload) ? 'homebrew' : 'source', version }
 }
 
 function refuseUnmanaged(held: Exclude<Held, { form: 'installed' }>): void {
@@ -331,7 +337,7 @@ function unpack(input: { version: string; bytes: Buffer; install: Install }): vo
 
   try {
     writeFileSync(archive, input.bytes)
-    execFileSync('tar', ['-xzf', archive, '-C', staging])
+    execFileSync(TAR, ['-xzf', archive, '-C', staging])
     writeInstall({ file: nodePath.join(staging, 'install.tree'), install: input.install })
     rmSync(target, { recursive: true, force: true })
     renameSync(staging, target)
@@ -341,13 +347,26 @@ function unpack(input: { version: string; bytes: Buffer; install: Install }): vo
   }
 }
 
-// Point bin/term at a version, atomically: a new link beside it, renamed over the old one
+// Point bin/term at a version, atomically: a new link beside it, renamed over the old one.
+//
+// ON WINDOWS bin\term.cmd is a one-line shim instead, because a symlink there needs a privilege an ordinary user lacks.
+// It is renamed over the old one the same way. The `& exit /b` on the SAME line is what makes replacing it safe while it
+// runs: cmd.exe reads a batch file a line at a time from where it left off, and `term self update` is run THROUGH this
+// file, so a second line would be read out of the new file's bytes at the old offset. One line is parsed whole before
+// it runs, and `exit /b` keeps the exit code of the term it called
 function link(version: string): void {
-  const bin = userHome('bin', 'term')
+  const windows = process.platform === 'win32'
+  const bin = userHome('bin', windows ? 'term.cmd' : 'term')
   const next = `${bin}.${randomUUID()}`
 
   mkdirSync(nodePath.dirname(bin), { recursive: true })
-  symlinkSync(nodePath.join('..', 'code', version, 'term', 'bin', 'term'), next)
+
+  if (windows) {
+    writeFileSync(next, `@"%~dp0..\\code\\${version}\\term\\bin\\term.cmd" %* & exit /b\r\n`)
+  } else {
+    symlinkSync(nodePath.join('..', 'code', version, 'term', 'bin', 'term'), next)
+  }
+
   renameSync(next, bin)
 }
 

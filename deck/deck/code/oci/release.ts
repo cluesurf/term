@@ -30,13 +30,18 @@ const TITLE = 'org.opencontainers.image.title'
 const CONFIG_LIMIT = 64 * 1024
 
 // The platforms a release may carry, in 09's names, with the OCI `platform` each maps to. OCI says `amd64` where Node
-// and 09 say `x64`
+// and 09 say `x64`, and `windows` where Node says `win32`
 export const RELEASE_PLATFORMS: Record<string, { os: string; architecture: string }> = {
   'darwin-arm64': { os: 'darwin', architecture: 'arm64' },
   'darwin-x64': { os: 'darwin', architecture: 'amd64' },
   'linux-x64': { os: 'linux', architecture: 'amd64' },
   'linux-arm64': { os: 'linux', architecture: 'arm64' },
+  'windows-x64': { os: 'windows', architecture: 'amd64' },
+  'windows-arm64': { os: 'windows', architecture: 'arm64' },
 }
+
+// Node's `process.platform` in 09's names
+const RELEASE_OS: Partial<Record<NodeJS.Platform, string>> = { darwin: 'darwin', linux: 'linux', win32: 'windows' }
 
 export type ReleaseConfig = {
   v: 1
@@ -89,7 +94,7 @@ export function releaseStatement(input: { package: string; version: string; plat
 /** This machine's platform in 09's names, or undefined when no release is built for it. */
 export function currentPlatform(): string | undefined {
   const arch = process.arch === 'x64' ? 'x64' : process.arch === 'arm64' ? 'arm64' : undefined
-  const os = process.platform === 'darwin' || process.platform === 'linux' ? process.platform : undefined
+  const os = RELEASE_OS[process.platform]
   const name = os && arch ? `${os}-${arch}` : undefined
 
   return name && RELEASE_PLATFORMS[name] ? name : undefined
