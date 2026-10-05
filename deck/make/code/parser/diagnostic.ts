@@ -414,6 +414,12 @@ export const CATALOG = {
     severity: 'warning',
     fix: 'give the task a name of its own, such as `multiply-both`',
   },
+  'keyword-import': {
+    code: 0x35,
+    message: 'an import named like one of Term\'s own words is never reached by that name',
+    severity: 'warning',
+    fix: 'give it another name: `find read, name read-file`',
+  },
   'look-tint': {
     code: 0x32,
     message: 'this tint is not a CSS color',

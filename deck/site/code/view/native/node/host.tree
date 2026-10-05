@@ -43,9 +43,13 @@ task host
       save root
         call create-element
           text <div>
+      # awaited: a `route` that loads its data first (an async task it calls) is async, and the page is not drawn
+      # until it returns. A parameter's call cannot be seen as async, so the `wait` is written, and on a `route` that
+      # is not async it waits on a plain value. Without it `/` was served as an empty `<div></div>` (web/fetching)
       call route
         read root
         read request/path
+        wait true
       # the status the route set, `set-status 404` for a page that is not there, else 200. Read before the proxy check
       # so a proxied request clears it too
       save status

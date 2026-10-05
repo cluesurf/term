@@ -165,14 +165,12 @@ export async function runTestFile(input: {
       const held = Boolean(await mod[toCamel(name)]!())
       results.push({ name, label, held, ms: Date.now() - started, line })
     } catch (error) {
-      // a failing `want` raises a marker naming its line, read back as the line itself
-      const note = (error as { note?: unknown } | null)?.note
-      const why =
-        wantFailed(typeof note === 'string' ? note : undefined, input.source) ??
-        (error instanceof Error ? error.message : String(error))
+      // a failing `want` raises a marker naming its line, read back as the line itself, with the two values a
+      // comparison held
+      const why = wantFailed(error, input.source) ?? (error instanceof Error ? error.message : String(error))
 
       // the failing `want`'s own line when the marker names it, else the test's `test` line
-      const wanted = wantLine(typeof note === 'string' ? note : undefined)
+      const wanted = wantLine(error)
       results.push({ name, label, held: false, ms: Date.now() - started, error: why, line: wanted !== undefined ? wanted + 1 : line })
     }
   }

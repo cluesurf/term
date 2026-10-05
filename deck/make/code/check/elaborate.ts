@@ -20,6 +20,7 @@ import type {
   Span,
 } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
+import { armLocals } from '@term/make/code/check/arm'
 import type {
   Expression,
   Program,
@@ -177,6 +178,46 @@ function hasFreeVar(term: Term, depth = 0): boolean {
         hasFreeVar(term.motive, depth) ||
         hasFreeVar(term.base, depth)
       )
+    default:
+      return false
+  }
+}
+
+// Does a field type mention a universe anywhere? A form with such a field is LARGE: its constructor takes a type, or a
+// family of types, while the form itself lives in the impredicative Type0. A large form must never get the large
+// eliminator `matchType__T`, because a decoder through it makes Type0 a retract of a type in Type0, and Hurkens'
+// paradox then proves false (test/check/paradox.ts, K0). Rocq's rule is the same: no strong elimination of a large
+// inductive in an impredicative sort. Anywhere, not only at the top: `nat -> type` is large, and so, conservatively, is
+// `type -> nat`, which Rocq would allow. A null term (a field that did not lower) counts as large, the safe direction.
+function mentionsUniverse(term: Term | null): boolean {
+  if (!term) {
+    return true
+  }
+
+  switch (term.tag) {
+    case 'type':
+      return true
+    case 'app':
+      return mentionsUniverse(term.fun) || mentionsUniverse(term.arg)
+    case 'lam':
+    case 'self':
+      return mentionsUniverse(term.body)
+    case 'pi':
+    case 'sigma':
+      return mentionsUniverse(term.domain) || mentionsUniverse(term.codomain)
+    case 'ann':
+      return mentionsUniverse(term.term) || mentionsUniverse(term.type)
+    case 'pair':
+      return mentionsUniverse(term.first) || mentionsUniverse(term.second)
+    case 'fst':
+    case 'snd':
+      return mentionsUniverse(term.pair)
+    case 'id':
+      return mentionsUniverse(term.type) || mentionsUniverse(term.left) || mentionsUniverse(term.right)
+    case 'refl':
+      return mentionsUniverse(term.type) || mentionsUniverse(term.value)
+    case 'j':
+      return mentionsUniverse(term.proof) || mentionsUniverse(term.motive) || mentionsUniverse(term.base)
     default:
       return false
   }
@@ -883,6 +924,11 @@ export function elaborateReport(
   const declined: { name: string; reason: string }[] = []
   const discharged: Span[] = [] // holds the kernel proved by definitional equality (the non-linear fallback)
   const lemmas = new Map<string, { left: string; right: string }>() // named, proven `a == b` holds, for `cite`
+  // the program's theorems: a `cite` of one this pass holds no equality lemma for is the arithmetic provers' (holds.ts
+  // `citedFacts`, which proves its hypotheses and adds its conclusion), not a dangling reference
+  const theoremNames = new Set(
+    program.flatMap(s => (s.form === 'function' && s.theorem ? [s.name] : [])),
+  )
   // named, proven UNIVERSAL equational lemmas, stored as rewrite rules: `binderCount` leading universal binders (the
   // rule's `mark`s), and `lhs`/`rhs` quoted at that depth so their `var`s are the universal holes. Used by `fold ...`
   // with `cite <lemma>` children: each cited lemma is instantiated by first-order matching against the goal and fed in
@@ -952,6 +998,9 @@ export function elaborateReport(
   // a polymorphic datatype's type-parameter count, so the type former is registered as `Type -> .. -> Type` and use
   // sites (constructor application, match) supply that many erased type witnesses. 0 (absent) for a monomorphic type.
   const typeFormerArity = new Map<string, number>()
+  // a LARGE form (a field carries a type) -> that field's name. It gets no `matchType__T` (mentionsUniverse, K0), and
+  // a type-returning match on it is refused with this name rather than as an unknown constant.
+  const largeForms = new Map<string, string>()
 
   // every polymorphic record-type's former takes its type parameters, a STRUCT included. Only an enum used to record
   // it, so a generic struct (`signal t`) was registered as a bare `Type0` and a signature naming `signal text` applied
@@ -1583,7 +1632,12 @@ export function elaborateReport(
               resolveIndexCtor,
             )
 
-            if (!fieldType) {
+            // a field that did not lower, or one that carries a type: no large eliminator (mentionsUniverse, K0)
+            if (!fieldType || mentionsUniverse(fieldType)) {
+              if (fieldType) {
+                largeForms.set(statement.name, fields[j]!.name)
+              }
+
               largeSound = false
               break
             }
@@ -1905,6 +1959,12 @@ export function elaborateReport(
   const isUnitValue = (value: Value): boolean => isUnit(quote(0, value))
   type Scope = Map<string, number> // surface name -> the context level at which it was bound
 
+  // a name in scope that the kernel did not bind (a match arm's field on the statement path): a KEY with no level, so
+  // `get` finds nothing to apply and `has` still stops the lookup from reaching a global of the same name
+  const hide = (scope: Scope, name: string): void => {
+    scope.set(name, undefined as unknown as number)
+  }
+
   // a fresh type metavariable for one erased generic argument at a call site. Inside a generic function's body the
   // meta is abstracted over the enclosing generic binders and applied to them (a contextual metavariable), so
   // pattern unification can solve it TO an enclosing generic (the forwarding case) by inverting the spine.
@@ -1953,6 +2013,10 @@ export function elaborateReport(
         if (level !== undefined) {
           return variable(context.level - level - 1)
         }
+
+        if (scope.has(node.name)) {
+          return null
+        } // a local the kernel cannot bind (`hide`), which must not reach a global of the same name
 
         if (functionType.has(node.name)) {
           return constant(node.name)
@@ -2137,6 +2201,10 @@ export function elaborateReport(
         // already sits in the context, so the kernel types the application. This is what makes higher-order functions
         // (map / fold / filter taking a callback) reduce, and free theorems over them provable.
         const localLevel = scope.get(node.callee.name)
+
+        if (localLevel === undefined && scope.has(node.callee.name)) {
+          return null
+        } // a hidden local (`hide`): the call is to it, not to a global task of the same name
 
         if (localLevel !== undefined) {
           const localIndex = context.level - localLevel - 1
@@ -2951,6 +3019,17 @@ export function elaborateReport(
         // universe-as-data (`El : U -> type`, where `El natcode = nat`), the computational core of induction-recursion.
         // The motive is constant (`\_. type`); the branch order is (motive, branches, subject).
         if (resultTerm.tag === 'type') {
+          const largeField = largeForms.get(enumName)
+
+          if (largeField !== undefined) {
+            // the source's name, without the module scope's `__in0_0`
+            const form = enumName.replace(/__in\d+_\d+$/, '')
+
+            throw new TypeError(
+              `form ${form} is large (its field ${largeField} carries a type), so a match on it cannot return a type: that would make type a retract of ${form} and prove false (Hurkens, see test/check/paradox.ts)`,
+            )
+          }
+
           return apply(
             constant(`matchType__${enumName}`),
             ...subjectTypeArgs,
@@ -3025,15 +3104,19 @@ export function elaborateReport(
         const lemma = tactic.arg ? lemmas.get(tactic.arg) : undefined
 
         if (!lemma) {
-          return 'bad'
+          return tactic.arg && theoremNames.has(tactic.arg) ? 'open' : 'bad'
         }
 
         // a cited lemma must state the same equality, in either orientation (== is symmetric)
+        // a theorem stating something else may still be USED (its conclusion as a fact toward this goal): that is
+        // the arithmetic provers' citation, so it is left to them rather than failed here
         return (lemma.left === here.left &&
           lemma.right === here.right) ||
           (lemma.left === here.right && lemma.right === here.left)
           ? 'ok'
-          : 'fail'
+          : theoremNames.has(tactic.arg!)
+            ? 'open'
+            : 'fail'
       }
 
       case 'turn': {
@@ -3118,6 +3201,13 @@ export function elaborateReport(
     for (const statement of statements) {
       switch (statement.form) {
         case 'let': {
+          // a bare `save x`, given its value by a later assignment: the kernel has only the unit placeholder to type
+          // it with, so it declines the task, and the ordinary checker, which types the name by its first assignment,
+          // checks it (2026-10-05)
+          if (statement.mutable && statement.init.form === 'unit') {
+            need(null, 'a name declared and given its value later')
+          }
+
           const term = need(expr(statement.init, sc, ctx))
           const type = infer(ctx, term).type
           sc = new Map(sc).set(statement.name, ctx.level)
@@ -3309,9 +3399,24 @@ export function elaborateReport(
           }
 
           for (const branch of statement.cases) {
+            // AN ARM'S FIELDS SHADOW THE OUTER NAMES (check/arm.ts, the one rule). The kernel binds no fields here, so
+            // a field's local is taken OUT of scope: a use of it declines, as the eliminator path declines, rather
+            // than reach an outer variable of the same name. With a `miss` arm this path ran, and `case number /
+            // back value` beside a parameter `value` was checked as returning the parameter: "expected Number, found
+            // sample" for a program the surface checker accepts (deck/test/code/property-check.tree, 2026-10-05)
+            // The local stays a KEY with no level (`hidden`), never deleted: deleted, a use fell through to a GLOBAL of
+            // the same name, and `case int-value / link n / back number-text(n)` was checked against a task `n` in
+            // another module ("expected Number, found (many x1 : Number) -> smt-term", 2026-10-05)
+            const fields = (variantFieldInfo.get(ctorKey(subjectType.name, branch.label)) ?? []).map(f => f.name)
+            const shadowed = new Map(sc)
+
+            for (const { local } of armLocals(fields, branch.binds ?? [])) {
+              hide(shadowed, local)
+            }
+
             checkCommands(
               branch.body,
-              sc,
+              shadowed,
               ctx,
               resultValue,
               assumptions,
@@ -6090,9 +6195,11 @@ export function elaborateReport(
     factsLocal = localNames(statement)
     factsVolatile = volatileNames(statement.body)
 
-    const term = body(statement.body, scope, context, resultValue)
-
     try {
+      // inside the try: a refusal raised while the term is BUILT (a type-returning match on a large form) is reported
+      // like one raised while it is checked, where it used to escape and end the compile
+      const term = body(statement.body, scope, context, resultValue)
+
       if (term) {
         check(context, term, resultValue)
 

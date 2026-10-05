@@ -15,6 +15,7 @@
 // knows every position. A file that does not hold the name as a whole word is never milled.
 
 import { realpathSync, readFileSync } from 'node:fs'
+import { basename, dirname, join } from 'node:path'
 import { analyze as analyzeSource } from '@term/make/code/analyze'
 import { importFindsOf, makeParseMemo } from '@term/make/code/compile/load'
 import type { ParseMemo, Resolver } from '@term/make/code/compile/load'
@@ -71,11 +72,17 @@ export function mentions(text: string, name: string): boolean {
   return false
 }
 
+// A file's one spelling: its real path. A file not on disk yet (open in the editor, not saved) takes the real path of
+// its nearest folder that is, and keeps the rest as written, so it is spelled the way its saved neighbors are. It kept
+// its raw path, and on macOS `/var/...` and `/private/var/...` named one folder two ways, so a load from a saved file
+// never found the unsaved one (basics/editor)
 export function canonical(file: string): string {
   try {
     return realpathSync(file)
   } catch {
-    return file
+    const parent = dirname(file)
+
+    return parent === file ? file : join(canonical(parent), basename(file))
   }
 }
 

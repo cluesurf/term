@@ -702,6 +702,15 @@ function expressionOf(
         }
       }
 
+      // a braced segment, `x/{k}` or a path after a call, `greeting()/text`, is read from the name's parts
+      if (nameNodeOf(value.node)?.parts.some(part => part.kind === 'interpolation')) {
+        const dynamic = dynamicPath(bridge, value, span)
+
+        if (dynamic) {
+          return dynamic
+        }
+      }
+
       // THROUGH readPath, so `x/a` in value position is a member read and not a variable named "x/a". The
       // callee slot always went through it and the value slot did not, so `letters/flat-map` as a head
       // worked and `x/a` as an argument resolved to nothing and said nothing (lean-0019, probed 2026-09-12).
@@ -753,7 +762,7 @@ function expressionOf(
       // the segment's expression and its span come from the token's own interpolation part, which is why the
       // capture carries its CST node and not just the rendered word.
       if (path.includes('{')) {
-        const dynamic = dynamicPath(value, span)
+        const dynamic = dynamicPath(bridge, value, span)
 
         if (dynamic) {
           return withLinks(bridge, dynamic, value)
@@ -1348,7 +1357,7 @@ function nameNodeOf(node: Node | undefined): NameNode | undefined {
 
 // A path with an interpolated segment, built from the token's parts the way the mill builds it: each chunk
 // contributes plain segments, and each `{...}` contributes a member indexed by the inner group's value.
-function dynamicPath(value: Minted, span: Span): Expression | undefined {
+function dynamicPath(bridge: Bridge, value: Minted, span: Span): Expression | undefined {
   const head = nameNodeOf(value.node)
 
   if (!head) {
@@ -1372,7 +1381,19 @@ function dynamicPath(value: Minted, span: Span): Expression | undefined {
       continue
     }
 
-    if (!part.group || !built) {
+    if (!part.group) {
+      continue
+    }
+
+    // a path that STARTS with a braced value is rooted at that value, which is how `greeting()/text` reads (the
+    // parser builds it as `{greeting()}/text`): the field of what the call returns
+    if (!built) {
+      built = expressionFromNode(bridge, part.group, spanOfWhole(part.group))
+
+      if (!built) {
+        return undefined
+      }
+
       continue
     }
 
@@ -2122,6 +2143,67 @@ function statementOf(
           : {}),
         span,
       }
+
+    // `save x, sift <value>`: `x` declared, then the `sift` statement with every arm that gives a value assigning it.
+    // A declared `save x` is typed by its first assignment (check/infer.ts) and written with its type and no value on
+    // each backend (`declaredLater`), which is what this needs (guides: language/matching, 2026-10-05)
+    case 'save-match': {
+      const name = wordAt(value, 'name')
+
+      if (name === undefined) {
+        return unhandled(bridge, value, 'a save with no name')
+      }
+
+      const built = matchOf(bridge, value)
+
+      if (built?.form !== 'match') {
+        return built
+      }
+
+      const existing = name.includes('/') || bridge.declared.has(name)
+      bridge.declared.add(name)
+
+      const assigning = (body: Statement[]): Statement[] => {
+        const last = body[body.length - 1]
+
+        return last?.form === 'expression'
+          ? [...body.slice(0, -1), { form: 'assign', target: readPath(name, last.span), op: '=', value: last.expr, span: last.span }]
+          : body
+      }
+
+      const match: Statement = {
+        ...built,
+        cases: built.cases.map(arm => ({ ...arm, body: assigning(arm.body) })),
+        ...(built.otherwise ? { otherwise: assigning(built.otherwise) } : {}),
+      }
+
+      return existing ? match : [{ form: 'let', name, init: { form: 'unit', span }, mutable: true, span }, match]
+    }
+
+    // `back sift <value>`: the match, each arm returning the value it ends on. There is no match expression in the
+    // IR, so it is the `sift` statement with a `return` put at the end of every arm that gives a value; an arm that
+    // returns or raises itself is left as written (guides: language/matching, 2026-10-05)
+    case 'back-match': {
+      const built = matchOf(bridge, value)
+
+      if (built?.form !== 'match') {
+        return built
+      }
+
+      const returning = (body: Statement[]): Statement[] => {
+        const last = body[body.length - 1]
+
+        return last?.form === 'expression'
+          ? [...body.slice(0, -1), { form: 'return', value: last.expr, span: last.span }]
+          : body
+      }
+
+      return {
+        ...built,
+        cases: built.cases.map(arm => ({ ...arm, body: returning(arm.body) })),
+        ...(built.otherwise ? { otherwise: returning(built.otherwise) } : {}),
+      }
+    }
 
     case 'send': {
       const built = expressionOf(bridge, firstAt(value, 'seed'))

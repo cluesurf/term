@@ -42,38 +42,76 @@ import {
 import { projectCache } from '@term/call/code/cache-store'
 import { closeRun, failRun, field, openRun, report, reportProblems, showPath } from '@term/call/code/output'
 
-// does the program's `boot` hand something back: a `return` with a value anywhere in its body, outside a nested task
-// or closure.
-// The cloudflare `host` answers the fetch handler, and `back host(route, port)` is how a boot passes it on
+// does the program's `boot` hand back a fetch handler. A handler is made by `serve` (`@term/site/http/serve`), which the
+// cloudflare `host` returns, so `back host(route, port)` passes one on. The types cannot say so, since `serve` is
+// declared with no result on this target, so this follows what `boot` returns: a call to a task of the program is
+// followed into that task's own returns, until one is a call to `serve`. A `boot` that returns nothing, or a number,
+// or anything that never reaches `serve`, answers false (guides: commands/cast).
 export function returnsHandler(program: readonly unknown[]): boolean {
-  const boot = program.find(
-    (node): node is { form: 'function'; name: string; body: unknown[] } =>
-      typeof node === 'object' && node !== null && (node as { form?: string }).form === 'function' && (node as { name?: string }).name === 'boot',
-  )
+  type Fn = { form: 'function'; name: string; body: unknown[] }
 
-  const returns = (value: unknown): boolean => {
+  const functions = new Map<string, Fn>()
+
+  for (const node of program) {
+    if (typeof node === 'object' && node !== null && (node as { form?: string }).form === 'function') {
+      functions.set((node as Fn).name, node as Fn)
+    }
+  }
+
+  // the values a body returns, outside a nested task or closure
+  const returned = (value: unknown, into: unknown[]): unknown[] => {
     if (Array.isArray(value)) {
-      return value.some(returns)
+      value.forEach(item => returned(item, into))
+      return into
     }
 
     if (typeof value !== 'object' || value === null) {
-      return false
+      return into
     }
 
     const node = value as { form?: string; value?: unknown }
 
     if (node.form === 'function' || node.form === 'closure') {
-      return false
+      return into
     }
 
     if (node.form === 'return' && node.value !== undefined) {
-      return true
+      into.push(node.value)
+      return into
     }
 
-    return Object.entries(node).some(([key, child]) => key !== 'span' && returns(child))
+    for (const [key, child] of Object.entries(node)) {
+      if (key !== 'span') {
+        returned(child, into)
+      }
+    }
+
+    return into
   }
 
-  return boot !== undefined && returns(boot.body)
+  const seen = new Set<string>()
+
+  const handler = (name: string): boolean => {
+    const fn = functions.get(name)
+
+    if (!fn || seen.has(name)) {
+      return false
+    }
+
+    seen.add(name)
+
+    return returned(fn.body, []).some(value => {
+      const call = value as { form?: string; callee?: { form?: string; name?: string } }
+
+      if (call.form !== 'call' || call.callee?.form !== 'variable' || call.callee.name === undefined) {
+        return false
+      }
+
+      return call.callee.name === 'serve' || handler(call.callee.name)
+    })
+  }
+
+  return handler('boot')
 }
 
 export async function callCast(input: {
@@ -145,7 +183,7 @@ export async function callCast(input: {
       report({
         glyph: 'failed',
         kind: 'problem',
-        subject: '`boot` returns nothing, so the Worker would have no fetch handler',
+        subject: '`boot` returns no fetch handler, so the Worker would have none',
         fields: [field('at', `${showPath(entry, input.root)}${line}`), field('next', 'end boot with `back host(route, port)`')],
       })
       report({ glyph: 'failed', verb: 'build', subject: showPath(entry, input.root), duration: Date.now() - started, facts: ['cloudflare'] })

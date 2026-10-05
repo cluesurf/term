@@ -1,0 +1,299 @@
+# CEGAR, counterexample-guided abstraction refinement, the loop that makes abstraction practical against state
+# explosion: abstract a (possibly infinite) system by a set of predicates, so an abstract state is their truth vector
+# and the abstract state space is finite; check reachability over it; when a bad abstract state is reachable, ask
+# whether a real path reaches a bad state (bounded unrolling of the concrete system); if one does it is a true bug, and
+# if not the abstraction was too coarse, so add a predicate that rules the spurious path out and go again. The
+# feasibility, the edges and the concrete check are each a solver query.
+#
+# Ported from deck/test/code/cegar.ts (self-hosting, 2026-10-05). The concrete system and the predicates were closures
+# building Z3 objects over the state variable, and are tasks building smt-query.tree formulas over its term. The search
+# keeps the original's shape exactly, its depth counted per state taken off the frontier included.
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+load @term/base/bit
+  find bitwise-and
+  find shift-left
+
+load ./smt-query
+  find smt-term
+  find formula
+  find name-term
+  find negated
+  find check-sat
+
+# a concrete system over one integer variable
+form concrete
+  link init
+    like task
+      take x, like smt-term
+      like formula
+  link trans
+    like task
+      take x, like smt-term
+      take next, like smt-term
+      like formula
+  link bad
+    like task
+      take x, like smt-term
+      like formula
+
+form cegar-result
+  # `safe`, `unsafe` or `unknown`
+  link status, like text
+  link predicates-used, like number
+  link refinements, like number
+  # the concrete path to the bad state when unsafe, empty otherwise
+  link trace, like list, like number
+  link reason, like text
+
+task truth-key
+  take bits, like list, like boolean
+  like text
+
+  host parts, make list
+  walk bits
+    take bit
+    fork test, bit
+      hold
+        parts/push(<1>)
+      miss
+        parts/push(<0>)
+
+  back join(parts, <>)
+
+# the conjunction encoding an abstract state over the term
+task matches
+  take predicates
+    like list
+      like task
+        take x, like smt-term
+        like formula
+  take bits, like list, like boolean
+  take x, like smt-term
+  like formula
+
+  host parts, make list
+  parts/push
+    make truth
+      bind value, true
+  save at, 0
+  walk predicates
+    take predicate
+    host p, predicate(x)
+    fork test, get(bits, at)
+      hold
+        parts/push(p)
+      miss
+        parts/push(negated(p))
+    save at, add(at, 1)
+
+  back
+    make all-of
+      bind items, parts
+
+task satisfiable
+  take names, like list, like text
+  take query, like formula
+  like boolean
+
+  host found, check-sat(names, query)
+
+  back is-equal(found/status, <sat>)
+
+# whether some concrete path of at most `max-depth` steps reaches a bad state: the shortest such trace, or empty
+task concretize
+  take system, like concrete
+  take max-depth, like number
+  like list, like number
+
+  save k, 0
+  walk test
+    hook test, is-maximum(k, max-depth)
+    hook hold
+      host names, make list
+      host terms, make list
+      save i, 0
+      walk test
+        hook test, is-maximum(i, k)
+        hook hold
+          names/push(<cx_{i}>)
+          terms/push(name-term(<cx_{i}>))
+          save i, add(i, 1)
+      host parts, make list
+      parts/push(call(system/init, get(terms, 0)))
+      save step, 0
+      walk test
+        hook test, is-below(step, k)
+        hook hold
+          parts/push(call(system/trans, get(terms, step), get(terms, add(step, 1))))
+          save step, add(step, 1)
+      parts/push(call(system/bad, get(terms, k)))
+      host query
+        make all-of
+          bind items, parts
+      host found, check-sat(names, query)
+      fork test, is-equal(found/status, <sat>)
+        hold
+          back found/values
+      save k, add(k, 1)
+
+  back make list
+
+# is a bad abstract state reachable under these predicates?
+task bad-reachable
+  take system, like concrete
+  take predicates
+    like list
+      like task
+        take x, like smt-term
+        like formula
+  take max-depth, like number
+  like boolean
+
+  host x, name-term(<x>)
+  host xn, name-term(<xn>)
+  host one, make list(<x>)
+  host two, make list(<x>, <xn>)
+
+  # every feasible abstract state, by mask in increasing order
+  host count, predicates/length
+  host states, make list
+  save total, 1
+  save at, 0
+  walk test
+    hook test, is-below(at, count)
+    hook hold
+      save total, multiply(total, 2)
+      save at, add(at, 1)
+  save mask, 0
+  walk test
+    hook test, is-below(mask, total)
+    hook hold
+      host bits, make list
+      save i, 0
+      walk test
+        hook test, is-below(i, count)
+        hook hold
+          bits/push(not(is-equal(bitwise-and(mask, shift-left(1, i)), 0)))
+          save i, add(i, 1)
+      fork test, satisfiable(one, matches(predicates, bits, x))
+        hold
+          states/push(bits)
+      save mask, add(mask, 1)
+
+  host initial, make hash
+  host bad, make hash
+  walk states
+    take bits
+    host key, truth-key(bits)
+    initial/set(key, satisfiable(one, both-of(call(system/init, x), matches(predicates, bits, x))))
+    bad/set(key, satisfiable(one, both-of(call(system/bad, x), matches(predicates, bits, x))))
+
+  # breadth first from the initial states, the depth counted per state taken off the frontier
+  host seen, make hash
+  host frontier, make list
+  walk states
+    take bits
+    fork test, get-or-default(initial, truth-key(bits), false)
+      hold
+        seen/set(truth-key(bits), true)
+        frontier/push(bits)
+  save depth, 0
+  save head, 0
+  walk test
+    hook test, and(is-below(head, frontier/length), is-maximum(depth, max-depth))
+    hook hold
+      host current, get(frontier, head)
+      save head, add(head, 1)
+      fork test, get-or-default(bad, truth-key(current), false)
+        hold
+          back true
+      walk states
+        take target
+        fork test, not(has(seen, truth-key(target)))
+          hold
+            host edge, both-of(both-of(call(system/trans, x, xn), matches(predicates, current, x)), matches(predicates, target, xn))
+            fork test, satisfiable(two, edge)
+              hold
+                seen/set(truth-key(target), true)
+                frontier/push(target)
+      save depth, add(depth, 1)
+
+  back false
+
+task both-of
+  take left, like formula
+  take right, like formula
+  like formula
+
+  host items, make list(left, right)
+
+  back
+    make all-of
+      bind items, items
+
+# CEGAR from `predicates`, refining with `refinements` in order when a counterexample is spurious
+task cegar
+  take system, like concrete
+  take predicates
+    like list
+      like task
+        take x, like smt-term
+        like formula
+  take refinements
+    like list
+      like task
+        take x, like smt-term
+        like formula
+  take max-depth, like number
+  like cegar-result
+
+  host using, copy(predicates)
+  save used, 0
+  host none, make list
+  walk test
+    hook test, true
+    hook hold
+      fork test, not(bad-reachable(system, using, max-depth))
+        hold
+          back
+            make cegar-result
+              bind status, <safe>
+              bind predicates-used, using/length
+              bind refinements, used
+              bind trace, none
+              bind reason, <>
+      host trace, concretize(system, max-depth)
+      fork test, is-above(trace/length, 0)
+        hold
+          back
+            make cegar-result
+              bind status, <unsafe>
+              bind predicates-used, using/length
+              bind refinements, used
+              bind trace, trace
+              bind reason, <>
+      fork test, is-equal(used, refinements/length)
+        hold
+          back
+            make cegar-result
+              bind status, <unknown>
+              bind predicates-used, using/length
+              bind refinements, used
+              bind trace, none
+              bind reason, <spurious counterexample and no refinement left>
+      using/push(get(refinements, used))
+      save used, add(used, 1)
+
+  back
+    make cegar-result
+      bind status, <unknown>
+      bind predicates-used, using/length
+      bind refinements, used
+      bind trace, none
+      bind reason, <>

@@ -1,0 +1,312 @@
+# A coverage-guided fuzzer, modeled on AFL++, libFuzzer and honggfuzz: an input that reaches NEW coverage is kept, and
+# the corpus evolves toward the deep states a blind random fuzzer never finds. Edge coverage (AFL), a value profile of
+# how close a comparison's operands are (libFuzzer, which climbs toward a magic constant one edge cannot), havoc
+# mutations (bit flips, arithmetic, interesting values, negation, splicing), a power schedule favoring novel and rarely
+# chosen inputs (AFLFast), and a crashing input minimized toward zeros.
+#
+# Ported from deck/test/code/fuzz.ts (self-hosting, 2026-10-05). Two shapes changed. The target reported coverage
+# through a sink of two closures, and here the sink is a record the target hands to `cover-edge` and `cover-compare`.
+# And the target crashed by throwing, where here it answers whether it failed: a task that can raise is not yet a
+# function value on Rust (log.md), and an oracle's verdict is a value anyway. Every draw is the original's, in its
+# order, so a seed takes the original's path.
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+load @term/base/bit
+  find bitwise-exclusive-or
+  find bitwise-and
+  find shift-left
+
+load @term/base/float
+  find round-down
+  find to-decimal
+  find to-number
+  find power
+
+load ./seeded-random
+  find seed-state
+  find next-random
+  find low-32
+
+# where an instrumented target reports what it reached
+form coverage-sink
+  # the edges taken, and a value-profile token per comparison
+  link hits, like list, like number
+  # how many comparisons it has made, so each gets its own site
+  link sites, like list, like number
+
+form fuzz-result
+  # whether a crash was found, and the input, minimized; empty when none was
+  link crashed, like boolean
+  link crash, like list, like number
+  link execs, like number
+  link edges-found, like number
+  link corpus-size, like number
+
+task fresh-sink
+  like coverage-sink
+
+  host hits, make list
+  host sites, make list(0)
+
+  back
+    make coverage-sink
+      bind hits, hits
+      bind sites, sites
+
+# a branch was taken
+task cover-edge
+  take sink, like coverage-sink
+  take id, like number
+
+  sink/hits/push(id)
+
+# matching high-order bits of two 32-bit values: how close the operands are to equal, from the top down
+task matching-bits
+  take a, like number
+  take b, like number
+  like number
+
+  save x, low-32(bitwise-exclusive-or(a, b))
+  fork test, is-equal(x, 0)
+    hold
+      back 32
+  save n, 0
+  walk test
+    hook test, is-equal(bitwise-and(x, 2147483648), 0)
+    hook hold
+      save n, add(n, 1)
+      save x, low-32(shift-left(x, 1))
+
+  back n
+
+# a comparison was evaluated: a token per (site, matching high bits), so inputs nearer equality reach new tokens
+task cover-compare
+  take sink, like coverage-sink
+  take a, like number
+  take b, like number
+
+  host site, get(sink/sites, 0)
+  sink/hits/push(add(add(1073741824, multiply(site, 64)), matching-bits(a, b)))
+  sink/sites/set(0, add(site, 1))
+
+host interesting, make list(0, 1, -1, 2, 7, 8, 13, 16, 32, 42, 64, 100, 127, 128, 255, 256, -128, 1000, -1000)
+
+task draw-under
+  take state, like list, like number
+  take count, like number
+  like number
+
+  back to-number(round-down(multiply(next-random(state), to-decimal(count))))
+
+# AFL-style havoc: one to four random mutations, sometimes a field spliced from another corpus entry
+task mutate
+  take parent, like list, like number
+  take corpus, like list, like list, like number
+  take state, like list, like number
+  like list, like number
+
+  host child, copy(parent)
+  host rounds, add(1, draw-under(state, 4))
+  save round, 0
+  walk test
+    hook test, is-below(round, rounds)
+    hook hold
+      host at, draw-under(state, child/length)
+      host op, draw-under(state, 5)
+      fork test, is-equal(op, 0)
+        hold
+          child/set(at, bitwise-exclusive-or(get(child, at), shift-left(1, draw-under(state, 16))))
+      fork test, is-equal(op, 1)
+        hold
+          child/set(at, add(get(child, at), subtract(draw-under(state, 7), 3)))
+      fork test, is-equal(op, 2)
+        hold
+          child/set(at, get(interesting, draw-under(state, interesting/length)))
+      fork test, is-equal(op, 3)
+        hold
+          child/set(at, subtract(0, get(child, at)))
+      fork test, and(is-equal(op, 4), is-above(corpus/length, 1))
+        hold
+          host other, get(corpus, draw-under(state, corpus/length))
+          child/set(at, get(other, modulo(at, other/length)))
+      save round, add(round, 1)
+
+  back child
+
+# the power schedule: a weighted reservoir draw by novelty over times chosen (AFLFast)
+task pick-entry
+  take novelty, like list, like number
+  take chosen, like list, like number
+  take state, like list, like number
+  like number
+
+  save best, 0
+  save best-key, -1.0
+  save at, 0
+  walk novelty
+    take each
+    save weight, divide(to-decimal(each), to-decimal(add(get(chosen, at), 1)))
+    fork test, is-below(weight, 0.01)
+      hold
+        save weight, 0.01
+    host key, power(next-random(state), divide(1.0, weight))
+    fork test, is-above(key, best-key)
+      hold
+        save best-key, key
+        save best, at
+    save at, add(at, 1)
+
+  back best
+
+# the crash shrunk toward each component being 0, 1 or -1, keeping the crash
+task minimize-crash
+  take target
+    like task
+      take input, like list, like number
+      take sink, like coverage-sink
+      like boolean
+  take crash, like list, like number
+  like list, like number
+
+  save current, copy(crash)
+  save at, 0
+  walk test
+    hook test, is-below(at, current/length)
+    hook hold
+      host tries, make list(0, 1, -1)
+      save done, false
+      walk tries
+        take value
+        fork test, not(done)
+          hold
+            host trial, copy(current)
+            trial/set(at, value)
+            fork test, target(trial, fresh-sink())
+              hold
+                save current, trial
+                save done, true
+      save at, add(at, 1)
+
+  back current
+
+# fuzz `target` over inputs of `arity` integers from `seeds` (all zeros when none), for up to `iterations` runs or
+# until it fails
+task fuzz
+  take target
+    like task
+      take input, like list, like number
+      take sink, like coverage-sink
+      like boolean
+  take arity, like number
+  take seeds, like list, like list, like number
+  take iterations, like number
+  take seed, like number
+  like fuzz-result
+
+  host state, seed-state(seed)
+  host seen, make hash
+  host corpus, make list
+  host novelty, make list
+  host chosen, make list
+  save execs, 0
+  # how many distinct edges and tokens have been reached
+  save edges, 0
+
+  host starts, make list
+  walk seeds
+    take each
+    starts/push(each)
+  fork test, is-equal(starts/length, 0)
+    hold
+      host zeros, make list
+      save at, 0
+      walk test
+        hook test, is-below(at, arity)
+        hook hold
+          zeros/push(0)
+          save at, add(at, 1)
+      starts/push(zeros)
+
+  save crashed, false
+  save crash, make list
+  walk starts
+    take start
+    fork test, not(crashed)
+      hold
+        host sink, fresh-sink()
+        save execs, add(execs, 1)
+        host failed, target(start, sink)
+        save fresh, 0
+        walk sink/hits
+          take hit
+          fork test, not(has(seen, hit))
+            hold
+              seen/set(hit, true)
+              save edges, add(edges, 1)
+              save fresh, add(fresh, 1)
+        fork test, failed
+          hold
+            save crashed, true
+            save crash, start
+          miss
+            corpus/push(start)
+            novelty/push(add(fresh, 1))
+            chosen/push(0)
+
+  walk test
+    hook test, and(not(crashed), is-below(execs, iterations))
+    hook hold
+      host parent, pick-entry(novelty, chosen, state)
+      chosen/set(parent, add(get(chosen, parent), 1))
+      host energy, add(1, to-number(round-down(divide(to-decimal(get(novelty, parent)), to-decimal(add(get(chosen, parent), 1))))))
+      save turn, 0
+      walk test
+        hook test, and(and(is-below(turn, energy), is-below(execs, iterations)), not(crashed))
+        hook hold
+          host child, mutate(get(corpus, parent), corpus, state)
+          host sink, fresh-sink()
+          save execs, add(execs, 1)
+          host failed, target(child, sink)
+          save fresh, 0
+          walk sink/hits
+            take hit
+            fork test, not(has(seen, hit))
+              hold
+                seen/set(hit, true)
+                save edges, add(edges, 1)
+                save fresh, add(fresh, 1)
+          fork test, failed
+            hold
+              save crashed, true
+              save crash, child
+            miss
+              fork test, is-above(fresh, 0)
+                hold
+                  corpus/push(child)
+                  novelty/push(fresh)
+                  chosen/push(0)
+          save turn, add(turn, 1)
+
+  host none, make list
+  fork test, crashed
+    hold
+      back
+        make fuzz-result
+          bind crashed, true
+          bind crash, minimize-crash(target, crash)
+          bind execs, execs
+          bind edges-found, edges
+          bind corpus-size, corpus/length
+
+  back
+    make fuzz-result
+      bind crashed, false
+      bind crash, none
+      bind execs, execs
+      bind edges-found, edges
+      bind corpus-size, corpus/length

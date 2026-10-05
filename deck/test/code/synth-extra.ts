@@ -13,7 +13,9 @@
  *
  * 1, 3 and 4 are Term since 2026-10-05 (deck/test/code/synthesis-suite.tree,
  * paired against this file's original over 90 syntheses by tmp/pair-suite.ts),
- * and this is their face. 2 is one call to Z3 and stays here.
+ * and this is their face. 2 is Term too (deck/test/code/affine-synthesis.tree,
+ * paired over 60 specs by tmp/pair-affine.ts), and stays here for its callers,
+ * whose spec is a closure over Z3's JavaScript expressions.
  */
 
 import {

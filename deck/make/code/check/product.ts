@@ -59,6 +59,8 @@ const over = (a: Rational, b: Rational): Rational => rational(a.n * b.d, a.d * b
 const isZero = (a: Rational): boolean => a.n === 0n
 const sign = (a: Rational): number => (a.n > 0n ? 1 : a.n < 0n ? -1 : 0)
 const below = (a: Rational, b: Rational): boolean => a.n * b.d < b.n * a.d
+// the bits of a bigint's magnitude, by its hexadecimal digits (four bits each): cheap, and only a measure of work
+const bitLength = (a: bigint): number => (a === 0n ? 0 : (a < 0n ? -a : a).toString(16).length * 4)
 
 // ---- polynomials ----
 
@@ -451,6 +453,10 @@ function plainlyInfeasible(a: Rational[][], b: Rational[]): boolean {
 // or undefined. Every row of b is made non-negative first, and one artificial per row starts the basis.
 function feasible(a: Rational[][], b: Rational[]): Rational[] | undefined {
   if (plainlyInfeasible(a, b)) {
+    if (profiling) {
+      productProfile.floatDeclined++
+    }
+
     return undefined
   }
 
@@ -473,23 +479,26 @@ function feasible(a: Rational[][], b: Rational[]): Rational[] | undefined {
 
   const basis = Array.from({ length: m }, (_, i) => n + i)
 
-  // the objective: minimize the sum of the artificials, carried as reduced costs
-  const cost = (): Rational[] => {
-    const out = Array.from({ length: width + 1 }, (_, j) => (j >= n && j < width ? ONE : ZERO))
+  // the objective: minimize the sum of the artificials, carried as reduced costs. Every artificial starts basic, so the
+  // first row is 1 on the artificials less every row of the table. After that it is UPDATED with each pivot, as the
+  // tableau rows are (reduced -= reduced[enter] * pivot row), which in exact arithmetic is the same row as recomputing
+  // it from the basic rows, and costs one row instead of all of them
+  const reduced = Array.from({ length: width + 1 }, (_, j) => (j >= n && j < width ? ONE : ZERO))
 
-    for (let i = 0; i < m; i++) {
-      if (basis[i]! >= n) {
-        for (let j = 0; j <= width; j++) {
-          out[j] = minus(out[j]!, table[i]![j]!)
-        }
+  for (let i = 0; i < m; i++) {
+    for (let j = 0; j <= width; j++) {
+      if (!isZero(table[i]![j]!)) {
+        reduced[j] = minus(reduced[j]!, table[i]![j]!)
       }
     }
-
-    return out
   }
 
   for (let step = 0; step < 5000; step++) {
-    const reduced = cost()
+    // the budget (THE BUDGET): out of work, decline, and the caller reports that the search stopped
+    if (spent >= budget) {
+      return undefined
+    }
+
     // Bland: the lowest-indexed column with a negative reduced cost enters
     const enter = reduced.findIndex((c, j) => j < width && sign(c) < 0)
 
@@ -522,16 +531,58 @@ function feasible(a: Rational[][], b: Rational[]): Rational[] | undefined {
     }
 
     const pivot = table[leave]![enter]!
-    table[leave] = table[leave]!.map(c => over(c, pivot))
+    const lead = table[leave]!.map(c => (isZero(c) ? c : over(c, pivot)))
+    // the columns the pivot row is not zero in: the only ones any other row changes in. These tables are sparse, and a
+    // zero entry used to cost a multiplication and a gcd per row anyway
+    const live = lead.flatMap((c, j) => (isZero(c) ? [] : [j]))
+
+    // THE WORK this pivot will cost, before it is paid: each other row is rewritten in the live columns, at a price
+    // that grows with the size of the numbers there (a bigint product), so the pivot row's total bit length stands for
+    // it. Deterministic, and it is what time actually tracks: 126 pivots over large fractions took 917 s on
+    // 2026-10-05 where 13 times as many cells over small ones took 13 s
+    let bits = 0
+
+    for (const j of live) {
+      bits += bitLength(lead[j]!.n) + bitLength(lead[j]!.d)
+    }
+
+    const work = m * bits
+
+    if (spent + work > budget) {
+      spent = budget
+
+      return undefined
+    }
+
+    spent += work
+    table[leave] = lead
 
     for (let i = 0; i < m; i++) {
       if (i !== leave && !isZero(table[i]![enter]!)) {
         const k = table[i]![enter]!
-        table[i] = table[i]!.map((c, j) => minus(c, times(k, table[leave]![j]!)))
+        const row = table[i]!
+
+        for (const j of live) {
+          row[j] = minus(row[j]!, times(k, lead[j]!))
+        }
+      }
+    }
+
+    // the reduced costs, the same way
+    const k = reduced[enter]!
+
+    if (!isZero(k)) {
+      for (const j of live) {
+        reduced[j] = minus(reduced[j]!, times(k, lead[j]!))
       }
     }
 
     basis[leave] = enter
+
+    if (profiling) {
+      productProfile.exactPivots++
+      productProfile.exactWork += work
+    }
   }
 
   for (let i = 0; i < m; i++) {
@@ -551,6 +602,45 @@ function feasible(a: Rational[][], b: Rational[]): Rational[] | undefined {
   return x
 }
 
+// WHERE THE TIME GOES, counted for `TERM_PRODUCT_PROFILE=1`: how many searches, how big, how many exact pivots, how
+// many the floating phase settled, and the milliseconds in building rows and in the exact search. Read by holds.ts per
+// goal. Counting changes nothing a search decides.
+export const productProfile = {
+  refutes: 0,
+  rows: 0,
+  cells: 0,
+  floatDeclined: 0,
+  exactPivots: 0,
+  // the cells an exact pivot rewrites, summed: the deterministic measure of the search's work (see THE BUDGET)
+  exactWork: 0,
+  buildMs: 0,
+  exactMs: 0,
+}
+
+const profiling = typeof process !== 'undefined' && Boolean(process.env?.TERM_PRODUCT_PROFILE)
+
+// THE BUDGET. A refusal exhausts every route, and one route is many exact searches, so a false goal could search for
+// half an hour. The budget caps the exact simplex's WORK for one goal, counted in the cells its pivots rewrite (rows
+// times columns, per pivot), which is deterministic: the same goal stops at the same place on every machine and every
+// run, so an answer never depends on timing. Spending it can only DECLINE (no certificate, so at most a proof is lost),
+// never forge one. holds.ts opens a budget per goal (`openBudget`) and asks whether it ran out (`budgetSpent`), so an
+// unproven goal can say it stopped rather than that it is false. Infinite until a caller opens one.
+let budget = Infinity
+let spent = 0
+
+export function openBudget(cells: number): void {
+  budget = cells
+  spent = 0
+}
+
+export function budgetSpent(): boolean {
+  return spent >= budget
+}
+
+export function workSpent(): number {
+  return spent
+}
+
 // search for a certificate that the facts are contradictory. Two shapes are tried: the combination is the constant
 // -1, or it is 0 with the strict rows' multipliers summing to 1.
 export function refute(facts: Fact[], focus?: number, linear?: LinearMode): Certificate | undefined {
@@ -558,6 +648,11 @@ export function refute(facts: Fact[], focus?: number, linear?: LinearMode): Cert
     return undefined
   }
 
+  if (spent >= budget) {
+    return undefined
+  }
+
+  const built = profiling ? Date.now() : 0
   const rows = rowsOf(facts, focus, linear)
   const monomials = new Set<string>([''])
 
@@ -597,8 +692,20 @@ export function refute(facts: Fact[], focus?: number, linear?: LinearMode): Cert
     },
   ]
 
+  if (profiling) {
+    productProfile.refutes++
+    productProfile.rows += rows.length
+    productProfile.cells += keys.length * columns.length
+    productProfile.buildMs += Date.now() - built
+  }
+
   for (const { a, b } of attempts) {
+    const searched = profiling ? Date.now() : 0
     const x = feasible(a, b)
+
+    if (profiling) {
+      productProfile.exactMs += Date.now() - searched
+    }
 
     if (!x) {
       continue

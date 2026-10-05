@@ -1,0 +1,199 @@
+# Symbolic model checking through the SMT solver: BOUNDED model checking (unroll the transition relation k steps and ask
+# whether a reachable state breaks the safety property; a model is the exact path to the bad state) and k-INDUCTION
+# (two queries that prove safety for every step, unbounded: no violation within k steps of an initial state, and k+1
+# safe connected states always step to a safe one). Symbolic, because the solver reasons over sets of states as
+# formulas and never enumerates them.
+#
+# Ported from deck/test/code/bmc.ts (self-hosting, 2026-10-05). A system's initial, transition and safety predicates
+# were closures building Z3 objects over a state; here they are tasks building smt-query.tree formulas over a state, a
+# hash from each variable's name to its term at one step. Which path a counterexample takes is the solver's model.
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+load ./smt-query
+  find smt-term
+  find formula
+  find verdict
+  find name-term
+  find negated
+  find check-sat
+
+# a transition system over integer state variables
+form system
+  link vars, like list, like text
+  link init
+    like task
+      take state, like hash, like text, like smt-term
+      like formula
+  link trans
+    like task
+      take state, like hash, like text, like smt-term
+      take next, like hash, like text, like smt-term
+      like formula
+  link safe
+    like task
+      take state, like hash, like text, like smt-term
+      like formula
+
+form bmc-result
+  link safe, like boolean
+  # the depth checked
+  link depth, like number
+  # the path to the bad state, one row of values (in `vars` order) per step; empty when safe
+  link trace, like list, like list, like number
+
+form induction-result
+  link proven, like boolean
+  # `base` or `step` when not proven, `<>` when proven
+  link reason, like text
+
+# the state at a step: each variable's name `<v>_<step>`
+task state-at
+  take machine, like system
+  take step, like number
+  like hash, like text, like smt-term
+
+  host state, make hash
+  walk machine/vars
+    take v
+    state/set(v, name-term(<{v}_{step}>))
+
+  back state
+
+task names-through
+  take machine, like system
+  take last, like number
+  like list, like text
+
+  host names, make list
+  save step, 0
+  walk test
+    hook test, is-maximum(step, last)
+    hook hold
+      walk machine/vars
+        take v
+        names/push(<{v}_{step}>)
+      save step, add(step, 1)
+
+  back names
+
+task states-through
+  take machine, like system
+  take last, like number
+  like list, like hash, like text, like smt-term
+
+  host states, make list
+  save step, 0
+  walk test
+    hook test, is-maximum(step, last)
+    hook hold
+      states/push(state-at(machine, step))
+      save step, add(step, 1)
+
+  back states
+
+# is there a path of at most `k` steps from an initial state to one that breaks the safety property?
+task bmc
+  take machine, like system
+  take k, like number
+  like bmc-result
+
+  host states, states-through(machine, k)
+  host parts, make list
+  parts/push(call(machine/init, get(states, 0)))
+  save step, 0
+  walk test
+    hook test, is-below(step, k)
+    hook hold
+      parts/push(call(machine/trans, get(states, step), get(states, add(step, 1))))
+      save step, add(step, 1)
+  host violations, make list
+  walk states
+    take each
+    violations/push(negated(call(machine/safe, each)))
+  parts/push
+    make any-of
+      bind items, violations
+
+  host query
+    make all-of
+      bind items, parts
+  host found, check-sat(names-through(machine, k), query)
+  host none, make list
+
+  fork test, is-equal(found/status, <unsat>)
+    hold
+      back
+        make bmc-result
+          bind safe, true
+          bind depth, k
+          bind trace, none
+
+  # the model's values, a row per step in `vars` order
+  host trace, make list
+  host width, machine/vars/length
+  save at, 0
+  walk test
+    hook test, is-maximum(at, k)
+    hook hold
+      host row, make list
+      save v, 0
+      walk test
+        hook test, is-below(v, width)
+        hook hold
+          row/push(get(found/values, add(multiply(at, width), v)))
+          save v, add(v, 1)
+      trace/push(row)
+      save at, add(at, 1)
+
+  back
+    make bmc-result
+      bind safe, false
+      bind depth, k
+      bind trace, trace
+
+# safety for every step: the base case (bmc within k) and the inductive step (k+1 safe connected states step to a safe
+# one), each one query
+task k-induction
+  take machine, like system
+  take k, like number
+  like induction-result
+
+  host base, bmc(machine, k)
+  fork test, not(base/safe)
+    hold
+      back
+        make induction-result
+          bind proven, false
+          bind reason, <base>
+
+  host states, states-through(machine, add(k, 1))
+  host parts, make list
+  save step, 0
+  walk test
+    hook test, is-maximum(step, k)
+    hook hold
+      parts/push(call(machine/safe, get(states, step)))
+      parts/push(call(machine/trans, get(states, step), get(states, add(step, 1))))
+      save step, add(step, 1)
+  parts/push(negated(call(machine/safe, get(states, add(k, 1)))))
+  host query
+    make all-of
+      bind items, parts
+  host found, check-sat(names-through(machine, add(k, 1)), query)
+
+  fork test, is-equal(found/status, <unsat>)
+    hold
+      back
+        make induction-result
+          bind proven, true
+          bind reason, <>
+
+  back
+    make induction-result
+      bind proven, false
+      bind reason, <step>

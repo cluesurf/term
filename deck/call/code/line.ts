@@ -742,7 +742,15 @@ const cli = yargs(hideBin(process.argv))
         .option('target', {
           type: 'string',
           description:
-            'Build a native app cask for a platform (macos, ios, android, linux, windows), or a Compose app (compose: the desktop with its JVM, compose-android: an APK)',
+            'Build a native app cask for a platform (macos, ios, android, linux, windows), a Compose app (compose: the desktop with its JVM, compose-android: an APK), or an iPhone app drawn by UIKit (uikit: an Xcode project, signed ad hoc with --team)',
+        })
+        .option('team', {
+          type: 'string',
+          description: 'With --target uikit: the Apple team to sign for (read from the keychain when it holds one team)',
+        })
+        .option('link', {
+          type: 'string',
+          description: 'With --target uikit: the https address the app will be served at, for an install page an iPhone opens',
         })
         .option('page', {
           type: 'string',
@@ -792,6 +800,16 @@ const cli = yargs(hideBin(process.argv))
         const { makeCompose } = await import('@term/call/code/compose')
 
         await makeCompose({ root, target: argv.target, entry: argv.entry })
+
+        return
+      }
+
+      // an iPhone app drawn by UIKit, no WebView (swiftui-target-0004): an Xcode project, archived for a device, and
+      // signed ad hoc into an .ipa when there is a team to sign for
+      if (argv.target === 'uikit') {
+        const { makeUikit } = await import('@term/call/code/uikit')
+
+        await makeUikit({ root, entry: argv.entry, team: argv.team, link: argv.link })
 
         return
       }

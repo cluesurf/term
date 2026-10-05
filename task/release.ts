@@ -2,7 +2,10 @@
 // registry (note/term/plan/term-load-install.md, note/term/self-host/09-distribution.md).
 //
 //   pnpm term:release --dry      build tmp/release/<version>/term-<platform>.tar.gz and stop
-//   pnpm term:release            build, then publish to ghcr.io/cluesurf/term/code under the version tag
+//   pnpm term:release            build, then publish to ghcr.io/cluesurf/term/code under the version tag, and tell
+//                                the package index, which lists `@term/code` under /packages like any package
+//   pnpm term:release --ping     build nothing: tell the index about every version already released, which is how the
+//                                releases from before the index read them get listed
 //
 // Only the push needs a secret, so only the push runs under zone (`--push <version>`, a child of this run), and zone's
 // own output nests under this run instead of opening the terminal before it (section 15)
@@ -37,7 +40,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFil
 import path from 'node:path'
 import { build } from 'esbuild'
 import { ensurePublisher, publishRelease, releaseRoute, transportFor } from '@cluesurf/deck.tree'
-import { loadPublishKeypair } from '@term/call/code/host'
+import { announce, loadPublishKeypair } from '@term/call/code/host'
 import { writeFileList } from '@term/call/code/need-load'
 // the terminal output library, as a TYPE only: the module itself is loaded after the port build has run, because the
 // port build is what writes the modules it is made of (see `main`)
@@ -247,6 +250,12 @@ function copyStdlib(into: string): void {
 }
 
 async function main(): Promise<void> {
+  if (process.argv.includes('--ping')) {
+    await pingReleased()
+
+    return
+  }
+
   const dry = process.argv.includes('--dry')
   const version = readVersion()
   const out = path.join(OUT_ROOT, version)
@@ -379,6 +388,48 @@ async function main(): Promise<void> {
   await publish({ version, built, first: taken.form === 'free' && taken.first })
 }
 
+// `--ping`: every released version, told to the package index by its index digest, oldest first, signed by this
+// machine's key so a term.surf token credits them. Builds and pushes nothing
+async function pingReleased(): Promise<void> {
+  output = await loadOutput()
+
+  const started = Date.now()
+  const route = releaseRoute({ package: PACKAGE })
+  const transport = transportFor({ host: route.registry.host })
+
+  output.openRun({ verb: 'release', root: TERM, facts: [PACKAGE, '--ping'], started })
+
+  const keypair = await loadPublishKeypair({ mint: false })
+  const versions = (await transport.listTags({ repository: route.repository.name }))
+    .filter(tag => /^\d+\.\d+\.\d+$/.test(tag))
+    .sort((a, b) => {
+      const [x, y] = [a, b].map(tag => tag.split('.').map(Number))
+
+      return x![0]! - y![0]! || x![1]! - y![1]! || x![2]! - y![2]!
+    })
+  let sent = 0
+
+  for (const version of versions) {
+    const index = await transport.getManifest({ repository: route.repository.name, reference: version })
+
+    if (!index) {
+      continue
+    }
+
+    output.report({ glyph: 'info', verb: 'release', subject: `${PACKAGE}@${version}`, fields: [output.field('index', index.digest)] })
+
+    if (keypair ? await announce({ route, digest: index.digest, keypair }) : false) {
+      sent++
+    }
+  }
+
+  output.closeRun({
+    verdict: keypair ? `Told the index about ${sent} of ${versions.length} releases` : 'There is no signing key on this machine, so nothing was claimed',
+    counts: [output.count(versions.length, 'releases', 'release')],
+    ...(keypair ? {} : { failure: 'environment' }),
+  })
+}
+
 // Is this version on the registry already? One request for the index under the version tag, the same question
 // `publishRelease` asks, asked before the build instead of after it
 async function releasedAlready(
@@ -467,6 +518,15 @@ async function publish(input: { version: string; built: Built[]; first: boolean 
 
   if (status !== 0 || !index) {
     throw Object.assign(new Error(failed || `the push under zone exited ${status ?? 'on a signal'}`), { expected: true })
+  }
+
+  // the package index lists `@term/code` like any package. Told here, by the release, which holds the index digest the
+  // child pushed and needs no registry credential for it: the ping carries only the reference and, beside a term.surf
+  // token, a claim signed by this machine's key, which reads its own file
+  const keypair = await loadPublishKeypair({ mint: false })
+
+  if (keypair) {
+    await announce({ route, digest: index, keypair })
   }
 
   const [owner, ...rest] = route.repository.name.split('/')

@@ -42,6 +42,7 @@ import {
   fillTasks,
   fillCall,
   redeclaredLets,
+  declaredLater,
   textCursors,
   formSpec,
   hasValuedReturn,
@@ -1579,6 +1580,9 @@ export function emitSwift(
   // to 1225 against the hand version's 1221, `tmp/swift-storage-ab.ts`). Not a generic form's, and not a variant held
   // in a node class (`nodeClasses`), whose class keeps its fields as declared
   const structForms = new Set(program.flatMap(n => (n.form === 'record-type' && n.variants.length === 0 && !n.shared ? [n.name] : [])))
+  // the forms with cases: a list literal of them names its element, since `[.int, .int]` alone gives Swift no enum
+  // to find the cases in
+  const unionForms = new Set(program.flatMap(n => (n.form === 'record-type' && n.variants.length > 0 ? [n.name] : [])))
   const plainVariants = new Set(
     program.flatMap(n =>
       n.form === 'record-type' && n.variants.length > 0 && !n.shared && n.params.length === 0 && !nodeClasses.has(n.name) ? n.variants.map(v => v.name) : [],
@@ -1932,9 +1936,14 @@ export function emitSwift(
           const into = node.callee.name === 'fill-form' ? fillSpecs : meltSpecs
           specForms(spec, into)
 
-          return node.callee.name === 'fill-form'
-            ? `__fill${pascal(spec.form)}(${expr(node.args[0]!, bind)}, "")`
-            : `__melt${pascal(spec.form)}(${expr(node.args[0]!, bind)})`
+          // a fill throws `data-mismatch`, tried the way any throwing call is, and brings the exception it throws
+          if (node.callee.name === 'fill-form') {
+            needs.add('exception')
+
+            return `(${tryWord()} __fill${pascal(spec.form)}(${expr(node.args[0]!, bind)}, ""))`
+          }
+
+          return `__melt${pascal(spec.form)}(${expr(node.args[0]!, bind)})`
         }
 
         // a declarative native binding renders its `case swift` template
@@ -2108,9 +2117,13 @@ export function emitSwift(
         // an empty literal gives Swift nothing to infer the element from, so name it explicitly. A full one is left to
         // Swift, which reads the element from the context: texts passed where a `like list, like unknown` is taken
         // are a `SeedList<Any>` there, where the checked `SeedList<String>` would not convert (native-dom-0014)
+        // A list of a UNION's cases is named too: `SeedList([.int, .int])` is "reference to member 'int' cannot be
+        // resolved without a contextual type", since a case written `.int` needs its enum, and the cases of a call
+        // inlined in place reach here bare (deck/test/test/property-check.tree's shapes, 2026-10-05)
+        const element = node.type?.kind === 'array' ? node.type.element : undefined
         const arg =
-          node.items.length === 0 && node.type?.kind === 'array'
-            ? `<${swiftElement(node.type)}>`
+          element && (node.items.length === 0 || (element.kind === 'named' && unionForms.has(element.name)))
+            ? `<${swiftElement(node.type!)}>`
             : ''
 
         return `SeedList${arg}([${node.items
@@ -2164,6 +2177,14 @@ export function emitSwift(
           return '()'
         }
 
+        // a variable put into a field the record owns (`fieldLists`, a plain array): as it is when it is a plain array
+        // itself (an owned local or a lent parameter, `plainNames`), else the array inside its `SeedList`. An async
+        // function owns no locals (`ownedLocals` is skipped for one), so `host none, make list` there is a `SeedList`,
+        // and was passed whole: "cannot convert value of type 'SeedList<Int>'" (deck/test/code/smt-query.tree's
+        // `check-sat`, 2026-10-05, test/compile/swift-owned-field.ts)
+        const plainOrData = (value: Expression): string =>
+          value.form === 'variable' && !plainNames.has(value.name) ? `${expr(value, bind)}.data` : expr(value, bind)
+
         // leading-dot construction: Swift infers the enum/struct type from context
         if (variantSet.has(node.name)) {
           // a list the variant owns (`fieldLists`) is the plain array, as a struct's is: an owned local as it is, a
@@ -2177,7 +2198,7 @@ export function emitSwift(
               return made
             }
 
-            return value.form === 'variable' ? expr(value, bind) : '[]'
+            return value.form === 'variable' ? plainOrData(value) : '[]'
           }
           const labelled = node.fields.map(
             f => `${camel(f.name)}: ${fieldLists.has(`${node.name}/${f.name}`) ? owned(f.value) : expr(f.value, bind)}`,
@@ -2233,7 +2254,7 @@ export function emitSwift(
               return made
             }
 
-            return value.form === 'variable' ? expr(value, bind) : '[]'
+            return value.form === 'variable' ? plainOrData(value) : '[]'
           }
 
           if (
@@ -2621,6 +2642,12 @@ export function emitSwift(
         // `redeclaredLets`): two counted walks over `i` in one task
         if (redeclared.has(node)) {
           return `${vname(node.name)} = ${expr(node.init, bind)}`
+        }
+
+        // a bare `save x`, given its value by a later assignment: declared with its type and no value, which Swift's
+        // definite initialization takes when every path assigns before a read. It was `var x = ()` (2026-10-05)
+        if (declaredLater(node)) {
+          return `var ${vname(node.name)}: ${swiftType(node.type)}`
         }
 
         // a record read from a slot and only ever read through it after (compile/place.ts, `valuePlaces`): no copy is
@@ -3841,9 +3868,8 @@ function bodyThrows(body: Statement[]): boolean {
 // ---- filling a form from data on swift ----
 
 // the walkers a module's `fill` / `melt` with a form need: helpers over the package's data enum (spelled
-// `DataForm` here, since `Data` is Foundation's), then a function per form. A value that does not fit is fatal,
-// which is what a thrown SeedError is on this backend too, with the path and reason of the package's
-// `data-mismatch`.
+// `DataForm` here, since `Data` is Foundation's), then a function per form. A value that does not fit throws the
+// package's `data-mismatch` as a `TermException`, with its path and reason (SWIFT_FORM_HELPERS).
 function swiftFormWalk(fills: Map<string, FormSpec>, melts: Map<string, FormSpec>): string[] {
   if (fills.size === 0 && melts.size === 0) {
     return []
@@ -3854,19 +3880,19 @@ function swiftFormWalk(fills: Map<string, FormSpec>, melts: Map<string, FormSpec
   const fillOf = (kind: FormKind, value: string, path: string, optional: boolean): string => {
     switch (kind.kind) {
       case 'text':
-        return `__termText(${value}, ${path}, ${optional})`
+        return `try __termText(${value}, ${path}, ${optional})`
       case 'number':
-        return `__termNumber(${value}, ${path}, ${optional})`
+        return `try __termNumber(${value}, ${path}, ${optional})`
       case 'decimal':
-        return `__termDecimal(${value}, ${path}, ${optional})`
+        return `try __termDecimal(${value}, ${path}, ${optional})`
       case 'flag':
-        return `__termFlag(${value}, ${path}, ${optional})`
+        return `try __termFlag(${value}, ${path}, ${optional})`
       case 'data':
-        return `__termData(${value}, ${path}, ${optional})`
+        return `try __termData(${value}, ${path}, ${optional})`
       case 'list':
-        return `__termList(${value}, ${path}, ${optional}) { d, p in ${fillOf(kind.item, 'd', 'p', false)} }`
+        return `try __termList(${value}, ${path}, ${optional}) { d, p in ${fillOf(kind.item, 'd', 'p', false)} }`
       case 'form':
-        return `__fill${pascal(kind.spec.form)}(__termData(${value}, ${path}, ${optional}), ${path})`
+        return `try __fill${pascal(kind.spec.form)}(try __termData(${value}, ${path}, ${optional}), ${path})`
       default:
         return '0'
     }
@@ -3879,10 +3905,10 @@ function swiftFormWalk(fills: Map<string, FormSpec>, melts: Map<string, FormSpec
       .join(', ')
 
     out.push(
-      `func __fill${pascal(spec.form)}(_ value: DataForm, _ path: String) -> ${pascal(spec.form)} {\n` +
-        `  let entries = __termEntries(value, path)\n` +
+      `func __fill${pascal(spec.form)}(_ value: DataForm, _ path: String) throws -> ${pascal(spec.form)} {\n` +
+        `  let entries = try __termEntries(value, path)\n` +
         `  let known: Set<String> = [${known}]\n` +
-        `  for e in entries.data { if !known.contains(e.name) { __termMismatch(__termPath(path, e.name), "is not in the form") } }\n` +
+        `  for e in entries.data { if !known.contains(e.name) { throw __termMismatch(__termPath(path, e.name), "is not in the form") } }\n` +
         `  func find(_ name: String) -> DataForm? { return entries.data.first { $0.name == name }?.base }\n` +
         `  return ${pascal(spec.form)}(${fields})\n}`,
     )
@@ -3939,39 +3965,43 @@ function swiftFormWalk(fills: Map<string, FormSpec>, melts: Map<string, FormSpec
   return out
 }
 
-const SWIFT_FORM_HELPERS = `func __termMismatch(_ path: String, _ reason: String) -> Never {
-  fatalError("data-mismatch: Data does not fit the shape: \\(path.isEmpty ? "." : path) \\(reason)")
+// A value that does not fit THROWS `data-mismatch`, the package's own exception, with the fields TypeScript gives it
+// (`@term/host`, `Data does not fit the shape`, and the path and reason under `link`), so a guard catches it as it does
+// there. It was a `fatalError`, which nothing catches (guides: language/data, 2026-10-05).
+const SWIFT_FORM_HELPERS = `func __termMismatch(_ path: String, _ reason: String) -> TermException {
+  let link: [String: String] = ["thing": "data", "path": path.isEmpty ? "." : path, "reason": reason]
+  return TermException(host: "@term/host", form: "data-mismatch", note: "Data does not fit the shape", code: "", time: Int(Date().timeIntervalSince1970 * 1000), link: link, base: nil)
 }
 func __termPath(_ path: String, _ key: String) -> String { return path.isEmpty ? key : path + "/" + key }
 func __termKind(_ value: DataForm) -> String {
   switch value { case .hash: return "a map"; case .array: return "a list"; case .blank: return "void"; case .text: return "text"; case .number: return "number"; case .decimal: return "decimal"; case .flag: return "flag"; case .graft: return "a fuse" }
 }
 func __termIsBlank(_ value: DataForm) -> Bool { if case .blank = value { return true }; return false }
-func __termEntries(_ value: DataForm, _ path: String) -> SeedList<DataEntry> {
+func __termEntries(_ value: DataForm, _ path: String) throws -> SeedList<DataEntry> {
   if case .hash(let list) = value { return list }
-  __termMismatch(path, "is \\(__termKind(value)) where a map belongs")
+  throw __termMismatch(path, "is \\(__termKind(value)) where a map belongs")
 }
-func __termText(_ value: DataForm?, _ path: String, _ optional: Bool) -> String {
-  switch value { case .some(.text(let value)): return value; case .none, .some(.blank): if optional { return "" }; __termMismatch(path, "is missing"); case .some(let other): __termMismatch(path, "is \\(__termKind(other)) where text belongs") }
+func __termText(_ value: DataForm?, _ path: String, _ optional: Bool) throws -> String {
+  switch value { case .some(.text(let value)): return value; case .none, .some(.blank): if optional { return "" }; throw __termMismatch(path, "is missing"); case .some(let other): throw __termMismatch(path, "is \\(__termKind(other)) where text belongs") }
 }
-func __termNumber(_ value: DataForm?, _ path: String, _ optional: Bool) -> Int {
-  switch value { case .some(.number(let value)): return value; case .none, .some(.blank): if optional { return 0 }; __termMismatch(path, "is missing"); case .some(let other): __termMismatch(path, "is \\(__termKind(other)) where number belongs") }
+func __termNumber(_ value: DataForm?, _ path: String, _ optional: Bool) throws -> Int {
+  switch value { case .some(.number(let value)): return value; case .none, .some(.blank): if optional { return 0 }; throw __termMismatch(path, "is missing"); case .some(let other): throw __termMismatch(path, "is \\(__termKind(other)) where number belongs") }
 }
-func __termDecimal(_ value: DataForm?, _ path: String, _ optional: Bool) -> Double {
-  switch value { case .some(.decimal(let value)): return value; case .some(.number(let value)): return Double(value); case .none, .some(.blank): if optional { return 0.0 }; __termMismatch(path, "is missing"); case .some(let other): __termMismatch(path, "is \\(__termKind(other)) where decimal belongs") }
+func __termDecimal(_ value: DataForm?, _ path: String, _ optional: Bool) throws -> Double {
+  switch value { case .some(.decimal(let value)): return value; case .some(.number(let value)): return Double(value); case .none, .some(.blank): if optional { return 0.0 }; throw __termMismatch(path, "is missing"); case .some(let other): throw __termMismatch(path, "is \\(__termKind(other)) where decimal belongs") }
 }
-func __termFlag(_ value: DataForm?, _ path: String, _ optional: Bool) -> Bool {
-  switch value { case .some(.flag(let value)): return value; case .none, .some(.blank): if optional { return false }; __termMismatch(path, "is missing"); case .some(let other): __termMismatch(path, "is \\(__termKind(other)) where flag belongs") }
+func __termFlag(_ value: DataForm?, _ path: String, _ optional: Bool) throws -> Bool {
+  switch value { case .some(.flag(let value)): return value; case .none, .some(.blank): if optional { return false }; throw __termMismatch(path, "is missing"); case .some(let other): throw __termMismatch(path, "is \\(__termKind(other)) where flag belongs") }
 }
-func __termData(_ value: DataForm?, _ path: String, _ optional: Bool) -> DataForm {
+func __termData(_ value: DataForm?, _ path: String, _ optional: Bool) throws -> DataForm {
   if let value = value { return value }
   if optional { return .blank }
-  __termMismatch(path, "is missing")
+  throw __termMismatch(path, "is missing")
 }
-func __termList<T>(_ value: DataForm?, _ path: String, _ optional: Bool, _ item: (DataForm, String) -> T) -> SeedList<T> {
+func __termList<T>(_ value: DataForm?, _ path: String, _ optional: Bool, _ item: (DataForm, String) throws -> T) throws -> SeedList<T> {
   switch value {
-  case .some(.array(let list)): return SeedList(list.data.enumerated().map { (i, d) in item(d, __termPath(path, String(i))) })
-  case .none, .some(.blank): if optional { return SeedList() }; __termMismatch(path, "is missing")
-  case .some(let other): __termMismatch(path, "is \\(__termKind(other)) where a list belongs")
+  case .some(.array(let list)): return SeedList(try list.data.enumerated().map { (i, d) in try item(d, __termPath(path, String(i))) })
+  case .none, .some(.blank): if optional { return SeedList() }; throw __termMismatch(path, "is missing")
+  case .some(let other): throw __termMismatch(path, "is \\(__termKind(other)) where a list belongs")
   }
 }`

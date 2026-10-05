@@ -72,6 +72,22 @@ export async function callView(input: ViewCall): Promise<void> {
       ? walk(target)
       : [target]
 
+  // a named file `role.tree` gives another role is still checked as a document, as asked, and the build reads it as
+  // that role: said here, or the two disagree about the same file in silence (guides: commands/view)
+  if (input.path) {
+    for (const file of files) {
+      const role = roleOf(file)
+
+      if (role !== null && role !== 'view') {
+        reportItem({
+          glyph: 'warning',
+          verb: 'check',
+          subject: `role.tree gives ${relative(input.root, file) || file} the ${role} role, so term make builds it as ${role}`,
+        })
+      }
+    }
+  }
+
   if (files.length === 0) {
     closeRun({
       verdict: input.path ? 'No .tree file here' : 'No document here',

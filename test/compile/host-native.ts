@@ -144,12 +144,29 @@ task fill-burst
       call read(read input)
       like service
   send back, read loaded/limit/burst
+
+# a value that does not fit RAISES data-mismatch, which a guard catches by its form. It stopped the program on
+# every native backend: a panic on Rust, a fatalError on Swift, a SeedError read as a failure on Kotlin
+task fill-caught
+  take input, like text
+  like text
+  mark unsafe
+    save loaded
+      call fill
+        call read(read input)
+        like service
+    send back, read loaded/name
+  halt take
+    take problem
+    send back, read problem/form
 `
 
 const FILL_GOOD = 'host name, <api>\nhost retry-after, 3\nhost secure, true\nhost limit\n  host burst, 10\n  host rate, 2.5\nlist tags\n  <a>, <b>\n'
 // the melt writes fields in the form's declared order, so `region` comes back before `limit`
 const FILL_REGION = FILL_GOOD + 'host region, <eu>\n'
 const FILL_REGION_BACK = FILL_GOOD.replace('host limit\n', 'host region, <eu>\nhost limit\n')
+// no `retry-after`, which the form needs
+const FILL_MISSING = FILL_GOOD.replace('host retry-after, 3\n', '')
 
 type Env = 'rust' | 'swift' | 'kotlin'
 
@@ -255,13 +272,13 @@ function runRust(): void {
   compare('rust', output)
 
   // fill and melt with a form
-  const fill = frontEnd('rust', FILL_ENTRY, ['fill-round', 'fill-burst'])
+  const fill = frontEnd('rust', FILL_ENTRY, ['fill-round', 'fill-burst', 'fill-caught'])
   const fillOut = join(dir, 'rust-fill')
   mkdirSync(join(fillOut, 'src'), { recursive: true })
   writeFileSync(join(fillOut, 'Cargo.toml'), readFileSync(join(out, 'Cargo.toml'), 'utf8').replace('host_native', 'host_fill'))
   writeFileSync(
     join(fillOut, 'src/main.rs'),
-    `${nativePrelude(fill, 'rust', readRuntime)}\n${emitRust(fill)}\nfn main() { print!("{}\\u{1e}{}\\u{1e}{}", fill_round(${JSON.stringify(FILL_GOOD)}.to_string()).unwrap_or_else(|e| { eprintln!("{}", e); std::process::exit(1) }), fill_round(${JSON.stringify(FILL_REGION)}.to_string()).unwrap_or_else(|e| { eprintln!("{}", e); std::process::exit(1) }), fill_burst(${JSON.stringify(FILL_GOOD)}.to_string()).unwrap_or_else(|e| { eprintln!("{}", e); std::process::exit(1) })); }\n`,
+    `${nativePrelude(fill, 'rust', readRuntime)}\n${emitRust(fill)}\nfn main() { print!("{}\\u{1e}{}\\u{1e}{}\\u{1e}{}\\u{1e}{}", fill_round(${JSON.stringify(FILL_GOOD)}.to_string()).unwrap_or_else(|e| { eprintln!("{}", e); std::process::exit(1) }), fill_round(${JSON.stringify(FILL_REGION)}.to_string()).unwrap_or_else(|e| { eprintln!("{}", e); std::process::exit(1) }), fill_burst(${JSON.stringify(FILL_GOOD)}.to_string()).unwrap_or_else(|e| { eprintln!("{}", e); std::process::exit(1) }), fill_caught(${JSON.stringify(FILL_GOOD)}.to_string()).unwrap_or_else(|e| { eprintln!("{}", e); std::process::exit(1) }), fill_caught(${JSON.stringify(FILL_MISSING)}.to_string()).unwrap_or_else(|e| { eprintln!("uncaught {}", e); std::process::exit(1) })); }\n`,
   )
 
   try {
@@ -270,6 +287,8 @@ function runRust(): void {
     ok('rust: fill into a form melts back to the data', got[0] === FILL_GOOD, got[0] ?? '')
     ok('rust: an optional field present is kept', got[1] === FILL_REGION_BACK, got[1] ?? '')
     ok('rust: a nested form is filled', got[2] === '10', got[2] ?? '')
+    ok('rust: a fill that fits runs the guarded body', got[3] === 'api', got[3] ?? '')
+    ok('rust: a value that does not fit raises data-mismatch, and the guard catches it', got[4] === 'data-mismatch', got[4] ?? '')
   } catch (error) {
     ok('rust: fill and melt with a form build', false, String((error as { stderr?: Buffer }).stderr ?? error))
   }
@@ -301,11 +320,11 @@ function runSwift(): void {
   compare('swift', execFileSync(join(out, 'main')).toString())
 
   // fill and melt with a form
-  const fill = frontEnd('swift', FILL_ENTRY, ['fill-round', 'fill-burst'])
+  const fill = frontEnd('swift', FILL_ENTRY, ['fill-round', 'fill-burst', 'fill-caught'])
   const fillFile = join(out, 'fill.swift')
   writeFileSync(
     fillFile,
-    `${nativePrelude(fill, 'swift', readRuntime)}\n${emitSwift(fill)}\nprint(try! fillRound(${JSON.stringify(FILL_GOOD)}), terminator: "\\u{1e}")\nprint(try! fillRound(${JSON.stringify(FILL_REGION)}), terminator: "\\u{1e}")\nprint(try! fillBurst(${JSON.stringify(FILL_GOOD)}), terminator: "")\n`,
+    `${nativePrelude(fill, 'swift', readRuntime)}\n${emitSwift(fill)}\nprint(try! fillRound(${JSON.stringify(FILL_GOOD)}), terminator: "\\u{1e}")\nprint(try! fillRound(${JSON.stringify(FILL_REGION)}), terminator: "\\u{1e}")\nprint(try! fillBurst(${JSON.stringify(FILL_GOOD)}), terminator: "\\u{1e}")\nprint(try! fillCaught(${JSON.stringify(FILL_GOOD)}), terminator: "\\u{1e}")\nprint(try! fillCaught(${JSON.stringify(FILL_MISSING)}), terminator: "")\n`,
   )
 
   try {
@@ -315,6 +334,8 @@ function runSwift(): void {
     ok('swift: fill into a form melts back to the data', got[0] === FILL_GOOD, got[0] ?? '')
     ok('swift: an optional field present is kept', got[1] === FILL_REGION_BACK, got[1] ?? '')
     ok('swift: a nested form is filled', got[2] === '10', got[2] ?? '')
+    ok('swift: a fill that fits runs the guarded body', got[3] === 'api', got[3] ?? '')
+    ok('swift: a value that does not fit raises data-mismatch, and the guard catches it', got[4] === 'data-mismatch', got[4] ?? '')
   } catch (error) {
     ok('swift: fill and melt with a form build', false, String((error as { stderr?: Buffer }).stderr ?? error))
   }
@@ -347,12 +368,12 @@ function runKotlin(): void {
   compare('kotlin', execFileSync('java', ['-jar', join(out, 'main.jar')]).toString())
 
   // fill and melt with a form
-  const fill = frontEnd('kotlin', FILL_ENTRY, ['fill-round', 'fill-burst'])
+  const fill = frontEnd('kotlin', FILL_ENTRY, ['fill-round', 'fill-burst', 'fill-caught'])
   const fillFile = join(out, 'fill.kt')
   writeFileSync(
     fillFile,
     hoistKotlinImports(
-      `${nativePrelude(fill, 'kotlin', readRuntime)}\n${emitKotlin(fill)}\nfun main() { print(fillRound(${JSON.stringify(FILL_GOOD)}) + "\\u001e" + fillRound(${JSON.stringify(FILL_REGION)}) + "\\u001e" + fillBurst(${JSON.stringify(FILL_GOOD)})) }\n`,
+      `${nativePrelude(fill, 'kotlin', readRuntime)}\n${emitKotlin(fill)}\nfun main() { print(fillRound(${JSON.stringify(FILL_GOOD)}) + "\\u001e" + fillRound(${JSON.stringify(FILL_REGION)}) + "\\u001e" + fillBurst(${JSON.stringify(FILL_GOOD)}) + "\\u001e" + fillCaught(${JSON.stringify(FILL_GOOD)}) + "\\u001e" + fillCaught(${JSON.stringify(FILL_MISSING)})) }\n`,
     ),
   )
 
@@ -363,6 +384,8 @@ function runKotlin(): void {
     ok('kotlin: fill into a form melts back to the data', got[0] === FILL_GOOD, got[0] ?? '')
     ok('kotlin: an optional field present is kept', got[1] === FILL_REGION_BACK, got[1] ?? '')
     ok('kotlin: a nested form is filled', got[2] === '10', got[2] ?? '')
+    ok('kotlin: a fill that fits runs the guarded body', got[3] === 'api', got[3] ?? '')
+    ok('kotlin: a value that does not fit raises data-mismatch, and the guard catches it', got[4] === 'data-mismatch', got[4] ?? '')
   } catch (error) {
     ok('kotlin: fill and melt with a form build', false, String((error as { stderr?: Buffer }).stderr ?? error))
   }

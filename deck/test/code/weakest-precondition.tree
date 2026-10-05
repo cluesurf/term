@@ -1,0 +1,352 @@
+# Deductive verification of imperative algorithms, the Dafny / Why3 / Frama-C WP family: full functional correctness,
+# not "no counterexample up to a bound". A procedure in a small imperative language (assignment, sequence, if, while)
+# carries a precondition, a postcondition, and for each loop an INVARIANT and a VARIANT (a measure that falls each turn,
+# for termination). Verification conditions come from a weakest-precondition calculus, and each is proven valid by the
+# solver (its negation unsatisfiable). All proven, the procedure meets its contract for every input and terminates.
+#
+# Ported from deck/test/code/deductive.ts (self-hosting, 2026-10-05). Its expression language is smt-query.tree's
+# terms and formulas, an implication being `not a, or b`. A loop's frozen variant was named by the statement's object
+# identity; here a counter threaded through `wp` names it, one name per loop, as the identity gave.
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+load ./smt-query
+  find smt-term
+  find formula
+  find verdict
+  find value-term
+  find name-term
+  find related
+  find negated
+  find quantified
+  find check-sat
+
+form statement
+  case skip
+  case assign
+    link name, like text
+    link value, like smt-term
+  case then-do
+    link first, like statement
+    link second, like statement
+  case branch
+    link test, like formula
+    link yes, like statement
+    link no, like statement
+  case loop
+    link test, like formula
+    link invariant, like formula
+    link variant, like smt-term
+    link body, like statement
+
+form procedure
+  link name, like text
+  link requires, like formula
+  link ensures, like formula
+  link body, like statement
+
+form wp-result
+  link pre, like formula
+  link conditions, like list, like formula
+
+form procedure-result
+  link verified, like boolean
+  # how many conditions were proven, when verified
+  link conditions, like number
+  # the first condition that failed, -1 when none did
+  link failed, like number
+  link unknown, like boolean
+
+task implies
+  take left, like formula
+  take right, like formula
+  like formula
+
+  host items, make list(negated(left), right)
+
+  back
+    make any-of
+      bind items, items
+
+task both-of
+  take left, like formula
+  take right, like formula
+  like formula
+
+  host items, make list(left, right)
+
+  back
+    make all-of
+      bind items, items
+
+# a term with `name` replaced by `value`
+task subst-term
+  take e, like smt-term
+  take name, like text
+  take value, like smt-term
+  like smt-term
+
+  sift e
+    case int-value
+      back e
+    case int-name
+      link written
+      fork test, is-equal(written, name)
+        hold
+          back value
+      back e
+    case plus
+      back
+        make plus
+          bind left, subst-term(left, name, value)
+          bind right, subst-term(right, name, value)
+    case minus
+      back
+        make minus
+          bind left, subst-term(left, name, value)
+          bind right, subst-term(right, name, value)
+    case times
+      back
+        make times
+          bind left, subst-term(left, name, value)
+          bind right, subst-term(right, name, value)
+    case modulo
+      back
+        make modulo
+          bind left, subst-term(left, name, value)
+          bind right, subst-term(right, name, value)
+    case opposite
+      back
+        make opposite
+          bind inner, subst-term(inner, name, value)
+    case choose
+      back
+        make choose
+          bind test, subst-formula(test, name, value)
+          bind then, subst-term(then, name, value)
+          bind else, subst-term(else, name, value)
+
+task subst-all
+  take items, like list, like formula
+  take name, like text
+  take value, like smt-term
+  like list, like formula
+
+  host out, make list
+  walk items
+    take each
+    out/push(subst-formula(each, name, value))
+
+  back out
+
+task subst-formula
+  take f, like formula
+  take name, like text
+  take value, like smt-term
+  like formula
+
+  sift f
+    case truth
+      back f
+    case all-of
+      back
+        make all-of
+          bind items, subst-all(items, name, value)
+    case any-of
+      back
+        make any-of
+          bind items, subst-all(items, name, value)
+    case denial
+      back negated(subst-formula(inner, name, value))
+    case relation
+      back related(op, subst-term(left, name, value), subst-term(right, name, value))
+    case for-every
+      # a name the quantifier binds is not the one being replaced
+      fork test, names/contains(name)
+        hold
+          back f
+      back quantified(names, subst-formula(body, name, value))
+
+task joined
+  take a, like list, like formula
+  take b, like list, like formula
+  like list, like formula
+
+  host out, copy(a)
+  walk b
+    take each
+    out/push(each)
+
+  back out
+
+# wp(statement, post) and the side conditions it gathers. `counter` names each loop's frozen variant
+task wp
+  take s, like statement
+  take post, like formula
+  take counter, like list, like number
+  like wp-result
+
+  host none, make list
+  sift s
+    case skip
+      back
+        make wp-result
+          bind pre, post
+          bind conditions, none
+    case assign
+      back
+        make wp-result
+          bind pre, subst-formula(post, name, value)
+          bind conditions, none
+    case then-do
+      host after, wp(second, post, counter)
+      host before, wp(first, after/pre, counter)
+      back
+        make wp-result
+          bind pre, before/pre
+          bind conditions, joined(before/conditions, after/conditions)
+    case branch
+      host taken, wp(yes, post, counter)
+      host skipped, wp(no, post, counter)
+      back
+        make wp-result
+          bind pre, both-of(implies(test, taken/pre), implies(negated(test), skipped/pre))
+          bind conditions, joined(taken/conditions, skipped/conditions)
+    case loop
+      host keeps, wp(body, invariant, counter)
+      host frozen, <__v0_{get(counter, 0)}>
+      counter/set(0, add(get(counter, 0), 1))
+      host decreases, wp(body, related(<\<>, variant, name-term(frozen)), counter)
+      host running, both-of(invariant, test)
+      host gathered, make list
+      # the invariant is kept by the body, gives the postcondition on exit, the variant is non-negative while looping,
+      # and the body makes it fall
+      gathered/push(implies(running, keeps/pre))
+      gathered/push(implies(both-of(invariant, negated(test)), post))
+      gathered/push(implies(running, related(<\>=>, variant, value-term(0))))
+      gathered/push(implies(both-of(running, related(<=>, name-term(frozen), variant)), decreases/pre))
+      back
+        make wp-result
+          bind pre, invariant
+          bind conditions, joined(joined(gathered, keeps/conditions), decreases/conditions)
+
+# every condition the procedure must meet: its precondition implies wp(body, postcondition), then each loop's
+task conditions-for
+  take proc, like procedure
+  like list, like formula
+
+  host counter, make list(0)
+  host main, wp(proc/body, proc/ensures, counter)
+  host out, make list
+  out/push(implies(proc/requires, main/pre))
+
+  back joined(out, main/conditions)
+
+# the integer names a formula mentions, each once
+task names-in-term
+  take e, like smt-term
+  take seen, like hash, like text, like boolean
+  take into, like list, like text
+
+  sift e
+    case int-name
+      link written
+      fork test, not(has(seen, written))
+        hold
+          seen/set(written, true)
+          into/push(written)
+    case plus
+      names-in-term(left, seen, into)
+      names-in-term(right, seen, into)
+    case minus
+      names-in-term(left, seen, into)
+      names-in-term(right, seen, into)
+    case times
+      names-in-term(left, seen, into)
+      names-in-term(right, seen, into)
+    case modulo
+      names-in-term(left, seen, into)
+      names-in-term(right, seen, into)
+    case opposite
+      names-in-term(inner, seen, into)
+    case choose
+      names-in-formula(test, seen, into)
+      names-in-term(then, seen, into)
+      names-in-term(else, seen, into)
+    miss
+
+task names-in-formula
+  take f, like formula
+  take seen, like hash, like text, like boolean
+  take into, like list, like text
+
+  sift f
+    case all-of
+      walk items
+        take each
+        names-in-formula(each, seen, into)
+    case any-of
+      walk items
+        take each
+        names-in-formula(each, seen, into)
+    case denial
+      names-in-formula(inner, seen, into)
+    case relation
+      names-in-term(left, seen, into)
+      names-in-term(right, seen, into)
+    case for-every
+      # the bound names are not free: marked seen for the body, and unmarked after unless they were seen before
+      host fresh, make list
+      walk names
+        take each
+        fork test, not(has(seen, each))
+          hold
+            fresh/push(each)
+            seen/set(each, true)
+      names-in-formula(body, seen, into)
+      walk fresh
+        take each
+        seen/remove(each)
+    miss
+
+# verify a procedure: every condition valid, its negation unsatisfiable
+task verify-procedure
+  take proc, like procedure
+  like procedure-result
+
+  host all, conditions-for(proc)
+  save at, 0
+  walk all
+    take condition
+    host seen, make hash
+    host names, make list
+    names-in-formula(condition, seen, names)
+    host found, check-sat(names, negated(condition))
+    fork test, is-equal(found/status, <sat>)
+      hold
+        back
+          make procedure-result
+            bind verified, false
+            bind conditions, all/length
+            bind failed, at
+            bind unknown, false
+    fork test, is-equal(found/status, <unknown>)
+      hold
+        back
+          make procedure-result
+            bind verified, false
+            bind conditions, all/length
+            bind failed, at
+            bind unknown, true
+    save at, add(at, 1)
+
+  back
+    make procedure-result
+      bind verified, true
+      bind conditions, all/length
+      bind failed, -1
+      bind unknown, false

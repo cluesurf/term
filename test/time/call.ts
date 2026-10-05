@@ -190,6 +190,36 @@ async function main(): Promise<void> {
     await fs.rm(root, { recursive: true, force: true })
   }
 
+  // `--cpu` profiles the `time-*` tasks themselves, not node loading the module, and leaves no scratch folder
+  {
+    const { runCpuProfile } = await import('@term/make/code/time/cpu')
+    const root = await makeProject('')
+    const spin = `task spin-sum\n  take n, like number\n  like number\n  save total, code 0\n  walk size\n    bind base, code 0\n    bind head, read n\n    hook next\n      take site, name i\n      save total, add(total, i)\n  send back, read total\n\ntask time-spin\n  like number\n  send back, spin-sum(5000)\n`
+    const result = await runCpuProfile({ text: spin, file: 'bench.tree', root, name: 'bench', top: 5, spend: 300 })
+    const names = result.frames.map(frame => frame.name)
+    // the simplifier may inline `spin-sum` into `time-spin`, so the hottest frame is one or the other, never a loader's
+    ok('`--cpu` runs the `time-*` tasks, so their work is the hottest frame', ['spinSum', 'timeSpin'].includes(names[0] ?? ''), names.join(', '))
+    const left = await fs.readdir(path.join(root, '.base/@cluesurf/term/tmp')).catch(() => [] as string[])
+    ok('and leaves no scratch folder behind', left.length === 0, left.join(', '))
+
+    let refused = ''
+
+    try {
+      await runCpuProfile({ text: `task noop\n  send back, code 1\n`, file: 'bench.tree', root, name: 'bench' })
+    } catch (error) {
+      refused = (error as Error).message
+    }
+
+    ok('a file with no `time-*` task is refused, not profiled empty', /no `time-\*` task to profile/.test(refused), refused || 'not refused')
+
+    // `--memory` runs them too: a task that fills a module-level list keeps what it put there
+    const { runMemoryProfile } = await import('@term/make/code/time/memory')
+    const { projectResolver } = await import('@term/call/code/make')
+    const keep = `load @term/base/list\n  find list\n  find push\n\nhost kept, make list\n  like list, like text\n\ntask time-fill\n  like number\n  walk size\n    bind base, code 0\n    bind head, code 200000\n    hook next\n      take site, name i\n      push kept, <row {i}>\n  send back, code 0\n`
+    const memory = await runMemoryProfile({ text: keep, file: 'bench.tree', root, name: 'bench', resolve: projectResolver(root, 'node', root) })
+    ok('`--memory` runs the `time-*` tasks, so what they keep is counted', memory.heapUsedAfterBytes - memory.heapUsedBeforeBytes > 4_000_000, `${memory.heapUsedBeforeBytes} -> ${memory.heapUsedAfterBytes}`)
+  }
+
   console.log(`\ntime cli: ${pass} pass, ${fail} fail`)
 
   if (fail > 0) {

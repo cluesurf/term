@@ -3,3 +3,4 @@ deck @term/make
   head <The Term compiler>
   mark <0.0.16>
   lock mit
+  link @term/base, mark <0.0.x>

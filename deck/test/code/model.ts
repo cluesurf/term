@@ -14,8 +14,13 @@
 
 import type { Expr } from './synthesize'
 import { modelProposer, type AsyncProposer } from './ai-proposer'
-import { env } from '@term/call/code/home'
 import { parseReply } from '@term/test/code/model-reply'
+
+// `TERM_<name>`, else the older `SEED_<name>`: the same rule as the CLI's `env` (call/code/home.ts), written here so
+// @term/test, a library the CLI imports, does not import the CLI back
+function env(name: string): string | undefined {
+  return process.env[`TERM_${name}`] ?? process.env[`SEED_${name}`]
+}
 
 // --- parse a model's textual reply into an Expr ---
 

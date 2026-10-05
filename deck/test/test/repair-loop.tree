@@ -47,12 +47,15 @@ task max-gap
   like gap-report
 
   host none, make list
+  host spec
+    make direct
+      bind check, is-max
 
   back
     make gap-report
       bind goal, <max>
       bind var-count, 2
-      bind spec, is-max
+      bind spec, spec
       bind counterexamples, none
       bind bound, 2
 
@@ -73,6 +76,20 @@ task wrong-hint
       bind right, variable-at(1)
   host hints, make hash
   hints/set(<max>, difference)
+
+  back hint-propose(hints, gap)
+
+# a hint table holding the right answer for `max`, as a model would ideally propose it
+task right-hint
+  take gap, like gap-report
+  like maybe, like expression
+
+  host larger
+    make max
+      bind left, variable-at(0)
+      bind right, variable-at(1)
+  host hints, make hash
+  hints/set(<max>, larger)
 
   back hint-propose(hints, gap)
 
@@ -137,6 +154,13 @@ test <a wrong hint is refuted, and the next proposer takes over>
   proposers/push(proposer-of(<cegis>, cegis-small))
   host result, repair(max-gap(), proposers, 20)
   want hold, and(and(result/ok, computes-max(result/expr)), is-equal(result/proposer, <cegis>))
+
+test <a right hint answers first and is proven, so the loop takes it before any search>
+  host proposers, make list
+  proposers/push(proposer-of(<hint>, right-hint))
+  proposers/push(proposer-of(<cegis>, cegis-small))
+  host result, repair(max-gap(), proposers, 20)
+  want hold, and(and(result/ok, computes-max(result/expr)), is-equal(result/proposer, <hint>))
 
 test <no proposer with an answer: nothing is accepted>
   host proposers, make list(proposer-of(<hint>, other-hint))

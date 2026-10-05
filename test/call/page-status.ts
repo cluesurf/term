@@ -279,6 +279,46 @@ task boot
   ok('and the page after it answers 200, titled', home?.status === 200 && /<title>Shelf<\/title>/.test(home.body), String(home?.status))
 }
 
+// ---- a route that loads first: an async `route` is awaited, so the page holds what it placed after the wait ----
+{
+  const dir = project(
+    'route-async',
+    'code/boot.tree',
+    `load @term/site/dom/dom
+  find view
+
+load @term/site/view/native/{platform}/host
+  find host
+
+load @term/base/clock
+  find sleep
+
+view home
+  take host, like view
+  view h1, <Shelf>
+
+task load-books
+  mark async
+  sleep(20)
+
+task route
+  take host, like view
+  take path, like text
+
+  load-books()
+  home host
+
+task boot
+  take url, like text
+  take port, like u16
+
+  host(route, port)
+`,
+  )
+  const { answers, log } = await serve(dir, 'code/boot.tree', 4973, ['/'])
+  ok('an async `route` is awaited: `/` holds the page it placed after its wait', /<h1>Shelf<\/h1>/.test(answers[0]?.body ?? ''), `${answers[0]?.body.slice(0, 200)} ${log.slice(-300)}`)
+}
+
 // ---- an API route: the response's headers reach the wire, and the request carries its headers and query ----
 {
   const dir = project(

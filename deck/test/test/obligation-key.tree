@@ -1,0 +1,48 @@
+note <an obligation's cache key: the same inputs give the same key, any change gives another>
+
+# Ported from obligation-cache.ts's key (self-hosting, 2026-10-05). Every key is the TypeScript's own
+# (tmp/self-host-probes/obligation-values.ts).
+
+load ../code/obligation-key
+  find verdict
+  find obligation-key
+  find memory-cache
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+test <a source and a version>
+  host none, make list
+  want hold, is-equal(obligation-key(<task one>, none, <2.6.14>), <1vvapj59v2e>)
+
+test <dependencies are sorted first, so their order does not change the key>
+  host unsorted, make list(<b>, <a>)
+  host sorted, make list(<a>, <b>)
+  want hold, and(is-equal(obligation-key(<task one>, unsorted, <2.6.14>), <1ie5t3eg65i>), is-equal(obligation-key(<task one>, sorted, <2.6.14>), <1ie5t3eg65i>))
+
+test <dependencies sort in UTF-16 order, so a character past 0xFFFF comes before one from 0xE000>
+  host deps, make list(<𝔸𝔸b >, <～bZ～>, <éb>, <>)
+  want hold, is-equal(obligation-key(<>, deps, <😀😀😀0>), <21p9epmead5>)
+
+test <a new toolchain version is a new key>
+  host none, make list
+  want hold, is-equal(obligation-key(<task one>, none, <2.6.16>), <1n2v6qi630i>)
+
+test <the memory cache keeps a verdict under its key>
+  host cache, memory-cache()
+  host none, make list
+  host key, obligation-key(<task one>, none, <2.6.14>)
+  host held
+    make verdict
+      bind ok, true
+      bind label, <one.tree>
+  host missing
+    make verdict
+      bind ok, false
+      bind label, <>
+  cache/set(key, held)
+  host kept, get-or-default(cache, key, missing)
+  want hold, and(kept/ok, is-equal(kept/label, <one.tree>))

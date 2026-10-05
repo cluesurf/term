@@ -3,3 +3,5 @@ deck @term/test
   head <Testing and verification tooling for Term>
   mark <0.0.16>
   lock mit
+  link @term/base, mark <0.0.x>
+  link @term/make, mark <0.0.x>

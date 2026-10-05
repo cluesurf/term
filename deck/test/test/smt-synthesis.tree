@@ -1,0 +1,94 @@
+note <synthesis with the solver in the loop: max and abs found and proven for every integer>
+
+# Ported from deck/test/code/demo-synth-smt.ts (self-hosting, 2026-10-05). The bodies are synth-smt.ts's own; its
+# counterexamples are the solver's model and are held only for breaking the spec. Its emit-and-compile half runs the
+# TypeScript compiler and stays in the demo. Needs the solver: node only.
+
+load ../code/smt-synthesis
+  find smt-synthesis
+  find synthesize-smt
+
+load ../code/smt-query
+  find smt-term
+  find formula
+  find value-term
+  find related
+  find both
+  find either
+
+load ../code/expression-grammar
+  find show-expr
+
+load @term/base/list
+  find list
+
+task max-point
+  take inputs, like list, like number
+  take output, like number
+  like boolean
+
+  host a, get(inputs, 0)
+  host b, get(inputs, 1)
+
+  back and(and(is-minimum(output, a), is-minimum(output, b)), or(is-equal(output, a), is-equal(output, b)))
+
+task max-formula
+  take inputs, like list, like smt-term
+  take output, like smt-term
+  like formula
+
+  host a, get(inputs, 0)
+  host b, get(inputs, 1)
+
+  back both(both(related(<\>=>, output, a), related(<\>=>, output, b)), either(related(<=>, output, a), related(<=>, output, b)))
+
+task abs-point
+  take inputs, like list, like number
+  take output, like number
+  like boolean
+
+  host a, get(inputs, 0)
+
+  back and(is-minimum(output, 0), or(is-equal(output, a), is-equal(output, subtract(0, a))))
+
+task abs-formula
+  take inputs, like list, like smt-term
+  take output, like smt-term
+  like formula
+
+  host a, get(inputs, 0)
+  host minus-a
+    make opposite
+      bind inner, a
+
+  back both(related(<\>=>, output, value-term(0)), either(related(<=>, output, a), related(<=>, output, minus-a)))
+
+load ../code/expression-grammar
+  find eval-expr
+
+# the found body meets the point spec at every counterexample the solver handed back: the invariant CEGIS keeps
+task consistent-with-all
+  take found, like smt-synthesis
+  like boolean
+
+  walk found/counterexamples
+    take ce
+    fork test, not(max-point(ce, eval-expr(found/expr, ce)))
+      hold
+        back false
+
+  back true
+
+test <max is found and proven for every pair of integers>
+  host found, synthesize-smt(2, max-point, max-formula, 6)
+  host names, make list(<a>, <b>)
+  want hold, and(found/ok, is-equal(show-expr(found/expr, names), <max(a, b)>))
+
+test <the body found meets the spec at every counterexample the solver handed back>
+  host found, synthesize-smt(2, max-point, max-formula, 6)
+  want hold, and(is-above(found/counterexamples/length, 0), consistent-with-all(found))
+
+test <abs is found and proven for every integer>
+  host found, synthesize-smt(1, abs-point, abs-formula, 6)
+  host names, make list(<a>)
+  want hold, and(found/ok, is-equal(show-expr(found/expr, names), <max(a, (0 - a))>))

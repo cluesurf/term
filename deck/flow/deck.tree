@@ -4,3 +4,4 @@ deck @term/flow
   mark <0.0.16>
   lock mit
   link @term/make, mark <0.0.x>
+  link @term/call, mark <0.0.x>

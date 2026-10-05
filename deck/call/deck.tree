@@ -3,3 +3,8 @@ deck @term/call
   head <The Term command line>
   mark <0.0.16>
   lock mit
+  link @term/base, mark <0.0.x>
+  link @term/make, mark <0.0.x>
+  link @term/deck, mark <0.0.x>
+  link @term/test, mark <0.0.x>
+  link @term/scan, mark <0.0.x>

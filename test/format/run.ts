@@ -411,6 +411,23 @@ function rules(): void {
     ok('a grammar is returned as written', grammar === 'mine version\n  mine form, form digits\n    send major\n  mine char, <.>\n', grammar)
   }
 
+  // a lean line one character too wide in the parentheses it was written with: the stack drops them anyway, so the
+  // bare line is the first run's answer too, or the second run joins what the first broke
+  {
+    const wide = 'task t\n  want hold, is-equal(shown(run(call-program(<join>, make list(letters, str(<->))))), <a-b-c>)\n'
+    const once = format({ file: 'w.tree', text: wide }, { lean: true })
+
+    ok('lean: a line too wide in its parentheses is written bare when that fits', once.includes('\n    is-equal shown(run(call-program(<join>, make list(letters, str(<->))))), <a-b-c>\n'), once)
+    ok('lean: ...and formatting it again changes nothing', format({ file: 'w.tree', text: once }, { lean: true }) === once)
+  }
+
+  // a path after a call is written back as it was, never as the braces the parser holds it in
+  {
+    const path = format({ file: 'p.tree', text: 'task t\n  log greeting()/text\n  log greet(<ada>)/text\n  log <{greet(who)/count} left>\n' }, { lean: true })
+
+    ok('a path after a call keeps its spelling, `greeting()/text`', path.includes('  log greeting()/text\n  log greet(<ada>)/text\n  log <{greet(who)/count} left>\n'), path)
+  }
+
   // every rule's output is idempotent
   for (const [label, text] of [
     ['the after column', AFTER],

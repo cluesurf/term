@@ -1,6 +1,6 @@
 // `term halt`: stop running `term boot` servers.
 //   term halt -p <port>   stop the app serving on that port
-//   term halt             stop this project's term boot, or every one on the machine outside a project
+//   term halt             stop this project's term boot, feed and work, or every one on the machine outside a project
 //
 // Term boot servers are easy to find without a registry: each runs `node <project>/.base/@cluesurf/term/boot/<hash>/run.mjs`, a path
 // that is unique to term boot. We match that in the process table (cross-process, machine-wide), so `term halt` works
@@ -45,6 +45,28 @@ function boots(): { program: number; target: number; project: string }[] {
 
       return { program: one.pid, target: owned ? parent.pid : one.pid, project: one.command.slice(start, at).replace(/\/$/, '') }
     })
+}
+
+// every running `term feed` and `term work`, the verb, and the project its working folder is in. They run no
+// `run.mjs`, so bare `halt` did not see them, and only `-p` stopped one (guides: commands/halt, commands/feed,
+// 2026-10-05). A service's project is where it was started, which the process table does not say and `lsof` does
+function services(): { pid: number; verb: string; project: string | undefined }[] {
+  return processTable()
+    .map(one => ({ one, verb: /(?:line\.js|need\.mjs|\bterm)\s+(feed|work)(?:\s|$)/.exec(one.command)?.[1] }))
+    .filter((found): found is { one: Process; verb: string } => found.verb !== undefined && found.one.pid !== process.pid)
+    .map(({ one, verb }) => ({ pid: one.pid, verb, project: projectOfCwd(one.pid) }))
+}
+
+// the project holding a process's working folder, or undefined where `lsof` cannot say
+function projectOfCwd(pid: number): string | undefined {
+  try {
+    const out = execSync(`lsof -a -p ${pid} -d cwd -Fn`, { encoding: 'utf8' })
+    const cwd = out.split('\n').find(line => line.startsWith('n'))?.slice(1)
+
+    return cwd ? projectOf(cwd) : undefined
+  } catch {
+    return undefined
+  }
 }
 
 // the folder holding the nearest deck.tree, from `from` up, or undefined outside a project
@@ -152,8 +174,18 @@ export async function callHalt(input: {
     }
   }
 
+  // the project's `term feed` and `term work` too, by where each was started; outside a project, every one
+  const running = services().filter(one => here === undefined || (one.project !== undefined && real(one.project) === here))
+
+  for (const one of running) {
+    if (stop(one.pid)) {
+      stopped++
+      report({ glyph: 'done', kind: 'lifecycle', verb: 'stop', subject: `term ${one.verb}`, facts: [`pid ${one.pid}`] })
+    }
+  }
+
   closeRun({
-    verdict: targets.length ? 'Stopped' : project ? 'No term boot of this project is running' : 'No term boot instance is running',
+    verdict: targets.length + running.length ? 'Stopped' : project ? 'No term boot of this project is running' : 'No term boot instance is running',
     counts: [count(stopped, 'instances', 'instance')],
   })
 }

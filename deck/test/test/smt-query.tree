@@ -1,0 +1,44 @@
+note <SMT queries in Term: formulas printed as SMT-LIB2, a satisfiability check, and the model read back>
+
+load ../code/smt-query
+  find smt-term
+  find formula
+  find verdict
+  find value-term
+  find name-term
+  find related
+  find both
+  find negated
+  find term-text
+  find formula-text
+  find read-values
+  find check-sat
+
+load @term/base/list
+  find list
+
+test <a term prints as SMT-LIB2, a negative number as (- n)>
+  host sum
+    make plus
+      bind left, name-term(<a>)
+      bind right, value-term(-3)
+  want hold, is-equal(term-text(sum), <(+ a (- 3))>)
+
+test <a formula prints with its connectives>
+  host f, both(related(<\>=>, name-term(<a>), value-term(0)), negated(related(<=>, name-term(<b>), name-term(<a>))))
+  want hold, is-equal(formula-text(f), <(and (\>= a 0) (not (= b a)))>)
+
+test <a model's values are read in order, signs included>
+  want hold, is-equal(join(read-values(<((a (- 1))\n (b 0))\n>), <,>), <-1,0>)
+
+test <a satisfiable formula: sat, with a model that meets it>
+  host names, make list(<a>, <b>)
+  host f, negated(related(<\>=>, name-term(<a>), name-term(<b>)))
+  host found, check-sat(names, f)
+  want hold, and(is-equal(found/status, <sat>), is-below(get(found/values, 0), get(found/values, 1)))
+
+test <an unsatisfiable formula: unsat, no values>
+  host names, make list(<a>)
+  host f, both(related(<\>>, name-term(<a>), value-term(0)), related(<\<>, name-term(<a>), value-term(0)))
+  host found, check-sat(names, f)
+  want hold, and(is-equal(found/status, <unsat>), is-equal(found/values/length, 0))

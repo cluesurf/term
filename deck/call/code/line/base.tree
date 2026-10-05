@@ -446,6 +446,12 @@ hook make
   # A Developer ID identity for codesign (ad hoc when absent)
   take sign
     like text
+  # With --target uikit: the Apple team to sign for (read from the keychain when it holds one team)
+  take team
+    like text
+  # With --target uikit: the https address the app will be served at, for an install page an iPhone opens
+  take link
+    like text
   # Also make a .dmg beside the .app
   take dmg
     like boolean

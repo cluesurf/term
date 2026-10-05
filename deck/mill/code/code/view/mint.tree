@@ -24,6 +24,7 @@ load @term/mill/code/mark/mint
 
 load @term/mill/code/seed/mint
   find seed
+  find seed-call-open
 
 load @term/mill/code/call/mint
   find call
@@ -83,6 +84,8 @@ mint view-node
   case text, mint view-text
     site text
   case read, mint view-read
+    site read
+  case read, mint view-call
     site read
   case read, mint view-word
     site read
@@ -176,6 +179,14 @@ mint view-text
 
 mint view-read
   case seed
+    site seed
+  hook make
+    make view-read
+      bind seed, read seed
+
+# a bare call mints the very form `read <call>` does, as a bare word below
+mint view-call
+  case seed, mint seed-call-open
     site seed
   hook make
     make view-read

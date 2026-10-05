@@ -5,3 +5,4 @@ deck @term/cask
   lock mit
   link @term/base, mark <0.0.x>
   link @term/site, mark <0.0.x>
+  link @term/host, mark <0.0.x>

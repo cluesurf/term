@@ -60,7 +60,9 @@ if (!built.ok) {
   ok('`read xs/0` is a number', lets.get('b') === 'number', String(lets.get('b')))
   ok('`read table/{key}` on a hash of numbers is a number', lets.get('c') === 'number', String(lets.get('c')))
   ok('TypeScript declares the reads as numbers, not any', /const a: number = /.test(built.typescript) && !/const a: any/.test(built.typescript), built.typescript.split('\n').filter(l => /const [abc]:/.test(l)).join(' | '))
-  ok('and checks arithmetic on them for overflow', /__termInt\(/.test(built.typescript))
+  // the check is `__termInt(...)` inside an expression, or tested where it stands when it is all a statement's value
+  // (typescript.ts, `testedInPlace`)
+  ok('and checks arithmetic on them for overflow', /__termInt\(|__termIntStop\(__n\d+\)/.test(built.typescript))
 }
 
 console.log(`\nelement-read: ${pass} pass, ${fail} fail`)

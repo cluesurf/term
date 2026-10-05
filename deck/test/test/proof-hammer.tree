@@ -1,0 +1,87 @@
+note <the proof hammer: a true goal proved, a false one refuted, a synthesis goal closed with a written witness>
+
+# Ported from deck/test/code/demo-hammer.ts (self-hosting, 2026-10-05). Needs the solver: node only.
+
+load ../code/proof-hammer
+  find proof-goal
+  find proof-state
+  find hammer
+  find show-state
+
+load ../code/smt-query
+  find smt-term
+  find formula
+  find related
+  find both
+  find either
+
+load ../code/expression-grammar
+  find expression
+  find variable-at
+  find constant-of
+
+load @term/base/list
+  find list
+
+load @term/base/text
+  find index-of
+
+task max-point
+  take inputs, like list, like number
+  take output, like number
+  like boolean
+
+  host a, get(inputs, 0)
+  host b, get(inputs, 1)
+
+  back and(and(is-minimum(output, a), is-minimum(output, b)), or(is-equal(output, a), is-equal(output, b)))
+
+task max-formula
+  take inputs, like list, like smt-term
+  take output, like smt-term
+  like formula
+
+  host a, get(inputs, 0)
+  host b, get(inputs, 1)
+
+  back both(both(related(<\>=>, output, a), related(<\>=>, output, b)), either(related(<=>, output, a), related(<=>, output, b)))
+
+# not `goal`: under `hammer(...)`, a head naming hammer's parameter `goal` is that named argument
+task goal-of
+  take kind, like text
+  take name, like text
+  take expr, like expression
+  like proof-goal
+
+  host names, make list(<a>, <b>)
+
+  back
+    make proof-goal
+      bind kind, kind
+      bind name, name
+      bind names, names
+      bind expr, expr
+      bind point-spec, max-point
+      bind formula-spec, max-formula
+
+task max-body
+  like expression
+
+  back
+    make max
+      bind left, variable-at(0)
+      bind right, variable-at(1)
+
+test <a goal that holds is proved>
+  host state, hammer(goal-of(<verify>, <max-correct>, max-body()))
+  want hold, is-equal(show-state(state), <  max-correct: PROVED - max(a, b) satisfies the spec for ALL integers>)
+
+test <a goal that is false is refuted, at an input where it breaks>
+  host state, hammer(goal-of(<verify>, <first-is-max>, variable-at(0)))
+  host a, get(state/counterexample, 0)
+  host b, get(state/counterexample, 1)
+  want hold, and(is-equal(state/status, <refuted>), is-above(b, a))
+
+test <a synthesis goal is closed by a witness, written out as a task>
+  host state, hammer(goal-of(<synthesize>, <find-max>, constant-of(0)))
+  want hold, and(and(is-equal(state/status, <proved>), is-minimum(index-of(state/detail, <witness max(a, b) proven for ALL integers>), 0)), is-minimum(index-of(state/source, <task find-max>), 0))

@@ -8,6 +8,7 @@ import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
 import { parse } from '@term/make/code/parser/tree'
 import { noteMetadataSites } from '@term/make/code/check/note-metadata'
+import { definesTask, keywordImports } from '@term/make/code/check/keyword-import'
 import {
   expandTemplates,
   collectTemplates,
@@ -497,6 +498,20 @@ export function compile(
                 span: { ...site.span, file: source.file },
                 message: `\`note ${site.word}\` is the old spelling of \`mark ${site.word}\``,
               }),
+            )
+            // and a `find read` with no `name`, which `read(path)` never reaches (check/keyword-import.ts). Only a TASK by
+            // that name in a module the entry loads: `find text` for `like text` imports a form, which is reached. Read
+            // off the modules' trees, because the program has already dropped a task nothing reaches
+            .concat(
+              keywordImports(entryTree.tree, word =>
+                sources.some(unit => unit.file !== source.file && definesTask(parsed(unit), word)),
+              ).map(site =>
+                diagnose('keyword-import', {
+                  file: source.file,
+                  span: { ...site.span, file: source.file },
+                  message: `\`find ${site.word}\` is never reached by that name: \`${site.word}(...)\` is Term's own word, read before any import`,
+                }),
+              ),
             )
         : []
     const warned: CompileResult =

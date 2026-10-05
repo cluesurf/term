@@ -64,7 +64,7 @@ import { provenIncrements } from '@term/make/code/ir/facts/range'
 import { provenArithmetic, type Proven } from '@term/make/code/compile/proven'
 import { boundedLoops, unsignedDivisions } from '@term/make/code/ir/facts/bounds'
 import { asciiTexts } from '@term/make/code/ir/facts/text'
-import { formSpec, refuseAny, specForms } from '@term/make/code/compile/backend'
+import { declaredLater, formSpec, refuseAny, specForms } from '@term/make/code/compile/backend'
 import type { FormKind, FormSpec } from '@term/make/code/compile/backend'
 
 // Rust reserved and reserved-for-future-use keywords that cannot be bare identifiers; a seed name colliding with
@@ -973,6 +973,8 @@ function emitRustPass(
   let guardDepth = 0
   // the raising calls an `await` wraps, so each one's `?` lands after `.await` and not before it
   const awaitedCalls = new WeakSet<object>()
+  // the names a guard's handler binds to the caught exception, while that handler's body is emitted
+  const caughtNames = new Set<string>()
 
   // PREEMPTION BY BUDGET (note/term/research/beam-otp-lessons.md, design 5). BEAM switches a process out after 4,000
   // reductions, paying a check on every call. Here a loop in an ASYNCHRONOUS task checks a per-thread budget at the top
@@ -2328,8 +2330,9 @@ function emitRustPass(
           const into = node.callee.name === 'fill-form' ? fillSpecs : meltSpecs
           specForms(spec, into)
 
+          // a fill raises `data-mismatch`, passed on or ended the way any raising call is (`raiseSuffix`)
           return node.callee.name === 'fill-form'
-            ? `__fill_${snake(spec.form)}(${expr(node.args[0]!)}, String::new())`
+            ? `__fill_${snake(spec.form)}(${expr(node.args[0]!)}, String::new())${raiseSuffix()}`
             : `__melt_${snake(spec.form)}(${expr(node.args[0]!)})`
         }
 
@@ -2914,6 +2917,13 @@ function emitRustPass(
 
           // in parentheses, since a block that begins a statement (`{ ... } == 0`) is read as a statement of its own
           return `({ let __shared_read = ${memberPath(node)}.clone(); __shared_read })`
+        }
+
+        // a field of a caught exception, read: cloned, since the carrier reaches its fields through `Deref` and a String
+        // cannot move out of one. `send back, read problem/form` in a handler was refused (E0507), found by the
+        // host-native fill case on 2026-10-05
+        if (node.target.form === 'variable' && caughtNames.has(node.target.name) && !copyType(node.type)) {
+          return `${memberPath(node)}.clone()`
         }
 
         return memberPath(node)
@@ -3567,6 +3577,12 @@ function emitRustPass(
 
     switch (node.form) {
       case 'let': {
+        // a bare `save x`, given its value by a later assignment: declared with its type and no value, which rustc
+        // takes when every path assigns before a read. It was `let mut x = ;` (2026-10-05)
+        if (declaredLater(node)) {
+          return `let mut ${vname(node.name)}: ${rustType(node.type)};`
+        }
+
         // a local that is a list slot until its last read (`slotTakes`): a reference to the slot where something reads
         // it first, and nothing at all where the last read is the only one
         const aliased = slotLets.get(node)
@@ -4076,9 +4092,18 @@ function emitRustPass(
         const body = block(node.body, d + 2)
         guardDepth--
         const returned = outerRaising ? 'return std::result::Result::Ok(value)' : 'return value'
-        // the caught value is bound only where the handler reads it (rustc: unused_variables)
+        // the caught value is bound only where the handler reads it (rustc: unused_variables). While its body is
+        // emitted the name is a caught one, whose fields are read cloned (the `member` case)
+        let handlerBody = ''
+
+        if (node.catch) {
+          caughtNames.add(node.catch.name)
+          handlerBody = block(node.catch.body, d + 2)
+          caughtNames.delete(node.catch.name)
+        }
+
         const handler = node.catch
-          ? `std::result::Result::Err(${namesIn(node.catch.body).has(node.catch.name) ? vname(node.catch.name) : '_'}) => {\n${block(node.catch.body, d + 2)}\n${pad(d + 1)}}`
+          ? `std::result::Result::Err(${namesIn(node.catch.body).has(node.catch.name) ? vname(node.catch.name) : '_'}) => {\n${handlerBody}\n${pad(d + 1)}}`
           : 'std::result::Result::Err(_) => {}'
 
         // inside an asynchronous body the guard is an async block awaited in place, since a closure cannot `.await`
@@ -5535,7 +5560,8 @@ pub fn term_number(x: f64) -> String {
 }`,
   ]
 
-  const carrier = carries
+  // a fill walker raises `data-mismatch` through the carrier, so it brings the carrier wherever its fill is
+  const carrier = carries || fillSpecs.size > 0
     ? [
         `// the one exception value of a Term program on this backend (note/term/hive/11-native-exceptions.md). Its fields
 // are boxed, so the carrier is one pointer and every \`Result\` a raising task answers stays the size of its value: the
@@ -6668,8 +6694,8 @@ function collectArrayBounds(body: Statement[]): {
 // ---- filling a form from data on rust ----
 
 // the walkers a module's `fill` / `melt` with a form need: shared helpers over the package's `Data` enum, then a
-// function per form. A value that does not fit panics the way a raise does on this backend, with the path and the
-// reason of the `data-mismatch` the package raises elsewhere.
+// function per form. A value that does not fit raises the package's `data-mismatch`, with its path and reason, as a
+// `TermException` in the `Result` the walker answers (RUST_FORM_HELPERS).
 function rustFormWalk(fills: Map<string, FormSpec>, melts: Map<string, FormSpec>): string[] {
   if (fills.size === 0 && melts.size === 0) {
     return []
@@ -6677,23 +6703,24 @@ function rustFormWalk(fills: Map<string, FormSpec>, melts: Map<string, FormSpec>
 
   const out: string[] = [RUST_FORM_HELPERS]
 
-  // an item of a list, or a field's value, read as its kind. `d` is a Data, `p` its path
+  // an item of a list, or a field's value, read as its kind, its mismatch passed on with `?`. `d` is a Data, `p` its
+  // path. A list's item is read in a closure that answers the `Result` itself
   const fillOf = (kind: FormKind, value: string, path: string, optional: boolean): string => {
     switch (kind.kind) {
       case 'text':
-        return `__term_text(${value}, ${path}, ${optional})`
+        return `__term_text(${value}, ${path}, ${optional})?`
       case 'number':
-        return `__term_number(${value}, ${path}, ${optional})`
+        return `__term_number(${value}, ${path}, ${optional})?`
       case 'decimal':
-        return `__term_decimal(${value}, ${path}, ${optional})`
+        return `__term_decimal(${value}, ${path}, ${optional})?`
       case 'flag':
-        return `__term_flag(${value}, ${path}, ${optional})`
+        return `__term_flag(${value}, ${path}, ${optional})?`
       case 'data':
-        return `__term_data(${value}, ${path}, ${optional})`
+        return `__term_data(${value}, ${path}, ${optional})?`
       case 'list':
-        return `__term_list(${value}, ${path}, ${optional}, &|d: Data, p: String| ${fillOf(kind.item, 'Some(d)', 'p', false)})`
+        return `__term_list(${value}, ${path}, ${optional}, &|d: Data, p: String| Ok(${fillOf(kind.item, 'Some(d)', 'p', false)}))?`
       case 'form':
-        return `__fill_${snake(kind.spec.form)}(__term_data(${value}, ${path}.clone(), ${optional}), ${path})`
+        return `__fill_${snake(kind.spec.form)}(__term_data(${value}, ${path}.clone(), ${optional})?, ${path})?`
       default:
         return '0'
     }
@@ -6706,12 +6733,12 @@ function rustFormWalk(fills: Map<string, FormSpec>, melts: Map<string, FormSpec>
       .join(', ')
 
     out.push(
-      `fn __fill_${snake(spec.form)}(value: Data, path: String) -> ${pascal(spec.form)} {\n` +
-        `    let entries = __term_entries(value, path.clone());\n` +
+      `fn __fill_${snake(spec.form)}(value: Data, path: String) -> Result<${pascal(spec.form)}, TermException> {\n` +
+        `    let entries = __term_entries(value, path.clone())?;\n` +
         `    let known: &[&str] = &[${known}];\n` +
-        `    for e in entries.borrow().iter() { if !known.contains(&e.name.as_str()) { __term_mismatch(__term_path(&path, &e.name), "is not in the form".to_string()); } }\n` +
+        `    for e in entries.borrow().iter() { if !known.contains(&e.name.as_str()) { return Err(__term_mismatch(__term_path(&path, &e.name), "is not in the form".to_string())); } }\n` +
         `    let find = |name: &str| -> Option<Data> { entries.borrow().iter().find(|e| e.name == name).map(|e| e.base.clone()) };\n` +
-        `    ${pascal(spec.form)} { ${fields} }\n}`,
+        `    Ok(${pascal(spec.form)} { ${fields} })\n}`,
     )
   }
 
@@ -6768,35 +6795,43 @@ function rustFormWalk(fills: Map<string, FormSpec>, melts: Map<string, FormSpec>
   return out
 }
 
-const RUST_FORM_HELPERS = `fn __term_mismatch(path: String, reason: String) -> ! {
-    panic!("{}: {}", "data-mismatch", format!("Data does not fit the shape: {} {}", if path.is_empty() { ".".to_string() } else { path }, reason))
+// A value that does not fit RAISES `data-mismatch`, the package's own exception, with the fields TypeScript gives it
+// (`@term/host`, `Data does not fit the shape`, and the path and reason under `link`), so a `mark unsafe` guard or a
+// `sift` catches it as it does there. Every helper answers a `Result` and the walkers pass it on with `?`. It was a
+// `panic!`, which no guard catches and which ended the program (guides: language/data, 2026-10-05).
+const RUST_FORM_HELPERS = `#[cold]
+#[inline(never)]
+fn __term_mismatch(path: String, reason: String) -> TermException {
+    let path = if path.is_empty() { ".".to_string() } else { path };
+    let link: std::collections::HashMap<String, String> = [("thing".to_string(), "data".to_string()), ("path".to_string(), path), ("reason".to_string(), reason)].into_iter().collect();
+    TermException(Box::new(TermRaised { host: "@term/host".to_string(), form: "data-mismatch".to_string(), note: "Data does not fit the shape".to_string(), code: String::new(), time: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0), link: std::rc::Rc::new(link), base: std::rc::Rc::new(()) }))
 }
 fn __term_path(path: &str, key: &str) -> String { if path.is_empty() { key.to_string() } else { format!("{}/{}", path, key) } }
 fn __term_kind(value: &Data) -> &'static str {
     match value { Data::Hash { .. } => "a map", Data::Array { .. } => "a list", Data::Blank => "void", Data::Text { .. } => "text", Data::Number { .. } => "number", Data::Decimal { .. } => "decimal", Data::Flag { .. } => "flag", Data::Graft { .. } => "a fuse" }
 }
-fn __term_entries(value: Data, path: String) -> std::rc::Rc<std::cell::RefCell<Vec<DataEntry>>> {
-    match value { Data::Hash { list } => list, other => __term_mismatch(path, format!("is {} where a map belongs", __term_kind(&other))) }
+fn __term_entries(value: Data, path: String) -> Result<std::rc::Rc<std::cell::RefCell<Vec<DataEntry>>>, TermException> {
+    match value { Data::Hash { list } => Ok(list), other => Err(__term_mismatch(path, format!("is {} where a map belongs", __term_kind(&other)))) }
 }
-fn __term_text(value: Option<Data>, path: String, optional: bool) -> String {
-    match value { Some(Data::Text { value }) => value, None | Some(Data::Blank) => if optional { String::new() } else { __term_mismatch(path, "is missing".to_string()) }, Some(other) => __term_mismatch(path, format!("is {} where text belongs", __term_kind(&other))) }
+fn __term_text(value: Option<Data>, path: String, optional: bool) -> Result<String, TermException> {
+    match value { Some(Data::Text { value }) => Ok(value), None | Some(Data::Blank) => if optional { Ok(String::new()) } else { Err(__term_mismatch(path, "is missing".to_string())) }, Some(other) => Err(__term_mismatch(path, format!("is {} where text belongs", __term_kind(&other)))) }
 }
-fn __term_number(value: Option<Data>, path: String, optional: bool) -> i64 {
-    match value { Some(Data::Number { value }) => value, None | Some(Data::Blank) => if optional { 0 } else { __term_mismatch(path, "is missing".to_string()) }, Some(other) => __term_mismatch(path, format!("is {} where number belongs", __term_kind(&other))) }
+fn __term_number(value: Option<Data>, path: String, optional: bool) -> Result<i64, TermException> {
+    match value { Some(Data::Number { value }) => Ok(value), None | Some(Data::Blank) => if optional { Ok(0) } else { Err(__term_mismatch(path, "is missing".to_string())) }, Some(other) => Err(__term_mismatch(path, format!("is {} where number belongs", __term_kind(&other)))) }
 }
-fn __term_decimal(value: Option<Data>, path: String, optional: bool) -> f64 {
-    match value { Some(Data::Decimal { value }) => value, Some(Data::Number { value }) => value as f64, None | Some(Data::Blank) => if optional { 0.0 } else { __term_mismatch(path, "is missing".to_string()) }, Some(other) => __term_mismatch(path, format!("is {} where decimal belongs", __term_kind(&other))) }
+fn __term_decimal(value: Option<Data>, path: String, optional: bool) -> Result<f64, TermException> {
+    match value { Some(Data::Decimal { value }) => Ok(value), Some(Data::Number { value }) => Ok(value as f64), None | Some(Data::Blank) => if optional { Ok(0.0) } else { Err(__term_mismatch(path, "is missing".to_string())) }, Some(other) => Err(__term_mismatch(path, format!("is {} where decimal belongs", __term_kind(&other)))) }
 }
-fn __term_flag(value: Option<Data>, path: String, optional: bool) -> bool {
-    match value { Some(Data::Flag { value }) => value, None | Some(Data::Blank) => if optional { false } else { __term_mismatch(path, "is missing".to_string()) }, Some(other) => __term_mismatch(path, format!("is {} where flag belongs", __term_kind(&other))) }
+fn __term_flag(value: Option<Data>, path: String, optional: bool) -> Result<bool, TermException> {
+    match value { Some(Data::Flag { value }) => Ok(value), None | Some(Data::Blank) => if optional { Ok(false) } else { Err(__term_mismatch(path, "is missing".to_string())) }, Some(other) => Err(__term_mismatch(path, format!("is {} where flag belongs", __term_kind(&other)))) }
 }
-fn __term_data(value: Option<Data>, path: String, optional: bool) -> Data {
-    match value { Some(d) => d, None => if optional { Data::Blank } else { __term_mismatch(path, "is missing".to_string()) } }
+fn __term_data(value: Option<Data>, path: String, optional: bool) -> Result<Data, TermException> {
+    match value { Some(d) => Ok(d), None => if optional { Ok(Data::Blank) } else { Err(__term_mismatch(path, "is missing".to_string())) } }
 }
-fn __term_list<T>(value: Option<Data>, path: String, optional: bool, item: &dyn Fn(Data, String) -> T) -> std::rc::Rc<std::cell::RefCell<Vec<T>>> {
+fn __term_list<T>(value: Option<Data>, path: String, optional: bool, item: &dyn Fn(Data, String) -> Result<T, TermException>) -> Result<std::rc::Rc<std::cell::RefCell<Vec<T>>>, TermException> {
     match value {
-        Some(Data::Array { list }) => std::rc::Rc::new(std::cell::RefCell::new(list.borrow().iter().enumerate().map(|(i, d)| item(d.clone(), __term_path(&path, &i.to_string()))).collect())),
-        None | Some(Data::Blank) => if optional { std::rc::Rc::new(std::cell::RefCell::new(Vec::new())) } else { __term_mismatch(path, "is missing".to_string()) },
-        Some(other) => __term_mismatch(path, format!("is {} where a list belongs", __term_kind(&other))),
+        Some(Data::Array { list }) => Ok(std::rc::Rc::new(std::cell::RefCell::new(list.borrow().iter().enumerate().map(|(i, d)| item(d.clone(), __term_path(&path, &i.to_string()))).collect::<Result<Vec<T>, TermException>>()?))),
+        None | Some(Data::Blank) => if optional { Ok(std::rc::Rc::new(std::cell::RefCell::new(Vec::new()))) } else { Err(__term_mismatch(path, "is missing".to_string())) },
+        Some(other) => Err(__term_mismatch(path, format!("is {} where a list belongs", __term_kind(&other)))),
     }
 }`

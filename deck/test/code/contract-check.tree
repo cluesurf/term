@@ -1,0 +1,66 @@
+# Contracts verified and filled: a body checked against its contract by exhaustive proof over a bound (a proof, or the
+# exact ADMITTED input where it breaks the postcondition), and a contract with a HOLE for its body handed to the repair
+# loop, which writes a body the prover then certifies. The precondition is the power over plain synthesis: the body
+# only has to be right on the inputs it admits, as a refinement-typed parameter's would.
+#
+# Ported from deck/test/code/contract.ts (self-hosting, 2026-10-05). Its spec was a closure over the contract, and here
+# the gap carries the contract as data (repair-loop.tree's `specification`). The CEGIS proposer it appended to the
+# list, a closure over its size, is the repair loop's own search (`repair-searching`).
+
+load @term/base/list
+  find list
+
+load ./contract-form
+  find contract
+
+load ./expression-grammar
+  find expression
+
+load ./bounded-proof
+  find prove-result
+
+load ./repair-loop
+  find gap-report
+  find specification
+  find proposer
+  find repair-result
+  find prove-candidate
+  find repair-searching
+
+# the gap a checker would report for a contract's unfilled body
+task contract-gap
+  take terms, like contract
+  take bound, like number
+  like gap-report
+
+  host none, make list
+  host spec
+    make contracted
+      bind terms, terms
+
+  back
+    make gap-report
+      bind goal, terms/name
+      bind var-count, terms/names/length
+      bind spec, spec
+      bind counterexamples, none
+      bind bound, bound
+
+# the body proved against the contract over [-bound, bound] on every parameter, or the admitted input that breaks it
+task verify-contract
+  take body, like expression
+  take terms, like contract
+  take bound, like number
+  like prove-result
+
+  back prove-candidate(contract-gap(terms, bound), body)
+
+# a body for the contract, written by `proposers` and then by synthesis of up to `max-size` nodes, proven over the bound
+task synthesize-contract
+  take terms, like contract
+  take bound, like number
+  take max-size, like number
+  take proposers, like list, like proposer
+  like repair-result
+
+  back repair-searching(contract-gap(terms, bound), proposers, 64, max-size)

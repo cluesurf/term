@@ -5,6 +5,30 @@ load @term/mill/code/like/mine
 load @term/mill/code/seed/mine
   find seed
 
+load @term/mill/code/fork/mine
+  find fork-arm
+  find fork-arm-hook
+  find fork-arm-bare
+
+# `save x, sift <value>` with its arms under the line: the match giving `x` its value. The arms hang under `save`,
+# beside the `sift`, as under `back` (send/mine.tree `back-match`), and it is lowered to `x` declared, then the `sift`
+# statement assigning each arm's value (compile/mint-bridge.ts). Listed before `save` wherever a statement is read.
+mine save-match
+  mine term, term save
+    mine path
+      site name
+    mine term, term sift
+      mine form, like seed
+        site seed
+    mine list
+      mine any
+        mine form, like fork-arm
+          site arm
+        mine form, like fork-arm-hook
+          site arm
+        mine form, like fork-arm-bare
+          site arm
+
 # `save x, <value>` binds a name. `save x, like <type>` annotates the binding, with the value on the lines
 # under it, which is how the DOM bindings in @term/site are written.
 mine save

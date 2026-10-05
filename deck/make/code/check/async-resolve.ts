@@ -258,12 +258,7 @@ function bodyCallsAsync(
       return
     }
 
-    if (
-      node.form === 'call' &&
-      !node.background &&
-      node.callee.form === 'variable' &&
-      asyncSet.has(node.callee.name)
-    ) {
+    if (node.form === 'call' && callsAsync(node, asyncSet)) {
       found = true
 
       return
@@ -363,6 +358,23 @@ function stmt(node: Statement, asyncSet: Set<string>): Statement {
 
 // rewrite an expression, wrapping a default call to an async function in `await`; recurse into closures (a closure that
 // gains an await becomes async itself)
+// whether a call waits: a call of a name the async set holds, or of anything else (a field, `each/propose`) whose type
+// is an async task. The second was missing, so a call through a field typed `like task / mark async` handed back the
+// promise unawaited, and a `sift` on it matched no case (deck/test/code/model-proposer.tree, 2026-10-05)
+function callsAsync(node: Extract<Expression, { form: 'call' }>, asyncSet: Set<string>): boolean {
+  if (node.background) {
+    return false
+  }
+
+  if (node.callee.form === 'variable') {
+    return asyncSet.has(node.callee.name)
+  }
+
+  const type = node.callee.type
+
+  return type?.kind === 'function' && Boolean(type.effects?.includes('async'))
+}
+
 function expr(node: Expression, asyncSet: Set<string>): Expression {
   switch (node.form) {
     case 'call': {
@@ -370,11 +382,7 @@ function expr(node: Expression, asyncSet: Set<string>): Expression {
       const args = node.args.map(a => expr(a, asyncSet))
       const call = { ...node, callee, args }
 
-      if (
-        !node.background &&
-        node.callee.form === 'variable' &&
-        asyncSet.has(node.callee.name)
-      ) {
+      if (callsAsync(node, asyncSet)) {
         return { form: 'await', expr: call, span: node.span }
       }
 

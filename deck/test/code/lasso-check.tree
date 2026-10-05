@@ -1,0 +1,495 @@
+# LTL model checking by bounded model checking with LASSO detection (Biere, Cimatti, Clarke, Zhu). LTL speaks of one
+# linear path through time: next, eventually, globally, until, release. Its hard case is LIVENESS: a counterexample to
+# "p eventually" is an infinite path where p never happens, and on a finite system every infinite path is eventually
+# periodic, a prefix and a loop. So the check looks for a lasso of length at most k that meets the NEGATED property;
+# one is a counterexample, and none means the property holds within the bound.
+#
+# Ported from deck/test/code/ltl.ts (self-hosting, 2026-10-05), over model-check.tree's `system`. Two shapes changed.
+# The loop selectors were Z3 booleans and are integers pinned to 0 or 1, since `check-sat` declares integers. And the
+# original memoized each subformula at each position because a Z3 term is shared; a formula printed as text is not, and
+# at these bounds the text stays small, so there is no memo.
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+load ./smt-query
+  find smt-term
+  find formula
+  find verdict
+  find value-term
+  find name-term
+  find related
+  find negated
+  find check-sat
+
+load ./model-check
+  find system
+  find state-at
+
+# an LTL formula over atomic state predicates
+form ltl
+  case ltl-atom
+    link test
+      like task
+        take state, like hash, like text, like smt-term
+        like formula
+  case ltl-not
+    link inner, like ltl
+  case ltl-and
+    link left, like ltl
+    link right, like ltl
+  case ltl-or
+    link left, like ltl
+    link right, like ltl
+  case ltl-next
+    link inner, like ltl
+  case ltl-eventually
+    link inner, like ltl
+  case ltl-globally
+    link inner, like ltl
+  case ltl-until
+    link left, like ltl
+    link right, like ltl
+  case ltl-release
+    link left, like ltl
+    link right, like ltl
+
+form ltl-result
+  link holds, like boolean
+  # the counterexample path, a row per step in `vars` order; empty when it holds
+  link trace, like list, like list, like number
+  # where the path loops back to, -1 for a finite prefix
+  link loop-start, like number
+
+task negate-ltl
+  take inner, like ltl
+  like ltl
+
+  back
+    make ltl-not
+      bind inner, inner
+
+# negations pushed to the atoms, by LTL's dualities: not-next is next-not, not-eventually is globally-not, not-until is
+# release of the negations, and the rest
+task nnf
+  take f, like ltl
+  like ltl
+
+  sift f
+    case ltl-atom
+      back f
+    case ltl-and
+      back
+        make ltl-and
+          bind left, nnf(left)
+          bind right, nnf(right)
+    case ltl-or
+      back
+        make ltl-or
+          bind left, nnf(left)
+          bind right, nnf(right)
+    case ltl-next
+      back
+        make ltl-next
+          bind inner, nnf(inner)
+    case ltl-eventually
+      back
+        make ltl-eventually
+          bind inner, nnf(inner)
+    case ltl-globally
+      back
+        make ltl-globally
+          bind inner, nnf(inner)
+    case ltl-until
+      back
+        make ltl-until
+          bind left, nnf(left)
+          bind right, nnf(right)
+    case ltl-release
+      back
+        make ltl-release
+          bind left, nnf(left)
+          bind right, nnf(right)
+    case ltl-not
+      link g
+      sift g
+        case ltl-atom
+          back f
+        case ltl-not
+          back nnf(inner)
+        case ltl-and
+          back
+            make ltl-or
+              bind left, nnf(negate-ltl(left))
+              bind right, nnf(negate-ltl(right))
+        case ltl-or
+          back
+            make ltl-and
+              bind left, nnf(negate-ltl(left))
+              bind right, nnf(negate-ltl(right))
+        case ltl-next
+          back
+            make ltl-next
+              bind inner, nnf(negate-ltl(inner))
+        case ltl-eventually
+          back
+            make ltl-globally
+              bind inner, nnf(negate-ltl(inner))
+        case ltl-globally
+          back
+            make ltl-eventually
+              bind inner, nnf(negate-ltl(inner))
+        case ltl-until
+          back
+            make ltl-release
+              bind left, nnf(negate-ltl(left))
+              bind right, nnf(negate-ltl(right))
+        case ltl-release
+          back
+            make ltl-until
+              bind left, nnf(negate-ltl(left))
+              bind right, nnf(negate-ltl(right))
+
+task conj
+  take items, like list, like formula
+  like formula
+
+  back
+    make all-of
+      bind items, items
+
+task disj
+  take items, like list, like formula
+  like formula
+
+  back
+    make any-of
+      bind items, items
+
+task pair-of
+  take left, like formula
+  take right, like formula
+  like list, like formula
+
+  back make list(left, right)
+
+# an atom, or a negated atom (in negation normal form a `not` wraps only atoms)
+task atom-at
+  take f, like ltl
+  take state, like hash, like text, like smt-term
+  like formula
+
+  sift f
+    case ltl-atom
+      back call(test, state)
+    case ltl-not
+      sift inner
+        case ltl-atom
+          back negated(call(test, state))
+        miss
+          back false-formula()
+    miss
+      back false-formula()
+
+task false-formula
+  like formula
+
+  back
+    make truth
+      bind value, false
+
+# the bounded semantics on a finite prefix of k + 1 states
+task no-loop
+  take f, like ltl
+  take i, like number
+  take states, like list, like hash, like text, like smt-term
+  take k, like number
+  like formula
+
+  sift f
+    case ltl-atom
+      back atom-at(f, get(states, i))
+    case ltl-not
+      back atom-at(f, get(states, i))
+    case ltl-and
+      back conj(pair-of(no-loop(left, i, states, k), no-loop(right, i, states, k)))
+    case ltl-or
+      back disj(pair-of(no-loop(left, i, states, k), no-loop(right, i, states, k)))
+    case ltl-next
+      fork test, is-below(i, k)
+        hold
+          back no-loop(inner, add(i, 1), states, k)
+      back false-formula()
+    case ltl-eventually
+      host terms, make list
+      save j, i
+      walk test
+        hook test, is-maximum(j, k)
+        hook hold
+          terms/push(no-loop(inner, j, states, k))
+          save j, add(j, 1)
+      back disj(terms)
+    case ltl-globally
+      back false-formula()
+    case ltl-until
+      host terms, make list
+      save j, i
+      walk test
+        hook test, is-maximum(j, k)
+        hook hold
+          host parts, make list
+          parts/push(no-loop(right, j, states, k))
+          save n, i
+          walk test
+            hook test, is-below(n, j)
+            hook hold
+              parts/push(no-loop(left, n, states, k))
+              save n, add(n, 1)
+          terms/push(conj(parts))
+          save j, add(j, 1)
+      back disj(terms)
+    case ltl-release
+      host terms, make list
+      save j, i
+      walk test
+        hook test, is-maximum(j, k)
+        hook hold
+          host parts, make list
+          parts/push(no-loop(left, j, states, k))
+          save n, i
+          walk test
+            hook test, is-maximum(n, j)
+            hook hold
+              parts/push(no-loop(right, n, states, k))
+              save n, add(n, 1)
+          terms/push(conj(parts))
+          save j, add(j, 1)
+      back disj(terms)
+
+task successor
+  take i, like number
+  take l, like number
+  take k, like number
+  like number
+
+  fork test, is-below(i, k)
+    hold
+      back add(i, 1)
+
+  back l
+
+# every position once, from i forward and round the loop back to l
+task lasso-order
+  take l, like number
+  take i, like number
+  take k, like number
+  like list, like number
+
+  host order, make list
+  host seen, make hash
+  save current, i
+  walk test
+    hook test, not(has(seen, current))
+    hook hold
+      order/push(current)
+      seen/set(current, true)
+      save current, successor(current, l, k)
+
+  back order
+
+task smaller
+  take a, like number
+  take b, like number
+  like number
+
+  fork test, is-below(a, b)
+    hold
+      back a
+
+  back b
+
+# the semantics on a lasso looping from state k back to state l
+task with-loop
+  take l, like number
+  take f, like ltl
+  take i, like number
+  take states, like list, like hash, like text, like smt-term
+  take k, like number
+  like formula
+
+  sift f
+    case ltl-atom
+      back atom-at(f, get(states, i))
+    case ltl-not
+      back atom-at(f, get(states, i))
+    case ltl-and
+      back conj(pair-of(with-loop(l, left, i, states, k), with-loop(l, right, i, states, k)))
+    case ltl-or
+      back disj(pair-of(with-loop(l, left, i, states, k), with-loop(l, right, i, states, k)))
+    case ltl-next
+      back with-loop(l, inner, successor(i, l, k), states, k)
+    case ltl-eventually
+      host terms, make list
+      save j, smaller(i, l)
+      walk test
+        hook test, is-maximum(j, k)
+        hook hold
+          terms/push(with-loop(l, inner, j, states, k))
+          save j, add(j, 1)
+      back disj(terms)
+    case ltl-globally
+      host terms, make list
+      save j, smaller(i, l)
+      walk test
+        hook test, is-maximum(j, k)
+        hook hold
+          terms/push(with-loop(l, inner, j, states, k))
+          save j, add(j, 1)
+      back conj(terms)
+    case ltl-until
+      host order, lasso-order(l, i, k)
+      host terms, make list
+      save idx, 0
+      walk order
+        take at
+        host parts, make list
+        parts/push(with-loop(l, right, at, states, k))
+        save p, 0
+        walk test
+          hook test, is-below(p, idx)
+          hook hold
+            parts/push(with-loop(l, left, get(order, p), states, k))
+            save p, add(p, 1)
+        terms/push(conj(parts))
+        save idx, add(idx, 1)
+      back disj(terms)
+    case ltl-release
+      host order, lasso-order(l, i, k)
+      host always, make list
+      walk order
+        take at
+        always/push(with-loop(l, right, at, states, k))
+      host released, make list
+      save idx, 0
+      walk order
+        take at
+        host parts, make list
+        parts/push(with-loop(l, left, at, states, k))
+        save p, 0
+        walk test
+          hook test, is-maximum(p, idx)
+          hook hold
+            parts/push(with-loop(l, right, get(order, p), states, k))
+            save p, add(p, 1)
+        released/push(conj(parts))
+        save idx, add(idx, 1)
+      back disj(pair-of(conj(always), disj(released)))
+
+# check `property` of `machine` up to bound `k`: a lasso or a prefix meeting its negation is the counterexample
+task ltl-check
+  take machine, like system
+  take property, like ltl
+  take k, like number
+  like ltl-result
+
+  host neg, nnf(negate-ltl(property))
+  host states, make list
+  host names, make list
+  save step, 0
+  walk test
+    hook test, is-maximum(step, k)
+    hook hold
+      states/push(state-at(machine, step))
+      walk machine/vars
+        take v
+        names/push(<{v}_{step}>)
+      save step, add(step, 1)
+
+  host parts, make list
+  parts/push(call(machine/init, get(states, 0)))
+  save t, 0
+  walk test
+    hook test, is-below(t, k)
+    hook hold
+      parts/push(call(machine/trans, get(states, t), get(states, add(t, 1))))
+      save t, add(t, 1)
+
+  # loop selectors: loop_l = 1 when the path loops from state k back to state l, at most one, each a real back edge
+  host selectors, make list
+  save l, 0
+  walk test
+    hook test, is-maximum(l, k)
+    hook hold
+      names/push(<loop_{l}>)
+      host chosen, related(<=>, name-term(<loop_{l}>), value-term(1))
+      selectors/push(chosen)
+      parts/push(related(<\>=>, name-term(<loop_{l}>), value-term(0)))
+      parts/push(related(<\<=>, name-term(<loop_{l}>), value-term(1)))
+      parts/push(disj(pair-of(negated(chosen), call(machine/trans, get(states, k), get(states, l)))))
+      save l, add(l, 1)
+  save a, 0
+  walk test
+    hook test, is-maximum(a, k)
+    hook hold
+      save b, add(a, 1)
+      walk test
+        hook test, is-maximum(b, k)
+        hook hold
+          parts/push(disj(pair-of(negated(get(selectors, a)), negated(get(selectors, b)))))
+          save b, add(b, 1)
+      save a, add(a, 1)
+
+  host cases, make list
+  cases/push(conj(pair-of(negated(disj(selectors)), no-loop(neg, 0, states, k))))
+  save m, 0
+  walk test
+    hook test, is-maximum(m, k)
+    hook hold
+      cases/push(conj(pair-of(get(selectors, m), with-loop(m, neg, 0, states, k))))
+      save m, add(m, 1)
+  parts/push(disj(cases))
+
+  host found, check-sat(names, conj(parts))
+  host none, make list
+  fork test, not(is-equal(found/status, <sat>))
+    hold
+      back
+        make ltl-result
+          bind holds, true
+          bind trace, none
+          bind loop-start, -1
+
+  host width, machine/vars/length
+  host trace, make list
+  save at, 0
+  walk test
+    hook test, is-maximum(at, k)
+    hook hold
+      host row, make list
+      save v, 0
+      walk test
+        hook test, is-below(v, width)
+        hook hold
+          row/push(get(found/values, add(multiply(at, width), v)))
+          save v, add(v, 1)
+      trace/push(row)
+      save at, add(at, 1)
+  host selector-base, multiply(add(k, 1), width)
+  save loop-start, -1
+  save q, 0
+  walk test
+    hook test, is-maximum(q, k)
+    hook hold
+      fork test, and(is-equal(loop-start, -1), is-equal(get(found/values, add(selector-base, q)), 1))
+        hold
+          save loop-start, q
+      save q, add(q, 1)
+
+  back
+    make ltl-result
+      bind holds, false
+      bind trace, trace
+      bind loop-start, loop-start

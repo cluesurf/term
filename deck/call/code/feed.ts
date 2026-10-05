@@ -21,6 +21,17 @@ export async function callFeed(input: {
 }): Promise<void> {
   openRun({ verb: 'feed', root: input.root })
 
+  // ctrl-c is answered from the opening item on, the port checks and the cold build included: the handler was added
+  // after `start`, so an interrupt during the first compile met node's default, exit 130 and no closing item (guides:
+  // commands/feed, 2026-10-05), and set after the port checks it still missed one sent as the opening printed. The
+  // build is synchronous, so node holds the signal until it returns, then this closes the run
+  let close: (() => void) | undefined
+
+  process.on('SIGINT', () => {
+    close?.()
+    process.exit(closeRun({ verdict: close ? 'Stopped' : 'Not started', failure: 'interrupted', uptime: close !== undefined }))
+  })
+
   try {
     const entry = findEntry(input.root, input.entry)
 
@@ -122,12 +133,11 @@ export async function callFeed(input: {
 
     report({ glyph: 'done', kind: 'lifecycle', verb: 'start', subject: `http://localhost:${port}`, duration: Date.now() - started, facts: ['hot reload'] })
 
-    // stay alive until interrupted, then clean up and close the run
-    process.on('SIGINT', () => {
+    // stay alive until interrupted, then clean up and close the run (the handler above)
+    close = () => {
       watcher.close()
       server.close()
-      process.exit(closeRun({ verdict: 'Stopped', failure: 'interrupted', uptime: true }))
-    })
+    }
   } catch (err) {
     failRun(err, input.root)
   }

@@ -1,0 +1,89 @@
+note <unbounded proof through the solver: max and abs proven for all integers, a buggy max refuted with its input>
+
+# Ported from deck/test/code/demo-smt.ts (self-hosting, 2026-10-05). The verdicts and the counterexample are smt.ts's own
+# (tmp/self-host-probes/smt-values.ts). Needs the solver, so node only: the base gate skips it natively.
+
+load ../code/smt-proof
+  find smt-result
+  find prove-expr
+
+load ../code/smt-query
+  find smt-term
+  find formula
+  find value-term
+  find related
+  find both
+  find either
+
+load ../code/expression-grammar
+  find expression
+  find variable-at
+  find constant-of
+
+load @term/base/list
+  find list
+
+# out >= a, out >= b, and out is one of them
+task max-spec
+  take inputs, like list, like smt-term
+  take output, like smt-term
+  like formula
+
+  host a, get(inputs, 0)
+  host b, get(inputs, 1)
+  host parts, make list(related(<\>=>, output, a), related(<\>=>, output, b), either(related(<=>, output, a), related(<=>, output, b)))
+
+  back
+    make all-of
+      bind items, parts
+
+# out >= 0, and out is a or -a
+task abs-spec
+  take inputs, like list, like smt-term
+  take output, like smt-term
+  like formula
+
+  host a, get(inputs, 0)
+  host minus-a
+    make opposite
+      bind inner, a
+
+  back both(related(<\>=>, output, value-term(0)), either(related(<=>, output, a), related(<=>, output, minus-a)))
+
+task max-body
+  like expression
+
+  back
+    make max
+      bind left, variable-at(0)
+      bind right, variable-at(1)
+
+task abs-body
+  like expression
+
+  host negation
+    make sub
+      bind left, constant-of(0)
+      bind right, variable-at(0)
+
+  back
+    make max
+      bind left, variable-at(0)
+      bind right, negation
+
+test <max(a, b) is proven for every pair of integers>
+  host found, prove-expr(2, max-body(), max-spec)
+  want hold, and(found/proven, not(found/unknown))
+
+test <abs as max(a, 0 - a) is proven for every integer>
+  host found, prove-expr(1, abs-body(), abs-spec)
+  want hold, found/proven
+
+# WHICH counterexample the solver answers is its model, and a model is not canonical: smt.ts's query, built through
+# Z3's JavaScript API, was answered `[0,1]`, and the same formula as text is answered with another input that breaks it
+# just as well. So the test holds what a counterexample MEANS, an input where `return a` is not the max: b above a
+test <a max that returns a is refuted, at an input where b is above a>
+  host found, prove-expr(2, variable-at(0), max-spec)
+  host a, get(found/counterexample, 0)
+  host b, get(found/counterexample, 1)
+  want hold, and(and(not(found/proven), is-equal(found/counterexample/length, 2)), is-above(b, a))

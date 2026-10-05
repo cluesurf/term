@@ -1,0 +1,102 @@
+# Synthesis with the SMT solver as its verifier: CEGIS where each candidate is proven for ALL integers by
+# smt-proof.tree, so the accepted body carries an unbounded proof, and a refutation's model is the counterexample that
+# refines the search.
+#
+# Ported from deck/test/code/synth-smt.ts (self-hosting, 2026-10-05). Its two specs, a concrete point check for the
+# counterexamples and a symbolic one for the solver, are two tasks, as they were two closures. Which counterexample a
+# refutation hands back is the solver's model, so the counterexamples need not be the original's; the body found is.
+
+load @term/base/list
+  find list
+
+load ./expression-grammar
+  find expression
+  find enumerate
+  find eval-expr
+  find constant-of
+
+load ./smt-query
+  find smt-term
+  find formula
+
+load ./smt-proof
+  find smt-result
+  find prove-expr
+
+form smt-synthesis
+  link ok, like boolean
+  # the body proven for all integers, the constant 0 when there is none
+  link expr, like expression
+  link counterexamples, like list, like list, like number
+  link reason, like text
+
+task smt-missed
+  take reason, like text
+  take counterexamples, like list, like list, like number
+  like smt-synthesis
+
+  back
+    make smt-synthesis
+      bind ok, false
+      bind expr, constant-of(0)
+      bind counterexamples, counterexamples
+      bind reason, reason
+
+# a body of up to `max-size` nodes meeting the spec for every integer input
+task synthesize-smt
+  take var-count, like number
+  take point-spec
+    like task
+      take inputs, like list, like number
+      take output, like number
+      like boolean
+  take formula-spec
+    like task
+      take inputs, like list, like smt-term
+      take output, like smt-term
+      like formula
+  take max-size, like number
+  like smt-synthesis
+
+  host candidates, enumerate(max-size, var-count)
+  host counterexamples, make list
+
+  save round, 0
+  walk test
+    hook test, is-maximum(round, candidates/length)
+    hook hold
+      save found, false
+      save pick, constant-of(0)
+      walk candidates
+        take each
+        save fits, true
+        walk counterexamples
+          take ce
+          fork test, not(point-spec(ce, eval-expr(each, ce)))
+            hold
+              save fits, false
+        fork test, fits
+          hold
+            save pick, each
+            save found, true
+            halt
+      fork test, not(found)
+        hold
+          back smt-missed(<no expression in the grammar satisfies the constraints>, counterexamples)
+
+      host verdict, prove-expr(var-count, pick, formula-spec)
+      fork test, verdict/proven
+        hold
+          back
+            make smt-synthesis
+              bind ok, true
+              bind expr, pick
+              bind counterexamples, counterexamples
+              bind reason, <>
+      fork test, verdict/unknown
+        hold
+          back smt-missed(<z3 returned unknown>, counterexamples)
+      counterexamples/push(verdict/counterexample)
+      save round, add(round, 1)
+
+  back smt-missed(<did not converge>, counterexamples)

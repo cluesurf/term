@@ -39,7 +39,7 @@ import { checkBindTargets } from '@term/make/code/check/binds'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { closeRun, count, field, location, openRun, printData, report, reportProblems, showPath } from '@term/call/code/output'
 
-// the per-target emit is make/code/compile/emit-target.ts, shared with the browser worker (make/code/browser/)
+// the per-target emit is make/code/compile/emit-target.ts, shared with the browser worker (call/code/browser/)
 export { EMIT_TARGETS, isEmitTarget }
 export type { EmitTarget }
 

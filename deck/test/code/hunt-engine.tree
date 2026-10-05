@@ -1,0 +1,164 @@
+# A target-agnostic bug-hunting engine: PROBES (properties a correct system holds on every input) run over a real
+# corpus and over a stream of MUTATED inputs, a probe that fires being a finding. A probe encodes any oracle: a crash
+# check, a metamorphic property (parse then print is a fixpoint), a differential one (two backends agree), a budget.
+# The engine does not know the target; it runs probes and collects what they find, then folds the findings that are
+# one bug seen many times.
+#
+# Ported from deck/test/code/hunt.ts (self-hosting, 2026-10-05), over TEXT inputs, which is what its one intended
+# target (compiler source) hunts over. A probe answers its findings as a list, where the original allowed one, many or
+# null. A mutator takes the generator's state where it took the generator's closure. A probe that raises is itself a
+# finding, as it was.
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+load @term/base/text
+  find substring
+  find char-count
+
+load @term/base/float
+  find round-down
+  find to-decimal
+  find to-number
+
+load ./seeded-random
+  find seed-state
+  find next-random
+
+form finding
+  link probe, like text
+  link detail, like text
+  link input, like text
+
+form probe
+  link name, like text
+  link check
+    like task
+      take input, like text
+      like list, like finding
+
+# a finding, and how many inputs hit the same bug
+form finding-group
+  link signature, like text
+  link example, like finding
+  link count, like number
+
+# a probe's findings at an input. A probe that raises is a finding: often the target crashing
+task run-probe
+  take each, like probe
+  take input, like text
+  like list, like finding
+
+  mark unsafe
+    back call(each/check, input)
+  halt take
+    take e
+    host found, make list
+    found/push
+      make finding
+        bind probe, each/name
+        bind detail, <probe threw: {e/note}>
+        bind input, input
+    back found
+
+# every probe over every corpus input
+task hunt-corpus
+  take inputs, like list, like text
+  take probes, like list, like probe
+  like list, like finding
+
+  host findings, make list
+  walk inputs
+    take item
+    walk probes
+      take each
+      walk run-probe(each, item)
+        take found
+        findings/push(found)
+
+  back findings
+
+task draw-under
+  take state, like list, like number
+  take count, like number
+  like number
+
+  back to-number(round-down(multiply(next-random(state), to-decimal(count))))
+
+# mutation fuzzing: `runs` times, a corpus entry perturbed by one to `per-run` mutators and probed
+task hunt-fuzz
+  take corpus, like list, like text
+  take probes, like list, like probe
+  take mutators
+    like list
+      like task
+        take input, like text
+        take corpus, like list, like text
+        take state, like list, like number
+        like text
+  take runs, like number
+  take seed, like number
+  take per-run, like number
+  like list, like finding
+
+  host state, seed-state(seed)
+  host findings, make list
+  save run, 0
+  walk test
+    hook test, is-below(run, runs)
+    hook hold
+      save item, get(corpus, draw-under(state, corpus/length))
+      host count, add(1, draw-under(state, per-run))
+      save made, 0
+      walk test
+        hook test, is-below(made, count)
+        hook hold
+          host mutator, get(mutators, draw-under(state, mutators/length))
+          save item, mutator(item, corpus, state)
+          save made, add(made, 1)
+      walk probes
+        take each
+        walk run-probe(each, item)
+          take found
+          findings/push(found)
+      save run, add(run, 1)
+
+  back findings
+
+# findings folded by probe and the head of their detail: many inputs hitting one bug are one group, in first-seen order
+task dedupe-findings
+  take findings, like list, like finding
+  like list, like finding-group
+
+  host at, make hash
+  host groups, make list
+  walk findings
+    take found
+    save head, found/detail
+    fork test, is-above(char-count(head), 80)
+      hold
+        save head, substring(head, 0, 80)
+    host key, <{found/probe}:{head}>
+    fork test, has(at, key)
+      hold
+        host index, get-or-default(at, key, 0)
+        host group, get(groups, index)
+        host counted
+          make finding-group
+            bind signature, key
+            bind example, group/example
+            bind count, add(group/count, 1)
+        groups/set(index, counted)
+      miss
+        at/set(key, groups/length)
+        host first
+          make finding-group
+            bind signature, key
+            bind example, found
+            bind count, 1
+        groups/push(first)
+
+  back groups

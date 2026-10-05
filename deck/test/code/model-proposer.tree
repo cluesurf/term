@@ -1,0 +1,123 @@
+# A language model in the synthesis loop: the prompt a model is shown for a gap, and the repair loop with ASYNCHRONOUS
+# proposers, so a model call is awaited where it stands. The model proposes and the proof disposes: every proposal is
+# proven over the bound before it is accepted, one a known counterexample already refutes is passed over, and synthesis
+# answers when the model does not, so a wrong or absent answer can never ship.
+#
+# Ported from deck/test/code/ai-proposer.ts (self-hosting, 2026-10-05). Its `modelProposer(ask)` closed over `ask`, and
+# here a model proposer is a task the caller writes that builds the prompt with `gap-prompt` and asks. The CEGIS net
+# it appended is the loop's own search, as in `repair-searching`. The request to a real model stays in model.ts.
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+load ./expression-grammar
+  find expression
+  find constant-of
+
+load ./repair-loop
+  find gap-report
+  find repair-result
+  find consistent
+  find prove-candidate
+  find with-counterexamples
+  find unrepaired
+  find cegis-propose
+
+# a proposer that may wait: a model, a remote service, any slow source
+form async-proposer
+  link name, like text
+  link propose
+    like task
+      mark async
+      take gap, like gap-report
+      like maybe, like expression
+
+# the counterexamples as JSON writes them: `[[0,1],[1,0]]`
+task shown-inputs
+  take lists, like list, like list, like number
+  like text
+
+  host parts, make list
+  walk lists
+    take each
+    parts/push(<[{join(each, <,>)}]>)
+
+  back <[{join(parts, <,>)}]>
+
+# the prompt a model sees for a gap: the goal, and the inputs known to break a wrong answer
+task gap-prompt
+  take gap, like gap-report
+  like text
+
+  host lines, make list
+  lines/push(<Synthesize a function body named "{gap/goal}" over {gap/var-count} integer inputs.>)
+  lines/push(<It must satisfy the specification for all inputs.>)
+  fork test, is-above(gap/counterexamples/length, 0)
+    hold
+      lines/push(<Known failing inputs of earlier wrong attempts: {shown-inputs(gap/counterexamples)}.>)
+
+  back join(lines, <\n>)
+
+# the loop with each proposer awaited, then synthesis of up to `search-size` nodes as the net (0 for none)
+task repair-async
+  take gap, like gap-report
+  take proposers, like list, like async-proposer
+  take max-rounds, like number
+  take search-size, like number
+  like repair-result
+
+  host counterexamples, copy(gap/counterexamples)
+
+  save round, 0
+  walk test
+    hook test, is-below(round, max-rounds)
+    hook hold
+      host working, with-counterexamples(gap, counterexamples)
+      save found, false
+      save candidate, constant-of(0)
+      save who, <>
+      walk proposers
+        take each
+        fork test, not(found)
+          hold
+            host proposed, call(each/propose, working)
+            sift proposed
+              case some
+                fork test, consistent(gap, value, counterexamples)
+                  hold
+                    save candidate, value
+                    save who, each/name
+                    save found, true
+              case none
+      fork test, and(not(found), is-above(search-size, 0))
+        hold
+          sift cegis-propose(search-size, working)
+            case some
+              fork test, consistent(gap, value, counterexamples)
+                hold
+                  save candidate, value
+                  save who, <cegis>
+                  save found, true
+            case none
+      fork test, found
+        miss
+          back unrepaired(<no proposer produced a usable candidate>, counterexamples)
+
+      host verdict, prove-candidate(gap, candidate)
+      fork test, verdict/ok
+        hold
+          back
+            make repair-result
+              bind ok, true
+              bind expr, candidate
+              bind proposer, who
+              bind rounds, add(round, 1)
+              bind counterexamples, counterexamples
+              bind reason, <>
+      counterexamples/push(verdict/counterexample)
+      save round, add(round, 1)
+
+  back unrepaired(<did not converge within the round budget>, counterexamples)

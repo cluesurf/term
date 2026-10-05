@@ -6,9 +6,11 @@
 
 import { parse } from '@term/make/code/parser/tree'
 import {
+  headWord,
   readMineGrammar,
   runMine,
   spanOfNode,
+  wordOf,
 } from '@term/make/code/compile/mill-run'
 import type {
   MillCapture,
@@ -346,6 +348,24 @@ export function parseRoleMill(input: {
     throw new Error(
       `role file does not fit the role grammar${at ? ` (line ${at.start.line})` : ''}`,
     )
+  }
+
+  // A ROLE THAT DOES NOT FIT IS NOT A ROLE TO THE DECK GRAMMAR, whose last alternative takes any node, so one wrong
+  // line under a `role` (`skip` where `miss` was meant) dropped the whole rule without a word, and every file it was
+  // meant to catch fell through to another role (guides: language/dsls/mills). Each `role` group is mined alone
+  // against the `role` rule, the same grammar, and one that does not fit refuses the file at its line.
+  for (const group of parsed.tree.nodes) {
+    if (headWord(group) !== 'role') {
+      continue
+    }
+
+    if (!runMine(deckGrammar, 'role', { kind: 'root', nodes: [group] }).ok) {
+      const at = spanOfNode(group)
+
+      throw new Error(
+        `\`role ${wordOf(group.nodes[1]) ?? ''}\`${at ? ` at line ${at.start.line + 1}` : ''} does not fit the role grammar, so none of it would be read: under a \`role\` only \`take\` and \`mark\` are read, and under a \`take\` only \`miss\``,
+      )
+    }
   }
 
   // A GLOB'S ESCAPED BRACES COME BACK ESCAPED. A role file writes `\\{code,view\\}` because a bare `{x}` is an

@@ -1,0 +1,189 @@
+note <contracts: a body proven under its refinement, a buggy one refused with the admitted input, and bodies written>
+
+# Ported from deck/test/code/demo-contract.ts (self-hosting, 2026-10-05). Every verdict, counterexample, count and
+# synthesized body is the TypeScript's own (tmp/self-host-probes/contract-values.ts).
+
+load ../code/contract-check
+  find contract-gap
+  find verify-contract
+  find synthesize-contract
+
+load ../code/contract-form
+  find contract
+  find anything
+  find any-inputs
+
+load ../code/repair-loop
+  find proposer
+  find show-repair
+
+load ../code/expression-grammar
+  find expression
+  find variable-at
+  find constant-of
+
+load @term/base/list
+  find list
+
+host one, make list(<a>)
+host two, make list(<a>, <b>)
+
+task is-negative
+  take value, like number
+  like boolean
+
+  back is-below(value, 0)
+
+task negated
+  take inputs, like list, like number
+  take output, like number
+  like boolean
+
+  back and(is-above(output, 0), is-equal(output, subtract(0, get(inputs, 0))))
+
+task is-max
+  take inputs, like list, like number
+  take output, like number
+  like boolean
+
+  host a, get(inputs, 0)
+  host b, get(inputs, 1)
+
+  back and(and(is-minimum(output, a), is-minimum(output, b)), or(is-equal(output, a), is-equal(output, b)))
+
+# at least zero, and a or zero: met by the constant 0, which is the spec's bug
+task weak-clamp
+  take inputs, like list, like number
+  take output, like number
+  like boolean
+
+  host a, get(inputs, 0)
+
+  back and(is-minimum(output, 0), or(is-equal(output, a), is-equal(output, 0)))
+
+task clamp
+  take inputs, like list, like number
+  take output, like number
+  like boolean
+
+  host a, get(inputs, 0)
+
+  back and(and(is-minimum(output, 0), is-minimum(output, a)), or(is-equal(output, a), is-equal(output, 0)))
+
+task ordered
+  take inputs, like list, like number
+  like boolean
+
+  back is-minimum(get(inputs, 0), get(inputs, 1))
+
+task contract-of
+  take name, like text
+  take names, like list, like text
+  take refines
+    like list
+      like task
+        take value, like number
+        like boolean
+  take pre
+    like task
+      take inputs, like list, like number
+      like boolean
+  take post
+    like task
+      take inputs, like list, like number
+      take output, like number
+      like boolean
+  like contract
+
+  back
+    make contract
+      bind name, name
+      bind names, names
+      bind refines, refines
+      bind pre, pre
+      bind post, post
+
+task unary
+  take name, like text
+  take post
+    like task
+      take inputs, like list, like number
+      take output, like number
+      like boolean
+  like contract
+
+  host refines, make list(anything)
+
+  back contract-of(name, one, refines, any-inputs, post)
+
+task binary
+  take name, like text
+  take pre
+    like task
+      take inputs, like list, like number
+      like boolean
+  like contract
+
+  host refines, make list(anything, anything)
+
+  back contract-of(name, two, refines, pre, is-max)
+
+# 0 - a
+task negation
+  like expression
+
+  back
+    make sub
+      bind left, constant-of(0)
+      bind right, variable-at(0)
+
+task max-body
+  like expression
+
+  back
+    make max
+      bind left, variable-at(0)
+      bind right, variable-at(1)
+
+task proof-of
+  take body, like expression
+  take terms, like contract
+  like text
+
+  host found, verify-contract(body, terms, 8)
+
+  back <{found/ok} [{join(found/counterexample, <,>)}] {found/checked}>
+
+task written
+  take terms, like contract
+  take max-size, like number
+  take names, like list, like text
+  like text
+
+  host none, make list
+
+  back show-repair(synthesize-contract(terms, 8, max-size, none), names)
+
+test <a body correct only under its refinement is proven with it>
+  host refines, make list(is-negative)
+  host terms, contract-of(<negate-negative>, one, refines, any-inputs, negated)
+  want hold, is-equal(proof-of(negation(), terms), <true [] 17>)
+
+test <and the same body fails without it, at a = 0>
+  want hold, is-equal(proof-of(negation(), unary(<negate-any>, negated)), <false [0] 9>)
+
+test <a correct max is proven over every pair, and `return a` refused at the first that breaks it>
+  host terms, binary(<max>, any-inputs)
+  want hold, and(is-equal(proof-of(max-body(), terms), <true [] 289>), is-equal(proof-of(variable-at(0), terms), <false [-8,-7] 2>))
+
+test <a max body written from the contract alone>
+  want hold, is-equal(written(binary(<max>, any-inputs), 6, two), <max(a, b)  [via cegis, 3 rounds, 2 counterexamples, proven over bound]>)
+
+test <a weak spec admits the constant 0, exposing the spec's bug>
+  want hold, is-equal(written(unary(<clamp-low-weak>, weak-clamp), 6, one), <0  [via cegis, 2 rounds, 1 counterexamples, proven over bound]>)
+
+test <the tightened spec forces the real clamp>
+  want hold, is-equal(written(unary(<clamp-low>, clamp), 6, one), <max(a, 0)  [via cegis, 3 rounds, 2 counterexamples, proven over bound]>)
+
+test <under the precondition a \>= b, max is just a>
+  want hold, is-equal(written(binary(<max-when-ordered>, ordered), 3, two), <a  [via cegis, 1 rounds, 0 counterexamples, proven over bound]>)

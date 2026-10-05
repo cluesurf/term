@@ -44,9 +44,11 @@ task host
       save root
         call create-element
           text <div>
+      # awaited, as on node: a `route` that loads its data first is async (view/native/node/host.tree)
       call route
         read root
         read request/path
+        wait true
       # the status the route set, else 200, read before the proxy check so a proxied request clears it too
       save status
         call page-status

@@ -6,6 +6,9 @@
 // file. See note/library/seed/test-dsl.md.
 
 import type { Diagnostic, Position, Span } from '@term/make/code/parser/diagnostic'
+import { parseTolerant, renderHead } from '@term/make/code/parser/tree'
+import type { Node } from '@term/make/code/parser/tree'
+import { TokenKind, tokenize } from '@term/make/code/parser/token'
 
 // the one assertion head, `want`, with a mode named for the fork branch it requires: `want hold` asserts its body (a
 // boolean expression) is true (it holds), `want miss` asserts it is false (it misses). The body holds the actual
@@ -18,13 +21,17 @@ const indentOf = (line: string): number =>
 
 const blank = (line: string): boolean => line.trim().length === 0
 
+// A slug that would start with a digit takes a leading `test-`: a name cannot, and `test <2a + 3b + 1 is found>`
+// became `task 2a-3b-1-is-found`, emitted as an identifier esbuild refused ("Syntax error "a"", 2026-10-05,
+// deck/test/test/affine-synthesis.tree). test/call/test-slug.ts
 function slugify(phrase: string): string {
-  return (
+  const slug =
     phrase
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '') || 'case'
-  )
+
+  return /^[0-9]/.test(slug) ? `test-${slug}` : slug
 }
 
 // the name a `test` header declares: a `<free text>` phrase, or a bare slug. Returns the slug (the task name) and the
@@ -70,7 +77,15 @@ function statements(
 // fails when it holds (`hook hold`). It fails by raising `want:<line>`, the `want`'s line in the file counted from
 // one, which `term test` reads back as the line itself (`wantFailed`). It sent back `false`, and a failing test
 // printed only its phrase (guides: commands/test, tests/writing, 2026-10-04).
-function guard(group: string[], line: number): string[] {
+//
+// A CONDITION THAT COMPARES TWO VALUES (`is-equal double(0), 1`, any of COMPARISONS) saves each value first, compares
+// the two saved, and raises them with the marker, as `want-missed` (WANT_PRELUDE), so the failure can say what it
+// compared: `left 0, right 1`. It named the line and never the values (guides: commands/test, 2026-10-05). The two
+// values are found by the compiler's own parser, never a pattern, and each is the source text of its node, so it
+// means what it meant inside the comparison. Any other condition, or one whose value spans lines, raises the marker
+// alone. Each line comes back with the source line it came from.
+function guard(group: string[], numbers: number[]): { lines: string[]; from: number[] } {
+  const line = numbers[0]!
   // the head line is `want <mode>` with the condition indented under it, or the one-line form
   // `want <mode>, <expr>` with the condition inline after the comma. The inline expression used to
   // be dropped on the floor (an empty condition, so the test failed no matter what it said).
@@ -83,35 +98,257 @@ function guard(group: string[], line: number): string[] {
   const condition = inline
     ? [`      ${inline}`]
     : group.slice(1).map(line => (blank(line) ? line : `  ${line}`))
+  const conditionFrom = inline ? [line] : numbers.slice(1)
 
   const failOn = mode === 'miss' ? 'hook hold' : 'hook miss'
+  const compared = comparison(inline ?? group.slice(1).join('\n'))
 
-  return [
-    '  fork test',
-    '    hook test',
-    ...condition,
-    `    ${failOn}`,
-    `      halt <${WANT_FAILED}${line + 1}>`,
-  ]
+  if (compared) {
+    const left = `want-left-${line + 1}`
+    const right = `want-right-${line + 1}`
+
+    const lines = [
+      ...saveOf(left, compared.left),
+      ...saveOf(right, compared.right),
+      '  fork test',
+      '    hook test',
+      `      ${compared.head}`,
+      `        read ${left}`,
+      `        read ${right}`,
+      `    ${failOn}`,
+      '      halt want-missed',
+      `        bind thing, <${WANT_FAILED}${line + 1}>`,
+      `        bind left, read ${left}`,
+      `        bind right, read ${right}`,
+    ]
+
+    return { lines, from: lines.map(() => line) }
+  }
+
+  return {
+    lines: [
+      '  fork test',
+      '    hook test',
+      ...condition,
+      `    ${failOn}`,
+      `      halt <${WANT_FAILED}${line + 1}>`,
+    ],
+    from: [line, line, ...conditionFrom, line, line],
+  }
 }
+
+// the comparisons whose two values a failing `want` reports
+const COMPARISONS = new Set(['is-equal', 'is-unequal', 'is-above', 'is-below', 'is-minimum', 'is-maximum'])
+
+// a condition that is ONE comparison of two values: the comparison and each value's own source text. The pieces are
+// cut at the comparison's top-level commas (inline) or are its two lines (stacked), and each is then read again by
+// the compiler's parser as `save x, <piece>` and must give back exactly the node the comparison holds. Where the
+// comma rule nests a value differently from the cut, or a value spans lines, the check fails and the `want` keeps
+// the plain marker, so the rewrite can never change what is compared
+//
+// The comparison is its word (`is-equal a, b`) or, in longhand, `call is-equal` with the two values on the lines under
+// it. A value is the lines it was written on, one or several, dedented
+function comparison(text: string): { head: string; left: string[]; right: string[] } | undefined {
+  // the condition's lines at their own indent, so the comparison is a top-level group
+  const rows = text.split('\n').filter(row => !blank(row))
+  const base = Math.min(...rows.map(indentOf))
+  const flat = rows.map(row => row.slice(base))
+  const source = flat.join('\n')
+  const parsed = parseTolerant({ file: 'want.tree', text: source })
+
+  if (parsed.diagnostics.length > 0 || parsed.tree.nodes.length !== 1) {
+    return undefined
+  }
+
+  const group = parsed.tree.nodes[0]!
+  const head = group.nodes[0]
+  const first = head?.kind === 'name' ? renderHead(head) : undefined
+  // `call is-equal`: the comparison is the word under `call`, and the values follow it
+  const inner = first === 'call' ? group.nodes[1] : undefined
+  const named = inner?.kind === 'group' && inner.nodes.length === 1 && inner.nodes[0]?.kind === 'name' ? renderHead(inner.nodes[0]) : undefined
+  const word = first === 'call' ? named : first
+  const values = group.nodes.slice(first === 'call' ? 2 : 1)
+
+  if (word === undefined || !COMPARISONS.has(word) || values.length !== 2) {
+    return undefined
+  }
+
+  // inline, the pieces are cut at the commas. Stacked, each value starts at a line one level in and holds the deeper
+  // lines after it
+  const pieces: string[][] = []
+
+  if (flat.length === 1) {
+    pieces.push(...inlineArguments(source).map(piece => [piece]))
+  } else {
+    for (const row of flat.slice(1)) {
+      if (indentOf(row) === 2) {
+        pieces.push([row.slice(2)])
+      } else if (indentOf(row) > 2 && pieces.length > 0) {
+        pieces[pieces.length - 1]!.push(row.slice(2))
+      } else {
+        return undefined
+      }
+    }
+  }
+
+  if (pieces.length !== 2 || !pieces.every((piece, at) => readsAs(piece, values[at]!))) {
+    return undefined
+  }
+
+  return { head: first === 'call' ? `call ${word}` : word, left: pieces[0]!, right: pieces[1]! }
+}
+
+// `save <name>` of a value: on its line when the value is one line, else the value's lines under it
+function saveOf(name: string, value: string[]): string[] {
+  return value.length === 1 ? [`  save ${name}, ${value[0]}`] : [`  save ${name}`, ...value.map(row => `    ${row}`)]
+}
+
+// the text after the first word of a one-line call, cut at its top-level commas: outside parentheses, text and braces
+function inlineArguments(line: string): string[] {
+  const tokens = tokenize({ file: 'want.tree', text: line })
+
+  if (!tokens.ok) {
+    return []
+  }
+
+  // each piece is the line between two cuts, as written, so an escape inside a text survives
+  const cuts: number[] = []
+  let start: number | undefined
+  let depth = 0
+  let token = tokens.tokens.head
+  let past = false
+
+  for (; token; token = token.next) {
+    if (!past) {
+      // the comparison's own word and the space after it
+      past = token.kind === TokenKind.Space
+      start = past ? token.span.end.column : undefined
+      continue
+    }
+
+    if (token.kind === TokenKind.OpenParen || token.kind === TokenKind.OpenAngle || token.kind === TokenKind.OpenBrace) {
+      depth++
+    } else if (token.kind === TokenKind.CloseParen || token.kind === TokenKind.CloseAngle || token.kind === TokenKind.CloseBrace) {
+      depth--
+    }
+
+    if (token.kind === TokenKind.Comma && depth === 0) {
+      cuts.push(token.span.start.column)
+    }
+  }
+
+  if (start === undefined) {
+    return []
+  }
+
+  const ends = [...cuts, line.length]
+  const begins = [start, ...cuts.map(cut => cut + 1)]
+
+  return begins.map((begin, at) => line.slice(begin, ends[at]).trim()).filter(one => one.length > 0)
+}
+
+// does `save x` of a piece hold, beside `x`, exactly the node `want`
+function readsAs(piece: string[], want: Node): boolean {
+  const parsed = parseTolerant({ file: 'want.tree', text: saveOf('x', piece).map(row => row.slice(2)).join('\n') })
+  const saved = parsed.diagnostics.length === 0 ? parsed.tree.nodes[0]?.nodes.slice(2) : undefined
+
+  return saved?.length === 1 && shapeOf(saved[0]!) === shapeOf(want)
+}
+
+// a node's structure, for comparing two parses: kinds and words, spans and comments aside
+function shapeOf(node: Node): string {
+  return node.kind === 'group' ? `(${node.nodes.map(shapeOf).join(' ')})` : `${node.kind}:${renderHead(node)}`
+}
+
+// declared once in a file whose `want`s compare values: the exception `guard` raises with the two values, a `failure`
+// with two more fields. The alias keeps it apart from a `failure` the file imports itself
+const WANT_PRELUDE = [
+  'load @term/base/exception',
+  '  find failure, name want-failure',
+  '',
+  'form want-missed',
+  '  like want-failure',
+  '    link left, like unknown',
+  '    link right, like unknown',
+  '',
+]
 
 // the marker a failing `want` raises, and its reader: the source line the marker names, or undefined for any other
 // raise, which is the test's own failure and reported as it is
 const WANT_FAILED = 'want:'
 
-export function wantFailed(note: string | undefined, source: string): string | undefined {
-  const line = wantLine(note)
+// The line a failing `want` names, and, for a comparison, the two values it compared:
+// `line 12 did not hold: want hold, is-equal double(0), 1, left 0, right 1`. `raised` is what the test threw
+export function wantFailed(raised: unknown, source: string): string | undefined {
+  const line = wantLine(raised)
 
-  return line !== undefined
-    ? `line ${line + 1} did not hold: ${source.split('\n')[line]?.trim() ?? ''}`
-    : undefined
+  if (line === undefined) {
+    return undefined
+  }
+
+  const said = `line ${line + 1} did not hold: ${source.split('\n')[line]?.trim() ?? ''}`
+  const link = linkOf(raised)
+
+  return link && 'left' in link && 'right' in link ? `${said}, left ${shown(link.left)}, right ${shown(link.right)}` : said
 }
 
-// the line, counted from zero, of the `want` a failing test's marker names, or undefined for any other raise
-export function wantLine(note: string | undefined): number | undefined {
-  const line = note?.startsWith(WANT_FAILED) ? Number(note.slice(WANT_FAILED.length)) : NaN
+// the line, counted from zero, of the `want` a failing test's marker names, or undefined for any other raise. The
+// marker is the raise's `note` (`halt <want:12>`), or its `thing` when the raise carries the compared values
+export function wantLine(raised: unknown): number | undefined {
+  const note = (raised as { note?: unknown } | null)?.note
+  const thing = linkOf(raised)?.thing
+  const marker = typeof thing === 'string' && thing.startsWith(WANT_FAILED) ? thing : typeof note === 'string' ? note : undefined
+  const line = marker?.startsWith(WANT_FAILED) ? Number(marker.slice(WANT_FAILED.length)) : NaN
 
   return Number.isInteger(line) && line > 0 ? line - 1 : undefined
+}
+
+function linkOf(raised: unknown): Record<string, unknown> | undefined {
+  const link = (raised as { link?: unknown } | null)?.link
+
+  return typeof link === 'object' && link !== null ? (link as Record<string, unknown>) : undefined
+}
+
+// a value as Term writes it: a text in angle brackets, a list in brackets, a hash or a record in braces, a `maybe` by
+// its case. Tests run on node, so this reads the emitted TypeScript value
+function shown(value: unknown, depth = 0): string {
+  if (typeof value === 'string') {
+    return `<${value}>`
+  }
+
+  if (typeof value !== 'object' || value === null) {
+    return value === undefined ? 'void' : String(value)
+  }
+
+  if (depth > 3) {
+    return '...'
+  }
+
+  if (value instanceof Uint8Array) {
+    return `bytes(${value.length})`
+  }
+
+  if (Array.isArray(value)) {
+    return `[${value.map(item => shown(item, depth + 1)).join(', ')}]`
+  }
+
+  if (value instanceof Map) {
+    return `{${[...value].map(([key, item]) => `${shown(key, depth + 1)}: ${shown(item, depth + 1)}`).join(', ')}}`
+  }
+
+  if (value instanceof Set) {
+    return `set[${[...value].map(item => shown(item, depth + 1)).join(', ')}]`
+  }
+
+  const record = value as Record<string, unknown>
+
+  if (record.form === 'none' && Object.keys(record).length === 1) {
+    return 'none'
+  }
+
+  return `{${Object.entries(record)
+    .map(([key, item]) => `${key}: ${shown(item, depth + 1)}`)
+    .join(', ')}}`
 }
 
 // `origin[n]` is the source line that output line `n` came from, so a diagnostic on the rewritten text can be put
@@ -205,6 +442,8 @@ export function preprocessTests(source: string): Preprocessed {
   const labels = new Map<string, string>()
   const heads = new Map<string, number>()
   const taken = takenNames(lines)
+  // whether a `want` compares two values, so the file needs WANT_PRELUDE
+  let compares = false
 
   const emit = (text: string, from: number): void => {
     out.push(text)
@@ -252,23 +491,10 @@ export function preprocessTests(source: string): Preprocessed {
       const head = lines[group[0]!]!.trim().split(/[\s,]/)[0]!
 
       if (head === ASSERTION) {
-        const written = guard(group.map(n => lines[n]!), group[0]!)
-        // two lines of `fork test` / `hook test`, the condition, then two of the failing branch. The condition
-        // is the inline expression (one line, from the `want` line) or the lines under the `want`, one for one.
-        const inline = /^want(?:\s+(?:hold|miss))?\s*,/.test(
-          lines[group[0]!]!.trim(),
-        )
-        const conditionFrom = inline ? [group[0]!] : group.slice(1)
+        const written = guard(group.map(n => lines[n]!), group)
 
-        const from = [
-          group[0]!,
-          group[0]!,
-          ...conditionFrom,
-          group[0]!,
-          group[0]!,
-        ]
-
-        written.forEach((text, n) => emit(text, from[n] ?? group[0]!))
+        compares ||= written.lines.some(text => text.trim() === 'halt want-missed')
+        written.lines.forEach((text, n) => emit(text, written.from[n] ?? group[0]!))
       } else {
         group.forEach(n => emit(lines[n]!, n))
       }
@@ -276,6 +502,12 @@ export function preprocessTests(source: string): Preprocessed {
 
     emit('  send back', at)
     emit('    true', at)
+  }
+
+  // the exception a comparing `want` raises, declared once above everything, each of its lines placed on line 1
+  if (compares) {
+    out.unshift(...WANT_PRELUDE)
+    origin.unshift(...WANT_PRELUDE.map(() => 0))
   }
 
   return { text: out.join('\n'), labels, origin, heads }

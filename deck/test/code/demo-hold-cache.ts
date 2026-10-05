@@ -39,7 +39,7 @@ ok('key changes when the toolchain version changes', k1 !== k4)
 // --- incremental over a real file in a temp project ---
 const dir = mkdtempSync(path.join(tmpdir(), 'seed-hold-'))
 const file = path.join(dir, 'sample.tree')
-writeFileSync(file, 'task answer\n  like number\n  send back\n    mark 42\n')
+writeFileSync(file, 'task answer\n  like number\n  send back\n    code 42\n')
 
 const cache = memoryObligationCache()
 

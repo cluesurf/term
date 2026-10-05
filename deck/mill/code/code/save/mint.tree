@@ -4,6 +4,25 @@ load @term/mill/code/like/mint
 load @term/mill/code/seed/mint
   find seed
 
+load @term/mill/code/fork/mint
+  find fork-arm
+  find fork-arm-hook
+  find fork-arm-bare
+
+# the match giving a saved name its value, lowered by the bridge
+mint save-match
+  case name
+    site name
+  case seed
+    site seed
+  case arm
+    site arm
+  hook make
+    make save-match
+      bind name, read name
+      bind seed, read seed
+      bind arm, read arm
+
 mint save
   case name
     site name

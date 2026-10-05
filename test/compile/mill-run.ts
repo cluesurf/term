@@ -634,6 +634,18 @@ for (const name of readdirSync(join(FIXTURE, 'bad')).sort()) {
 
     ok('the role file declares roles', mill.rules.length > 0, JSON.stringify(mill))
   }
+
+  // a `role` whose lines do not fit is refused at its line. The deck grammar's last alternative takes any node, so
+  // `skip` where `miss` was meant dropped the whole rule, and its files fell through to another role in silence
+  let refused = ''
+
+  try {
+    parseRoleFile({ text: 'role code\n  take @/code/**/*.tree\n    skip @/code/data/**/*.tree\n\nrole host\n  take @/code/data/**/*.tree\n', root: '/x' })
+  } catch (error) {
+    refused = (error as Error).message
+  }
+
+  ok('a `role` with a line its grammar does not read is refused at its line', /`role code` at line 1 does not fit the role grammar/.test(refused), refused || 'not refused')
 }
 
 console.log(`\nmill-run: ${pass} pass, ${fail} fail`)

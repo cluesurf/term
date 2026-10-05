@@ -53,7 +53,8 @@ task is-blank
     is-equal trim(line), <>
 
 # A phrase to the task name it becomes: lower case, every run of non-alphanumerics to one dash, no dash at either
-# end. An empty result is `case`, so a phrase of pure punctuation still names something.
+# end. An empty result is `case`, so a phrase of pure punctuation still names something, and one that would start
+# with a digit takes a leading `test-`, because a name cannot (`test <2a + 3b + 1 is found>`, 2026-10-05).
 task slugify
   take phrase, like text
 
@@ -69,7 +70,12 @@ task slugify
     is-equal trimmed, <>
     hold
       back <case>
-  back trimmed
+  fork test
+    is-equal replace-pattern(<^[0-9]>, trimmed, <>), trimmed
+    hold
+      back trimmed
+  back <test-{trimmed}>
+
 
 # The name a `test` header declares: a `<free text>` phrase, or a bare slug. This is the slug half, which is the
 # task's name.

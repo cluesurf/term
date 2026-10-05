@@ -1,0 +1,64 @@
+note <A `sift` gives a value under `back` and under `save`, and a bare `save x` takes the type of the value given to it later, on every backend. Each was refused until 2026-10-05: `back sift` and `save x, sift` read the `sift` as a call, and a declared `save x` was typed `void`. Held by `pnpm term:base-gate`.>
+
+form shape
+  case circle
+    link radius, like number
+  case square
+    link side, like number
+  case point
+
+task area
+  take s, like shape
+  like number
+  back sift s
+    case circle
+      multiply(radius, radius)
+    case square
+      multiply(side, side)
+    hook miss
+      0
+
+task area-plus-one
+  take s, like shape
+  like number
+  save x, sift s
+    case circle
+      multiply(radius, radius)
+    case square
+      multiply(side, side)
+    hook miss
+      0
+  back add(x, 1)
+
+task pick
+  take flag, like boolean
+  like number
+  save x
+  fork test
+    hook test
+      read flag
+    hook hold
+      save x, 3
+    hook miss
+      save x, 4
+  back x
+
+test <back sift gives the matched arm's value>
+  want hold
+    call and
+      call is-equal(area(make circle, bind radius, 2), 4)
+      call and
+        call is-equal(area(make square, bind side, 3), 9)
+        call is-equal(area(make point), 0)
+
+test <save x, sift gives x the matched arm's value>
+  want hold
+    call and
+      call is-equal(area-plus-one(make circle, bind radius, 2), 5)
+      call is-equal(area-plus-one(make point), 1)
+
+test <a declared save x takes the value given to it later>
+  want hold
+    call and
+      call is-equal(pick(true), 3)
+      call is-equal(pick(false), 4)

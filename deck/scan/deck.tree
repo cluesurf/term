@@ -3,3 +3,5 @@ deck @term/scan
   head <Dependency and advisory scanning for Term packages>
   mark <0.0.16>
   lock mit
+  link @term/deck, mark <0.0.x>
+  link @term/make, mark <0.0.x>

@@ -45,7 +45,10 @@ import { projectDeckOf } from '@term/call/code/deck-of'
 import { projectResolver } from '@term/call/code/make'
 import { preprocessTests } from '@term/call/code/test-preprocess'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { relative } from 'node:path'
+import { dirname, join, relative, resolve as resolvePath } from 'node:path'
+import { readFileSync } from 'node:fs'
+import { parseTolerant } from '@term/make/code/parser/tree'
+import { spanOfNode } from '@term/make/code/compile/mill-run'
 import {
   buildIndex,
   callAt,
@@ -265,6 +268,7 @@ function keywordItems(lean: boolean): Item[] {
 function hoverMarkdown(
   def: { name: string; kind: SymbolKind; detail: string } | undefined,
   type: string | undefined,
+  note?: string,
 ): string | undefined {
   if (def) {
     const name = writtenName(def.name)
@@ -273,7 +277,8 @@ function hoverMarkdown(
         ? `${name}: ${def.detail}`
         : `${name}${def.detail}`
 
-    return '```tree\n' + value + '\n```'
+    // the definition's doc comment under its signature, as prose
+    return '```tree\n' + value + '\n```' + (note ? `\n\n${note}` : '')
   }
 
   if (type) {
@@ -906,7 +911,9 @@ export class LanguageServer {
     doc.direct = new Map()
 
     return (importPath: string, from: string, how?: LoadHow): Source | undefined => {
-      const found = resolve(importPath, from, how)
+      // a relative load the disk cannot answer may name a file open in the editor and not yet saved: the resolver asks
+      // the disk whether a file exists, so a new file could not be loaded by path until it was saved (basics/editor)
+      const found = resolve(importPath, from, how) ?? this.unsavedAt(importPath, from)
 
       if (!found) {
         return undefined
@@ -922,6 +929,26 @@ export class LanguageServer {
 
       return open && open !== doc ? { file: found.file, text: open.text } : found
     }
+  }
+
+  // an open document at one of the paths a relative load tries, in the resolver's order (`x.tree`, `x/base.tree`,
+  // `x/note.tree`), for a file the disk does not hold yet
+  private unsavedAt(importPath: string, from: string): Source | undefined {
+    if (!importPath.startsWith('./') && !importPath.startsWith('../')) {
+      return undefined
+    }
+
+    const base = resolvePath(dirname(from), importPath)
+
+    for (const candidate of [`${base}.tree`, join(base, 'base.tree'), join(base, 'note.tree')]) {
+      const open = this.byFile.get(candidate)
+
+      if (open) {
+        return { file: candidate, text: open.text }
+      }
+    }
+
+    return undefined
   }
 
   // ---- analysis ----
@@ -1475,7 +1502,9 @@ export class LanguageServer {
         const named = symbolAt(view.index, at)
         const def = named ? this.definitionOf(view, named) : undefined
         const type = view.typed ? hoverAt(view.program, at) : undefined
-        const value = hoverMarkdown(def, type)
+        // the `#` lines above a top-level definition, as `term look` prints them (make/code/inspect.ts)
+        const located = def && named && !named.scope && doc ? this.locate(doc, view, named) : undefined
+        const value = hoverMarkdown(def, type, located ? this.docCommentAt(located) : undefined)
 
         return [
           respond(
@@ -2032,6 +2061,37 @@ export class LanguageServer {
           },
         }
       : undefined
+  }
+
+  // the doc comment of the top-level definition on a located line: the `#` lines the parser keeps on its group (CST
+  // trivia), the `#` and one space taken off each, joined as `term look` joins them. The open document's text when
+  // the file is open, else the file on disk
+  private docCommentAt(located: { uri: string; range: LspRange }): string | undefined {
+    const open = this.documents.get(located.uri)
+    const file = pathFor(located.uri)
+    let text = open?.text
+
+    if (text === undefined && file !== undefined) {
+      try {
+        text = readFileSync(file, 'utf8')
+      } catch {
+        return undefined
+      }
+    }
+
+    if (text === undefined) {
+      return undefined
+    }
+
+    const group = parseTolerant({ file: file ?? located.uri, text }).tree.nodes.find(
+      node => spanOfNode(node)?.start.line === located.range.start.line,
+    )
+    const note = (group?.comments ?? [])
+      .map(comment => comment.text.replace(/^#\s?/, '').trim())
+      .filter(Boolean)
+      .join(' ')
+
+    return note || undefined
   }
 
   // a file that is not open, as the document `resolveModule` asks from

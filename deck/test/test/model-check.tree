@@ -1,0 +1,266 @@
+note <bounded model checking and k-induction: a counter's overflow and a mutex's race found, their fixes proven>
+
+# Ported from deck/test/code/demo-bmc.ts (self-hosting, 2026-10-05). A counterexample trace is the solver's model, so
+# each is held for being a real run: it starts where the system starts, steps as it steps, and ends somewhere unsafe.
+# Needs the solver: node only.
+
+load ../code/model-check
+  find system
+  find bmc-result
+  find induction-result
+  find bmc
+  find k-induction
+
+load ../code/smt-query
+  find smt-term
+  find formula
+  find value-term
+  find related
+  find both
+  find either
+  find negated
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+task at
+  take state, like hash, like text, like smt-term
+  take name, like text
+  like smt-term
+
+  back get-or-default(state, name, value-term(0))
+
+task is
+  take state, like hash, like text, like smt-term
+  take name, like text
+  take value, like number
+  like formula
+
+  back related(<=>, at(state, name), value-term(value))
+
+task same
+  take state, like hash, like text, like smt-term
+  take next, like hash, like text, like smt-term
+  take name, like text
+  like formula
+
+  back related(<=>, at(next, name), at(state, name))
+
+task all-of-list
+  take items, like list, like formula
+  like formula
+
+  back
+    make all-of
+      bind items, items
+
+task any-of-list
+  take items, like list, like formula
+  like formula
+
+  back
+    make any-of
+      bind items, items
+
+# --- a counter that grows without bound, safe only while x <= 3 ---
+
+task counter-init
+  take state, like hash, like text, like smt-term
+  like formula
+
+  back is(state, <x>, 0)
+
+task grow-or-stay
+  take state, like hash, like text, like smt-term
+  take next, like hash, like text, like smt-term
+  like formula
+
+  host grown
+    make plus
+      bind left, at(state, <x>)
+      bind right, value-term(1)
+
+  back either(related(<=>, at(next, <x>), grown), same(state, next, <x>))
+
+task at-most-three
+  take state, like hash, like text, like smt-term
+  like formula
+
+  back related(<\<=>, at(state, <x>), value-term(3))
+
+# --- a counter that wraps at 3, and is safe while 0 <= x <= 3 ---
+
+task wrap
+  take state, like hash, like text, like smt-term
+  take next, like hash, like text, like smt-term
+  like formula
+
+  host grown
+    make plus
+      bind left, at(state, <x>)
+      bind right, value-term(1)
+  host wrapped
+    make choose
+      bind test, related(<\<>, at(state, <x>), value-term(3))
+      bind then, grown
+      bind else, value-term(0)
+
+  back related(<=>, at(next, <x>), wrapped)
+
+task in-range
+  take state, like hash, like text, like smt-term
+  like formula
+
+  back both(related(<\>=>, at(state, <x>), value-term(0)), related(<\<=>, at(state, <x>), value-term(3)))
+
+task counter
+  take trans
+    like task
+      take state, like hash, like text, like smt-term
+      take next, like hash, like text, like smt-term
+      like formula
+  take safe
+    like task
+      take state, like hash, like text, like smt-term
+      like formula
+  like system
+
+  host vars, make list(<x>)
+
+  back
+    make system
+      bind vars, vars
+      bind init, counter-init
+      bind trans, trans
+      bind safe, safe
+
+# --- two processes and a critical section ---
+
+task mutex-init
+  take state, like hash, like text, like smt-term
+  like formula
+
+  host parts, make list(is(state, <pc1>, 0), is(state, <pc2>, 0), is(state, <lock>, 0))
+
+  back all-of-list(parts)
+
+# either process enters or leaves, with no lock check: the bug
+task unguarded
+  take state, like hash, like text, like smt-term
+  take next, like hash, like text, like smt-term
+  like formula
+
+  host enter-one, make list(is(state, <pc1>, 0), is(next, <pc1>, 1), same(state, next, <pc2>))
+  host leave-one, make list(is(state, <pc1>, 1), is(next, <pc1>, 0), same(state, next, <pc2>))
+  host enter-two, make list(is(state, <pc2>, 0), is(next, <pc2>, 1), same(state, next, <pc1>))
+  host leave-two, make list(is(state, <pc2>, 1), is(next, <pc2>, 0), same(state, next, <pc1>))
+  host moves, make list(all-of-list(enter-one), all-of-list(leave-one), all-of-list(enter-two), all-of-list(leave-two))
+
+  back any-of-list(moves)
+
+# a process enters only when the lock is free, and takes it
+task guarded
+  take state, like hash, like text, like smt-term
+  take next, like hash, like text, like smt-term
+  like formula
+
+  host enter-one, make list(is(state, <pc1>, 0), is(state, <lock>, 0), is(next, <pc1>, 1), is(next, <lock>, 1), same(state, next, <pc2>))
+  host leave-one, make list(is(state, <pc1>, 1), is(next, <pc1>, 0), is(next, <lock>, 0), same(state, next, <pc2>))
+  host enter-two, make list(is(state, <pc2>, 0), is(state, <lock>, 0), is(next, <pc2>, 1), is(next, <lock>, 1), same(state, next, <pc1>))
+  host leave-two, make list(is(state, <pc2>, 1), is(next, <pc2>, 0), is(next, <lock>, 0), same(state, next, <pc1>))
+  host moves, make list(all-of-list(enter-one), all-of-list(leave-one), all-of-list(enter-two), all-of-list(leave-two))
+
+  back any-of-list(moves)
+
+task never-both
+  take state, like hash, like text, like smt-term
+  like formula
+
+  back negated(both(is(state, <pc1>, 1), is(state, <pc2>, 1)))
+
+task mutex
+  take trans
+    like task
+      take state, like hash, like text, like smt-term
+      take next, like hash, like text, like smt-term
+      like formula
+  like system
+
+  host vars, make list(<pc1>, <pc2>, <lock>)
+
+  back
+    make system
+      bind vars, vars
+      bind init, mutex-init
+      bind trans, trans
+      bind safe, never-both
+
+# the counter's trace is a real run: it starts at 0, each step adds 0 or 1, and it ends past 3
+task real-overflow
+  take found, like bmc-result
+  like boolean
+
+  save last, 0
+  save first, true
+  walk found/trace
+    take row
+    host x, get(row, 0)
+    fork test, first
+      hold
+        fork test, not(is-equal(x, 0))
+          hold
+            back false
+        save first, false
+      miss
+        fork test, and(not(is-equal(x, last)), not(is-equal(x, add(last, 1))))
+          hold
+            back false
+    save last, x
+
+  back is-above(last, 3)
+
+# the mutex's trace reaches both processes in the critical section
+task reaches-race
+  take found, like bmc-result
+  like boolean
+
+  walk found/trace
+    take row
+    fork test, and(is-equal(get(row, 0), 1), is-equal(get(row, 1), 1))
+      hold
+        back true
+
+  back false
+
+test <bounded model checking finds the counter's overflow, as a real run of it>
+  host found, bmc(counter(grow-or-stay, at-most-three), 6)
+  want hold, and(and(not(found/safe), is-equal(found/trace/length, 7)), real-overflow(found))
+
+test <the wrapping counter is safe for 12 steps>
+  host found, bmc(counter(wrap, in-range), 12)
+  want hold, found/safe
+
+test <k-induction proves the wrapping counter safe for every step>
+  host found, k-induction(counter(wrap, in-range), 1)
+  want hold, found/proven
+
+test <and cannot prove the growing one: its base case fails>
+  host found, k-induction(counter(grow-or-stay, at-most-three), 4)
+  want hold, and(not(found/proven), is-equal(found/reason, <base>))
+
+test <the unguarded mutex has an interleaving that puts both in the critical section>
+  host found, bmc(mutex(unguarded), 4)
+  want hold, and(not(found/safe), reaches-race(found))
+
+# the same two machines are @cluesurf/link's unit claim (claim = enter, done = leave, the claim row = the lock), as
+# deck/test/code/demo-seed-check.ts modeled it: a unit is never claimed by two sessions at once
+test <link's lock-guarded unit claim is never held by two sessions, for 14 steps>
+  host found, bmc(mutex(guarded), 14)
+  want hold, found/safe
+
+test <the lock-guarded mutex is safe for 12 steps>
+  host found, bmc(mutex(guarded), 12)
+  want hold, found/safe

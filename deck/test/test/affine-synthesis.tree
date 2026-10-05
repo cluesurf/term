@@ -1,0 +1,79 @@
+note <constraint-based synthesis: an affine program's coefficients found in one exists-forall query>
+
+# Ported from the constraint-based case of deck/test/code/demo-synth-extra.ts (self-hosting, 2026-10-05), and two
+# refusals it did not hold. Needs the solver: node only.
+
+load ../code/affine-synthesis
+  find affine-result
+  find constraint-synth
+
+load ../code/smt-query
+  find smt-term
+  find formula
+  find value-term
+  find related
+
+load @term/base/list
+  find list
+
+task scaled
+  take factor, like number
+  take value, like smt-term
+  like smt-term
+
+  back
+    make times
+      bind left, value-term(factor)
+      bind right, value
+
+task summed
+  take left, like smt-term
+  take right, like smt-term
+  like smt-term
+
+  back
+    make plus
+      bind left, left
+      bind right, right
+
+# out = 2a + 3b + 1
+task two-three-one
+  take inputs, like list, like smt-term
+  take output, like smt-term
+  like formula
+
+  back related(<=>, output, summed(summed(scaled(2, get(inputs, 0)), scaled(3, get(inputs, 1))), value-term(1)))
+
+# out = a * b, which no affine program is
+task product
+  take inputs, like list, like smt-term
+  take output, like smt-term
+  like formula
+
+  host multiplied
+    make times
+      bind left, get(inputs, 0)
+      bind right, get(inputs, 1)
+
+  back related(<=>, output, multiplied)
+
+# out = 7a - 2
+task seven-less-two
+  take inputs, like list, like smt-term
+  take output, like smt-term
+  like formula
+
+  back related(<=>, output, summed(scaled(7, get(inputs, 0)), value-term(-2)))
+
+test <2a + 3b + 1 is found, its coefficients exactly>
+  host found, constraint-synth(2, two-three-one, 5)
+  want hold, and(found/ok, is-equal(join(found/coefficients, <,>), <2,3,1>))
+
+test <a product is no affine program, and the query says so>
+  host found, constraint-synth(2, product, 5)
+  want hold, not(found/ok)
+
+test <a coefficient past the bound is out of reach, and in reach once the bound allows it>
+  host narrow, constraint-synth(1, seven-less-two, 5)
+  host wide, constraint-synth(1, seven-less-two, 8)
+  want hold, and(not(narrow/ok), and(wide/ok, is-equal(join(wide/coefficients, <,>), <7,-2>)))

@@ -423,7 +423,11 @@ export async function callHold(input: {
         // say which it is: a file the checker refused never reached a backend to disagree
         const subject = outcome.report.compiles ? 'The backends disagree' : `${path.relative(root, outcome.file)} does not compile`
 
-        report({ glyph: 'failed', kind: 'problem', verb: 'cross', subject, quote: renderReport(outcome.report).split('\n') })
+        // paths relative to the project, as every other item names them: the report's own were absolute (guides:
+        // tests/backends, 2026-10-05)
+        const quoted = renderReport(outcome.report).split('\n').map(line => line.split(`${root}${path.sep}`).join(''))
+
+        report({ glyph: 'failed', kind: 'problem', verb: 'cross', subject, quote: quoted })
       }
     }
 

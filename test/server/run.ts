@@ -7,6 +7,10 @@ import { MessageReader, encode } from '@term/flow/code/protocol'
 import type { Message } from '@term/flow/code/protocol'
 import { analyze, forEachExpression } from '@term/flow/code/analyze'
 import { buildIndex, referenceAt } from '@term/flow/code/symbols'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join as joinPath } from 'node:path'
+import { pathToFileURL as fileUrl } from 'node:url'
 
 let pass = 0
 let fail = 0
@@ -145,6 +149,48 @@ expect(
   hoverContents?.value.includes('number'),
   true,
 )
+
+// hover on a call shows the callee's `#` doc comment under its signature, as `term look` prints it
+{
+  const DOCUMENTED = '# Add one to a number.\ntask helper\n  take n, like number\n  like number\n  back\n    call add\n      read n\n      code 1\n\ntask runner\n  like number\n  back\n    call helper\n      code 5\n'
+  const docServer = new LanguageServer()
+  await docServer.dispatch({ jsonrpc: '2.0', method: 'textDocument/didOpen', params: { textDocument: { uri: 'doc.tree', text: DOCUMENTED } } })
+  const line = DOCUMENTED.split('\n').findIndex(text => text.includes('call helper'))
+  const shown = await docServer.dispatch({
+    jsonrpc: '2.0',
+    id: 9,
+    method: 'textDocument/hover',
+    params: { textDocument: { uri: 'doc.tree' }, position: { line, character: DOCUMENTED.split('\n')[line]!.indexOf('helper') + 1 } },
+  })
+  const value = (shown[0]!.result as { contents: { value: string } } | null)?.contents.value ?? ''
+
+  expect('hover: a definition shows its doc comment under the signature', /```\n\nAdd one to a number\./.test(value), true)
+}
+
+// an open file not yet saved is loaded by path from another open file: the resolver asked the disk, so it was not
+{
+  const dir = mkdtempSync(joinPath(tmpdir(), 'term-unsaved-'))
+  mkdirSync(joinPath(dir, 'code'))
+  writeFileSync(joinPath(dir, 'deck.tree'), 'deck @probe/unsaved\n  mark <0.0.1>\n')
+  const saved = joinPath(dir, 'code/a.tree')
+  const unsaved = joinPath(dir, 'code/b.tree')
+  const A = 'load ./b\n  find double\n\ntask quad\n  take n, like number\n  like number\n  back\n    call double\n      call double\n        read n\n'
+  writeFileSync(saved, A)
+
+  const editor = new LanguageServer()
+  await editor.dispatch({
+    jsonrpc: '2.0',
+    method: 'textDocument/didOpen',
+    params: { textDocument: { uri: fileUrl(unsaved).href, text: 'task double\n  take n, like number\n  like number\n  back\n    call multiply\n      read n\n      code 2\n' } },
+  })
+  const opened = await editor.dispatch({ jsonrpc: '2.0', method: 'textDocument/didOpen', params: { textDocument: { uri: fileUrl(saved).href, text: A } } })
+  const errors = opened
+    .filter(each => (each.params as { uri?: string } | undefined)?.uri === fileUrl(saved).href)
+    .flatMap(each => (each.params as { diagnostics: { severity: number; message: string }[] }).diagnostics)
+    .filter(each => each.severity === 1)
+
+  expect('an open file not yet saved is loaded by path from another open file', errors.map(each => each.message).join(' | '), '')
+}
 
 // close the document: diagnostics are cleared
 const closed = await server.dispatch({

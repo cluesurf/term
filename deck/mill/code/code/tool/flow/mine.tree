@@ -20,10 +20,12 @@ load @term/mill/code/fork/mine
 
 load @term/mill/code/save/mine
   find save
+  find save-match
 
 load @term/mill/code/send/mine
   find send
   find back
+  find back-match
   find send-kind
 
 load @term/mill/code/halt/mine
@@ -72,10 +74,16 @@ mine flow
     # `tick f(x)`: a call started and not waited for, minted as the call it is (call/mine.tree)
     mine form, like tick
       site call
+    # `save x, sift <value>` before `save`, whose value would take the `sift` as a call (save/mine.tree)
+    mine form, like save-match
+      site save-match
     mine form, like save
       site save
     mine form, like send
       site send
+    # `back sift <value>` before `back`, whose value alternation would take the `sift` as a call (send/mine.tree)
+    mine form, like back-match
+      site back-match
     mine form, like back
       site back
     mine form, like send-kind

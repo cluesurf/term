@@ -1,0 +1,411 @@
+# IC3 / PDR, property directed reachability: unbounded safety by DISCOVERING an inductive strengthening of the property.
+# Frames F_0, F_1, ... over-approximate the states reachable in at most i steps, each implying safety. A state in the
+# frontier frame that can step to an unsafe one is a proof obligation; blocking it recursively learns a clause (a cube
+# shown unreachable, generalized by dropping literals), and blocking chased back to an initial state is a real
+# counterexample. When no obligation remains, clauses are pushed forward, and two adjacent frames with the same clauses
+# are an inductive invariant: safe for all time. Integer domains are undecidable in general, so a frame cap answers
+# `unknown` rather than spin.
+#
+# Ported from deck/test/code/ic3.ts (self-hosting, 2026-10-05), over model-check.tree's `system`. A cube was an object of
+# variable to value, and is a list of literals in variable order. Its path through the frames follows the solver's
+# models, so what is compared with the original is the verdict.
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+load ./smt-query
+  find smt-term
+  find formula
+  find verdict
+  find value-term
+  find name-term
+  find related
+  find negated
+  find check-sat
+
+load ./model-check
+  find system
+  find bmc-result
+  find bmc
+
+form literal
+  link name, like text
+  link value, like number
+
+form ic3-result
+  # `safe`, `unsafe` or `unknown`
+  link status, like text
+  # the frame the invariant converged at, when safe
+  link invariant-frames, like number
+  # the path to the bad state when unsafe, a row per step in `vars` order
+  link trace, like list, like list, like number
+
+host max-frames, 60
+
+task state-named
+  take machine, like system
+  take suffix, like text
+  like hash, like text, like smt-term
+
+  host state, make hash
+  walk machine/vars
+    take v
+    state/set(v, name-term(<{v}_{suffix}>))
+
+  back state
+
+task all-names
+  take machine, like system
+  like list, like text
+
+  host names, make list
+  walk machine/vars
+    take v
+    names/push(<{v}_cur>)
+  walk machine/vars
+    take v
+    names/push(<{v}_nxt>)
+
+  back names
+
+task conjunction
+  take items, like list, like formula
+  like formula
+
+  back
+    make all-of
+      bind items, items
+
+# a cube as a formula over a state
+task cube-on
+  take cube, like list, like literal
+  take state, like hash, like text, like smt-term
+  like formula
+
+  host parts, make list
+  walk cube
+    take each
+    parts/push(related(<=>, get-or-default(state, each/name, value-term(0)), value-term(each/value)))
+
+  back conjunction(parts)
+
+# the current state's values out of a model over `all-names`, as a full cube
+task model-cube
+  take machine, like system
+  take values, like list, like number
+  like list, like literal
+
+  host cube, make list
+  save at, 0
+  walk machine/vars
+    take v
+    cube/push
+      make literal
+        bind name, v
+        bind value, get(values, at)
+    save at, add(at, 1)
+
+  back cube
+
+task same-cube
+  take a, like list, like literal
+  take b, like list, like literal
+  like boolean
+
+  fork test, not(is-equal(a/length, b/length))
+    hold
+      back false
+  walk a
+    take each
+    save found, false
+    walk b
+      take other
+      fork test, and(is-equal(other/name, each/name), is-equal(other/value, each/value))
+        hold
+          save found, true
+    fork test, not(found)
+      hold
+        back false
+
+  back true
+
+task same-clauses
+  take a, like list, like list, like literal
+  take b, like list, like list, like literal
+  like boolean
+
+  fork test, not(is-equal(a/length, b/length))
+    hold
+      back false
+  walk a
+    take cube
+    save found, false
+    walk b
+      take other
+      fork test, same-cube(cube, other)
+        hold
+          save found, true
+    fork test, not(found)
+      hold
+        back false
+
+  back true
+
+# F_i over a state: init at 0, else safe and the negation of every cube blocked at level i or above
+task frame-formula
+  take machine, like system
+  take frames, like list, like list, like list, like literal
+  take i, like number
+  take state, like hash, like text, like smt-term
+  like formula
+
+  fork test, is-equal(i, 0)
+    hold
+      back call(machine/init, state)
+
+  host parts, make list
+  parts/push(call(machine/safe, state))
+  save k, i
+  walk test
+    hook test, is-below(k, frames/length)
+    hook hold
+      walk get(frames, k)
+        take cube
+        parts/push(negated(cube-on(cube, state)))
+      save k, add(k, 1)
+
+  back conjunction(parts)
+
+task satisfy
+  take machine, like system
+  take parts, like list, like formula
+  like verdict
+
+  back check-sat(all-names(machine), conjunction(parts))
+
+# a cube to block, with the literals dropped that keep it disjoint from init and unreachable from F_{i-1}
+task generalize
+  take machine, like system
+  take frames, like list, like list, like list, like literal
+  take cube, like list, like literal
+  take i, like number
+  like list, like literal
+
+  host cur, state-named(machine, <cur>)
+  host nxt, state-named(machine, <nxt>)
+  save kept, copy(cube)
+  walk cube
+    take dropped
+    fork test, is-above(kept/length, 1)
+      hold
+        host trial, make list
+        walk kept
+          take each
+          fork test, not(is-equal(each/name, dropped/name))
+            hold
+              trial/push(each)
+        host from-init, make list(call(machine/init, cur), cube-on(trial, cur))
+        host reach, make list(frame-formula(machine, frames, subtract(i, 1), cur), call(machine/trans, cur, nxt), cube-on(trial, nxt))
+        host disjoint, satisfy(machine, from-init)
+        host reached, satisfy(machine, reach)
+        fork test, and(is-equal(disjoint/status, <unsat>), is-equal(reached/status, <unsat>))
+          hold
+            save kept, trial
+
+  back kept
+
+task add-blocked
+  take frames, like list, like list, like list, like literal
+  take cube, like list, like literal
+  take upto, like number
+
+  save j, 1
+  walk test
+    hook test, is-maximum(j, upto)
+    hook hold
+      walk test
+        hook test, is-maximum(frames/length, j)
+        hook hold
+          host empty, make list
+          frames/push(empty)
+      host level, get(frames, j)
+      level/push(cube)
+      frames/set(j, level)
+      save j, add(j, 1)
+
+# block a bad cube at a level, recursively through its predecessors: false when the chase reaches an initial state
+task block-cube
+  take machine, like system
+  take frames, like list, like list, like list, like literal
+  take start, like list, like literal
+  take start-level, like number
+  like boolean
+
+  host cur, state-named(machine, <cur>)
+  host nxt, state-named(machine, <nxt>)
+  save cubes, make list(start)
+  save levels, make list(start-level)
+  walk test
+    hook test, is-above(cubes/length, 0)
+    hook hold
+      # the lowest level first, the earliest of those (a stable sort, as `queue.sort` is)
+      save best, 0
+      save at, 0
+      walk levels
+        take each
+        fork test, is-below(each, get(levels, best))
+          hold
+            save best, at
+        save at, add(at, 1)
+      host cube, get(cubes, best)
+      host level, get(levels, best)
+      host rest-cubes, make list
+      host rest-levels, make list
+      save other, 0
+      walk cubes
+        take each
+        fork test, not(is-equal(other, best))
+          hold
+            rest-cubes/push(each)
+            rest-levels/push(get(levels, other))
+        save other, add(other, 1)
+      save cubes, rest-cubes
+      save levels, rest-levels
+      fork test, is-equal(level, 0)
+        hold
+          back false
+
+      host query, make list(frame-formula(machine, frames, subtract(level, 1), cur), call(machine/trans, cur, nxt), cube-on(cube, nxt))
+      host pred, satisfy(machine, query)
+      fork test, is-equal(pred/status, <sat>)
+        hold
+          cubes/push(model-cube(machine, pred/values))
+          levels/push(subtract(level, 1))
+          cubes/push(cube)
+          levels/push(level)
+        miss
+          add-blocked(frames, generalize(machine, frames, cube, level), level)
+
+  back true
+
+task unknown-result
+  like ic3-result
+
+  host none, make list
+
+  back
+    make ic3-result
+      bind status, <unknown>
+      bind invariant-frames, 0
+      bind trace, none
+
+task unsafe-from
+  take found, like bmc-result
+  like ic3-result
+
+  back
+    make ic3-result
+      bind status, <unsafe>
+      bind invariant-frames, 0
+      bind trace, found/trace
+
+# IC3 on a transition system
+task ic3
+  take machine, like system
+  like ic3-result
+
+  host cur, state-named(machine, <cur>)
+  host nxt, state-named(machine, <nxt>)
+
+  # does an initial state already break safety?
+  host at-start, make list(call(machine/init, cur), negated(call(machine/safe, cur)))
+  host started, satisfy(machine, at-start)
+  fork test, is-equal(started/status, <sat>)
+    hold
+      host found, bmc(machine, 0)
+      fork test, found/safe
+        hold
+          back unknown-result()
+      back unsafe-from(found)
+
+  host frames, make list
+  host level-zero, make list
+  host level-one, make list
+  frames/push(level-zero)
+  frames/push(level-one)
+
+  save n, 1
+  walk test
+    hook test, is-below(n, max-frames)
+    hook hold
+      walk test
+        hook test, is-maximum(frames/length, n)
+        hook hold
+          host empty, make list
+          frames/push(empty)
+
+      # drain the frontier's obligations
+      save draining, true
+      walk test
+        hook test, draining
+        hook hold
+          host obligation, make list(frame-formula(machine, frames, n, cur), call(machine/trans, cur, nxt), negated(call(machine/safe, nxt)))
+          host bad, satisfy(machine, obligation)
+          fork test, not(is-equal(bad/status, <sat>))
+            hold
+              save draining, false
+            miss
+              fork test, not(block-cube(machine, frames, model-cube(machine, bad/values), n))
+                hold
+                  # unsafe: the concrete path through bounded model checking
+                  save k, 1
+                  walk test
+                    hook test, is-maximum(k, add(n, 1))
+                    hook hold
+                      host trace, bmc(machine, k)
+                      fork test, not(trace/safe)
+                        hold
+                          back unsafe-from(trace)
+                      save k, add(k, 1)
+                  back unknown-result()
+
+      # push each clause forward that stays inductive; two equal adjacent frames are an invariant
+      save i, 1
+      walk test
+        hook test, is-maximum(i, n)
+        hook hold
+          walk test
+            hook test, is-maximum(frames/length, add(i, 1))
+            hook hold
+              host empty, make list
+              frames/push(empty)
+          walk copy(get(frames, i))
+            take clause
+            host escape-query, make list(frame-formula(machine, frames, i, cur), call(machine/trans, cur, nxt), cube-on(clause, nxt))
+            host escapes, satisfy(machine, escape-query)
+            host above, get(frames, add(i, 1))
+            save present, false
+            walk above
+              take other
+              fork test, same-cube(other, clause)
+                hold
+                  save present, true
+            fork test, and(is-equal(escapes/status, <unsat>), not(present))
+              hold
+                above/push(clause)
+                frames/set(add(i, 1), above)
+          fork test, same-clauses(get(frames, i), get(frames, add(i, 1)))
+            hold
+              host none, make list
+              back
+                make ic3-result
+                  bind status, <safe>
+                  bind invariant-frames, i
+                  bind trace, none
+          save i, add(i, 1)
+      save n, add(n, 1)
+
+  back unknown-result()

@@ -2348,6 +2348,47 @@ function makeEmitter(
     )}(${params}) {\n  ${lines.join('\n  ')}\n}`
   }
 
+  // A CHECKED VALUE WRITTEN TO A NAME IS TESTED WHERE IT STANDS. `x = __termInt(a + b)` is the value made into a
+  // temporary, the same test as `__termInt` written in place, then the write: `const __n0 = a + b; if (!(__n0 <=
+  // 9007199254740991 && __n0 >= -9007199254740991)) __termIntStop(__n0); x = __n0`. Nothing about the meaning moves:
+  // every addition is still tested before anything reads it, and a raise still leaves the name unwritten. What moves
+  // is the call: V8 did not inline `__termInt` inside a recursive task, and the call was most of the check's cost.
+  // AWFY Permute, 639 ms to 587 against the hand version's 524, with every check still made (`tmp/ts-permute-ab3.ts`,
+  // 11 rounds; 647 to 598 in the emitted program, 15 rounds, `tmp/ts-permute-ab4.ts`). A `let`, a write to a plain
+  // variable and a `return`, and only a value that IS one `__termInt(...)` from its first character to its last
+  let testedCount = 0
+  const testedInPlace = (text: string): { lines: string; name: string } | undefined => {
+    const head = '__termInt('
+
+    if (!text.startsWith(head) || !text.endsWith(')')) {
+      return undefined
+    }
+
+    let depth = 0
+    let quote = ''
+
+    for (let i = head.length - 1; i < text.length; i++) {
+      const c = text[i]!
+
+      if (quote) {
+        if (c === '\\') i++
+        else if (c === quote) quote = ''
+        continue
+      }
+
+      if (c === '"' || c === "'" || c === '`') quote = c
+      else if (c === '(') depth++
+      else if (c === ')' && --depth === 0 && i !== text.length - 1) return undefined
+    }
+
+    const name = `__n${testedCount++}`
+
+    return {
+      lines: `const ${name} = ${text.slice(head.length, -1)}; if (!(${name} <= 9007199254740991 && ${name} >= -9007199254740991)) __termIntStop(${name})`,
+      name,
+    }
+  }
+
   const statement = (node: Statement, depth: number): string => {
     switch (node.form) {
       case 'let': {
@@ -2392,8 +2433,11 @@ function makeEmitter(
         // a second name for a record one of the two is written through: its own copy (D1, `recordCopies`)
         const alias = copies.lets.get(node)
         const init = alias === undefined ? expression(node.init) : copyRecord(expression(node.init), alias)
+        const tested = alias === undefined ? testedInPlace(init) : undefined
 
-        return `${keyword} ${toCamel(node.name)}${declared} = ${init}`
+        return tested
+          ? `${tested.lines}; ${keyword} ${toCamel(node.name)}${declared} = ${tested.name}`
+          : `${keyword} ${toCamel(node.name)}${declared} = ${init}`
       }
 
       case 'assign': {
@@ -2488,9 +2532,14 @@ function makeEmitter(
 
         const target = expression(node.target)
 
-        return node.op === '='
-          ? `${target} = ${expression(node.value)}`
-          : `${target} ${node.op} ${expression(node.value)}`
+        if (node.op === '=') {
+          const value = expression(node.value)
+          const tested = node.target.form === 'variable' ? testedInPlace(value) : undefined
+
+          return tested ? `${tested.lines}; ${target} = ${tested.name}` : `${target} = ${value}`
+        }
+
+        return `${target} ${node.op} ${expression(node.value)}`
       }
 
       case 'expression': {
@@ -2546,9 +2595,15 @@ function makeEmitter(
           return [...temps, ...sets, back].join(`\n${pad(depth)}`)
         }
 
-        return node.value
-          ? `return ${expression(node.value)}`
-          : 'return'
+        if (!node.value) {
+          return 'return'
+        }
+
+        // a checked value returned is tested where it stands too (`testedInPlace`)
+        const value = expression(node.value)
+        const tested = testedInPlace(value)
+
+        return tested ? `${tested.lines}; return ${tested.name}` : `return ${value}`
       }
       case 'throw':
         // a raised exception (`halt <form>`) is thrown as the runtime class, a thrown text becomes an Error, and any
@@ -3331,8 +3386,10 @@ export function emitTypeScript(
     )
     .map(node => {
       const text = emitter.statement(node, 0)
+      // a `mark private` task is not exported: privacy was a check and not an emission, so TypeScript importing the
+      // built module could call what no other Term file may (guides: language/modules)
       const exported =
-        node.form === 'function' ||
+        (node.form === 'function' && !node.private) ||
         node.form === 'record-type' ||
         node.form === 'mask'
 

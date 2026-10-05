@@ -11,12 +11,18 @@
 import * as path from 'node:path'
 import * as vscode from 'vscode'
 import {
-import { env } from '@term/call/code/home'
   LanguageClient,
   TransportKind,
   type ServerOptions,
   type LanguageClientOptions,
 } from 'vscode-languageclient/node'
+
+// `TERM_<name>`, else the older `SEED_<name>`: the CLI's own rule (call/code/home.ts `env`), written here so the
+// @term/test deck does not import the CLI. An import of it had also landed INSIDE the import above, which this file's
+// `@ts-nocheck` hid until VS Code loaded it
+function env(name: string): string | undefined {
+  return process.env[`TERM_${name}`] ?? process.env[`SEED_${name}`]
+}
 
 /** Start (and return) the Seed language client. */
 export function startSeedLanguageClient(

@@ -19,11 +19,15 @@ form signal
     like list
       like effect
 
+# `queued` says the effect waits in a batch's queue and has not run since, so a second write in the batch does not
+# queue it again. A flag rather than a search of the queue, which would compare effects, and a native generic has no
+# equality to compare them with
 form effect
   mark shared
   link run
     like task
   link live, like boolean
+  link queued, like boolean
 
 # an ownership scope (Solid's owner): the effects created while it is open, plus cleanup tasks to run when it is
 # disposed (so the listeners, timers, observers, and outside-click handlers those effects registered are released).
@@ -105,14 +109,22 @@ task write-signal
   walk list, read subscribers
     hook next
       take site, name observer
-      # in a batch, queue the effect for one flush after the batch; otherwise run it now
+      # in a batch, queue the effect for one flush after the batch, once however many writes reach it; otherwise run
+      # it now
       fork test
         hook test
           read flags/batching
         hook hold
-          call push
-            bind list, read flags/queue
-            bind item, read observer
+          fork test
+            hook test
+              read observer/queued
+            hook hold
+              save skip, code 0
+            hook miss
+              save observer/queued, true
+              call push
+                bind list, read flags/queue
+                bind item, read observer
         hook miss
           call run-effect
             bind effect, read observer
@@ -125,6 +137,7 @@ task make-effect
     make effect
       bind run, read run
       bind live, true
+      bind queued, false
   # register the effect to the innermost open scope, if any, so it can be disposed with that scope
   fork test
     hook test
@@ -279,20 +292,42 @@ task track
             bind list, read signal/observers
             bind item, read current
 
-# run all signal writes in `body` as one update pass: queued effects fire once after body completes, not per write
+# run all signal writes in `body` as one update pass: queued effects fire once after body completes, not per write.
+# The flush keeps batching on and walks the queue as it grows, so an effect that a flushed effect writes to (the
+# reader of a memo the flush recomputed) joins this queue rather than running at once, and runs once, after the
+# memo. Turning batching off before the flush ran that reader twice, once from the memo's write and once from the
+# queue. A batch inside another leaves its writes to the outer one's flush.
 task batch
   take body, like task
-  save flags/batching, true
-  call body
-  save flags/batching, false
-  save queued, read flags/queue
-  save flags/queue
-    make list
-  walk list, read queued
-    hook next
-      take site, name effect
-      call run-effect
-        bind effect, read effect
+  fork test
+    hook test
+      read flags/batching
+    hook hold
+      call body
+    hook miss
+      save flags/batching, true
+      call body
+      save at, code 0
+      walk test
+        hook test
+          call is-below
+            read at
+            read flags/queue/length
+        hook hold
+          save effect
+            call get
+              read flags/queue
+              read at
+          save effect/queued, false
+          call run-effect
+            bind effect, read effect
+          save at
+            call add
+              read at
+              code 1
+      save flags/queue
+        make list
+      save flags/batching, false
 
 # read signals in `body` without subscribing the running effect to them (Solid untrack)
 task untrack

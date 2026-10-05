@@ -72,9 +72,16 @@ function cast(root: string): { status: number | null; said: string } {
 {
   const root = project('host(route, port)')
   const { status, said } = cast(root)
-  ok('a `boot` that returns nothing is refused, exit 1', status === 1 && /`boot` returns nothing, so the Worker would have no fetch handler/.test(said), `${status} ${said}`)
+  ok('a `boot` that returns nothing is refused, exit 1', status === 1 && /`boot` returns no fetch handler, so the Worker would have none/.test(said), `${status} ${said}`)
   ok('the refusal says how to return the handler', /back host\(route, port\)/.test(said), said)
   ok('and nothing is written', !existsSync(join(root, 'work/index.ts')))
+}
+
+// ---- a boot that returns a value that is not a handler ----
+{
+  const root = project('back port')
+  const { status, said } = cast(root)
+  ok('a `boot` that returns a number is refused the same way, exit 1', status === 1 && /`boot` returns no fetch handler/.test(said), `${status} ${said}`)
 }
 
 // ---- a boot that hands the handler back ----

@@ -1,0 +1,158 @@
+note <LTL by bounded model checking with lassos: safety and liveness held, and refuted with a prefix or a loop>
+
+# Ported from deck/test/code/demo-ltl.ts (self-hosting, 2026-10-05), on the wrapping counter (0, 1, 2, 3, 0, ...) and
+# the unbounded one. Needs the solver: node only.
+
+load ../code/lasso-check
+  find ltl
+  find ltl-result
+  find ltl-check
+
+load ../code/model-check
+  find system
+  find bmc
+
+load ../code/smt-query
+  find smt-term
+  find formula
+  find value-term
+  find related
+  find both
+  find either
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+task at
+  take state, like hash, like text, like smt-term
+  like smt-term
+
+  back get-or-default(state, <x>, value-term(0))
+
+task counter-init
+  take state, like hash, like text, like smt-term
+  like formula
+
+  back related(<=>, at(state), value-term(0))
+
+task wrap
+  take state, like hash, like text, like smt-term
+  take next, like hash, like text, like smt-term
+  like formula
+
+  host grown
+    make plus
+      bind left, at(state)
+      bind right, value-term(1)
+  host wrapped
+    make choose
+      bind test, related(<\<>, at(state), value-term(3))
+      bind then, grown
+      bind else, value-term(0)
+
+  back related(<=>, at(next), wrapped)
+
+task grow-or-stay
+  take state, like hash, like text, like smt-term
+  take next, like hash, like text, like smt-term
+  like formula
+
+  host grown
+    make plus
+      bind left, at(state)
+      bind right, value-term(1)
+
+  back either(related(<=>, at(next), grown), related(<=>, at(next), at(state)))
+
+task at-most-three
+  take state, like hash, like text, like smt-term
+  like formula
+
+  back related(<\<=>, at(state), value-term(3))
+
+task is-zero
+  take state, like hash, like text, like smt-term
+  like formula
+
+  back related(<=>, at(state), value-term(0))
+
+task is-three
+  take state, like hash, like text, like smt-term
+  like formula
+
+  back related(<=>, at(state), value-term(3))
+
+task is-five
+  take state, like hash, like text, like smt-term
+  like formula
+
+  back related(<=>, at(state), value-term(5))
+
+task counter
+  take trans
+    like task
+      take state, like hash, like text, like smt-term
+      take next, like hash, like text, like smt-term
+      like formula
+  like system
+
+  host vars, make list(<x>)
+
+  back
+    make system
+      bind vars, vars
+      bind init, counter-init
+      bind trans, trans
+      bind safe, at-most-three
+
+task atom-of
+  take test
+    like task
+      take state, like hash, like text, like smt-term
+      like formula
+  like ltl
+
+  back
+    make ltl-atom
+      bind test, test
+
+task globally
+  take inner, like ltl
+  like ltl
+
+  back
+    make ltl-globally
+      bind inner, inner
+
+task eventually
+  take inner, like ltl
+  like ltl
+
+  back
+    make ltl-eventually
+      bind inner, inner
+
+test <G (x \<= 3) holds on the wrapping counter, as bounded model checking says>
+  host found, ltl-check(counter(wrap), globally(atom-of(at-most-three)), 6)
+  host checked, bmc(counter(wrap), 6)
+  want hold, and(found/holds, checked/safe)
+
+test <F (x = 3) holds: the cycle reaches 3>
+  host found, ltl-check(counter(wrap), eventually(atom-of(is-three)), 6)
+  want hold, found/holds
+
+test <G F (x = 0) holds: 0 comes back forever>
+  host found, ltl-check(counter(wrap), globally(eventually(atom-of(is-zero))), 6)
+  want hold, found/holds
+
+test <F (x = 5) is refuted with a lasso, a loop on which 5 never comes>
+  host found, ltl-check(counter(wrap), eventually(atom-of(is-five)), 6)
+  want hold, and(not(found/holds), is-minimum(found/loop-start, 0))
+
+test <G (x \<= 3) is refuted on the unbounded counter, as bounded model checking finds>
+  host found, ltl-check(counter(grow-or-stay), globally(atom-of(at-most-three)), 6)
+  host checked, bmc(counter(grow-or-stay), 6)
+  want hold, and(not(found/holds), not(checked/safe))

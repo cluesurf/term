@@ -1,0 +1,133 @@
+note <a model in the synthesis loop: its prompt, and its proposals awaited, proven, or passed over for synthesis>
+
+# Ported from deck/test/code/demo-ai.ts (self-hosting, 2026-10-05). Each model is an asynchronous task standing in for
+# the API call, as the demo's were.
+
+load ../code/model-proposer
+  find async-proposer
+  find gap-prompt
+  find repair-async
+
+load ../code/repair-loop
+  find gap-report
+  find specification
+
+load ../code/expression-grammar
+  find expression
+  find variable-at
+  find show-expr
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+host names, make list(<a>, <b>)
+
+task is-max
+  take inputs, like list, like number
+  take output, like number
+  like boolean
+
+  host a, get(inputs, 0)
+  host b, get(inputs, 1)
+
+  back and(and(is-minimum(output, a), is-minimum(output, b)), or(is-equal(output, a), is-equal(output, b)))
+
+task max-gap
+  take known, like list, like list, like number
+  like gap-report
+
+  host spec
+    make direct
+      bind check, is-max
+
+  back
+    make gap-report
+      bind goal, <max>
+      bind var-count, 2
+      bind spec, spec
+      bind counterexamples, known
+      bind bound, 8
+
+# a model that answers max(a, b)
+task good-model
+  mark async
+  take gap, like gap-report
+  like maybe, like expression
+
+  host prompt, gap-prompt(gap)
+  host body
+    make max
+      bind left, variable-at(0)
+      bind right, variable-at(1)
+
+  back
+    make some
+      bind value, body
+
+# a model that answers `a`, which is wrong
+task wrong-model
+  mark async
+  take gap, like gap-report
+  like maybe, like expression
+
+  back
+    make some
+      bind value, variable-at(0)
+
+# a model with nothing to say
+task silent-model
+  mark async
+  take gap, like gap-report
+  like maybe, like expression
+
+  back make none
+
+task model-named
+  take propose
+    like task
+      mark async
+      take gap, like gap-report
+      like maybe, like expression
+  like async-proposer
+
+  back
+    make async-proposer
+      bind name, <model>
+      bind propose, propose
+
+task shown
+  take found, like repair-result
+  like text
+
+  back <{found/ok} {show-expr(found/expr, names)} via {found/proposer}>
+
+test <the prompt states the goal and the inputs>
+  host none, make list
+  want hold, is-equal(gap-prompt(max-gap(none)), <Synthesize a function body named "max" over 2 integer inputs.\nIt must satisfy the specification for all inputs.>)
+
+test <and the inputs known to break a wrong answer>
+  host known, make list
+  known/push(make list(0, 1))
+  known/push(make list(1, 0))
+  want hold, is-equal(gap-prompt(max-gap(known)), <Synthesize a function body named "max" over 2 integer inputs.\nIt must satisfy the specification for all inputs.\nKnown failing inputs of earlier wrong attempts: [[0,1],[1,0]].>)
+
+test <a correct model answer is awaited, proven and credited>
+  host none, make list
+  host proposers, make list(model-named(good-model))
+  host found, repair-async(max-gap(none), proposers, 64, 6)
+  want hold, is-equal(shown(found), <true max(a, b) via model>)
+
+test <a wrong model answer is refused by the proof, and synthesis recovers>
+  host none, make list
+  host proposers, make list(model-named(wrong-model))
+  host found, repair-async(max-gap(none), proposers, 64, 6)
+  want hold, and(found/ok, is-equal(found/proposer, <cegis>))
+
+test <a model that declines leaves the answer to synthesis>
+  host none, make list
+  host proposers, make list(model-named(silent-model))
+  host found, repair-async(max-gap(none), proposers, 64, 6)
+  want hold, and(found/ok, is-equal(found/proposer, <cegis>))

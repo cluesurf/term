@@ -794,6 +794,16 @@ function nestLeanLabels(program: Program): void {
     }
   }
 
+  // the forms and their cases, whose calls are constructions: a label under one is a field, never a nested call
+  const constructions = new Set<string>()
+
+  for (const s of program) {
+    if (s.form === 'record-type') {
+      constructions.add(s.name)
+      s.variants.forEach(v => constructions.add(v.name))
+    }
+  }
+
   for (const top of program) {
     const local = boundIn(top)
 
@@ -801,7 +811,20 @@ function nestLeanLabels(program: Program): void {
       const callee = (call.callee as { name: string }).name
       const defs = definitions.get(callee)
 
+      // A CALL WHOSE CALLEE THIS PROGRAM DOES NOT DEFINE (`get`, dispatched on its receiver): its parameters are not
+      // known here, so it is read as a method call is, a label naming a task being a call of it. Left to the
+      // resolver, `get(corpus, draw-under(state, n))` met `draw-under` renamed apart (struct-fuzz.tree and
+      // coverage-fuzz.tree each define one) and kept it a label: "get is not a task or a form this file can see,
+      // so its properties (draw-under) name nothing", on the native gate only, which merges the modules (2026-10-05)
       if (!defs && !bound.has(callee)) {
+        if (!constructions.has(callee)) {
+          nestLeanCalls(
+            call,
+            () => false,
+            name => definitions.has(name) || bound.has(name) || local.has(name),
+          )
+        }
+
         return
       }
 

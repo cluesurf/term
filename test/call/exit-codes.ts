@@ -220,6 +220,7 @@ test <double of zero is zero>
 
   ok('a failing test fails the run', run.status === 1, run.out)
   ok('naming the line of the `want` that did not hold', /line 17 did not hold: want hold/.test(run.out), run.out)
+  ok('and the two values its comparison held, written over lines in longhand', /line 17 did not hold: want hold,\s+left 0, right 1/.test(run.out), run.out)
 }
 
 // ---- parsers/grammars: a grammar builds and rolls as its reader, and a miss says where and what ----
@@ -421,6 +422,12 @@ view page
   const spelled = manifestOf('page/spelled.tree')
 
   ok('a bare `<vowel>` in a query reaches the manifest as `text <vowel>` does', spelled !== '' && bare === spelled, `${bare}\n---\n${spelled}`)
+
+  // a named file role.tree reads as code is checked as asked, and the disagreement with `term make` is said
+  writeFileSync(join(viewed, 'code/page.tree'), 'view article\n  view h1, <Hello>\n')
+  const named = term(viewed, 'view', 'code/page.tree')
+
+  ok('`term view` on a file role.tree reads as code checks it, and warns that make builds it as code', named.status === 0 && /role\.tree gives code\/page\.tree the code role, so term make builds it\s+as code/.test(named.out) && /1 document read/.test(named.out), named.out)
 }
 
 // ---- commands/mind: a replaced fact, forgetting one, and the memory kept by git ----

@@ -1,0 +1,77 @@
+# A function's specification as data: a refinement per parameter (a precondition on that input), a joint
+# precondition, and a postcondition on the result. An input the preconditions refuse is one the body is not
+# responsible for, so a contract's obligation is weakened by its preconditions: the body must meet the postcondition
+# on every ADMITTED input, which is what a refinement-typed parameter means.
+#
+# Ported from the data half of deck/test/code/contract.ts (self-hosting, 2026-10-05). There a contract's spec was a
+# closure over the contract (`specFor`), which Term has no spelling for, so the contract is data here and is read by
+# `meets-contract`, and a synthesis gap carries it as data (repair-loop.tree's `specification`). An absent refinement
+# or precondition is the always-true `anything` / `any-inputs`, since a field always holds a value.
+
+load @term/base/list
+  find list
+
+form contract
+  link name, like text
+  # the parameters' names, in order
+  link names, like list, like text
+  # one refinement per parameter, `anything` where it has none
+  link refines
+    like list
+      like task
+        take value, like number
+        like boolean
+  # over all the inputs together, beyond the refinements; `any-inputs` when there is none
+  link pre
+    like task
+      take inputs, like list, like number
+      like boolean
+  # what the result must satisfy, given the inputs
+  link post
+    like task
+      take inputs, like list, like number
+      take output, like number
+      like boolean
+
+# the refinement of a parameter that has none
+task anything
+  take value, like number
+  like boolean
+
+  back true
+
+# the precondition of a contract that has none
+task any-inputs
+  take inputs, like list, like number
+  like boolean
+
+  back true
+
+# whether the input tuple meets every refinement and the precondition
+task admits
+  take spec, like contract
+  take inputs, like list, like number
+  like boolean
+
+  save at, 0
+  walk spec/refines
+    take refine
+    fork test, not(refine(get(inputs, at)))
+      hold
+        back false
+    save at, add(at, 1)
+
+  back call(spec/pre, inputs)
+
+# the contract's obligation at one input: met, or an input it does not admit
+task meets-contract
+  take spec, like contract
+  take inputs, like list, like number
+  take output, like number
+  like boolean
+
+  fork test, not(admits(spec, inputs))
+    hold
+      back true
+
+  back call(spec/post, inputs, output)

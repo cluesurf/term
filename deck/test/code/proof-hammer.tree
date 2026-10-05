@@ -1,0 +1,125 @@
+# The proof hammer: what a proof IDE (the language server's `proof/hammer`) or a terminal calls to close a goal
+# automatically. A VERIFY goal is proven for all integers through the solver, or refuted with the input where it breaks;
+# a SYNTHESIZE goal is closed by finding a witness, proven by the solver and written out as a task. Either way the
+# answer is a proof state: proved, refuted or open.
+#
+# Ported from deck/test/code/hammer.ts (self-hosting, 2026-10-05). A goal was a union tagged on `kind`, and is one
+# record whose `kind` says which fields it reads: a verify goal its `expr`, a synthesize goal its point spec. Both
+# carry the formula spec, as both did.
+
+load @term/base/list
+  find list
+
+load ./expression-grammar
+  find expression
+  find show-expr
+  find constant-of
+
+load ./smt-query
+  find smt-term
+  find formula
+
+load ./smt-proof
+  find smt-result
+  find prove-expr
+
+load ./smt-synthesis
+  find smt-synthesis
+  find synthesize-smt
+
+load ./source-emit
+  find seed-task
+  find emit-seed
+
+form proof-goal
+  # `verify` or `synthesize`
+  link kind, like text
+  link name, like text
+  link names, like list, like text
+  # the body a verify goal proves
+  link expr, like expression
+  # the concrete check a synthesize goal keeps its candidates to
+  link point-spec
+    like task
+      take inputs, like list, like number
+      take output, like number
+      like boolean
+  link formula-spec
+    like task
+      take inputs, like list, like smt-term
+      take output, like smt-term
+      like formula
+
+form proof-state
+  # `proved`, `refuted` or `open`
+  link status, like text
+  link name, like text
+  link detail, like text
+  # the witness written out as a task, `<>` when there is none
+  link source, like text
+  link counterexample, like list, like number
+  link reason, like text
+
+task state-of
+  take status, like text
+  take name, like text
+  take detail, like text
+  take source, like text
+  take counterexample, like list, like number
+  take reason, like text
+  like proof-state
+
+  back
+    make proof-state
+      bind status, status
+      bind name, name
+      bind detail, detail
+      bind source, source
+      bind counterexample, counterexample
+      bind reason, reason
+
+# close a goal automatically, or say why it stays open
+task hammer
+  take goal, like proof-goal
+  like proof-state
+
+  host none, make list
+  host arity, goal/names/length
+
+  fork test, is-equal(goal/kind, <verify>)
+    hold
+      host verdict, prove-expr(arity, goal/expr, goal/formula-spec)
+      fork test, verdict/proven
+        hold
+          back state-of(<proved>, goal/name, <{show-expr(goal/expr, goal/names)} satisfies the spec for ALL integers>, <>, none, <>)
+      fork test, verdict/unknown
+        hold
+          back state-of(<open>, goal/name, <>, <>, none, <solver returned unknown>)
+      back state-of(<refuted>, goal/name, <>, <>, verdict/counterexample, <>)
+
+  host found, synthesize-smt(arity, goal/point-spec, goal/formula-spec, 6)
+  fork test, found/ok
+    hold
+      host witness
+        make seed-task
+          bind name, goal/name
+          bind params, goal/names
+          bind body, found/expr
+      host detail, <witness {show-expr(found/expr, goal/names)} proven for ALL integers ({found/counterexamples/length} refinements)>
+      back state-of(<proved>, goal/name, detail, emit-seed(witness), none, <>)
+
+  back state-of(<open>, goal/name, <>, <>, none, found/reason)
+
+# a proof state as a terminal session prints it
+task show-state
+  take state, like proof-state
+  like text
+
+  fork test, is-equal(state/status, <proved>)
+    hold
+      back <  {state/name}: PROVED - {state/detail}>
+  fork test, is-equal(state/status, <refuted>)
+    hold
+      back <  {state/name}: REFUTED - fails at [{join(state/counterexample, <,>)}]>
+
+  back <  {state/name}: OPEN - {state/reason}>

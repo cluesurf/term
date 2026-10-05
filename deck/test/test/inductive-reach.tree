@@ -1,0 +1,209 @@
+note <IC3: safety for all time proven by a discovered invariant, or refuted with a real trace>
+
+# Ported from deck/test/code/demo-ic3.ts (self-hosting, 2026-10-05), on the systems of the model-check test. IC3's
+# verdict is cross-checked against k-induction as the demo did. Needs the solver: node only.
+
+load ../code/inductive-reach
+  find ic3-result
+  find ic3
+
+load ../code/model-check
+  find system
+  find k-induction
+
+load ../code/smt-query
+  find smt-term
+  find formula
+  find value-term
+  find related
+  find both
+  find either
+  find negated
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+task at
+  take state, like hash, like text, like smt-term
+  take name, like text
+  like smt-term
+
+  back get-or-default(state, name, value-term(0))
+
+task is
+  take state, like hash, like text, like smt-term
+  take name, like text
+  take value, like number
+  like formula
+
+  back related(<=>, at(state, name), value-term(value))
+
+task same
+  take state, like hash, like text, like smt-term
+  take next, like hash, like text, like smt-term
+  take name, like text
+  like formula
+
+  back related(<=>, at(next, name), at(state, name))
+
+task all-of-list
+  take items, like list, like formula
+  like formula
+
+  back
+    make all-of
+      bind items, items
+
+task any-of-list
+  take items, like list, like formula
+  like formula
+
+  back
+    make any-of
+      bind items, items
+
+task counter-init
+  take state, like hash, like text, like smt-term
+  like formula
+
+  back is(state, <x>, 0)
+
+task wrap
+  take state, like hash, like text, like smt-term
+  take next, like hash, like text, like smt-term
+  like formula
+
+  host grown
+    make plus
+      bind left, at(state, <x>)
+      bind right, value-term(1)
+  host wrapped
+    make choose
+      bind test, related(<\<>, at(state, <x>), value-term(3))
+      bind then, grown
+      bind else, value-term(0)
+
+  back related(<=>, at(next, <x>), wrapped)
+
+task in-range
+  take state, like hash, like text, like smt-term
+  like formula
+
+  back both(related(<\>=>, at(state, <x>), value-term(0)), related(<\<=>, at(state, <x>), value-term(3)))
+
+task grow-or-stay
+  take state, like hash, like text, like smt-term
+  take next, like hash, like text, like smt-term
+  like formula
+
+  host grown
+    make plus
+      bind left, at(state, <x>)
+      bind right, value-term(1)
+
+  back either(related(<=>, at(next, <x>), grown), same(state, next, <x>))
+
+task at-most-three
+  take state, like hash, like text, like smt-term
+  like formula
+
+  back related(<\<=>, at(state, <x>), value-term(3))
+
+task counter
+  take trans
+    like task
+      take state, like hash, like text, like smt-term
+      take next, like hash, like text, like smt-term
+      like formula
+  take safe
+    like task
+      take state, like hash, like text, like smt-term
+      like formula
+  like system
+
+  host vars, make list(<x>)
+
+  back
+    make system
+      bind vars, vars
+      bind init, counter-init
+      bind trans, trans
+      bind safe, safe
+
+task mutex-init
+  take state, like hash, like text, like smt-term
+  like formula
+
+  host parts, make list(is(state, <pc1>, 0), is(state, <pc2>, 0), is(state, <lock>, 0))
+
+  back all-of-list(parts)
+
+task guarded
+  take state, like hash, like text, like smt-term
+  take next, like hash, like text, like smt-term
+  like formula
+
+  host enter-one, make list(is(state, <pc1>, 0), is(state, <lock>, 0), is(next, <pc1>, 1), is(next, <lock>, 1), same(state, next, <pc2>))
+  host leave-one, make list(is(state, <pc1>, 1), is(next, <pc1>, 0), is(next, <lock>, 0), same(state, next, <pc2>))
+  host enter-two, make list(is(state, <pc2>, 0), is(state, <lock>, 0), is(next, <pc2>, 1), is(next, <lock>, 1), same(state, next, <pc1>))
+  host leave-two, make list(is(state, <pc2>, 1), is(next, <pc2>, 0), is(next, <lock>, 0), same(state, next, <pc1>))
+  host moves, make list(all-of-list(enter-one), all-of-list(leave-one), all-of-list(enter-two), all-of-list(leave-two))
+
+  back any-of-list(moves)
+
+task unguarded
+  take state, like hash, like text, like smt-term
+  take next, like hash, like text, like smt-term
+  like formula
+
+  host enter-one, make list(is(state, <pc1>, 0), is(next, <pc1>, 1), same(state, next, <pc2>))
+  host leave-one, make list(is(state, <pc1>, 1), is(next, <pc1>, 0), same(state, next, <pc2>))
+  host enter-two, make list(is(state, <pc2>, 0), is(next, <pc2>, 1), same(state, next, <pc1>))
+  host leave-two, make list(is(state, <pc2>, 1), is(next, <pc2>, 0), same(state, next, <pc1>))
+  host moves, make list(all-of-list(enter-one), all-of-list(leave-one), all-of-list(enter-two), all-of-list(leave-two))
+
+  back any-of-list(moves)
+
+task never-both
+  take state, like hash, like text, like smt-term
+  like formula
+
+  back negated(both(is(state, <pc1>, 1), is(state, <pc2>, 1)))
+
+task mutex
+  take trans
+    like task
+      take state, like hash, like text, like smt-term
+      take next, like hash, like text, like smt-term
+      like formula
+  like system
+
+  host vars, make list(<pc1>, <pc2>, <lock>)
+
+  back
+    make system
+      bind vars, vars
+      bind init, mutex-init
+      bind trans, trans
+      bind safe, never-both
+
+test <IC3 proves the wrapping counter safe for all time, as k-induction does>
+  host found, ic3(counter(wrap, in-range))
+  host induced, k-induction(counter(wrap, in-range), 1)
+  want hold, and(is-equal(found/status, <safe>), induced/proven)
+
+test <IC3 refutes the unbounded counter with a real trace, ending past 3>
+  host found, ic3(counter(grow-or-stay, at-most-three))
+  host last, get(found/trace, subtract(found/trace/length, 1))
+  want hold, and(is-equal(found/status, <unsafe>), is-above(get(last, 0), 3))
+
+test <IC3 proves the lock-guarded mutex safe for all time>
+  host found, ic3(mutex(guarded))
+  want hold, is-equal(found/status, <safe>)
+
+test <IC3 refutes the unguarded mutex>
+  host found, ic3(mutex(unguarded))
+  want hold, is-equal(found/status, <unsafe>)

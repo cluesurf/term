@@ -100,6 +100,36 @@ async function main(): Promise<void> {
     fixed.json.diagnostics.length === 0,
   )
 
+  // the build's checks: a load of a `mark private` task from another file is refused, as `term make` refuses it. The
+  // analyzer the daemon ran until 2026-10-05 answered nothing for it (guides: commands/work)
+  {
+    const { mkdtempSync, mkdirSync, writeFileSync } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+    const project = mkdtempSync(path.join(tmpdir(), 'term-daemon-'))
+    mkdirSync(path.join(project, 'code'))
+    writeFileSync(path.join(project, 'deck.tree'), 'deck @probe/daemon\n  mark <0.0.1>\n')
+    writeFileSync(path.join(project, 'code/secret.tree'), 'task scale\n  mark private\n  take n, like number\n  like number\n  back multiply(n, 3)\n')
+    const reach = 'load ./secret\n  find scale\n\ntask tripled\n  like number\n\n  back scale(4)\n'
+    writeFileSync(path.join(project, 'code/reach.tree'), reach)
+
+    const private_ = startDaemon({ root: project, port: PORT + 1, env: 'node' })
+    await new Promise(r => setTimeout(r, 250))
+
+    const answer = await fetch(`http://localhost:${PORT + 1}/analyze`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ file: 'code/reach.tree', text: reach }),
+    }).then(r => r.json() as Promise<{ diagnostics: { name?: string; message: string }[] }>)
+
+    ok(
+      'daemon refuses a private task loaded from another file, as term make does',
+      answer.diagnostics.some(d => /mark private/.test(d.message)),
+      JSON.stringify(answer.diagnostics),
+    )
+
+    private_.close()
+  }
+
   // bad request handling
   const bad = await post('/analyze', { nope: true })
   ok('daemon rejects a malformed request', bad.status === 400)

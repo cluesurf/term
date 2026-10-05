@@ -51,6 +51,8 @@ export type InterpolationNode = {
   kind: 'interpolation'
   depth: number
   group?: GroupNode
+  // the root of a path written after a call, `greeting()/text`, with no braces (buildTree)
+  call?: boolean
   parent?: NameNode | TextNode
 }
 export type ChunkNode = {
@@ -156,7 +158,13 @@ function buildTree(
   // comments seen since the last group; attached as leading trivia to the next group opened (CST)
   let pendingComments: Comment[] = []
 
+  // the event before this one, so a path chunk can tell that it follows a call's closing parenthesis directly
+  let previous: Event | undefined
+
   for (const event of events) {
+    const before = previous
+    previous = event
+
     switch (event.kind) {
       case EventKind.Comment:
         pendingComments.push({
@@ -268,6 +276,27 @@ function buildTree(
             levels: [interpolation],
             level: 0,
           })
+        } else if (here.kind === 'group') {
+          // a BARE `{x}` where a value goes, `is-equal(value, {tag})`: after a comma or an opening parenthesis the
+          // events carry no name around the braces, which `log {tag}` gets. It is that same name, so a template
+          // hole stands for a value anywhere. Without this the close below popped a frame it never pushed, and
+          // one brace became dozens of errors at line 1.
+          const interpolation: InterpolationNode = {
+            kind: 'interpolation',
+            depth: event.depth,
+          }
+          const name: NameNode = { kind: 'name', parts: [interpolation] }
+          const group: GroupNode = { kind: 'group', nodes: [name] }
+
+          setParent(interpolation, name)
+          setParent(name, group)
+          here.nodes.push(group)
+          setParent(group, here)
+          stack.push({
+            line: [interpolation],
+            levels: [interpolation],
+            level: 0,
+          })
         } else {
           unexpected(event)
         }
@@ -306,6 +335,49 @@ function buildTree(
 
           here.parts.push(chunk)
           setParent(chunk, here)
+        } else if (
+          here.kind === 'group' &&
+          before?.kind === EventKind.CloseGroup &&
+          event.token.text.startsWith('/') &&
+          here.nodes.at(-1)?.kind === 'group'
+        ) {
+          // a PATH AFTER A CALL, `greeting()/text`: the call just closed, and the chunk touching its parenthesis
+          // reads a field of what it returns. It is the same name `{greeting()}/text` builds, an interpolated
+          // segment rooted at the call, so every reader after this one sees a path it already reads. `call`
+          // makes the printer write it back the way it was written.
+          const call = here.nodes.pop() as GroupNode
+          const head = pathAfterCall(call, event.token)
+          here.nodes.push(head)
+          setParent(head, here)
+
+          // a comma later on the line pops back to a level, and the call may be one: the path stands there now
+          const levels = top().levels
+          const at = levels.indexOf(call)
+
+          if (at >= 0) {
+            levels[at] = head
+          }
+        } else if (
+          here.kind === 'group' &&
+          before?.kind === EventKind.CloseInterpolation &&
+          event.token.text.startsWith('/') &&
+          bareBraces(here.nodes.at(-1))
+        ) {
+          // a path after bare braces, `f(a, {k}/x)`: the rest of the name the braces opened
+          const name = (here.nodes.at(-1) as GroupNode).nodes[0] as NameNode
+          const chunk: ChunkNode = { kind: 'chunk', text: event.token.text, token: event.token }
+          name.parts.push(chunk)
+          setParent(chunk, name)
+        } else if (
+          here.kind === 'interpolation' &&
+          here.group &&
+          before?.kind === EventKind.CloseGroup &&
+          event.token.text.startsWith('/')
+        ) {
+          // the same path inside a text's braces, `<{greeting()/text}>`, where the call is the braces' one group
+          const head = pathAfterCall(here.group, event.token)
+          here.group = head
+          setParent(head, here)
         } else {
           unexpected(event)
         }
@@ -434,6 +506,33 @@ function buildTree(
   }
 
   return root
+}
+
+// a group holding one name that is a run of braces, the shape a bare `{x}` builds where a value goes
+function bareBraces(node: Node | undefined): boolean {
+  if (node?.kind !== 'group' || node.nodes.length !== 1) {
+    return false
+  }
+
+  const name = node.nodes[0]
+  return name?.kind === 'name' && name.parts.at(-1)?.kind === 'interpolation'
+}
+
+// `greeting()/text` as the name `{greeting()}/text`: a group holding one name, whose parts are the call in braces
+// and the path chunk
+function pathAfterCall(call: GroupNode, token: Token): GroupNode {
+  const name: NameNode = { kind: 'name', parts: [] }
+  const interpolation: InterpolationNode = { kind: 'interpolation', depth: 1, group: call, call: true }
+  const chunk: ChunkNode = { kind: 'chunk', text: token.text, token }
+  const head: GroupNode = { kind: 'group', nodes: [name] }
+
+  setParent(call, interpolation)
+  setParent(interpolation, name)
+  name.parts.push(interpolation, chunk)
+  setParent(chunk, name)
+  setParent(name, head)
+
+  return head
 }
 
 function zeroSpan(): Span {
@@ -587,6 +686,8 @@ function renderParts(parts: (ChunkNode | InterpolationNode)[], escape = false): 
   for (const part of parts) {
     if (part.kind === 'chunk') {
       out += escape ? escaped[chunkAt++]! : part.text
+    } else if (part.call && part.group) {
+      out += part.group.nodes.length > 1 ? renderInline(part.group) : `${renderInline(part.group)}()`
     } else {
       out += `${'{'.repeat(part.depth)}${
         part.group ? renderInline(part.group) : ''

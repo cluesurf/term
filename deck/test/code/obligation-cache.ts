@@ -21,7 +21,7 @@
 
 import { readFileSync, writeFileSync, mkdirSync, renameSync } from 'node:fs'
 import path from 'node:path'
-import { hashText } from '@term/make/code/term/hash'
+import { obligationKey as keyOf } from '@term/test/code/obligation-key'
 
 /** The recorded outcome of a verification, small and serializable. */
 export type Verdict = {
@@ -53,10 +53,9 @@ export function obligationKey(input: {
   deps?: string[]
   version: string
 }): string {
-  const deps = (input.deps ?? []).slice().sort()
-  // hash each part, then hash the concatenation, so a long dep list stays a short key
-  const parts = [hashText(input.source), hashText(input.version), ...deps.map(hashText)]
-  return hashText(parts.join(':'))
+  // Term since 2026-10-05 (deck/test/code/obligation-key.tree, paired against this function's original over 2,000
+  // keys by tmp/pair-obligation.ts), the dependencies sorted in UTF-16 order as `.sort()` sorted them
+  return keyOf(input.source, input.deps ?? [], input.version)
 }
 
 /** An in-memory cache (no persistence) - useful in tests and the browser. */

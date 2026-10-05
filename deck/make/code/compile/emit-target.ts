@@ -1,6 +1,6 @@
 // ONE program's complete source for one backend, from a compile that succeeded: the runtime shims the program docks
 // (`nativePrelude`), then the backend's emit. What `term make --emit <target>` writes (call/code/emit.ts) and what the
-// browser worker shows (make/code/browser/worker.ts), so the two cannot say different things about the same program.
+// browser worker shows (call/code/browser/worker.ts), so the two cannot say different things about the same program.
 //
 // Browser-safe: no `fs`, no `path`. The caller hands over how to read a runtime shim, from disk or from a snapshot.
 //

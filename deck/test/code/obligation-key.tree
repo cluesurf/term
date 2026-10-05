@@ -1,0 +1,105 @@
+# The obligation cache's key: don't re-verify what hasn't changed. A verdict is keyed by a content hash of everything
+# that could change it (the source, its dependencies, the toolchain version), so an unchanged function is never checked
+# again and any real change drops its entry, the "compiler version in the key" lesson of incremental build systems.
+#
+# Ported from the pure half of deck/test/code/obligation-cache.ts (self-hosting, 2026-10-05): the key, and the cache
+# held in memory. The disk store (one JSON file, written atomically through a temporary file named for the process)
+# stays there. The hash is the compiler's own, @term/make's term/hash.tree.
+
+load @term/base/list
+  find list
+  find sort
+
+load @term/base/hash
+  find hash
+
+load @term/base/ordering
+  find ordering
+
+load @term/base/text
+  find split
+  find char-code-at
+
+load @term/base/bit
+  find bitwise-and
+  find unsigned-shift-right
+
+load @term/make/term/hash
+  find hash-text
+
+# the recorded outcome of a verification: whether it held, and what was checked
+form verdict
+  link ok, like boolean
+  link label, like text
+
+# a text as UTF-16 code units: a code point past 0xFFFF is its surrogate pair
+task utf16-units
+  take value, like text
+  like list, like number
+
+  host units, make list
+  walk split(value, <>)
+    take letter
+    host point, char-code-at(letter, 0)
+    fork test, is-below(point, 65536)
+      hold
+        units/push(point)
+      miss
+        host offset, subtract(point, 65536)
+        units/push(add(55296, unsigned-shift-right(offset, 10)))
+        units/push(add(56320, bitwise-and(offset, 1023)))
+
+  back units
+
+# two texts in UTF-16 code unit order, which is JavaScript's default sort and so the order the key was defined in. Code
+# point order parts from it where a character past 0xFFFF (`𝔸`, surrogates from 0xD835) meets one from 0xE000 to 0xFFFF
+# (`～`, 0xFF5E): `tmp/pair-obligation.ts` found 66 keys in 2,000 that differed under `from-texts` (2026-10-05)
+task by-text
+  take left, like text
+  take right, like text
+  like ordering
+
+  host a, utf16-units(left)
+  host b, utf16-units(right)
+  save at, 0
+  walk test
+    hook test, and(is-below(at, a/length), is-below(at, b/length))
+    hook hold
+      fork test, is-below(get(a, at), get(b, at))
+        hold
+          back make less
+      fork test, is-above(get(a, at), get(b, at))
+        hold
+          back make greater
+      save at, add(at, 1)
+  fork test, is-below(a/length, b/length)
+    hold
+      back make less
+  fork test, is-above(a/length, b/length)
+    hold
+      back make greater
+
+  back make equal
+
+# the key of one obligation: each part hashed (the source, the version, then each dependency in sorted order), and the
+# hashes joined and hashed, so a long dependency list stays a short key
+task obligation-key
+  take source, like text
+  take deps, like list, like text
+  take version, like text
+  like text
+
+  host parts, make list
+  parts/push(hash-text(source))
+  parts/push(hash-text(version))
+  walk sort(deps, by-text)
+    take dep
+    parts/push(hash-text(dep))
+
+  back hash-text(join(parts, <:>))
+
+# a cache held in memory: verdicts by key
+task memory-cache
+  like hash, like text, like verdict
+
+  back make hash

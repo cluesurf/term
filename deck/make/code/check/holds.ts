@@ -43,7 +43,7 @@ import {
 } from '@term/make/code/check/refine'
 import { checkGram, gramKey } from '@term/make/code/check/certificate'
 import type { Fact } from '@term/make/code/check/product'
-import { fromNumbers, productProves } from '@term/make/code/check/product'
+import { budgetSpent, fromNumbers, openBudget, productProfile, productProves } from '@term/make/code/check/product'
 import {
   positiveEverywhere as sturmPositiveEverywhere,
   nonNegativeEverywhere as sturmNonNegativeEverywhere,
@@ -621,6 +621,31 @@ let universalHypotheses: { binders: string[]; expr: Expression }[] = []
 let paramForms = new Map<string, string>()
 // the parameters of the task being walked that are declared text
 let textParams = new Set<string>()
+
+// CITATION: `cite <rule>` under a theorem's goal uses a rule proven ABOVE it. The program's theorems by name, and the
+// ones this pass has PROVEN so far, each with how: over an ordered field (`field`, a theorem with universal
+// hypotheses, decided by the product prover alone) or with integer reasoning too (`integer`). A rule enters the set
+// only when this pass proves it, so a failed, unchecked or later rule can never be cited. The set is reset by the
+// unlimited pass and carried into the pass limited to the file's own tasks (compile.ts runs them in that order), so a
+// file may cite a rule its imports proved.
+let theorems = new Map<string, Extract<Statement, { form: 'function' }>>()
+let provenTheorems = new Map<string, 'field' | 'integer'>()
+// the names the theorem being walked binds: its marks and its finds. A cited rule's marks are read BY NAME here
+let theoremScope = new Set<string>()
+
+// `TERM_PRODUCT_PROFILE=1`: each theorem goal prints its time and its share of the product search (product.ts)
+const PROFILE_GOALS = typeof process !== 'undefined' && Boolean(process.env?.TERM_PRODUCT_PROFILE)
+
+// THE PROOF BUDGET: the exact search's work one goal may spend, in product.ts's units (rows times the pivot row's bits,
+// THE BUDGET). Set from the library: the costliest proof measured on 2026-10-05 is in
+// note/term/handoff-math-and-proof.md, and this is far above it, so it costs no proof there and stops a refusal where
+// one used to search for half an hour. `TERM_PROOF_BUDGET=<units>` changes it for one run (`Infinity` removes it)
+const PROOF_BUDGET_UNITS = Infinity
+
+// read per goal, so a run (or a test) may set it between compiles
+function proofBudget(): number {
+  return Number((typeof process !== 'undefined' && process.env?.TERM_PROOF_BUDGET) || PROOF_BUDGET_UNITS)
+}
 
 function numberFieldsOf(program: Program): Map<string, Set<string>> {
   const out = new Map<string, Set<string>>()
@@ -2042,6 +2067,22 @@ function universalGoal(expr: Expression, available: Inequality[], seeds: Express
     return universalGoal(expr.left, available, seeds) && universalGoal(expr.right, available, seeds)
   }
 
+  // a disjunction: either side, or the case split, still over an ordered field: assuming one side false (its negation
+  // is a comparison, with no rounding) proves the other
+  if (expr.form === 'binary' && expr.op === '||') {
+    if (universalGoal(expr.left, available, seeds) || universalGoal(expr.right, available, seeds)) {
+      return true
+    }
+
+    const notLeft = orPolynomial(assumptionInequalities(expr.left, true, []), expr.left)
+    const notRight = orPolynomial(assumptionInequalities(expr.right, true, []), expr.right)
+
+    return (
+      (notLeft.length > 0 && universalGoal(expr.right, [...available, ...notLeft], seeds)) ||
+      (notRight.length > 0 && universalGoal(expr.left, [...available, ...notRight], seeds))
+    )
+  }
+
   // the candidate terms: the goal's applied arguments (and those of the `seeds`, the statements the goal is proved
   // from, such as an induction hypothesis), then those of the first round of instances
   const terms = new Map<string, Expression>()
@@ -2579,6 +2620,178 @@ function goalInequalities(
   }
 }
 
+// ---- citation: `cite <rule>` ----
+//
+// A theorem's goal may cite a rule proven above it: the rule's hypotheses are proved HERE, from the facts in hand, and
+// its conclusion is then a fact. That is modus ponens on a rule that holds for every value of its marks, so it is sound
+// at any instance. The instance is chosen BY NAME: the cited rule's marks are this rule's names of the same spelling
+// (a `find` names any other value), and its quantified functions are this rule's of the same name. Nothing is guessed,
+// so a citation costs one decision per hypothesis.
+
+// a rule's hypotheses and goal, as the mill lowers them: nested single-branch guards around one named hold. Null for a
+// rule of any other shape, or one that binds a `find` (its goal reads a value the citing rule may define differently)
+function theoremParts(
+  rule: Extract<Statement, { form: 'function' }>,
+): { hypotheses: Expression[]; goal: Expression } | null {
+  const hypotheses: Expression[] = []
+  let body = rule.body
+
+  for (;;) {
+    if (body.some(s => s.form === 'let')) {
+      return null
+    }
+
+    const held = body.find(s => s.form === 'hold' && s.name === rule.name)
+
+    if (held?.form === 'hold') {
+      return { hypotheses, goal: held.expr }
+    }
+
+    const guard = body.find(s => s.form === 'if')
+
+    if (guard?.form !== 'if' || guard.branches.length !== 1 || guard.otherwise) {
+      return null
+    }
+
+    hypotheses.push(guard.branches[0]!.cond)
+    body = guard.branches[0]!.body
+  }
+}
+
+// two expressions written the same, ignoring where they were written and what inference annotated
+function writtenAlike(a: Expression, b: Expression): boolean {
+  const bare = (e: Expression): string =>
+    JSON.stringify(e, (key, value) => (key === 'span' || key === 'type' ? undefined : value))
+
+  return bare(a) === bare(b)
+}
+
+// Does a goal follow from the facts over EVERY ordered field: by a linear combination of them (Farkas) or by the
+// product prover's certificate, never by integer tightening or the integer ex falso. A conjunction needs each side.
+// Asked only of a goal already proven, to say how it holds (`provenTheorems`), so it costs a proof and not a refusal
+function fieldProvable(expr: Expression, facts: Inequality[]): boolean {
+  if (expr.form === 'binary' && expr.op === '&&') {
+    return fieldProvable(expr.left, facts) && fieldProvable(expr.right, facts)
+  }
+
+  // a disjunction: either side, or the case split goalProvable makes, in a field: assuming one side false proves the
+  // other (the negation of a comparison is a comparison, with no rounding)
+  if (expr.form === 'binary' && expr.op === '||') {
+    if (fieldProvable(expr.left, facts) || fieldProvable(expr.right, facts)) {
+      return true
+    }
+
+    const notLeft = orPolynomial(assumptionInequalities(expr.left, true, []), expr.left)
+    const notRight = orPolynomial(assumptionInequalities(expr.right, true, []), expr.right)
+
+    return (
+      (notLeft.length > 0 && fieldProvable(expr.right, [...facts, ...notLeft])) ||
+      (notRight.length > 0 && fieldProvable(expr.left, [...facts, ...notRight]))
+    )
+  }
+
+  return productGoalLinear(expr, facts) || productGoal(expr, facts)
+}
+
+// THE FAST PATH: a goal that is a linear combination of the facts, reading every monomial as an atom (Farkas, over an
+// ordered field), conjunct by conjunct. It builds no products, so it answers in milliseconds where the full decision
+// may search for minutes, and it is sound wherever it answers yes. Asked first of a cited rule's hypotheses (usually
+// facts in hand, written again) and of a theorem's goal, which with its citations' conclusions is often exactly this
+function linearlyProvable(expr: Expression, facts: Inequality[]): boolean {
+  if (expr.form === 'binary' && expr.op === '&&') {
+    return linearlyProvable(expr.left, facts) && linearlyProvable(expr.right, facts)
+  }
+
+  return productGoalLinear(expr, facts)
+}
+
+// the rules this pass has proven so far, and how: the measurement behind "every certificate holds over any ordered
+// field", which is true of a rule marked `field` and not known of one marked `integer`
+export function provenRules(): ReadonlyMap<string, 'field' | 'integer'> {
+  return provenTheorems
+}
+
+// the facts `cite <name>` contributes at this point, or none with a diagnostic saying why
+function citedFacts(
+  name: string,
+  available: Inequality[],
+  walk: Walk,
+  span: Expression['span'],
+): Inequality[] {
+  const refuse = (why: string): Inequality[] => {
+    walk.diagnostics.push(diagnose('unproven', { file: walk.file, span, message: `cite ${name}: ${why}` }))
+
+    return []
+  }
+
+  const rule = theorems.get(name)
+  const how = provenTheorems.get(name)
+
+  if (!rule || !how) {
+    return refuse(
+      'it is not a rule proven above this one by the arithmetic provers. A rule may cite only a rule proven earlier in the program',
+    )
+  }
+
+  // a theorem with universal hypotheses claims its result over every ordered field, so it may not rest on a rule
+  // whose proof used integer reasoning
+  if (universalHypotheses.length > 0 && how !== 'field') {
+    return refuse(
+      'it was proven with integer reasoning, and this rule, having universal hypotheses, is decided over an ordered field',
+    )
+  }
+
+  const parts = theoremParts(rule)
+
+  if (!parts) {
+    return refuse('only a rule stated as hypotheses and one goal, with no find, can be cited')
+  }
+
+  for (const mark of rule.params) {
+    const here = mark.type?.kind === 'function' ? appliedFunctions.has(mark.name) : theoremScope.has(mark.name)
+
+    if (!here) {
+      return refuse(
+        `its mark ${mark.name} names nothing in this rule. A cited rule's marks are read by name: give this rule a mark or a find called ${mark.name}`,
+      )
+    }
+  }
+
+  for (const universal of rule.universals ?? []) {
+    if (
+      !universalHypotheses.some(
+        mine =>
+          mine.binders.join(',') === universal.binders.join(',') && writtenAlike(mine.expr, universal.expr),
+      )
+    ) {
+      return refuse(`its universal hypothesis ${universal.name} is not one of this rule's, written the same`)
+    }
+  }
+
+  // a natural-number mark is a hypothesis too: the cited rule assumed it
+  const naturals: Expression[] = rule.params
+    .filter(mark => mark.refine === 'natural')
+    .map(mark => ({
+      form: 'binary',
+      op: '>=',
+      left: { form: 'variable', name: mark.name, span },
+      right: { form: 'integer', value: 0, span },
+      span,
+    }))
+
+  for (const [at, hypothesis] of [...naturals, ...parts.hypotheses].entries()) {
+    if (!linearlyProvable(hypothesis, available) && goalProvable(hypothesis, available) !== true) {
+      return refuse(
+        at < naturals.length
+          ? `${rule.params.filter(mark => mark.refine === 'natural')[at]!.name} >= 0, which its natural-number mark assumes, does not follow here`
+          : `its hypothesis ${at - naturals.length + 1} does not follow from what is known here`,
+      )
+    }
+  }
+
+  return instanceFacts(parts.goal, available)
+}
+
 // decide whether a goal is provable from the assumptions, handling the propositional structure: a DISJUNCTION
 // (`meet or` -> P || Q, ∨) is provable when either disjunct is; a conjunction and the comparisons go through
 // goalInequalities (which gathers the inequalities that must ALL hold). Returns true (provable), false (in the linear
@@ -2910,6 +3123,15 @@ export function checkHolds(
     program.flatMap(s => (s.form === 'let' && !s.mutable ? [s.name] : [])),
   )
 
+  theorems = new Map(
+    program.flatMap(s => (s.form === 'function' && s.theorem ? [[s.name, s] as const] : [])),
+  )
+
+  // the pass limited to the file's own tasks keeps what the unlimited pass before it proved (see `provenTheorems`)
+  if (!options.only) {
+    provenTheorems = new Map()
+  }
+
   for (const statement of program) {
     if (
       statement.form === 'function' &&
@@ -2933,6 +3155,12 @@ export function checkHolds(
         ? new Set(statement.params.filter(p => p.type?.kind === 'function').map(p => p.name))
         : new Set()
       universalHypotheses = statement.theorem ? (statement.universals ?? []) : []
+      theoremScope = statement.theorem
+        ? new Set([
+            ...statement.params.map(p => p.name),
+            ...statement.body.flatMap(s => (s.form === 'let' ? [s.name] : [])),
+          ])
+        : new Set()
       paramForms = paramFormsOf([
         ...statement.params,
         ...(statement.result ? [{ name: 'back', type: statement.result }] : []),
@@ -4188,11 +4416,55 @@ function walkHolds(
         const induction =
           universalHypotheses.length > 0 && statement.proof?.[0]?.head === 'fold' ? statement.proof[0].arg : undefined
 
+        // `cite <rule>` under a theorem's goal: each cited rule's conclusion, its hypotheses proved here (citedFacts).
+        // A cite of a name that is no rule is the kernel pass's to refuse
+        const theorem = walk.task !== undefined && theorems.has(walk.task) && statement.name === walk.task
+        const refusedBefore = walk.diagnostics.length
+
+        // one budget for this goal, its citations included (THE PROOF BUDGET)
+        const budget = proofBudget()
+        openBudget(budget)
+        let given = current
+
+        for (const step of theorem ? statement.proof ?? [] : []) {
+          if (step.head === 'cite' && step.arg && theorems.has(step.arg)) {
+            given = [...given, ...citedFacts(step.arg, given, walk, statement.span)]
+          }
+        }
+
+        const citationsHeld = walk.diagnostics.length === refusedBefore
+        const profiled = PROFILE_GOALS && theorem ? { at: Date.now(), ...productProfile } : undefined
+
+        // a theorem's goal is asked the fast path first (linearlyProvable): a yes there is a yes, in milliseconds
         const verdict = impureOutsideMasks(statement.expr, walk)
           ? null
           : induction
-            ? universalInduction(statement.expr, current, induction)
-            : goalProvable(statement.expr, current)
+            ? universalInduction(statement.expr, given, induction)
+            : (theorem && linearlyProvable(statement.expr, given)) || goalProvable(statement.expr, given)
+
+        if (profiled) {
+          const spent = (key: keyof typeof productProfile): number => productProfile[key] - profiled[key]
+
+          console.error(
+            `profile ${statement.name}: ${verdict} in ${Date.now() - profiled.at} ms, ${spent('refutes')} searches, ` +
+              `${spent('rows')} rows, ${spent('cells')} cells, ${spent('floatDeclined')} declined in floating point, ` +
+              `${spent('exactPivots')} exact pivots, ${spent('exactWork')} work, build ${spent('buildMs')} ms, exact ${spent('exactMs')} ms`,
+          )
+        }
+
+        // whether the search stopped at the budget, read before the classification below opens its own
+        const stopped = verdict !== true && budgetSpent()
+
+        if (theorem && verdict === true && citationsHeld && !statement.origin) {
+          // how it holds: a theorem with universal hypotheses was decided over an ordered field alone. Any other is
+          // asked again of the field-only provers (fieldProvable), so `field` is a measurement, never an assumption.
+          // With a budget of its own: running out there reads as `integer`, which claims less
+          openBudget(budget)
+          provenTheorems.set(
+            statement.name!,
+            universalHypotheses.length > 0 || fieldProvable(statement.expr, given) ? 'field' : 'integer',
+          )
+        }
 
         const owed = statement.origin ? OWED[statement.origin] : undefined
         // a tier-0 obligation is COUNTED, not failed: nobody wrote it, so the gate holds it to a baseline (term
@@ -4249,12 +4521,16 @@ function walkHolds(
             diagnose('unproven', {
               file,
               span: statement.span,
-              message: owed
-                ? `${owed}: it does not follow from what is known here`
-                : 'this hold does not follow from what is known here: it is false for some value the facts allow, or it needs a fact the code does not state',
+              message: stopped
+                ? `${owed ? `${owed}: it` : 'this hold'} was not proven within the proof budget (${budget} units of exact search): the search stopped, so it may still be true. Split it into rules and cite them, or raise TERM_PROOF_BUDGET for one run`
+                : owed
+                  ? `${owed}: it does not follow from what is known here`
+                  : 'this hold does not follow from what is known here: it is false for some value the facts allow, or it needs a fact the code does not state',
             }),
           )
         }
+
+        openBudget(Infinity)
 
         break
       }

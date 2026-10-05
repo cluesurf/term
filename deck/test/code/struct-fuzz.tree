@@ -1,0 +1,295 @@
+# Structure-aware coverage-guided fuzzing: TYPED values (records, lists, nested) mutated as their shape directs,
+# instead of raw integer tuples. The Hypothesis / Fuzzilli / structured-libFuzzer lever: the budget goes on
+# well-typed inputs, so the fuzzer reaches the states past the shape. An integer gets interesting values, arithmetic
+# and bit flips; a list grows, shrinks, duplicates or mutates an element; a record's field is recursed into; a choice
+# is drawn again. Coverage (edges and the value profile) drives the corpus as in coverage-fuzz.tree.
+#
+# Ported from deck/test/code/fuzz-struct.ts (self-hosting, 2026-10-05), onto property-check.tree's shapes and samples
+# and coverage-fuzz.tree's sink. The target answers whether it failed, as coverage-fuzz.tree's does. Every draw is the
+# original's in its order, including the ones a short-circuit skips (an empty text grows with no draw).
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+load @term/base/bit
+  find bitwise-exclusive-or
+  find shift-left
+
+load @term/base/float
+  find round-down
+  find to-decimal
+  find to-number
+  find power
+
+load @term/base/text
+  find char-count
+  find substring
+
+load ./seeded-random
+  find seed-state
+  find next-random
+
+load ./property-check
+  find shape
+  find sample
+  find sample-of
+  find number-in
+  find text-in
+  find values-in
+  find number-of
+  find text-of
+  find items-of
+
+load ./coverage-fuzz
+  find coverage-sink
+  find fresh-sink
+
+form struct-fuzz-result
+  link crashed, like boolean
+  # the failing value, the number 0 when there was none
+  link crash, like sample
+  link execs, like number
+  link edges-found, like number
+  link corpus-size, like number
+
+host struct-interesting, make list(0, 1, -1, 2, 7, 8, 16, 32, 42, 64, 100, 127, 128, 255, -128, 1000)
+
+task draw-under
+  take state, like list, like number
+  take count, like number
+  like number
+
+  back to-number(round-down(multiply(next-random(state), to-decimal(count))))
+
+# a number mutated: an interesting value, a small step, or a bit flipped
+task mutate-number
+  take value, like sample
+  take state, like list, like number
+  like sample
+
+  host n, number-in(value)
+  host roll, next-random(state)
+  fork test, is-below(roll, 0.4)
+    hold
+      back number-of(get(struct-interesting, draw-under(state, struct-interesting/length)))
+  fork test, is-below(roll, 0.7)
+    hold
+      back number-of(add(n, subtract(draw-under(state, 7), 3)))
+
+  back number-of(bitwise-exclusive-or(n, shift-left(1, draw-under(state, 16))))
+
+# one of `values` mutated in place of itself, the rest kept
+task mutate-at
+  take values, like list, like sample
+  take at, like number
+  take kind, like shape
+  take state, like list, like number
+  like list, like sample
+
+  host out, copy(values)
+  out/set(at, mutate-value(get(values, at), kind, state))
+
+  back out
+
+# one part of a value perturbed as its shape directs
+task mutate-value
+  take value, like sample
+  take kind, like shape
+  take state, like list, like number
+  like sample
+
+  sift kind
+    case whole
+      back mutate-number(value, state)
+    case int
+      back mutate-number(value, state)
+    case wave
+      sift value
+        case flag
+          link on
+          back
+            make flag
+              bind value, not(on)
+        miss
+          back value
+    case text
+      host written, text-in(value)
+      host length, char-count(written)
+      fork test, is-equal(length, 0)
+        hold
+          back text-of(<{written}x>)
+      fork test, is-below(next-random(state), 0.4)
+        hold
+          back text-of(<{written}x>)
+      back text-of(substring(written, 0, subtract(length, 1)))
+    case list
+      host values, values-in(value)
+      host op, draw-under(state, 4)
+      host out, copy(values)
+      fork test, or(is-equal(op, 0), is-equal(values/length, 0))
+        hold
+          out/push(sample-of(item, state, 8))
+          back items-of(out)
+      fork test, is-equal(op, 1)
+        hold
+          host drop, draw-under(state, values/length)
+          host kept, make list
+          save at, 0
+          walk values
+            take each
+            fork test, not(is-equal(at, drop))
+              hold
+                kept/push(each)
+            save at, add(at, 1)
+          back items-of(kept)
+      fork test, is-equal(op, 2)
+        hold
+          host twice, draw-under(state, values/length)
+          host doubled, make list
+          save at, 0
+          walk values
+            take each
+            fork test, is-equal(at, twice)
+              hold
+                doubled/push(each)
+            doubled/push(each)
+            save at, add(at, 1)
+          back items-of(doubled)
+      host which, draw-under(state, values/length)
+      back items-of(mutate-at(values, which, item, state))
+    case tuple
+      host values, values-in(value)
+      host which, draw-under(state, items/length)
+      back items-of(mutate-at(values, which, get(items, which), state))
+    case record
+      host values, values-in(value)
+      host which, draw-under(state, types/length)
+      back
+        make fields
+          bind names, names
+          bind values, mutate-at(values, which, get(types, which), state)
+    case pick
+      back sample-of(kind, state, 8)
+
+# the value run once: whether it failed, and how many edges and tokens it reached first
+task run-once
+  take target
+    like task
+      take value, like sample
+      take sink, like coverage-sink
+      like boolean
+  take value, like sample
+  take seen, like hash, like number, like boolean
+  take counts, like list, like number
+  like boolean
+
+  host sink, fresh-sink()
+  host failed, target(value, sink)
+  save fresh, 0
+  walk sink/hits
+    take hit
+    fork test, not(has(seen, hit))
+      hold
+        seen/set(hit, true)
+        save fresh, add(fresh, 1)
+  counts/set(0, fresh)
+
+  back failed
+
+# coverage-guided fuzz of `target` over values of `kind`, for up to `iterations` runs or until it fails
+task fuzz-struct
+  take target
+    like task
+      take value, like sample
+      take sink, like coverage-sink
+      like boolean
+  take kind, like shape
+  take iterations, like number
+  take seed, like number
+  like struct-fuzz-result
+
+  host state, seed-state(seed)
+  host seen, make hash
+  host counts, make list(0)
+  host corpus, make list
+  host novelty, make list
+  host chosen, make list
+  save execs, 0
+  save edges, 0
+
+  save made, 0
+  walk test
+    hook test, is-below(made, 4)
+    hook hold
+      host value, sample-of(kind, state, 4)
+      save execs, add(execs, 1)
+      host failed, run-once(target, value, seen, counts)
+      save edges, add(edges, get(counts, 0))
+      fork test, failed
+        hold
+          back
+            make struct-fuzz-result
+              bind crashed, true
+              bind crash, value
+              bind execs, execs
+              bind edges-found, edges
+              bind corpus-size, corpus/length
+      corpus/push(value)
+      novelty/push(add(get(counts, 0), 1))
+      chosen/push(0)
+      save made, add(made, 1)
+
+  walk test
+    hook test, is-below(execs, iterations)
+    hook hold
+      save parent, 0
+      save best-key, -1.0
+      save at, 0
+      walk novelty
+        take each
+        save weight, divide(to-decimal(each), to-decimal(add(get(chosen, at), 1)))
+        fork test, is-below(weight, 0.01)
+          hold
+            save weight, 0.01
+        host key, power(next-random(state), divide(1.0, weight))
+        fork test, is-above(key, best-key)
+          hold
+            save best-key, key
+            save parent, at
+        save at, add(at, 1)
+      chosen/set(parent, add(get(chosen, parent), 1))
+      host energy, add(1, to-number(round-down(divide(to-decimal(get(novelty, parent)), to-decimal(add(get(chosen, parent), 1))))))
+      save turn, 0
+      walk test
+        hook test, and(is-below(turn, energy), is-below(execs, iterations))
+        hook hold
+          host child, mutate-value(get(corpus, parent), kind, state)
+          save execs, add(execs, 1)
+          host failed, run-once(target, child, seen, counts)
+          save edges, add(edges, get(counts, 0))
+          fork test, failed
+            hold
+              back
+                make struct-fuzz-result
+                  bind crashed, true
+                  bind crash, child
+                  bind execs, execs
+                  bind edges-found, edges
+                  bind corpus-size, corpus/length
+          fork test, is-above(get(counts, 0), 0)
+            hold
+              corpus/push(child)
+              novelty/push(get(counts, 0))
+              chosen/push(0)
+          save turn, add(turn, 1)
+
+  back
+    make struct-fuzz-result
+      bind crashed, false
+      bind crash, number-of(0)
+      bind execs, execs
+      bind edges-found, edges
+      bind corpus-size, corpus/length

@@ -1,0 +1,96 @@
+note <CEGAR on an infinite-state system: a spurious counterexample refined away, and a real one found>
+
+# Ported from deck/test/code/demo-cegar.ts (self-hosting, 2026-10-05). x starts at 0 and steps by 2 forever. With only
+# `x >= 0` the abstraction cannot tell 3 is unreachable; refined with `x is even` it can. Needs the solver: node only.
+
+load ../code/abstraction-refinement
+  find concrete
+  find cegar-result
+  find cegar
+
+load ../code/smt-query
+  find smt-term
+  find formula
+  find value-term
+  find related
+
+load @term/base/list
+  find list
+
+task starts-at-zero
+  take x, like smt-term
+  like formula
+
+  back related(<=>, x, value-term(0))
+
+task steps-by-two
+  take x, like smt-term
+  take next, like smt-term
+  like formula
+
+  host stepped
+    make plus
+      bind left, x
+      bind right, value-term(2)
+
+  back related(<=>, next, stepped)
+
+task is-three
+  take x, like smt-term
+  like formula
+
+  back related(<=>, x, value-term(3))
+
+task is-four
+  take x, like smt-term
+  like formula
+
+  back related(<=>, x, value-term(4))
+
+task nonnegative
+  take x, like smt-term
+  like formula
+
+  back related(<\>=>, x, value-term(0))
+
+task even
+  take x, like smt-term
+  like formula
+
+  host remainder
+    make modulo
+      bind left, x
+      bind right, value-term(2)
+
+  back related(<=>, remainder, value-term(0))
+
+task stepper
+  take bad
+    like task
+      take x, like smt-term
+      like formula
+  like concrete
+
+  back
+    make concrete
+      bind init, starts-at-zero
+      bind trans, steps-by-two
+      bind bad, bad
+
+test <x is never 3: proven on the infinite system, after one refinement>
+  host start, make list(nonnegative)
+  host refine, make list(even)
+  host found, cegar(stepper(is-three), start, refine, 12)
+  want hold, and(is-equal(found/status, <safe>), and(is-equal(found/predicates-used, 2), is-equal(found/refinements, 1)))
+
+test <x does reach 4: a real violation, with the concrete trace 0, 2, 4>
+  host start, make list(nonnegative)
+  host refine, make list(even)
+  host found, cegar(stepper(is-four), start, refine, 12)
+  want hold, and(is-equal(found/status, <unsafe>), is-equal(join(found/trace, <,>), <0,2,4>))
+
+test <with no refinement left, a spurious counterexample is unknown, not a verdict>
+  host start, make list(nonnegative)
+  host refine, make list
+  host found, cegar(stepper(is-three), start, refine, 12)
+  want hold, and(is-equal(found/status, <unknown>), is-equal(found/reason, <spurious counterexample and no refinement left>))

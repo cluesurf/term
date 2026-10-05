@@ -1,0 +1,104 @@
+# Constraint-based synthesis, SyGuS's single query: an AFFINE program `c0*x0 + ... + c(n-1)*x(n-1) + cn`, its
+# coefficients asked of the solver in ONE question, "is there a choice of coefficients such that the spec holds for
+# every input?". The coefficients are the query's free names and the inputs are bound by a `forall`, so the model the
+# solver answers with IS the program.
+#
+# Ported from `constraintSynth` in deck/test/code/synth-extra.ts (self-hosting, 2026-10-05), the one strategy of that
+# suite that is a solver call. The spec is a formula over the input terms and the output term, as every port on
+# smt-query writes one.
+
+load @term/base/list
+  find list
+
+load ./smt-query
+  find smt-term
+  find formula
+  find verdict
+  find value-term
+  find name-term
+  find related
+  find quantified
+  find check-sat
+
+form affine-result
+  link ok, like boolean
+  # the coefficient of each input in order, then the constant
+  link coefficients, like list, like number
+
+# the program's output over `inputs` with the coefficients named `coefficients`
+task affine-term
+  take coefficients, like list, like smt-term
+  take inputs, like list, like smt-term
+  like smt-term
+
+  save out, get(coefficients, inputs/length)
+  save at, 0
+  walk inputs
+    take each
+    host scaled
+      make times
+        bind left, get(coefficients, at)
+        bind right, each
+    host summed
+      make plus
+        bind left, out
+        bind right, scaled
+    save out, summed
+    save at, add(at, 1)
+
+  back out
+
+task constraint-synth
+  take var-count, like number
+  take formula-spec
+    like task
+      take inputs, like list, like smt-term
+      take output, like smt-term
+      like formula
+  take coefficient-bound, like number
+  like affine-result
+
+  host coefficient-names, make list
+  host coefficients, make list
+  save at, 0
+  walk test
+    hook test, is-maximum(at, var-count)
+    hook hold
+      coefficient-names/push(<c{at}>)
+      coefficients/push(name-term(<c{at}>))
+      save at, add(at, 1)
+  host input-names, make list
+  host inputs, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, var-count)
+    hook hold
+      input-names/push(<x{at}>)
+      inputs/push(name-term(<x{at}>))
+      save at, add(at, 1)
+
+  # every coefficient kept small, the search space, and the spec held for every input
+  host parts, make list
+  walk coefficients
+    take each
+    parts/push(related(<\>=>, each, value-term(subtract(0, coefficient-bound))))
+    parts/push(related(<\<=>, each, value-term(coefficient-bound)))
+  host spec, call(formula-spec, inputs, affine-term(coefficients, inputs))
+  parts/push(quantified(input-names, spec))
+  host whole
+    make all-of
+      bind items, parts
+  host found, check-sat(coefficient-names, whole)
+  host none, make list
+
+  fork test, not(is-equal(found/status, <sat>))
+    hold
+      back
+        make affine-result
+          bind ok, false
+          bind coefficients, none
+
+  back
+    make affine-result
+      bind ok, true
+      bind coefficients, found/values

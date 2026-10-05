@@ -1,0 +1,153 @@
+# Unbounded proof through an SMT solver, for the linear-integer fragment: a synthesized expression and a symbolic spec
+# encoded as a formula, and the solver asked whether the spec can be violated for ANY integers. `unsat` of the negation
+# is a proof for all inputs, not just a bound; `sat` comes with the concrete counterexample. Quantifier-free linear
+# integer arithmetic is decidable, so the answer is definite.
+#
+# Ported from deck/test/code/smt.ts (self-hosting, 2026-10-05). Its formulas were Z3 objects built through Z3's
+# JavaScript API, and here they are smt-query.tree's data, printed as SMT-LIB2 for the one binding. A spec was a
+# closure building the goal from the input terms and the output term, and is a task of that shape. Its session kept one
+# solver warm across obligations with push and pop; each proof here is one query, which answers the same.
+
+load @term/base/list
+  find list
+
+load ./expression-grammar
+  find expression
+  find condition
+
+load ./smt-query
+  find smt-term
+  find formula
+  find verdict
+  find value-term
+  find name-term
+  find related
+  find negated
+  find check-sat
+
+form smt-result
+  link proven, like boolean
+  # the input where it breaks, empty when proven or unknown
+  link counterexample, like list, like number
+  # whether the solver could not decide
+  link unknown, like boolean
+
+# the inputs' names, x0 to x{arity - 1}, as smt.ts named its constants
+task input-names
+  take arity, like number
+  like list, like text
+
+  host names, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, arity)
+    hook hold
+      names/push(<x{at}>)
+      save at, add(at, 1)
+
+  back names
+
+task input-terms
+  take arity, like number
+  like list, like smt-term
+
+  host terms, make list
+  walk input-names(arity)
+    take each
+    terms/push(name-term(each))
+
+  back terms
+
+# an expression as an integer term over the inputs
+task expression-term
+  take expr, like expression
+  take inputs, like list, like smt-term
+  like smt-term
+
+  sift expr
+    case var
+      back get(inputs, index)
+    case const
+      back value-term(value)
+    case add
+      back
+        make plus
+          bind left, expression-term(left, inputs)
+          bind right, expression-term(right, inputs)
+    case sub
+      back
+        make minus
+          bind left, expression-term(left, inputs)
+          bind right, expression-term(right, inputs)
+    case max
+      host l, expression-term(left, inputs)
+      host r, expression-term(right, inputs)
+      back
+        make choose
+          bind test, related(<\>=>, l, r)
+          bind then, l
+          bind else, r
+    case min
+      host l, expression-term(left, inputs)
+      host r, expression-term(right, inputs)
+      back
+        make choose
+          bind test, related(<\<=>, l, r)
+          bind then, l
+          bind else, r
+    case ite
+      back
+        make choose
+          bind test, condition-formula(test, inputs)
+          bind then, expression-term(then, inputs)
+          bind else, expression-term(else, inputs)
+
+task condition-formula
+  take cond, like condition
+  take inputs, like list, like smt-term
+  like formula
+
+  sift cond
+    case ge
+      back related(<\>=>, expression-term(left, inputs), expression-term(right, inputs))
+    case gt
+      back related(<\>>, expression-term(left, inputs), expression-term(right, inputs))
+    case eq
+      back related(<=>, expression-term(left, inputs), expression-term(right, inputs))
+
+# prove that `expr` meets `spec` for ALL integers: unsat of the negation is the proof, sat is the input where it breaks
+task prove-expr
+  take arity, like number
+  take expr, like expression
+  take spec
+    like task
+      take inputs, like list, like smt-term
+      take output, like smt-term
+      like formula
+  like smt-result
+
+  host inputs, input-terms(arity)
+  host out, expression-term(expr, inputs)
+  host found, check-sat(input-names(arity), negated(spec(inputs, out)))
+  host none, make list
+
+  fork test, is-equal(found/status, <unsat>)
+    hold
+      back
+        make smt-result
+          bind proven, true
+          bind counterexample, none
+          bind unknown, false
+  fork test, is-equal(found/status, <sat>)
+    hold
+      back
+        make smt-result
+          bind proven, false
+          bind counterexample, found/values
+          bind unknown, false
+
+  back
+    make smt-result
+      bind proven, false
+      bind counterexample, none
+      bind unknown, true

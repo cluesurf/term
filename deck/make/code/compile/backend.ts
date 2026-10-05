@@ -2892,6 +2892,17 @@ export function textBuilders(fn: Extract<Statement, { form: 'function' }>): Set<
 // shadows the first; TypeScript, Swift and Kotlin refuse a second declaration in one scope, so each writes the second
 // as an assignment to the first, which is dead by then (every later read is of the second). The name being assigned
 // is what makes the first a `let` / `var` there rather than a `const` / `let` / `val`
+// a local declared by a bare `save x` and given its value by a later assignment: mutable, the unit placeholder as its
+// initializer, and a type the checker filled from that assignment (check/infer.ts). A named type is left to each
+// backend's module-slot path, and a type still open has nothing to declare it with
+export function declaredLater(node: Statement): boolean {
+  if (node.form !== 'let' || !node.mutable || node.init.form !== 'unit' || !node.type) {
+    return false
+  }
+
+  return !['unit', 'named', 'variable', 'unknown', 'dynamic'].includes(node.type.kind)
+}
+
 export function redeclaredLets(fn: Extract<Statement, { form: 'function' }>): WeakSet<Statement> {
   type Loose = Record<string, unknown> & { form?: string }
   const assigned = new Set<string>()

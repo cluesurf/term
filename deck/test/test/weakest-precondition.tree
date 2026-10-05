@@ -1,0 +1,164 @@
+note <deductive verification: loops proven correct and terminating, and a wrong post, variant or invariant refused>
+
+# Ported from deck/test/code/demo-deductive.ts (self-hosting, 2026-10-05). Needs the solver: node only.
+
+load ../code/weakest-precondition
+  find statement
+  find procedure
+  find procedure-result
+  find verify-procedure
+  find conditions-for
+  find both-of
+
+load ../code/smt-query
+  find smt-term
+  find formula
+  find value-term
+  find name-term
+  find related
+  find either
+
+load @term/base/list
+  find list
+
+task v
+  take name, like text
+  like smt-term
+
+  back name-term(name)
+
+task int-of
+  take value, like number
+  like smt-term
+
+  back value-term(value)
+
+task plus-one
+  take name, like text
+  like smt-term
+
+  back
+    make plus
+      bind left, v(name)
+      bind right, int-of(1)
+
+task minus-of
+  take left, like smt-term
+  take right, like smt-term
+  like smt-term
+
+  back
+    make minus
+      bind left, left
+      bind right, right
+
+task assigned
+  take name, like text
+  take value, like smt-term
+  like statement
+
+  back
+    make assign
+      bind name, name
+      bind value, value
+
+task then-do-of
+  take first, like statement
+  take second, like statement
+  like statement
+
+  back
+    make then-do
+      bind first, first
+      bind second, second
+
+task loop-of
+  take test, like formula
+  take invariant, like formula
+  take variant, like smt-term
+  take body, like statement
+  like statement
+
+  back
+    make loop
+      bind test, test
+      bind invariant, invariant
+      bind variant, variant
+      bind body, body
+
+task procedure-of
+  take name, like text
+  take requires, like formula
+  take ensures, like formula
+  take body, like statement
+  like procedure
+
+  back
+    make procedure
+      bind name, name
+      bind requires, requires
+      bind ensures, ensures
+      bind body, body
+
+# i := 0; while i < n, invariant 0 <= i <= n, variant n - i: i := i + 1
+task count-up-body
+  take invariant, like formula
+  take variant, like smt-term
+  like statement
+
+  host step, assigned(<i>, plus-one(<i>))
+
+  back then-do-of(assigned(<i>, int-of(0)), loop-of(related(<\<>, v(<i>), v(<n>)), invariant, variant, step))
+
+task count-invariant
+  like formula
+
+  back both-of(related(<\>=>, v(<i>), int-of(0)), related(<\<=>, v(<i>), v(<n>)))
+
+task count-up
+  take ensures, like formula
+  take invariant, like formula
+  take variant, like smt-term
+  like procedure
+
+  back procedure-of(<count-up>, related(<\>=>, v(<n>), int-of(0)), ensures, count-up-body(invariant, variant))
+
+test <count-up verifies, correct and terminating, its five conditions discharged>
+  host found, verify-procedure(count-up(related(<=>, v(<i>), v(<n>)), count-invariant(), minus-of(v(<n>), v(<i>))))
+  want hold, and(found/verified, is-equal(found/conditions, 5))
+
+test <a running counter s tracking i carries the postcondition>
+  host body, then-do-of(assigned(<s>, plus-one(<s>)), assigned(<i>, plus-one(<i>)))
+  host inv, both-of(related(<=>, v(<s>), v(<i>)), related(<\<=>, v(<i>), v(<n>)))
+  host whole, then-do-of(assigned(<s>, int-of(0)), then-do-of(assigned(<i>, int-of(0)), loop-of(related(<\<>, v(<i>), v(<n>)), inv, minus-of(v(<n>), v(<i>)), body)))
+  host found, verify-procedure(procedure-of(<counter>, related(<\>=>, v(<n>), int-of(0)), related(<=>, v(<s>), v(<n>)), whole))
+  want hold, found/verified
+
+test <abs by a branch verifies>
+  host negative
+    make assign
+      bind name, <r>
+      bind value, minus-of(int-of(0), v(<x>))
+  host body
+    make branch
+      bind test, related(<\<>, v(<x>), int-of(0))
+      bind yes, negative
+      bind no, assigned(<r>, v(<x>))
+  host ensures, both-of(related(<\>=>, v(<r>), int-of(0)), either(related(<=>, v(<r>), v(<x>)), related(<=>, v(<r>), minus-of(int-of(0), v(<x>)))))
+  host truth
+    make truth
+      bind value, true
+  host found, verify-procedure(procedure-of(<abs>, truth, ensures, body))
+  want hold, found/verified
+
+test <a wrong postcondition is refused>
+  host found, verify-procedure(count-up(related(<=>, v(<i>), plus-one(<n>)), count-invariant(), minus-of(v(<n>), v(<i>))))
+  want hold, not(found/verified)
+
+test <a variant that does not fall is refused: termination is unproven>
+  host found, verify-procedure(count-up(related(<=>, v(<i>), v(<n>)), count-invariant(), int-of(5)))
+  want hold, not(found/verified)
+
+test <an invariant the body does not keep is refused>
+  host found, verify-procedure(count-up(related(<=>, v(<i>), v(<n>)), related(<=>, v(<i>), int-of(0)), minus-of(v(<n>), v(<i>))))
+  want hold, not(found/verified)

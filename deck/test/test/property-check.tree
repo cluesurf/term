@@ -1,0 +1,277 @@
+note <property checks over shapes: a claim run on generated values, a failure shrunk to the smallest that still fails>
+
+# Ported from part A of deck/test/code/demo.ts (self-hosting, 2026-10-05), with a check on each other shape. Every
+# counterexample, shrink count and run count here is the TypeScript engine's own
+# (tmp/self-host-probes/property-values.ts), so the port draws and shrinks exactly as property.ts and type.ts do.
+
+load ../code/property-check
+  find shape
+  find sample
+  find check-result
+  find check
+  find sample-of
+  find shrink-of
+
+load ../code/seeded-random
+  find seed-state
+
+load @term/base/list
+  find list
+
+load @term/base/text
+  find index-of
+
+# a sample written the way JSON writes the value it describes
+task shown
+  take value, like sample
+  like text
+
+  sift value
+    case number
+      link n
+      back <{n}>
+    case flag
+      link on
+      fork test, on
+        hold
+          back <true>
+      back <false>
+    case words
+      link written
+      back <"{written}">
+    case items
+      link values
+      host parts, make list
+      walk values
+        take each
+        parts/push(shown(each))
+      back <[{join(parts, <,>)}]>
+    case fields
+      link names
+      link values
+      host parts, make list
+      save at, 0
+      walk values
+        take each
+        parts/push(<"{get(names, at)}":{shown(each)}>)
+        save at, add(at, 1)
+      back <\{{join(parts, <,>)}\}>
+
+task result-of
+  take found, like check-result
+  like text
+
+  fork test, found/ok
+    hold
+      back <ok {found/runs}>
+
+  back <no {shown(found/counterexample)} {found/shrinks} {found/runs}>
+
+task numbers-in
+  take value, like sample
+  like list, like number
+
+  host out, make list
+  sift value
+    case items
+      link values
+      walk values
+        take each
+        sift each
+          case number
+            link n
+            out/push(n)
+          miss
+    miss
+
+  back out
+
+# reversing a list twice gives the list
+task reverses-back
+  take value, like sample
+  like boolean
+
+  host numbers, numbers-in(value)
+  host once, make list
+  walk numbers
+    take each
+    once/unshift(each)
+  host twice, make list
+  walk once
+    take each
+    twice/unshift(each)
+
+  back is-equal(join(twice, <,>), join(numbers, <,>))
+
+# a "max" that answers its first argument is at least both
+task buggy-max-holds
+  take value, like sample
+  like boolean
+
+  host pair, numbers-in(value)
+  host a, get(pair, 0)
+  host b, get(pair, 1)
+
+  back and(is-minimum(a, a), is-minimum(a, b))
+
+task has-no-angle
+  take value, like sample
+  like boolean
+
+  sift value
+    case words
+      link written
+      back is-below(index-of(written, <\<>), 0)
+    miss
+      back true
+
+task off-or-small
+  take value, like sample
+  like boolean
+
+  sift value
+    case fields
+      link names
+      link values
+      host on, get(values, 0)
+      host count, get(values, 1)
+      sift on
+        case flag
+          link set
+          fork test, not(set)
+            hold
+              back true
+        miss
+      sift count
+        case number
+          link n
+          back is-below(n, 3)
+        miss
+          back true
+    miss
+      back true
+
+task is-short
+  take value, like sample
+  like boolean
+
+  host numbers, numbers-in(value)
+
+  back is-below(numbers/length, 4)
+
+# each field-less shape as a call, since `make int, ...` in a lean file would take what follows as its value
+task int-shape
+  like shape
+
+  back make int
+
+task whole-shape
+  like shape
+
+  back make whole
+
+task wave-shape
+  like shape
+
+  back make wave
+
+task text-shape
+  like shape
+
+  back make text
+
+task int-list
+  like shape
+
+  back
+    make list
+      bind item, make int
+
+task int-pair
+  like shape
+
+  host parts, make list(int-shape(), int-shape())
+
+  back
+    make tuple
+      bind items, parts
+
+task flagged-count
+  like shape
+
+  host names, make list(<on>, <count>)
+  host types, make list(wave-shape(), whole-shape())
+
+  back
+    make record
+      bind names, names
+      bind types, types
+
+# every row of a list of records holds a whole number at `n`
+task rows-whole
+  take value, like sample
+  like boolean
+
+  sift value
+    case items
+      link rows
+      walk rows
+        take row
+        sift row
+          case fields
+            link names
+            link values
+            host first, get(values, 0)
+            sift first
+              case number
+                link n
+                fork test, is-below(n, 0)
+                  hold
+                    back false
+              miss
+                back false
+          miss
+            back false
+      back true
+    miss
+      back false
+
+test <a list of records, the shape recursing into each row, holds whole numbers on every run>
+  host names, make list(<n>)
+  host types, make list(whole-shape())
+  host row
+    make record
+      bind names, names
+      bind types, types
+  host rows
+    make list
+      bind item, row
+  want hold, is-equal(result-of(check(rows, rows-whole, 100, 1, 64)), <ok 100>)
+
+test <a property that holds passes every run: reversing twice>
+  want hold, is-equal(result-of(check(int-list(), reverses-back, 300, 1, 64)), <ok 300>)
+
+test <a buggy max is caught on the first run, its counterexample shrunk once to [0,1]>
+  want hold, is-equal(result-of(check(int-pair(), buggy-max-holds, 300, 1, 64)), <no [0,1] 1 1>)
+
+test <a text holding an angle bracket, shrunk to the bracket alone>
+  want hold, is-equal(result-of(check(text-shape(), has-no-angle, 200, 1, 64)), <no "\<" 1 16>)
+
+test <a record, its fields drawn in order>
+  want hold, is-equal(result-of(check(flagged-count(), off-or-small, 200, 1, 64)), <no \{"on":true,"count":3\} 0 10>)
+
+test <a list of wholes four long, from seed 9>
+  host wholes
+    make list
+      bind item, make whole
+  want hold, is-equal(result-of(check(wholes, is-short, 200, 9, 64)), <no [1,2,0,3] 0 11>)
+
+test <a whole number shrinks to zero, its half and one less>
+  host nine
+    make number
+      bind value, 9
+  host shrunk, make list
+  walk shrink-of(whole-shape(), nine)
+    take each
+    shrunk/push(shown(each))
+  want hold, is-equal(join(shrunk, <,>), <0,4,8>)

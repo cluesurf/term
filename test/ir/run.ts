@@ -256,8 +256,9 @@ task compute
       read x
       code 1
 `,
-    // a sum of two numbers is range-checked (note/term/proof-by-default/numbers.md); the propagation is inside it
-    'return __termInt(p + 1)',
+    // a sum of two numbers is range-checked (note/term/proof-by-default/numbers.md), tested where it stands before it
+    // is returned (typescript.ts, `testedInPlace`); the propagation is inside it
+    'const __n0 = p + 1; if (!(__n0 <= 9007199254740991 && __n0 >= -9007199254740991)) __termIntStop(__n0); return __n0',
   )
   // soundness: a copy is NOT propagated when its source is later reassigned
   expectContains(
@@ -440,7 +441,7 @@ task f
       loan a
       loan b
 `,
-    'return __termInt(a + b)',
+    'const __n0 = a + b; if (!(__n0 <= 9007199254740991 && __n0 >= -9007199254740991)) __termIntStop(__n0); return __n0',
   )
 
   // soundness: subtraction is NOT commutative; `a - b` must not become `b - a`
@@ -454,7 +455,7 @@ task f
       loan a
       loan b
 `,
-    'return __termInt(a - b)',
+    'const __n0 = a - b; if (!(__n0 <= 9007199254740991 && __n0 >= -9007199254740991)) __termIntStop(__n0); return __n0',
   )
 
   // boolean idempotence: x && x -> x, x || x -> x (pure operands)

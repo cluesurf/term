@@ -12,7 +12,7 @@
  * answer is a `maybe`.
  */
 
-import { cegisPropose, hintPropose, repair as repairAll, showRepair } from '@term/test/code/repair-loop'
+import { cegisPropose, hintPropose, repair as repairAll, showRepair, specHolds } from '@term/test/code/repair-loop'
 import type { GapReport as Report, Proposer as TermProposer, RepairResult } from '@term/test/code/repair-loop'
 import type { Expression } from '@term/test/code/expression-grammar'
 import type { Spec } from './synthesize'
@@ -49,16 +49,28 @@ export type Proposer = {
 export type { RepairResult }
 export { showRepair }
 
+// the port's spec is a `specification`, a task or a contract as data (2026-10-05): a TypeScript spec goes in as the
+// task, and a port gap comes back out with a spec that reads the specification, whichever it is
+export function toTermGap(gap: GapReport): Report {
+  return { ...gap, spec: { form: 'direct', check: gap.spec } } as unknown as Report
+}
+
+export function fromTermGap(gap: Report): GapReport {
+  return { ...(gap as unknown as GapReport), spec: (inputs, output) => specHolds(gap.spec, inputs, output) }
+}
+
 function toTerm(proposer: Proposer): TermProposer {
   return {
     name: proposer.name,
     propose: gap => {
-      const found = proposer.propose(gap)
+      const found = proposer.propose(fromTermGap(gap))
 
       return found ? { form: 'some', value: found } : { form: 'none' }
     },
   }
 }
+
+export { toTerm as termProposer }
 
 /**
  * The loop. Each round, try the proposers in order until one yields a
@@ -67,7 +79,7 @@ function toTerm(proposer: Proposer): TermProposer {
  * gap and go again.
  */
 export function repair(gap: GapReport, proposers: Proposer[], options: { maxRounds?: number } = {}): RepairResult {
-  return repairAll(gap as Report, proposers.map(toTerm), options.maxRounds ?? 64)
+  return repairAll(toTermGap(gap), proposers.map(toTerm), options.maxRounds ?? 64)
 }
 
 /**
@@ -78,7 +90,7 @@ export function cegisProposer(maxSize = 6): Proposer {
   return {
     name: 'cegis',
     propose(gap) {
-      const found = cegisPropose(maxSize, gap as Report)
+      const found = cegisPropose(maxSize, toTermGap(gap))
 
       return found.form === 'some' ? found.value : null
     },
@@ -96,7 +108,7 @@ export function hintProposer(hints: Record<string, Expression>): Proposer {
   return {
     name: 'ai-hint',
     propose(gap) {
-      const found = hintPropose(table, gap as Report)
+      const found = hintPropose(table, toTermGap(gap))
 
       return found.form === 'some' ? found.value : null
     },

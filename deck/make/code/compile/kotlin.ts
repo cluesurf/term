@@ -28,7 +28,7 @@ import {
   textValued,
 } from '@term/make/code/compile/backend'
 import type { CollectionOp, FormKind, FormSpec } from '@term/make/code/compile/backend'
-import { asciiCharAppend, assignsName, emptyText, fillCall, fillTasks, lastReads, listGenerator, mapUpdate, namesIn, ownedFields, slotTakes, tailTasks, recordCopies, redeclaredLets, textAppend, textBuilders, textCursors } from '@term/make/code/compile/backend'
+import { asciiCharAppend, assignsName, declaredLater, emptyText, fillCall, fillTasks, lastReads, listGenerator, mapUpdate, namesIn, ownedFields, slotTakes, tailTasks, recordCopies, redeclaredLets, textAppend, textBuilders, textCursors } from '@term/make/code/compile/backend'
 import { rustBoxing } from '@term/make/code/compile/rust'
 import type { TextCursors } from '@term/make/code/compile/backend'
 import { privateForms, recordPlaces, recordReuse } from '@term/make/code/compile/place'
@@ -70,10 +70,19 @@ function camel(name: string): string {
   return KOTLIN_KEYWORDS.has(spelled) ? `\`${spelled}\`` : spelled
 }
 
+// The java.lang classes the Kotlin runtime shims name bare (`System.currentTimeMillis()`, `System.getenv`,
+// `Math.floorMod`, `Thread.sleep`). Every Kotlin file imports java.lang, and a class declared in the file wins over it,
+// so a Term form named `system` emitted as `class System` took `System` away from every shim prepended beside it:
+// "unresolved reference 'currentTimeMillis'" (deck/test/code/model-check.tree's `form system`, 2026-10-05). A Term
+// name that would spell one is emitted with a `Term` prefix, at its declaration and every reference alike, since every
+// one goes through here. test/compile/kotlin-shadowed-class.ts
+const JVM_SHADOWED = new Set(['System', 'Math', 'Thread', 'Runtime', 'Process', 'ProcessBuilder', 'Character', 'StringBuilder'])
+
 function pascal(name: string): string {
   const c = rawCamel(name)
+  const spelled = c.charAt(0).toUpperCase() + c.slice(1)
 
-  return c.charAt(0).toUpperCase() + c.slice(1)
+  return JVM_SHADOWED.has(spelled) ? `Term${spelled}` : spelled
 }
 
 // gather the inference-variable ids appearing in a type (each an implicit generic parameter of its function)
@@ -676,6 +685,8 @@ export function emitKotlin(
   )
   // the `mark shared` forms: a reference by design, written in place
   const sharedForms = new Set(program.flatMap(n => (n.form === 'record-type' && n.shared ? [n.name] : [])))
+  // the forms with cases: a list literal of them names its element (the `array` case)
+  const unionForms = new Set(program.flatMap(n => (n.form === 'record-type' && n.variants.length > 0 ? [n.name] : [])))
 
   // a generic type parameter (`like t`), as opposed to a form the program declares
   const genericLetter = (type: Type | undefined): boolean =>
@@ -1665,6 +1676,11 @@ export function emitKotlin(
           const into = node.callee.name === 'fill-form' ? fillSpecs : meltSpecs
           specForms(spec, into)
 
+          // a fill throws `data-mismatch` as a `TermException`, so it brings the class
+          if (node.callee.name === 'fill-form') {
+            needs.add('exception')
+          }
+
           return node.callee.name === 'fill-form'
             ? `__fill${pascal(spec.form)}(${expr(node.args[0]!)}, "")`
             : `__melt${pascal(spec.form)}(${expr(node.args[0]!)})`
@@ -1851,8 +1867,13 @@ export function emitKotlin(
         // A list of FUNCTIONS is spelled too: `mutableListOf(::double, ::negate)` infers `MutableList<KFunction1<..>>`,
         // and Kotlin's lists are invariant, so it is not the `MutableList<Function1<..>>` a parameter takes
         // (deck/test/test/fold-synthesis.tree's list of specs, 2026-10-05)
+        // and so is a list of a UNION's cases: `mutableListOf(ShapeInt, ShapeInt)` is a `MutableList<ShapeInt>`, which a
+        // `MutableList<Shape>` parameter refuses for the same invariance (deck/test/test/property-check.tree)
         const args =
-          node.type?.kind === 'array' && (node.items.length === 0 || node.type.element.kind === 'function')
+          node.type?.kind === 'array' &&
+          (node.items.length === 0 ||
+            node.type.element.kind === 'function' ||
+            (node.type.element.kind === 'named' && unionForms.has(node.type.element.name)))
             ? `<${kotlinType(node.type.element)}>`
             : ''
 
@@ -2464,6 +2485,12 @@ export function emitKotlin(
         // `redeclaredLets`): two counted walks over `i` in one task
         if (redeclared.has(node)) {
           return `${camel(node.name)} = ${expr(node.init)}`
+        }
+
+        // a bare `save x`, given its value by a later assignment: declared with its type and no value, which Kotlin
+        // takes for a local assigned on every path before a read. It was `var x = Unit` (2026-10-05)
+        if (declaredLater(node)) {
+          return `var ${camel(node.name)}: ${kotlinType(node.type)}`
         }
 
         // a carrier at a reuse site holds its kept field alone (compile/place.ts, `recordReuse`)
@@ -3863,8 +3890,12 @@ function kotlinFormWalk(fills: Map<string, FormSpec>, melts: Map<string, FormSpe
   return out
 }
 
+// A value that does not fit throws `data-mismatch`, the package's own exception, as the `TermException` every raise on
+// this backend is, with the fields TypeScript gives it (`@term/host`, `Data does not fit the shape`, and the path and
+// reason under `link`), so a guard catches it by its form. It was a `SeedError` carrying all of it in one message,
+// which a guard read as a `failure` (guides: language/data, 2026-10-05).
 const KOTLIN_FORM_HELPERS = `fun __termMismatch(path: String, reason: String): Nothing =
-    throw SeedError("data-mismatch: Data does not fit the shape: " + (if (path.isEmpty()) "." else path) + " " + reason)
+    throw TermException("@term/host", "data-mismatch", "Data does not fit the shape", "", System.currentTimeMillis(), mapOf("thing" to "data", "path" to (if (path.isEmpty()) "." else path), "reason" to reason), null)
 fun __termPath(path: String, key: String): String = if (path.isEmpty()) key else path + "/" + key
 fun __termKind(value: Data): String = when (value) {
     is DataHash -> "a map"; is DataArray -> "a list"; is DataBlank -> "void"; is DataText -> "text"; is DataNumber -> "number"; is DataDecimal -> "decimal"; is DataFlag -> "flag"; is DataGraft -> "a fuse"

@@ -32,6 +32,7 @@ load @term/mill/code/rule/hold/mint
 
 load @term/mill/code/save/mint
   find save
+  find save-match
 
 load @term/mill/code/seed/mint
   find seed
@@ -42,6 +43,7 @@ load @term/mill/code/seed/seed/mint
 load @term/mill/code/send/mint
   find send
   find back
+  find back-match
   find send-kind
 
 load @term/mill/code/walk/mint
@@ -58,10 +60,14 @@ mint flow
     site hold
   case call
     site call
+  case save-match
+    site save-match
   case save
     site save
   case send
     site send
+  case back-match
+    site back-match
   case back
     site back
   case send-kind

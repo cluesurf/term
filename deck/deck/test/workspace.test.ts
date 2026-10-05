@@ -1,5 +1,8 @@
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, it, expect } from 'vitest'
-import { topologicalSort } from '../code/workspace'
+import { findWorkspaces, topologicalSort } from '../code/workspace'
 import { DeckManifest } from '../code/form'
 
 describe('topologicalSort', () => {
@@ -133,5 +136,45 @@ describe('topologicalSort', () => {
     expect(sharedIdx).toBeLessThan(apiIdx)
     expect(webIdx).toBeLessThan(appIdx)
     expect(apiIdx).toBeLessThan(appIdx)
+  })
+})
+
+// Which decks a project installs from its workspace rather than a registry (`findWorkspaces`): from the workspace
+// root, from inside one member, and never from a `deck/` folder that is not a workspace's.
+function deck(dir: string, name: string): void {
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, 'deck.tree'), `deck ${name}\n  mark <1.0.0>\n`)
+}
+
+describe('findWorkspaces', () => {
+  const root = mkdtempSync(join(tmpdir(), 'term-workspace-'))
+  const workspace = join(root, 'repo')
+
+  deck(workspace, '@alice/repo')
+  deck(join(workspace, 'deck', 'base'), '@alice/base')
+  deck(join(workspace, 'deck', 'face'), '@alice/face')
+  deck(join(workspace, 'deck', 'face', 'deck', 'inner'), '@alice/inner')
+
+  it('finds every member from the workspace root', async () => {
+    const found = await findWorkspaces({ root: workspace })
+
+    expect([...found.keys()].sort()).toEqual(['@alice/base', '@alice/face'])
+  })
+
+  it('finds the siblings from inside one member, so a link to one installs its source', async () => {
+    const found = await findWorkspaces({ root: join(workspace, 'deck', 'face') })
+
+    expect(found.get('@alice/base')?.dir).toBe(join(workspace, 'deck', 'base'))
+    // and the member's own nested decks besides
+    expect(found.has('@alice/inner')).toBe(true)
+  })
+
+  it('does not take a `deck/` folder for a workspace when its parent holds no deck.tree', async () => {
+    const plain = join(root, 'plain')
+
+    deck(join(plain, 'deck', 'solo'), '@alice/solo')
+    deck(join(plain, 'deck', 'other'), '@alice/other')
+
+    expect([...(await findWorkspaces({ root: join(plain, 'deck', 'solo') })).keys()]).toEqual([])
   })
 })

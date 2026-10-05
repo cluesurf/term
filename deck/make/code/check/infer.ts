@@ -1589,6 +1589,14 @@ export function check(
           }
 
           env.set(node.name, { vars: [], type: declared })
+        } else if (node.mutable && node.init.form === 'unit') {
+          // a bare `save x`: declared now, given its value by a later `save x, <value>`. Its type is that value's, a
+          // fresh variable the first assignment fills. It was the unit placeholder's, so every assignment after it was
+          // refused as `expected void` (guides: language/matching, 2026-10-05)
+          const declared = fresh()
+
+          env.set(node.name, { vars: [], type: declared })
+          node.type = declared
         } else {
           // value-restricted let-generalization: an immutable binding to a syntactic value gets a polymorphic scheme
           const vars =

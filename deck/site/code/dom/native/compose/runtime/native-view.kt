@@ -232,6 +232,18 @@ fun CxHostedStepper(slot: TermSlot) {
 }
 
 object nativeView {
+    // A test run (TERM_WINDOW_AWAY) draws in a test host with no window, and on macOS a JVM that starts AWT still
+    // registers as an ordinary app: a Dock icon, and the frontmost app for a moment at every launch, so a run of the
+    // suites took focus from whoever was typing every few seconds (2026-10-05, a packaged app caught doing it). As a UI
+    // element it does neither, as the Swift runtimes' `.accessory`. Set here because every native call a program makes
+    // starts with this object, before anything reaches AWT, which reads the property once. Android has no AWT and
+    // ignores it
+    init {
+        if (System.getenv("TERM_WINDOW_AWAY") == "1") {
+            System.setProperty("apple.awt.UIElement", "true")
+        }
+    }
+
     var root: TermNode? = null
     // set by a host's `inputMethod` when a test is the keyboard: a field's text input session then stays with the test
     // and never reaches the platform, whose own input method manager would share the field's edit processor and finish

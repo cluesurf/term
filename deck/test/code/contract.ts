@@ -2,21 +2,22 @@
  * Contracts and refinement checking: Layers 1-2 of the system
  * (note/methodology/verification/seed-verification-system.md). A
  * `Contract` is a function's specification - parameter refinements
- * (preconditions on inputs) plus a postcondition on the result. The
- * VCG turns it into proof obligations, and the bounded prover (./prove)
- * discharges them.
+ * (preconditions on inputs) plus a postcondition on the result.
  *
- * This is also where the whole system closes: a contract with a HOLE
- * for its body is a synthesis problem. `verifyContract` checks a body;
- * `synthesizeContract` writes one that the prover then certifies. The
- * precondition is the key new power over plain CEGIS: the body only has
- * to be correct on inputs the precondition admits, exactly like a
- * refinement-typed parameter.
+ * A contract with a HOLE for its body is a synthesis problem: `verifyContract`
+ * checks a body, `synthesizeContract` writes one the prover then certifies.
+ *
+ * Term since 2026-10-05 (deck/test/code/contract-form.tree and
+ * contract-check.tree, which hold demo-contract.ts's every answer). This is
+ * its face: a contract here is converted to the port's, whose refinements and
+ * precondition are always present, and whose spec is the contract as data.
  */
 
-import { prove, type ProveResult } from './prove'
-import { repair, cegisProposer, type GapReport, type RepairResult, type Proposer } from './gap'
+import { admits as admitsPort, meetsContract } from '@term/test/code/contract-form'
+import { verifyContract as verifyPort, synthesizeContract as synthesizePort, contractGap as gapPort } from '@term/test/code/contract-check'
+import { fromTermGap, termProposer, type GapReport, type RepairResult, type Proposer } from './gap'
 import { evalExpr, type Expr, type Spec } from './synthesize'
+import type { ProveResult } from './prove'
 
 /** A predicate refining a single value (a refinement type's body). */
 export type Refinement = (value: number) => boolean
@@ -34,80 +35,61 @@ export type Contract = {
   post: (inputs: number[], output: number) => boolean
 }
 
+/** The port's contract: every refinement and the precondition present. */
+function toTerm(contract: Contract): never {
+  return {
+    name: contract.name,
+    names: contract.params.map(p => p.name),
+    refines: contract.params.map(p => p.refine ?? (() => true)),
+    pre: contract.pre ?? (() => true),
+    post: contract.post,
+  } as never
+}
+
 /** Does this input tuple satisfy the contract's precondition? */
 export function admits(contract: Contract, inputs: number[]): boolean {
-  for (let i = 0; i < contract.params.length; i++) {
-    const refine = contract.params[i].refine
-    if (refine && !refine(inputs[i])) return false
-  }
-  return contract.pre ? contract.pre(inputs) : true
+  return admitsPort(toTerm(contract), inputs)
 }
 
 /**
  * The verification condition for a contract + body, as a single spec:
- * on every admitted input, the body's output satisfies the
- * postcondition. Inputs the precondition rejects are vacuously fine -
- * the body is not responsible for them. This IS the refinement: the
- * obligation is weakened by the precondition.
+ * on every admitted input, the body's output satisfies the postcondition.
  */
 export function conditionFor(contract: Contract, body: Expr): Spec {
-  return (inputs, _out) =>
-    !admits(contract, inputs) || contract.post(inputs, evalExpr(body, inputs))
+  const terms = toTerm(contract)
+
+  return inputs => meetsContract(terms, inputs, evalExpr(body, inputs))
 }
 
-/**
- * VERIFY a body against a contract by exhaustive proof over the bound.
- * Returns a proof, or the exact admitted input where the body violates
- * the postcondition.
- */
-export function verifyContract(
-  body: Expr,
-  contract: Contract,
-  bound = 8,
-): ProveResult {
-  return prove({
-    arity: contract.params.length,
-    bound,
-    claim: inputs =>
-      !admits(contract, inputs) ||
-      contract.post(inputs, evalExpr(body, inputs)),
-  })
+/** VERIFY a body against a contract by exhaustive proof over the bound. */
+export function verifyContract(body: Expr, contract: Contract, bound = 8): ProveResult {
+  return verifyPort(body, toTerm(contract), bound) as ProveResult
 }
 
 /** The synthesis spec for a contract: post must hold on admitted inputs. */
 export function specFor(contract: Contract): Spec {
-  return (inputs, output) =>
-    !admits(contract, inputs) || contract.post(inputs, output)
+  const terms = toTerm(contract)
+
+  return (inputs, output) => meetsContract(terms, inputs, output)
 }
 
-/**
- * The GapReport a checker would emit for an unfilled contract body.
- * The one interface the proposers (CEGIS, AI) consume.
- */
+/** The GapReport a checker would emit for an unfilled contract body. */
 export function contractGap(contract: Contract, bound = 8): GapReport {
-  return {
-    goal: contract.name,
-    varCount: contract.params.length,
-    spec: specFor(contract),
-    counterexamples: [],
-    bound,
-  }
+  return fromTermGap(gapPort(toTerm(contract), bound))
 }
 
 /**
  * SYNTHESIZE a body satisfying the contract, through the repair loop.
- * The result is proven over the bound. This is the sketch-fill: the
- * body is a hole, the contract is the spec, the system writes the code.
  * Extra proposers (an AI hint) can be passed; CEGIS is always the net.
  */
 export function synthesizeContract(
   contract: Contract,
   options: { bound?: number; maxSize?: number; proposers?: Proposer[] } = {},
 ): RepairResult {
-  const bound = options.bound ?? 8
-  const proposers = [
-    ...(options.proposers ?? []),
-    cegisProposer(options.maxSize ?? 6),
-  ]
-  return repair(contractGap(contract, bound), proposers)
+  return synthesizePort(
+    toTerm(contract),
+    options.bound ?? 8,
+    options.maxSize ?? 6,
+    (options.proposers ?? []).map(termProposer),
+  ) as RepairResult
 }

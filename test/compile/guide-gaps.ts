@@ -10,7 +10,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { compile } from '@term/make/code/compile/compile'
 import { mill } from '@term/make/code/compile/mill'
-import { parse } from '@term/make/code/parser/tree'
+import { parse, printTree } from '@term/make/code/parser/tree'
 import { projectResolver } from '@term/call/code/make'
 
 const TERM = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
@@ -179,6 +179,40 @@ task guarded
       !built.ok && /can also raise mismatch, and no case here covers it/.test(built.messages) && !/fork case/.test(built.messages),
       built.messages,
     )
+  }
+
+  // ---- language/matching: `back sift <value>`, each arm a value ----
+  // read as `back <value>`, `sift` was a call to a task named `sift` and the line was refused
+  {
+    const built = build(`form shape
+  case circle
+    link radius, like number
+  case square
+    link side, like number
+
+task area
+  take s, like shape
+  like number
+  back sift s
+    case circle
+      multiply(radius, radius)
+    case square
+      multiply(side, side)
+
+task circle-area
+  like number
+  back area(make circle, bind radius, 2)
+
+task square-area
+  like number
+  back area(make square, bind side, 3)
+`)
+    ok('`back sift` builds, each arm giving its value', built.ok, built.messages)
+
+    if (built.ok) {
+      const mod = await load(built.typescript)
+      ok('and returns the matched arm\'s value', mod['circleArea']?.() === 4 && mod['squareArea']?.() === 9, `${String(mod['circleArea']?.())} ${String(mod['squareArea']?.())}`)
+    }
   }
 
   // ---- proofs: a binding read only as a computed index is used ----
@@ -1422,6 +1456,211 @@ task count-a
       const found = mod.countA!(new Map([['a', 3]]))
       const fallen = mod.countA!(new Map([['b', 3]]))
       ok('and reads the entry, or falls back, at run time', found === 3 && fallen === 0, `${found} ${fallen}`)
+    }
+  }
+
+  // ---- language/syntax/lean: a path after a call reads a field of what the call returns ----
+  {
+    const built = build(`form greeting-text
+  link text, like text
+  link count, like number
+
+task greet
+  take who, like text
+  like greeting-text
+  send back
+    make greeting-text
+      bind text, <hi {who}>
+      bind count, 3
+
+task text-of
+  take who, like text
+  like text
+  send back, greet(read who)/text
+
+task line-of
+  take who, like text
+  like text
+  send back, <{greet(read who)/text} and {greet(<cy>)/count}>
+`)
+    ok('`greet(who)/text` builds, bare and inside a text', built.ok, built.messages)
+
+    if (built.ok) {
+      const mod = await load(built.typescript)
+      const read = mod.textOf!('ada')
+      const line = mod.lineOf!('ada')
+      ok('and reads the field of the returned record', read === 'hi ada' && line === 'hi ada and 3', `${read} | ${line}`)
+    }
+
+    const parsed = parse({ file: 'p.tree', text: 'task t\n  log g()/text, x\n' })
+    const printed = parsed.ok ? printTree(parsed.tree) : ''
+    ok('a comma after one still pops to its level, and it prints back as written', parsed.ok && /g\(\)\/text\n\s+x/.test(printed), printed)
+  }
+
+  // ---- language/templates: a bare `{tag}` hole where a value goes ----
+  {
+    const built = build(`tree is-tag
+  take name
+  take tag
+  hook fuse
+    task is-{name}
+      take value, like number
+      like boolean
+      send back, is-equal(value, {tag})
+
+fuse is-tag
+  bind name, green
+  bind tag, 1
+`)
+    ok('`is-equal(value, {tag})` builds', built.ok, built.messages)
+
+    if (built.ok) {
+      ok('and the hole is the number, not a variable', /value === 1/.test(built.typescript), built.typescript.slice(0, 300))
+    }
+
+    const unfilled = parse({ file: 'p.tree', text: 'task t\n  f(a, {k}/x, 2)\n\ntask u\n  g\n' })
+    ok('a bare brace with a path after it parses, and the next task is untouched', unfilled.ok && unfilled.tree.nodes.length === 2)
+  }
+
+  // ---- language/modules: a private task is not exported from the TypeScript ----
+  {
+    const built = build(`task double
+  mark private
+  take n, like number
+  like number
+  send back, multiply(n, 2)
+
+task perimeter
+  take side, like number
+  like number
+  send back, add(double(side), double(side))
+`)
+    ok('a private task builds', built.ok, built.messages)
+
+    if (built.ok) {
+      ok('and is emitted without `export`, while the public one keeps it', /(^|\n)function double\(/.test(built.typescript) && /export function perimeter\(/.test(built.typescript), built.typescript.slice(0, 400))
+      const mod = await load(built.typescript)
+      ok('and the module answers through the public task alone', mod.double === undefined && mod.perimeter!(3) === 12, String(Object.keys(mod)))
+    }
+  }
+
+  // ---- applications/targets: `find read` with `read(path)` is warned, since the word is Term's own ----
+  {
+    const shadowed = build(
+      `load @term/base/file
+  find read
+
+task size-of
+  take path, like text
+  like text
+  mark async
+  send back, read(path)
+`,
+      undefined,
+      true,
+    )
+    ok('`find read` used as `read(path)` builds, and warns', shadowed.ok && shadowed.warnings.some(w => w.startsWith('keyword-import')), shadowed.warnings.join(' | ') || shadowed.messages)
+
+    const reached = build(
+      `load @term/base/file
+  find read
+
+task size-of
+  take path, like text
+  like text
+  mark async
+  send back
+    call read
+      read path
+`,
+      undefined,
+      true,
+    )
+    ok('`call read` reaches the import, and is not warned', reached.ok && !reached.warnings.some(w => w.startsWith('keyword-import')), reached.warnings.join(' | ') || reached.messages)
+  }
+
+  // ---- applications/web/components: a call as a placement's one value is a text node of what it answers ----
+  {
+    const built = build(
+      `load @term/site/dom/dom
+  find view
+
+load @term/site/view/reactive
+  find make-signal
+  find read-signal
+
+host problem, make-signal(<none>)
+
+view home
+  take host, like view
+  view p, read-signal(problem)
+`,
+      undefined,
+      true,
+    )
+    ok('`view p, read-signal(problem)` builds', built.ok, built.messages)
+
+    if (built.ok) {
+      ok('and is a dynamic text node over the call', /makeDynamicText\(\(\) => \(readSignal\(problem\)\)\)/.test(built.typescript), built.typescript.slice(-600))
+    }
+  }
+
+  // ---- applications/web/state: one batch runs each effect once, a memo's reader included ----
+  {
+    const built = build(
+      `load @term/site/view/reactive
+  find make-signal
+  find read-signal
+  find write-signal
+  find make-effect
+  find make-memo
+  find batch
+
+load @term/base/list
+  find list
+  find push
+  find join
+
+host read-count, make-signal(0)
+host seen, make list
+  like list, like text
+
+host left
+  make-memo
+    task count-left
+      like number
+      send back, subtract(3, read-signal(read-count))
+
+task read-two
+  batch
+    task both
+      write-signal read-count, add(read-signal(read-count), 1)
+      write-signal read-count, add(read-signal(read-count), 1)
+
+task nested
+  batch
+    task outer
+      read-two()
+      write-signal read-count, add(read-signal(read-count), 1)
+
+task runs
+  like text
+  make-effect
+    task report
+      push seen, <{read-signal(read-count)}/{read-signal(left)}>
+  read-two()
+  nested()
+  send back, join(seen, <, >)
+`,
+      undefined,
+      true,
+    )
+    ok('an effect reading a signal and its memo builds', built.ok, built.messages)
+
+    if (built.ok) {
+      const mod = await load(built.typescript)
+      const seen = mod.runs!()
+      ok('and runs once per batch, a nested batch inside the outer one', seen === '0/3, 2/1, 5/-2', seen)
     }
   }
 

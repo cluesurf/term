@@ -327,7 +327,7 @@ function hasComment(node: Node): boolean {
 // Rule 3 adds the parentheses where the tree does not force them: a call standing in a VALUE position is written
 // `multiply(n, 2)` even as the last part, which re-parses to the same group either way. `value` says the node
 // stands in one.
-function flatten(node: Node, nested = false, value = false, options: FormatOptions = {}): string {
+function flatten(node: Node, nested = false, value = false, options: FormatOptions = {}, bare = false): string {
   switch (node.kind) {
     case 'group': {
       const [head, ...kids] = node.nodes
@@ -346,7 +346,7 @@ function flatten(node: Node, nested = false, value = false, options: FormatOptio
       //
       // In a lean file a call-shaped part keeps the parentheses it was written with, neither more nor fewer (see
       // leanLocked): there it may be a label, and `width(4)` would read as a call to a task named `width`
-      const closed = nested || printedClosed(node, value, options)
+      const closed = !bare && (nested || printedClosed(node, value, options))
 
       return closed ? `${h}${optional}(${args.join(', ')})` : `${h}${optional} ${args.join(', ')}`
     }
@@ -356,11 +356,16 @@ function flatten(node: Node, nested = false, value = false, options: FormatOptio
       // compile-time SUBSTITUTION and a double brace is RUNTIME interpolation, so hardcoding two turned
       // `load @term/base/code/native/{platform}/atomic` into `{{platform}}` and changed what the line means:
       // every platform-slot import in the stdlib, silently, the moment anyone ran `term form` over it.
+      //
+      // A path written after a call, `greeting()/text`, holds the call as braces the source never had
+      // (parser/tree.ts `pathAfterCall`), so it is written back closed and bare.
       return node.parts
         .map(p =>
           p.kind === 'chunk'
             ? p.text
-            : `${'{'.repeat(p.depth)}${p.group ? flatten(p.group, false, true, options) : ''}${'}'.repeat(p.depth)}`,
+            : p.call && p.group
+              ? closedCall(flatten(p.group, p.group.nodes.length > 1, true, options))
+              : `${'{'.repeat(p.depth)}${p.group ? flatten(p.group, false, true, options) : ''}${'}'.repeat(p.depth)}`,
         )
         .join('')
     case 'text': {
@@ -397,6 +402,12 @@ function flatten(node: Node, nested = false, value = false, options: FormatOptio
     default:
       return ''
   }
+}
+
+// a call written as the root of a path always shows its parentheses, `greeting()/text`: without them the path
+// would read a field of a variable named `greeting`
+function closedCall(text: string): string {
+  return text.endsWith(')') ? text : `${text}()`
 }
 
 // a comparable structural fingerprint (ignores comments, spans, parents): used to verify a rendering round-trips
@@ -708,11 +719,11 @@ function formatGroup(
     ...comments(group, indent, options),
     ...(group.nodes[0] && group.nodes[0].kind !== 'group' ? comments(group.nodes[0], indent, options) : []),
   ]
-  const flat = flatten(group, false, value, options)
+  const closed = printedClosed(group, value, options)
 
   // rules 1, 4 and 5: one line when the group holds no block, carries no comment to preserve, fits, and re-parses to
   // the same group. The whole result is then held to the same MILLED program as the input (formatReport).
-  if (
+  const oneLine = (flat: string, shut: boolean): boolean =>
     !isBlock(group, depth, parent, options) &&
     !holdsBlock(group, options) &&
     !group.nodes.some(hasComment) &&
@@ -723,14 +734,31 @@ function formatGroup(
       DECLARATION_HEADS.has(headName(group)) &&
       group.nodes.slice(1, -1).some(needsParens)
     ) &&
-    !closesAWord(group, options, printedClosed(group, value, options)) &&
+    !closesAWord(group, options, shut) &&
     !holdsLeanLocked(group, options) &&
     indent.length + flat.length <= WIDTH &&
     readsAs(flat, group.nodes)
-  ) {
+
+  const flat = flatten(group, false, value, options)
+
+  if (oneLine(flat, closed)) {
     lines.push(`${indent}${flat}`)
 
     return lines
+  }
+
+  // a line written in parentheses, `is-equal(a, b)` in a lean file, that is too wide in them. Stacking drops them
+  // all the same (headLine writes `is-equal a`), so the bare line is tried first: the stack's own output re-reads
+  // without them, and the second run of the formatter would join the line this run broke. Never for `host`, where
+  // the parenthesis is the whole difference between a call and a constant
+  if (closed && plainWord(group.nodes[0]) !== 'host') {
+    const open = flatten(group, false, value, options, true)
+
+    if (oneLine(open, false)) {
+      lines.push(`${indent}${open}`)
+
+      return lines
+    }
   }
 
   const kids = group.nodes.slice(1)

@@ -30,18 +30,43 @@ load ./bounded-proof
   find prove-result
   find step-point
 
+load ./contract-form
+  find contract
+  find meets-contract
+
+# what correct means: a task given the inputs and an output, or a contract (contract-form.tree), whose obligation
+# closes over the contract and so is spelled as data rather than as a task built for it (2026-10-05)
+form specification
+  case direct
+    link check
+      like task
+        take inputs, like list, like number
+        take output, like number
+        like boolean
+  case contracted
+    link terms, like contract
+
 # a verification hole: what is missing, how many integer inputs the missing code takes, what correct means, the inputs
 # known to break a wrong candidate (growing as the loop refines), and the domain a candidate is proved over
 form gap-report
   link goal, like text
   link var-count, like number
-  link spec
-    like task
-      take inputs, like list, like number
-      take output, like number
-      like boolean
+  link spec, like specification
   link counterexamples, like list, like list, like number
   link bound, like number
+
+# whether an output meets the specification at the inputs
+task spec-holds
+  take spec, like specification
+  take inputs, like list, like number
+  take output, like number
+  like boolean
+
+  sift spec
+    case direct
+      back check(inputs, output)
+    case contracted
+      back meets-contract(terms, inputs, output)
 
 # a fix source: given the gap with every counterexample so far, a candidate, or none
 form proposer
@@ -70,7 +95,7 @@ task consistent
 
   walk counterexamples
     take each
-    fork test, call(gap/spec, each, eval-expr(candidate, each))
+    fork test, spec-holds(gap/spec, each, eval-expr(candidate, each))
       miss
         back false
 
@@ -84,7 +109,7 @@ task accepts
   like boolean
 
   mark unsafe
-    back call(gap/spec, point, eval-expr(candidate, point))
+    back spec-holds(gap/spec, point, eval-expr(candidate, point))
   halt take
     take e
     back false
@@ -169,6 +194,18 @@ task repair
   take max-rounds, like number
   like repair-result
 
+  back repair-searching(gap, proposers, max-rounds, 0)
+
+# the loop with synthesis as its last proposer: when none of `proposers` answers, the smallest grammar expression of
+# up to `search-size` nodes (`cegis-propose`), credited to `cegis`; 0 means no search. It is the CEGIS proposer
+# contract.ts appended to the list, a closure over the size, written as a parameter
+task repair-searching
+  take gap, like gap-report
+  take proposers, like list, like proposer
+  take max-rounds, like number
+  take search-size, like number
+  like repair-result
+
   host counterexamples, copy(gap/counterexamples)
 
   save round, 0
@@ -191,6 +228,16 @@ task repair
                     save who, each/name
                     save found, true
               case none
+      fork test, and(not(found), is-above(search-size, 0))
+        hold
+          sift cegis-propose(search-size, working)
+            case some
+              fork test, consistent(gap, value, counterexamples)
+                hold
+                  save candidate, value
+                  save who, <cegis>
+                  save found, true
+            case none
       fork test, found
         miss
           back unrepaired(<no proposer produced a usable candidate>, counterexamples)

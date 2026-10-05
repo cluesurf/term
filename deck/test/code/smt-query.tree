@@ -1,0 +1,320 @@
+# Questions for an SMT solver, written in Term: linear integer terms and the formulas over them, their SMT-LIB2 text,
+# a satisfiability query with its model read back, and the queries every solver-backed checker asks. What crosses to
+# the solver is TEXT (smt-text.ts, the one binding), so the formulas, the encodings and every algorithm built on them
+# are Term.
+#
+# Written for the self-hosting port of deck/test/code/smt.ts and the modules built on it (2026-10-05). There each
+# formula was a Z3 object built through Z3's JavaScript API; here it is data, printed as SMT-LIB2.
+
+load @term/base/list
+  find list
+
+load @term/base/text
+  find split
+  find trim
+
+load @term/base/text/number
+  find parse-integer
+
+dock load
+  load <global:smt-text>, name smt-text
+
+# an integer-valued term
+form smt-term
+  case int-value
+    link value, like number
+  case int-name
+    link name, like text
+  case plus
+    link left, like smt-term
+    link right, like smt-term
+  case minus
+    link left, like smt-term
+    link right, like smt-term
+  case times
+    link left, like smt-term
+    link right, like smt-term
+  case opposite
+    link inner, like smt-term
+  # SMT-LIB's `mod`: the remainder, never negative
+  case modulo
+    link left, like smt-term
+    link right, like smt-term
+  # `test ? then : else`
+  case choose
+    link test, like formula
+    link then, like smt-term
+    link else, like smt-term
+
+# a boolean formula over terms
+form formula
+  case truth
+    link value, like boolean
+  case all-of
+    link items, like list, like formula
+  case any-of
+    link items, like list, like formula
+  case denial
+    link inner, like formula
+  # `>=`, `>`, `<=`, `<` or `=`
+  case relation
+    link op, like text
+    link left, like smt-term
+    link right, like smt-term
+  # `body` for every integer value of each name, which the query does not declare
+  case for-every
+    link names, like list, like text
+    link body, like formula
+
+# what the solver said: `sat` with a value per asked name, `unsat`, or `unknown`
+form verdict
+  link status, like text
+  link values, like list, like number
+
+task value-term
+  take value, like number
+  like smt-term
+
+  back
+    make int-value
+      bind value, value
+
+task name-term
+  take name, like text
+  like smt-term
+
+  back
+    make int-name
+      bind name, name
+
+task related
+  take op, like text
+  take left, like smt-term
+  take right, like smt-term
+  like formula
+
+  back
+    make relation
+      bind op, op
+      bind left, left
+      bind right, right
+
+task both
+  take left, like formula
+  take right, like formula
+  like formula
+
+  host items, make list(left, right)
+
+  back
+    make all-of
+      bind items, items
+
+task either
+  take left, like formula
+  take right, like formula
+  like formula
+
+  host items, make list(left, right)
+
+  back
+    make any-of
+      bind items, items
+
+task negated
+  take inner, like formula
+  like formula
+
+  back
+    make denial
+      bind inner, inner
+
+task quantified
+  take names, like list, like text
+  take body, like formula
+  like formula
+
+  back
+    make for-every
+      bind names, names
+      bind body, body
+
+task number-text
+  take value, like number
+  like text
+
+  fork test, is-below(value, 0)
+    hold
+      back <(- {subtract(0, value)})>
+
+  back <{value}>
+
+task term-text
+  take value, like smt-term
+  like text
+
+  sift value
+    case int-value
+      link n
+      back number-text(n)
+    case int-name
+      link written
+      back written
+    case plus
+      back <(+ {term-text(left)} {term-text(right)})>
+    case minus
+      back <(- {term-text(left)} {term-text(right)})>
+    case times
+      back <(* {term-text(left)} {term-text(right)})>
+    case opposite
+      back <(- {term-text(inner)})>
+    case modulo
+      back <(mod {term-text(left)} {term-text(right)})>
+    case choose
+      back <(ite {formula-text(test)} {term-text(then)} {term-text(else)})>
+
+task joined-formulas
+  take items, like list, like formula
+  like text
+
+  host parts, make list
+  walk items
+    take each
+    parts/push(formula-text(each))
+
+  back join(parts, < >)
+
+task formula-text
+  take value, like formula
+  like text
+
+  sift value
+    case truth
+      link holds
+      fork test, holds
+        hold
+          back <true>
+      back <false>
+    case all-of
+      fork test, is-equal(items/length, 0)
+        hold
+          back <true>
+      back <(and {joined-formulas(items)})>
+    case any-of
+      fork test, is-equal(items/length, 0)
+        hold
+          back <false>
+      back <(or {joined-formulas(items)})>
+    case denial
+      back <(not {formula-text(inner)})>
+    case relation
+      back <({op} {term-text(left)} {term-text(right)})>
+    case for-every
+      fork test, is-equal(names/length, 0)
+        hold
+          back formula-text(body)
+      host bound, make list
+      walk names
+        take each
+        bound/push(<({each} Int)>)
+      back <(forall ({join(bound, < >)}) {formula-text(body)})>
+
+# the integers Z3 printed for `(get-value (a b))`: `((a 3) (b (- 1)))`, a value per name in order
+task read-values
+  take printed, like text
+  like list, like number
+
+  host values, make list
+  host letters, split(printed, <>)
+  save depth, 0
+  save token, <>
+  save negative, false
+  save item, 0
+  walk letters
+    take letter
+    fork test, is-equal(letter, <(>)
+      hold
+        save depth, add(depth, 1)
+    fork test, or(or(is-equal(letter, <)>), is-equal(letter, < >)), or(is-equal(letter, <\n>), is-equal(letter, <(>)))
+      hold
+        # a finished atom: the second atom of a pair at depth 2 or 3 is the value, `-` the sign of `(- n)`
+        fork test, is-equal(token, <->)
+          hold
+            save negative, true
+          miss
+            fork test, not(is-equal(token, <>))
+              hold
+                # an atom is a name when none is pending, and the pending name's value when one is
+                fork test, is-above(item, 0)
+                  hold
+                    host n, parse-integer(token)
+                    fork test, negative
+                      hold
+                        values/push(subtract(0, n))
+                      miss
+                        values/push(n)
+                    save negative, false
+                    save item, 0
+                  miss
+                    save item, 1
+        save token, <>
+      miss
+        save token, <{token}{letter}>
+    fork test, is-equal(letter, <)>)
+      hold
+        save depth, subtract(depth, 1)
+
+  back values
+
+# the binding's answer, typed as the text it is. A docked call's result has no type, and a text method inlined onto it
+# (`trim`) was emitted on Swift as a member `.trim()` that `String` lacks, where a typed receiver reaches the runtime's
+# own `trim` (2026-10-05, the first native run of this module)
+task solver-answer
+  take printed, like text
+  like text
+
+  back printed
+
+# is `assertion` satisfiable over the integer names `names`? `sat` comes with the value of each name
+task check-sat
+  mark async
+  take names, like list, like text
+  take assertion, like formula
+  like verdict
+
+  # ONE self-contained script, the model asked for in the same text: a native binding hands it to a fresh `z3 -in`
+  # process, which keeps nothing between calls. When the answer is not `sat`, Z3 prints an error for the `get-value`
+  # after the status line, and only the status line is read
+  host lines, make list
+  lines/push(<(reset)>)
+  walk names
+    take each
+    lines/push(<(declare-const {each} Int)>)
+  lines/push(<(assert {formula-text(assertion)})>)
+  lines/push(<(check-sat)>)
+  fork test, is-above(names/length, 0)
+    hold
+      lines/push(<(get-value ({join(names, < >)}))>)
+  host evaluated, wait smt-text/evaluate(join(lines, <\n>))
+  host printed, solver-answer(evaluated)
+  host answer, split(trim(printed), <\n>)
+  host status, trim(get(answer, 0))
+  host none, make list
+  fork test, and(is-equal(status, <sat>), is-above(names/length, 0))
+    hold
+      host rest, make list
+      save at, 1
+      walk test
+        hook test, is-below(at, answer/length)
+        hook hold
+          rest/push(get(answer, at))
+          save at, add(at, 1)
+      back
+        make verdict
+          bind status, status
+          bind values, read-values(join(rest, <\n>))
+
+  back
+    make verdict
+      bind status, status
+      bind values, none

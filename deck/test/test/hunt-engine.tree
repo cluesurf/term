@@ -1,0 +1,145 @@
+note <the bug-hunting engine: probes over a corpus, over mutants of it, and their findings folded by bug>
+
+# hunt.ts had no test and no caller (2026-10-05). These hold the engine on a stand-in target: a text "parser" that
+# chokes on an unbalanced parenthesis, a probe for it, and two mutators that open and drop parentheses.
+
+load ../code/hunt-engine
+  find finding
+  find probe
+  find finding-group
+  find hunt-corpus
+  find hunt-fuzz
+  find dedupe-findings
+
+load @term/base/list
+  find list
+
+load @term/base/text
+  find split
+  find char-count
+  find substring
+
+load @term/base/float
+  find round-down
+  find to-decimal
+  find to-number
+
+load ../code/seeded-random
+  find next-random
+
+# the depth of parentheses, -1 where a `)` closes nothing
+task depth-of
+  take input, like text
+  like number
+
+  save depth, 0
+  walk split(input, <>)
+    take letter
+    fork test, is-equal(letter, <(>)
+      hold
+        save depth, add(depth, 1)
+    fork test, is-equal(letter, <)>)
+      hold
+        fork test, is-equal(depth, 0)
+          hold
+            back -1
+        save depth, subtract(depth, 1)
+
+  back depth
+
+# fires on an input whose parentheses do not balance
+task balance-check
+  take input, like text
+  like list, like finding
+
+  host found, make list
+  host depth, depth-of(input)
+  fork test, not(is-equal(depth, 0))
+    hold
+      found/push
+        make finding
+          bind probe, <balanced>
+          bind detail, <depth {depth} at the end>
+          bind input, input
+
+  back found
+
+task balance-probe
+  like probe
+
+  back
+    make probe
+      bind name, <balanced>
+      bind check, balance-check
+
+# open a parenthesis at the front
+task open-front
+  take input, like text
+  take corpus, like list, like text
+  take state, like list, like number
+  like text
+
+  back <({input}>
+
+# drop the last character
+task drop-last
+  take input, like text
+  take corpus, like list, like text
+  take state, like list, like number
+  like text
+
+  host length, char-count(input)
+  fork test, is-equal(length, 0)
+    hold
+      back input
+
+  back substring(input, 0, subtract(length, 1))
+
+task corpus
+  like list, like text
+
+  back make list(<(a)>, <(b c)>, <d>)
+
+test <a well-formed corpus raises nothing>
+  host probes, make list(balance-probe())
+  host found, hunt-corpus(corpus(), probes)
+  want hold, is-equal(found/length, 0)
+
+test <a corpus entry that breaks the property is a finding, naming the probe, the detail and the input>
+  host inputs, make list(<(a>, <b>)
+  host probes, make list(balance-probe())
+  host found, hunt-corpus(inputs, probes)
+  host first, get(found, 0)
+  want hold, and(is-equal(found/length, 1), is-equal(<{first/probe} | {first/detail} | {first/input}>, <balanced | depth 1 at the end | (a>))
+
+test <mutating the corpus finds unbalanced inputs, and they fold into a few bugs>
+  host probes, make list(balance-probe())
+  host mutators, make list(open-front, drop-last)
+  host found, hunt-fuzz(corpus(), probes, mutators, 200, 1, 4)
+  host groups, dedupe-findings(found)
+  save counted, 0
+  walk groups
+    take group
+    save counted, add(counted, group/count)
+  want hold, and(and(is-above(found/length, 0), is-equal(counted, found/length)), is-below(groups/length, found/length))
+
+test <findings with one probe and one detail are one group, counted, the first kept as the example>
+  host found, make list
+  found/push
+    make finding
+      bind probe, <p>
+      bind detail, <same>
+      bind input, <one>
+  found/push
+    make finding
+      bind probe, <p>
+      bind detail, <same>
+      bind input, <two>
+  found/push
+    make finding
+      bind probe, <p>
+      bind detail, <other>
+      bind input, <three>
+  host groups, dedupe-findings(found)
+  host first, get(groups, 0)
+  want hold, and(and(is-equal(groups/length, 2), is-equal(first/count, 2)), and(is-equal(first/example/input, <one>), is-equal(first/signature, <p:same>)))

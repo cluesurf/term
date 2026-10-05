@@ -1,6 +1,11 @@
 load @term/mill/code/seed/mine
   find seed
 
+load @term/mill/code/fork/mine
+  find fork-arm
+  find fork-arm-hook
+  find fork-arm-bare
+
 # `send back <value>` RETURNS from a task.
 #
 # The `back` stays a worded rule at the head of this sequence rather than one branch of an alternation: the
@@ -31,3 +36,21 @@ mine back
     mine maybe
       mine form, like seed
         site seed
+
+# `back sift <value>` with its arms under the line: the match giving its value. The arms hang under `back`, beside
+# the `sift`, so this is a rule of its own. It is lowered to the `sift` statement with each arm's value returned
+# (compile/mint-bridge.ts). Read as `back <value>`, `sift` was a call to a task named `sift` and the line was refused
+# (guides: language/matching, 2026-10-05). Listed before `back` wherever a statement is read.
+mine back-match
+  mine term, term back
+    mine term, term sift
+      mine form, like seed
+        site seed
+    mine list
+      mine any
+        mine form, like fork-arm
+          site arm
+        mine form, like fork-arm-hook
+          site arm
+        mine form, like fork-arm-bare
+          site arm

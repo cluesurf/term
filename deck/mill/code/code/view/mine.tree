@@ -36,6 +36,7 @@ load @term/mill/code/mark/mine
 
 load @term/mill/code/seed/mine
   find seed
+  find seed-call-open
 
 load @term/mill/code/call/mine
   find call
@@ -112,9 +113,18 @@ mine view-node
     mine form, like call
       site call
     # LAST, after everything headed: a bare word is a dynamic text node reading that variable, so `view p, who`
-    # and `view p` over `who` both mean `view p` over `read who`
+    # and `view p` over `who` both mean `view p` over `read who`. A bare CALL is the same node over the call's
+    # value, `view p, read-signal(problem)`, which matched nothing here and took the whole component out of the
+    # build, reported as a dozen unknown names and none of them the cause
+    mine form, like view-call
+      site read
     mine form, like view-word
       site read
+
+# a bare call in markup: a dynamic text node of what it answers
+mine view-call
+  mine form, like seed-call-open
+    site seed
 
 # a bare word in markup: the variable of that name, as a dynamic text node
 mine view-word

@@ -121,5 +121,25 @@ async function feed(args: string[]): Promise<{ child: ChildProcess; log: () => s
   }
 }
 
+// ---- ctrl-c before `start` still closes the run ----
+// the handler was added after `start`, so an interrupt during the first build met node's default: exit 130 and no
+// closing item (guides: commands/feed, 2026-10-05)
+{
+  const child = spawn('node', [LINE, 'feed', '-p', '5394'], { cwd: project, env: { ...process.env, NO_COLOR: '1' } })
+  let log = ''
+  child.stdout!.on('data', chunk => (log += String(chunk)))
+  child.stderr!.on('data', chunk => (log += String(chunk)))
+  const exited = new Promise<number | null>(done => child.once('exit', code => done(code)))
+  const started = Date.now()
+
+  while (!/· feed/.test(log) && Date.now() - started < 30_000 && child.exitCode === null) {
+    await new Promise(done => setTimeout(done, 20))
+  }
+
+  child.kill('SIGINT')
+  const code = await exited
+  ok('ctrl-c during the first build closes the run with its own item, exit 130', code === 130 && /(Not started|Stopped)/.test(log), `${code} ${log.slice(-300)}`)
+}
+
 console.log(`\nfeed: ${pass} pass, ${fail} fail`)
 process.exit(fail ? 1 : 0)

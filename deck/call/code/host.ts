@@ -302,8 +302,9 @@ export async function callHost(input: {
 }
 
 // A hint to the package index; its crawl finds what a lost ping misses, so this never fails a publish. A term.surf
-// token, when there is one, credits the version to its account. Reports the outcome and returns whether it was sent
-async function announce(input: { route: OciRoute; digest: string; keypair: Keypair }): Promise<boolean> {
+// token, when there is one, credits the version to its account. Reports the outcome and returns whether it was sent.
+// `pnpm term:release` calls it too, for `@term/code`: a release is a package version like any other
+export async function announce(input: { route: OciRoute; digest: string; keypair: Keypair }): Promise<boolean> {
   const token = await readIndexToken()
   const ping = await pingIndex({ repository: input.route.repository, digest: input.digest, token, keypair: input.keypair })
 

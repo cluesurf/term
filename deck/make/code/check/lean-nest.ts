@@ -22,9 +22,11 @@ type Call = Extract<Expression, { form: 'call' }>
 
 // The builtins a bare head folds to an operator, the way the mill folds them (`foldBuiltin` in compile/mint-bridge):
 // `subtract a, b` is `a - b`, never a call to a task named `subtract`. A nested one rebuilt here has to fold the
-// same way or it reaches the checker as a call to nothing.
+// same way or it reaches the checker as a call to nothing. `not` is the unary one: without it `bits/push(not(x))`, a
+// label under a callee with no parameters on record, was refused as a property naming nothing
+// (deck/test/code/abstraction-refinement.tree, 2026-10-05, test/check/lean-not-argument.ts)
 export function isFoldable(name: string): boolean {
-  return name in BINARY_BUILTIN || name === 'increment' || name === 'decrement'
+  return name in BINARY_BUILTIN || name === 'increment' || name === 'decrement' || name === 'not'
 }
 
 function fold(name: string, args: Expression[], span: Call['span']): Expression | undefined {
@@ -42,6 +44,10 @@ function fold(name: string, args: Expression[], span: Call['span']): Expression 
       right: { form: 'integer', value: 1, span },
       span,
     } as Expression
+  }
+
+  if (name === 'not' && args.length === 1) {
+    return { form: 'unary', op: '!', operand: args[0]!, span } as Expression
   }
 
   return undefined

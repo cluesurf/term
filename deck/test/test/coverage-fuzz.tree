@@ -1,0 +1,126 @@
+note <coverage-guided fuzzing: a deep nested bug, a spec violation, and a magic constant climbed by its value profile>
+
+# Ported from deck/test/code/demo-fuzz.ts (self-hosting, 2026-10-05). Every crash, exec count, edge count and corpus
+# size is the TypeScript fuzzer's own (tmp/self-host-probes/fuzz-values.ts), so the port takes the original's path.
+# Its blind-random comparison is here too, since seeded-random.tree draws exactly what `makeRng` drew: the same seed,
+# the same uniform sample and the same budget as the original's `blindRandom`.
+
+load ../code/coverage-fuzz
+  find coverage-sink
+  find fuzz-result
+  find fuzz
+  find cover-edge
+  find cover-compare
+  find matching-bits
+  find fresh-sink
+
+load ../code/seeded-random
+  find seed-state
+  find next-random
+
+load @term/base/list
+  find list
+
+# blind random against the deep bug, no coverage kept: `budget` inputs of `arity` values, each uniform in -8 to 247
+task blind-random-finds
+  take arity, like number
+  take budget, like number
+  take seed, like number
+  like boolean
+
+  host state, seed-state(seed)
+  save run, 0
+  walk test
+    hook test, is-below(run, budget)
+    hook hold
+      host input, make list
+      save at, 0
+      walk test
+        hook test, is-below(at, arity)
+        hook hold
+          input/push(subtract(to-number(round-down(multiply(next-random(state), 256.0))), 8))
+          save at, add(at, 1)
+      fork test, deep-bug(input, fresh-sink())
+        hold
+          back true
+      save run, add(run, 1)
+
+  back false
+
+# a bug behind three nested guards, a == 7 and b == 13 and c == 42
+task deep-bug
+  take input, like list, like number
+  take sink, like coverage-sink
+  like boolean
+
+  cover-edge(sink, 1)
+  fork test, is-equal(get(input, 0), 7)
+    hold
+      cover-edge(sink, 2)
+      fork test, is-equal(get(input, 1), 13)
+        hold
+          cover-edge(sink, 3)
+          fork test, is-equal(get(input, 2), 42)
+            hold
+              cover-edge(sink, 4)
+              back true
+
+  back false
+
+# a clamp to [0, 10] that forgets its upper bound, its oracle the range
+task buggy-clamp
+  take input, like list, like number
+  take sink, like coverage-sink
+  like boolean
+
+  host x, get(input, 0)
+  cover-edge(sink, 1)
+  save result, x
+  fork test, is-below(x, 0)
+    hold
+      save result, 0
+  fork test, is-maximum(result, 10)
+    hold
+      cover-edge(sink, 2)
+    miss
+      cover-edge(sink, 3)
+
+  back not(and(is-minimum(result, 0), is-maximum(result, 10)))
+
+# one guard on a magic constant, 0xCAFE: a single edge, so only the value profile leads to it
+task magic
+  take input, like list, like number
+  take sink, like coverage-sink
+  like boolean
+
+  host x, get(input, 0)
+  cover-compare(sink, x, 51966)
+
+  back is-equal(x, 51966)
+
+task shown
+  take found, like fuzz-result
+  like text
+
+  back <{join(found/crash, <,>)} | {found/execs} | {found/edges-found} | {found/corpus-size}>
+
+test <the fuzzer walks into a bug behind three nested guards, and minimizes it to the exact trigger>
+  host none, make list
+  host found, fuzz(deep-bug, 3, none, 200000, 1)
+  want hold, and(found/crashed, is-equal(shown(found), <7,13,42 | 469 | 4 | 3>))
+
+test <blind random, with the guided run's 469 executions, never reaches it: coverage is what found it>
+  want hold, not(blind-random-finds(3, 469, 2))
+
+test <property fuzzing finds the clamp's escape>
+  host none, make list
+  host found, fuzz(buggy-clamp, 1, none, 50000, 3)
+  want hold, and(found/crashed, is-equal(shown(found), <4096 | 2 | 3 | 1>))
+
+test <the value profile climbs to a magic constant edge coverage cannot see>
+  host none, make list
+  host found, fuzz(magic, 1, none, 200000, 5)
+  want hold, and(found/crashed, is-equal(shown(found), <51966 | 6149 | 15 | 14>))
+
+test <matching high bits: equal operands match all 32, and the count falls as they differ higher up>
+  want hold, and(and(is-equal(matching-bits(51966, 51966), 32), is-equal(matching-bits(0, 1), 31)), is-equal(matching-bits(0, -1), 0))

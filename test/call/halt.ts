@@ -95,5 +95,33 @@ try {
   b.child.kill()
 }
 
+// ---- bare `halt` stops the project's `term feed` too ----
+// a feed runs no `run.mjs`, so only `-p` stopped one (guides: commands/halt, commands/feed, 2026-10-05)
+{
+  const dir = mkdtempSync(join(tmpdir(), 'term-halt-feed-'))
+  mkdirSync(join(dir, 'code'))
+  writeFileSync(join(dir, 'deck.tree'), 'deck halt-feed\n  mark <0.0.1>\n  boot ./code/boot\n')
+  writeFileSync(join(dir, 'code/boot.tree'), 'load @term/base/console\n  find log\n\ntask boot\n  mark async\n  log <fed>\n')
+  const feed = spawn('node', [LINE, 'feed', '-p', '4983'], { cwd: dir, env: { ...process.env, NO_COLOR: '1' } })
+  let log = ''
+  feed.stdout!.on('data', chunk => (log += String(chunk)))
+  feed.stderr!.on('data', chunk => (log += String(chunk)))
+  const exited = new Promise<number | null>(done => feed.once('exit', code => done(code)))
+  const started = Date.now()
+
+  while (!/✓ start/.test(log) && Date.now() - started < 60_000 && feed.exitCode === null) {
+    await new Promise(done => setTimeout(done, 100))
+  }
+
+  try {
+    const halted = spawnSync('node', [LINE, 'halt'], { cwd: dir, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' } })
+    const said = `${halted.stdout}${halted.stderr}`
+    ok('bare `term halt` in a project stops its `term feed`, naming it', halted.status === 0 && /term feed/.test(said), said)
+    ok('and the feed ends', (await within(exited, 15_000)) !== 'timeout', log.slice(-400))
+  } finally {
+    feed.kill()
+  }
+}
+
 console.log(`\nhalt: ${pass} pass, ${fail} fail`)
 process.exit(fail ? 1 : 0)

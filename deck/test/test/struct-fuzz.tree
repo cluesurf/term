@@ -1,0 +1,92 @@
+note <structure-aware fuzzing: a list bug needing shape and content, and a record bug between two fields>
+
+# Ported from deck/test/code/demo-fuzz-struct.ts (self-hosting, 2026-10-05). Every crash and count is the TypeScript
+# fuzzer's own (tmp/self-host-probes/struct-fuzz-values.ts).
+
+load ../code/struct-fuzz
+  find struct-fuzz-result
+  find fuzz-struct
+
+load ../code/property-check
+  find shape
+  find sample
+  find number-in
+  find values-in
+
+load ../code/coverage-fuzz
+  find coverage-sink
+  find cover-edge
+  find cover-compare
+
+load @term/base/list
+  find list
+
+# a list at least four long holding two equal neighbors
+task list-bug
+  take value, like sample
+  take sink, like coverage-sink
+  like boolean
+
+  host items, values-in(value)
+  cover-edge(sink, 1)
+  fork test, is-minimum(items/length, 4)
+    hold
+      cover-edge(sink, 2)
+      save at, 1
+      walk test
+        hook test, is-below(at, items/length)
+        hook hold
+          fork test, is-equal(number-in(get(items, at)), number-in(get(items, subtract(at, 1))))
+            hold
+              cover-edge(sink, 3)
+              back true
+          save at, add(at, 1)
+
+  back false
+
+# a count over its limit by more than 50, the limit above zero
+task record-bug
+  take value, like sample
+  take sink, like coverage-sink
+  like boolean
+
+  host values, values-in(value)
+  host count, number-in(get(values, 0))
+  host limit, number-in(get(values, 1))
+  cover-compare(sink, count, limit)
+  cover-compare(sink, limit, 0)
+
+  back and(and(is-above(limit, 0), is-above(count, limit)), is-above(subtract(count, limit), 50))
+
+task int-shape
+  like shape
+
+  back make int
+
+task shown
+  take value, like sample
+  like text
+
+  host parts, make list
+  walk values-in(value)
+    take each
+    parts/push(<{number-in(each)}>)
+
+  back join(parts, <,>)
+
+test <the list bug: a long list with equal neighbors, in five runs>
+  host kind
+    make list
+      bind item, int-shape()
+  host found, fuzz-struct(list-bug, kind, 100000, 1)
+  want hold, and(found/crashed, is-equal(<{shown(found/crash)} | {found/execs} | {found/edges-found} | {found/corpus-size}>, <0,4,-2,-2 | 5 | 3 | 4>))
+
+test <the record bug: count 128 over a limit of 2, in 33 runs>
+  host names, make list(<count>, <limit>)
+  host types, make list(int-shape(), int-shape())
+  host kind
+    make record
+      bind names, names
+      bind types, types
+  host found, fuzz-struct(record-bug, kind, 100000, 2)
+  want hold, and(found/crashed, is-equal(<{shown(found/crash)} | {found/execs} | {found/edges-found} | {found/corpus-size}>, <128,2 | 33 | 16 | 13>))
