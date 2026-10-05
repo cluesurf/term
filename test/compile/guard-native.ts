@@ -262,7 +262,7 @@ function runSwift(): void {
   const program = frontEnd('swift')
   const source = `${nativePrelude(program, 'swift', readRuntime)}\n${emitSwift(program)}`
   const main = join(dir, 'main.swift')
-  writeFileSync(main, `${source}\nprint(lookup("a"))\nprint(lookup("b"))\nprint(describe("zed"))\nprint(checked("q"))\nprint(translated("zed"))\nif CommandLine.arguments.count > 1 { print(try! unguarded("z")) }\n`)
+  writeFileSync(main, `${source}\nprint(lookup(key: "a"))\nprint(lookup(key: "b"))\nprint(describe(key: "zed"))\nprint(checked(key: "q"))\nprint(translated(key: "zed"))\nif CommandLine.arguments.count > 1 { print(try! unguarded(key: "z")) }\n`)
 
   try {
     execFileSync('swiftc', ['-o', join(dir, 'swift-main'), main], { stdio: 'pipe' })
