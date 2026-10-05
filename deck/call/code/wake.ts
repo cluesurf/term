@@ -25,43 +25,9 @@
 import fsp from 'fs/promises'
 import path from 'path'
 import { closeRun, count, field, openRun, report, showPath } from '@term/call/code/output'
+import { BOOT_TREE, DECK_TREE, GITIGNORE, README } from '@term/call/code/wake-text'
 
-// exported so deck/deck/test/scaffold.test.ts can hold the text itself against the formatter and the manifest rules
-export const DECK_TREE = (project: string): string => `deck ${project}
-  mark <0.0.1>
-  test ./test
-  boot ./code/boot
-`
-
-export const BOOT_TREE = `# The application entry point. \`term boot\` compiles and runs
-# this module's \`boot\` task.
-load @term/base/console
-  find log
-
-task boot
-  mark async
-  log <hello from term>
-`
-
-const README = (project: string): string => `# ${project}
-
-A Term project.
-
-## Develop
-
-\`\`\`
-term boot     # compile and run
-term feed     # dev server with hot reload
-term test     # run tests
-term make     # build
-\`\`\`
-`
-
-const GITIGNORE = `host
-link
-.base/
-node_modules
-`
+// the text of every file it writes: wake-text.ts, which imports nothing, so the scaffold's own test can read it
 
 export async function callWake(input: {
   root: string

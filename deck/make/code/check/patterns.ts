@@ -79,7 +79,7 @@ export function checkPatterns(program: Program, file: string): { errors: Diagnos
             diagnose('pattern-backtracks', {
               file,
               span: literal.span,
-              message: `\`${shown}\` needs a backtracking matcher, because of ${reading.backtracks}: where the platform's engine cannot run it safely (Rust always) it runs on tier C, whose work is bounded by the step budget, not by its input, and raises \`pattern-budget\` past it`,
+              message: `\`${shown}\` needs a backtracking matcher, because of ${reading.backtracks}: where the platform's engine cannot run it safely (Rust always) it runs on tier C, which allows 64 steps per instruction per code point of the input and raises \`pattern-budget\` past that`,
             }),
           )
         }

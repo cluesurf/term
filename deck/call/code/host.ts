@@ -18,6 +18,7 @@ import {
 } from '@cluesurf/deck.tree'
 import type { DeckManifest, Keypair, OciRoute } from '@cluesurf/deck.tree'
 
+import { execFileSync } from 'child_process'
 import { existsSync } from 'fs'
 import nodePath from 'path'
 
@@ -39,8 +40,10 @@ export async function callHost(input: {
   // a public key to add to, or remove from, the scope's key set
   trust?: string
   untrust?: string
+  // announce the already-published version to the package index, and build and push nothing
+  ping?: boolean
 }): Promise<void> {
-  openRun({ verb: 'host', root: input.root, facts: input.dryRun ? ['--dry'] : [] })
+  openRun({ verb: 'host', root: input.root, facts: input.dryRun ? ['--dry'] : input.ping ? ['--ping'] : [] })
 
   try {
     const manifest = await loadManifest({ dir: input.root })
@@ -98,6 +101,36 @@ export async function callHost(input: {
       return
     }
 
+    // `--ping`: announce the version the registry already holds, and build and push nothing. For a ping that failed
+    // after its push landed (a package still private, the index down): a rebuild cannot repeat the push, because a
+    // build carries its own time, so it is a new digest under a write-once tag and is refused
+    if (input.ping) {
+      const keypair = await loadPublishKeypair({ mint: false })
+      const held = await transportFor({ host: route.registry.host }).getManifest({ repository: route.repository.name, reference: version })
+
+      if (!held) {
+        report({ glyph: 'failed', kind: 'problem', verb: 'ping', subject: `${name}@${version} is not published at ${route.registry.host}/${route.repository.name}` })
+        closeRun({ verdict: 'Nothing was announced', next: 'term host', failure: 'usage' })
+
+        return
+      }
+
+      if (!keypair) {
+        report({ glyph: 'failed', kind: 'problem', verb: 'ping', subject: 'There is no signing key on this machine, so it cannot claim the version' })
+        closeRun({ verdict: 'Nothing was announced', failure: 'environment' })
+
+        return
+      }
+
+      report({ glyph: 'info', verb: 'read', subject: `${name}@${version}`, fields: [field('digest', held.digest)] })
+
+      const sent = await announce({ route, digest: held.digest, keypair })
+
+      closeRun({ verdict: sent ? `Announced ${name}@${version}` : 'The index did not take it', failure: sent ? undefined : 'environment' })
+
+      return
+    }
+
     // A package with a `line` console ships it BUILT, so an installed copy runs with `node` alone and needs no Term
     // CLI beside it. That is `term boot <line>/base.tree --out host/line`, the one generated directory a publish
     // carries (note/term/plan/split-base-zone-and-rename-seed.md, step 4).
@@ -122,8 +155,13 @@ export async function callHost(input: {
     }))
     const annotations: Record<string, string> = {}
 
-    if (manifest.site?.startsWith('https://')) {
-      annotations['org.opencontainers.image.source'] = manifest.site
+    // the package's source repository. GHCR reads this annotation to LINK the package to that repository (its readme,
+    // its contributors, and the repository's access), which otherwise is a click on every new package. `site` in
+    // deck.tree wins; without one, the git remote the package directory pushes to
+    const source = manifest.site?.startsWith('https://') ? manifest.site : gitSource(input.root)
+
+    if (source) {
+      annotations['org.opencontainers.image.source'] = source
     }
 
     if (manifest.lock) {
@@ -209,6 +247,9 @@ export async function callHost(input: {
 
     if (result.unchanged) {
       report({ glyph: 'skipped', verb: 'push', subject: `${name}@${version}`, duration: Date.now() - started, facts: ['already published'], fields: [field('digest', result.digest)] })
+      // the index may still lack it: the first ping can fail (a private package) after the push landed, and this is
+      // the run that follows the fix
+      await announce({ route, digest: result.digest, keypair })
       closeRun({ verdict: 'Already published, nothing moved' })
 
       return
@@ -224,25 +265,31 @@ export async function callHost(input: {
       fields: [field('manifest', `${result.manifestSize} B`), field('signed', result.referrer)],
     })
 
-    // a hint to the package index; its crawl finds what a lost ping misses, so this never fails a publish. A
-    // term.surf token, when there is one, credits the version to its account
-    const token = await readIndexToken()
-    const ping = await pingIndex({ repository: route.repository, digest: result.digest, token, keypair })
-
-    report(
-      ping.form === 'sent'
-        ? {
-            glyph: 'done',
-            verb: 'ping',
-            subject: 'package index',
-            facts: [ping.outcome, ping.publisher ? `credited to account ${ping.publisher}` : token ? '' : 'anonymous, no term.surf token'].filter(Boolean),
-          }
-        : { glyph: 'warning', verb: 'ping', subject: 'package index', facts: [ping.form], message: [sentence(ping.reason)] },
-    )
+    await announce({ route, digest: result.digest, keypair })
     closeRun({ verdict: `Published ${name}@${version}` })
   } catch (err) {
     failRun(err, input.root)
   }
+}
+
+// A hint to the package index; its crawl finds what a lost ping misses, so this never fails a publish. A term.surf
+// token, when there is one, credits the version to its account. Reports the outcome and returns whether it was sent
+async function announce(input: { route: OciRoute; digest: string; keypair: Keypair }): Promise<boolean> {
+  const token = await readIndexToken()
+  const ping = await pingIndex({ repository: input.route.repository, digest: input.digest, token, keypair: input.keypair })
+
+  report(
+    ping.form === 'sent'
+      ? {
+          glyph: 'done',
+          verb: 'ping',
+          subject: 'package index',
+          facts: [ping.outcome, ping.publisher ? `credited to account ${ping.publisher}` : token ? '' : 'anonymous, no term.surf token'].filter(Boolean),
+        }
+      : { glyph: 'warning', verb: 'ping', subject: 'package index', facts: [ping.form], message: [sentence(ping.reason)] },
+  )
+
+  return ping.form === 'sent'
 }
 
 // a message from a library as a sentence: capital first, no trailing period (section 7)
@@ -289,6 +336,30 @@ function routeOf(input: { name: string; registry?: string; manifest: DeckManifes
   }
 
   return route
+}
+
+// `git@github.com:owner/repo.git`, `ssh://git@github.com/owner/repo`, and the https spellings
+const SCP_REMOTE = /^[^@/]+@([^:/]+):(.+?)(?:\.git)?\/?$/
+const URL_REMOTE = /^(?:ssh|https?|git):\/\/(?:[^@/]+@)?([^/:]+)(?::\d+)?\/(.+?)(?:\.git)?\/?$/
+
+// The https address of the repository this package directory pushes to (`remote.origin.url`), or undefined when it is
+// not in a git repository or has no origin. Credentials in an https remote (`https://x-access-token:...@github.com/`)
+// are dropped, because this is written into a public manifest, and only the host and the path are kept.
+export function gitSource(dir: string): string | undefined {
+  let remote: string
+
+  try {
+    remote = execFileSync('git', ['-C', dir, 'config', '--get', 'remote.origin.url'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim()
+  } catch {
+    return undefined
+  }
+
+  const found = SCP_REMOTE.exec(remote) ?? URL_REMOTE.exec(remote)
+
+  return found ? `https://${found[1]}/${found[2]}` : undefined
 }
 
 // an error a person can act on, not a bug in Term: `expected` keeps failRun from reporting it as a crash (exit 70)

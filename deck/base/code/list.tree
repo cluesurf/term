@@ -17,6 +17,7 @@ load @term/base/ordering
   find ordering
   find is-greater
   find is-less
+  find from-numbers
 
 form list
   # List: the stdlib source of truth for the list type. The compiler uses the native array representation, so a list value is built with `make list`. Each method delegates to the native array operation.
@@ -760,6 +761,61 @@ task sort
           save width, read doubled
           turn next
   send back, read source
+
+# orders two keyed items by their keys, for `sort-by`
+task by-first-key
+  head t
+  mark private
+  take left
+    like pair
+      head number
+      head t
+  take right
+    like pair
+      head number
+      head t
+  like ordering
+  send back
+    call from-numbers
+      read left/first
+      read right/first
+
+# a new list in the order of the number `key` gives each item, STABLE like `sort`, which it is. `key` runs once per
+# item, not once per comparison. The input is left as it was
+task sort-by
+  head t
+  take items
+    like list
+      like t
+  take key
+    like task
+      take item, like t
+      like number
+  like list
+    like t
+  save keyed
+    make list
+  walk list, read items
+    hook next
+      take site, name item
+      call keyed/push
+        make pair
+          bind first
+            call key
+              read item
+          bind second, read item
+  save sorted
+    call sort
+      read keyed
+      read by-first-key
+  save out
+    make list
+  walk list, read sorted
+    hook next
+      take site, name entry
+      call out/push
+        read entry/second
+  send back, read out
 
 # pairs of the items at the same position, as long as the shorter list
 task zip

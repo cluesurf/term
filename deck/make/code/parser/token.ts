@@ -64,8 +64,12 @@ const INTERPOLATION_MATCHERS: TokenKind[] = [
   TokenKind.OpenBrace,
   TokenKind.OpenParen,
   TokenKind.OpenAngle,
-  TokenKind.Name,
+  // Integer before Name, as on a line: the Name pattern takes digits too, so with Name first a number inside braces
+  // was a name, and `<sum {add-two(2, 3)}>` failed with `the name "2" is not defined` (guides: language/syntax,
+  // values, collections, 2026-10-04). A word that starts with a letter is still a Name, the Integer pattern failing
+  // on its first character
   TokenKind.Integer,
+  TokenKind.Name,
   TokenKind.Space,
 ]
 

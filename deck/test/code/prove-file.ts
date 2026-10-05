@@ -35,9 +35,16 @@ export type Report = {
 }
 
 /** Check one file: compile, collect gaps, run the cross-backend differential. */
-export function proveFile(input: { file: string; resolve: Resolve; cross: boolean }): Report {
+export function proveFile(input: {
+  file: string
+  resolve: Resolve
+  cross: boolean
+  // the text the build compiles for this file, when that is not the file as written: a test file with its `test`
+  // blocks rewritten. The caller owns that rule (`buildable` in @term/call), which this package cannot import
+  text?: string
+}): Report {
   const { file, resolve, cross } = input
-  const source = readFileSync(file, 'utf8')
+  const source = input.text ?? readFileSync(file, 'utf8')
 
   const compiled = compile({ file, text: source }, { resolve })
   // diagnostics live on the failure branch; warnings on success. Both surface as gaps.
@@ -53,7 +60,9 @@ export function proveFile(input: { file: string; resolve: Resolve; cross: boolea
   }
 
   const backendsOk = Object.values(backends).every(Boolean)
-  const ok = compiled.ok && gaps.length === 0 && backendsOk
+  // a warning is reported and does not fail the file: an unused `save` failed it as `The backends disagree`, which
+  // no backend had (guides: tests/backends, 2026-10-04)
+  const ok = compiled.ok && gaps.every(gap => gap.severity === 'warning') && backendsOk
 
   return { file, compiles: compiled.ok, gaps, backends, ok }
 }

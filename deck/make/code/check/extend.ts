@@ -377,6 +377,38 @@ export function extendForms(
     return linked ? linked[1]! : '@local'
   }
 
+  // a construction of a VARIANT given a bare value: `make full, <apples>` for `case full, like text`. A one-value case
+  // has one field, `value`, so the one value is it. It reached the kernel instead, which refused it as `expected box,
+  // found (many String) -> box`, naming nothing a reader wrote (guides: language/forms, 2026-10-04). A variant with
+  // more fields, or more values, is refused naming its fields
+  const fillVariant = (s: Statement, node: Extract<Expression, { form: 'record' }>): void => {
+    if (!node.positional?.length) {
+      return
+    }
+
+    const variant = [...types.values()].flatMap(rt => rt.variants).find(v => v.name === node.name)
+
+    if (!variant) {
+      return
+    }
+
+    const open = variant.fields.filter(f => !node.fields.some(given => given.name === f.name))
+
+    if (open.length === 1 && node.positional.length === 1) {
+      node.fields.push({ name: open[0]!.name, value: node.positional[0]! })
+    } else {
+      error(
+        s,
+        node.span,
+        variant.fields.length === 0
+          ? `"${variant.name}" holds no value, and this gives ${node.positional.length}`
+          : `"${variant.name}" takes its fields by name (${variant.fields.map(f => `\`bind ${f.name}\``).join(', ')}), and this gives ${node.positional.length} by position`,
+      )
+    }
+
+    delete node.positional
+  }
+
   // fill a construction: positional values go to the form's `slot` fields in order, omitted fields take their
   // `fall`, a given pinned field is refused and the pins are added. Only the pins that name a field of the form
   // itself; a pin on a prop lives in the props record and is filled by a raise.
@@ -387,6 +419,8 @@ export function extendForms(
     const rt = types.get(node.name)
 
     if (!rt) {
+      fillVariant(s, node)
+
       return
     }
 

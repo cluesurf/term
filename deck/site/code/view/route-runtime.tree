@@ -7,6 +7,7 @@
 #   host                the env's own: the browser mounts and follows its address, the server renders each request,
 #                       a toolkit opens a window (view/native/{platform}/host)
 #   set-title, set-meta, set-proxy      the page (dom/page)
+#   set-status                          the page, 404 for a path no hook matches
 #   route-matches, route-param          the navigation contract, for a path with `:name` segments
 #
 # Re-exported with `bear`, so the lowering's names resolve in the module that holds the routes.

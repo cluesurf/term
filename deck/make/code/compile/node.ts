@@ -93,6 +93,9 @@ export type Expression =
       span: Span
       type?: Type
       binding?: Binding
+      // the alias the reference was written as (`find to-number, name decimal-to-number` -> `decimal-to-number`):
+      // `name` is the imported name, and this says it means the IMPORT, never a same-named task of its own file
+      alias?: string
     }
   | {
       form: 'binary'
@@ -128,6 +131,10 @@ export type Expression =
       // the way it always did, so the stdlib's `call push / bind list, ... / bind item, ...` on a receiver method
       // keeps working under lean.
       leanNames?: boolean[]
+      // aligned with `names`: the IMPORTED name where a lean label is an import alias (`find to-number, name
+      // decimal-to-number`, then `big-of(decimal-to-number(x))`). The label keeps its written name, since it may still
+      // be a parameter of the callee. Where it is not, it is the nested call of this name (check/lean-nest.ts)
+      leanAliases?: (string | undefined)[]
       // `wait false`: a fire-and-forget call. It is made but never awaited, even when the callee is async, and it does
       // not make the caller async. Async resolution skips it; without this flag an async call is awaited by default.
       background?: boolean

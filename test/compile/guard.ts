@@ -84,7 +84,7 @@ async function main(): Promise<void> {
 
   const ts = result.ok ? result.typescript : ''
   ok('it lowers to try', ts.includes('try {'))
-  ok('the handler binds the caught value', ts.includes('catch (problem)'))
+  ok('the handler binds the caught value', ts.includes('catch (problem: any)'))
   ok('the handler reads the caught note', ts.includes('problem.note'))
 
   if (result.ok) {

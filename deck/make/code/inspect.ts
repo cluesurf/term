@@ -31,8 +31,15 @@ export type TaskSymbol = {
 export type Symbol = FormSymbol | TaskSymbol
 
 export type Inspection = {
+  // every definition in the module's load closure
   symbols: Symbol[]
+  // what the module OFFERS: its own definitions that are not `mark private`, and those of every module it passes on
+  // with `bear`, transitively. `term look` printed the closure, so a file that loaded @term/base/exception listed
+  // 23 forms and 154 tasks with its own five at the bottom (guides: commands/look, 2026-10-04)
+  offered: Symbol[]
   modules: number
+  // how many modules `offered` is drawn from: the entry and its `bear` chain
+  offeredModules: number
   loadDiagnostics: number
 }
 
@@ -52,8 +59,22 @@ export function inspectModule(
   // the file's deck, the way the CLI and the roll name it (`projectDeckOf`); without it the path's package segment
   deckOf?: (file: string) => { name: string; root: string } | undefined,
 ): Inspection {
-  const { sources, diagnostics } = collectModules(entry, resolve)
+  const { sources, diagnostics, scope } = collectModules(entry, resolve)
   const symbols: Symbol[] = []
+  const offered: Symbol[] = []
+
+  // the entry and every module reached from it through `bear` alone
+  const passedOn = new Set<string>([entry.file])
+  const queue = [entry.file]
+
+  while (queue.length > 0) {
+    for (const next of scope.get(queue.pop()!)?.bears ?? []) {
+      if (!passedOn.has(next)) {
+        passedOn.add(next)
+        queue.push(next)
+      }
+    }
+  }
 
   for (const source of sources) {
     const parsed = parse(source)
@@ -71,7 +92,11 @@ export function inspectModule(
     const module = moduleLabel(source.file)
     const deck = deckOf?.(source.file)?.name ?? deckFromPath(source.file)
 
+    const offers = passedOn.has(source.file)
+
     for (const statement of milled.program) {
+      const before = symbols.length
+
       if (statement.form === 'record-type') {
         symbols.push({
           kind: 'form',
@@ -99,12 +124,20 @@ export function inspectModule(
             : 'unit',
         })
       }
+
+      const isPrivate = statement.form === 'function' && statement.private === true
+
+      if (offers && symbols.length > before && !isPrivate) {
+        offered.push(symbols[symbols.length - 1]!)
+      }
     }
   }
 
   return {
     symbols,
+    offered,
     modules: sources.length,
+    offeredModules: sources.filter(source => passedOn.has(source.file)).length,
     loadDiagnostics: diagnostics.length,
   }
 }

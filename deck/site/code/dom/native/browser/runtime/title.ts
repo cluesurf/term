@@ -38,21 +38,8 @@ export const title = {
   setProxy(): void {},
 }
 
-// The lowered route dispatcher calls `setTitle` / `setMeta` / `setProxy` at the top level (from a route's `seed title`
-// / `seed description` / proxy directives), as BARE globals -- not through the dom's `set-title` task. On the server the
-// node `html` runtime provides these free functions (draining into the SSR <head>); the browser needs the same free
-// functions so the client bundle can hydrate. This prelude is concatenated in front of the compiled route code, so
-// these top-level helpers are in scope for the route's bare calls, and the bundler retains them because the route
-// references them. They delegate to the `title` namespace above so all browser DOM detail stays in one place, matching
-// how the node `html` runtime exposes `setTitle` / `setMeta` / `setProxy`.
-function setTitle(text: string): void {
-  title.set(text)
-}
-
-function setMeta(name: string, content: string): void {
-  title.setMeta(name, content)
-}
-
-function setProxy(): void {
-  title.setProxy()
-}
+// The lowered route dispatcher reaches these through the page's `set-title` / `set-meta` / `set-proxy` tasks
+// (compile/route-lower.ts), which the route runtime loads, so the program defines `setTitle` itself. This file once also
+// declared bare `setTitle` / `setMeta` / `setProxy` for an older lowering, and a route with a `seed title` then built
+// a client bundle with two `setTitle`s, which esbuild refused: every titled page was served with no client (guides:
+// applications/web/routes, 2026-10-04).

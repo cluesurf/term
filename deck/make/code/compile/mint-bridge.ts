@@ -406,12 +406,15 @@ function textExpression(
       continue
     }
 
-    // `{{e/form}}` reads a path, `{{x}}` a name, and anything else is the expression the braces hold
+    // what the braces hold is read THROUGH THE GRAMMAR, the way the same words read on a line, so `{n/text()}` is
+    // the method call there too. A single word holding a `/` was read as a bare path here first, and a method's
+    // call was dropped in silence: `${n.text}`, "value undefined" (test/compile/interpolated-call.ts, 2026-10-04).
+    // The parser keeps no `()`, so only the grammar's own reading can tell a field from a method. The path is the
+    // fallback for a group the grammar does not read
     const head = headWord(part.group)
     const inner =
-      head !== undefined && head.includes('/') && part.group.nodes.length === 1
-        ? readPath(head, span)
-        : expressionFromNode(bridge, part.group, span)
+      expressionFromNode(bridge, part.group, span) ??
+      (head !== undefined && head.includes('/') && part.group.nodes.length === 1 ? readPath(head, span) : undefined)
 
     if (inner) {
       parts.push(inner)
@@ -1119,6 +1122,25 @@ function recordOf(bridge: Bridge, value: Form): Expression | undefined {
   } else {
     for (const seed of at(value, 'seed')) {
       const built = expressionOf(bridge, seed)
+
+      if (built) {
+        positional.push(built)
+      }
+    }
+  }
+
+  // values written UNDER the name: `make some(x)`, and `make some x`, which parses the same, since a space nests as a
+  // parenthesis does. The grammar reads a construction's values beside its name (`make some, x`), so these were
+  // dropped without a word: `make some(error)` built `{ form: "some", value: undefined }` on TypeScript, and a local
+  // one-field case reached the kernel as an unapplied constructor (`expected maybe-number, found (many x1 : Number) ->
+  // maybe-number`). Found by the time/compare port (self-hosting, 2026-10-04). Each is a positional value, filled
+  // into the form's slots or a one-field case's field as a value beside the name is
+  const named = value.node?.kind === 'group' ? value.node.nodes[1] : undefined
+
+  if (named?.kind === 'group' && positional.length === 0) {
+    for (const child of named.nodes.slice(1)) {
+      // a literal (`80`, `<a>`) is mined as the bare node, which the `seed` rule reads as a literal at the root
+      const built = expressionFromNode(bridge, child as GroupNode, spanOf(value))
 
       if (built) {
         positional.push(built)
@@ -1885,6 +1907,10 @@ function foldBuiltin(
       right: { form: 'integer', value: 1, span },
       span,
     }
+  }
+
+  if (name === 'not' && args.length === 1) {
+    return { form: 'unary', op: '!', operand: args[0]!, span }
   }
 
   return undefined
@@ -4815,11 +4841,19 @@ function applyAliases(
 
     const record = node as Record<string, unknown>
 
-    if (
-      (record.form === 'variable' || record.form === 'record') &&
-      typeof record.name === 'string'
-    ) {
+    if (record.form === 'variable' && typeof record.name === 'string' && aliases.has(record.name)) {
+      // kept, so binding sends it to the import even where the file defines the imported name itself
+      record.alias = record.name
+      record.name = aliases.get(record.name)!
+    } else if (record.form === 'record' && typeof record.name === 'string') {
       record.name = aliases.get(record.name) ?? record.name
+    } else if (record.form === 'call' && record.lean && Array.isArray(record.names)) {
+      // a lean label that is an alias may be a nested call of the import: noted beside the label, left as written
+      const names = record.names as (string | undefined)[]
+
+      if (names.some(name => name !== undefined && aliases.has(name))) {
+        record.leanAliases = names.map(name => (name === undefined ? undefined : aliases.get(name)))
+      }
     } else if (
       record.kind === 'named' &&
       typeof record.name === 'string'

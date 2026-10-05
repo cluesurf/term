@@ -1,0 +1,164 @@
+# Lowering the pure fragment to the interaction net: a lambda-calculus fragment (variable / abstraction / application)
+# compiled to interaction combinators, so the language's pure functions run on the substrate. A `lam` and an `app`
+# are both `con` nodes; application meeting abstraction at their principal ports annihilates, which IS beta
+# reduction. Free variables and the result form the inert boundary (the net's interface).
+#
+# This lowers the LINEAR fragment (each bound variable used exactly once), where the binder wires straight to its
+# single use. Sharing (`dup` for a variable used many times), weakening (`era` for an unused binder), and the
+# self-loop of the bare identity all need the extra wiring described in plans/06-runtime-substrate.md; they are the
+# next layer. Pure and browser-safe.
+#
+# Ported from ir/lower-net.ts (self-hosting, 2026-10-04) with ir/net. The term is a union tagged on `t`, as the
+# original declared it, named `lambda-term` because `term` is the language's own name. The recursive `build`, which
+# wrote into a net and a table its closure shared, threads both through and back (D1), creating every node in the
+# original's order, so each id is the one TypeScript gave. `lowered` carries the net as `graph`, as ir/net's results do.
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+load ./net
+  find net
+  find port
+  find make-net
+  find make-port
+  find add-node
+  find wire-ports
+  find mark-boundary
+  find is-boundary
+  find list-node-ids
+
+form lambda-term
+  mark tag, name t
+  case var
+    link name, like text
+  case lam
+    link param, like text
+    link body, like lambda-term
+  case app
+    link fn, like lambda-term
+    link arg, like lambda-term
+
+# a lowered term: the net, the port its result is wired to, and the port of each free variable
+form lowered
+  link graph, like net
+  link root, like port
+  link free
+    like hash, like text
+      like port
+
+# how far a lowering has got: the net and the free variables so far, and the port the last piece answered
+form lowering
+  link graph, like net
+  link free
+    like hash, like text
+      like port
+  link at, like port
+
+# the port of free variable `name`: its eraser on the boundary, made the first time the name is met
+task pin-free
+  take graph, like net
+  take free
+    like hash, like text
+      like port
+  take name, like text
+  like lowering
+
+  fork test, has(free, name)
+    hold
+      back
+        make lowering
+          bind graph, graph
+          bind free, free
+          bind at, get-or-default(free, name, make-port(-1, -1))
+  host added, add-node(graph, <era>)
+  host p, make-port(added/id, 0)
+  host table, free
+  set(table, name, p)
+  back
+    make lowering
+      bind graph, mark-boundary(added/graph, added/id)
+      bind free, table
+      bind at, p
+
+task build-net
+  take graph, like net
+  take free
+    like hash, like text
+      like port
+  take node, like lambda-term
+  take scope
+    like hash, like text
+      like port
+  like lowering
+
+  sift node
+    # a bound variable wires straight to its binder; else free
+    case var
+      fork test, has(scope, name)
+        hold
+          back
+            make lowering
+              bind graph, graph
+              bind free, free
+              bind at, get-or-default(scope, name, make-port(-1, -1))
+      back pin-free(graph, free, name)
+    # slot 0 the function value, slot 1 the binder, slot 2 the body
+    case lam
+      host added, add-node(graph, <con>)
+      host con, added/id
+      save inner, make hash
+      walk keys(scope)
+        take key
+        set(inner, key, get-or-default(scope, key, make-port(-1, -1)))
+      set(inner, param, make-port(con, 1))
+      host inside, build-net(added/graph, free, body, inner)
+      back
+        make lowering
+          bind graph, wire-ports(inside/graph, make-port(con, 2), inside/at)
+          bind free, inside/free
+          bind at, make-port(con, 0)
+    # slot 0 the function, slot 1 the argument, slot 2 the result
+    case app
+      host added, add-node(graph, <con>)
+      host con, added/id
+      host left, build-net(added/graph, free, fn, scope)
+      host wired, wire-ports(left/graph, make-port(con, 0), left/at)
+      host right, build-net(wired, left/free, arg, scope)
+      back
+        make lowering
+          bind graph, wire-ports(right/graph, make-port(con, 1), right/at)
+          bind free, right/free
+          bind at, make-port(con, 2)
+
+task lower
+  take term, like lambda-term
+  like lowered
+
+  # saved first: a multi-word part (`make hash`) cannot be followed by a comma
+  save free, make hash
+  save scope, make hash
+  host built, build-net(make-net(), free, term, scope)
+  host added, add-node(built/graph, <era>)
+  host root, make-port(added/id, 0)
+  host graph, mark-boundary(added/graph, added/id)
+  back
+    make lowered
+      bind graph, wire-ports(graph, root, built/at)
+      bind root, root
+      bind free, built/free
+
+# the non-boundary (computational) agents in a lowered net
+task agent-count
+  take lowered, like lowered
+  like number
+
+  save n, 0
+  walk list-node-ids(lowered/graph)
+    take id
+    fork test, is-boundary(lowered/graph, id)
+      miss
+        save n, add(n, 1)
+  back n

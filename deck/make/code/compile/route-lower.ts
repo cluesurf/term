@@ -214,7 +214,9 @@ export function lowerRoutes(program: Program, env = 'node'): Program {
       { name: 'host', type: named('view') },
       { name: 'path', type: STRING },
     ],
-    body: [{ form: 'if', branches, span }],
+    // a path no hook matches is a page that is not there: 404, where every unknown path answered 200 with an empty page
+    // until 2026-10-04 (guides: applications/web/routes)
+    body: [{ form: 'if', branches, otherwise: [exprStatement(call('set-status', [{ form: 'integer', value: 404, span }]))], span }],
     generics: [],
     span,
   }

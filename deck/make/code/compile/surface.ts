@@ -86,8 +86,11 @@ export const BINARY_BUILTIN: Record<string, BinaryOp> = {
   or: '||',
 }
 
-// arithmetic the emitter lowers to a UNARY operation: `increment x` becomes `x + 1`.
-export const UNARY_BUILTIN = new Set(['increment', 'decrement'])
+// arithmetic the emitter lowers to a UNARY operation: `increment x` becomes `x + 1`. `not x` is `!x`, a word of the
+// compiler's own like `and` and `or` beside it: it needed `load @term/base/boolean` where they did not, and without
+// one `not(same)` failed as an unknown name whose note suggested `log` (guides: language/operators, 2026-10-04). The
+// stdlib's `boolean/not` gives the same answer
+export const UNARY_BUILTIN = new Set(['increment', 'decrement', 'not'])
 
 // the `halt` arguments that are control flow rather than an exception to raise. An exception form may not take
 // one of these names.

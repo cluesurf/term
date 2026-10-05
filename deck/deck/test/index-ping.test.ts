@@ -14,9 +14,18 @@ const NOW = new Date('2026-10-02T12:00:00.000Z')
 
 type Seen = { url: string; headers: Record<string, string>; body: Record<string, string> }
 
-function fakeIndex(answer: { status: number; body?: unknown }): { fetch: typeof fetch; seen: Seen[] } {
+// `ghcr` is what GHCR answers an anonymous pull-token request, per repository: 200 for a public package (the default
+// for any repository not named), 401 for a private one
+function fakeIndex(answer: { status: number; body?: unknown; ghcr?: Record<string, number> }): { fetch: typeof fetch; seen: Seen[] } {
   const seen: Seen[] = []
   const fake = (async (url: string, init: RequestInit) => {
+    if (url.startsWith('https://ghcr.io/token')) {
+      const scope = new URL(url).searchParams.get('scope') ?? ''
+      const name = scope.replace(/^repository:/, '').replace(/:pull$/, '')
+
+      return new Response('{}', { status: answer.ghcr?.[name] ?? 200 })
+    }
+
     seen.push({
       url,
       headers: init.headers as Record<string, string>,
@@ -75,6 +84,52 @@ describe('pingIndex', () => {
 
     expect(ping.form).toBe('failed')
     expect((ping as { reason: string }).reason).toContain('term.surf/settings/tokens')
+  })
+
+  it('says why the index refused, in the index own words', async () => {
+    const index = fakeIndex({
+      status: 400,
+      body: {
+        form: 'defect',
+        note: 'The named thing failed validation',
+        link: { thing: 'package', field: 'reference', value: '401', expected: 'an anonymous pull token, which a public package grants' },
+      },
+    })
+    const ping = await pingIndex({ repository: REPOSITORY, digest: DIGEST, env: {}, fetch: index.fetch })
+
+    expect(ping).toEqual({
+      form: 'failed',
+      reason: '400 from https://tool.term.surf: the reference needs an anonymous pull token, which a public package grants',
+    })
+
+    const bare = fakeIndex({ status: 502 })
+
+    expect(await pingIndex({ repository: REPOSITORY, digest: DIGEST, env: {}, fetch: bare.fetch })).toEqual({
+      form: 'failed',
+      reason: '502 from https://tool.term.surf',
+    })
+  })
+
+  it('names the settings page, and never asks the index, while the GHCR package is private', async () => {
+    const index = fakeIndex({ status: 200, ghcr: { 'cluesurf/term/bind': 401 } })
+    const ping = await pingIndex({ repository: REPOSITORY, digest: DIGEST, env: {}, fetch: index.fetch })
+
+    expect(ping.form).toBe('failed')
+    expect((ping as { reason: string }).reason).toContain(
+      'https://github.com/orgs/cluesurf/packages/container/term%2Fbind/settings',
+    )
+    expect(index.seen).toHaveLength(0)
+  })
+
+  it('names the key set too, the second package the index reads, when only it is private', async () => {
+    const index = fakeIndex({ status: 200, ghcr: { 'cluesurf/term/keys': 401 } })
+    const ping = await pingIndex({ repository: REPOSITORY, digest: DIGEST, env: {}, fetch: index.fetch })
+    const reason = (ping as { reason: string }).reason
+
+    expect(ping.form).toBe('failed')
+    expect(reason).toContain('https://github.com/orgs/cluesurf/packages/container/term%2Fkeys/settings')
+    expect(reason).not.toContain('term%2Fbind')
+    expect(index.seen).toHaveLength(0)
   })
 
   it('never sends a token over plain http to anything but loopback', async () => {

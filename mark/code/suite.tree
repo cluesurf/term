@@ -1338,6 +1338,17 @@ task run-suite
                 text <{{one/program}} regressed on {{one/target}} against {{one/baseline}}>
       call log
         text <check: {{checked}} of {{comparisons/length}} comparisons had an earlier session on this machine to compare with, {{fresh}} had none>
+      # a check that compared nothing has checked nothing, and passing it said a regression gate held when no gate
+      # ran (guides: commands/mark, 2026-10-04)
+      fork test
+        hook test
+          call is-equal
+            read checked
+            code 0
+        hook hold
+          call push
+            read failures
+            text <--check compared nothing: no comparison had an earlier session on this machine. Run once without --check to record one>
   # the export
   fork test
     hook test

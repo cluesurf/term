@@ -1,0 +1,95 @@
+# The text table `term time` prints: one row per benchmark, its mean, median, operations per second and coefficient of
+# variation, under a header and a rule.
+#
+# Ported from `formatTable` in time/output.ts (self-hosting, 2026-10-04), which keeps the host half: the suite's stamp
+# (the clock and `process`) and the on-disk JSON. Two decisions:
+#   - operations per second are grouped by thousands with commas, on every backend. The original called
+#     `toLocaleString()`, which groups by the MACHINE's locale, so one benchmark printed `1.234.567` on one laptop and
+#     `1,234,567` on the next. Commas are what `en-US`, the locale every recorded run used, printed
+#   - a percentage is placed with the stdlib's `to-fixed`, as time/stats' durations are: the decimal a number prints as,
+#     rounded half away from zero
+# A name's width is its code points (`char-count`), where `.length` counted UTF-16 units. They differ only past the
+# Basic Multilingual Plane, and a benchmark is named after a task.
+
+load @term/base/float
+  find round-down
+  find is-finite
+
+load @term/base/text
+  find char-count
+  find pad-left
+  find pad-right
+  find starts-with
+  find substring
+
+load @term/base/text/number
+  find to-fixed
+
+load ./stats
+  find benchmark-result
+  find format-duration
+
+# JavaScript's Math.round: the nearest whole value, a half going toward +infinity
+task round-half-up
+  take x, like decimal
+  like decimal
+
+  save floor, round-down(x)
+  fork test, is-minimum(subtract(x, floor), 0.5)
+    hold
+      back add(floor, 1.0)
+  back floor
+
+# a whole number's digits grouped by thousands: `1234567` is `1,234,567`, `-1234` is `-1,234`
+task group-thousands
+  take digits, like text
+  like text
+
+  save sign, <>
+  save rest, digits
+  fork test, starts-with(digits, <->)
+    hold
+      save sign, <->
+      save rest, substring(digits, 1, char-count(digits))
+  save out, <>
+  save count, char-count(rest)
+  save at, count
+  walk test
+    hook test, is-above(at, 3)
+    hook hold
+      save out, <,{substring(rest, subtract(at, 3), at)}{out}>
+      save at, subtract(at, 3)
+  back <{sign}{substring(rest, 0, at)}{out}>
+
+# operations per second, rounded to a whole and grouped. NaN and the infinities are their text
+task show-ops
+  take ops, like decimal
+  like text
+
+  fork test, is-equal(is-finite(ops), false)
+    hold
+      back to-fixed(ops, 0)
+  back group-thousands(to-fixed(round-half-up(ops), 0))
+
+task format-table
+  take results, like list, like benchmark-result
+  like text
+
+  save width, 9
+  walk results
+    take r
+    fork test, is-above(char-count(r/name), width)
+      hold
+        save width, char-count(r/name)
+
+  save lines, make list
+  push(lines, <  {pad-right(<benchmark>, width, < >)}  {pad-left(<mean>, 10, < >)}  {pad-left(<median>, 10, < >)}  {pad-left(<ops/sec>, 14, < >)}  {pad-left(<cv>, 7, < >)}>)
+  push(lines, <  {pad-left(<>, width, <->)}  {pad-left(<>, 10, <->)}  {pad-left(<>, 10, <->)}  {pad-left(<>, 14, <->)}  {pad-left(<>, 7, <->)}>)
+  walk results
+    take r
+    save mean, format-duration(r/mean-ns)
+    save median, format-duration(r/median-ns)
+    save ops, show-ops(r/ops-per-sec)
+    save cv, <{to-fixed(multiply(r/cv, 100.0), 1)}%>
+    push(lines, <  {pad-right(r/name, width, < >)}  {pad-left(mean, 10, < >)}  {pad-left(median, 10, < >)}  {pad-left(ops, 14, < >)}  {pad-left(cv, 7, < >)}>)
+  back join(lines, <\n>)

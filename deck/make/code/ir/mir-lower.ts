@@ -5,7 +5,8 @@
 // a plain value) are fine as long as heap creation and use are captured faithfully.
 //
 // Heap-owned: string / list (array) / map / record (named) / bytes. Copyable: number / float / boolean / unit. Only
-// heap bindings get dup/drop; `perceusControl(params, insts, heap)` consumes the `heap` set this returns.
+// heap bindings get dup/drop; `perceusControlHeap(params, insts, [...heap])` consumes the `heap` set this returns.
+// ir/perceus is Term since 2026-10-04, so a `make` value here carries `reuse: ''` (none), the shape the port declares.
 
 import type {
   Statement,
@@ -120,7 +121,7 @@ export function lowerToMir(
         out.push({
           op: 'let',
           name: t,
-          value: { kind: 'make', ctor: expr.name, args },
+          value: { kind: 'make', ctor: expr.name, args, reuse: '' },
         })
         heap.add(t) // a record is always heap
 
@@ -133,7 +134,7 @@ export function lowerToMir(
         out.push({
           op: 'let',
           name: t,
-          value: { kind: 'make', ctor: 'list', args },
+          value: { kind: 'make', ctor: 'list', args, reuse: '' },
         })
         heap.add(t) // a list is always heap
 

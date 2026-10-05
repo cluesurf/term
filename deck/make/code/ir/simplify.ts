@@ -1492,8 +1492,10 @@ function simplifyExpression(node: Expression): Expression {
 
       // specialization: inline a specializable function when an argument is a known constant, then fold. Only when
       // every argument is pure (a constant or a bare variable), so no side-effecting argument is reordered or dropped
-      // when a branch is pruned. The cycle guard stops a recursive verb from looping the pass.
-      if (callee.form === 'variable') {
+      // when a branch is pruned. The cycle guard stops a recursive verb from looping the pass. A callee the caller binds
+      // itself (a parameter typed as a task, a `let`) is that binding and not the task of its name: `group-by` calls
+      // its `key-of` parameter, and a program with a task called `key-of` had it inlined in the parameter's place
+      if (callee.form === 'variable' && !callerBound.has(callee.name)) {
         const fn = specializable.get(callee.name)
 
         if (
@@ -2339,8 +2341,9 @@ function inlineForwarders(
       return rewriteStatement(s, forwarders)
     }
 
+    // and a forwarder whose own name the caller binds is not reached by that name there at all
     const bound = boundNames(s)
-    const visible = new Map([...forwarders].filter(([, target]) => !bound.has(rootOf(target) ?? '')))
+    const visible = new Map([...forwarders].filter(([name, target]) => !bound.has(name) && !bound.has(rootOf(target) ?? '')))
 
     return rewriteStatement(s, visible.size === forwarders.size ? forwarders : visible)
   })

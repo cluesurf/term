@@ -14,9 +14,10 @@
  * - the same discipline as `term hold`.
  */
 
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
-import { findTreeFiles, projectResolver } from '@term/call/code/make'
+import { buildable, findTreeFiles, projectResolver } from '@term/call/code/make'
+import { projectRoleOf } from '@term/call/code/role-of'
 import {
   huntSeedCompiler,
   type FuzzEntry,
@@ -72,6 +73,7 @@ export async function callHunt(input: {
   // user project does not have: the run read nothing and still said CLEAN.
   const dir = input.glob ? path.resolve(root, input.glob) : root
   const files = existsSync(dir) ? findTreeFiles(dir, [], 'node') : []
+  const roleOf = projectRoleOf(root)
 
   const result = huntSeedCompiler({
     root,
@@ -81,6 +83,13 @@ export async function callHunt(input: {
     seeds: input.seeds,
     fuzzTimeoutSec: input.fuzzTimeout,
     fuzzEntry: selfFuzzEntry(),
+    // each file as the build reads it, so a test file is rewritten first, as `term test` rewrites it
+    read: file => {
+      const source = readFileSync(file, 'utf8')
+      const made = buildable(file, source, roleOf(file))
+
+      return 'text' in made ? made.text : source
+    },
   })
 
   if (input.glob && !existsSync(dir)) {

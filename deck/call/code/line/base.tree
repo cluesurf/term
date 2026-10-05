@@ -266,15 +266,15 @@ hook load
   # Install without network
   take offline
     like boolean
-  # Install subset (e.g. "base")
-  take like
-    like text
   task load
 
 # Add a dependency
 hook save
   # Package name to add
   take deck
+    like text
+  # The versions it accepts: 1.4.2, 1.x.x, ^1.2.0, ~1.2.0, 1.0.0..2.0.0 (default 0.x.x)
+  take mark
     like text
   task save
 
@@ -290,6 +290,9 @@ hook link
   # Path to local package
   take deck
     like text
+  # Remove the deck's link instead, so the next term load installs the published one
+  take toss
+    like boolean
   task link
 
 # Check if packages are installed correctly (--audit for the security scan)
@@ -328,6 +331,9 @@ hook host
   # Remove this public key from the scope's key set instead of publishing
   take untrust
     like text
+  # Announce the already-published version to the package index instead of publishing
+  take ping
+    like boolean
   task host
 
 # Log in to term.surf with Google, for publishing
@@ -408,6 +414,9 @@ hook mind
     pick <note>
   # Recall only facts matching this query
   take find
+    like text
+  # Forget the fact with this name
+  take forget
     like text
   task mind
 
@@ -597,6 +606,9 @@ hook look
     like text
     pick <form>
     pick <task>
+  # Everything the module loads, not only what it offers
+  take all
+    like boolean
   task look
 
 # The roll of this project: every deck, exception, task, route and tell in the build

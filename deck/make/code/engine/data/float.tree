@@ -1,0 +1,268 @@
+# The float type in balanced ternary: a big-integer mantissa times a power of three, kept to a fixed number of trits
+# (24, about 11 decimal digits) and normalized so the mantissa has no factor of three.
+#
+# Ported from engine/data/float.ts (self-hosting, 2026-10-04). The original's answers ARE JavaScript's float, so the
+# port computes exactly what it computed, on every backend, without leaning on a platform's own rounding:
+#   - `Math.round` is written out (the floor, plus one when the fraction is a half or more), since Rust's `round` takes
+#     halves away from zero and JavaScript's toward +infinity
+#   - `BigInt(Math.round(x))` of a whole float of ANY size is exact: past the i64 range the float is halved until it fits
+#     (exact, a whole float that large has no fraction bits) and the big integer doubled back
+#   - `Number(mantissa)` reads the mantissa's decimal text with the host's float parser, correctly rounded everywhere
+# Shapes that changed, with engine.ts, value.ts and test/engine/data/run.ts: `float(mantissa, exponent)` is
+# `make-float`, and `negate`, `add`, `subtract`, `multiply`, `compare` are `negate-ternary` and so on, as
+# engine/data/integer's are, since those are Term's own number operations. The stdlib's
+# `to-number` is imported as `decimal-to-number` beside this file's own `to-number`, which the alias once lost to
+# (check/overload.ts bindAliasedNatives, log.md, 2026-10-04).
+
+load @term/base/float
+  find round-down
+  find power
+  find to-decimal
+  find to-number, name decimal-to-number
+  find is-finite
+
+load @term/base/integer/big
+  find big-integer
+  find big-from-number
+  find big-add
+  find big-subtract
+  find big-multiply
+  find big-compare
+
+load @term/base/text/number
+  find parse-float
+
+load ./trit
+  find trit-length
+  find trit-string
+
+# trits of mantissa kept, about 11 decimal digits
+host default-precision, 24
+
+form ternary-float
+  # a balanced-ternary integer
+  link mantissa, like big-integer
+  # a power of 3
+  link exponent, like number
+
+task big-of
+  take n, like number
+  like big-integer
+
+  back big-from-number(n)
+
+task is-zero
+  take value, like big-integer
+  like boolean
+
+  back is-equal(big-compare(value, big-of(0)), 0)
+
+# 3 to a whole power, as a big integer
+task power-of-three
+  take n, like number
+  like big-integer
+
+  save out, big-of(1)
+  save k, 0
+  walk test
+    hook test
+      is-below(k, n)
+    hook hold
+      save out, big-multiply(out, big-of(3))
+      save k, add(k, 1)
+  back out
+
+# JavaScript's Math.round: the nearest whole value, a half going toward +infinity
+task round-half-up
+  take x, like decimal
+  like decimal
+
+  save floor, round-down(x)
+  fork test, is-minimum(subtract(x, floor), 0.5)
+    hold
+      back add(floor, 1.0)
+  back floor
+
+# a WHOLE float as an exact big integer, of any size
+task whole-to-big
+  take x, like decimal
+  like big-integer
+
+  # an infinity has no integer: the original's `BigInt(Infinity)` refused it in these words, and halving it would never
+  # end
+  fork test, is-equal(is-finite(x), false)
+    hold
+      halt <The number {x} cannot be converted to a BigInt because it is not an integer>
+  # 2^62 and its negative: inside them the float is an exact i64
+  save limit, 4611686018427387904.0
+  save scaled, x
+  save doublings, 0
+  walk test
+    hook test
+      or(is-minimum(scaled, limit), is-maximum(scaled, subtract(0.0, limit)))
+    hook hold
+      save scaled, divide(scaled, 2.0)
+      save doublings, add(doublings, 1)
+  save out, big-of(decimal-to-number(scaled))
+  save k, 0
+  walk test
+    hook test
+      is-below(k, doublings)
+    hook hold
+      save out, big-multiply(out, big-of(2))
+      save k, add(k, 1)
+  back out
+
+# drop trailing zero-trits (factors of 3) from the mantissa, raising the exponent: the normal form
+task normalize
+  take mantissa, like big-integer
+  take exponent, like number
+  like ternary-float
+
+  fork test, is-zero(mantissa)
+    hold
+      back
+        make ternary-float
+          bind mantissa, big-of(0)
+          bind exponent, 0
+  save m, mantissa
+  save e, exponent
+  save three, big-of(3)
+  walk test
+    hook test
+      is-zero(m/remainder(three))
+    hook hold
+      save m, m/divide(three)
+      save e, add(e, 1)
+  back
+    make ternary-float
+      bind mantissa, m
+      bind exponent, e
+
+# keep the mantissa within `precision` trits, rounding the low trits away (round to nearest, by adding half the scale
+# toward the sign before the integer divide)
+task round-to
+  take value, like ternary-float
+  take precision, like number
+  like ternary-float
+
+  save length, trit-length(value/mantissa)
+  fork test, is-maximum(length, precision)
+    hold
+      back value
+  save drop, subtract(length, precision)
+  save scale, power-of-three(drop)
+  save half, scale/divide(big-of(2))
+  save m, value/mantissa
+  save shifted, big-subtract(m, half)
+  fork test, is-minimum(big-compare(m, big-of(0)), 0)
+    hold
+      save shifted, big-add(m, half)
+  back normalize(shifted/divide(scale), add(value/exponent, drop))
+
+task make-float
+  take mantissa, like big-integer
+  take exponent, like number, fall 0
+  like ternary-float
+
+  back normalize(mantissa, exponent)
+
+# from a platform number: a base-3 mantissa and exponent within the precision
+task from-number
+  take value, like decimal
+  take precision, like number, fall default-precision
+  like ternary-float
+
+  fork test, or(is-equal(value, 0.0), is-equal(is-finite(value), false))
+    hold
+      back
+        make ternary-float
+          bind mantissa, big-of(0)
+          bind exponent, 0
+  # scale up by 3^precision, round to an integer mantissa, exponent -precision, then normalize
+  save scale, power(3.0, to-decimal(precision))
+  save mantissa, whole-to-big(round-half-up(multiply(value, scale)))
+  back round-to(normalize(mantissa, subtract(0, precision)), precision)
+
+task to-number
+  take value, like ternary-float
+  like decimal
+
+  # the mantissa's decimal text read by the host's own float parser: correctly rounded on every backend, which is what
+  # `Number(bigint)` is, and exact up to 2^53. A mantissa past that (a precision over 33 trits) rounds the same way
+  save m, value/mantissa
+  save digits, m/text()
+  save whole, parse-float(digits)
+  save places, to-decimal(value/exponent)
+  back multiply(whole, power(3.0, places))
+
+task negate-ternary
+  take a, like ternary-float
+  like ternary-float
+
+  save m, a/mantissa
+  back
+    make ternary-float
+      bind mantissa, m/negate()
+      bind exponent, a/exponent
+
+task add-ternary
+  take a, like ternary-float
+  take b, like ternary-float
+  take precision, like number, fall default-precision
+  like ternary-float
+
+  fork test, is-zero(a/mantissa)
+    hold
+      back round-to(b, precision)
+  fork test, is-zero(b/mantissa)
+    hold
+      back round-to(a, precision)
+  # align to the lower exponent, then add the integer mantissas exactly
+  save e, a/exponent
+  fork test, is-below(b/exponent, e)
+    hold
+      save e, b/exponent
+  save am, big-multiply(a/mantissa, power-of-three(subtract(a/exponent, e)))
+  save bm, big-multiply(b/mantissa, power-of-three(subtract(b/exponent, e)))
+  back round-to(normalize(big-add(am, bm), e), precision)
+
+task subtract-ternary
+  take a, like ternary-float
+  take b, like ternary-float
+  take precision, like number, fall default-precision
+  like ternary-float
+
+  back add-ternary(a, negate-ternary(b), precision)
+
+task multiply-ternary
+  take a, like ternary-float
+  take b, like ternary-float
+  take precision, like number, fall default-precision
+  like ternary-float
+
+  back round-to(normalize(big-multiply(a/mantissa, b/mantissa), add(a/exponent, b/exponent)), precision)
+
+task compare-ternary
+  take a, like ternary-float
+  take b, like ternary-float
+  like number
+
+  save d, to-number(subtract-ternary(a, b))
+  fork test, is-below(d, 0.0)
+    hold
+      back -1
+  fork test, is-above(d, 0.0)
+    hold
+      back 1
+  back 0
+
+# the balanced-ternary mantissa glyphs with the exponent, e.g. "+0- x3^-2"
+task to-string
+  take a, like ternary-float
+  like text
+
+  fork test, is-zero(a/mantissa)
+    hold
+      back <0>
+  back <{trit-string(a/mantissa)} x3^{a/exponent}>

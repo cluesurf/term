@@ -1,0 +1,293 @@
+# The map type, a TERNARY TRIE (radix tree): three-way branching per trit of the key. A key (a text) is encoded to a
+# balanced-ternary digit sequence (each code point a fixed 14 trits, 3^14 > the full Unicode range, so no boundary
+# collisions), and the trie branches -1 / 0 / +1 at each trit. Lookup and insert are O(key trits), and the trie is laid
+# on the splitting tree (a key's path IS its address). Generic over the value type, so the engine uses
+# `ternary-map value`; keys are canonicalised to texts by it.
+#
+# Ported from engine/data/map.ts (self-hosting, 2026-10-04). The original was MUTABLE, `set` and `remove` changing the
+# trie in place. Here a map is a value (D1): `set` and `remove` answer the new map, copying the path to the node they
+# change, and the engine writes it back into the `Value` holding it, which is the one object every alias of that map
+# shares, so `b = a; b.x = 1` still shows through `a`. Shapes that changed, with engine.ts and backend/runtime.ts:
+#   - `set(map, key, value)` and `remove(map, key)` answer the map; ask `has` first for remove's old boolean
+#   - `get(map, key)` answered `V | undefined`: it is `lookup(map, key, fallback)`, the engine's `?? UNIT` made explicit
+#   - a node's kids are a hash from slot (0, 1, 2 for trit -1, 0, +1) to node, walked in slot order as the original's
+#     array was, and its entry is a list of at most one, since a generic value has no "absent"
+# Inside this module the hash methods are written as methods (`kids/has(slot)`), because this module's own `has` and
+# `set` would otherwise take their calls.
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+load @term/base/text/unicode
+  find to-runes
+
+load @term/base/integer/big
+  find big-from-number
+
+load ./trit
+  find to-trits
+
+# 3^14 = 4,782,969 > 0x10FFFF, the largest Unicode scalar
+host trits-per-code-point, 14
+
+form map-entry
+  head v
+  link key, like text
+  link value, like v
+
+form trie-node
+  head v
+  # the entry stored at this node: none, or one
+  link entry
+    like list
+      like map-entry v
+  # the child under each slot, 0 / 1 / 2 for trit -1 / 0 / +1
+  link kids
+    like hash
+      like number
+      like trie-node v
+
+form ternary-map
+  head v
+  link root, like trie-node v
+  link size, like number
+
+# what a write below a node answers: the node rebuilt, and whether the trie gained or lost an entry
+form trie-change
+  head v
+  link node, like trie-node v
+  link delta, like number
+
+task make-node
+  head v
+  like trie-node v
+
+  back
+    make trie-node
+      bind entry, make list
+      bind kids, make hash
+
+task make-map
+  head v
+  like ternary-map v
+
+  back
+    make ternary-map
+      bind root, make-node()
+      bind size, 0
+
+# the balanced-ternary digits of a key, each code point padded to a fixed width so keys cannot alias
+task key-trits
+  take key, like text
+  like list
+    like number
+
+  save out, make list
+  walk to-runes(key)
+    take point
+    save trits, to-trits(big-from-number(point))
+    save i, 0
+    walk test
+      hook test
+        is-below(i, trits-per-code-point)
+      hook hold
+        fork test, is-below(i, trits/length)
+          hold
+            push(out, get(trits, i))
+          miss
+            push(out, 0)
+        save i, add(i, 1)
+  back out
+
+# the node at the end of `trits`, or the empty node when the path is not there
+task find-node
+  head v
+  take root, like trie-node v
+  take trits
+    like list
+      like number
+  like trie-node v
+
+  save node, root
+  walk trits
+    take t
+    save kids, node/kids
+    save slot, add(t, 1)
+    fork test, kids/has(slot)
+      miss
+        back make-node()
+    save node, get-or-default(kids, slot, make-node())
+  back node
+
+# write `entry` (one, or none to remove) at the end of `trits` below `node`, from position `at`
+task write-at
+  head v
+  take node, like trie-node v
+  take trits
+    like list
+      like number
+  take at, like number
+  take entry
+    like list
+      like map-entry v
+  like trie-change v
+
+  fork test, is-equal(at, trits/length)
+    hold
+      save had, node/entry
+      save next, node
+      save next/entry, entry
+      back
+        make trie-change
+          bind node, next
+          bind delta, subtract(entry/length, had/length)
+  save kids, node/kids
+  save slot, add(get(trits, at), 1)
+  save child, get-or-default(kids, slot, make-node())
+  save below, write-at(child, trits, add(at, 1), entry)
+  # the three slots in order, not `kids/keys()`: a member call's result reaches the Rust emitter with no type, and the
+  # walk iterated the shared list itself (log.md, 2026-10-04)
+  save copied, make hash
+  save k, 0
+  walk test
+    hook test
+      is-maximum(k, 2)
+    hook hold
+      fork test, kids/has(k)
+        hold
+          copied/set(k, get-or-default(kids, k, make-node()))
+      save k, add(k, 1)
+  copied/set(slot, below/node)
+  save next, node
+  save next/kids, copied
+  back
+    make trie-change
+      bind node, next
+      bind delta, below/delta
+
+task set
+  head v
+  take map, like ternary-map v
+  take key, like text
+  take value, like v
+  like ternary-map v
+
+  save one, make list
+  push
+    one
+    make map-entry
+      bind key, key
+      bind value, value
+  save change, write-at(map/root, key-trits(key), 0, one)
+  back
+    make ternary-map
+      bind root, change/node
+      bind size, add(map/size, change/delta)
+
+# the value stored under `key`, or `fallback` when there is none
+task lookup
+  head v
+  take map, like ternary-map v
+  take key, like text
+  take fallback, like v
+  like v
+
+  save node, find-node(map/root, key-trits(key))
+  save entry, node/entry
+  fork test, is-equal(entry/length, 0)
+    hold
+      back fallback
+  save first, get(entry, 0)
+  back first/value
+
+task has
+  head v
+  take map, like ternary-map v
+  take key, like text
+  like boolean
+
+  save node, find-node(map/root, key-trits(key))
+  save entry, node/entry
+  back is-above(entry/length, 0)
+
+# the map without `key`. The path to it stays, as the original left it; only the entry goes
+task remove
+  head v
+  take map, like ternary-map v
+  take key, like text
+  like ternary-map v
+
+  fork test, has(map, key)
+    miss
+      back map
+  save none, make list
+  save change, write-at(map/root, key-trits(key), 0, none)
+  back
+    make ternary-map
+      bind root, change/node
+      bind size, add(map/size, change/delta)
+
+task size
+  head v
+  take map, like ternary-map v
+  like number
+
+  back map/size
+
+# every stored entry, in trit order (a stable, content-sorted traversal): a node's own entry, then its kids by slot
+task entries
+  head v
+  take map, like ternary-map v
+  like list
+    like map-entry v
+
+  save out, make list
+  save stack, make list
+  push(stack, map/root)
+  walk test
+    hook test
+      is-above(stack/length, 0)
+    hook hold
+      save node, pop(stack)
+      walk node/entry
+        take one
+        push(out, one)
+      save kids, node/kids
+      # pushed highest slot first, so the stack pops them lowest first
+      save slot, 2
+      walk test
+        hook test
+          is-minimum(slot, 0)
+        hook hold
+          fork test, kids/has(slot)
+            hold
+              push(stack, get-or-default(kids, slot, make-node()))
+          save slot, subtract(slot, 1)
+  back out
+
+task keys
+  head v
+  take map, like ternary-map v
+  like list
+    like text
+
+  save out, make list
+  walk entries(map)
+    take one
+    push(out, one/key)
+  back out
+
+task values
+  head v
+  take map, like ternary-map v
+  like list
+    like v
+
+  save out, make list
+  walk entries(map)
+    take one
+    push(out, one/value)
+  back out

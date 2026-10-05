@@ -3,8 +3,9 @@
 
 import { compile } from '@term/make/code/compile/compile'
 import { lowerToMir } from '@term/make/code/ir/mir-lower'
+// ir/perceus is Term since 2026-10-04: the heap-aware pass is `perceusControlHeap`, taking the names as a list
 import {
-  perceusControl,
+  perceusControlHeap,
   showInst,
 } from '@term/make/code/ir/perceus'
 
@@ -66,10 +67,10 @@ function main(): void {
       JSON.stringify([...heap]),
     )
 
-    const rc = perceusControl(
+    const rc = perceusControlHeap(
       (params as { name: string }[]).map(p => p.name),
       insts,
-      heap,
+      [...heap],
     )
 
     ok(
@@ -93,10 +94,10 @@ function main(): void {
       JSON.stringify([...heap]),
     )
 
-    const rc = perceusControl(
+    const rc = perceusControlHeap(
       (params as { name: string }[]).map(p => p.name),
       insts,
-      heap,
+      [...heap],
     )
 
     ok(

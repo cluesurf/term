@@ -32,10 +32,16 @@ export type Access = 'read' | 'write'
 // a scoped one, the access each of its tasks needs over which argument. `*` as the argument is the capability's whole
 // space (`variables` reads every name). A task of a scoped capability that is not listed is REFUSED at the boundary,
 // so a task added to the module later is denied until it is mapped here
-export const CAPABILITIES: Record<string, { what: string; module: RegExp; tasks?: Record<string, [argument: string, access: Access][]> }> = {
+// `kind` is how a scoped capability's arguments are matched (deck/cask/code/scope.tree `in-scope`): as a `path`, with
+// folders and wildcards, or as a `name`, whole
+export const CAPABILITIES: Record<
+  string,
+  { what: string; module: RegExp; kind?: 'path' | 'name'; tasks?: Record<string, [argument: string, access: Access][]> }
+> = {
   file: {
     what: 'files and folders, by path',
     module: /\/deck\/base\/code\/file(\.tree|\/)/,
+    kind: 'path',
     tasks: {
       read: [['path', 'read']],
       'read-bytes': [['path', 'read']],
@@ -58,6 +64,7 @@ export const CAPABILITIES: Record<string, { what: string; module: RegExp; tasks?
   environment: {
     what: 'environment variables, by name, and the working directory',
     module: /\/deck\/base\/code\/environment(\.tree|\/)/,
+    kind: 'name',
     tasks: {
       variable: [['name', 'read']],
       'has-variable': [['name', 'read']],
@@ -94,7 +101,13 @@ export function readScope(root: string): { scope: Scope; file: string } {
     throw scopeError(`${file} is not a data file: ${read.diagnostics.map(d => d.message).join('; ')}`)
   }
 
-  const value = toJsonValue(expandData(read.data.root, read.data.trees)) as unknown
+  const expanded = expandData(read.data, file)
+
+  if (!expanded.ok) {
+    throw scopeError(`${file}: ${expanded.diagnostics.map(d => d.message).join('; ')}`)
+  }
+
+  const value = toJsonValue(expanded.data) as unknown
 
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     throw scopeError(`${file} holds a ${Array.isArray(value) ? 'list' : typeof value}; a scope is \`host\` entries, one per capability`)
@@ -121,6 +134,14 @@ export function readScope(root: string): { scope: Scope; file: string } {
           throw scopeError(`${file}: \`${name}\` \`${access}\` is a list of text, each a pattern`)
         }
 
+        // a pattern is compiled into the dispatcher as text, where these mean something else, and no path or name
+        // needs them
+        const odd = (items as string[]).find(item => /[<>{}\n]/.test(item) || item.length === 0)
+
+        if (odd !== undefined) {
+          throw scopeError(`${file}: \`${name}\` \`${access}\` holds ${odd.length === 0 ? 'an empty pattern' : `\`${odd}\``}, and a pattern is not empty and holds no \`<\`, \`>\`, \`{\`, \`}\` or line break`)
+        }
+
         given[access as Access] = items as string[]
       }
     } else if (lists !== null && lists !== undefined) {
@@ -133,17 +154,22 @@ export function readScope(root: string): { scope: Scope; file: string } {
   return { scope, file }
 }
 
+// the capability a module file defines, or none
+export function capabilityOf(file: string): string | undefined {
+  const real = existsSync(file) ? realpathSync(file) : file
+
+  return Object.entries(CAPABILITIES).find(([, capability]) => capability.module.test(real))?.[0]
+}
+
 // the capabilities a program reaches, each with the first module that defines it, from the files its build loaded
 export function capabilitiesOf(files: string[]): Map<string, string> {
   const found = new Map<string, string>()
 
   for (const one of files) {
-    const real = existsSync(one) ? realpathSync(one) : one
+    const name = capabilityOf(one)
 
-    for (const [name, capability] of Object.entries(CAPABILITIES)) {
-      if (!found.has(name) && capability.module.test(real)) {
-        found.set(name, real)
-      }
+    if (name && !found.has(name)) {
+      found.set(name, existsSync(one) ? realpathSync(one) : one)
     }
   }
 

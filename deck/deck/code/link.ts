@@ -282,7 +282,10 @@ async function createTopLink(input: {
 }): Promise<void> {
   const { linkDir, seedDir, resolved } = input
   const codeStr = showCode(resolved.code)
-  const deckDir = path.join(seedDir, `${resolved.name}@${codeStr}`)
+  // a deck from the project's own `deck/` folder is linked to that folder: it was chosen, and the link pointed into
+  // the store where nothing had been put, so the build failed with ENOENT until `term link <path>` (guides:
+  // packages/decks, 2026-10-04)
+  const deckDir = resolved.local ?? path.join(seedDir, `${resolved.name}@${codeStr}`)
 
   // parse scope from name
   const parts = resolved.name.split('/')
@@ -313,7 +316,8 @@ async function createDepLinks(input: {
 }): Promise<void> {
   const { seedDir, resolved, resolution } = input
   const codeStr = showCode(resolved.code)
-  const deckDir = path.join(seedDir, `${resolved.name}@${codeStr}`)
+  // a local deck's own dependencies are linked inside its folder, the way `term load` run there would link them
+  const deckDir = resolved.local ?? path.join(seedDir, `${resolved.name}@${codeStr}`)
   const depsLinkDir = path.join(deckDir, LINK_DIR)
 
   if (resolved.link.size === 0) {return}
@@ -330,7 +334,7 @@ async function createDepLinks(input: {
     if (!depResolved) {continue}
 
     const depMarkStr = showCode(depResolved.code)
-    const depDeckDir = path.join(seedDir, `${depName}@${depMarkStr}`)
+    const depDeckDir = depResolved.local ?? path.join(seedDir, `${depName}@${depMarkStr}`)
 
     // parse scope
     const parts = depName.split('/')

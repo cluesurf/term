@@ -81,8 +81,62 @@ function applyEdits(text: string, edits: TextEdit[]): string {
 //   L052 ambiguous-load         a package path that names a file in the package's code root AND one in its package
 //                               root. The code root wins; this names both, so a shadowed folder is never silent.
 //                               `base <dir>` under the load picks the package root and silences it
+//   L055 manifest-inert         a manifest field no tool reads (`test`, `book` and eleven more). See below
 
 const MANIFEST_CODES = { 'manifest-code-version': 'L050', 'manifest-bear': 'L051' } as const
+
+// L055 manifest-inert: a manifest field the grammar accepts and the writer keeps, which no tool reads. `test ./test`
+// looked like it chose where `term test` looks, and it chooses nothing: it finds tests in `code/` and `test/` whatever
+// the line says (guides: packages/manifest, 2026-10-04). A nested `deck ./path` is the same. No `--fix`, because the
+// line may record an intent, and deleting it is the author's call
+const INERT_FIELDS = new Set(['test', 'book', 'tool', 'call', 'task', 'hook', 'hide', 'view', 'sort', 'term', 'text', 'cite', 'deck'])
+
+export function inertManifestFields(text: string, file: string): Finding[] {
+  if (manifestName(text, file) === undefined) {
+    return []
+  }
+
+  const parsed = parse({ file, text })
+
+  if (!parsed.ok) {
+    return []
+  }
+
+  const headOf = (node: Node | undefined): string | undefined => {
+    const first = node?.kind === 'group' ? node.nodes[0] : undefined
+
+    return first?.kind === 'name' ? renderHead(first) : undefined
+  }
+
+  const out: Finding[] = []
+
+  for (const root of parsed.tree.nodes) {
+    if (headOf(root) !== 'deck' || root.kind !== 'group') {
+      continue
+    }
+
+    // the deck's name, then its fields
+    for (const field of root.nodes.slice(2)) {
+      const word = headOf(field)
+      const name = field.kind === 'group' ? field.nodes[0] : undefined
+      const at = name ? spanOfNode(name) : undefined
+
+      if (word === undefined || !INERT_FIELDS.has(word) || !at) {
+        continue
+      }
+
+      out.push({
+        rule: 'manifest-inert',
+        code: 'L055',
+        message: `\`${word}\` in a manifest is read by nothing. It parses and is kept, and no tool acts on it`,
+        severity: 'warning',
+        span: { start: at.start, end: { line: at.start.line, column: at.start.column + word.length } },
+      })
+    }
+  }
+
+  return out
+}
 
 export function manifestFindings(text: string, file: string): Finding[] {
   if (manifestName(text, file) === undefined) {
@@ -215,6 +269,7 @@ export async function callLint(input: {
   const resolve = projectResolver(input.root)
   const fileFindings = (text: string, file: string): Finding[] => [
     ...manifestFindings(text, file),
+    ...inertManifestFields(text, file),
     ...ambiguousLoads(text, file, resolve),
   ]
 

@@ -24,6 +24,7 @@ load @term/base/pattern
   find find-match-prepared
   find find-matches-prepared
   find step-limit
+  find prepared-memo
 
 load @term/base/pattern/node
   find pattern-budget
@@ -159,13 +160,32 @@ task tier-misses
   # unanchored possessive: every start re-reads the run, so no backtracking engine takes it
   call rows/push(text(<[a-z]++x>))
   call rows/push(call(on, text(<linear>), text(<linear>), text(<linear>), text(<linear>)))
-  # anchored possessive: Java and ICU run the possessive itself; ECMAScript has no syntax for it and its rewrite to
-  # greedy plus a lookahead leaves `[a-z]+` before an `x` it could take
+  # anchored possessive: Java and ICU run the possessive itself; ECMAScript, which has no syntax for it, runs the
+  # rewrite `^[a-z]+(?![a-z])x`, whose `[a-z]+` gives back at most n letters before a bounded tail; Rust has no
+  # lookaround for the rewrite and no possessive
   call rows/push(text(<^[a-z]++x>))
-  call rows/push(call(on, text(<linear>), text(<linear>), text(<native>), text(<native>)))
-  # an atomic group whose body has two ways to start: no backtracking engine takes it, and Rust cannot
+  call rows/push(call(on, text(<native>), text(<linear>), text(<native>), text(<native>)))
+  # an atomic group whose body has two ways to start: two paths at most per attempt, and the group never reopens, so
+  # Java and ICU run it themselves; ECMAScript has no atomic group and Rust no backtracking, so tier C there
   call rows/push(text(<(?\>ab|a)c>))
-  call rows/push(call(on, text(<backtrack>), text(<backtrack>), text(<backtrack>), text(<backtrack>)))
+  call rows/push(call(on, text(<backtrack>), text(<backtrack>), text(<native>), text(<native>)))
+  # an anchored choice of words, two starting alike: a bounded number of paths per attempt, native on every engine
+  call rows/push(text(<^(number|natural|integer)$>))
+  call rows/push(call(on, text(<native>), text(<native>), text(<native>), text(<native>)))
+  # `.*` that can also take the `)` after it, with only a bounded tail left: it gives back at most n code points and
+  # tries `\)$` at each, linear, so native on every engine
+  call rows/push(text(<^\((.*)\)$>))
+  call rows/push(call(on, text(<native>), text(<native>), text(<native>), text(<native>)))
+  # two such repetitions in a row: the first's tail holds the second, unbounded, and every split is tried
+  call rows/push(text(<^(.*),(.*)$>))
+  call rows/push(call(on, text(<linear>), text(<native>), text(<linear>), text(<linear>)))
+  # an open choice inside an unbounded repetition reopens once per iteration: never on a backtracking engine
+  call rows/push(text(<^(?:a|ab)*$>))
+  call rows/push(call(on, text(<linear>), text(<native>), text(<linear>), text(<linear>)))
+  # a bounded repetition whose paths pass the cap, 2 to the 20th, though no choice in it is inside an unbounded one:
+  # never on a backtracking engine, and native on the linear one
+  call rows/push(text(<^(?:a|aa)\{20\}$>))
+  call rows/push(call(on, text(<linear>), text(<native>), text(<linear>), text(<linear>)))
   # an atomic run of one set, rewritten to greedy plus a lookahead: native wherever lookaround is
   call rows/push(text(<^(?\>a+)b>))
   call rows/push(call(on, text(<native>), text(<linear>), text(<native>), text(<native>)))
@@ -217,6 +237,7 @@ task refused-answers
       bind program, read ready/program
       bind folds, read ready/folds
       bind words, read ready/words
+      bind dfas, read ready/dfas
   save texts, make list
   walk list
     call find-matches-prepared(read(broken), text(<baa ca>))
@@ -405,9 +426,58 @@ test <the backtracking tier names what put a pattern there, after the rewrites>
           call is-equal(call(backtrack-reason, make(pattern, text(<[a-z]++x>))), text(<>))
           call is-equal(call(backtrack-reason, make(pattern, text(<a*b>))), text(<>))
 
+# tier B patterns the DFA runs (pattern/dfa.tree), each answer held to what the Pike VM gives: the groups filled in
+# on the span the two DFAs found, the text-end edge, an empty match, and the leftmost of overlapping candidates
+task dfa-answers
+  like text
+  save out, make list
+  call out/push(call(describe, text(<(\w+)@(\w+)>), text(<a me@here and you@there>)))
+  call out/push(call(describe, text(<\s+$>), text(<ab  c   >)))
+  call out/push(call(describe, text(<a*b>), text(<xaab>)))
+  call out/push(call(describe, text(<x*>), text(<abc>)))
+  call out/push(call(all-texts, text(<[a-z]+ing>), text(<singing and ringing>)))
+  send back
+    call join(read(out), text(< / >))
+
+test <tier B's DFA finds what the Pike VM finds, groups and edges included>
+  want hold
+    call is-equal
+      call dfa-answers
+      text <2:9:me@here|me|here / 5:8:    / 1:4:aab / 0:0: / singing,ringing>
+
 test <a native engine that refuses its text is answered by Term's own tier, never as no match>
   want hold
     call is-equal(call(refused-answers), text(<aa,a 1:3>))
+
+# 70 distinct patterns prepared, the first again after them: the memo keeps at most 64, and the first is still kept
+task memo-after-seventy
+  like text
+  save k, code 0
+  walk test
+    down
+      call subtract(code(70), read(k))
+    hook test
+      call is-below(read(k), code(70))
+    hook step
+      call prepare(make(pattern, text(<a\{{k}\}>)))
+      save k
+        call add(read(k), code(1))
+  save first
+    call prepare(make(pattern, text(<a\{0\}>)))
+  save kept, false
+  walk list, read prepared-memo
+    hook next
+      take site, name one
+      fork test
+        hook test
+          call is-equal(read(one/source), text(<a\{0\}>))
+        hook hold
+          save kept, true
+  send back, text <{prepared-memo/length} {kept} {first/source}>
+
+test <a pattern is prepared once, and the memo of prepared patterns stays bounded>
+  want hold
+    call is-equal(call(memo-after-seventy), text(<64 true a\{0\}>))
 
 test <a pattern that is not one is refused before any engine sees it>
   want hold

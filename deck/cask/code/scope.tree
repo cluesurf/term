@@ -6,7 +6,8 @@
 #   in-scope   a value against the patterns one access lists, one a line. A NAME (an environment variable) is in scope
 #              when a pattern is the name or `*`. A PATH is in scope when it is absolute and, with `.` and `..` folded
 #              away, matches a pattern whose leading `$data`, `$bundle` or `$home` is the given directory: `**` is any
-#              number of folders, `*` any part of one name, anything else itself
+#              number of folders, `*` any part of one name, anything else itself. Windows paths read alike: `\` is `/`,
+#              and a drive (`C:/`) is a root
 #
 # `..` is folded before any match, so `$data/../../etc/passwd` is `/etc/passwd`, and a pattern for `$data/**` does not
 # reach it. A symbolic link is not followed: a link inside the scope to a file outside it reads as inside, which is the
@@ -18,6 +19,7 @@ load @term/base/text
   find ends-with
   find index-of
   find substring
+  find replace-all
 load @term/base/list
   find list
 
@@ -55,34 +57,41 @@ task in-scope
             hook hold
               save found, true
       send back, read found
+  # Windows writes `\` where the rest write `/`; both read alike, in the path and in a directory a pattern names
+  save given
+    call replace-all
+      read value
+      text <\\>
+      text </>
   # a path that is not absolute is relative to a working directory the page does not choose, so it is never in scope
   fork test
     hook test
       call is-equal
-        call starts-with
-          read value
-          text </>
+        call is-absolute
+          read given
         false
     hook hold
       send back, false
   save path
     call folded
-      read value
+      read given
   save found, false
   walk list, read lines
     hook next
       take site, name line
       save pattern
-        call expanded
-          read line
-          read data
-          read bundle
-          read home
+        call replace-all
+          call expanded
+            read line
+            read data
+            read bundle
+            read home
+          text <\\>
+          text </>
       fork test
         hook test
-          call starts-with
+          call is-absolute
             read pattern
-            text </>
         hook hold
           fork test
             hook test
@@ -95,6 +104,26 @@ task in-scope
             hook hold
               save found, true
   send back, read found
+
+# whether a path names its place from a root: `/` on every system but Windows, a drive (`C:/`) on Windows. The drive
+# is then the path's first name, in the path and in the pattern alike
+task is-absolute
+  take path, like text
+  like boolean
+  fork test
+    hook test
+      call starts-with
+        read path
+        text </>
+    hook hold
+      send back, true
+  send back
+    call is-equal
+      call substring
+        read path
+        code 1
+        code 3
+      text <:/>
 
 # a pattern's leading variable replaced by its directory: `$data/x` with the app's data directory, and so on. A pattern
 # with none is itself

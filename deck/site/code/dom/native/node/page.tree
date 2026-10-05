@@ -36,6 +36,17 @@ task proxy-target
   send back
     call doc/take-proxy
 
+# stash / read the page's response status (the host answers with it, 200 when the route set none)
+task set-status
+  take code, like number
+  call doc/set-status
+    read code
+
+task page-status
+  like number
+  send back
+    call doc/take-status
+
 task listen-pop
   take handler
     like task

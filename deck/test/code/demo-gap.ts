@@ -29,7 +29,7 @@ function gapsFor(file: string, source: string) {
 // --- a clean program yields no gaps ---
 const clean = gapsFor(
   'clean.tree',
-  `task add-one\n  take n, like number\n  like number\n  send back\n    call add\n      read n\n      mark 1\n`,
+  `task add-one\n  take n, like number\n  like number\n  send back\n    call add\n      read n\n      code 1\n`,
 )
 ok('clean program: compiles, zero gaps', clean.ok && clean.gaps.length === 0)
 

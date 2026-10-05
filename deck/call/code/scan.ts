@@ -1,4 +1,5 @@
-// `term scan <file>`: type-check a file with its project's imports resolved, and report diagnostics. This is the
+// `term scan <file>`: type-check one file with its project's imports resolved, its role and `mark lean` read from the
+// project's role files and a test file rewritten, as `term make` reads it, and report diagnostics. This is the
 // agent's fast inner-loop verifier. `--back json` returns `{ ok, diagnostics }` with codes + spans so a loop or skill
 // can decide "done" mechanically; the process exits non-zero on any error, so a plain shell check works too.
 
@@ -6,8 +7,9 @@ import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { compile } from '@term/make/code/compile/compile'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
-import { editorResolver } from '@term/make/code/resolve'
-import { closeRun, count, field, openRun, printData, report, reportProblems, showPath } from '@term/call/code/output'
+import { buildable, projectResolver } from '@term/call/code/make'
+import { projectLeanOf, projectRoleOf } from '@term/call/code/role-of'
+import { closeRun, count, field, openRun, printData, report, reportProblems } from '@term/call/code/output'
 
 // the JSON shape an agent consumes: stable, workspace-relative, no machine paths or timestamps
 function toJson(
@@ -53,17 +55,26 @@ export async function callScan(input: {
       process.exitCode = 1
     } else {
       openRun({ verb: 'scan', root: input.root, facts: [input.file] })
-      report({ glyph: 'failed', kind: 'problem', subject: 'There is no such file', fields: [field('looked', showPath(file, input.root))] })
+      // relative to the working folder, the way the file was named: it printed the whole absolute path
+      report({ glyph: 'failed', kind: 'problem', subject: 'There is no such file', fields: [field('looked', path.relative(input.root, file) || file)] })
       closeRun({ verdict: 'Nothing scanned' })
     }
 
     return
   }
 
-  const text = readFileSync(file, 'utf8')
+  // the file as `term make` compiles it. It was compiled as written with no role reader, so a file under a
+  // `mark lean` role was read as longhand and reported names `term make` builds (guides: commands/scan, 2026-10-04)
+  const source = readFileSync(file, 'utf8')
+  const roleOf = projectRoleOf(input.root)
+  const leanOf = projectLeanOf(input.root)
+  const unit = buildable(file, source, roleOf(file))
+  const text = 'text' in unit ? unit.text : source
   const result = compile(
     { file, text },
-    { resolve: editorResolver(file) },
+    // the build's own resolver, which follows a relative `load` too. `editorResolver` looked in linked packages and
+    // the standard library only, so a name loaded from a sibling file read as undefined
+    { resolve: projectResolver(input.root, 'node', input.root), roleOf, leanOf },
   )
 
   // errors when it failed; warnings (unused, termination, unchecked holds) when it compiled. `ok` is the gate.

@@ -30,6 +30,8 @@ export async function callLook(input: {
   json?: boolean
   csv?: boolean
   kind?: string
+  // the whole load closure, not only what the module offers
+  all?: boolean
 }): Promise<void> {
   openRun({ verb: 'look', root: input.root, facts: [...(input.target ? [input.target] : []), ...(input.kind ? [input.kind] : [])] })
 
@@ -74,15 +76,18 @@ export async function callLook(input: {
     return
   }
 
-  const { symbols, modules, loadDiagnostics } = inspectModule(
+  const inspection = inspectModule(
     entry,
     resolve,
     projectDeckOf(),
   )
+  const { loadDiagnostics } = inspection
+  const listed = input.all ? inspection.symbols : inspection.offered
+  const modules = input.all ? inspection.modules : inspection.offeredModules
 
   const filtered = input.kind
-    ? symbols.filter(s => s.kind === input.kind)
-    : symbols
+    ? listed.filter(s => s.kind === input.kind)
+    : listed
 
   if (input.json) {
     printData(toJson(filtered) + '\n')
@@ -92,8 +97,9 @@ export async function callLook(input: {
     printData(toTable(filtered) + '\n')
   }
 
-  const forms = symbols.filter(s => s.kind === 'form').length
-  const tasks = symbols.filter(s => s.kind === 'task').length
+  // the counts are of what was LISTED: they counted every task while `--kind form` listed forms
+  const forms = filtered.filter(s => s.kind === 'form').length
+  const tasks = filtered.filter(s => s.kind === 'task').length
 
   if (loadDiagnostics) {
     report({ glyph: 'warning', verb: 'resolve', subject: 'Some imports did not resolve', counts: [count(loadDiagnostics, 'unresolved', 'unresolved')] })

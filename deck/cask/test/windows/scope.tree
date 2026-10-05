@@ -1,0 +1,5 @@
+# What the windows app may reach (app-scope, deck/call/code/scope.ts): its database, and its own bundle, where the cask
+# program reads the line the driver wrote
+host file
+  list read, <$bundle/**>
+host db

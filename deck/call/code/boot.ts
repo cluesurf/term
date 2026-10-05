@@ -69,7 +69,9 @@ function nodeValue(group: GroupNode): string {
 
 // bump to invalidate every boot cache at once (turborepo's `global_cache_key`). Change this on any boot-pipeline change
 // that the per-build hash does not already capture (e.g. a new prelude assembly rule).
-const BOOT_CACHE_EPOCH = '8'
+// 9: the client bundle enters through a one-line import of the program, and its import map names only the externals
+// the bundle kept (2026-10-04)
+const BOOT_CACHE_EPOCH = '9'
 
 // the default port range: `term boot` scans 2400..2499 for the first free port, so an app always starts on a good port
 // no matter where (or how many) you boot, with no manual `--port`.
@@ -289,6 +291,21 @@ export async function buildClientBundle(opts: {
 
     const source = `${prelude}\n${result.typescript}`
 
+    // a hook table's lowering ends the program with `boot("", 0)`, so it runs itself on load. A `route` and a `boot`
+    // written by hand have no such line, and until 2026-10-04 their bundle defined `boot` and never called it: the
+    // browser took nothing over, and no link was followed (guides: applications/web). The entry calls it for them
+    const definesBoot = result.program.some(node => node.form === 'function' && node.name === 'boot')
+    // the lowering's `boot("", 0)`, or the `host(route, 0)` the simplifier makes of it
+    const runsBoot =
+      !definesBoot ||
+      result.program.some(
+        node =>
+          node.form === 'expression' &&
+          node.expr.form === 'call' &&
+          node.expr.callee.form === 'variable' &&
+          (node.expr.callee.name === 'boot' || node.expr.callee.name === 'host'),
+      )
+
     // browser bundle: everything inlined (no `packages: external`), minified in prod for the smallest payload
     const bundleConfig = {
       bundle: true,
@@ -304,6 +321,7 @@ export async function buildClientBundle(opts: {
         'browser-client',
         `esbuild@${esbuildVersion}`,
         JSON.stringify(bundleConfig),
+        runsBoot ? 'entry: import' : 'entry: import and call boot',
         source,
       ].join('\n'),
     )
@@ -337,33 +355,39 @@ export async function buildClientBundle(opts: {
       const srcFile = path.join(cacheOut, 'boot.ts')
       writeFileSync(srcFile, source)
 
+      // the entry IMPORTS the program rather than being it. An entry's exports are all kept, and the program exports
+      // every task in its closure, so each page shipped the whole closure and the floating-ui shim with its CDN import
+      // whether it drew a popover or not (guides: applications/web, 2026-10-04). Imported, the program keeps its own
+      // top-level run (`boot("", 0)`) and esbuild drops every task nothing reaches
+      const entryFile = path.join(cacheOut, 'entry.ts')
+      writeFileSync(entryFile, runsBoot ? "import './boot'\n" : "import { boot } from './boot'\n\nboot('', 0)\n")
+
       // externalize every bare (npm) specifier and load it from a CDN via an import map, so the app needs no local
       // install of its browser deps (floating-ui, etc.). The app's own code is all relative / inlined, so the only bare
-      // specifiers are genuine third-party packages -- exactly the minimal native edge. Collected here, mapped below.
-      const externals: string[] = []
-      await build({
-        entryPoints: [srcFile],
+      // specifiers are genuine third-party packages -- exactly the minimal native edge. `sideEffects: false` lets esbuild
+      // drop an import whose bindings nothing uses, and the metafile then names only the externals the bundle kept
+      const built = await build({
+        entryPoints: [entryFile],
         outfile: cacheFile,
         ...bundleConfig,
+        metafile: true,
         plugins: [
           {
             name: 'externalize-bare-specifiers',
             setup(b) {
-              b.onResolve({ filter: /^[^./]/ }, args => {
-                if (args.path.startsWith('node:')) {
-                  return { path: args.path, external: true }
-                }
-
-                if (!externals.includes(args.path)) {
-                  externals.push(args.path)
-                }
-
-                return { path: args.path, external: true }
-              })
+              b.onResolve({ filter: /^[^./]/ }, args => ({ path: args.path, external: true, sideEffects: false }))
             },
           },
         ],
       })
+      const externals = [
+        ...new Set(
+          Object.values(built.metafile.outputs)
+            .flatMap(output => output.imports)
+            .filter(found => found.external && !found.path.startsWith('node:'))
+            .map(found => found.path),
+        ),
+      ]
 
       // map each external to an esm.sh CDN module (a web-standard import map; no bundler or install needed at runtime)
       const importMap: { imports: Record<string, string> } = {
@@ -522,7 +546,13 @@ export function buildStyles(appDir: string): void {
     const file = path.join(styleDir, name)
 
     try {
-      const result = compile({ file, text: readFileSync(file, 'utf8') })
+      const text = readFileSync(file, 'utf8')
+      const result = compile({ file, text })
+
+      // a refused sheet is reported, and its last good `.css` stays served, as a code error leaves the server up
+      if (!result.ok) {
+        reportProblems(result.diagnostics.map(diagnostic => ({ diagnostic, text })), appDir)
+      }
 
       if (result.ok && result.css !== undefined) {
         writeFileSync(

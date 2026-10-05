@@ -26,6 +26,22 @@ export const preferHostForConstant: Rule = {
       return
     }
 
+    // an EMPTY list or hash is filled after it is bound (`save out, make list` then `push(out, x)`): never reassigned,
+    // and still not a constant. A `host` binding is generalized, so the empty collection never learns its element from
+    // the pushes that follow, and on Rust it comes out a boxed `Vec<Rc<dyn Any>>` where `Vec<T>` was wanted: the
+    // `--fix` turned six compiling ports into `rustc` errors (self-hosting, 2026-10-04). Held by test/lint/run.ts
+    const value = s.init
+
+    // `make list` mills to an empty array literal, and `make hash` to a construction of the stdlib's `hash` form
+    const empty =
+      (value.form === 'array' && value.items.length === 0) ||
+      (value.form === 'map' && value.entries.length === 0) ||
+      (value.form === 'record' && value.name === 'hash' && value.fields.length === 0)
+
+    if (empty) {
+      return
+    }
+
     const keyword: Span = {
       start: s.span.start,
       end: { line: s.span.start.line, column: s.span.start.column + 4 },

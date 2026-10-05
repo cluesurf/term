@@ -692,7 +692,7 @@ const RANDOM = `load @term/base/code/random
   find integer
 
 task unit
-  like number
+  like float
   send back
     call number
 

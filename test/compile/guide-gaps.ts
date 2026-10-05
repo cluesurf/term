@@ -914,6 +914,123 @@ task start
     ok('but not where the parameter gives back nothing to read', done.ok, done.messages)
   }
 
+  // ---- language/forms: a bare value given to a one-value case is its value ----
+  {
+    const boxed = build(`form box
+  case empty
+  case full, like text
+
+task fill-box
+  like box
+  send back, make full, <apples>
+`)
+    ok('`make full, <apples>` on a one-value case builds', boxed.ok, boxed.messages)
+
+    const pair = build(`form shape
+  case dot
+  case rect
+    link width, like number
+    link height, like number
+
+task one
+  like shape
+  send back, make rect, 3
+`)
+    ok('a bare value given to a case of two fields is refused, naming its fields', !pair.ok && /takes its fields by name \(`bind width`, `bind height`\)/.test(pair.messages), pair.messages)
+  }
+
+  // ---- language/operators: `not` needs no import, as `and` and `or` do not ----
+  {
+    const negated = build(`task differs
+  take a, like number
+  take b, like number
+  like boolean
+  save same, is-equal(a, b)
+  send back, not(same)
+`)
+    ok('`not` builds with no import', negated.ok, negated.messages)
+
+    if (negated.ok) {
+      const module = await load(negated.typescript)
+      ok('and answers the negation', module.differs?.(1, 2) === true && module.differs?.(3, 3) === false, `${module.differs?.(1, 2)} ${module.differs?.(3, 3)}`)
+    }
+
+    const imported = build(
+      `load @term/base/boolean
+  find boolean
+
+task differs
+  take a, like number
+  take b, like number
+  like boolean
+  send back, not(is-equal(a, b))
+`,
+      undefined,
+      true,
+    )
+    ok('and still builds beside the standard library\'s boolean', imported.ok, imported.messages)
+  }
+
+  // ---- language/data: a fill that fails with no handler raises data-mismatch ----
+  {
+    const filled = build(
+      `form site
+  link name, like text
+  link port, like number
+
+task read-site
+  like site
+  send back
+    call fill
+      text <{"name": 7}>
+      like site
+`,
+      undefined,
+      true,
+    )
+    ok('a fill with no handler builds', filled.ok, filled.messages)
+
+    if (filled.ok) {
+      const module = await load(filled.typescript)
+      let caught: { name?: string; form?: string } = {}
+
+      try {
+        module.readSite!()
+      } catch (error) {
+        caught = error as typeof caught
+      }
+
+      ok('and a value that does not fit raises data-mismatch, not a ReferenceError', caught.name === 'TermException' && caught.form === 'data-mismatch', JSON.stringify(caught))
+    }
+  }
+
+  // ---- language/syntax, values, collections: a number inside a call inside text braces is a number ----
+  {
+    const braced = build(`task add-two
+  take a, like number
+  take b, like number
+  like number
+  send back, add(a, b)
+
+task show
+  take x, like number
+  like text
+  send back, <sum {add-two(x, 3)}>
+`)
+    ok('a number inside a call in text braces is a number, not a name', braced.ok, braced.messages)
+
+    if (braced.ok) {
+      const module = await load(braced.typescript)
+      ok('and the text holds the call\'s value', module.show?.(2) === 'sum 5', String(module.show?.(2)))
+    }
+
+    const literal = build(`task show
+  like text
+  send back, <a \\{31\\} b>
+`)
+    ok('a brace written as \\{ is still a brace', literal.ok && /a \{31\} b/.test(literal.typescript), literal.ok ? literal.typescript : literal.messages)
+  }
+
   // ---- types/annotations: an unknown type is reported at the line that names it ----
   {
     const param = build(`task greet
@@ -964,6 +1081,96 @@ task use
       code 2
 `)
     ok('a whole number where a fraction is wanted widens, and builds', widened.ok, widened.messages)
+  }
+
+  // ---- a parameter named like a task is the parameter: the inliner put the task's body in its place ----
+  {
+    const built = build(`form entry
+  link key, like number
+
+task key-of
+  take item, like entry
+  like number
+  send back, read item/key
+
+task apply-to
+  head t
+  take value, like t
+  take key-of
+    like task
+      take item, like t
+      like number
+  like number
+  send back
+    call key-of
+      read value
+
+task double
+  take n, like number
+  like number
+  send back
+    call multiply
+      read n
+      code 2
+
+task use
+  like number
+  send back
+    call apply-to
+      code 3
+      read double
+`)
+    ok('a task-typed parameter named like a task builds', built.ok, built.messages)
+
+    if (built.ok) {
+      ok('and is called, not replaced by the task of its name', !/value\.key/.test(built.typescript), built.typescript.slice(0, 900))
+      const mod = await load(built.typescript)
+      ok('and the call gives the parameter\'s answer', mod.use!() === 6, String(mod.use!()))
+    }
+  }
+
+  // ---- applications/web/styles: a `tint` that is not a CSS color is refused, at its line ----
+  {
+    const good = compile({ file: '/gate/site/style/look.tree', text: 'tone base\n  have ink, tint rgb, 24, 24, 27\n  have line, tint rgb, <10%>, <20%>, <30%>, 0.5\n  have paper, tint hex, <fafafa>\n  have sea, tint oklch, 0.7, 0.1, 200\n' })
+    ok('rgb, a percent rgb with alpha, hex and oklch tints build', good.ok && /--ink: rgb\(24, 24, 27\)/.test(good.css ?? '') && /--sea: oklch\(0\.7 0\.1 200\)/.test(good.css ?? ''), good.ok ? good.css : good.diagnostics.map(d => d.message).join(' | '))
+
+    const cases: [string, RegExp][] = [
+      ['tint rgb, 24, 24', /takes 3 or 4 values, and this gives 2/],
+      ['tint rgb, 300, 24, 27', /channel is 0 to 255, or a percent, and this gives 300/],
+      ['tint hex, <fafazz>', /3, 4, 6 or 8 hex digits, and this gives `fafazz`/],
+      ['tint rbg, 1, 2, 3', /`rbg` is not a color space/],
+    ]
+
+    for (const [tint, message] of cases) {
+      const bad = compile({ file: '/gate/site/style/look.tree', text: `tone base\n  have paper, tint hex, <fff>\n  have ink, ${tint}\n` })
+      const said = bad.ok ? '' : bad.diagnostics.map(d => `${d.name}@${d.span.start.line + 1}: ${d.message}`).join(' | ')
+      ok(`\`${tint}\` is refused at its line`, !bad.ok && /^look-tint@3: /.test(said) && message.test(said), said)
+    }
+
+    // a sheet that does not parse compiled to an empty stylesheet and said nothing
+    const unparsed = compile({ file: '/gate/site/style/look.tree', text: 'tone base\n  have line, tint rgb, 10%, 20%, 30%\n' })
+    ok('a sheet that does not parse is refused, not written empty', !unparsed.ok, unparsed.ok ? JSON.stringify(unparsed.css) : '')
+  }
+
+  // ---- library/collections: the method form of a hash task runs on a native `Map` ----
+  {
+    const built = build(`load @term/base/hash
+  find get-or-default
+
+task count-a
+  take counts, like hash, like text, like number
+  like number
+  send back, counts/get-or-default(<a>, 0)
+`, undefined, true)
+    ok('`counts/get-or-default(<a>, 0)` builds', built.ok, built.messages)
+
+    if (built.ok) {
+      ok('and calls no `getOrDefault` method', !/\.getOrDefault\(/.test(built.typescript))
+      const mod = await load(built.typescript)
+      const found = mod.countA!(new Map([['a', 3]]))
+      const fallen = mod.countA!(new Map([['b', 3]]))
+      ok('and reads the entry, or falls back, at run time', found === 3 && fallen === 0, `${found} ${fallen}`)
+    }
   }
 
   console.log(`\nguide-gaps: ${pass} pass, ${fail} fail`)

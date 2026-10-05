@@ -27,8 +27,11 @@ const DATA = '/data/app'
 const BUNDLE = '/app/res'
 const HOME = '/home/p'
 
-// value, patterns (one a line), kind, the home directory, the answer, and why
-type Case = [value: string, patterns: string, kind: 'path' | 'name', home: string, want: boolean, why: string]
+// value, patterns (one a line), kind, the home directory, the answer, why, and the data directory when not DATA
+type Case = [value: string, patterns: string, kind: 'path' | 'name', home: string, want: boolean, why: string, data?: string]
+
+// a Windows data directory, as the platform answers it
+const WINDOWS_DATA = 'C:\\Users\\p\\AppData\\Roaming\\App'
 
 const CASES: Case[] = [
   ['/data/app/notes.db', '$data/**', 'path', HOME, true, 'a file in the data folder'],
@@ -55,14 +58,21 @@ const CASES: Case[] = [
   ['PATH', 'HOME\nLANG', 'name', HOME, false, 'an unlisted name'],
   ['ANY', '*', 'name', HOME, true, '`*` is every name'],
   ['*', 'HOME', 'name', HOME, false, 'asking for every name needs `*` in the list'],
+  ['C:\\Users\\p\\AppData\\Roaming\\App\\notes.db', '$data/**', 'path', HOME, true, 'a Windows path in a Windows data directory', WINDOWS_DATA],
+  ['C:\\Users\\p\\AppData\\Roaming\\App\\..\\Other\\x', '$data/**', 'path', HOME, false, 'a Windows `..` folds out of it', WINDOWS_DATA],
+  ['D:/Users/p/AppData/Roaming/App/x', '$data/**', 'path', HOME, false, 'the same folders on another drive', WINDOWS_DATA],
+  ['C:relative\\x', '$data/**', 'path', HOME, false, 'a drive with no root after it is relative', WINDOWS_DATA],
 ]
 
-const call = ([value, patterns, kind, home]: Case): string => `  save answer
+// a value as a text literal: a backslash is written `\\`
+const literal = (value: string): string => value.replace(/\\/g, '\\\\').replace(/\n/g, '\\n')
+
+const call = ([value, patterns, kind, home, , , data]: Case): string => `  save answer
     call in-scope
-      text <${value}>
-      text <${patterns.replace(/\n/g, '\\n')}>
+      text <${literal(value)}>
+      text <${literal(patterns)}>
       text <${kind}>
-      text <${DATA}>
+      text <${literal(data ?? DATA)}>
       text <${BUNDLE}>
       text <${home}>
   fork test

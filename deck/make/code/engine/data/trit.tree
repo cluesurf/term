@@ -1,0 +1,213 @@
+# The trit, the base-3 digit, in BALANCED ternary: each digit is -1, 0, or +1. Balanced ternary is the radix the
+# hyperbolic computer stores numbers in (radix-economical, the vibe-native alphabet, and negation is free). This file
+# is the number core: convert between an exact integer and its balanced-ternary digits, and the digit-level primitives
+# every other type builds on.
+#
+# Arithmetic on the VALUE is exact (a big integer), the trit list is the encoding for display, storage, and the
+# associative words. Digits are stored LEAST significant first, the natural order for carry ripple.
+#
+# Ported from engine/data/trit.ts (self-hosting, 2026-10-04). The exact integer is `@term/base/integer/big`'s
+# `big-integer`, which on TypeScript is a record holding the platform's BigInt as `dock`, so a TypeScript caller hands
+# one in as `{ dock: value }` and reads `.dock` out, until it is ported itself. A trit is a `number` (-1, 0 or 1): a
+# closed set of numbers has no spelling until D9. `trit-word-range` answers a `word-range`, the original's
+# `{ min, max }`.
+
+load @term/base/integer/big
+  find big-integer
+  find make-big-integer
+  find big-from-number
+  find big-add
+  find big-subtract
+  find big-multiply
+  find big-compare
+
+load @term/base/list
+  find list
+
+load @term/base/text
+  find split
+
+# the inclusive range of a fixed-width word
+form word-range
+  link min, like big-integer
+  link max, like big-integer
+
+task big-of
+  take n, like number
+  like big-integer
+
+  back big-from-number(n)
+
+task is-zero
+  take value, like big-integer
+  like boolean
+
+  back is-equal(big-compare(value, big-of(0)), 0)
+
+# the balanced-ternary digits of an integer, least significant first. Zero is a single 0 trit
+task to-trits
+  take value, like big-integer
+  like list
+    like number
+
+  save trits, make list
+  fork test, is-zero(value)
+    hold
+      push(trits, 0)
+      back trits
+  save three, big-of(3)
+  save v, value
+  walk test
+    hook test
+      is-equal(is-zero(v), false)
+    hook hold
+      # remainder in {0,1,2}, then 2 shifted down to -1 so the digits stay balanced
+      save shifted, big-add(v/remainder(three), three)
+      save r, shifted/remainder(three)
+      fork test, is-equal(big-compare(r, big-of(2)), 0)
+        hold
+          push(trits, -1)
+          save up, big-add(v, big-of(1))
+          save v, up/divide(three)
+        miss
+          fork test, is-equal(big-compare(r, big-of(1)), 0)
+            hold
+              push(trits, 1)
+            miss
+              push(trits, 0)
+          save down, big-subtract(v, r)
+          save v, down/divide(three)
+  back trits
+
+# the integer value of a balanced-ternary digit list (least significant first)
+task from-trits
+  take trits
+    like list
+      like number
+  like big-integer
+
+  save value, big-of(0)
+  save power, big-of(1)
+  save three, big-of(3)
+  walk trits
+    take t
+    save value, big-add(value, big-multiply(big-of(t), power))
+    save power, big-multiply(power, three)
+  back value
+
+# negate: flip every digit's sign. The gift of balanced ternary, no two's complement and no sign bit
+task negate-trits
+  take trits
+    like list
+      like number
+  like list
+    like number
+
+  save out, make list
+  walk trits
+    take t
+    push(out, subtract(0, t))
+  back out
+
+task trit-glyph
+  take t, like number
+  like text
+
+  fork test, is-equal(t, -1)
+    hold
+      back <->
+  fork test, is-equal(t, 1)
+    hold
+      back <+>
+  back <0>
+
+# the printable balanced-ternary text, most significant first (5 is "+--", since 5 = 9 - 3 - 1)
+task trit-string
+  take value, like big-integer
+  like text
+
+  save trits, to-trits(value)
+  save out, <>
+  walk trits
+    take t
+    save out, <{trit-glyph(t)}{out}>
+  back out
+
+# parse a balanced-ternary text (most significant first, glyphs `+`, `0`, `-`) back to an integer
+task from-trit-string
+  take text, like text
+  like big-integer
+
+  save trits, make list
+  walk split(text, <>)
+    take glyph
+    fork test, is-equal(glyph, <+>)
+      hold
+        push(trits, 1)
+        turn next
+    fork test, is-equal(glyph, <->)
+      hold
+        push(trits, -1)
+        turn next
+    fork test, is-equal(glyph, <0>)
+      hold
+        push(trits, 0)
+        turn next
+    halt <bad balanced-ternary glyph "{glyph}">
+  # the text is most significant first, the list least significant first
+  save reversed, make list
+  save at, subtract(trits/length, 1)
+  walk test
+    hook test
+      is-minimum(at, 0)
+    hook hold
+      push(reversed, get(trits, at))
+      save at, subtract(at, 1)
+  back from-trits(reversed)
+
+# the number of trits needed to hold a value (its balanced-ternary length), at least 1
+task trit-length
+  take value, like big-integer
+  like number
+
+  save trits, to-trits(value)
+  back trits/length
+
+# the inclusive range of a fixed-width balanced-ternary word of `n` trits: [-(3^n - 1)/2, +(3^n - 1)/2]
+task trit-word-range
+  take n, like number
+  like word-range
+
+  save power, big-of(1)
+  save k, 0
+  walk test
+    hook test
+      is-below(k, n)
+    hook hold
+      save power, big-multiply(power, big-of(3))
+      save k, add(k, 1)
+  save below, big-subtract(power, big-of(1))
+  save half, below/divide(big-of(2))
+  back
+    make word-range
+      bind min, half/negate()
+      bind max, half
+
+# pad or check a digit list to a fixed width (used when storing a fixed-resolution word)
+task to-fixed-trits
+  take value, like big-integer
+  take width, like number
+  like list
+    like number
+
+  save trits, to-trits(value)
+  fork test, is-above(trits/length, width)
+    hold
+      save shown, value/text()
+      halt <value {shown} needs {trits/length} trits, exceeds width {width}>
+  walk test
+    hook test
+      is-below(trits/length, width)
+    hook hold
+      push(trits, 0)
+  back trits

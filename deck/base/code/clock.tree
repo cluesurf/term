@@ -7,6 +7,9 @@ load @term/base/native/{platform}/clock
   find current-time
   find delay
 
+load @term/base/duration
+  find duration
+
 task now
   like number
   send back
@@ -18,4 +21,13 @@ task sleep
   send back
     call delay
       read ms
+      wait true
+
+# the same wait, for a `duration`: `sleep(from-seconds(2))` cannot be read as two milliseconds
+task sleep
+  mark async
+  take span, like duration
+  send back
+    call delay
+      call span/to-milliseconds
       wait true

@@ -43,6 +43,40 @@ import {
   showType,
 } from '@term/make/code/compile/node'
 
+// the members a native map and a native list answer THEMSELVES on every backend (camelCase, as a member call emits).
+// A member call of any other `hash` or `list` method dispatches to the Term method (`bindMemberMethod`)
+const NATIVE_MAP_MEMBERS = new Set(['get', 'set', 'has', 'delete', 'clear', 'keys', 'values', 'entries', 'forEach', 'size'])
+const NATIVE_LIST_MEMBERS = new Set([
+  'at',
+  'concat',
+  'entries',
+  'every',
+  'filter',
+  'find',
+  'findIndex',
+  'forEach',
+  'get',
+  'includes',
+  'indexOf',
+  'join',
+  'keys',
+  'lastIndexOf',
+  'length',
+  'map',
+  'pop',
+  'push',
+  'reduce',
+  'reverse',
+  'set',
+  'shift',
+  'slice',
+  'some',
+  'sort',
+  'splice',
+  'unshift',
+  'values',
+])
+
 // `1st`, `2nd`, `3rd`, `4th`: a position named for a message
 function ordinal(n: number): string {
   const tens = n % 100
@@ -533,6 +567,54 @@ export function check(
     methodNames.add(statement.method.name)
   }
 
+  // the methods that are THIN NATIVE WRAPPERS: a body that calls `self/<its own name>` (hash's `get`, `has`, `set`, list's
+  // `push`, ...) is the native method under a Term signature. A member call of one of these on a native map or list
+  // stays the native call; any other method of `hash` or `list` called as a member dispatches to the Term method
+  // (`bindMemberMethod`), since the native object has no such method (`kids/get-or-default` emitted
+  // `kids.getOrDefault`, a TypeError: test/compile/member-method.ts, self-hosting 2026-10-04)
+  const nativeWrappers = new Set<string>()
+
+  for (const statement of program) {
+    if (statement.form !== 'function' || !statement.method) {
+      continue
+    }
+
+    const own = statement.method.name
+    const stack: unknown[] = [statement.body]
+
+    while (stack.length > 0) {
+      const node = stack.pop()
+
+      if (!node || typeof node !== 'object') {
+        continue
+      }
+
+      if (Array.isArray(node)) {
+        stack.push(...node)
+        continue
+      }
+
+      const record = node as { form?: string; callee?: { form?: string; name?: string; target?: { form?: string; name?: string } } }
+
+      if (
+        record.form === 'call' &&
+        record.callee?.form === 'member' &&
+        record.callee.name === own &&
+        record.callee.target?.form === 'variable' &&
+        record.callee.target.name === 'self'
+      ) {
+        nativeWrappers.add(statement.name)
+        break
+      }
+
+      for (const [key, value] of Object.entries(node)) {
+        if (key !== 'span' && key !== 'type') {
+          stack.push(value)
+        }
+      }
+    }
+  }
+
   // type-scheme + environment operations (component: code/check/scheme.ts). Aliased to capture the substitution so the
   // core's call sites stay natural. `Scheme` / `Env` / `isValueExpression` are imported directly.
   const instantiateScheme = (scheme: Scheme): Type =>
@@ -548,6 +630,11 @@ export function check(
   // with the mask it is bound by). Used to discharge a bounded call whose argument is still one of the enclosing
   // generics rather than a concrete type. Compared by resolved representative, since unification may have linked it.
   let currentBounds: { variable: Type; mask: string }[] = []
+  // the generic type variables of the function currently being checked. Inside its body each stands for ONE type the
+  // caller chooses, so a value of `pile t` is as ground as a `pile number`: pushing one into a fresh `make list` makes
+  // it a list of `pile t`. Counted as unknown, the element fell through to `number`, and engine/data/array's `to-array`
+  // emitted `const stack: number[]` holding vectors, a tsc error in every build of the port (2026-10-04)
+  let currentGenerics = new Set<number>()
 
   function inferExpression(node: Expression, env: Env): Type {
     let type: Type
@@ -1212,6 +1299,12 @@ export function check(
 
           type = signature.result
         } else {
+          // the RESULT of a native collection method, which has no Term signature: `xs/slice(1, 3)` is the list,
+          // `h/keys()` a list of its keys. Typed `unknown` before, so the Rust emitter read `kept/length` as a field
+          // and iterated `walk h/keys()`'s shared list itself, both rustc errors (test/compile/member-result.ts,
+          // self-hosting 2026-10-04). Used only where the callee has no type of its own
+          let nativeResult: Type | undefined
+
           // a native collection method (`table/push(x)`, `table/set(i, x)`, `map/set(k, v)`) constrains the
           // ELEMENT (key, value) type: without this the element variable of a fresh `make list` never meets
           // its contents, stays a free generic, and the native backends emit an unusable type parameter
@@ -1233,6 +1326,7 @@ export function check(
               const r = resolve(t)
 
               return (
+                (r.kind === 'variable' && currentGenerics.has(r.id)) ||
                 r.kind === 'number' ||
                 r.kind === 'float' ||
                 r.kind === 'string' ||
@@ -1283,6 +1377,33 @@ export function check(
                 pin(receiver.key, node.args[0])
               }
             }
+
+            if (receiver.kind === 'array') {
+              if (op === 'slice' || op === 'concat' || op === 'reverse') {
+                nativeResult = receiver
+              } else if (op === 'pop' || op === 'shift') {
+                nativeResult = receiver.element
+              } else if (op === 'push' || op === 'unshift' || op === 'indexOf' || op === 'lastIndexOf') {
+                nativeResult = { kind: 'number' }
+              } else if (op === 'includes') {
+                nativeResult = { kind: 'boolean' }
+              } else if (op === 'join') {
+                nativeResult = { kind: 'string' }
+              }
+            } else if (receiver.kind === 'map') {
+              // `get` is the value (the emitter asserts it present, `m.get(k)!`). Left unknown, a value read from a
+              // native map reached TypeScript as `any`, and every field read off it went unchecked (time/compare's
+              // `by-name/get(name)/mean-ns`, 2026-10-04)
+              if (op === 'get') {
+                nativeResult = receiver.value
+              } else if (op === 'keys') {
+                nativeResult = { kind: 'array', element: receiver.key }
+              } else if (op === 'values') {
+                nativeResult = { kind: 'array', element: receiver.value }
+              } else if (op === 'has' || op === 'delete') {
+                nativeResult = { kind: 'boolean' }
+              }
+            }
           }
 
           // calling a first-class function value (a local of function type, a parameter, etc.)
@@ -1313,7 +1434,8 @@ export function check(
             calleeType.kind === 'unknown' ||
             calleeType.kind === 'variable'
           ) {
-            type = UNKNOWN // gradual: unknown callee
+            // gradual: an unknown callee, unless it is a native collection method whose result is known
+            type = nativeResult ?? UNKNOWN
           } else {
             diagnostics.push(
               diagnose('type-mismatch', {
@@ -2163,6 +2285,35 @@ export function check(
 
     const target = resolve(member.target.type ?? inferExpression(member.target, env))
 
+    // a native map or list: its form is `hash` or `list`, and only a method that is NOT a thin native wrapper dispatches
+    // (the native object answers the wrapped ones itself, and the wrappers' own `self/<name>` must stay native)
+    const native = target.kind === 'map' ? 'hash' : target.kind === 'array' ? 'list' : undefined
+
+    if (native) {
+      const mangled = methodTable.get(native)?.get(member.name)
+      const method = mangled ? functions.get(mangled) : undefined
+      // the name as a native member: every emitter handles these on a map or list itself (`xs/get(i)` is `xs[i]`)
+      const camel = member.name.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase())
+      const nativeMember = (native === 'hash' ? NATIVE_MAP_MEMBERS : NATIVE_LIST_MEMBERS).has(camel)
+
+      if (!mangled || !method || method.names[0] !== 'self' || nativeMember || nativeWrappers.has(mangled)) {
+        return
+      }
+
+      node.callee = { form: 'variable', name: mangled, span: member.span } as Expression
+      node.args.unshift(member.target)
+
+      if (node.names) {
+        node.names.unshift(undefined)
+      }
+
+      if (node.leanNames) {
+        node.leanNames.unshift(false)
+      }
+
+      return
+    }
+
     if (target.kind !== 'named' || !records.has(target.name) || records.get(target.name)!.has(member.name)) {
       return
     }
@@ -2940,6 +3091,7 @@ export function check(
       variable: { kind: 'variable', id },
       mask,
     }))
+    currentGenerics = new Set(signature.generics)
 
     const env: Env = new Map(moduleEnv)
     // a same-arity redefinition keeps the first signature, but a merged program can still hand this body more
@@ -2988,6 +3140,7 @@ export function check(
   // type-check a zone's view: infer each embedded expression with the zone's params in scope, threading `save` bindings
   function checkZone(node: Extract<Statement, { form: 'view' }>): void {
     currentBounds = []
+    currentGenerics = new Set()
 
     const env: Env = new Map(moduleEnv)
 

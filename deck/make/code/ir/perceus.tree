@@ -1,0 +1,684 @@
+# The memory model, lowered in the MIR: mutable value semantics realized by precise reference counting (Perceus) with
+# functional-but-in-place reuse (FBIP). Values do not alias; the compiler inserts exact dup/drop operations from a
+# static last-use analysis, and when a uniquely-owned allocation is freed right before an allocation of the same shape,
+# it is reused in place instead of freed-and-reallocated. This ties to the kernel's linearity (a `1` multiplicity is a
+# uniquely-owned value). See note/research/vibe/computation/plans/05-ir.md and design/readme.md. Browser-safe. This is
+# the analysis on a straight-line MIR; lowering full control flow onto it is the next step.
+#
+# Ported from ir/perceus.ts (self-hosting, 2026-10-04). The value and the instruction are unions tagged on `kind` and
+# `op`, as the original declared them, so ir/mir-lower.ts and the tests build them unchanged. Three shapes changed:
+#   - a `make` value's `reuse` is `<>` when nothing is reused (the original left the field out)
+#   - the set of reference-counted names is a list, and leaving it out (every name heap) is its own task,
+#     `perceus-control`, beside `perceus-control-heap`, because an EMPTY set means no name is heap
+#   - every set the analysis keeps is a list in insertion order, removal included, so every output that walks one
+#     comes out in the order the original's `Set` walked
+# A loop's second body pass calls `process-block` WITHOUT the heap test, as the original's did: every name in it is
+# treated as heap. That is likely a defect of the original, kept so the port answers the same (logged).
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+form value
+  mark tag, name kind
+  case make
+    link ctor, like text
+    link args, like list, like text
+    # the dropped cell this construction reuses, `<>` for none
+    link reuse, like text
+  case call
+    link fn, like text
+    link args, like list, like text
+  case var
+    link name, like text
+  case lit
+
+form inst
+  mark tag, name op
+  case let
+    link name, like text
+    link value, like value
+  case return
+    link name, like text
+  case dup
+    link name, like text
+  case drop
+    link name, like text
+  case if
+    link cond, like text
+    link then, like list, like inst
+    link else, like list, like inst
+  # a loop: the condition is a copyable boolean (no RC). A value owned at the header and used in the body is dup'd per
+  # iteration (it must survive the back-edge to the next iteration) and dropped after the loop if dead there
+  case while
+    link cond, like text
+    link body, like list, like inst
+  # an N-way match (the subject is a copyable selector here; ADT field ownership is handled by the IR->MIR lowering).
+  # Generalizes `if`: a value consumed in some arms but not others is dropped in the arms that do not consume it, so
+  # every arm leaves the same ownership state (balanced)
+  case match
+    link subject, like text
+    link arms, like list, like list, like inst
+
+# a block after the backward pass, and the names live at its entry
+form block-pass
+  link insts, like list, like inst
+  link live, like list, like text
+
+task make-dup
+  take name, like text
+  like inst
+
+  back make dup, bind name, name
+
+task make-drop
+  take name, like text
+  like inst
+
+  back make drop, bind name, name
+
+# `names` with `name` added at the end, unless it is there already (a Set's `add`)
+task add-name
+  take names, like list, like text
+  take name, like text
+  like list, like text
+
+  save out, copy(names)
+  fork test, contains(out, name)
+    miss
+      push(out, name)
+  back out
+
+# `names` without `name` (a Set's `delete`)
+task remove-name
+  take names, like list, like text
+  take name, like text
+  like list, like text
+
+  save out, make list
+  walk names
+    take one
+    fork test, is-equal(one, name)
+      miss
+        push(out, one)
+  back out
+
+# the variables a value reads
+task value-reads
+  take v, like value
+  like list, like text
+
+  save none, make list
+  sift v
+    case make
+      back args
+    case call
+      back args
+    case var
+      save one, make list
+      push(one, name)
+      back one
+    case lit
+      back none
+
+# the variables an instruction reads
+task reads
+  take i, like inst
+  like list, like text
+
+  save none, make list
+  sift i
+    case let
+      back value-reads(value)
+    case return
+      save one, make list
+      push(one, name)
+      back one
+    case dup
+      back none
+    case drop
+      back none
+    case if
+      back none
+    case while
+      back none
+    case match
+      back none
+
+# the name a `let` binds, `<>` for any other instruction
+task let-name
+  take i, like inst
+  like text
+
+  sift i
+    case let
+      back name
+    case return
+      back <>
+    case dup
+      back <>
+    case drop
+      back <>
+    case if
+      back <>
+    case while
+      back <>
+    case match
+      back <>
+
+# the name a `drop` drops, `<>` for any other instruction
+task drop-name
+  take i, like inst
+  like text
+
+  sift i
+    case let
+      back <>
+    case return
+      back <>
+    case dup
+      back <>
+    case drop
+      back name
+    case if
+      back <>
+    case while
+      back <>
+    case match
+      back <>
+
+# how many fields a `let x = make ...` builds, -1 for any other instruction
+task make-arity
+  take i, like inst
+  like number
+
+  sift i
+    case let
+      sift value
+        case make
+          back args/length
+        case call
+          back -1
+        case var
+          back -1
+        case lit
+          back -1
+    case return
+      back -1
+    case dup
+      back -1
+    case drop
+      back -1
+    case if
+      back -1
+    case while
+      back -1
+    case match
+      back -1
+
+# a `let x = make ...` that reuses the cell of `cell`
+task with-reuse
+  take i, like inst
+  take cell, like text
+  like inst
+
+  sift i
+    case let
+      sift value
+        case make
+          back
+            make let
+              bind name, name
+              bind value
+                make make
+                  bind ctor, ctor
+                  bind args, args
+                  bind reuse, cell
+        case call
+          back i
+        case var
+          back i
+        case lit
+          back i
+    case return
+      back i
+    case dup
+      back i
+    case drop
+      back i
+    case if
+      back i
+    case while
+      back i
+    case match
+      back i
+
+# run Perceus over a straight-line function body. `params` are the owned inputs
+task perceus
+  take params, like list, like text
+  take body, like list, like inst
+  like list, like inst
+
+  # last-use index of each variable (the point where its owned reference is consumed)
+  save last-use, make hash
+  save at, 0
+  walk body
+    take i
+    walk reads(i)
+      take v
+      set(last-use, v, at)
+    save at, add(at, 1)
+
+  # arity of each record binding, for reuse matching
+  save arity, make hash
+  walk body
+    take i
+    host n, make-arity(i)
+    fork test, is-minimum(n, 0)
+      hold
+        set(arity, let-name(i), n)
+
+  save out, make list
+  # a parameter never used must be dropped at entry (it was owned but consumed nowhere)
+  walk params
+    take p
+    fork test, has(last-use, p)
+      miss
+        push(out, make-drop(p))
+
+  save at, 0
+  walk body
+    take i
+    # a non-last use needs a dup: a reference is taken while the value lives on for a later use
+    walk reads(i)
+      take v
+      fork test, is-unequal(get-or-default(last-use, v, -1), at)
+        hold
+          push(out, make-dup(v))
+    push(out, i)
+    # a binding that is never read is dead: drop it right after it is created
+    host bound, let-name(i)
+    fork test, and(is-unequal(bound, <>), is-equal(has(last-use, bound), false))
+      hold
+        push(out, make-drop(bound))
+    save at, add(at, 1)
+  back reuse-cells(out, arity)
+
+# FBIP: a `drop x` of a record immediately followed by a `let y = make(...)` of the same arity reuses x's cell. The
+# original's private `reuse`, named for what it does since `reuse` is also the `make` value's field
+task reuse-cells
+  take insts, like list, like inst
+  take arity
+    like hash, like text
+      like number
+  like list, like inst
+
+  save out, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, insts/length)
+    hook hold
+      host here, get(insts, at)
+      host dropped, drop-name(here)
+      save fused, false
+      fork test, and(is-unequal(dropped, <>), has(arity, dropped))
+        hold
+          fork test, is-below(add(at, 1), insts/length)
+            hold
+              save next, get(insts, add(at, 1))
+              fork test, is-equal(make-arity(next), get-or-default(arity, dropped, -2))
+                hold
+                  # reuse the dropped cell for the new construction; the drop is subsumed by the reuse
+                  push(out, with-reuse(next, dropped))
+                  save fused, true
+      fork test, fused
+        hold
+          save at, add(at, 2)
+        miss
+          push(out, here)
+          save at, add(at, 1)
+  back out
+
+# Perceus over control flow, every name reference-counted: the original's `perceusControl(params, body)`
+task perceus-control
+  take params, like list, like text
+  take body, like list, like inst
+  like list, like inst
+
+  save none, make list
+  back control(params, body, none, true)
+
+# Perceus over control flow, only the names in `heap` reference-counted: copyable values (integers, booleans) carry no
+# RC, so dup'ing one would call the runtime on a non-pointer
+task perceus-control-heap
+  take params, like list, like text
+  take body, like list, like inst
+  take heap, like list, like text
+  like list, like inst
+
+  back control(params, body, heap, false)
+
+# A backward liveness pass that inserts dup/drop through `if` branches with balanced ownership. A value owned at the
+# branch is consumed on every path: if one branch uses it (consuming at last use) and the other does not, a `drop` is
+# inserted in the other branch so neither leaks nor double-frees. Conditions are treated as copyable (no RC)
+task control
+  take params, like list, like text
+  take body, like list, like inst
+  take heap, like list, like text
+  take every, like boolean
+  like list, like inst
+
+  save none, make list
+  host pass, process-block(body, none, heap, every)
+  # an owned parameter never used on any path is dropped at entry
+  save out, make list
+  walk params
+    take p
+    fork test, and(is-heap(p, heap, every), is-equal(contains(pass/live, p), false))
+      hold
+        push(out, make-drop(p))
+  walk pass/insts
+    take i
+    push(out, i)
+  back out
+
+task is-heap
+  take name, like text
+  take heap, like list, like text
+  take every, like boolean
+  like boolean
+
+  back or(every, contains(heap, name))
+
+# Process a block backward. `live-after` is the (heap) names that must remain owned when the block exits. Answers the
+# rewritten block and the names live at its entry
+task process-block
+  take insts, like list, like inst
+  take live-after, like list, like text
+  take heap, like list, like text
+  take every, like boolean
+  like block-pass
+
+  save live, copy(live-after)
+  save reversed, make list
+  save at, subtract(insts/length, 1)
+  walk test
+    hook test, is-minimum(at, 0)
+    hook hold
+      host i, get(insts, at)
+      save at, subtract(at, 1)
+      host step, process-one(i, live, heap, every)
+      walk step/insts
+        take one
+        push(reversed, one)
+      save live, step/live
+  save out, make list
+  save k, subtract(reversed/length, 1)
+  walk test
+    hook test, is-minimum(k, 0)
+    hook hold
+      push(out, get(reversed, k))
+      save k, subtract(k, 1)
+  back
+    make block-pass
+      bind insts, out
+      bind live, live
+
+# `a` then each name of `b` not in it: the order `new Set([...a, ...b])` gives
+task union
+  take a, like list, like text
+  take b, like list, like text
+  like list, like text
+
+  save out, copy(a)
+  walk b
+    take v
+    save out, add-name(out, v)
+  back out
+
+# One instruction of the backward pass, with what is live after it. Answers the instructions to put in the REVERSED
+# block, in the order the original pushed them, and what is live before it
+task process-one
+  take i, like inst
+  take live, like list, like text
+  take heap, like list, like text
+  take every, like boolean
+  like block-pass
+
+  save reversed, make list
+  save none, make list
+  sift i
+    case while
+      # Backward liveness over a loop needs a fixpoint: the body exits to BOTH the post-loop (`live`) and back to the
+      # header (so the body's own live-in feeds its live-out). Iterate `live-header` until stable. Liveness is
+      # monotone (only grows), so this converges
+      save live-header, copy(live)
+      save settled, false
+      walk test
+        hook test, is-equal(settled, false)
+        hook hold
+          host inner, process-block(body, union(live-header, live), heap, every)
+          host grown, union(live-header, inner/live)
+          fork test, is-equal(grown/length, live-header/length)
+            hold
+              save settled, true
+            miss
+              save live-header, grown
+      # the final pass with the converged header-live set. As in the original, WITHOUT the heap test: every name
+      # in this pass is reference-counted
+      host final, process-block(body, union(live-header, live), none, true)
+      # a value owned through the loop but dead after it keeps its original owned reference past the last iteration,
+      # dropped right after the loop
+      walk live-header
+        take v
+        fork test, contains(live, v)
+          miss
+            push(reversed, make-drop(v))
+      push reversed
+        make while
+          bind cond, cond
+          bind body, final/insts
+      save next, copy(live)
+      walk live-header
+        take v
+        save next, add-name(next, v)
+      back
+        make block-pass
+          bind insts, reversed
+          bind live, next
+    case match
+      save results, make list
+      walk arms
+        take arm
+        push(results, process-block(arm, live, heap, every))
+      # the union of what every arm consumes: each arm must leave the same names owned, so an arm that does not
+      # consume one of these (and where it is not live after the match) drops it
+      save consumed, make list
+      walk results
+        take r
+        save consumed, union(consumed, r/live)
+      save new-arms, make list
+      walk results
+        take r
+        save arm, make list
+        walk consumed
+          take v
+          fork test
+            and is-equal(contains(r/live, v), false)
+              is-equal(contains(live, v), false)
+            hold
+              push(arm, make-drop(v))
+        walk r/insts
+          take one
+          push(arm, one)
+        push(new-arms, arm)
+      push reversed
+        make match
+          bind subject, subject
+          bind arms, new-arms
+      save next, copy(live)
+      walk results
+        take r
+        save next, union(next, r/live)
+      back
+        make block-pass
+          bind insts, reversed
+          bind live, next
+    case if
+      host left, process-block(then, live, heap, every)
+      host right, process-block(else, live, heap, every)
+      # a variable owned at the if but consumed in only one branch must be dropped in the other
+      save new-then, make list
+      walk right/live
+        take v
+        fork test
+          and is-equal(contains(left/live, v), false)
+            is-equal(contains(live, v), false)
+          hold
+            push(new-then, make-drop(v))
+      walk left/insts
+        take one
+        push(new-then, one)
+      save new-else, make list
+      walk left/live
+        take v
+        fork test
+          and is-equal(contains(right/live, v), false)
+            is-equal(contains(live, v), false)
+          hold
+            push(new-else, make-drop(v))
+      walk right/insts
+        take one
+        push(new-else, one)
+      push reversed
+        make if
+          bind cond, cond
+          bind then, new-then
+          bind else, new-else
+      save next, union(union(live, left/live), right/live)
+      back
+        make block-pass
+          bind insts, reversed
+          bind live, next
+    case let
+      back process-straight(i, live, heap, every)
+    case return
+      back process-straight(i, live, heap, every)
+    case dup
+      back process-straight(i, live, heap, every)
+    case drop
+      back process-straight(i, live, heap, every)
+
+# a straight-line instruction of the backward pass
+task process-straight
+  take i, like inst
+  take live, like list, like text
+  take heap, like list, like text
+  take every, like boolean
+  like block-pass
+
+  host def, let-name(i)
+  # count heap reads: a value read k times in ONE instruction needs k references (a call that takes the value twice
+  # consumes two). Only reference-counted (heap) reads matter
+  save counted, make list
+  save counts, make hash
+  walk reads(i)
+    take v
+    fork test, is-heap(v, heap, every)
+      hold
+        save counted, add-name(counted, v)
+        set(counts, v, add(get-or-default(counts, v, 0), 1))
+  save dups, make list
+  walk counted
+    take v
+    # references needed here: `count` consumed, plus one to survive if the value is live after; the original
+    # supplies one, so the remainder are dup'd
+    save need, subtract(get-or-default(counts, v, 0), 1)
+    fork test, contains(live, v)
+      hold
+        save need, add(need, 1)
+    save k, 0
+    walk test
+      hook test, is-below(k, need)
+      hook hold
+        push(dups, make-dup(v))
+        save k, add(k, 1)
+  save reversed, make list
+  # a dead heap binding
+  fork test, is-unequal(def, <>)
+    hold
+      fork test
+        and(is-heap(def, heap, every), is-equal(contains(live, def), false))
+        hold
+          push(reversed, make-drop(def))
+  push(reversed, i)
+  walk dups
+    take d
+    push(reversed, d)
+  save next, live
+  fork test, is-unequal(def, <>)
+    hold
+      save next, remove-name(next, def)
+  # `live` tracks only heap names (copyable values need no liveness for RC)
+  walk counted
+    take v
+    save next, add-name(next, v)
+  back
+    make block-pass
+      bind insts, reversed
+      bind live, next
+
+# one instruction as text, as the tests and the debug output read it
+task show-inst
+  take i, like inst
+  like text
+
+  sift i
+    case dup
+      back <dup {name}>
+    case drop
+      back <drop {name}>
+    case return
+      back <return {name}>
+    case let
+      back <let {name} = {show-value(value)}>
+    case if
+      back <if {cond} \{ {show-block(then, <; >)} \} else \{ {show-block(else, <; >)} \}>
+    case while
+      back <while {cond} \{ {show-block(body, <; >)} \}>
+    case match
+      save shown, make list
+      walk arms
+        take arm
+        push(shown, show-block(arm, <; >))
+      back <match {subject} \{ {join(shown, < | >)} \}>
+
+task show-value
+  take v, like value
+  like text
+
+  sift v
+    case make
+      fork test, is-equal(reuse, <>)
+        hold
+          back <make {ctor}({join(args, <, >)})>
+      back <make {ctor}({join(args, <, >)}) reuse {reuse}>
+    case call
+      back <{fn}({join(args, <, >)})>
+    case var
+      back name
+    case lit
+      back <lit>
+
+task show-block
+  take insts, like list, like inst
+  take separator, like text
+  like text
+
+  save shown, make list
+  walk insts
+    take one
+    push(shown, show-inst(one))
+  back join(shown, separator)

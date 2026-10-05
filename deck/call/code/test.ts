@@ -216,6 +216,8 @@ async function runSeedTests(input: {
 
   let pass = 0
   let fail = 0
+  // files of laws alone, whose proofs the build checked
+  let proved = 0
   // files that did not build, which ran no test at all
   let broken = 0
 
@@ -253,9 +255,11 @@ async function runSeedTests(input: {
       const held = run.results.filter(one => one.held).length
       const missed = run.results.length - held
 
-      // a proof-only file compiled clean, so its `hold` / `rule` proofs were kernel-checked: one check, held
+      // a proof-only file compiled clean, so its `hold` / `rule` proofs were kernel-checked. Counted as such, not as a
+      // test: it added one to the tests, and a run of two tests and a file of laws closed `3 tests` (guides:
+      // commands/test, 2026-10-04)
       if (run.results.length === 0) {
-        pass++
+        proved++
         report({ glyph: 'done', verb: 'test', subject: rel, duration: Date.now() - started, facts: ['proofs checked'] })
         continue
       }
@@ -290,7 +294,12 @@ async function runSeedTests(input: {
     }
   }
 
-  const counts = [count(pass + fail, 'tests', 'test'), count(pass, 'passed'), ...(fail > 0 ? [count(fail, 'failed')] : [])]
+  const counts = [
+    count(pass + fail, 'tests', 'test'),
+    count(pass, 'passed'),
+    ...(fail > 0 ? [count(fail, 'failed')] : []),
+    ...(proved > 0 ? [count(proved, 'proof files checked', 'proof file checked')] : []),
+  ]
 
   if (broken > 0) {
     counts.push(count(broken, 'files did not build', 'file did not build'))

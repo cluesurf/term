@@ -26,6 +26,8 @@
 // The value renderer accepts both `text <x>` (old) and bare / `<x>` / `tint ...` / list / function (new), so a sheet
 // can migrate rule by rule.
 
+import type { Diagnostic, Span } from '@term/make/code/parser/diagnostic'
+import { diagnose } from '@term/make/code/parser/diagnostic'
 import { parse } from '@term/make/code/parser/tree'
 import type { GroupNode, Node } from '@term/make/code/parser/tree'
 
@@ -728,4 +730,107 @@ export function compileLookCss(
   }
 
   return blocks.filter(Boolean).join('\n\n') + '\n'
+}
+
+// ── refusals ──────────────────────────────────────────────────────────────────
+
+// the color spaces a `tint` may name, and how many components each takes. A tint the browser cannot read was written
+// through as it stood until 2026-10-04 (`rgb(24, 24)`, `#fafazz`, `rbg(1, 2, 3)`), and a rule with a bad value is
+// dropped by the browser without a word, so the build refuses it instead (guides: applications/web/styles)
+const TINT_ARITY: Record<string, [number, number]> = {
+  rgb: [3, 4],
+  rgba: [3, 4],
+  hsl: [3, 4],
+  hsla: [3, 4],
+  hwb: [3, 3],
+  lab: [3, 3],
+  lch: [3, 3],
+  oklab: [3, 3],
+  oklch: [3, 3],
+  color: [4, 4],
+}
+
+// why one `tint` is not a CSS color, or undefined when it is
+function tintProblem(group: GroupNode): string | undefined {
+  const parts = rest(group)
+  const space = parts[0]?.kind === 'group' ? headName(parts[0]) : nodeText(parts[0])
+  const comps = parts.slice(1).map(renderValueNode)
+
+  if (space === 'hex') {
+    const digits = comps[0] ?? ''
+
+    return comps.length === 1 && /^([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(digits)
+      ? undefined
+      : `\`tint hex\` takes 3, 4, 6 or 8 hex digits, and this gives \`${comps.join(', ')}\``
+  }
+
+  const arity = TINT_ARITY[space]
+
+  if (!arity) {
+    return `\`${space}\` is not a color space. A tint is one of hex, ${Object.keys(TINT_ARITY).join(', ')}`
+  }
+
+  const [least, most] = arity
+
+  if (comps.length < least || comps.length > most) {
+    const wanted = least === most ? String(least) : `${least} or ${most}`
+
+    return `\`tint ${space}\` takes ${wanted} values, and this gives ${comps.length}`
+  }
+
+  if (space === 'rgb' || space === 'rgba') {
+    const channel = comps.slice(0, 3).find(c => {
+      const percent = /^(\d+(\.\d+)?)%$/.exec(c)
+
+      return percent ? Number(percent[1]) > 100 : !/^\d+(\.\d+)?$/.test(c) || Number(c) > 255
+    })
+
+    if (channel !== undefined) {
+      return `an \`rgb\` channel is 0 to 255, or a percent, and this gives ${channel}`
+    }
+  }
+
+  return undefined
+}
+
+// where a group starts: its head word's token
+function groupSpan(group: GroupNode, file: string): Span {
+  const head = group.nodes[0]
+  const chunk = head?.kind === 'name' ? head.parts.find(part => part.kind === 'chunk') : undefined
+  const span = chunk?.kind === 'chunk' ? chunk.token.span : undefined
+
+  return span ? { ...span, file } : { file, start: { line: 0, column: 0 }, end: { line: 0, column: 0 } }
+}
+
+// what stops a sheet compiling: a parse error, or a `tint` that is not a CSS color. `compile` refuses the sheet with
+// these, so `term make` and `term boot` say so rather than writing a rule the browser drops
+export function checkLook(source: { file: string; text: string }): Diagnostic[] {
+  const parsed = parse(source)
+
+  if (!parsed.ok) {
+    return parsed.diagnostics
+  }
+
+  const found: Diagnostic[] = []
+  const visit = (node: Node): void => {
+    if (node.kind !== 'group') {
+      return
+    }
+
+    if (headName(node) === 'tint') {
+      const problem = tintProblem(node)
+
+      if (problem) {
+        found.push(diagnose('look-tint', { file: source.file, span: groupSpan(node, source.file), message: problem }))
+      }
+
+      return
+    }
+
+    node.nodes.forEach(visit)
+  }
+
+  parsed.tree.nodes.forEach(visit)
+
+  return found
 }

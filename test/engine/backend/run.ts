@@ -52,7 +52,8 @@ const fn = (
 
 const arg = (v: bigint): Value => ({
   form: 'integer',
-  value: { value: v, resolution: 'big' },
+  // engine/data/integer is Term since 2026-10-04: its value is a `big-integer`, `{ dock: bigint }`
+  value: { value: { dock: v }, resolution: 'big' },
 })
 
 let pass = 0,

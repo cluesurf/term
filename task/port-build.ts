@@ -123,7 +123,20 @@ function main(): void {
       const prelude = nativePrelude(result.program, 'node', path =>
         existsSync(path) ? readFileSync(path, 'utf8') : undefined,
       )
-      const content = `${prelude ? `${prelude}\n` : ''}${result.typescript}`
+      // the emitted module declares each native global it calls (`declare const bit: any`) so it typechecks WITHOUT the
+      // prelude, and the prelude defines it (`const bit = {...}`). Both in one file is TS2451 "Cannot redeclare", which
+      // `tsc` reported on every port that docks a native until 2026-10-04, so the declaration of a name the prelude
+      // defines is dropped
+      const defined = new Set([...(prelude ?? '').matchAll(/^const ([A-Za-z_$][\w$]*) =/gm)].map(match => match[1]!))
+      const body = result.typescript
+        .split('\n')
+        .filter(line => {
+          const declared = /^declare const ([A-Za-z_$][\w$]*)\s*:/.exec(line)
+
+          return !declared || !defined.has(declared[1]!)
+        })
+        .join('\n')
+      const content = `${prelude ? `${prelude}\n` : ''}${body}`
       // under `host/port/`, never `host/` itself: `term make` writes `host/<path>.ts` WITHOUT the prelude, and two
       // writers on one path left whichever ran last (found the same hour: the port worked, then a `term make` of
       // the compiler package overwrote it and the next import threw `bit is not defined`)

@@ -163,8 +163,10 @@ task kick
     'async callback awaited inside an async task',
     ASYNC_CB(true, true),
   )
-  expectEffectError(
-    'async callback not awaited is rejected',
+  // an async callback is awaited by default, the way a call to an async task is, and its caller becomes async. It was
+  // refused, and before that `mark async` under `like task` was not read at all (guides: language/async, 2026-10-04)
+  expectOk(
+    'async callback called without `wait` is awaited, and its caller becomes async',
     ASYNC_CB(false, false),
   )
   expectEffectError(

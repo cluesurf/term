@@ -2,14 +2,14 @@
 // posts through `window.term.post(text)`, and `eval` to answer it. Reached only through the public cask API in
 // ../cask.tree, whose tasks map to `cask.openWindow`, `cask.loadBundle`, `cask.loadUrl`, `cask.eval`,
 // `cask.onMessage`, `cask.onReady`, `cask.snapshot`, `cask.show`, `cask.activate`, `cask.run`, `cask.quit`,
-// `cask.exit`, `cask.bundlePath`, `cask.dataPath`.
+// `cask.exit`, `cask.bundlePath`, `cask.dataPath`, `cask.homePath`.
 //
 // ONE FILE, TWO TOOLKITS. macOS hosts the WebView in an AppKit window and iOS in a UIKit window, and everything
 // between the page and the toolkit is the same: the bridge, the navigation delegate, the snapshot. The toolkit halves
 // sit under `#if canImport(AppKit)` and `#if canImport(UIKit)`, so the same emitted program builds for either target
 // and the Term module above never learns which.
 //
-// Two rules the WebView imposes and this file honours. Every call into WKWebView happens on the main thread, so
+// Two rules the WebView imposes and this file honors. Every call into WKWebView happens on the main thread, so
 // `eval` and `snapshot` hop there. The bridge shim is injected at document start so the page finds `window.term`
 // before its own script runs, which is what wry does for `window.ipc`
 // (land/code/github.com/tauri-apps/wry/src/wkwebview/mod.rs:642).

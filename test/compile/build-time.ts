@@ -19,7 +19,7 @@
 // Run: npx tsx test/compile/build-time.ts
 
 import { execFileSync } from 'node:child_process'
-import { cpSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -39,7 +39,12 @@ function build(project: string, cacheHome: string): number {
     cwd: project,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, TERM_CACHE_HOME: cacheHome },
+    // the copy IS the stdlib for this build. Without TERM_STDLIB its `@term/base/...` loads reached the real one at
+    // deck/base, so `atomic.tree`, `file/handle.tree` and the rest came in twice under two paths, and binding forms by
+    // file made each a second type: `expected atomic__in0_0, found atomic`, 59 errors (2026-10-04)
+    // and by its real path: the temporary folder is `/var/...`, a link to `/private/var/...` on macOS, and the build
+    // walks the real one, so the link would bring every module in twice again
+    env: { ...process.env, TERM_CACHE_HOME: cacheHome, TERM_STDLIB: realpathSync(project) },
     maxBuffer: 64 * 1024 * 1024,
   })
 

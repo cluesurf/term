@@ -96,6 +96,15 @@ task test
     call file-exists
       read path
 
+# whether a path exists, a file or a directory: `test` under the name `file/directory` already gives it
+task exists
+  mark async
+  take path, like text
+  like boolean
+  send back
+    call file-exists
+      read path
+
 # a path's size and whether it is a directory, in one record
 task stat
   mark async

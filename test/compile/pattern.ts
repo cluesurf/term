@@ -28,6 +28,7 @@ type Engine = {
   backAt: (source: string, runes: number[], from: number) => number[]
   chosenAt: (source: string, input: string, from: number) => number[]
   tierOf: (source: string) => string
+  nativeOf: (source: string) => string
   needsBack: (source: string) => boolean
 }
 
@@ -110,6 +111,13 @@ task tier-of
   send back
     call pattern-tier(make(pattern, read(source)))
 
+task native-of
+  take source, like text
+  like text
+  save ready
+    call prepare(make(pattern, read(source)))
+  send back, read ready/native
+
 task chosen-at
   take source, like text
   take input, like text
@@ -156,6 +164,8 @@ function v8Search(pattern: string, input: string): number[] {
 
 let pass = 0
 let fail = 0
+// every pattern the rule runs on V8 natively, for the linear-time witness
+const nativeOnNode = new Set<string>()
 // every case the node legs ran through the public API, with node's answer, for the native leg to replay
 const replay: { pattern: string; input: string; want: number[]; feature?: string }[] = []
 
@@ -575,6 +585,98 @@ function replayOn(backend: Backend): Map<string, string> | undefined {
   return new Map([...forced].map(([feature, [held, total]]) => [feature, refused.has(feature) ? 'refused' : `${held}/${total}`]))
 }
 
+// 6. the linear-time witness. The safety rule is an argument; this is a measurement. Each native pattern's V8 text is
+// searched once from the start of adversarial inputs, n and then 2n code points of one repeated shape (each code point
+// the pattern names, and a few common runs) ending in one it cannot match, the best of three runs each. Linear work
+// doubles; a search that grows more than 3.2 times and takes over a millisecond at 2n is a pattern the rule should
+// have kept off a backtracking engine
+const WITNESS_N = 4000
+
+function witnessShapes(pattern: string): string[] {
+  const named = [...new Set([...pattern].filter(c => /[\w ,;:./_-]/.test(c) && c !== '\\'))].slice(0, 8)
+
+  return [...new Set([...named, 'a', 'ab', 'aab', ' a', '0', 'x y'])]
+}
+
+// the literal code points a pattern opens with, after `^` and any inline flags: `(` for `^\((.*)\)$`, `let ` for
+// `^let (\w+)`. Read off the text, which is enough for an input: a wrong guess only weakens one of four starts
+function literalLead(pattern: string): string {
+  let rest = pattern.replace(/^\(\?[imsx]+\)/, '').replace(/^\^/, '')
+  let lead = ''
+
+  while (rest.length > 0 && lead.length < 8) {
+    if (rest[0] === '\\' && rest.length > 1 && /[^\w]/.test(rest[1]!)) {
+      lead += rest[1]
+      rest = rest.slice(2)
+    } else if (/[\w ,;:'"=-]/.test(rest[0]!)) {
+      lead += rest[0]
+      rest = rest.slice(1)
+    } else {
+      break
+    }
+  }
+
+  // a quantifier after the last one makes it optional or repeated: leave it to the shapes
+  return /^[*+?{]/.test(rest) ? lead.slice(0, -1) : lead
+}
+
+function bestTime(re: RegExp, input: string): number {
+  let best = Number.POSITIVE_INFINITY
+
+  for (let k = 0; k < 3; k++) {
+    const start = performance.now()
+    re.lastIndex = 0
+    re.exec(input)
+    best = Math.min(best, performance.now() - start)
+  }
+
+  return best
+}
+
+function linearWitness(engine: Engine, patterns: Set<string>): void {
+  let checked = 0
+  let slow = 0
+
+  for (const pattern of patterns) {
+    let re: RegExp
+
+    try {
+      re = new RegExp(engine.nativeOf(pattern), 'u')
+    } catch {
+      continue
+    }
+
+    checked++
+
+    // two endings: one every class but a negated one takes, and the line feed `.` refuses, which is what makes
+    // `^(.*),(.*)$` fail late and try every split. And two starts: none, and the pattern's own leading literal code
+    // points, so an anchored `^\((.*)\)$` gets past its `(` to the repetition the witness is after
+    const lead = literalLead(pattern)
+
+    found: for (const shape of witnessShapes(pattern)) {
+      for (const [start, ending] of [['', '\u0001'], ['', '\n'], [lead, '\u0001'], [lead, '\n']] as const) {
+        const short = `${start}${shape.repeat(Math.ceil(WITNESS_N / shape.length))}${ending}`
+        const long = `${start}${shape.repeat(Math.ceil((2 * WITNESS_N) / shape.length))}${ending}`
+        const first = bestTime(re, short)
+        const second = bestTime(re, long)
+
+        if (second > 1 && second > 3.2 * Math.max(first, 0.05)) {
+          slow++
+          fail++
+          console.log(`FAIL  native on V8 but not linear: /${pattern}/ on ${JSON.stringify(start)} then ${JSON.stringify(shape)} repeated then ${JSON.stringify(ending)}, ${first.toFixed(2)} ms at n, ${second.toFixed(2)} ms at 2n`)
+          break found
+        }
+      }
+    }
+  }
+
+  if (slow === 0) {
+    pass++
+  }
+
+  console.log(`linear witness: ${checked} native patterns timed on V8 at ${WITNESS_N} and ${2 * WITNESS_N} code points, ${slow} grew faster than linear`)
+}
+
 async function main(): Promise<void> {
   const engine = await loadEngine()
 
@@ -628,6 +730,7 @@ async function main(): Promise<void> {
   {
     const corpus = harvestCorpus(process.cwd(), Number(process.env.PATTERN_CORPUS ?? 400))
     const refused = new Map<string, number>()
+    const corpusTiers = new Map<string, number>()
     let read = 0
 
     for (const { pattern, inputs } of corpus) {
@@ -635,6 +738,11 @@ async function main(): Promise<void> {
 
       try {
         tier = engine.tierOf(pattern)
+        corpusTiers.set(tier, (corpusTiers.get(tier) ?? 0) + 1)
+
+        if (tier === 'native') {
+          nativeOnNode.add(pattern)
+        }
       } catch (error) {
         // the reason, without the position, so like refusals count together
         const reason = (error instanceof Error ? error.message : String(error)).replace(/\d+/g, 'N').slice(0, 60)
@@ -660,7 +768,7 @@ async function main(): Promise<void> {
       }
     }
 
-    console.log(`corpus: ${corpus.length} literals harvested, ${read} read by Term, ${corpus.length - read} refused`)
+    console.log(`corpus: ${corpus.length} literals harvested, ${read} read by Term, ${corpus.length - read} refused; tiers on node ${JSON.stringify(Object.fromEntries(corpusTiers))}`)
 
     for (const [reason, count] of [...refused].sort((a, b) => b[1] - a[1])) {
       console.log(`  refused ${count}: ${reason}`)
@@ -712,6 +820,10 @@ async function main(): Promise<void> {
 
     tiers.set(tier, (tiers.get(tier) ?? 0) + 1)
 
+    if (tier === 'native') {
+      nativeOnNode.add(pattern)
+    }
+
     const backOnly = engine.needsBack(pattern)
 
     for (let k = 0; k < 4; k++) {
@@ -730,6 +842,8 @@ async function main(): Promise<void> {
   }
 
   console.log(`generated: ${count} patterns, tiers ${JSON.stringify(Object.fromEntries(tiers))}`)
+
+  linearWitness(engine, nativeOnNode)
 
   const matrix = new Map<string, Map<string, string>>()
 

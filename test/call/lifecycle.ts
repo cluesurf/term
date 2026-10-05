@@ -19,7 +19,8 @@ import { manifestValueOf } from '@term/call/code/manifest-name'
 
 const HERE = import.meta.dirname ?? new URL('.', import.meta.url).pathname
 const TERM = join(HERE, '../..')
-const LINE = join(TERM, 'host/line.js')
+// TERM_LINE points at another bundle, as in exit-codes.ts
+const LINE = process.env.TERM_LINE ?? join(TERM, 'host/line.js')
 
 let pass = 0
 let fail = 0
@@ -220,8 +221,9 @@ const filled = term(root, 'fill')
 
 ok('`fill` emits a completion script naming the binary', /term/.test(filled) && filled.length > 40, filled)
 
-// `view`: the sandboxed document dialect refuses what a document may not say
-const viewed = term(root, 'view')
+// `view`: the sandboxed document dialect refuses what a document may not say. A path given is checked as a document
+// whatever its role, so the scaffold's own code, which declares a `task`, is the refusal
+const viewed = term(root, 'view', 'code/boot.tree')
 
 ok(
   '`view` refuses a `task` in a document, and says why',
@@ -229,6 +231,12 @@ ok(
   /document\s+cannot\s+declare\s+a\s+function/.test(viewed),
   viewed,
 )
+
+// and with no path it checks only the files `role.tree` gives the view role, of which the scaffold has none. It used
+// to check the code as a document (guides: commands/view, 2026-10-04)
+const unviewed = term(root, 'view')
+
+ok('`view` with no path leaves the code alone', /No document here/.test(unviewed) && !/cannot\s+declare/.test(unviewed), unviewed)
 
 // `test`: finds a test file, runs it, and reports the count. Written in the real dialect (`test <name>` with a
 // `want hold`), so this exercises the test preprocessor as well as the runner.

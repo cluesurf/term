@@ -1057,6 +1057,18 @@ export function readView(
       callee?.kind === 'group' ? rest(callee) : []
 
     for (const child of [...inner, ...rest(group).slice(1)]) {
+      // a bare `<vowel>` is the text it says, as `text <vowel>` is. It was skipped, so `hold is-equal` reached the
+      // host with one side and the build said nothing (guides: commands/view, 2026-10-04)
+      if (child.kind === 'text') {
+        const one = readSeed(child)
+
+        if (one) {
+          slot.push(one)
+        }
+
+        continue
+      }
+
       if (child.kind !== 'group') {
         continue
       }

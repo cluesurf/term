@@ -1,0 +1,230 @@
+# The string type, a ROPE: a balanced tree of text chunks, not a flat buffer. Concatenation, index, and slice are
+# O(log n), and the tree is the shape the hyperbolic substrate wants (a subtree of the splitting tree). Each code point
+# has a balanced-ternary view (its Unicode scalar as a ternary integer), so text and numbers share the one alphabet.
+#
+# Ported from engine/data/string.ts (self-hosting, 2026-10-04). Immutable already, like engine/data/array, and the
+# union keeps its tag, `form`. Text is split by CODE POINT through the stdlib's runes (`to-runes`, `rune-to-text`,
+# `from-runes`), as the original split with `Array.from`. The exported names are the original's; `length` is read inside
+# the arms through `measure`, because a case's field `length` is a local there. `slice` takes its end: every caller
+# passed one. `trits-at` answers the digits of the scalar through engine/data/trit.
+
+load @term/base/list
+  find list
+
+load @term/base/text/unicode
+  find to-runes
+  find rune-to-text
+  find from-runes
+
+load @term/base/integer/big
+  find big-from-number
+
+load ./trit
+  find to-trits
+
+# code points per leaf chunk, and the depth past which a concatenation rebuilds the tree
+host max-leaf, 64
+host rebalance-depth, 32
+
+form rope
+  case leaf
+    link text, like text
+    link length, like number
+  case branch
+    link left, like rope
+    link right, like rope
+    link length, like number
+    link depth, like number
+
+task make-leaf
+  take text, like text
+  take length, like number
+  like rope
+
+  # `read text`: a bare `text` is the literal keyword
+  back
+    make leaf
+      bind text, read text
+      bind length, length
+
+task from-string
+  take text, like text
+  like rope
+
+  back build(to-runes(read(text)))
+
+task build
+  take points
+    like list
+      like number
+  like rope
+
+  fork test, is-maximum(points/length, max-leaf)
+    hold
+      back make-leaf(from-runes(points), points/length)
+  save mid, divide(points/length, 2)
+  save left, build(points/slice(0, mid))
+  save right, build(points/slice(mid, points/length))
+  back join-halves(left, right)
+
+task depth-of
+  take r, like rope
+  like number
+
+  sift r
+    case leaf
+      back 0
+    case branch
+      back depth
+
+task join-halves
+  take left, like rope
+  take right, like rope
+  like rope
+
+  save a, depth-of(left)
+  save b, depth-of(right)
+  save deeper, a
+  fork test, is-above(b, a)
+    hold
+      save deeper, b
+  back
+    make branch
+      bind left, left
+      bind right, right
+      bind length, add(measure(left), measure(right))
+      bind depth, add(1, deeper)
+
+task length
+  take r, like rope
+  like number
+
+  back measure(r)
+
+# `length` under another name: inside a `sift` arm the field `length` is a local, which hides the task of that name
+task measure
+  take r, like rope
+  like number
+
+  sift r
+    case leaf
+      back length
+    case branch
+      back length
+
+task concat
+  take a, like rope
+  take b, like rope
+  like rope
+
+  fork test, is-equal(measure(a), 0)
+    hold
+      back b
+  fork test, is-equal(measure(b), 0)
+    hold
+      back a
+  save joined, join-halves(a, b)
+  fork test, is-above(depth-of(joined), rebalance-depth)
+    hold
+      back from-string(to-string(joined))
+  back joined
+
+# the code point (as a text) at an index, O(log n)
+task char-at
+  take r, like rope
+  take index, like number
+  like text
+
+  save count, measure(r)
+  fork test, or(is-below(index, 0), is-minimum(index, count))
+    hold
+      halt <index {index} out of range (length {count})>
+  save node, r
+  save i, index
+  walk test
+    hook test
+      true
+    hook hold
+      sift node
+        case leaf
+          save points, to-runes(read(text))
+          back rune-to-text(get(points, i))
+        case branch
+          save before, measure(left)
+          fork test, is-below(i, before)
+            hold
+              save node, left
+            miss
+              save i, subtract(i, before)
+              save node, right
+  back <>
+
+# the Unicode scalar at an index, as a number
+task code-point-at
+  take r, like rope
+  take index, like number
+  like number
+
+  save points, to-runes(char-at(r, index))
+  back get(points, 0)
+
+# the balanced-ternary digits of the code point at an index (text in the one ternary alphabet)
+task trits-at
+  take r, like rope
+  take index, like number
+  like list
+    like number
+
+  back to-trits(big-from-number(code-point-at(r, index)))
+
+task slice
+  take r, like rope
+  take start, like number
+  take end, like number
+  like rope
+
+  save count, measure(r)
+  save s, start
+  fork test, is-below(s, 0)
+    hold
+      save s, 0
+  save e, end
+  fork test, is-above(e, count)
+    hold
+      save e, count
+  fork test, is-minimum(s, e)
+    hold
+      back make-leaf(<>, 0)
+  sift r
+    case leaf
+      save points, to-runes(read(text))
+      # its length is `e - s`, the bounds already inside the rope. Read off the slice it came out a field on Rust, where
+      # a member call's result reaches the emitter with no type (log.md, 2026-10-04)
+      save kept, points/slice(s, e)
+      back make-leaf(from-runes(kept), subtract(e, s))
+    case branch
+      save before, measure(left)
+      fork test, is-maximum(e, before)
+        hold
+          back slice(left, s, e)
+      fork test, is-minimum(s, before)
+        hold
+          back slice(right, subtract(s, before), subtract(e, before))
+      back concat(slice(left, s, before), slice(right, 0, subtract(e, before)))
+
+task to-string
+  take r, like rope
+  like text
+
+  sift r
+    case leaf
+      back read text
+    case branch
+      back <{to-string(left)}{to-string(right)}>
+
+task equals
+  take a, like rope
+  take b, like rope
+  like boolean
+
+  back and(is-equal(measure(a), measure(b)), is-equal(to-string(a), to-string(b)))

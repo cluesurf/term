@@ -334,8 +334,8 @@ export const CATALOG = {
     fix: 'correct the pattern at the position named, or build the text at run time and handle `pattern-mismatch`',
   },
   // a `make pattern, <...>` literal that needs a backtracking matcher: tier C wherever the platform's engine cannot run
-  // it safely, the one tier whose work can grow faster than its input, bounded by the step budget and raising
-  // `pattern-budget` past it (note/term/stdlib/regex-engine.md)
+  // it safely, the one tier whose work can grow faster than its input, held to a budget proportional to the input and
+  // raising `pattern-budget` past it (note/term/stdlib/regex-engine.md)
   'pattern-backtracks': {
     code: 0x2a,
     message: 'this pattern needs a backtracking matcher',
@@ -387,11 +387,32 @@ export const CATALOG = {
   },
   // An async task handed to a parameter whose type is a task that is not: the callee calls it without waiting, and
   // reads the pending value as the result. TypeScript printed `[object Promise]` (guides: language/async, 2026-10-04)
+  // A `load` of another deck's module that nothing answers: the deck is not in `link/`. It built no message of its
+  // own, and the first use of an imported name failed as `unknown-name`, far from the cause (guides:
+  // packages/install, 2026-10-04)
+  'unresolved-load': {
+    code: 0x31,
+    message: 'this load names a deck that is not installed',
+    severity: 'error',
+    fix: 'run `term load`, or `term link <path>` for a working copy',
+  },
   'async-argument': {
     code: 0x30,
     message: 'an async task is passed where the parameter takes a task that is not async',
     severity: 'error',
     fix: 'write `mark async` under the parameter\'s `like task`, so the calls to it are awaited',
+  },
+  'dock-shadow': {
+    code: 0x33,
+    message: 'a local named like a docked module hides it',
+    severity: 'warning',
+    fix: 'rename the local, so `name/...` reaches the module',
+  },
+  'look-tint': {
+    code: 0x32,
+    message: 'this tint is not a CSS color',
+    severity: 'error',
+    fix: 'give the color space its values: `tint rgb, 24, 24, 27`, or `tint hex, <fafafa>`',
   },
 } satisfies Record<string, CatalogEntry>
 

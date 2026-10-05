@@ -41,6 +41,17 @@ task proxy-target
   like text
   send back, text <>
 
+# the response status for this page, `set-status 404` for one that is not there. On the server it is stashed for the
+# host's response; a host with no response (the browser, a native app) has nothing to set
+task set-status
+  take code, like number
+  save skip, code 0
+
+# the status stashed during this render, 200 when the route set none (server only)
+task page-status
+  like number
+  send back, code 200
+
 # mirror the navigation contract's stack into an address bar (native-navigation-0001, ../../view/navigation): a new
 # entry, the current entry replaced, one step back. A host with no address (a native app, the server) keeps no history
 # of its own, and the contract's stack is the whole of it, so each is a no-op here

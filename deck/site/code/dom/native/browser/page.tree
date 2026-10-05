@@ -26,11 +26,13 @@ task page-path
 
 # set the document title. Delegates to the `<global:title>` runtime (`document.title = ...`) rather than a `.tree`
 # member-assignment (`save page/title`), which the compiler drops -- leaving `setTitle` undefined and crashing the
-# client. A method call into the runtime compiles cleanly and the cast prepends the runtime.
+# client. A method call into the runtime compiles cleanly and the cast prepends the runtime. The text is `text`, not
+# `title`: a parameter named `title` hid the docked runtime of that name, and the call read `.set` off the text
+# (`title.set is not a function`), which nobody saw while a titled page's bundle did not build at all (2026-10-04)
 task set-title
-  take title, like text
+  take text, like text
   call title/set
-    read title
+    read text
 
 # a resource route's proxy: on the client, do a FULL navigation to the current path so the server fetches + streams the
 # asset (the page URL stays put, e.g. /vibe.pdf). proxy-target reports nothing -- the navigation already happened.
@@ -41,6 +43,15 @@ task set-proxy
 task proxy-target
   like text
   send back, text <>
+
+# the response status is the server's: the browser has already been answered
+task set-status
+  take code, like number
+  save skip, code 0
+
+task page-status
+  like number
+  send back, code 200
 
 # upsert a SEO meta tag live (SPA navigation). Delegates to the `<global:title>` runtime, which reuses the existing
 # element for this key if present else creates + appends it (og:* / article:* -> `property`, the rest -> `name`). The

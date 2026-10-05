@@ -23,6 +23,8 @@ mark stable
 load @term/base/list
   find list
   find get
+  find push
+  find pop
 
 load @term/base/boolean
   find not
@@ -49,6 +51,7 @@ load @term/base/regex/dialect
   find regex-literal
 
 load @term/base/pattern/node
+  find piece
   find pattern-mismatch
   find pattern-budget
 
@@ -75,6 +78,12 @@ load @term/base/pattern/pike
 
 load @term/base/pattern/back
   find back-search
+
+load @term/base/pattern/dfa
+  find dfa-pair
+  find make-dfa-pair
+  find no-dfa-pair
+  find dfa-search
 
 load @term/base/pattern/analyze
   find analyze-pattern
@@ -104,6 +113,8 @@ form prepared-pattern
   link program, like program
   link folds, like boolean
   link words, like boolean
+  # tier B's DFAs, when the pattern runs on tier B and the DFA can run it exactly (pattern/dfa.tree)
+  link dfas, like dfa-pair
 
 # one input being searched: its code points, the scene the matchers read, and the lookaround tables, computed the
 # first time a search needs them and kept for every later search of the same input
@@ -206,20 +217,60 @@ task written-native-text
   send back
     call written-text(read(parsed/root), call(engine-here))
 
+# the patterns this process has prepared, newest last, so a pattern is read, analyzed and compiled once however many
+# calls hand it over: a literal searched in a loop, or `matches(make(pattern, ...), ...)` in one. At most
+# `prepared-keep`; past that the newest gives way, so a program building patterns from its input cannot grow it
+# without end, and the first ones it uses stay prepared
+host prepared-memo
+  like list
+    like prepared-pattern
+  make list
+
+host prepared-keep, code 64
+
 task prepare
+  take value, like pattern
+  like prepared-pattern
+  walk list, read prepared-memo
+    hook next
+      take site, name kept
+      fork test
+        hook test
+          call is-equal(read(kept/source), read(value/text))
+        hook hold
+          send back, read kept
+  save ready
+    call prepare-anew(read(value))
+  fork test
+    hook test
+      call is-minimum(read(prepared-memo/length), read(prepared-keep))
+    hook hold
+      call pop(read(prepared-memo))
+  call push(read(prepared-memo), read(ready))
+  send back, read ready
+
+# read, analyze and compile a pattern. A native pattern gets no program: the platform's engine runs it, and the
+# program is built by `with-program` only if that engine ever refuses the text
+task prepare-anew
   take value, like pattern
   like prepared-pattern
   save parsed
     call parse-pattern(read(value/text))
   save found
     call analyze-pattern(read(parsed/root), call(engine-here))
-  save rewritten
+  save root, read found/root
+  fork test
+    hook test
+      call is-equal(read(found/tier), read(tier-native))
+    hook hold
+      save root, make blank
+  save source
     make parsed
-      bind root, read found/root
+      bind root, read root
       bind groups, read parsed/groups
       bind names, read parsed/names
   save program
-    call compile-pattern(read(rewritten))
+    call compile-pattern(read(source))
   send back
     make prepared-pattern
       bind source, read value/text
@@ -231,6 +282,56 @@ task prepare
       bind program, read program
       bind folds, read found/folds
       bind words, call(uses-word-edge, read(program))
+      bind dfas, call(dfas-for, read(found/tier), read(program), read(source))
+
+# the prepared pattern with the program Term's own tiers run, built now if it was left out for a native pattern: for a
+# native engine's refusal, and for the benchmark, which times every tier
+task with-program
+  take ready, like prepared-pattern
+  like prepared-pattern
+  fork test
+    hook test
+      call not(call(is-equal, read(ready/tier), read(tier-native)))
+    hook hold
+      send back, read ready
+  save parsed
+    call parse-pattern(read(ready/source))
+  save found
+    call analyze-pattern(read(parsed/root), call(engine-here))
+  save source
+    make parsed
+      bind root, read found/root
+      bind groups, read parsed/groups
+      bind names, read parsed/names
+  save program
+    call compile-pattern(read(source))
+  send back
+    make prepared-pattern
+      bind source, read ready/source
+      bind groups, read ready/groups
+      bind names, read ready/names
+      bind tier, read ready/tier
+      bind fallback, read ready/fallback
+      bind native, read ready/native
+      bind program, read program
+      bind folds, read ready/folds
+      bind words, call(uses-word-edge, read(program))
+      bind dfas, call(dfas-for, read(ready/fallback), read(program), read(source))
+
+# tier B's DFAs for a pattern Term runs on tier B, else the empty pair
+task dfas-for
+  take tier, like number
+  take program, like program
+  take source, like parsed
+  like dfa-pair
+  fork test
+    hook test
+      call is-equal(read(tier), read(tier-linear))
+    hook hold
+      send back
+        call make-dfa-pair(read(program), read(source))
+  send back
+    call no-dfa-pair
 
 # which engine the pattern runs on here: native, linear or backtrack
 task pattern-tier
@@ -321,8 +422,11 @@ task search-slots
         hook test
           call is-refused(read(slots))
         hook hold
+          # the program a native pattern was prepared without, and a session whose scene that program can read
+          save full
+            call with-program(read(ready))
           send back
-            call term-search(read(ready), read(open), read(from), read(ready/fallback))
+            call term-search(read(full), call(open-session, read(full), read(open/input)), read(from), read(full/fallback))
       send back, read slots
   send back
     call term-search(read(ready), read(open), read(from), read(ready/tier))
@@ -351,6 +455,19 @@ task term-search
     hook test
       call is-equal(read(tier), read(tier-linear))
     hook hold
+      # the DFA where it fits, and the Pike VM when it does not or has filled up ([-2])
+      fork test
+        hook test
+          read ready/dfas/fits
+        hook hold
+          save none, make list
+          save slots
+            call dfa-search(read(ready/dfas/forward), read(ready/dfas/backward), read(ready/program), read(open/scene), read(none), read(from))
+          fork test
+            hook test
+              call not(call(is-refused, read(slots)))
+            hook hold
+              send back, read slots
       send back
         call pike-search-with(read(ready/program), read(open/scene), call(session-tables, read(ready), read(open)), read(from))
   save limit
@@ -493,6 +610,7 @@ task find-matches-prepared
     like pattern-match
   save open
     call open-session(read(ready), read(input))
+  save work, read ready
   save tier, read ready/tier
   fork test
     hook test
@@ -507,7 +625,12 @@ task find-matches-prepared
         hook hold
           send back
             call matches-of-slots(read(ready), read(open/runes), read(all))
-      save tier, read ready/fallback
+      # refused: Term's own tier, with the program a native pattern was prepared without, and a scene it can read
+      save work
+        call with-program(read(ready))
+      save open
+        call open-session(read(work), read(input))
+      save tier, read work/fallback
   save n, read open/runes/length
   save out, make list
   save at, code 0
@@ -516,7 +639,7 @@ task find-matches-prepared
       call is-maximum(read(at), read(n))
     hook step
       save slots
-        call term-search(read(ready), read(open), read(at), read(tier))
+        call term-search(read(work), read(open), read(at), read(tier))
       fork test
         hook test
           call is-equal(read(slots/length), code(0))

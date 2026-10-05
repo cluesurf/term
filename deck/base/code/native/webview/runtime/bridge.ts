@@ -62,10 +62,22 @@ function settle(message: Reply): void {
   }
   pending.delete(message.id)
   if (message.exception !== undefined) {
-    waiting.reject(message.exception)
+    waiting.reject(exceptionOf(String(message.exception)))
   } else {
     waiting.resolve(message.value)
   }
+}
+
+// the cask's exception as the page's own: the carrier the TypeScript backend raises (compile/typescript.ts,
+// `TermException`), so a handler reads `error/form` and `error/note` off a refused command as off any raise. The cask
+// writes `<form>: <note>` (`out-of-scope: file_read /etc/passwd`), or a bare form (`command-not-allowed`). It was the
+// bare text, which a handler read no field of
+function exceptionOf(text: string): Error {
+  const split = /^([a-z][a-z0-9-]*): ([\s\S]*)$/.exec(text)
+  const form = split ? split[1]! : /^[a-z][a-z0-9-]*$/.test(text) ? text : 'failure'
+  const note = split ? split[2]! : text
+
+  return Object.assign(new Error(note), { name: 'TermException', host: '', form, note, code: '', time: Date.now(), link: {} })
 }
 
 // a line for the cask's own log. Fire and forget: `cask_log` is always allowed and answers nothing worth waiting for

@@ -22,6 +22,14 @@ export async function callWash(input: {
 }): Promise<void> {
   openRun({ verb: 'wash', root: input.root, facts: input.target ? [input.target] : [] })
 
+  // `deck` is the build output, the same as no target, and `tail` the logs. Any other word washed the build output
+  if (input.target !== undefined && input.target !== 'deck' && input.target !== 'tail') {
+    report({ glyph: 'failed', kind: 'problem', subject: `There is nothing named ${input.target} to wash` })
+    closeRun({ verdict: 'Nothing removed', next: 'term wash, term wash deck or term wash tail', failure: 'usage' })
+
+    return
+  }
+
   // only in a project: `make/`, `host/` and `hold/` are ordinary folder names, and outside a deck they are somebody's
   // own. It deleted them from any folder (guides: commands/wash, 2026-10-04)
   const isProject = await fsp.access(path.join(input.root, 'deck.tree')).then(

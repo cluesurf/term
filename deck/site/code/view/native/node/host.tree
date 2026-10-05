@@ -15,6 +15,7 @@ load @term/site/dom/dom
 load @term/site/dom/page
   find page-shell
   find proxy-target
+  find page-status
 load @term/site/http/http
   find request
   find response
@@ -45,6 +46,10 @@ task host
       call route
         read root
         read request/path
+      # the status the route set, `set-status 404` for a page that is not there, else 200. Read before the proxy check
+      # so a proxied request clears it too
+      save status
+        call page-status
       # a resource route may have stashed a proxy source during dispatch (e.g. /vibe.pdf). Signal the transport to fetch
       # + stream that URL through this origin (status 1 = proxy; the page URL stays put, the real content-type is used).
       # Otherwise render the matched page.
@@ -63,7 +68,7 @@ task host
         hook miss
           send back
             make response
-              bind status, code 200
+              bind status, read status
               bind body
                 call page-shell
                   call serialize

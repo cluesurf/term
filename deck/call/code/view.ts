@@ -22,6 +22,7 @@ import {
 } from '@term/make/code/compile/view'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { closeRun, count, openRun, printData, report as reportItem, reportProblems } from '@term/call/code/output'
+import { projectRoleOf } from '@term/call/code/role-of'
 
 export type ViewCall = {
   root: string
@@ -60,10 +61,22 @@ export async function callView(input: ViewCall): Promise<void> {
     return
   }
 
-  const files = statSync(target).isDirectory() ? walk(target) : [target]
+  // With no path, the documents are the files `role.tree` gives the `view` role, the same ones `term make` builds as
+  // documents. It checked every `.tree` in the project, and refused `deck.tree`, `role.tree` and the code as
+  // documents (guides: commands/view, 2026-10-04). A path given is checked as written: that is the caller saying
+  // what is a document
+  const roleOf = projectRoleOf(input.root)
+  const files = !input.path
+    ? walk(target).filter(file => roleOf(file) === 'view')
+    : statSync(target).isDirectory()
+      ? walk(target)
+      : [target]
 
   if (files.length === 0) {
-    closeRun({ verdict: 'No .tree file here' })
+    closeRun({
+      verdict: input.path ? 'No .tree file here' : 'No document here',
+      ...(input.path ? {} : { next: 'give the documents the view role in role.tree, or name their folder: term view page' }),
+    })
 
     return
   }
@@ -96,7 +109,8 @@ export async function callView(input: ViewCall): Promise<void> {
   reportProblems(problems, input.root)
 
   if (input.find) {
-    printData(looks.map(one => `${one.manifest}\n`).join(''))
+    // each manifest ends in its own newline, and one more after it was the two blank lines at the end
+    printData(looks.map(one => `${one.manifest.replace(/\n+$/, '')}\n`).join(''))
   } else if (input.back === 'json') {
     printData(
       `${JSON.stringify(

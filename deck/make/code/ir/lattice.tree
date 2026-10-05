@@ -1,0 +1,232 @@
+# The hyperbolic substrate's space: a regular tiling {p, q} on which the interaction net is laid out and reduced.
+# The defining property versus a Euclidean grid is exponential growth: the number of cells within distance n grows
+# geometrically, so a finite patch has room for the net to spread without the crowding that throttles a flat grid.
+# This is the tessellation-tree coordinatization (Margenstern): a spanning tree of the tiling, where the centre has
+# p children and every later cell has p - 3 children (for q = 3, each cell shares one edge with its parent and two
+# with its siblings). It captures the growth and the parent/child adjacency the placement needs; the full edge
+# adjacency (Margenstern's coordinate automaton) is a deeper refinement. See plans/06-runtime-substrate.md.
+# Pure and browser-safe.
+#
+# Ported from ir/lattice.ts (self-hosting, 2026-10-04) with ir/net. A parent's children list is written back into the
+# cell list rather than pushed through a shared reference (D1). The honeycomb table is a task, since a `host` is
+# private to its module. `place` answers a `layout`, the original's `{ placement, locality }`.
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+load @term/base/float
+  find to-decimal
+
+load ./net
+  find net
+  find make-port
+  find has-peer
+  find peer-of
+  find list-node-ids
+
+form cell
+  link id, like number
+  link shell, like number
+  link parent, like number
+  link children, like list, like number
+
+# the cells of a tessellation tree, and how many there are in each shell
+form tiling
+  link cells, like list, like cell
+  link per-shell, like list, like number
+
+# where each node of a net landed, by node id, and the share of its wires that join adjacent cells
+form layout
+  link placement
+    like hash, like number
+      like number
+  # a fraction: a `number` quotient truncates, so it is a decimal
+  link locality, like decimal
+
+form honeycomb-spec
+  link centre, like number
+  link branch, like number
+
+# grow a tessellation tree: the centre cell has `centre` children, every later cell has `branch` children
+task grow
+  take centre, like number
+  take branch, like number
+  take shells, like number
+  like tiling
+
+  save cells, make list
+  push cells
+    make cell
+      bind id, 0
+      bind shell, 0
+      bind parent, -1
+      bind children, make list
+  save per-shell, make list
+  push(per-shell, 1)
+  save frontier, make list
+  push(frontier, 0)
+  save shell, 1
+  walk test
+    hook test, is-maximum(shell, shells)
+    hook hold
+      save next-frontier, make list
+      walk frontier
+        take parent-id
+        save child-count, branch
+        fork test, is-equal(parent-id, 0)
+          hold
+            save child-count, centre
+        save k, 0
+        walk test
+          hook test, is-below(k, child-count)
+          hook hold
+            host id, cells/length
+            push cells
+              make cell
+                bind id, id
+                bind shell, shell
+                bind parent, parent-id
+                bind children, make list
+            host parent, get(cells, parent-id)
+            host children, copy(parent/children)
+            push(children, id)
+            save parent/children, children
+            set(cells, parent-id, parent)
+            push(next-frontier, id)
+            save k, add(k, 1)
+      push(per-shell, next-frontier/length)
+      save frontier, next-frontier
+      save shell, add(shell, 1)
+  back
+    make tiling
+      bind cells, cells
+      bind per-shell, per-shell
+
+# the 2D regular hyperbolic tiling {p,3}: a cell shares one edge with its parent and two with siblings, leaving
+# p - 3 child edges
+task lattice
+  take p, like number
+  take q, like number
+  take shells, like number
+  like tiling
+
+  fork test, is-unequal(q, 3)
+    hold
+      halt <lattice: only q = 3 is modeled>
+  fork test, is-below(p, 5)
+    hold
+      halt <lattice: \{p,3\} is hyperbolic only for p \>= 5>
+  back grow(p, subtract(p, 3), shells)
+
+# the substrate's three realizations: the 2D {7,3} tiling, the 3D {5,3,4} dodecahedral honeycomb, and the 4D
+# {3,4,3,4} (the 24-cell honeycomb). Each cell branches by roughly its facet count (12 faces for a dodecahedron, 24
+# for a 24-cell), minus the facets shared with parent and siblings. The defining feature carried across all three is
+# exponential growth: more room than any Euclidean grid of the same dimension. A centre of 0 is no such tiling
+task find-honeycomb
+  take schlafli, like text
+  like honeycomb-spec
+
+  host spec
+    make honeycomb-spec
+      bind centre, 0
+      bind branch, 0
+  fork test, is-equal(schlafli, <\{7,3\}>)
+    hold
+      save spec/centre, 7
+      save spec/branch, 4
+  fork test, is-equal(schlafli, <\{5,3,4\}>)
+    hold
+      save spec/centre, 12
+      save spec/branch, 10
+  fork test, is-equal(schlafli, <\{3,4,3,4\}>)
+    hold
+      save spec/centre, 24
+      save spec/branch, 22
+  back spec
+
+task honeycomb
+  take schlafli, like text
+  take shells, like number
+  like tiling
+
+  host spec, find-honeycomb(schlafli)
+  fork test, is-equal(spec/centre, 0)
+    hold
+      halt <honeycomb: {schlafli} is not one of \{7,3\}, \{5,3,4\}, \{3,4,3,4\}>
+  back grow(spec/centre, spec/branch, shells)
+
+# two cells are adjacent if one is the other's parent (the spanning-tree edges)
+task is-adjacent
+  take cells, like list, like cell
+  take a, like number
+  take b, like number
+  like boolean
+
+  host left, get(cells, a)
+  host right, get(cells, b)
+  back or(is-equal(left/parent, b), is-equal(right/parent, a))
+
+# lay a net's nodes onto cells in breadth-first order, then measure locality: the fraction of the net's wires whose
+# two endpoints land on adjacent cells (so the local interaction rules touch neighbouring cells). Higher is better
+task place
+  take graph, like net
+  take cells, like list, like cell
+  like layout
+
+  save placement, make hash
+  save cell, 0
+  walk list-node-ids(graph)
+    take node
+    fork test, is-minimum(cell, cells/length)
+      hold
+        halt <lattice too small for the net>
+    set(placement, node, cell)
+    save cell, add(cell, 1)
+
+  # count wires (each undirected wire once) and how many connect adjacent cells
+  save wires, 0
+  save local, 0
+  save seen, make hash
+  walk list-node-ids(graph)
+    take node
+    save slot, 0
+    walk test
+      hook test, is-maximum(slot, 2)
+      hook hold
+        host at, make-port(node, slot)
+        save slot, add(slot, 1)
+        fork test, has-peer(graph, at)
+          miss
+            turn next
+        host peer, peer-of(graph, at)
+        fork test, has(placement, peer/node)
+          miss
+            turn next
+        save key, <{peer/node}-{node}>
+        fork test, is-below(node, peer/node)
+          hold
+            save key, <{node}-{peer/node}>
+        fork test, has(seen, key)
+          hold
+            turn next
+        set(seen, key, true)
+        save wires, add(wires, 1)
+        fork test
+          hook test
+            is-adjacent cells
+              get-or-default(placement, node, 0)
+              get-or-default(placement, peer/node, 0)
+          hook hold
+            save local, add(local, 1)
+  # two `number`s divide to a truncated integer on every backend, so the share is taken over decimals
+  save locality, to-decimal(1)
+  fork test, is-above(wires, 0)
+    hold
+      save locality, divide(to-decimal(local), to-decimal(wires))
+  back
+    make layout
+      bind placement, placement
+      bind locality, locality

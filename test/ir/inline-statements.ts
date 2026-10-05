@@ -174,6 +174,41 @@ ok(
   !nodes(dropped.program, 'drop-top', 'expression').some(n => (n.expr as { form?: string }).form === 'variable'),
 )
 
+// 2b. a dropped answer that is a construction: its parts that do something, in order, never the construction itself,
+// which on TypeScript was a bare object literal JavaScript reads as a block (the regex engine's `prepare-anew`)
+const built = inlineStatements(
+  checked(`${STACK}\ntask weigh
+  take n, like number
+  like number
+  send back
+    call add
+      read n
+      code 1
+
+task wrap
+  take piles, like list, like stack
+  take n, like number
+  like stack
+  host top, read piles/0
+  send back
+    make disk
+      bind size
+        call weigh
+          read n
+      bind below, read top
+
+task use
+  take piles, like list, like stack
+  call wrap
+    read piles
+    code 3
+`),
+)
+const usedStatements = nodes(built.program, 'use', 'expression').map(n => (n.expr as { form?: string }).form)
+ok('dropped construction: inlined', callees(built.program, 'use').every(c => c !== 'wrap'), callees(built.program, 'use').join(', '))
+ok('dropped construction: no record left as a statement', !usedStatements.includes('record'), usedStatements.join(', '))
+ok('dropped construction: the field that calls a task kept', callees(built.program, 'use').includes('weigh'), callees(built.program, 'use').join(', '))
+
 // 3. what must NOT be inlined, each the shape that is but for one thing
 const refuses = (label: string, text: string, callee: string, owner: string): void => {
   const out = inlineStatements(checked(text))

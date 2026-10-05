@@ -508,9 +508,36 @@ function inlineRound(program: Program, inlinedNames: Set<string>, holder: { name
     ]
   }
 
-  // a tail value evaluated for what it does: a variable or a literal does nothing, and is left out
-  const effect = (value: Expression, span: unknown): Statement[] =>
-    value.form === 'variable' || LITERALS.has(value.form) ? [] : [{ form: 'expression', expr: value, span } as unknown as Statement]
+  // a tail value evaluated for what it does. A variable or a literal does nothing and is left out. A construction (a
+  // record, a list, a map) or a field read does nothing of its own either, so it is its parts, in order: left whole, a
+  // `make` dropped this way was a bare object literal on a line of its own, which JavaScript reads as a block (found by
+  // the regex engine's `prepare-anew`, 2026-10-04). Anything else stays, a call or a raise among it
+  const effect = (value: Expression, span: unknown): Statement[] => {
+    const node = value as unknown as Loose
+
+    if (value.form === 'variable' || LITERALS.has(value.form)) {
+      return []
+    }
+
+    if (node.form === 'record') {
+      return (node.fields as { value: Expression }[]).flatMap(f => effect(f.value, span))
+    }
+
+    if (node.form === 'array') {
+      return (node.items as Expression[]).flatMap(item => effect(item, span))
+    }
+
+    if (node.form === 'map') {
+      return (node.entries as { key: Expression; value: Expression }[]).flatMap(e => [...effect(e.key, span), ...effect(e.value, span)])
+    }
+
+    // a record's field by name, not a slot by index nor a map's entry, either of which may stop
+    if (node.form === 'member' && node.index === undefined && ((node.target as Loose).type as Type | undefined)?.kind === 'named') {
+      return effect(node.target as Expression, span)
+    }
+
+    return [{ form: 'expression', expr: value, span } as unknown as Statement]
+  }
 
   const walkBody = (body: Statement[], owner: string): Statement[] =>
     body.flatMap(s => {

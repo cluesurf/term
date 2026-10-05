@@ -192,6 +192,15 @@ ok(
   items.ok ? writeLong(items.data) : 'refused',
 )
 
+// a stream of entries is one map: a key given again on a later line is refused there, where `--json` kept only the
+// last (guides: commands/mold, 2026-10-04)
+const repeated = readStream({ file: 's.line', text: 'h(event,<start>)\nh(event,<stop>)\n' })
+ok(
+  'a key a later line gives again is refused at that line, naming the first',
+  !repeated.ok && repeated.diagnostics[0]?.span.start.line === 1 && repeated.diagnostics[0].message.includes('line 1 gave it first'),
+  repeated.ok ? 'accepted' : repeated.diagnostics.map(d => `${d.span.start.line}: ${d.message}`).join(' | '),
+)
+
 const broken = readStream({ file: 's.line', text: 'h(p,1)\nh(q,f(nothing))\n' })
 ok(
   'a fuse of an unknown anchor names its line',

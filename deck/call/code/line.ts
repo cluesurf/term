@@ -10,7 +10,7 @@ import { callToss } from '@term/call/code/toss'
 import { callHost } from '@term/call/code/host'
 import { callBind } from '@term/call/code/bind'
 import { callSeek } from '@term/call/code/seek'
-import { callLink } from '@term/call/code/link'
+import { callLink, callUnlink } from '@term/call/code/link'
 import { callMake } from '@term/call/code/make'
 import { callScan } from '@term/call/code/scan'
 import { callMind } from '@term/call/code/mind'
@@ -447,20 +447,17 @@ const cli = yargs(hideBin(process.argv))
           type: 'boolean',
           description: 'Clean install from scratch',
         })
+        // `--like`, "install a subset", was accepted and read by nothing, and nothing said what a subset was. It is
+        // gone rather than given a meaning nobody asked for (guides: packages/install, 2026-10-04)
         .option('offline', {
           type: 'boolean',
           description: 'Install without network',
-        })
-        .option('like', {
-          type: 'string',
-          description: 'Install subset (e.g. "base")',
         }),
     async argv => {
       await callLoad({
         root,
         clean: argv.clean,
         offline: argv.offline,
-        like: argv.like,
       })
     },
   )
@@ -504,11 +501,23 @@ const cli = yargs(hideBin(process.argv))
     'link [deck]',
     'Link a local package for development',
     yargs =>
-      yargs.positional('deck', {
-        type: 'string',
-        description: 'Path to local package',
-      }),
+      yargs
+        .positional('deck', {
+          type: 'string',
+          description: 'Path to local package',
+        })
+        .option('toss', {
+          type: 'boolean',
+          description: 'Remove the deck\'s link instead, so the next term load installs the published one',
+        }),
     async argv => {
+      // `--toss` reaches `callUnlink`, which existed and no verb called (guides: packages/install, 2026-10-04)
+      if (argv.toss) {
+        await callUnlink({ root, deck: argv.deck ?? '' })
+
+        return
+      }
+
       await callLink({
         root,
         deck: argv.deck,
@@ -576,6 +585,10 @@ const cli = yargs(hideBin(process.argv))
         .option('untrust', {
           type: 'string',
           description: 'Remove this public key from the scope key set instead of publishing',
+        })
+        .option('ping', {
+          type: 'boolean',
+          description: 'Announce the already-published version to the package index instead of publishing',
         }),
     async argv => {
       await callHost({
@@ -584,6 +597,7 @@ const cli = yargs(hideBin(process.argv))
         registry: argv.registry,
         trust: argv.trust,
         untrust: argv.untrust,
+        ping: argv.ping,
       })
     },
   )
@@ -708,6 +722,17 @@ const cli = yargs(hideBin(process.argv))
         return
       }
 
+      // a file is built alone only with `--emit`. Named without it, it was ignored and the whole project built, with
+      // nothing said about the argument (guides: commands/make, 2026-10-04)
+      if (argv.file !== undefined) {
+        openRun({ verb: 'make', root, facts: [argv.file] })
+        report({ glyph: 'failed', kind: 'problem', subject: `term make builds the whole project, and ${argv.file} is one file` })
+
+        process.exitCode = closeRun({ verdict: 'Nothing built', next: `term make --emit <backend> ${argv.file}, or term make`, failure: 'usage' })
+
+        return
+      }
+
       await callMake({
         root,
         ride: argv.ride,
@@ -760,6 +785,10 @@ const cli = yargs(hideBin(process.argv))
         .option('find', {
           type: 'string',
           description: 'Recall only facts matching this query',
+        })
+        .option('forget', {
+          type: 'string',
+          description: 'Forget the fact with this name',
         }),
     async argv => {
       await callMind({
@@ -768,6 +797,7 @@ const cli = yargs(hideBin(process.argv))
         name: argv.name,
         kind: argv.kind,
         find: argv.find,
+        forget: argv.forget,
         back: argv.back,
       })
     },
@@ -1055,7 +1085,7 @@ const cli = yargs(hideBin(process.argv))
     yargs =>
       yargs.positional('target', {
         type: 'string',
-        description: 'What to clean (deck, tail)',
+        description: 'What to clean: deck, the build output (the default), or tail, the logs',
       }),
     async argv => {
       await callWash({
@@ -1139,7 +1169,7 @@ const cli = yargs(hideBin(process.argv))
   )
   .command(
     'look [target]',
-    'Inspect what a module exposes (forms + tasks), following its load/bear graph',
+    'Inspect what a module offers (forms + tasks): its own and what it passes on with bear',
     yargs =>
       yargs
         .positional('target', {
@@ -1153,7 +1183,8 @@ const cli = yargs(hideBin(process.argv))
           type: 'string',
           choices: ['form', 'task'] as const,
           description: 'Only forms or only tasks',
-        }),
+        })
+        .option('all', { type: 'boolean', description: 'Everything the module loads, not only what it offers' }),
     async argv => {
       await callLook({
         root,
@@ -1161,6 +1192,7 @@ const cli = yargs(hideBin(process.argv))
         json: argv.json,
         csv: argv.csv,
         kind: argv.kind,
+        all: argv.all,
       })
     },
   )
@@ -1204,7 +1236,8 @@ const cli = yargs(hideBin(process.argv))
       yargs
         .positional('file', {
           type: 'string',
-          description: 'A data .tree file, a .line stream, or a .json file (stdin when absent)',
+          // a `.line` name is a compact file like any other: a stream is told by `--lines`, never by its name
+          description: 'A data file, long or compact (.tree or .line), a stream with --lines, or a .json file (stdin when absent)',
         })
         .option('pack', { type: 'boolean', description: 'Compact form, one entry per line' })
         .option('json', { type: 'boolean', description: 'JSON, keys in snake case' })
@@ -1358,7 +1391,7 @@ const cli = yargs(hideBin(process.argv))
     yargs =>
       yargs.positional('what', {
         type: 'string',
-        description: '`mark` for this package\'s version (`code` is the old spelling); omit for the toolchain version and platform',
+        description: '`mark` for this package\'s version (`code` is the old spelling), `tools` for the native toolchains; omit for the toolchain version and platform',
       }),
     async argv => {
       await callShow({ root, what: argv.what, back: argv.back, version: readVersion() })

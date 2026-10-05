@@ -1,0 +1,874 @@
+# Tier B's DFA: the Pike VM's search with no slots, its states kept and its transitions remembered, so a code point
+# costs one table read once its state has been met (note/term/stdlib/regex-engine.md, "Tier B").
+#
+# A state is the ordered list of instructions the Pike VM's threads stand at, in priority order, after following
+# every instruction that reads no code point. The order is the priority, so leftmost-first comes out as the Pike VM
+# computes it: a forward run, restarting a thread at every position until a match is seen, finds where the
+# leftmost-first match ENDS; a backward run of the reversed pattern from that end, longest-first, finds where it
+# STARTS; and only a pattern with groups is then run on the Pike VM, anchored at that start, for its slots.
+#
+# A program qualifies when all it does is read code points, choose and jump, record a slot (ignored here), and test
+# the start or end of the text. A lookaround, a word or line edge, a back reference, an atomic group and the check
+# that refuses an empty iteration all depend on more than the state, and leave the pattern to the Pike VM.
+#
+# Code points are grouped into classes every instruction treats alike, from the bounds of every set and letter the
+# program names, so a transition is remembered per class. A DFA past `most-states` states stops being used, and its
+# searches go to the Pike VM, so a pattern whose states multiply cannot grow without end.
+
+mark stable
+
+load @term/base/list
+  find list
+
+load @term/base/boolean
+  find not
+
+load @term/base/hash
+  find hash
+  find get-or-default
+
+load @term/base/list
+  find sort
+
+load @term/base/ordering
+  find from-numbers
+
+load @term/base/pattern/set
+  find number-at
+  find put-number
+  find set-has
+  find copy-numbers
+
+load @term/base/pattern/node
+  find piece
+  find edge-text-start
+  find edge-text-end
+
+load @term/base/pattern/syntax
+  find parsed
+
+load @term/base/pattern/program
+  find program
+  find slot-count
+  find compile-pattern
+  find compile-part
+  find op-match
+  find op-char
+  find op-set
+  find op-split
+  find op-jump
+  find op-save
+  find op-edge
+  find op-clear
+  find op-mark
+
+load @term/base/pattern/scene
+  find scene
+
+load @term/base/pattern/pike
+  find run-part
+
+# the most states one DFA keeps, and the most classes one may have: past either it is not used
+host most-states, code 4096
+host most-classes, code 512
+
+# one direction's DFA over one part of a program
+form dfa
+  link program, like program
+  # the part's first instruction
+  link entry, like number
+  # class k covers the code points from bounds[k] to bounds[k + 1], less one; bounds[0] is 0
+  link bounds
+    like list
+      like number
+  # each state's key, its id
+  link keys
+    like hash
+      like text
+      like number
+  # per state: its instructions in priority order, whether it still restarts a thread at each position (1, a forward
+  # search with no match seen yet), the index of its first MATCH or -1, its state without the threads below that MATCH
+  # (-1 until asked), and its next state per class (-1 until asked)
+  link pcs
+    like list
+      like list
+        like number
+  link restarts
+    like list
+      like number
+  link matches
+    like list
+      like number
+  link cuts
+    like list
+      like number
+  link moves
+    like list
+      like list
+        like number
+  # per instruction, the stamp of the last closure that reached it; the stamp counter is the list's own one value
+  link seen
+    like list
+      like number
+  link stamp
+    like list
+      like number
+  # 1 once the DFA has met `most-states` states
+  link full
+    like list
+      like number
+
+# a pattern's two DFAs: the forward one over its program's part 0, the backward one over the reversed pattern. `fits`
+# false when either cannot run exactly as the Pike VM does, and then both are empty and unused
+form dfa-pair
+  link fits, like boolean
+  link forward, like dfa
+  link backward, like dfa
+
+# the DFAs for a pattern compiled to `g` from `source`, built empty when they would not fit, before a state is met
+task make-dfa-pair
+  take g, like program
+  take source, like parsed
+  like dfa-pair
+  save none
+    call no-dfa-pair
+  fork test
+    hook test
+      call not(call(dfa-fits, read(g)))
+    hook hold
+      send back, read none
+  save forward
+    call make-dfa(read(g), call(number-at, read(g/part-entry), code(0), code(0)))
+  fork test
+    hook test
+      call is-above(read(forward/bounds/length), read(most-classes))
+    hook hold
+      send back, read none
+  # the reversed pattern, as a lookbehind body is compiled: its own program, part 1 run right to left
+  save reversed
+    call compile-pattern(read(source))
+  save part
+    call compile-part(read(reversed), read(source/root), true)
+  fork test
+    hook test
+      call not(call(dfa-fits, read(reversed)))
+    hook hold
+      send back, read none
+  send back
+    make dfa-pair
+      bind fits, true
+      bind forward, read forward
+      bind backward
+        call make-dfa(read(reversed), call(number-at, read(reversed/part-entry), read(part), code(0)))
+
+# the pair a pattern carries when it does not use the DFA: two empty DFAs over a blank program
+task no-dfa-pair
+  like dfa-pair
+  save blank-program
+    call compile-pattern
+      make parsed
+        bind root, make blank
+        bind groups, code 0
+        bind names, make list
+  save empty
+    call make-dfa(read(blank-program), code(0))
+  send back
+    make dfa-pair
+      bind fits, false
+      bind forward, read empty
+      bind backward, read empty
+
+# whether the DFA can run the program's part 0 exactly as the Pike VM does
+task dfa-fits
+  take g, like program
+  like boolean
+  save count, read g/ops/length
+  save pc, code 0
+  walk test
+    down
+      call subtract(read(count), read(pc))
+    hook test
+      call is-below(read(pc), read(count))
+    hook step
+      save op
+        call number-at(read(g/ops), read(pc), code(-1))
+      save a
+        call number-at(read(g/a), read(pc), code(-1))
+      save plain
+        call or
+          call or
+            call or
+              call is-equal(read(op), read(op-match))
+              call is-equal(read(op), read(op-char))
+            call or
+              call is-equal(read(op), read(op-set))
+              call is-equal(read(op), read(op-split))
+          call or
+            call or
+              call is-equal(read(op), read(op-jump))
+              call is-equal(read(op), read(op-save))
+            call or
+              call is-equal(read(op), read(op-clear))
+              call is-equal(read(op), read(op-mark))
+      save text-edge
+        call and
+          call is-equal(read(op), read(op-edge))
+          call or
+            call is-equal(read(a), read(edge-text-start))
+            call is-equal(read(a), read(edge-text-end))
+      fork test
+        hook test
+          call not(call(or, read(plain), read(text-edge)))
+        hook hold
+          send back, false
+      save pc
+        call add(read(pc), code(1))
+  send back, true
+
+# the class bounds of a program: 0, and every code point where some letter or set of it starts or stops
+task class-bounds
+  take g, like program
+  like list
+    like number
+  save points, make list
+  call points/push(code(0))
+  save count, read g/ops/length
+  save pc, code 0
+  walk test
+    down
+      call subtract(read(count), read(pc))
+    hook test
+      call is-below(read(pc), read(count))
+    hook step
+      save op
+        call number-at(read(g/ops), read(pc), code(-1))
+      save a
+        call number-at(read(g/a), read(pc), code(-1))
+      fork test
+        hook test
+          call is-equal(read(op), read(op-char))
+        hook hold
+          call points/push(read(a))
+          call points/push(call(add, read(a), code(1)))
+        hook test
+          call and
+            call is-equal(read(op), read(op-set))
+            call and
+              call is-minimum(read(a), code(0))
+              call is-below(read(a), read(g/sets/length))
+        hook hold
+          # a set holds start, end pairs: a class opens at each start and at one past each end
+          save set, read g/sets/{a}
+          save k, code 0
+          save size, read set/length
+          walk test
+            down
+              call subtract(read(size), read(k))
+            hook test
+              call is-below(call(add, read(k), code(1)), read(size))
+            hook step
+              call points/push(call(number-at, read(set), read(k), code(0)))
+              call points/push(call(add, call(number-at, read(set), call(add, read(k), code(1)), code(0)), code(1)))
+              save k
+                call add(read(k), code(2))
+      save pc
+        call add(read(pc), code(1))
+  send back
+    call sorted-unique(read(points))
+
+# the numbers in rising order, each once
+task sorted-unique
+  take values
+    like list
+      like number
+  like list
+    like number
+  save sorted
+    call sort(read(values), read(from-numbers))
+  save out, make list
+  walk list, read sorted
+    hook next
+      take site, name value
+      fork test
+        hook test
+          call or
+            call is-equal(read(out/length), code(0))
+            call is-above(read(value), call(number-at, read(out), call(subtract, read(out/length), code(1)), code(-1)))
+        hook hold
+          call out/push(read(value))
+  send back, read out
+
+# the class of a code point: the last bound at or below it, by binary search
+task class-of
+  take bounds
+    like list
+      like number
+  take c, like number
+  like number
+  save low, code 0
+  save high
+    call subtract(read(bounds/length), code(1))
+  save turns, code 0
+  walk test
+    down
+      call subtract(code(64), read(turns))
+    hook test
+      call and
+        call is-below(read(low), read(high))
+        call is-below(read(turns), code(64))
+    hook step
+      save turns
+        call add(read(turns), code(1))
+      save middle
+        call divide(call(add, call(add, read(low), read(high)), code(1)), code(2))
+      fork test
+        hook test
+          call is-maximum(call(number-at, read(bounds), read(middle), code(0)), read(c))
+        hook hold
+          save low, read middle
+        hook miss
+          save high
+            call subtract(read(middle), code(1))
+  send back, read low
+
+task make-dfa
+  take g, like program
+  take entry, like number
+  like dfa
+  save seen, make list
+  walk list, read g/ops
+    hook next
+      take site, name op
+      call seen/push(code(-1))
+  save stamp, make list
+  call stamp/push(code(0))
+  save full, make list
+  call full/push(code(0))
+  send back
+    make dfa
+      bind program, read g
+      bind entry, read entry
+      bind bounds, call(class-bounds, read(g))
+      bind keys, make hash
+      bind pcs, make list
+      bind restarts, make list
+      bind matches, make list
+      bind cuts, make list
+      bind moves, make list
+      bind seen, read seen
+      bind stamp, read stamp
+      bind full, read full
+
+# every instruction the seeds reach without reading a code point, in priority order, each once: instructions that
+# read, and MATCH. `at` and `n` decide the text edges, which hold only at 0 and at n
+task closure
+  take d, like dfa
+  take seeds
+    like list
+      like number
+  take at, like number
+  take n, like number
+  like list
+    like number
+  save g, read d/program
+  save stamp
+    call add(call(number-at, read(d/stamp), code(0), code(0)), code(1))
+  call put-number(read(d/stamp), code(0), read(stamp))
+  save out, make list
+  save stack, make list
+  # seeds pushed in reverse, so the first seed is explored first
+  save k
+    call subtract(read(seeds/length), code(1))
+  walk test
+    down
+      call add(read(k), code(1))
+    hook test
+      call is-minimum(read(k), code(0))
+    hook step
+      call stack/push(call(number-at, read(seeds), read(k), code(-1)))
+      save k
+        call subtract(read(k), code(1))
+  # each instruction is entered at most once per closure and pushes at most two more
+  save limit
+    call add(call(multiply, read(g/ops/length), code(2)), call(add, read(seeds/length), code(3)))
+  save turns, code 0
+  walk test
+    down
+      call subtract(read(limit), read(turns))
+    hook test
+      call and
+        call is-above(read(stack/length), code(0))
+        call is-below(read(turns), read(limit))
+    hook step
+      save turns
+        call add(read(turns), code(1))
+      save pc
+        call number-at(read(stack), call(subtract, read(stack/length), code(1)), code(-1))
+      call stack/pop
+      fork test
+        hook test
+          call or
+            call is-below(read(pc), code(0))
+            call is-equal(call(number-at, read(d/seen), read(pc), code(-1)), read(stamp))
+        hook hold
+          turn next
+      call put-number(read(d/seen), read(pc), read(stamp))
+      save op
+        call number-at(read(g/ops), read(pc), code(-1))
+      save a
+        call number-at(read(g/a), read(pc), code(-1))
+      fork test
+        hook test
+          call or
+            call or
+              call is-equal(read(op), read(op-match))
+              call is-equal(read(op), read(op-char))
+            call is-equal(read(op), read(op-set))
+        hook hold
+          call out/push(read(pc))
+        hook test
+          call is-equal(read(op), read(op-split))
+        hook hold
+          call stack/push(call(number-at, read(g/b), read(pc), code(-1)))
+          call stack/push(read(a))
+        hook test
+          call is-equal(read(op), read(op-jump))
+        hook hold
+          call stack/push(read(a))
+        hook test
+          call is-equal(read(op), read(op-edge))
+        hook hold
+          save holds
+            call or
+              call and
+                call is-equal(read(a), read(edge-text-start))
+                call is-equal(read(at), code(0))
+              call and
+                call is-equal(read(a), read(edge-text-end))
+                call is-equal(read(at), read(n))
+          fork test
+            hook test
+              read holds
+            hook hold
+              call stack/push(call(add, read(pc), code(1)))
+        hook miss
+          # SAVE, MARK, CLEAR: slots, which the DFA does not keep
+          call stack/push(call(add, read(pc), code(1)))
+  send back, read out
+
+# a state's instructions, read inside its list: every state id comes from `state-of`, but the read is guarded so it is
+# shown to be, and an id out of range reads as a state with no thread, which ends the run
+task pcs-of
+  take d, like dfa
+  take state, like number
+  like list
+    like number
+  save all, read d/pcs
+  fork test
+    hook test
+      call and
+        call is-minimum(read(state), code(0))
+        call is-below(read(state), read(all/length))
+    hook hold
+      send back, read all/{state}
+  save none, make list
+  send back, read none
+
+# a state's row of next states, per class, guarded the same way; an id out of range reads as a row never written to
+task row-of
+  take d, like dfa
+  take state, like number
+  like list
+    like number
+  save all, read d/moves
+  fork test
+    hook test
+      call and
+        call is-minimum(read(state), code(0))
+        call is-below(read(state), read(all/length))
+    hook hold
+      send back, read all/{state}
+  save none, make list
+  send back, read none
+
+# the id of the state with these instructions and this restart flag, made when first met; -1 once the DFA is full
+task state-of
+  take d, like dfa
+  take pcs
+    like list
+      like number
+  take restarts, like boolean
+  like number
+  save flag, code 0
+  fork test
+    hook test
+      read restarts
+    hook hold
+      save flag, code 1
+  save key, text <{flag}:>
+  walk list, read pcs
+    hook next
+      take site, name pc
+      save key, text <{key}{pc},>
+  save found
+    call get-or-default(read(d/keys), read(key), code(-1))
+  fork test
+    hook test
+      call is-minimum(read(found), code(0))
+    hook hold
+      send back, read found
+  save id, read d/pcs/length
+  fork test
+    hook test
+      call is-minimum(read(id), read(most-states))
+    hook hold
+      call put-number(read(d/full), code(0), code(1))
+      send back, code -1
+  save keys, read d/keys
+  call keys/set(read(key), read(id))
+  save all-pcs, read d/pcs
+  call all-pcs/push(read(pcs))
+  save all-restarts, read d/restarts
+  call all-restarts/push(read(flag))
+  # the first MATCH, where every thread after it has lower priority
+  save first-match, code -1
+  save index, code 0
+  walk list, read pcs
+    hook next
+      take site, name pc
+      fork test
+        hook test
+          call and
+            call is-below(read(first-match), code(0))
+            call is-equal(call(number-at, read(d/program/ops), read(pc), code(-1)), read(op-match))
+        hook hold
+          save first-match, read index
+      save index
+        call add(read(index), code(1))
+  save all-matches, read d/matches
+  call all-matches/push(read(first-match))
+  save all-cuts, read d/cuts
+  call all-cuts/push(code(-1))
+  save row, make list
+  walk list, read d/bounds
+    hook next
+      take site, name bound
+      call row/push(code(-1))
+  save all-moves, read d/moves
+  call all-moves/push(read(row))
+  send back, read id
+
+# the state reached from `state` by a code point of class `kind`, its closure taken at `at` (the position after it)
+task step
+  take d, like dfa
+  take state, like number
+  take kind, like number
+  take at, like number
+  take n, like number
+  like number
+  save g, read d/program
+  save rep
+    call number-at(read(d/bounds), read(kind), code(0))
+  save seeds, make list
+  walk list
+    call pcs-of(read(d), read(state))
+    hook next
+      take site, name pc
+      save op
+        call number-at(read(g/ops), read(pc), code(-1))
+      save a
+        call number-at(read(g/a), read(pc), code(-1))
+      fork test
+        hook test
+          call or
+            call and
+              call is-equal(read(op), read(op-char))
+              call is-equal(read(a), read(rep))
+            call and
+              call is-equal(read(op), read(op-set))
+              call and
+                call and
+                  call is-minimum(read(a), code(0))
+                  call is-below(read(a), read(g/sets/length))
+                call set-has(read(g/sets/{a}), read(rep))
+        hook hold
+          call seeds/push(call(add, read(pc), code(1)))
+  save restarts
+    call is-equal(call(number-at, read(d/restarts), read(state), code(0)), code(1))
+  fork test
+    hook test
+      read restarts
+    hook hold
+      call seeds/push(read(d/entry))
+  send back
+    call state-of(read(d), call(closure, read(d), read(seeds), read(at), read(n)), read(restarts))
+
+# the state without the threads below its first MATCH, and restarting no more: what is left to extend that match
+task cut
+  take d, like dfa
+  take state, like number
+  like number
+  save known
+    call number-at(read(d/cuts), read(state), code(-1))
+  fork test
+    hook test
+      call is-minimum(read(known), code(0))
+    hook hold
+      send back, read known
+  save first
+    call number-at(read(d/matches), read(state), code(-1))
+  save kept, make list
+  save index, code 0
+  walk list
+    call pcs-of(read(d), read(state))
+    hook next
+      take site, name pc
+      fork test
+        hook test
+          call is-below(read(index), read(first))
+        hook hold
+          call kept/push(read(pc))
+      save index
+        call add(read(index), code(1))
+  save id
+    call state-of(read(d), read(kept), false)
+  call put-number(read(d/cuts), read(state), read(id))
+  send back, read id
+
+# the next state, remembered when the position after is strictly inside the text, where neither text edge holds:
+# a forward run reaches n, a backward run 0, and those closures are taken fresh
+task move
+  take d, like dfa
+  take state, like number
+  take c, like number
+  take at, like number
+  take n, like number
+  like number
+  save kind
+    call class-of(read(d/bounds), read(c))
+  fork test
+    hook test
+      call or
+        call is-minimum(read(at), read(n))
+        call is-maximum(read(at), code(0))
+    hook hold
+      send back
+        call step(read(d), read(state), read(kind), read(at), read(n))
+  save row
+    call row-of(read(d), read(state))
+  save known
+    call number-at(read(row), read(kind), code(-1))
+  fork test
+    hook test
+      call is-minimum(read(known), code(0))
+    hook hold
+      send back, read known
+  save next
+    call step(read(d), read(state), read(kind), read(at), read(n))
+  fork test
+    hook test
+      call is-minimum(read(next), code(0))
+    hook hold
+      call put-number(read(row), read(kind), read(next))
+  send back, read next
+
+# where the leftmost-first match from `from` ends, -1 for none, or -2 when the DFA filled up on the way
+task dfa-end
+  take d, like dfa
+  take runes
+    like list
+      like number
+  take from, like number
+  like number
+  save n, read runes/length
+  save seeds, make list
+  call seeds/push(read(d/entry))
+  save state
+    call state-of(read(d), call(closure, read(d), read(seeds), read(from), read(n)), true)
+  save ended, code -1
+  save at, read from
+  save going, true
+  # one turn per position, and the run stops past the end
+  save limit
+    call add(read(n), code(3))
+  save turns, code 0
+  walk test
+    down
+      call subtract(read(limit), read(turns))
+    hook test
+      call and
+        read going
+        call is-below(read(turns), read(limit))
+    hook step
+      save turns
+        call add(read(turns), code(1))
+      fork test
+        hook test
+          call is-below(read(state), code(0))
+        hook hold
+          send back, code -2
+      # a match here: it is the best so far, and the threads below it are dropped
+      fork test
+        hook test
+          call is-minimum(call(number-at, read(d/matches), read(state), code(-1)), code(0))
+        hook hold
+          save ended, read at
+          save state
+            call cut(read(d), read(state))
+          fork test
+            hook test
+              call is-below(read(state), code(0))
+            hook hold
+              send back, code -2
+      save threads
+        call pcs-of(read(d), read(state))
+      save waiting
+        call is-above(read(threads/length), code(0))
+      save restarting
+        call is-equal(call(number-at, read(d/restarts), read(state), code(0)), code(1))
+      fork test
+        hook test
+          call or
+            call is-minimum(read(at), read(n))
+            call and
+              call not(read(waiting))
+              call not(read(restarting))
+        hook hold
+          save going, false
+          turn next
+      save state
+        call move(read(d), read(state), call(number-at, read(runes), read(at), code(-1)), call(add, read(at), code(1)), read(n))
+      save at
+        call add(read(at), code(1))
+  send back, read ended
+
+# where the longest match of the reversed pattern, run backwards from `end`, starts: the leftmost-first match's start
+task dfa-start
+  take d, like dfa
+  take runes
+    like list
+      like number
+  take end, like number
+  like number
+  save n, read runes/length
+  save seeds, make list
+  call seeds/push(read(d/entry))
+  save state
+    call state-of(read(d), call(closure, read(d), read(seeds), read(end), read(n)), false)
+  save started, code -1
+  save at, read end
+  save turns, code 0
+  save limit
+    call add(read(n), code(3))
+  walk test
+    down
+      call subtract(read(limit), read(turns))
+    hook test
+      call is-below(read(turns), read(limit))
+    hook step
+      save turns
+        call add(read(turns), code(1))
+      fork test
+        hook test
+          call is-below(read(state), code(0))
+        hook hold
+          send back, code -2
+      fork test
+        hook test
+          call is-minimum(call(number-at, read(d/matches), read(state), code(-1)), code(0))
+        hook hold
+          save started, read at
+      save threads
+        call pcs-of(read(d), read(state))
+      fork test
+        hook test
+          call or
+            call is-maximum(read(at), code(0))
+            call is-equal(read(threads/length), code(0))
+        hook hold
+          send back, read started
+      save state
+        call move(read(d), read(state), call(number-at, read(runes), call(subtract, read(at), code(1)), code(-1)), call(subtract, read(at), code(1)), read(n))
+      save at
+        call subtract(read(at), code(1))
+  send back, read started
+
+# the first match at or after `from` as slots (group 0, then each group), an empty list for none, or [-2] when either
+# DFA filled up and the Pike VM must answer instead
+task dfa-search
+  take forward, like dfa
+  take backward, like dfa
+  take g, like program
+  take s, like scene
+  take tables
+    like list
+      like list
+        like number
+  take from, like number
+  like list
+    like number
+  save none, make list
+  save full, make list
+  call full/push(code(-2))
+  save end
+    call dfa-end(read(forward), read(s/runes), read(from))
+  fork test
+    hook test
+      call is-equal(read(end), code(-2))
+    hook hold
+      send back, read full
+  fork test
+    hook test
+      call is-below(read(end), code(0))
+    hook hold
+      send back, read none
+  save start
+    call dfa-start(read(backward), read(s/runes), read(end))
+  fork test
+    hook test
+      call is-below(read(start), code(0))
+    hook hold
+      send back, read full
+  save width
+    call multiply(call(add, read(g/groups), code(1)), code(2))
+  fork test
+    hook test
+      call is-equal(read(g/groups), code(0))
+    hook hold
+      save slots, make list
+      call slots/push(read(start))
+      call slots/push(read(end))
+      send back, read slots
+  # groups: the Pike VM, anchored at the start, which ends where the DFA said
+  save first, make list
+  save count
+    call slot-count(read(g))
+  save k, code 0
+  walk test
+    down
+      call subtract(read(count), read(k))
+    hook test
+      call is-below(read(k), read(count))
+    hook step
+      call first/push(code(-1))
+      save k
+        call add(read(k), code(1))
+  save slots
+    call run-part(read(g), read(s), read(tables), code(0), read(start), read(first), true)
+  fork test
+    hook test
+      call is-equal(read(slots/length), code(0))
+    hook hold
+      send back, read full
+  save out, make list
+  save i, code 0
+  walk test
+    down
+      call subtract(read(width), read(i))
+    hook test
+      call is-below(read(i), read(width))
+    hook step
+      call out/push(call(number-at, read(slots), read(i), code(-1)))
+      save i
+        call add(read(i), code(1))
+  send back, read out

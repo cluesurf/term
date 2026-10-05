@@ -52,6 +52,74 @@ const guardStart = (text: string): string =>
 
 // a division of two integers: both operands typed `number` (a `float` or an unresolved operand keeps JavaScript's
 // float quotient, since its meaning is not known to be the integer one)
+// whether an emitted expression is ONE primary, safe under any operator without parentheses: a name or member chain
+// (`a.b.c`), that followed by a call or index group closing at the very end (`Math.trunc(x)`, `a.b[i]`), or a whole
+// parenthesized group. Text inside quotes is skipped when matching the groups
+function isPrimary(text: string): boolean {
+  const close: Record<string, string> = { '(': ')', '[': ']' }
+
+  // the index of the group closing the one that opens at `start`, or -1
+  const matching = (start: number): number => {
+    const stack: string[] = []
+    let quote = ''
+
+    for (let i = start; i < text.length; i++) {
+      const ch = text[i]!
+
+      if (quote) {
+        if (ch === '\\') {
+          i++
+        } else if (ch === quote) {
+          quote = ''
+        }
+
+        continue
+      }
+
+      if (ch === '"' || ch === "'" || ch === '`') {
+        quote = ch
+      } else if (ch === '(' || ch === '[') {
+        stack.push(close[ch]!)
+      } else if (ch === ')' || ch === ']') {
+        if (stack.pop() !== ch) {
+          return -1
+        }
+
+        if (stack.length === 0) {
+          return i
+        }
+      }
+    }
+
+    return -1
+  }
+
+  if (text.startsWith('(')) {
+    return matching(0) === text.length - 1
+  }
+
+  const name = /^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*/.exec(text)
+
+  if (!name) {
+    return /^\d+$/.test(text)
+  }
+
+  let at = name[0].length
+
+  // any run of call and index groups after the name, each closing where the next begins
+  while (at < text.length && (text[at] === '(' || text[at] === '[')) {
+    const end = matching(at)
+
+    if (end < 0) {
+      return false
+    }
+
+    at = end + 1
+  }
+
+  return at === text.length
+}
+
 function integerDivision(node: { left: { type?: { kind: string } }; right: { type?: { kind: string } } }): boolean {
   return node.left.type?.kind === 'number' && node.right.type?.kind === 'number'
 }
@@ -630,7 +698,9 @@ const EXCEPTION_PRELUDE = `export class ${EXCEPTION_CLASS} extends Error {
   time!: number
   link!: unknown
   base?: unknown
-  constructor(base: { note: string; form: string }) {
+  // the whole record a raise builds (host, form, code, time, note, link, base, site, flow), every field copied onto
+  // the exception; typed as that record so code checked with tsc takes the fields a raise passes (TS2353 otherwise)
+  constructor(base: { note: string; form: string; [field: string]: unknown }) {
     super(base.note)
     Object.assign(this, base)
     this.name = ${EXCEPTION_CLASS}.name
@@ -910,7 +980,7 @@ function __termSplice<T>(a: T[], s: number, d: number, ...items: T[]): T[] {
 // `value`, `{ form: "blank" }`). A value that does not fit raises `data-mismatch`, the package's own exception,
 // `path` naming where and `reason` why.
 const FORM_WALK_PRELUDE = `function __termMismatch(path: string, reason: string): never {
-  throw new ${EXCEPTION_CLASS}({ host: "@term/host", form: "data-mismatch", code: exceptionCode(), time: date.now(), note: "Data does not fit the shape", link: { thing: "data", path: path || ".", reason } } as never)
+  throw new ${EXCEPTION_CLASS}({ host: "@term/host", form: "data-mismatch", code: "", time: Date.now(), note: "Data does not fit the shape", link: { thing: "data", path: path || ".", reason } } as never)
 }
 
 function __termFill(value: any, spec: any, path = ""): any {
@@ -1546,12 +1616,17 @@ function makeEmitter(
           // each argument as an operand, grouped when compound: a template that is the argument alone (`to-decimal`'s
           // `$value`) stands where the call stood, so `1 / to-decimal(a + b)` must keep `(a + b)`
           const args = node.args.map(arg => expression(arg, 100))
+          const rendered = renderBind(bind, env, args) ?? renderBind(bind, 'javascript', args)
 
-          return (
-            renderBind(bind, env, args) ??
-            renderBind(bind, 'javascript', args) ??
-            bindGap(bind.name)
-          )
+          if (rendered === undefined) {
+            return bindGap(bind.name)
+          }
+
+          // and the template itself grouped where it stands under an operator, unless it is one primary already: the
+          // stdlib's `bignum-compare` is `$a < $b ? -1 : (...)`, so `is-below(big-compare(x, y), 0)` emitted
+          // `x < y ? -1 : (...) < 0`, which compares the wrong thing (engine/data/integer port, 2026-10-04,
+          // test/compile/bind-group.ts)
+          return parentPrecedence > 0 && !isPrimary(rendered) ? `(${rendered})` : rendered
         }
 
         // a map READ is the stored value: Term's raw `get` reads a key it has (the stdlib's `hash-get` asks `has` first),
@@ -2223,6 +2298,13 @@ function makeEmitter(
           return `{ ${[...temps, ...sets].join('; ')} }`
         }
 
+        // a write to a map's slot (`save counts/{key}, ...`) is the Map's `set`: `counts[key] = v` set a property of the
+        // Map object, which no `get`, `has`, `size` or walk of the map ever sees, so the write was lost on this backend
+        // alone (found by meaning-native `text-keys`)
+        if (node.op === '=' && node.target.form === 'member' && node.target.index && node.target.target.type?.kind === 'map') {
+          return `${expression(node.target.target)}.set(${expression(node.target.index)}, ${expression(node.value)})`
+        }
+
         // a write to a list slot (`save slots/{value}, ...`, `save xs/0, ...`): the READ of one is the checked
         // `__termAt(xs, i)`, which is no place to assign to (esbuild: "Invalid assignment target"). The write keeps
         // the same check, so a slot past the end stops here as on every other backend, then writes the slot itself
@@ -2305,7 +2387,11 @@ function makeEmitter(
           return `${map}.set(${key}, ${checked ? `__termInt(${sum})` : sum})`
         }
 
-        return expression(node.expr)
+        // a statement that would begin with `{` (an object literal) is read by JavaScript as a block, and one that would
+        // begin with `function` as a declaration: either is written in parentheses, so it stays the expression it is
+        const text = expression(node.expr)
+
+        return /^(\{|function\b)/.test(text) ? `(${text})` : text
       }
       case 'return': {
         // a tail call of a task that is a loop: the arguments computed first, then the parameters rebound
@@ -2429,9 +2515,11 @@ function makeEmitter(
       }
       case 'guard': {
         // `note unsafe` / `halt take`: a try with its catch. The caught value is bound as written; a guard with no
-        // handler swallows what it catches, which the checker warns about.
+        // handler swallows what it catches, which the checker warns about. Bound as `any`: the handler's reads of the
+        // exception's fields are the checker's, already typed, and a strict tsc types a bare binding `unknown`
+        // (TS18046 at every `error.form` a `sift` reads)
         const handler = node.catch
-          ? ` catch (${toCamel(node.catch.name)}) ${block(node.catch.body, depth)}`
+          ? ` catch (${toCamel(node.catch.name)}: any) ${block(node.catch.body, depth)}`
           : ' catch {}'
 
         return `try ${block(node.body, depth)}${handler}`
@@ -3121,8 +3209,15 @@ export function emitTypeScript(
       ? [EXCEPTION_PRELUDE]
       : []
 
-  // the form walk rides behind the exception class in a module that lowered a `fill` or `melt` with a form
+  // the form walk rides behind the exception class in a module that lowered a `fill` or `melt` with a form, and it
+  // raises `data-mismatch` through that class, so it brings the class when nothing else did. A fill with no handler
+  // around it stopped with `ReferenceError: TermException is not defined` instead of the mismatch (guides:
+  // language/data, 2026-10-04)
   if (tsFormWalkUsed) {
+    if (!prelude.includes(EXCEPTION_PRELUDE)) {
+      prelude.unshift(EXCEPTION_PRELUDE)
+    }
+
     prelude.push(FORM_WALK_PRELUDE)
   }
 

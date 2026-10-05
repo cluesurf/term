@@ -100,6 +100,17 @@ function main(): void {
       withAssign,
     )
     void reassigned
+
+    // an EMPTY list or hash filled after it is bound is not a constant: as a `host` it is generalized and never learns
+    // its element, and on Rust comes out a boxed `Vec<Rc<dyn Any>>` (self-hosting, 2026-10-04: the fix broke six ports)
+    for (const [label, empty] of [['list', 'make list'], ['hash', 'make hash']]) {
+      const filled = `task go\n  like number\n  save out, ${empty}\n  send back, code 0\n`
+      ok(
+        `L004 leaves an empty ${label} alone`,
+        findings(filled).filter(f => f.code === 'L004').length === 0,
+        JSON.stringify(findings(filled).filter(f => f.code === 'L004')),
+      )
+    }
   }
 
   // L001: non-kebab declared name

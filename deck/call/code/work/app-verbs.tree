@@ -49,6 +49,7 @@ form host-ask
   link registry, like text
   link trust, like text
   link untrust, like text
+  link ping, like boolean
 
 # `term test [filter]`: run the project's tests, or the ones whose name matches
 task test
@@ -124,6 +125,7 @@ task host
   take registry, like text
   take trust, like text
   take untrust, like text
+  take ping, like boolean
 
   like void
 
@@ -137,6 +139,7 @@ task host
         bind registry, read registry
         bind trust, read trust
         bind untrust, read untrust
+        bind ping, read ping
       wait true
   halt take
     take error

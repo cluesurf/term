@@ -45,9 +45,11 @@ export type CheckerGap = {
 function excerptFor(source: string, span?: { start: Spot; end: Spot }): string {
   if (!span) return ''
 
+  // a span counts from zero and a person counts from one. Read as one-based, the excerpt showed the line above the
+  // problem, and the location was a line and a column early (guides: tests/backends, 2026-10-04)
   const lines = source.split('\n')
-  const lineNo = span.start.line
-  const line = lines[lineNo - 1] ?? ''
+  const lineNo = span.start.line + 1
+  const line = lines[span.start.line] ?? ''
   const width = Math.max(
     1,
     (span.end.line === span.start.line ? span.end.column : line.length) -
@@ -64,7 +66,7 @@ export function gapFromDiagnostic(
   diagnostic: Diagnostic,
 ): CheckerGap {
   const start = diagnostic.span?.start
-  const location = `${diagnostic.file ?? '<source>'}:${start?.line ?? 0}:${start?.column ?? 0}`
+  const location = `${diagnostic.file ?? '<source>'}:${(start?.line ?? 0) + 1}:${(start?.column ?? 0) + 1}`
 
   return {
     location,

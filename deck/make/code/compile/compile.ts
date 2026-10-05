@@ -42,7 +42,7 @@ import { checkBodilessCalls } from '@term/make/code/check/bodiless'
 import { checkFinds } from '@term/make/code/check/finds'
 import { checkDuplicateTasks } from '@term/make/code/check/duplicates'
 import { warnDeprecated } from '@term/make/code/check/deprecated'
-import { checkLostWrites } from '@term/make/code/check/lost-writes'
+import { checkLostWrites, warnLostCollectionWrites } from '@term/make/code/check/lost-writes'
 import { checkRouteMethods } from '@term/make/code/check/routes'
 import { copyForViews, checkLoweredViews } from '@term/make/code/check/views'
 import { checkSupervision } from '@term/make/code/check/supervise'
@@ -89,7 +89,7 @@ import { passDictionaries } from '@term/make/code/ir/dictionary'
 import { lowerZones } from '@term/make/code/compile/view-lower'
 import { lowerRoutes } from '@term/make/code/compile/route-lower'
 import { RENDER, RENDER_SUPPORT } from '@term/make/code/compile/render-names'
-import { compileLookCss } from '@term/make/code/compile/look-css'
+import { checkLook, compileLookCss } from '@term/make/code/compile/look-css'
 import { compileLookTable, styleTableText } from '@term/make/code/compile/look-table'
 import {
   expandData,
@@ -255,6 +255,14 @@ export function compile(
   // a look stylesheet (.tree whose top-level statements are all `face` / `tone` / `base`) is not a normal compile
   // target: route it to the static-CSS backend and return the emitted stylesheet instead of TypeScript. See look-css.ts.
   if (isLookStylesheet(source)) {
+    // a sheet that does not parse, or a `tint` that is not a CSS color, is refused rather than written: the browser
+    // drops a rule it cannot read without a word (guides: applications/web/styles, 2026-10-04)
+    const refused = checkLook(source)
+
+    if (refused.length) {
+      return { ok: false, diagnostics: refused }
+    }
+
     return {
       ok: true,
       program: [],
@@ -299,6 +307,13 @@ export function compile(
     ? collectModules(source, options.resolve, parsed)
     : undefined
   const sources = collected ? collected.sources : [source]
+
+  // a load the build cannot answer and the checker would only meet as an unknown name: refused with its own cause
+  const loadErrors = (collected?.diagnostics ?? []).filter(d => d.severity !== 'warning')
+
+  if (loadErrors.length > 0) {
+    return { ok: false, diagnostics: loadErrors }
+  }
 
   const cache = options?.cache
 
@@ -960,6 +975,8 @@ export function compileProgram(
     ...patterns.warnings,
     ...bindChecks.warnings,
     ...warnDeprecated(program, file),
+    // a write to a list or hash parameter its caller never sees under value semantics (check/lost-writes.ts, 0026)
+    ...warnLostCollectionWrites(program, file),
     // a host description's undeclared types and imports, counted rather than refused (HOST_DESCRIPTIONS)
     ...(describesHost ? [...typeNameDiagnostics, ...staleFinds].map(d => ({ ...d, severity: 'warning' as const })) : []),
   ].map(d => (d.span.file !== undefined && d.span.file !== d.file ? { ...d, file: d.span.file } : d))

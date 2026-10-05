@@ -1,0 +1,341 @@
+# Interaction combinators: the substrate's pure-plane low IR. The runtime is a graph of agents wired port to port,
+# reduced by purely local rewrites on "active pairs" (two agents touching principal port to principal port). This is
+# Lafont's universal system (the model HVM and the hyperbolic substrate run on); the pure fragment of the language
+# lowers to it. Three agents: `con` (a binary constructor/application node), `dup` (a binary duplicator), and `era` (a
+# nullary eraser). See note/research/vibe/computation/plans/06-runtime-substrate.md. Pure and browser-safe.
+#
+# Ported from ir/net.ts (self-hosting, 2026-10-04). The original was a class mutated in place; a net is a value here
+# (D1), so every task that changes one RETURNS it, and its callers (ir/lower-net, ir/lattice, test/ir/net.ts) moved:
+#   - `node(label)` is `add-node`, which answers the net and the new id together (`added-node`)
+#   - `wire`, `step`, `normalize` are `wire-ports`, `step-net`, `normalize-net`; `peer` is `peer-of` after `has-peer`
+#   - the inert boundary was `interface`, a keyword on Kotlin, so it is `boundary`, a hash of id to true
+#   - a label is text (`con`, `dup`, `era`): a closed set of texts has no Term spelling until D9 (self-hosting-0037)
+# The node table is a hash, which iterates in insertion order on every backend (rust.ts writes an insertion-ordered
+# map), so the active pair found first is the same one TypeScript's Map found.
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+# a port: a node id and a slot. Slot 0 is the principal port; slots 1 and 2 are the auxiliaries (con and dup only)
+form port
+  link node, like number
+  link slot, like number
+
+form net
+  # each live node's label, by id
+  link nodes
+    like hash, like number
+      like text
+  # `node:slot` to the port it is wired to
+  link links
+    like hash, like text
+      like port
+  # the next node id
+  link next, like number
+  # the interaction rules applied, for measuring reduction cost
+  link rewrites, like number
+  # the inert nodes: the free wires and root that form the net's external boundary
+  link boundary
+    like hash, like number
+      like boolean
+
+# what `add-node` answers: the net with the node in it, and the node's id
+form added-node
+  link graph, like net
+  link id, like number
+
+# what `step-net` answers: the net after the step, and whether a rule fired
+form stepped-net
+  link graph, like net
+  link fired, like boolean
+
+task make-net
+  like net
+
+  back
+    make net
+      bind nodes, make hash
+      bind links, make hash
+      bind next, 0
+      bind rewrites, 0
+      bind boundary, make hash
+
+task make-port
+  take node, like number
+  take slot, like number
+  like port
+
+  back
+    make port
+      bind node, node
+      bind slot, slot
+
+# how many auxiliary ports an agent has
+task arity-of
+  take label, like text
+  like number
+
+  fork test, is-equal(label, <era>)
+    hold
+      back 0
+  back 2
+
+task port-key
+  take p, like port
+  like text
+
+  back <{p/node}:{p/slot}>
+
+# a node of `label`, with the next id
+task add-node
+  take graph, like net
+  take label, like text
+  like added-node
+
+  host id, graph/next
+  host nodes, graph/nodes
+  set(nodes, id, label)
+  host next, graph
+  save next/nodes, nodes
+  save next/next, add(id, 1)
+  back
+    make added-node
+      bind graph, next
+      bind id, id
+
+# wire two ports together (symmetric)
+task wire-ports
+  take graph, like net
+  take a, like port
+  take b, like port
+  like net
+
+  host links, graph/links
+  set(links, port-key(a), b)
+  set(links, port-key(b), a)
+  host next, graph
+  save next/links, links
+  back next
+
+task has-peer
+  take graph, like net
+  take p, like port
+  like boolean
+
+  back has(graph/links, port-key(p))
+
+# the port `p` is wired to. Ask `has-peer` first: an unwired port answers node -1
+task peer-of
+  take graph, like net
+  take p, like port
+  like port
+
+  back get-or-default(graph/links, port-key(p), make-port(-1, -1))
+
+# mark a node as part of the inert boundary
+task mark-boundary
+  take graph, like net
+  take id, like number
+  like net
+
+  host boundary, graph/boundary
+  set(boundary, id, true)
+  host next, graph
+  save next/boundary, boundary
+  back next
+
+task is-boundary
+  take graph, like net
+  take id, like number
+  like boolean
+
+  back has(graph/boundary, id)
+
+task remove-node
+  take graph, like net
+  take id, like number
+  like net
+
+  host n, arity-of(get-or-default(graph/nodes, id, <era>))
+  host links, graph/links
+  save slot, 0
+  walk test
+    hook test, is-maximum(slot, n)
+    hook hold
+      remove(links, <{id}:{slot}>)
+      save slot, add(slot, 1)
+  host nodes, graph/nodes
+  remove(nodes, id)
+  host next, graph
+  save next/links, links
+  save next/nodes, nodes
+  back next
+
+# the first active pair, in node order: a node whose principal port is wired to another's principal port, the lower
+# id first, neither on the boundary. Empty when there is none
+task find-active-pair
+  take graph, like net
+  like list, like number
+
+  save pair, make list
+  walk keys(graph/nodes)
+    take id
+    # the boundary is inert
+    fork test, is-boundary(graph, id)
+      hold
+        turn next
+    host principal, make-port(id, 0)
+    fork test, has-peer(graph, principal)
+      hold
+        host peer, peer-of(graph, principal)
+        fork test
+          hook test
+            and and(is-equal(peer/slot, 0), is-unequal(peer/node, id))
+              and
+                and has(graph/nodes, peer/node)
+                  is-equal(is-boundary(graph, peer/node), false)
+                is-above(peer/node, id)
+          hook hold
+            push(pair, id)
+            push(pair, peer/node)
+            back pair
+  back pair
+
+# a node of `label` added and its principal port wired to `to`, answering the net
+task add-wired
+  take graph, like net
+  take label, like text
+  take to, like port
+  like net
+
+  host added, add-node(graph, label)
+  back wire-ports(added/graph, make-port(added/id, 0), to)
+
+# apply one interaction rule
+task step-net
+  take graph, like net
+  like stepped-net
+
+  host pair, find-active-pair(graph)
+  fork test, is-equal(pair/length, 0)
+    hold
+      back
+        make stepped-net
+          bind graph, graph
+          bind fired, false
+  host a, get(pair, 0)
+  host b, get(pair, 1)
+  host la, get-or-default(graph/nodes, a, <>)
+  host lb, get-or-default(graph/nodes, b, <>)
+  save current, graph
+  save current/rewrites, add(graph/rewrites, 1)
+
+  fork test, and(is-equal(la, <era>), is-equal(lb, <era>))
+    hold
+      save current, remove-node(remove-node(current, a), b)
+      back
+        make stepped-net
+          bind graph, current
+          bind fired, true
+
+  # erase a binary agent: its two auxiliaries each get a fresh eraser
+  fork test, or(is-equal(la, <era>), is-equal(lb, <era>))
+    hold
+      save eraser, a
+      save binary, b
+      fork test, is-equal(lb, <era>)
+        hold
+          save eraser, b
+          save binary, a
+      host x1, peer-of(current, make-port(binary, 1))
+      host x2, peer-of(current, make-port(binary, 2))
+      save current, remove-node(remove-node(current, eraser), binary)
+      save current, add-wired(current, <era>, x1)
+      save current, add-wired(current, <era>, x2)
+      back
+        make stepped-net
+          bind graph, current
+          bind fired, true
+
+  host a1, peer-of(current, make-port(a, 1))
+  host a2, peer-of(current, make-port(a, 2))
+  host b1, peer-of(current, make-port(b, 1))
+  host b2, peer-of(current, make-port(b, 2))
+  save current, remove-node(remove-node(current, a), b)
+
+  # annihilation: same agents cancel, wiring their auxiliaries straight across
+  fork test, is-equal(la, lb)
+    hold
+      save current, wire-ports(current, a1, b1)
+      save current, wire-ports(current, a2, b2)
+      back
+        make stepped-net
+          bind graph, current
+          bind fired, true
+
+  # commutation: each agent passes through the other, duplicating it
+  save made, add-node(current, lb)
+  host b1n, made/id
+  save made, add-node(made/graph, lb)
+  host b2n, made/id
+  save made, add-node(made/graph, la)
+  host a1n, made/id
+  save made, add-node(made/graph, la)
+  host a2n, made/id
+  save current, made/graph
+  save current, wire-ports(current, make-port(b1n, 0), a1)
+  save current, wire-ports(current, make-port(b2n, 0), a2)
+  save current, wire-ports(current, make-port(a1n, 0), b1)
+  save current, wire-ports(current, make-port(a2n, 0), b2)
+  save current, wire-ports(current, make-port(b1n, 1), make-port(a1n, 1))
+  save current, wire-ports(current, make-port(b1n, 2), make-port(a2n, 1))
+  save current, wire-ports(current, make-port(b2n, 1), make-port(a1n, 2))
+  save current, wire-ports(current, make-port(b2n, 2), make-port(a2n, 2))
+  back
+    make stepped-net
+      bind graph, current
+      bind fired, true
+
+# reduce to normal form (no active pairs). `limit` is a safety bound on the steps taken
+task normalize-net
+  take graph, like net
+  take limit, like number, fall 100000
+  like net
+
+  save current, graph
+  save steps, 0
+  walk test
+    hook test, is-below(steps, limit)
+    hook hold
+      host stepped, step-net(current)
+      save current, stepped/graph
+      fork test, stepped/fired
+        miss
+          halt
+      save steps, add(steps, 1)
+  back current
+
+# the live nodes, the boundary included
+task net-size
+  take graph, like net
+  like number
+
+  back size(graph/nodes)
+
+# every live node's id, in the order they were added
+task list-node-ids
+  take graph, like net
+  like list, like number
+
+  back keys(graph/nodes)
+
+# the label of a live node, `<>` for an id the net does not hold
+task label-of
+  take graph, like net
+  take id, like number
+  like text
+
+  back get-or-default(graph/nodes, id, <>)

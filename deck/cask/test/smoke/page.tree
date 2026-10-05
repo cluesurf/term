@@ -2,6 +2,10 @@
 # The page side of the smoke test of cask-0004. Built for the `webview` env, so `file/read` and `cask/bundle-path`
 # each go over the bridge to the cask and come back. Asks the cask where the bundle is, reads the file the driver
 # put there, and leaves with 0 when it holds the expected line and 1 when it does not. The driver reads that status.
+#
+# And the app's SCOPE holds (app-scope): its scope.tree lets it read its own bundle and nothing else, so a read of
+# `<bundle>/../outside.txt`, which folds to a file beside the bundle, must be refused by the cask's dispatcher as
+# `out-of-scope` before anything is read. Leaves with 3 when it is not.
 
 load @term/cask/cask
   find bundle-path
@@ -44,6 +48,34 @@ task boot
   save content
     call read
       text <{{bundle}}/smoke.txt>
+  # a read outside the scope, refused before it runs: the refusal is pushed into a list rather than a boolean set
+  # inside the handler, for the reason `heard` is a list
+  save refused
+    make list
+  mark unsafe
+    save outside
+      call read
+        text <{{bundle}}/../outside.txt>
+  halt take
+    take error
+    fork test
+      hook test
+        call is-equal
+          read error/form
+          text <out-of-scope>
+      hook hold
+        call push
+          bind list, read refused
+          bind item, read error/note
+  fork test
+    hook test
+      call is-equal
+        call count
+          read refused
+        code 0
+    hook hold
+      call exit
+        code 3
   fork test
     hook test
       call is-equal

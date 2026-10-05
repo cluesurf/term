@@ -219,8 +219,22 @@ export function findTreeFiles(
     }
 
     const full = path.join(dir, entry)
+    // a link to nothing (a `link/` entry whose deck was removed) is not a file of this build. It stopped the whole
+    // walk with a bare ENOENT before a file was read; a load of it is now refused at the load, `unresolved-load`
+    // (guides: packages/install, 2026-10-04)
+    const stat = (() => {
+      try {
+        return statSync(full)
+      } catch {
+        return undefined
+      }
+    })()
 
-    if (statSync(full).isDirectory()) {
+    if (!stat) {
+      continue
+    }
+
+    if (stat.isDirectory()) {
       // a whole module can be shelved at once: a `draft.tree` in a directory takes that directory and everything
       // under it out of the build, so an unfinished subtree is declared in one place instead of per file
       if (existsSync(path.join(full, 'draft.tree'))) {

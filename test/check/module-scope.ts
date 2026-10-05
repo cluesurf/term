@@ -233,6 +233,52 @@ const RUN_SIGNATURE = `task run\n  take sql, like text\n  take params, like text
   ok('the other arity is still told apart', result.ok && !/function run\(sql/.test(result.typescript), said(result))
 }
 
+// an import ALIAS of a name the file also defines. `find measure, name module-measure` is rewritten to the imported
+// name before binding, so the file's own `measure` took it and the call was checked against the wrong task: the float
+// port's `find to-number, name decimal-to-number` bound to its own `to-number` (self-hosting, 2026-10-04). Each output
+// is run, so an inlined call is held to its answer rather than its spelling
+const MEASURE_MODULE = `task measure\n  take x, like number\n  like text\n  send back, text <module>\n`
+
+async function runOf(typescript: string): Promise<Record<string, () => unknown>> {
+  const { transformSync } = await import('esbuild')
+  const { mkdtempSync, writeFileSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  const { pathToFileURL } = await import('node:url')
+  const file = join(mkdtempSync(join(tmpdir(), 'term-module-scope-')), 'module.mjs')
+  writeFileSync(file, transformSync(typescript, { loader: 'ts', format: 'esm' }).code)
+
+  return (await import(pathToFileURL(file).href)) as Record<string, () => unknown>
+}
+
+{
+  const main = `load @app/m\n  find measure, name module-measure\n\nform box\n  link n, like number\n\ntask measure\n  take b, like box\n  like text\n  send back, text <own>\n\ntask run\n  like text\n  send back\n    call module-measure\n      code 3\n\ntask mine\n  like text\n  save b\n    make box\n      bind n, code 1\n  send back\n    call measure\n      read b\n`
+  const result = build({ '@app/m': MEASURE_MODULE }, main)
+  ok('an aliased import of a name the file defines compiles', result.ok, said(result))
+
+  if (result.ok) {
+    const mod = await runOf(result.typescript)
+    ok('the alias reaches the imported task', mod.run?.() === 'module', String(mod.run?.()))
+    ok('the bare name is still the file\'s own', mod.mine?.() === 'own', String(mod.mine?.()))
+  }
+}
+
+// and the same where the imported name is a native BINDING, as the stdlib's `bind to-number` is: a `bind` is not split
+// by file the way a task is, so it needed its own pass (bindAliasedNatives)
+const MEASURE_NATIVE = `bind measure\n  take x, like number\n  like number\n  case node\n    text <($x + 100)>\n`
+
+{
+  const main = `load @app/n\n  find measure, name native-measure\n\nform box\n  link n, like number\n\ntask measure\n  take b, like box\n  like number\n  send back, code 7\n\ntask run\n  like number\n  send back\n    call native-measure\n      code 3\n\ntask mine\n  like number\n  save b\n    make box\n      bind n, code 1\n  send back\n    call measure\n      read b\n`
+  const result = build({ '@app/n': MEASURE_NATIVE }, main)
+  ok('an aliased import of a native binding the file names a task compiles', result.ok, said(result))
+
+  if (result.ok) {
+    const mod = await runOf(result.typescript)
+    ok('the alias reaches the native binding', mod.run?.() === 103, String(mod.run?.()))
+    ok('the bare name is still the file\'s own task', mod.mine?.() === 7, String(mod.mine?.()))
+  }
+}
+
 console.log(`\nmodule-scope: ${pass} pass, ${fail} fail`)
 
 if (fail > 0) {

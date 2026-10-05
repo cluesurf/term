@@ -4,8 +4,10 @@
 // it says it exits, and pulls its PNG off the device. A helper, not a suite: shared/ is not walked by the runner. Used by
 // test/compile/compose-view.ts and the `compose-android` leg of ./toolkit-run.ts.
 
-import { spawnSync } from 'node:child_process'
-import { writeFileSync } from 'node:fs'
+import { spawn, spawnSync } from 'node:child_process'
+import { closeSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { androidDevice, androidTools } from '@term/call/code/cask'
 
 export type ComposeAndroidRan =
@@ -34,7 +36,6 @@ export function runComposeAndroid({
   const tools = androidTools()
   const adb = (...args: string[]) => spawnSync(tools.adb, ['-s', found.serial, ...args], { encoding: 'utf8' })
   adb('uninstall', identifier)
-  adb('logcat', '-c')
   const installed = adb('install', '-r', apk).status === 0
   adb('shell', 'am', 'start', '-n', `${identifier}/.TermActivity`)
 
@@ -51,12 +52,19 @@ export function runComposeAndroid({
     }
   }
 
+  // and STREAMED, from the moment the process is found, into a file of this run's own. The log is a ring buffer every
+  // run on the emulator shares, and reading it by snapshot (`logcat -d`) lost this app's first lines whenever another
+  // run cleared it meanwhile: every judgment read by line position then failed at once, in a full gate run and never
+  // alone. Lines a reader has been sent are its own, whoever clears the buffer after. Nothing here clears it either
   const byProcess = pid ? ['--pid', pid] : []
+  const file = join(tmpdir(), `term-compose-android-${identifier}-${process.pid}-${Date.now()}.log`)
+  const into = openSync(file, 'w')
+  const reader = spawn(tools.adb, ['-s', found.serial, 'logcat', ...byProcess, '-s', 'native-dom:I', 'AndroidRuntime:E'], { stdio: ['ignore', into, into] })
   let log = ''
   const deadline = Date.now() + 120_000
 
   while (Date.now() < deadline) {
-    log = adb('logcat', '-d', ...byProcess, '-s', 'native-dom:I', 'AndroidRuntime:E').stdout ?? ''
+    log = readFileSync(file, 'utf8')
 
     if (log.includes('native-view exit') || log.includes('FATAL EXCEPTION')) {
       break
@@ -64,6 +72,10 @@ export function runComposeAndroid({
 
     spawnSync('sleep', ['1'])
   }
+
+  reader.kill()
+  closeSync(into)
+  rmSync(file, { force: true })
 
   const output = log
     .split('\n')

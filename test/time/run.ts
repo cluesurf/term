@@ -12,8 +12,11 @@ import { compileBenchmarks } from '@term/make/code/time/runner'
 import {
   compareResults,
   shouldFail,
+  sideOf,
 } from '@term/make/code/time/compare'
 import { benchmark } from '@term/make/code/time/benchmark'
+import { buildSuite, formatJson, fromSaved } from '@term/make/code/time/output'
+import { formatTable } from '@term/make/code/time/table'
 import * as os from 'node:os'
 
 let pass = 0
@@ -33,15 +36,15 @@ async function main(): Promise<void> {
   // computeStats reduces raw samples to the right summary
   {
     const r = computeStats('s', [10, 20, 30, 40])
-    ok('stats mean', r.mean_ns === 25, String(r.mean_ns))
+    ok('stats mean', r.meanNs === 25, String(r.meanNs))
     ok(
       'stats median (even count)',
-      r.median_ns === 25,
-      String(r.median_ns),
+      r.medianNs === 25,
+      String(r.medianNs),
     )
-    ok('stats min/max', r.min_ns === 10 && r.max_ns === 40)
+    ok('stats min/max', r.minNs === 10 && r.maxNs === 40)
     ok('stats iterations', r.iterations === 4)
-    ok('stats ops_per_sec', r.ops_per_sec === 1e9 / 25)
+    ok('stats ops_per_sec', r.opsPerSec === 1e9 / 25)
   }
 
   // formatDuration picks the right unit
@@ -61,15 +64,13 @@ async function main(): Promise<void> {
       computeStats('fresh', [10, 10, 10]), // not in baseline -> new
     ]
 
-    const baseline = {
-      results: [
-        { name: 'slow', mean_ns: 100 },
-        { name: 'fast', mean_ns: 100 },
-        { name: 'flat', mean_ns: 100 },
-      ],
-    }
+    const baseline = [
+      fromSaved({ name: 'slow', mean_ns: 100 }),
+      fromSaved({ name: 'fast', mean_ns: 100 }),
+      fromSaved({ name: 'flat', mean_ns: 100 }),
+    ]
 
-    const cmp = compareResults({ current, baseline })
+    const cmp = compareResults(current, baseline)
     const byName = new Map(cmp.entries.map(e => [e.name, e.status]))
     ok('compare marks regression', byName.get('slow') === 'slower')
     ok('compare marks improvement', byName.get('fast') === 'faster')
@@ -83,12 +84,61 @@ async function main(): Promise<void> {
     // the CI gate fires only when a regression exceeds the threshold
     ok(
       'gate fails on a regression past threshold',
-      shouldFail({ result: cmp, maxRegressionPct: 10 }) === true,
+      shouldFail(cmp, 10) === true,
     )
     ok(
       'gate passes when the threshold is generous',
-      shouldFail({ result: cmp, maxRegressionPct: 500 }) === false,
+      shouldFail(cmp, 500) === false,
     )
+  }
+
+  // a difference the samples' own spread explains is the same, however far past 5% the means are; one outside it is
+  // a change (guides: commands/time, 2026-10-04)
+  {
+    const noisy = computeStats('noisy', [60, 140, 80, 120, 100, 110])
+    const noisyBefore = computeStats('noisy', [50, 150, 70, 130, 90, 100])
+    const steady = computeStats('steady', [110, 111, 109, 110, 110, 111])
+    const steadyBefore = computeStats('steady', [100, 101, 99, 100, 100, 101])
+
+    const cmp = compareResults([noisy, steady], [sideOf(noisyBefore), sideOf(steadyBefore)])
+    const byName = new Map(cmp.entries.map(e => [e.name, e]))
+
+    ok('a 10% change inside the spread is the same', byName.get('noisy')?.status === 'same', JSON.stringify(byName.get('noisy')))
+    ok('a 10% change outside it is slower', byName.get('steady')?.status === 'slower', JSON.stringify(byName.get('steady')))
+  }
+
+  // the saved baseline keeps its snake_case keys, an on-disk format, though a result's fields are camelCase in memory
+  // since time/stats is Term (2026-10-04); and a saved file reads back as the comparison reads it
+  {
+    const r = computeStats('disk', [10, 20, 30])
+    const written = JSON.parse(formatJson(buildSuite([r]))) as { results: Record<string, unknown>[] }
+    const keys = Object.keys(written.results[0]!).sort().join(',')
+    ok(
+      'the saved baseline is snake_case',
+      keys === 'cv,iterations,max_ns,mean_ns,median_ns,min_ns,name,ops_per_sec,std_dev_ns,timings_ns',
+      keys,
+    )
+
+    // read back as one side of a comparison (time/compare's `side`): the spread a `maybe`, the samples counted
+    const back = fromSaved(written.results[0] as Parameters<typeof fromSaved>[0])
+    ok(
+      'a saved result reads back',
+      back.meanNs === 20 && back.stdDevNs.form === 'some' && back.stdDevNs.value === r.stdDevNs && back.samples === 3,
+      JSON.stringify(back),
+    )
+    const old = fromSaved({ name: 'old', mean_ns: 5 })
+    ok('a pre-2026-10-04 baseline, the mean alone, reads back with no spread', old.meanNs === 5 && old.stdDevNs.form === 'none' && old.samples === 0, JSON.stringify(old))
+  }
+
+  // the table: operations per second grouped by thousands with commas on every machine (time/table.tree; the original
+  // grouped by the machine's locale), a name past the 9-column floor widening its column
+  {
+    const r = { ...computeStats('time-a-long-benchmark', [500]), opsPerSec: 1234567.5, cv: 0.123 }
+    const lines = formatTable([r]).split('\n')
+    ok('the table has a header, a rule and a row', lines.length === 3, JSON.stringify(lines))
+    ok('operations per second are grouped by thousands', lines[2]!.includes('1,234,568'), lines[2])
+    ok('the name column widens past nine', lines[1]!.startsWith(`  ${'-'.repeat('time-a-long-benchmark'.length)}  `), lines[1])
+    ok('the row reads its mean and CV', lines[2]!.includes('500.0ns') && lines[2]!.endsWith('12.3%'), lines[2])
   }
 
   // discovery finds zero-arg `time-*` tasks and respects the filter
@@ -127,7 +177,7 @@ async function main(): Promise<void> {
       root: os.tmpdir(),
       warmup: 2,
       iterations: 5,
-      baseline: { results: [{ name: 'time-noop', mean_ns: 1e9 }] },
+      baseline: { results: [fromSaved({ name: 'time-noop', mean_ns: 1e9 })] },
     })
 
     ok('driver produced one result', run.suite.results.length === 1)

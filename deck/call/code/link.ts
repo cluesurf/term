@@ -10,9 +10,21 @@ import {
   registerGlobalLink,
   consumeGlobalLink,
 } from '@cluesurf/deck.tree'
+import { lstatSync } from 'fs'
 import fsp from 'fs/promises'
 import path from 'path'
 import { closeRun, field, openRun, report, showPath } from '@term/call/code/output'
+
+// whether anything is at a path, a link that points nowhere included
+function lstatOrNothing(file: string): boolean {
+  try {
+    lstatSync(file)
+
+    return true
+  } catch {
+    return false
+  }
+}
 
 // a refusal from the package manager: its message as a ✗ item, then the closing item
 function refused(error: unknown, verdict: string): void {
@@ -90,7 +102,24 @@ export async function callUnlink(input: {
   root: string
   deck: string
 }): Promise<void> {
-  openRun({ verb: 'unlink', root: input.root, facts: [input.deck] })
+  openRun({ verb: 'unlink', root: input.root, facts: input.deck ? [input.deck] : [] })
+
+  if (!input.deck) {
+    report({ glyph: 'failed', kind: 'problem', subject: 'Name the deck to unlink' })
+    closeRun({ verdict: 'Nothing unlinked', next: 'term link --toss <deck>', failure: 'usage' })
+
+    return
+  }
+
+  // a name with no link is said to have none, not reported as unlinked
+  const linked = path.join(input.root, 'link', ...input.deck.split('/'))
+
+  if (!lstatOrNothing(linked)) {
+    report({ glyph: 'failed', kind: 'problem', subject: `There is no link named ${input.deck}`, fields: [field('looked', showPath(linked, input.root))] })
+    closeRun({ verdict: 'Nothing unlinked' })
+
+    return
+  }
 
   try {
     await devUnlink({

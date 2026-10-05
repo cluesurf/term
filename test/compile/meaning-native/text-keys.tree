@@ -1,0 +1,115 @@
+load @term/base/hash
+  find hash
+load @term/base/list
+  find list
+  find push
+
+# a map keyed by text whose keys nothing reads back as values (rust.ts, `textKeysOf`): each key a `TermKey` on Rust,
+# held in place up to 22 bytes and boxed past that. Counted with a fallback, read, tested, removed and written through
+# a slot, short keys and a key past 22 bytes alike, then sized and its values summed. The same answers on every backend
+
+task tally
+  take words, like list, like text
+  like hash
+    like text
+    like number
+  save counts
+    make hash
+  walk list, read words
+    hook next
+      take site, name word
+      call set
+        read counts
+        read word
+        call add
+          call get-or-default
+            read counts
+            read word
+            code 0
+          code 1
+  send back, read counts
+
+task total
+  take counts
+    like hash
+      like text
+      like number
+  like number
+  save sum, code 0
+  walk list
+    call values
+      read counts
+    hook next
+      take site, name count
+      save sum
+        call add
+          read sum
+          read count
+  send back, read sum
+
+task compute
+  like text
+  save words
+    make list
+  call push
+    bind list, read words
+    bind item, text <ab>
+  call push
+    bind list, read words
+    bind item, text <a-key-that-is-longer-than-twenty-two-bytes>
+  call push
+    bind list, read words
+    bind item, text <ab>
+  call push
+    bind list, read words
+    bind item, text <cd>
+  call push
+    bind list, read words
+    bind item, text <a-key-that-is-longer-than-twenty-two-bytes>
+  call push
+    bind list, read words
+    bind item, text <ab>
+  host counts
+    call tally
+      read words
+  host ab
+    call get-or-default
+      read counts
+      text <ab>
+      code 0
+  host long
+    call get-or-default
+      read counts
+      text <a-key-that-is-longer-than-twenty-two-bytes>
+      code 0
+  host missing
+    call get-or-default
+      read counts
+      text <zz>
+      code -1
+  host had
+    call has
+      read counts
+      text <cd>
+  host gone
+    call remove
+      read counts
+      text <cd>
+  host after
+    call has
+      read counts
+      text <cd>
+  host ef, text <ef>
+  save counts/{ef}, code 7
+  host ef-count
+    call get-or-default
+      read counts
+      read ef
+      code 0
+  host size
+    call size
+      read counts
+  host sum
+    call total
+      read counts
+  send back, text <{ab}:{long}:{missing}:{had}:{gone}:{after}:{ef-count}:{size}:{sum}>

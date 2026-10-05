@@ -4,6 +4,7 @@
 //   term mind <fact>            remember a fact
 //   term mind                   list every remembered fact
 //   term mind --find <query>    recall the facts matching a query
+//   term mind --forget <name>   forget one fact, its file and its line in the index
 //
 // The store is plain markdown (a human or any agent can read it); `--back json` returns structured records.
 
@@ -12,6 +13,7 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs'
 import path from 'node:path'
@@ -87,7 +89,7 @@ function remember(
   fact: string,
   nameArg: string | undefined,
   kindArg: string | undefined,
-): { name: string; kind: string; file: string } {
+): { name: string; kind: string; file: string; replaced?: string } {
   const dir = memoryDir(root)
   mkdirSync(dir, { recursive: true })
 
@@ -95,6 +97,8 @@ function remember(
   const name = slug(nameArg ?? fact)
   const description = fact.split('\n')[0]!.slice(0, 100)
   const file = path.join(dir, `${name}.md`)
+  // the fact this one replaces, so the run says it changed one rather than added one
+  const replaced = existsSync(file) ? readFact(file).description : undefined
 
   writeFileSync(
     file,
@@ -122,7 +126,30 @@ function remember(
     ].join('\n')}\n`,
   )
 
-  return { name, kind, file: path.relative(root, file) }
+  return { name, kind, file: path.relative(root, file), ...(replaced !== undefined ? { replaced } : {}) }
+}
+
+// forget one fact: its file, and its line in the index. Answers what it forgot, or undefined for a name never used
+function forget(root: string, name: string): Fact | undefined {
+  const dir = memoryDir(root)
+  const file = path.join(dir, `${slug(name)}.md`)
+
+  if (!existsSync(file)) {
+    return undefined
+  }
+
+  const fact = readFact(file)
+  rmSync(file)
+
+  const indexPath = path.join(dir, 'index.md')
+
+  if (existsSync(indexPath)) {
+    const lines = readFileSync(indexPath, 'utf8').split('\n').filter(line => !line.startsWith(`- [${fact.name}]`))
+
+    writeFileSync(indexPath, lines.join('\n'))
+  }
+
+  return fact
 }
 
 export async function callMind(input: {
@@ -131,9 +158,34 @@ export async function callMind(input: {
   name?: string
   kind?: string
   find?: string
+  forget?: string
   back?: string
 }): Promise<void> {
   const json = input.back === 'json'
+
+  // forget
+  if (input.forget !== undefined) {
+    const gone = forget(input.root, input.forget)
+
+    if (json) {
+      printData(`${JSON.stringify(gone ? { ok: true, name: gone.name } : { ok: false, name: input.forget })}\n`)
+      process.exitCode = gone ? 0 : 1
+
+      return
+    }
+
+    openRun({ verb: 'mind', root: input.root })
+
+    if (gone) {
+      report({ glyph: 'removed', kind: 'change', verb: 'remove', subject: gone.name, facts: [gone.kind, gone.description] })
+      closeRun({ verdict: 'Forgotten', done: true })
+    } else {
+      report({ glyph: 'failed', kind: 'problem', subject: `There is no fact named ${input.forget}` })
+      closeRun({ verdict: 'Nothing forgotten', next: 'term mind, to list the names' })
+    }
+
+    return
+  }
 
   // remember
   if (input.fact) {
@@ -148,8 +200,15 @@ export async function callMind(input: {
       printData(`${JSON.stringify({ ok: true, ...saved })}\n`)
     } else {
       openRun({ verb: 'mind', root: input.root })
-      report({ glyph: 'added', kind: 'change', verb: 'add', subject: saved.name, facts: [saved.kind], fields: [field('at', saved.file)] })
-      closeRun({ verdict: 'Remembered' })
+
+      // a name already used replaces its fact: a `change` naming what it was, never an `add` like a new one
+      if (saved.replaced !== undefined) {
+        report({ glyph: 'changed', kind: 'change', verb: 'change', subject: saved.name, facts: [saved.kind, `was: ${saved.replaced}`], fields: [field('at', saved.file)] })
+      } else {
+        report({ glyph: 'added', kind: 'change', verb: 'add', subject: saved.name, facts: [saved.kind], fields: [field('at', saved.file)] })
+      }
+
+      closeRun({ verdict: saved.replaced !== undefined ? 'Replaced' : 'Remembered' })
     }
 
     return

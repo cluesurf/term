@@ -3,10 +3,13 @@ import path from 'path'
 import { DeckManifest } from './form'
 import { loadManifest } from './manifest'
 
+// each deck under the project's `deck/` folder by its name, with the folder that holds it
+export type Workspace = DeckManifest & { dir: string }
+
 export async function findWorkspaces(input: {
   root: string
-}): Promise<Map<string, DeckManifest>> {
-  const workspaces = new Map<string, DeckManifest>()
+}): Promise<Map<string, Workspace>> {
+  const workspaces = new Map<string, Workspace>()
 
   const deckDir = path.join(input.root, 'deck')
 
@@ -23,7 +26,7 @@ export async function findWorkspaces(input: {
 
 async function scanForDecks(input: {
   dir: string
-  workspaces: Map<string, DeckManifest>
+  workspaces: Map<string, Workspace>
 }): Promise<void> {
   const entries = await fsp.readdir(input.dir, {
     withFileTypes: true,
@@ -47,7 +50,7 @@ async function scanForDecks(input: {
         ? `@${manifest.host}/${manifest.name}`
         : manifest.name
 
-      input.workspaces.set(fullName, manifest)
+      input.workspaces.set(fullName, { ...manifest, dir: subDir })
     } catch {
       // no deck.tree, scan deeper
       await scanForDecks({ dir: subDir, workspaces: input.workspaces })

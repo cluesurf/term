@@ -1,8 +1,12 @@
 // Lowering tests: the lambda fragment compiles to interaction combinators, and reduction on the net IS beta reduction.
 // Run: npx tsx test/ir/lower-net.ts
+//
+// ir/lower-net and ir/net are Term since 2026-10-04. A lowered term carries its net as `graph`, and reducing it hands
+// back the reduced net.
 
 import { lower, agentCount } from '@term/make/code/ir/lower-net'
-import type { Term } from '@term/make/code/ir/lower-net'
+import type { LambdaTerm } from '@term/make/code/ir/lower-net'
+import { hasPeer, isBoundary, makePort, normalizeNet, peerOf } from '@term/make/code/ir/net'
 
 let pass = 0
 let fail = 0
@@ -17,46 +21,46 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-const v = (name: string): Term => ({ t: 'var', name })
-const lam = (param: string, body: Term): Term => ({
+const v = (name: string): LambdaTerm => ({ t: 'var', name })
+const lam = (param: string, body: LambdaTerm): LambdaTerm => ({
   t: 'lam',
   param,
   body,
 })
 
-const app = (fn: Term, arg: Term): Term => ({ t: 'app', fn, arg })
+const app = (fn: LambdaTerm, arg: LambdaTerm): LambdaTerm => ({ t: 'app', fn, arg })
 
 function main(): void {
   // (\x. f x) y   beta-reduces to   f y : one application node remains, wiring f, y, and the root
-  const term: Term = app(lam('x', app(v('f'), v('x'))), v('y'))
+  const term: LambdaTerm = app(lam('x', app(v('f'), v('x'))), v('y'))
   const lowered = lower(term)
   ok(
     'before reduction there are three con nodes (two lam/app + inner app)',
     agentCount(lowered) === 3,
   )
 
-  lowered.net.normalize()
+  const reduced = { ...lowered, graph: normalizeNet(lowered.graph) }
   ok(
     'reduces to a single application node (f y)',
-    agentCount(lowered) === 1,
+    agentCount(reduced) === 1,
   )
-  ok('reduction fired the beta rule', lowered.net.rewrites >= 1)
+  ok('reduction fired the beta rule', reduced.graph.rewrites >= 1)
 
   // the surviving node is `f y`: its function port reaches f, its argument port reaches y, its result reaches root
-  const survivor = [...lowered.net.nodes.keys()].find(
-    id => !lowered.net.interface.has(id),
-  )!
+  const net = reduced.graph
+  const survivor = [...net.nodes.keys()].find(id => !isBoundary(net, id))!
 
-  const fnPeer = lowered.net.peer({ node: survivor, slot: 0 })!
-  const argPeer = lowered.net.peer({ node: survivor, slot: 1 })!
-  const rootPeer = lowered.net.peer(lowered.root)!
+  const fnPeer = peerOf(net, makePort(survivor, 0))
+  const argPeer = peerOf(net, makePort(survivor, 1))
+  const rootPeer = peerOf(net, reduced.root)
+  ok('every port of the survivor is wired', hasPeer(net, makePort(survivor, 0)) && hasPeer(net, makePort(survivor, 1)))
   ok(
     'the application calls f',
-    fnPeer.node === lowered.free.get('f')!.node,
+    fnPeer.node === reduced.free.get('f')!.node,
   )
   ok(
     'the application is applied to y',
-    argPeer.node === lowered.free.get('y')!.node,
+    argPeer.node === reduced.free.get('y')!.node,
   )
   ok('the result is wired to the root', rootPeer.node === survivor)
 

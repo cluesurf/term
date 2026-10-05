@@ -10,6 +10,10 @@ load @term/base/calendar/time-text
 
 load @term/base/clock
   find now
+  find sleep
+
+load @term/base/duration
+  find from-milliseconds
 
 load @term/base/timezone
   find offset-minutes
@@ -152,3 +156,28 @@ test <the clock never goes backward>
       call is-minimum
         read b
         read a
+
+test <sleep waits a duration, and a number of milliseconds>
+  save a
+    call now
+  call sleep
+    call from-milliseconds
+      code 20
+  save b
+    call now
+  call sleep
+    code 20
+  save c
+    call now
+  want hold
+    call and
+      call is-minimum
+        call subtract
+          read b
+          read a
+        code 15
+      call is-minimum
+        call subtract
+          read c
+          read b
+        code 15

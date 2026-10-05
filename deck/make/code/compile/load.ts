@@ -4,9 +4,16 @@
 // are handled (each module is included exactly once). Browser-safe: file reading is delegated to a resolver.
 
 import type { Diagnostic, Span } from '@term/make/code/parser/diagnostic'
+import { diagnose } from '@term/make/code/parser/diagnostic'
 import { spanOfWhole } from '@term/make/code/compile/mill-run'
 import { parse, renderHead } from '@term/make/code/parser/tree'
 import type { GroupNode, ParseResult, RootNode } from '@term/make/code/parser/tree'
+
+// another deck's module: `@scope/name/...`, outside `@term`, whose decks ship with the compiler, and not the local
+// `@/` alias. Only such a path that resolves to nothing is refused at the load: it can only mean the deck is missing
+function thirdParty(path: string): boolean {
+  return /^@[^/]+\/[^/]+/.test(path) && !path.startsWith('@term/') && !path.startsWith('@/')
+}
 
 // `shadowed` is set by a resolver when a package path named a file in the package's code root AND one in its
 // package root: `file` is the code root's, and the other is what `term lint` names in `ambiguous-load`
@@ -41,6 +48,8 @@ type ImportScan = {
     aliases: (string | undefined)[]
     // `base <dir>` under the load: resolve from the package root (it imports nothing)
     base?: string
+    // where the path is written, for a refusal of a load that resolves to nothing
+    at?: Span
   }[]
 }
 
@@ -212,7 +221,7 @@ function scanImports(tree: RootNode): ImportScan {
         }
       }
 
-      finds.push({ path, bear: keyword === 'bear', names, spans, aliases, ...(base !== undefined ? { base } : {}) })
+      finds.push({ path, bear: keyword === 'bear', names, spans, aliases, at: spanOfWhole(first), ...(base !== undefined ? { base } : {}) })
     }
   }
 
@@ -316,7 +325,24 @@ export function collectModules(
         }
 
         visit(dependency)
-      } // unresolved imports are left to the checker's unknown-name diagnostics
+      } else if (thirdParty(path) && base === undefined) {
+        // (a load with `base` that resolves to nothing has the more exact cause the bridge names: a `base` that is
+        // not the path's first segment)
+        // another deck's module that nothing answers: the deck is not installed. Refused here, at the load, where it
+        // was left to the first use of an imported name to fail as `unknown-name` (guides: packages/install,
+        // 2026-10-04). Anything else unresolved (a stdlib module a platform lacks, a relative path) is still left to
+        // the checker, which names what is missing where it is used
+        const at = scan.finds.find(f => f.path === path)?.at
+        const deck = path.split('/').slice(0, 2).join('/')
+
+        diagnostics.push(
+          diagnose('unresolved-load', {
+            file: source.file,
+            span: at ? { ...at, file: source.file } : { file: source.file, start: { line: 0, column: 0 }, end: { line: 0, column: 0 } },
+            message: `${deck} is not installed, so nothing answers \`load ${path}\``,
+          }),
+        )
+      }
     }
 
     active.delete(source.file)

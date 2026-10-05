@@ -57,6 +57,21 @@ function htmlNamespace() {
     return url
   }
 
+  // the status the matched route set (`set-status 404` for a page that is not there), read and cleared by the host
+  // after dispatch, as the proxy is. 200 when the route set none
+  let pendingStatus: number | undefined
+
+  function stashStatus(code: number): void {
+    pendingStatus = code
+  }
+
+  function takeStatus(): number {
+    const code = pendingStatus ?? 200
+    pendingStatus = undefined
+
+    return code
+  }
+
   function stashMeta(name: string, content: string): void {
     // last write wins for a given name, so a route can override a default
     const existing = pendingMeta.find(m => m.name === name)
@@ -409,6 +424,8 @@ function htmlNamespace() {
     resetMeta,
     setProxy: stashProxy,
     takeProxy,
+    setStatus: stashStatus,
+    takeStatus,
   }
 }
 

@@ -1,0 +1,5 @@
+# What the data app may reach (app-scope, deck/call/code/scope.ts): its database, and the files of its own bundle, which
+# its page reads and stats
+host file
+  list read, <$bundle/**>
+host db

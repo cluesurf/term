@@ -215,17 +215,26 @@ task is-anchored
     case refer
       send back, false
 
-# whether every choice point in the piece is decided by the next code point, given the code points that can follow it
+# whether every choice point in the piece is either decided by the next code point, given the code points that can
+# follow it, or left open where reopening it costs a bounded number of steps: outside every unbounded repetition, so
+# each attempt walks at most `path-count` paths. `inside` says an unbounded repetition encloses the piece, where an
+# open choice is reopened once per iteration and the paths multiply without bound. `tail` says everything after the
+# piece in the attempt matches a bounded length, so a repetition of one code point that can also take what follows
+# gives back at most n code points and tries a bounded tail at each
 task is-deterministic
   take p, like piece
   take follow
     like list
       like number
+  take inside, like boolean
+  take tail, like boolean
   like boolean
   fork case, read p
     case chain
-      # right to left, each part's follow is what the parts after it can start with
+      # right to left, each part's follow is what the parts after it can start with, and its tail whether they and
+      # what follows the chain match a bounded length
       save after, read follow
+      save bounded, read tail
       save k
         call subtract(read(parts/length), code(1))
       walk test
@@ -240,7 +249,7 @@ task is-deterministic
               save part, read parts/{k}
           fork test
             hook test
-              call not(call(is-deterministic, read(part), read(after)))
+              call not(call(is-deterministic, read(part), read(after), read(inside), read(bounded)))
             hook hold
               send back, false
           save starts
@@ -253,6 +262,8 @@ task is-deterministic
                 call merge-sets(read(starts), read(after))
             hook miss
               save after, read starts
+          save bounded
+            call and(read(bounded), call(is-minimum, call(most-length, read(part)), code(0)))
           save k
             call subtract(read(k), code(1))
       send back, true
@@ -263,7 +274,7 @@ task is-deterministic
           take site, name part
           fork test
             hook test
-              call not(call(is-deterministic, read(part), read(follow)))
+              call not(call(is-deterministic, read(part), read(follow), read(inside), read(tail)))
             hook hold
               send back, false
           save starts
@@ -274,9 +285,12 @@ task is-deterministic
             hook hold
               save starts
                 call merge-sets(read(starts), read(follow))
+          # two alternatives that start alike are tried in turn: bounded work outside an unbounded repetition
           fork test
             hook test
-              call not(call(sets-are-apart, read(seen), read(starts)))
+              call and
+                read inside
+                call not(call(sets-are-apart, read(seen), read(starts)))
             hook hold
               send back, false
           save seen
@@ -292,32 +306,54 @@ task is-deterministic
         call first-set(read(body))
       # a possessive repetition never gives an iteration back, so what follows it cannot reopen the choice: only the
       # body's own choices count, each iteration followed by the next
+      # inside an unbounded repetition from here on when this one is unbounded
+      save within
+        call or(read(inside), call(is-below, read(most), code(0)))
+      # the body's tail: more iterations follow it, bounded only when the repetition is
+      save body-tail
+        call and(read(tail), call(is-minimum, call(most-length, read(p)), code(0)))
       fork test
         hook test
           read possessive
         hook hold
           send back
-            call is-deterministic(read(body), read(starts))
+            call is-deterministic(read(body), read(starts), read(within), read(body-tail))
       # a repetition with a choice left (more than its least) is decided by the next code point only when the body
       # cannot start with what follows
+      # an unbounded one gives back without end; a bounded one tries at most `most - least + 1` counts, which is
+      # bounded work outside an unbounded repetition (`path-count` keeps the total)
+      # ... except an unbounded repetition of ONE code point, inside no other, with a bounded tail: it gives back
+      # one code point at a time, at most n, and tries the bounded tail at each
+      save gives-back-linearly
+        call and
+          call and
+            call is-below(read(most), code(0))
+            call not(read(inside))
+          call and
+            read tail
+            call is-equal(call(most-length, read(body)), code(1))
       fork test
         hook test
           call and
-            call not(call(is-equal, read(most), read(least)))
-            call not(call(sets-are-apart, read(starts), read(follow)))
+            call and
+              call not(call(is-equal, read(most), read(least)))
+              call not(call(sets-are-apart, read(starts), read(follow)))
+            call and
+              read within
+              call not(read(gives-back-linearly))
         hook hold
           send back, false
       send back
-        call is-deterministic(read(body), call(merge-sets, read(starts), read(follow)))
+        call is-deterministic(read(body), call(merge-sets, read(starts), read(follow)), read(within), read(body-tail))
     case group
       send back
-        call is-deterministic(read(body), read(follow))
+        call is-deterministic(read(body), read(follow), read(inside), read(tail))
     # an atomic group takes its body's first match and never reopens it, so its body is decided alone, with nothing
     # after it
     case atom
       save nothing, make list
       send back
-        call is-deterministic(read(body), read(nothing))
+        call is-deterministic(read(body), read(nothing), read(inside), true)
     # a lookaround is tried once at a position and consumes nothing: safe when its body is decided alone and reads a
     # bounded stretch, so each test costs a constant. An unbounded body reads to the end at every position
     case look
@@ -325,7 +361,7 @@ task is-deterministic
       send back
         call and
           call is-minimum(call(most-length, read(body)), code(0))
-          call is-deterministic(read(body), read(nothing))
+          call is-deterministic(read(body), read(nothing), read(inside), true)
     # a back reference matches its group's text one way or not at all: it opens no choice. What it can start with is
     # every code point (`first-set`), so a repetition before it that could also take that text is refused there
     case refer
@@ -339,6 +375,107 @@ task is-deterministic
     case edge
       send back, true
 
+# the most paths one attempt may walk through a pattern's open choices on a backtracking engine
+host most-paths, code 10000
+
+# a product that stops counting past `most-paths`, so a long chain of choices cannot overflow
+task capped-product
+  take a, like number
+  take b, like number
+  like number
+  fork test
+    hook test
+      call or
+        call is-above(read(a), read(most-paths))
+        call is-above(read(b), read(most-paths))
+    hook hold
+      send back
+        call add(read(most-paths), code(1))
+  save product
+    call multiply(read(a), read(b))
+  fork test
+    hook test
+      call is-above(read(product), read(most-paths))
+    hook hold
+      send back
+        call add(read(most-paths), code(1))
+  send back, read product
+
+# how many ways one attempt can go through the piece's open choices, counted past `most-paths` no further: a choice
+# adds its alternatives' counts, a chain multiplies its parts', a bounded repetition tries each of its counts with its
+# body's paths at every iteration. An unbounded repetition counts its body once: `is-deterministic` has already
+# refused any open choice inside one
+task path-count
+  take p, like piece
+  like number
+  fork case, read p
+    case chain
+      save total, code 1
+      walk list, read parts
+        hook next
+          take site, name part
+          save total
+            call capped-product(read(total), call(path-count, read(part)))
+      send back, read total
+    case choice
+      save total, code 0
+      walk list, read parts
+        hook next
+          take site, name part
+          save total
+            call add(read(total), call(path-count, read(part)))
+          fork test
+            hook test
+              call is-above(read(total), read(most-paths))
+            hook hold
+              send back
+                call add(read(most-paths), code(1))
+      send back, read total
+    case loop
+      save inner
+        call path-count(read(body))
+      fork test
+        hook test
+          call is-below(read(most), code(0))
+        hook hold
+          send back, read inner
+      # each count from least to most, and the body's paths at each of up to `most` iterations
+      save total
+        call add(call(subtract, read(most), read(least)), code(1))
+      save k, code 0
+      walk test
+        down
+          call subtract(read(most), read(k))
+        hook test
+          call and
+            call is-below(read(k), read(most))
+            call is-maximum(read(total), read(most-paths))
+        hook step
+          save total
+            call capped-product(read(total), read(inner))
+          save k
+            call add(read(k), code(1))
+      send back, read total
+    case group
+      send back
+        call path-count(read(body))
+    case atom
+      send back
+        call path-count(read(body))
+    case look
+      send back
+        call path-count(read(body))
+    case blank
+      send back, code 1
+    case letter
+      send back, code 1
+    case ranges
+      send back, code 1
+    case edge
+      send back, code 1
+    case refer
+      send back, code 1
+
 # whether a backtracking engine runs the piece in time linear in the input
 task is-safe-to-backtrack
   take p, like piece
@@ -346,7 +483,13 @@ task is-safe-to-backtrack
   save none, make list
   fork test
     hook test
-      call not(call(is-deterministic, read(p), read(none)))
+      call not(call(is-deterministic, read(p), read(none), false, true))
+    hook hold
+      send back, false
+  # the open choices an attempt may walk, in all: past the cap one attempt can cost more than any input does
+  fork test
+    hook test
+      call is-above(call(path-count, read(p)), read(most-paths))
     hook hold
       send back, false
   fork test

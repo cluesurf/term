@@ -23,6 +23,7 @@ import {
   getVersionList,
   getVersionMeta,
 } from './fetch'
+import { writeCodeHold } from './manifest'
 import { ociRouteOf, transportFor, trustDir, type OciRoute } from './oci/client'
 import { listOciVersions, readOciVersion } from './oci/install'
 import { pinnedReference, tagOfVersion } from './oci/reference'
@@ -31,6 +32,9 @@ type ResolveContext = {
   config: FetchConfig
   resolved: Map<string, ResolvedDeck>
   seen: Set<string>
+  // every version range a deck was asked for, and who asked: the first link picks the version, and every other one
+  // is held to it once the resolution is done
+  holds: Map<string, { hold: CodeHold; from: string }[]>
   lockfile?: Lockfile
   workspaces: Map<string, DeckManifest>
 }
@@ -45,6 +49,7 @@ export async function resolve(input: {
     config: input.config,
     resolved: new Map(),
     seen: new Set(),
+    holds: new Map(),
     lockfile: input.lockfile,
     workspaces: input.workspaces ?? new Map(),
   }
@@ -52,17 +57,47 @@ export async function resolve(input: {
   await resolveLinks({
     links: input.manifest.link,
     ctx,
+    from: 'deck.tree',
   })
 
+  checkHolds(ctx)
+
   return { decks: ctx.resolved }
+}
+
+// One version of a deck is installed, the first link's pick. Every other link to it must accept that version: two
+// that do not were kept the first and dropped the second without a word, where npm and pnpm install a second copy
+// and Cargo does across major versions (guides: packages/install, 2026-10-04). Term refuses, naming both.
+function checkHolds(ctx: ResolveContext): void {
+  for (const [name, holds] of ctx.holds) {
+    const picked = [...ctx.resolved.values()].find(deck => deck.name === name)
+
+    if (!picked) {
+      continue
+    }
+
+    const refused = holds.find(one => !codeMatch(picked.code, one.hold))
+
+    if (refused) {
+      const first = holds.find(one => codeMatch(picked.code, one.hold)) ?? holds[0]!
+
+      throw new Error(
+        `${name}: ${first.from} accepts ${writeCodeHold({ hold: first.hold })} and ${refused.from} accepts ` +
+          `${writeCodeHold({ hold: refused.hold })}, and one version of a deck is installed. ${showCode(picked.code)} ` +
+          `fits only the first. Widen one of the two ranges`,
+      )
+    }
+  }
 }
 
 async function resolveLinks(input: {
   links: DeckLink[]
   ctx: ResolveContext
+  // who asked for these links: `deck.tree`, or the deck whose own links they are
+  from: string
 }): Promise<void> {
   const tasks = input.links.map(link =>
-    resolveLink({ link, ctx: input.ctx }),
+    resolveLink({ link, ctx: input.ctx, from: input.from }),
   )
 
   await Promise.all(tasks)
@@ -71,8 +106,11 @@ async function resolveLinks(input: {
 async function resolveLink(input: {
   link: DeckLink
   ctx: ResolveContext
+  from: string
 }): Promise<void> {
   const { link, ctx } = input
+
+  ctx.holds.set(link.name, [...(ctx.holds.get(link.name) ?? []), { hold: link.mark, from: input.from }])
 
   if (ctx.seen.has(link.name)) {return}
 
@@ -92,8 +130,9 @@ async function resolveLink(input: {
         hash: '',
         site: '',
         link: new Map(workspace.link.map(l => [l.name, '*'])),
+        ...('dir' in workspace && typeof workspace.dir === 'string' ? { local: workspace.dir } : {}),
       })
-      await resolveLinks({ links: workspace.link, ctx })
+      await resolveLinks({ links: workspace.link, ctx, from: link.name })
 
       return
     }
@@ -125,7 +164,7 @@ async function resolveLink(input: {
         mark: { form: 'exact' as const, code: parseCode(l.code) },
       }))
 
-      await resolveLinks({ links: transLinks, ctx })
+      await resolveLinks({ links: transLinks, ctx, from: link.name })
     }
 
     return
@@ -187,7 +226,7 @@ async function resolveLink(input: {
     link: depLinks,
   })
 
-  await resolveLinks({ links: transLinks, ctx })
+  await resolveLinks({ links: transLinks, ctx, from: link.name })
 }
 
 // Resolve one link against an OCI registry: the tags are the versions, `pickBestCode` chooses as it does over npm's
@@ -258,6 +297,7 @@ async function resolveOciLink(input: {
       mark: parseCodeHold(l.code),
     })),
     ctx,
+    from: link.name,
   })
 }
 

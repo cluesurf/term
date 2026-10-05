@@ -1,10 +1,10 @@
-// `term halt` — stop running `term boot` servers.
-//   term halt <port>   stop the app serving on that port
-//   term halt          stop every term boot instance on the machine
+// `term halt`: stop running `term boot` servers.
+//   term halt -p <port>   stop the app serving on that port
+//   term halt             stop every term boot instance on the machine
 //
-// Seed boot servers are easy to find without a registry: each runs `node <project>/.base/@cluesurf/term/boot/<hash>/run.mjs`, a path
+// Term boot servers are easy to find without a registry: each runs `node <project>/.base/@cluesurf/term/boot/<hash>/run.mjs`, a path
 // that is unique to term boot. We match that in the process table (cross-process, machine-wide), so `term halt` works
-// from anywhere with no shared state to go stale. `term halt <port>` instead asks the OS who is listening on the port.
+// from anywhere with no shared state to go stale. `term halt -p <port>` instead asks the OS who is listening on the port.
 
 import { execSync } from 'child_process'
 import { closeRun, count, openRun, report } from '@term/call/code/output'

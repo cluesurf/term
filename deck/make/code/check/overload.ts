@@ -225,12 +225,14 @@ function bindByImport(program: Program, scope: ImportScope | undefined, entry?: 
   }
 
   // the files of a group a reference in `file` reaches: its own, else those its imports reach
-  const reached = (group: Group, file: string | undefined): string[] => {
+  // A reference written through an import alias (`find to-number, name decimal-to-number`) skips its own file: it named
+  // the import, and the file's own `to-number` would otherwise take it, since the alias is rewritten to the imported name
+  const reached = (group: Group, file: string | undefined, aliased = false): string[] => {
     if (!file) {
       return []
     }
 
-    if (group.byFile.has(file)) {
+    if (group.byFile.has(file) && !aliased) {
       return [file]
     }
 
@@ -284,8 +286,14 @@ function bindByImport(program: Program, scope: ImportScope | undefined, entry?: 
   }
 
   // the name a reference with `arity` arguments (undefined: a task passed as a value) in `file` binds to, or undefined
-  const bind = (group: Group, file: string | undefined, arity: number | undefined, span: Span): string | undefined => {
-    const imported = reached(group, file)
+  const bind = (
+    group: Group,
+    file: string | undefined,
+    arity: number | undefined,
+    span: Span,
+    aliased: boolean,
+  ): string | undefined => {
+    const imported = reached(group, file, aliased)
 
     // the file imported the name from a module that defines it some OTHER way (a form's method, as `stream.tree`'s
     // `find contains` from the list, or a signature an env fills): it means that one, never this group's, and is left
@@ -360,15 +368,16 @@ function bindByImport(program: Program, scope: ImportScope | undefined, entry?: 
     eachReference(top, (variable, arity) => {
       const group = groups.get(variable.name)
 
+      // an aliased reference is shadowed by a local of the name it was WRITTEN as, never of the imported one
       if (
         !group ||
-        local.has(variable.name) ||
+        local.has(variable.alias ?? variable.name) ||
         (arity === undefined && (values.has(variable.name) || fields.has(variable.name)))
       ) {
         return
       }
 
-      const name = bind(group, file, arity, variable.span)
+      const name = bind(group, file, arity, variable.span, variable.alias !== undefined)
 
       if (name) {
         variable.name = name
@@ -377,6 +386,126 @@ function bindByImport(program: Program, scope: ImportScope | undefined, entry?: 
   }
 
   return diagnostics
+}
+
+// A NATIVE BINDING AND A TASK OF ONE NAME. The stdlib's `bind to-number` (a decimal's whole part) and a module's own
+// `task to-number` (the engine/data/float port's, of a ternary float) met in the one flat program as one name. A
+// `bind` is not split by file the way a task is (bindByImport), so the checker typed a call against the task while the
+// emitter inlined the binding: the port's own `to-number(subtract-ternary(a, b))` came out `Math.trunc(<a record>)`,
+// and its `find to-number, name decimal-to-number` (the alias rewritten to `to-number` before binding) was checked
+// against the task (2026-10-04). So where a binding shares its name with a task of another file, the binding is renamed
+// apart, and a reference follows it when its file reaches the binding rather than a task:
+//
+//   written through an alias      the binding its `find` reached, else the task
+//   in a file defining the task   the task, its own
+//   in the binding's file         the binding
+//   anywhere else                 the binding its `find` reached, the task when the find reached one, and when
+//                                 the file imported neither the one binding there is, as the flat program emitted it
+function bindNativesApart(program: Program, scope: ImportScope | undefined): void {
+  const tasks = new Map<string, Set<string>>()
+  const natives = new Map<string, Extract<Statement, { form: 'bind' }>[]>()
+
+  for (const s of program) {
+    // a task with a BODY, as bindByImport counts them: an abstract signature (no body, a stub, a claim) is what an env
+    // module's binding fills, the env chain, and must keep reaching it by name
+    const bodied = s.form === 'view' || (s.form === 'function' && s.body.length > 0 && !s.stub && !s.claim && !s.method)
+
+    if (bodied && s.span.file) {
+      tasks.set(s.name, (tasks.get(s.name) ?? new Set()).add(s.span.file))
+    }
+
+    if (s.form === 'bind' && s.span.file) {
+      natives.set(s.name, [...(natives.get(s.name) ?? []), s])
+    }
+  }
+
+  // the colliding bindings, each with the name it takes
+  const renamed = new Map<Extract<Statement, { form: 'bind' }>, string>()
+  const original = new Map<string, Extract<Statement, { form: 'bind' }>[]>()
+
+  for (const [name, binds] of natives) {
+    const defining = tasks.get(name)
+
+    if (!defining || binds.every(b => [...defining].every(file => file === b.span.file))) {
+      continue
+    }
+
+    original.set(name, binds)
+    binds.forEach(b => renamed.set(b, `${name}__native${renamed.size}`))
+  }
+
+  if (renamed.size === 0) {
+    return
+  }
+
+  const fields = new Set(
+    program.flatMap(s =>
+      s.form === 'record-type' ? [...s.fields.map(f => f.name), ...s.variants.flatMap(v => v.fields.map(f => f.name))] : [],
+    ),
+  )
+
+  // the binding a reference to `name` in `file` means, or undefined for the task
+  const meant = (name: string, file: string, aliased: boolean): Extract<Statement, { form: 'bind' }> | undefined => {
+    const binds = original.get(name)!
+    const targets = new Set(scope?.get(file)?.finds.get(name) ?? [])
+    const reached = binds.find(b => targets.has(b.span.file!))
+
+    if (aliased) {
+      return reached
+    }
+
+    if (tasks.get(name)!.has(file)) {
+      return undefined
+    }
+
+    const own = binds.find(b => b.span.file === file)
+
+    if (own) {
+      return own
+    }
+
+    if (reached) {
+      return reached
+    }
+
+    if (targets.size > 0) {
+      return undefined
+    }
+
+    return binds.length === 1 ? binds[0] : undefined
+  }
+
+  for (const top of program) {
+    const file = top.span.file
+
+    if (!file) {
+      continue
+    }
+
+    const local = boundIn(top)
+
+    eachReference(top, (variable, arity) => {
+      const name = variable.name
+
+      if (
+        !original.has(name) ||
+        local.has(variable.alias ?? name) ||
+        (arity === undefined && fields.has(name))
+      ) {
+        return
+      }
+
+      const bind = meant(name, file, variable.alias !== undefined)
+
+      if (bind) {
+        variable.name = renamed.get(bind)!
+      }
+    })
+  }
+
+  for (const [bind, name] of renamed) {
+    bind.name = name
+  }
 }
 
 // A `host` VALUE AND A TASK OF ONE NAME IN TWO FILES (terminal-target-0003). `bindByImport` splits a task or a component
@@ -578,6 +707,7 @@ export function disambiguateOverloads(program: Program, scope?: ImportScope, ent
   nestLeanLabels(program)
   bindSiblingMethods(program)
   bindValuesApart(program, scope)
+  bindNativesApart(program, scope)
 
   const ambiguities = bindByImport(program, scope, entry)
 

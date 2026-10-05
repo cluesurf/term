@@ -2,7 +2,9 @@
 // the closure / native-function shapes. See note/research/vibe/computation/engine/01-values.md.
 
 import type { Statement } from '@term/make/code/engine/ast'
-import type { Bool3 } from '@term/make/code/engine/data/boolean'
+// a three-valued boolean, -1 false, 0 unknown, +1 true. engine/data/boolean is Term since 2026-10-04 and spells it
+// `number` (D9), so it is named here
+type Bool3 = -1 | 0 | 1
 import type { TernaryInteger } from '@term/make/code/engine/data/integer'
 import type { TernaryFloat } from '@term/make/code/engine/data/float'
 import type { Rope } from '@term/make/code/engine/data/string'
@@ -45,9 +47,15 @@ export type Scope = {
 
 export const UNIT: Value = { form: 'unit' }
 
+// the exact value of an integer as a native bigint. engine/data/integer is Term since 2026-10-04 and holds the stdlib's
+// `big-integer`, a record `{ dock: <BigInt> }` on TypeScript, so its value is read through `.dock`
+export function bigOf(value: TernaryInteger): bigint {
+  return value.value.dock as bigint
+}
+
 // constructors
 export function integer(value: number | bigint): Value {
-  return { form: 'integer', value: Int.integer(value) }
+  return { form: 'integer', value: Int.makeInteger({ dock: typeof value === 'bigint' ? value : BigInt(value) }, '') }
 }
 
 export function float(value: number): Value {
@@ -70,7 +78,7 @@ export function truthy(v: Value): boolean {
     case 'boolean':
       return v.value === 1
     case 'integer':
-      return v.value.value !== 0n
+      return bigOf(v.value) !== 0n
     case 'float':
       return Flt.toNumber(v.value) !== 0
     case 'string':
@@ -96,9 +104,9 @@ export function valuesEqual(a: Value, b: Value): boolean {
     case 'boolean':
       return a.value === (b as typeof a).value
     case 'integer':
-      return a.value.value === (b as typeof a).value.value
+      return bigOf(a.value) === bigOf((b as typeof a).value)
     case 'float':
-      return Flt.compare(a.value, (b as typeof a).value) === 0
+      return Flt.compareTernary(a.value, (b as typeof a).value) === 0
     case 'string':
       return Str.equals(a.value, (b as typeof a).value)
 
@@ -127,7 +135,7 @@ export function valuesEqual(a: Value, b: Value): boolean {
 export function keyOf(v: Value): string {
   switch (v.form) {
     case 'integer':
-      return `i:${v.value.value.toString()}`
+      return `i:${bigOf(v.value).toString()}`
     case 'string':
       return `s:${Str.toString(v.value)}`
     case 'boolean':
@@ -153,7 +161,7 @@ export function display(v: Value): string {
           ? 'false'
           : 'unknown'
     case 'integer':
-      return v.value.value.toString()
+      return bigOf(v.value).toString()
     case 'float':
       return String(Flt.toNumber(v.value))
     case 'string':

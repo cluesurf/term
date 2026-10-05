@@ -1,0 +1,236 @@
+# The integer type, balanced ternary, multi-resolution (like Postgres int2 / int4 / int8, but base 3). The VALUE is an
+# exact big integer, so arithmetic is exact and optimal. The RESOLUTION is a storage width: `tri8` / `tri16` / `tri40`
+# are fixed words (tri40 is about a 64-bit range), `big` is unbounded (the self-extending case). Operations stay exact
+# by PROMOTING to the smallest resolution that fits the result, so the common case (small numbers) is a short word and
+# every other case still works.
+#
+# Ported from engine/data/integer.ts (self-hosting, 2026-10-04) after engine/data/trit. The value is the stdlib's
+# `big-integer`, a record `{ dock: <BigInt> }` on TypeScript, so engine/value.ts and engine/engine.ts read
+# `.value.value.dock` where they read `.value.value`. A resolution is text, `tri8`, `tri16`, `tri40` or `big` (a
+# closed set of texts has no spelling until D9). Shapes that changed, with the callers in the same step:
+#   - the operations are `add-ternary`, `subtract-ternary`, ... `compare-ternary`: `add`, `subtract`, `multiply`,
+#     `negate`, `divide`, `remainder` and `compare` are Term's own number operations, and a task of the same name took
+#     their calls (`kernel: expected ternary-integer, found Number`). A suffix bends the naming rule against prefixes,
+#     and shadowing the language's arithmetic is worse
+#   - `make-integer(value, resolution)` takes a big integer and a resolution that is `<>` for "the smallest that fits"
+#   - the exported table `RESOLUTION_WIDTH` is the task `resolution-width`, since a `host` is private to its module
+#   - `to-number` answers the integer as a `number` and raises past the integer range, where the original answered a
+#     rounded float (`Number(bigint)`). The engine reads its numbers off the bigint itself, so only the tests called it
+
+load @term/base/integer/big
+  find big-integer
+  find big-from-number
+  find big-add
+  find big-subtract
+  find big-multiply
+  find big-compare
+
+load @term/base/text/number
+  find parse-integer
+
+load ./trit
+  find to-trits
+  find from-trits
+  find trit-string
+  find trit-length
+  find trit-word-range
+
+form ternary-integer
+  link value, like big-integer
+  link resolution, like text
+
+# the trit width of a fixed resolution, 0 for `big` or anything else
+task resolution-width
+  take resolution, like text
+  like number
+
+  fork test, is-equal(resolution, <tri8>)
+    hold
+      back 8
+  fork test, is-equal(resolution, <tri16>)
+    hold
+      back 16
+  fork test, is-equal(resolution, <tri40>)
+    hold
+      back 40
+  back 0
+
+# the smallest resolution that holds a value (by balanced-ternary length), falling back to big
+task fit-resolution
+  take value, like big-integer
+  like text
+
+  save length, trit-length(value)
+  save fixed, make list
+  push(fixed, <tri8>)
+  push(fixed, <tri16>)
+  push(fixed, <tri40>)
+  walk fixed
+    take r
+    fork test, is-maximum(length, resolution-width(r))
+      hold
+        back r
+  back <big>
+
+task wrap
+  take value, like big-integer
+  like ternary-integer
+
+  back
+    make ternary-integer
+      bind value, value
+      bind resolution, fit-resolution(value)
+
+# make an integer. With no resolution (`<>`), the smallest fitting one is chosen. With a fixed resolution, the value
+# must fit, else it raises, like a typed column overflow
+task make-integer
+  take value, like big-integer
+  take resolution, like text
+  like ternary-integer
+
+  fork test, and(is-unequal(resolution, <>), is-unequal(resolution, <big>))
+    hold
+      save width, resolution-width(resolution)
+      save range, trit-word-range(width)
+      save below, is-below(big-compare(value, range/min), 0)
+      save above, is-above(big-compare(value, range/max), 0)
+      fork test, or(below, above)
+        hold
+          save shown, value/text()
+          halt <value {shown} does not fit {resolution} (width {width})>
+      back
+        make ternary-integer
+          bind value, value
+          bind resolution, resolution
+  fork test, is-equal(resolution, <big>)
+    hold
+      back
+        make ternary-integer
+          bind value, value
+          bind resolution, <big>
+  back wrap(value)
+
+# arithmetic, exact, the result promoted to the smallest fitting resolution
+task add-ternary
+  take a, like ternary-integer
+  take b, like ternary-integer
+  like ternary-integer
+
+  back wrap(big-add(a/value, b/value))
+
+task subtract-ternary
+  take a, like ternary-integer
+  take b, like ternary-integer
+  like ternary-integer
+
+  back wrap(big-subtract(a/value, b/value))
+
+task multiply-ternary
+  take a, like ternary-integer
+  take b, like ternary-integer
+  like ternary-integer
+
+  back wrap(big-multiply(a/value, b/value))
+
+# the negation keeps the resolution: a balanced-ternary word's range is symmetric
+task negate-ternary
+  take a, like ternary-integer
+  like ternary-integer
+
+  save value, a/value
+  back
+    make ternary-integer
+      bind value, value/negate()
+      bind resolution, a/resolution
+
+task absolute-ternary
+  take a, like ternary-integer
+  like ternary-integer
+
+  save value, a/value
+  fork test, is-below(big-compare(value, big-from-number(0)), 0)
+    hold
+      back wrap(value/negate())
+  back wrap(value)
+
+# truncating division and the matching remainder (toward zero), exact
+task divide-ternary
+  take a, like ternary-integer
+  take b, like ternary-integer
+  like ternary-integer
+
+  fork test, is-equal(big-compare(b/value, big-from-number(0)), 0)
+    hold
+      halt <division by zero>
+  save value, a/value
+  back wrap(value/divide(b/value))
+
+task remainder-ternary
+  take a, like ternary-integer
+  take b, like ternary-integer
+  like ternary-integer
+
+  fork test, is-equal(big-compare(b/value, big-from-number(0)), 0)
+    hold
+      halt <division by zero>
+  save value, a/value
+  back wrap(value/remainder(b/value))
+
+# -1, 0, +1 for the sign (itself a trit)
+task sign-ternary
+  take a, like ternary-integer
+  like number
+
+  back big-compare(a/value, big-from-number(0))
+
+task compare-ternary
+  take a, like ternary-integer
+  take b, like ternary-integer
+  like number
+
+  back big-compare(a/value, b/value)
+
+task equals-ternary
+  take a, like ternary-integer
+  take b, like ternary-integer
+  like boolean
+
+  back is-equal(big-compare(a/value, b/value), 0)
+
+# encodings
+task to-ternary-digits
+  take a, like ternary-integer
+  like list
+    like number
+
+  back to-trits(a/value)
+
+task from-ternary-digits
+  take trits
+    like list
+      like number
+  like ternary-integer
+
+  back wrap(from-trits(trits))
+
+# balanced-ternary glyphs
+task to-string
+  take a, like ternary-integer
+  like text
+
+  back trit-string(a/value)
+
+# the integer as a `number`. Raises past the integer range, where the original answered a rounded float
+task to-number
+  take a, like ternary-integer
+  like number
+
+  save value, a/value
+  back parse-integer(value/text())
+
+task to-decimal-string
+  take a, like ternary-integer
+  like text
+
+  save value, a/value
+  back value/text()

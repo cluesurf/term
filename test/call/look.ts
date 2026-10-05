@@ -58,6 +58,29 @@ ok('the table prints the deck beside the module', /@term\/host\s+code\/node/.tes
 ok('the csv has a deck column', toCsv(own).startsWith('kind,name,deck,module,signature'))
 ok('the json carries the deck', JSON.parse(toJson(own)).every((s: { deck: string }) => s.deck === '@term/host'))
 
+// what a module offers is its own and what it passes on with `bear`, never what it only loads (guides:
+// commands/look, 2026-10-04)
+ok('the offer holds the module\'s own definitions', node.offered.some(s => s.module === 'code/node'), node.offered.map(s => s.module).join(','))
+ok('and not the stdlib it only loads', !node.offered.some(s => s.module === 'text/string'), node.offered.map(s => s.module).join(','))
+
+const exception = look(seedRoot, join(seedRoot, 'code/exception.tree'))
+ok(
+  'a module that offers nothing private lists every one of its own',
+  exception.offered.length > 0 && exception.offered.every(s => s.module === 'code/exception'),
+  exception.offered.map(s => s.module).slice(0, 5).join(','),
+)
+
+// `form.tree` holds nothing of its own and passes nine modules on with `bear`, of which two exist today, `maybe` and
+// `result` (the other seven are named and missing, which `loadDiagnostics` counts)
+const bears = look(seedRoot, join(seedRoot, 'code/form.tree'))
+ok(
+  'a module that passes others on with `bear` offers what they define, and nothing else',
+  bears.offered.some(s => s.module === 'code/maybe' && s.name === 'maybe') &&
+    bears.offered.every(s => s.module === 'code/maybe' || s.module === 'code/result') &&
+    bears.offeredModules === 3,
+  `${bears.offeredModules} modules: ${[...new Set(bears.offered.map(s => s.module))].join(',')}`,
+)
+
 console.log(`\nlook: ${pass} pass, ${fail} fail`)
 
 if (fail > 0) {

@@ -133,6 +133,9 @@ export type ResolvedDeck = {
   // the signer's public key, for an `oci://` package: pinned so a re-signed version fails the next install
   key?: string
   link: Map<string, string>
+  // a deck from the project's own `deck/` folder: the folder itself, which `link/` points at. Nothing is fetched or
+  // stored for it, and nothing is written to the lock for its site
+  local?: string
 }
 
 export type ResolutionMap = {

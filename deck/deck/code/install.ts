@@ -20,7 +20,7 @@ export async function install(input: {
   root: string
   clean?: boolean
   offline?: boolean
-}): Promise<void> {
+}): Promise<{ decks: number }> {
   const config: FetchConfig = makeDefaultFetchConfig()
 
   if (input.offline) {
@@ -77,7 +77,9 @@ export async function install(input: {
   const newLockfile = buildLockfile({ resolution })
   await saveLockfile({ dir: input.root, lockfile: newLockfile })
 
-  console.log(`Installed ${resolution.decks.size} packages`)
+  // the count goes back to the caller, which prints it as a fact of its run. It was a bare `Installed 1 packages`
+  // line between the run's items, in the plural for one (guides: packages/install, 2026-10-04)
+  return { decks: resolution.decks.size }
 }
 
 // The scope -> registry routes a manifest declares: its `base` lines, and its `host` groups, where every link in a
@@ -193,9 +195,19 @@ export async function verifyInstall(input: { root: string }): Promise<{
       `${entry.name}@${codeStr}`,
     )
 
-    try {
-      await fsp.access(linkPath)
-    } catch {
+    // the store entry, or else the project's own `link/<name>` reaching a deck: a deck from the project's `deck/`
+    // folder, or one `term link` points at, is never in the store, and was reported missing with `term load` as the
+    // advice, which wrote the same link again (guides: packages/install, 2026-10-04)
+    const topLink = path.join(input.root, 'link', ...entry.name.split('/'), 'deck.tree')
+    const present = await fsp.access(linkPath).then(
+      () => true,
+      () => fsp.access(topLink).then(
+        () => true,
+        () => false,
+      ),
+    )
+
+    if (!present) {
       missing.push(`${entry.name}@${codeStr}`)
     }
   }

@@ -1,0 +1,132 @@
+# Timing statistics for a benchmark: reduce a list of per-iteration nanosecond samples to the summary the reporter
+# shows. Pure. The runner gathers raw samples by executing the compiled artifact; this turns them into numbers.
+#
+# Ported from time/stats.ts (self-hosting, 2026-10-04). Every sum is taken in the original's order, over the sorted
+# samples from zero, so each figure is the same double. Two shapes changed:
+#   - the fields are kebab here and camelCase on TypeScript (`mean-ns` is `meanNs`), as every Term field is. The saved
+#     baseline keeps its snake_case keys, `mean_ns`: that is an on-disk format, written and read at the one boundary
+#     that touches the disk (time/output.ts `formatJson`, call/code/time.ts `readBaseline`)
+#   - `format-duration` places its digits with the stdlib's `to-fixed`, which rounds the decimal a number PRINTS as,
+#     half away from zero, on every backend. `toFixed` rounded the binary value, so a tie such as 0.25 microseconds came
+#     out `0.2` or `0.3` by the bits beneath it. Only ties differ, and the pairing counts them apart
+
+load @term/base/float
+  find square-root
+  find to-decimal
+
+load @term/base/list
+  find sort
+
+load @term/base/ordering
+  find ordering
+
+load @term/base/text/number
+  find to-fixed
+
+form benchmark-result
+  link name, like text
+  link iterations, like number
+  link mean-ns, like decimal
+  link median-ns, like decimal
+  link std-dev-ns, like decimal
+  link min-ns, like decimal
+  link max-ns, like decimal
+  link ops-per-sec, like decimal
+  # coefficient of variation: std-dev / mean, a unitless noise measure
+  link cv, like decimal
+  link timings-ns, like list, like decimal
+
+# ascending, as `(a, b) => a - b` sorts a sample
+task compare-samples
+  take left, like decimal
+  take right, like decimal
+  like ordering
+
+  fork test, is-below(left, right)
+    hold
+      back make less
+  fork test, is-above(left, right)
+    hold
+      back make greater
+  back make equal
+
+task compute-stats
+  take name, like text
+  take timings, like list, like decimal
+  like benchmark-result
+
+  save sorted, sort(timings, compare-samples)
+  save total, sorted/length
+  save count, total
+  fork test, is-equal(total, 0)
+    hold
+      save count, 1
+  save sum, 0.0
+  walk sorted
+    take sample
+    save sum, add(sum, sample)
+  save mean, divide(sum, to-decimal(count))
+
+  # the middle sample, or the mean of the middle two. With no samples the original read past both ends and got NaN
+  save zero, 0.0
+  save median, divide(zero, zero)
+  save half, divide(total, 2)
+  save odd, is-equal(subtract(total, multiply(half, 2)), 1)
+  fork test, odd
+    hold
+      save median, get(sorted, half)
+  fork test, and(is-equal(odd, false), is-above(total, 0))
+    hold
+      save low, get(sorted, subtract(half, 1))
+      save high, get(sorted, half)
+      save median, divide(add(low, high), 2.0)
+
+  save spread, 0.0
+  walk sorted
+    take sample
+    save off, subtract(sample, mean)
+    save spread, add(spread, multiply(off, off))
+  save deviation, square-root(divide(spread, to-decimal(count)))
+
+  save least, 0.0
+  save most, 0.0
+  fork test, is-above(total, 0)
+    hold
+      save least, get(sorted, 0)
+      save most, get(sorted, subtract(total, 1))
+
+  save ops, 0.0
+  save variation, 0.0
+  fork test, is-above(mean, 0.0)
+    hold
+      save ops, divide(1000000000.0, mean)
+      save variation, divide(deviation, mean)
+
+  back
+    make benchmark-result
+      bind name, name
+      bind iterations, timings/length
+      bind mean-ns, mean
+      bind median-ns, median
+      bind std-dev-ns, deviation
+      bind min-ns, least
+      bind max-ns, most
+      bind ops-per-sec, ops
+      bind cv, variation
+      bind timings-ns, timings
+
+# human-readable duration from nanoseconds
+task format-duration
+  take ns, like decimal
+  like text
+
+  fork test, is-below(ns, 1000.0)
+    hold
+      back <{to-fixed(ns, 1)}ns>
+  fork test, is-below(ns, 1000000.0)
+    hold
+      back <{to-fixed(divide(ns, 1000.0), 2)}us>
+  fork test, is-below(ns, 1000000000.0)
+    hold
+      back <{to-fixed(divide(ns, 1000000.0), 2)}ms>
+  back <{to-fixed(divide(ns, 1000000000.0), 2)}s>

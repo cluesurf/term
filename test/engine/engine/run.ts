@@ -94,7 +94,7 @@ async function main(): Promise<void> {
   await check(
     'while loop: fib(10)',
     callFunction(fibProg, 'fib', [
-      { form: 'integer', value: { value: 10n, resolution: 'big' } },
+      { form: 'integer', value: { value: { dock: 10n }, resolution: 'big' } },
     ]),
     '55',
   )
@@ -127,7 +127,7 @@ async function main(): Promise<void> {
   await check(
     'recursion + if/else: fact(5)',
     callFunction(factProg, 'fact', [
-      { form: 'integer', value: { value: 5n, resolution: 'tri8' } },
+      { form: 'integer', value: { value: { dock: 5n }, resolution: 'tri8' } },
     ]),
     '120',
   )
@@ -168,14 +168,14 @@ async function main(): Promise<void> {
   await check(
     'switch: classify(-7)',
     callFunction(classifyProg, 'classify', [
-      { form: 'integer', value: { value: -7n, resolution: 'tri8' } },
+      { form: 'integer', value: { value: { dock: -7n }, resolution: 'tri8' } },
     ]),
     'negative',
   )
   await check(
     'switch default: classify(7)',
     callFunction(classifyProg, 'classify', [
-      { form: 'integer', value: { value: 7n, resolution: 'tri8' } },
+      { form: 'integer', value: { value: { dock: 7n }, resolution: 'tri8' } },
     ]),
     'positive',
   )
@@ -250,6 +250,18 @@ async function main(): Promise<void> {
   ]
 
   await check('strings: concat length', run(strProg), '10')
+
+  // slice with no end runs to the end. The array and string data types are Term since 2026-10-04 and take the end
+  // always, so an absent one reached them as undefined and a slice's size came back NaN
+  const tail = (target: Expression): Statement[] => [
+    lett('t', call('slice', target, int(1))),
+    { form: 'expression', expr: { form: 'member', target: vbl('t'), name: 'length' } },
+  ]
+  const items: Expression = { form: 'array', items: [int(1), int(2), int(3), int(4)] }
+
+  await check('slice of an array with no end: its length', run(tail(items)), '3')
+  await check('slice of a string with no end: its length', run(tail(str('hyperbolic'))), '9')
+  await check('slice of a string with no end: its text', run([lett('t', call('slice', str('hyperbolic'), int(5))), { form: 'expression', expr: vbl('t') }]), 'bolic')
 
   // async / await: an async function awaiting two async calls
   const asyncProg: Statement[] = [

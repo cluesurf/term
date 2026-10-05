@@ -6,7 +6,7 @@ import {
   lattice,
   place,
 } from '@term/make/code/ir/lattice'
-import { Net } from '@term/make/code/ir/net'
+import { addNode, makeNet, makePort, wirePorts } from '@term/make/code/ir/net'
 
 let pass = 0
 let fail = 0
@@ -47,12 +47,12 @@ function main(): void {
   )
 
   // place a small net (a chain of constructors) onto the lattice
-  const net = new Net()
-  const a = net.node('con')
-  const b = net.node('con')
-  const c = net.node('con')
-  net.wire({ node: a, slot: 0 }, { node: b, slot: 0 })
-  net.wire({ node: b, slot: 1 }, { node: c, slot: 0 })
+  // ir/net and ir/lattice are Term since 2026-10-04: a net is a value, each change hands it back
+  const first = addNode(makeNet(), 'con')
+  const second = addNode(first.graph, 'con')
+  const third = addNode(second.graph, 'con')
+  const [a, b, c] = [first.id, second.id, third.id]
+  const net = wirePorts(wirePorts(third.graph, makePort(a, 0), makePort(b, 0)), makePort(b, 1), makePort(c, 0))
 
   const { placement, locality } = place(net, cells)
   ok(

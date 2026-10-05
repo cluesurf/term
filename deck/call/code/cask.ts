@@ -15,6 +15,9 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { compile } from '@term/make/code/compile/compile'
 import { nativePrelude } from '@term/make/code/compile/native'
+import type { NativeEnv } from '@term/make/code/compile/native'
+import { collectModules } from '@term/make/code/compile/load'
+import { checkScope } from '@term/call/code/scope'
 import { emitSwift } from '@term/make/code/compile/swift'
 import { emitKotlin, hoistKotlinImports } from '@term/make/code/compile/kotlin'
 import { emitRust } from '@term/make/code/compile/rust'
@@ -22,6 +25,7 @@ import { stdlibBase } from '@term/make/code/resolve'
 import { manifestNameOf } from '@term/call/code/manifest-name'
 import { projectResolver } from '@term/call/code/make'
 import { generateBridge } from '@term/call/code/cask-generate'
+import { toolVersion } from '@term/call/code/show'
 import { runtimeVersion, toolchainOf, type RuntimeVersion } from '@term/call/code/runtime-version'
 import { publishUpdate, stampUpdateKey } from '@term/call/code/update'
 import { closeRun, count, field, followChild, isRunOpen, location, openRun, report, runTool, showPath } from '@term/call/code/output'
@@ -29,6 +33,25 @@ import { closeRun, count, field, followChild, isRunOpen, location, openRun, repo
 export type CaskTarget = 'macos' | 'ios' | 'android' | 'linux' | 'windows'
 
 export const CASK_TARGETS: CaskTarget[] = ['macos', 'ios', 'android', 'linux', 'windows']
+
+// the compilers each target's build cannot do without, checked before the build starts. The Android SDK's own tools
+// (`aapt2`, `d8`, `apksigner`) are found inside the SDK where the build looks for them, not on the PATH. A Linux or
+// Windows cask built on another platform only writes its source and checks it when `cargo` happens to be there
+// (`makeRustProgram`), so `cargo` is needed only on the platform itself
+function caskTools(target: CaskTarget): string[] {
+  switch (target) {
+    case 'macos':
+    case 'ios':
+      return ['swiftc']
+    case 'android':
+      return ['kotlinc', 'java']
+    case 'linux':
+    case 'windows':
+      return RUST_TARGETS[target] === process.platform ? ['cargo'] : []
+    default:
+      return []
+  }
+}
 
 // the two targets the Rust cask serves (deck/cask/code/native/rust), and the host each one builds on
 const RUST_TARGETS: Partial<Record<CaskTarget, NodeJS.Platform>> = { linux: 'linux', windows: 'win32' }
@@ -170,8 +193,15 @@ export async function buildPage({
     plugins: [await stubMissingPackages()],
   })
 
+  // `write: false` answers the bundle in memory, one file for one entry
+  const [script] = bundled.outputFiles
+
+  if (!script) {
+    throw new Error('esbuild answered no bundle for the page')
+  }
+
   mkdirSync(into, { recursive: true })
-  writeFileSync(path.join(into, 'app.js'), bundled.outputFiles[0].text)
+  writeFileSync(path.join(into, 'app.js'), script.text)
   writeFileSync(
     path.join(into, 'index.html'),
     [
@@ -182,7 +212,7 @@ export async function buildPage({
     ].join('\n'),
   )
 
-  return { bytes: bundled.outputFiles[0].text.length }
+  return { bytes: script.text.length }
 }
 
 // ---- the program ----
@@ -508,8 +538,10 @@ export function androidTools(): {
   const versions = existsSync(buildToolsRoot)
     ? readdirSync(buildToolsRoot).filter(name => existsSync(path.join(buildToolsRoot, name, 'aapt2'))).sort()
     : []
+  // the newest build tools that carry aapt2
+  const newest = versions.at(-1)
 
-  if (versions.length === 0) {
+  if (!newest) {
     throw refusal(`no Android build tools with aapt2 under ${buildToolsRoot}. The SDK install may still be running`, 'environment')
   }
 
@@ -526,7 +558,7 @@ export function androidTools(): {
   return {
     sdk,
     platform,
-    buildTools: path.join(buildToolsRoot, versions[versions.length - 1]),
+    buildTools: path.join(buildToolsRoot, newest),
     stdlib,
     adb: path.join(sdk, 'platform-tools', 'adb'),
   }
@@ -748,12 +780,13 @@ export function androidDevice(): { serial: string } | { missing: string } {
     .slice(1)
     .map(line => line.trim().split(/\s+/))
     .filter(parts => parts.length === 2 && parts[1] === 'device')
+  const serial = ready[0]?.[0]
 
-  if (ready.length === 0) {
+  if (!serial) {
     return { missing: 'no Android device is online. Start the emulator: `emulator -avd pixel_api_36`, then `adb devices`' }
   }
 
-  return { serial: ready[0][0] }
+  return { serial }
 }
 
 // install the APK and launch its Activity. Returns at once; the app's lines are in `adb logcat -s cask`. `extras` are
@@ -821,11 +854,11 @@ export function simulator(): { udid: string } | { missing: string } {
   const devices = Object.values(JSON.parse(list).devices as Record<string, { udid: string; name: string; state: string }[]>).flat()
   const phones = devices.filter(device => device.name.startsWith('iPhone'))
 
-  if (phones.length === 0) {
+  const booted = phones.find(device => device.state === 'Booted') ?? phones[0]
+
+  if (!booted) {
     return { missing: 'no iOS simulator runtime is installed. Run `xcodebuild -downloadPlatform iOS`, then `term make --target ios` again' }
   }
-
-  const booted = phones.find(device => device.state === 'Booted') ?? phones[0]
 
   if (booted.state !== 'Booted') {
     runTool('xcrun', ['simctl', 'boot', booted.udid])
@@ -904,6 +937,18 @@ export function makeDmg({ app, name, out }: { app: string; name: string; out: st
   return dmg
 }
 
+// the env each target's cask program is compiled for, which decides how its `{platform}` loads resolve
+const CASK_PROGRAM_ENV: Record<CaskTarget, NativeEnv> = { macos: 'swift', ios: 'swift', android: 'android', windows: 'rust', linux: 'rust' }
+
+// the app's scope (deck/call/code/scope.ts): what its page reaches (and so what crosses the bridge) and what its cask
+// program reaches natively, each capability of it named in the app's scope.tree, or the build is refused
+function checkCaskScope(input: { root: string; page: string; entry: string; target: CaskTarget }): void {
+  const closure = (file: string, env: NativeEnv) =>
+    collectModules({ file, text: readFileSync(file, 'utf8') }, projectResolver(input.root, env)).sources.map(one => one.file)
+
+  checkScope({ root: input.root, files: [...closure(input.page, 'webview'), ...closure(input.entry, CASK_PROGRAM_ENV[input.target])] })
+}
+
 // ---- the command ----
 
 export async function makeCask(input: {
@@ -940,6 +985,19 @@ export async function makeCask(input: {
     throw refusal('an Apple cask builds on macOS, where swiftc, codesign and the simulator are', 'environment')
   }
 
+  // the toolchain, before anything is built: a missing `cargo` or `swiftc` was found where the build first called
+  // it, after the bridge and the program had been made (guides: basics/install, 2026-10-04). `term show tools` lists
+  // them all
+  const needed = caskTools(input.target)
+  const missing = needed.filter(tool => toolVersion(tool) === undefined)
+
+  if (missing.length > 0) {
+    throw refusal(
+      `a ${input.target} cask needs ${missing.join(' and ')}, and ${missing.length === 1 ? 'it is' : 'they are'} not on the PATH. term show tools lists each toolchain`,
+      'environment',
+    )
+  }
+
   const root = path.resolve(input.root)
   const page = path.resolve(root, input.page ?? DEFAULT_PAGE)
   const entry = path.resolve(root, input.entry ?? DEFAULT_ENTRY)
@@ -955,8 +1013,11 @@ export async function makeCask(input: {
   const work = path.join(out, 'work')
   const version = input.version ?? '0.0.2'
 
-  // 1. the bridge, from the page's docks
-  reportBridge(generateBridge({ page, out: path.dirname(entry), commit: true }))
+  // 0. the app's scope (app-scope): every capability its page or its cask program reaches is one its scope.tree names
+  checkCaskScope({ root, page, entry, target: input.target })
+
+  // 1. the bridge, from the page's docks, its gate from the app's scope
+  reportBridge(generateBridge({ page, out: path.dirname(entry), commit: true, root }))
 
   if (input.target === 'android') {
     return makeAndroidCask({ root, page, entry, name, identifier, out, work, version, url: input.url, publish: input.publish, channel: input.channel })
@@ -1104,7 +1165,7 @@ async function makeAndroidCask({
   publish?: string
   channel?: string
 }): Promise<{ app: string }> {
-  reportBridge(generateBridge({ page, out: path.dirname(entry), commit: true }))
+  reportBridge(generateBridge({ page, out: path.dirname(entry), commit: true, root }))
 
   const assets = path.join(work, 'assets')
   rmSync(assets, { recursive: true, force: true })

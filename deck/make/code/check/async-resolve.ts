@@ -72,11 +72,20 @@ export function checkAsyncArguments(program: Program, file: string): Diagnostic[
 
           // a callback whose result is `void` is not refused: nothing reads what it gives back, so calling it without
           // waiting starts it the way `tick` does (cask's `snapshot` takes a `done` that calls an async `quit`)
+          // nor one whose result is the callee's own type parameter, or unknown: the callee then takes whatever the
+          // task gives back, a pending value included, and hands it on (`spawn`, `gather` in @term/base/task)
+          const result = param?.type?.kind === 'function' ? param.type.result : undefined
+          const open =
+            result?.kind === 'unknown' ||
+            result?.kind === 'dynamic' ||
+            (result?.kind === 'named' && (callee?.generics ?? []).some(g => g.name === result.name))
+
           if (
             passed &&
             param?.type?.kind === 'function' &&
             !param.type.effects?.includes('async') &&
-            param.type.result.kind !== 'unit'
+            param.type.result.kind !== 'unit' &&
+            !open
           ) {
             out.push(
               diagnose('async-argument', {

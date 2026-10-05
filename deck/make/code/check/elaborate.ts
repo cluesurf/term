@@ -743,16 +743,33 @@ export function elaborate(
 // type position found the task (`kernel: expected a type`). So, on the kernel's OWN copy of the program, a form whose
 // name a task also has is renamed `<name>__form` everywhere it stands as a type: a named type, a construction, a raise,
 // a method's owner. Tasks keep their names. The emitted program never sees this copy.
+//
+// A PARAMETER is the same collision one scope down (self-hosting, 2026-10-04): a task is a Π type, so its result type
+// sits under its parameters' binders, and `take box, like box` / `like box` found the PARAMETER `box` where the result
+// type named the form, `kernel: type mismatch: expected box, found box`. The ir/net port met it as `take net, like net`.
+// So a form whose name any parameter has is renamed the same way. test/check/form-parameter.ts holds it.
+//
+// And a TASK named like one of the kernel's own constants (BASE_SIGNATURE: `equal`, `notequal`, `cond`, ...) is renamed
+// `<name>__task` on the kernel's copy, at its definition and every call of it. The kernel lowers `is-equal` to its
+// `equal`, so a user task `equal` took the comparison over: every `is-equal` in the module failed as
+// `expected <form>, found Type 0`, pointing at a task that had nothing wrong with it (the check/cubical port,
+// 2026-10-04). test/check/builtin-name.ts holds it
 function kindsApart(program: Program): Program {
   const tasks = new Set(program.flatMap(s => (s.form === 'function' && !s.method ? [s.name] : [])))
-  const shared = new Set(program.flatMap(s => (s.form === 'record-type' && tasks.has(s.name) ? [s.name] : [])))
+  const params = new Set(program.flatMap(s => (s.form === 'function' ? s.params.map(p => p.name) : [])))
+  const shared = new Set(
+    program.flatMap(s => (s.form === 'record-type' && (tasks.has(s.name) || params.has(s.name)) ? [s.name] : [])),
+  )
+  const kernelNames = new Set(BASE_SIGNATURE.map(entry => entry.name))
+  const clashing = new Set([...tasks].filter(name => kernelNames.has(name)))
 
-  if (shared.size === 0) {
+  if (shared.size === 0 && clashing.size === 0) {
     return program
   }
 
   const copy = structuredClone(program)
   const apart = (name: string): string => (shared.has(name) ? `${name}__form` : name)
+  const task = (name: string): string => (clashing.has(name) ? `${name}__task` : name)
 
   const visit = (node: unknown): void => {
     if (!node || typeof node !== 'object') {
@@ -782,6 +799,19 @@ function kindsApart(program: Program): Program {
     if (record.form === 'function' && record.method && typeof (record.method as { form?: unknown }).form === 'string') {
       const method = record.method as { form: string }
       method.form = apart(method.form)
+    }
+
+    // a top-level task named like a kernel constant, and every call of it
+    if (record.form === 'function' && !record.method && typeof record.name === 'string') {
+      record.name = task(record.name)
+    }
+
+    if (record.form === 'call') {
+      const callee = record.callee as { form?: string; name?: unknown } | undefined
+
+      if (callee?.form === 'variable' && typeof callee.name === 'string') {
+        callee.name = task(callee.name)
+      }
     }
 
     for (const [key, value] of Object.entries(record)) {
@@ -2398,8 +2428,31 @@ export function elaborateReport(
 
         let element: Term
 
-        if (items.length === 0) {
-          element = freshMeta(TYPE0_VALUE)
+        // an EMPTY list takes the element type the surface checker gave it, lowered with the enclosing generics in
+        // scope. A fresh meta here is created knowing no binder, so it could never be solved to a task's own `t`:
+        // `head t / like list, like t / back make list` was refused as `expected (Array t), found (Array ?0)`
+        // (self-hosting, 2026-10-04, the engine/data/array port). The meta stays the fallback when the checker left
+        // the element open. test/check/empty-generic.ts holds it
+        const typed = (node as { type?: { kind: string; element?: unknown } }).type
+        const inferred =
+          items.length === 0 && typed?.kind === 'array' && typed.element
+            ? kernelTypeAt(
+                typed.element as Parameters<typeof kernelTypeAt>[0],
+                context.level,
+                enclosingGenerics,
+                namedTypes,
+                new Map(scope),
+                resolveIndexCtor,
+              )
+            : null
+
+        if (inferred) {
+          element = inferred
+        } else if (items.length === 0) {
+          // when the checker left it open (a `host` binding is generalized, so its element is no type of this task),
+          // a CONTEXTUAL meta, applied to the enclosing generics, which unification can still solve to `t`. A bare
+          // `freshMeta` is closed and never can
+          element = contextualTypeMeta(context)
         } else {
           try {
             element = quote(

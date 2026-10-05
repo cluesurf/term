@@ -83,16 +83,24 @@ export function nestLeanCalls(
   let rewritten = 0
 
   node.args = node.args.map((arg, i) => {
-    const name = names[i]
+    const written = names[i]
+    // an import alias is a parameter by its written name and a call by the name it imported (compile/node.ts)
+    const imported = node.leanAliases?.[i]
+    const name = imported ?? written
 
     if (
       !leanNames[i] ||
+      typeof written !== 'string' ||
       typeof name !== 'string' ||
       arg.form !== 'array' ||
-      isParameter(name) ||
+      isParameter(written) ||
       !isCallable(name)
     ) {
       return arg
+    }
+
+    if (node.leanAliases) {
+      node.leanAliases[i] = undefined
     }
 
     names[i] = undefined
@@ -110,7 +118,7 @@ export function nestLeanCalls(
 
     return {
       form: 'call',
-      callee: { form: 'variable', name, span: arg.span },
+      callee: { form: 'variable', name, span: arg.span, ...(imported ? { alias: written } : {}) },
       args: arg.items.map((item, at) => inner[at]?.value ?? item),
       span: arg.span,
       lean: true,

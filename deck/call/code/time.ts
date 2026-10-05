@@ -13,17 +13,18 @@ import {
 import { CompileFailure } from '@term/make/code/time/execute'
 import {
   buildSuite,
-  formatTable,
+  fromSaved,
   formatJson,
+  buildHistoryEntry,
 } from '@term/make/code/time/output'
 import {
   compareResults,
   formatComparison,
   formatMarkdown,
   shouldFail,
-  buildHistoryEntry,
 } from '@term/make/code/time/compare'
 import type { BenchmarkResult } from '@term/make/code/time/stats'
+import { formatTable } from '@term/make/code/time/table'
 import {
   runCpuProfile,
   formatCpuResult,
@@ -63,6 +64,15 @@ export async function callTime(input: {
   }
 
   openRun({ verb: 'time', root: input.root, facts: [...(input.filter ? [input.filter] : []), ...(input.compare ? [`--compare ${input.compare}`] : [])] })
+
+  // `--history` alone reads the saved runs and runs nothing: it ran every benchmark first, to print a table nobody
+  // asked for above the history that was (guides: commands/time, 2026-10-04)
+  if (input.history && !input.save && !input.compare) {
+    await showHistory({ root: input.root, name: input.history })
+    closeRun({ verdict: 'History shown' })
+
+    return
+  }
 
   // the same resolver `term make` uses, so a benchmark file's imports resolve the way its build does. Without it
   // `term time` reported every imported name as undefined on a project that compiles.
@@ -161,24 +171,24 @@ export async function callTime(input: {
       )
     }
 
+    // the comparison's counts ride on the closing item, like every other count of a run. They were a bare
+    // `0 improvement(s), 0 regression(s)` line on standard output (guides: commands/time, 2026-10-04)
+    const compared: ReturnType<typeof count>[] = []
+
     if (baseline) {
-      const comparison = compareResults({
-        current: allResults,
-        baseline,
-      })
+      const comparison = compareResults(allResults, baseline.results)
 
       if (input.markdown) {
-        printData(`${formatMarkdown({ result: comparison, suite })}\n`)
+        printData(`${formatMarkdown(comparison, suite.platform)}\n`)
       } else {
-        printData(`\n${formatComparison(comparison)}\n`)
+        printData(`\n${formatComparison(comparison, false)}\n`)
       }
+
+      compared.push(count(comparison.improvements, 'improvements', 'improvement'), count(comparison.regressions, 'regressions', 'regression'))
 
       const gated =
         input.failOnRegression != null &&
-        shouldFail({
-          result: comparison,
-          maxRegressionPct: input.failOnRegression,
-        })
+        shouldFail(comparison, input.failOnRegression)
 
       // a regression is ▲; past the --fail-on-regression threshold it is ✗, and the gate exits 1 at once
       if (comparison.regressions > 0 || gated) {
@@ -200,7 +210,7 @@ export async function callTime(input: {
       await showHistory({ root: input.root, name: input.history })
     }
 
-    closeRun({ verdict: 'Benchmarks complete', counts: [count(allResults.length, 'benchmarks', 'benchmark')] })
+    closeRun({ verdict: 'Benchmarks complete', counts: [count(allResults.length, 'benchmarks', 'benchmark'), ...compared] })
   } catch (err) {
     report({ glyph: 'failed', kind: 'problem', subject: err instanceof Error ? err.message : String(err) })
     process.exit(closeRun({ verdict: 'Benchmarks did not complete' }))
@@ -213,13 +223,17 @@ function reportSkipped(placed: { diagnostic: Diagnostic; text?: string }, root: 
 }
 
 // a saved baseline (`term time --save <name>`), or the run stops with exit 1 naming the file it looked for
-async function readBaseline(root: string, name: string): Promise<{ results: BenchmarkResult[] }> {
+async function readBaseline(root: string, name: string): Promise<{ results: ReturnType<typeof fromSaved>[] }> {
   const where = path.join(root, '.base/@cluesurf/term', 'time', `${name}.json`)
 
   try {
     const saved = JSON.parse(await fs.readFile(where, 'utf-8'))
 
-    return { results: saved.results ?? saved.benchmarks ?? [] }
+    // snake_case on disk (time/output.ts `toSaved`), a pre-2026-10-04 baseline the mean alone. A result with no mean
+    // compares as new, as it did when the comparison read the JSON itself
+    const results = (saved.results ?? saved.benchmarks ?? []) as Parameters<typeof fromSaved>[0][]
+
+    return { results: results.filter(r => typeof r.mean_ns === 'number').map(fromSaved) }
   } catch {
     report({ glyph: 'failed', kind: 'problem', subject: `There is no baseline named ${name}`, fields: [field('looked', showPath(where, root)), field('next', `term time --save ${name}`)] })
     process.exit(closeRun({ verdict: 'Nothing compared' }))
@@ -290,6 +304,20 @@ async function runProfile(input: {
   }
 }
 
+// a saved run's time in local time, `2026-10-04 15:39:31`, the zone every clock of the run is in. It printed the
+// stored UTC, `2026-10-04T22:39:31`, beside items stamped `15:39:41` (guides: commands/time, 2026-10-04)
+function localStamp(stamp: string): string {
+  const date = new Date(stamp)
+
+  if (Number.isNaN(date.getTime())) {
+    return stamp.slice(0, 19)
+  }
+
+  const two = (n: number): string => String(n).padStart(2, '0')
+
+  return `${date.getFullYear()}-${two(date.getMonth() + 1)}-${two(date.getDate())} ${two(date.getHours())}:${two(date.getMinutes())}:${two(date.getSeconds())}`
+}
+
 async function showHistory(input: {
   root: string
   name: string
@@ -341,7 +369,7 @@ async function showHistory(input: {
               ? `${(ns / 1_000_000).toFixed(1)}ms`
               : `${(ns / 1_000_000_000).toFixed(2)}s`
 
-      lines.push(`  ${entry.timestamp.slice(0, 19)}  ${time}`)
+      lines.push(`  ${localStamp(entry.timestamp)}  ${time}`)
     }
 
     printData(`${lines.join('\n')}\n`)

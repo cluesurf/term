@@ -739,7 +739,8 @@ task aes-expand-key
       save w, call increment(read w)
   send back, read rk
 
-# fold rnd `rnd`'s key into the state, in place
+# fold rnd `rnd`'s key into the state, and send the state back: written in place on every backend today, sent back
+# so the caller still sees it once a list is a value (D1)
 task aes-add-round-key
   take state
     like list
@@ -748,6 +749,12 @@ task aes-add-round-key
     like list
       like number
   take rnd, like natural-number
+  like list
+    like number
+  must
+    call is-equal
+      read back/length
+      read state/length
   have
     call is-minimum
       read state/length
@@ -779,6 +786,7 @@ task aes-add-round-key
           read state/{c}
           read rk/{at}
       save c, call increment(read c)
+  send back, read state
 
 # substitute and shift the rows in one pass: out[4c + r] = box[in[4*((c + direction * r) % 4) + r]]. Direction 1 is
 # the cipher (the S-box, rows shifted left), any other the inverse (its inverse box, 3 being a shift right). The task
@@ -883,10 +891,11 @@ task aes-encrypt-block
       call state/push
         read block/{i}
       save i, call increment(read i)
-  call aes-add-round-key
-    read state
-    read rk
-    code 0
+  save state
+    call aes-add-round-key
+      read state
+      read rk
+      code 0
   save rnd, code 1
   walk test
     must
@@ -982,19 +991,21 @@ task aes-encrypt-block
                   read b3
                   code 2
           save mc, call increment(read mc)
-      call aes-add-round-key
-        read state
-        read rk
-        read rnd
+      save state
+        call aes-add-round-key
+          read state
+          read rk
+          read rnd
       save rnd, call increment(read rnd)
   save state
     call aes-sub-shift
       read state
       code 1
-  call aes-add-round-key
-    read state
-    read rk
-    code 10
+  save state
+    call aes-add-round-key
+      read state
+      read rk
+      code 10
   send back, read state
 
 # the inverse cipher: the same schedule walked backwards
@@ -1033,10 +1044,11 @@ task aes-decrypt-block
       call state/push
         read block/{i}
       save i, call increment(read i)
-  call aes-add-round-key
-    read state
-    read rk
-    code 10
+  save state
+    call aes-add-round-key
+      read state
+      read rk
+      code 10
   save rnd, code 9
   walk test
     must
@@ -1052,10 +1064,11 @@ task aes-decrypt-block
         call aes-sub-shift
           read state
           code 3
-      call aes-add-round-key
-        read state
-        read rk
-        read rnd
+      save state
+        call aes-add-round-key
+          read state
+          read rk
+          read rnd
       save mc, code 0
       walk test
         hook test
@@ -1159,8 +1172,9 @@ task aes-decrypt-block
     call aes-sub-shift
       read state
       code 3
-  call aes-add-round-key
-    read state
-    read rk
-    code 0
+  save state
+    call aes-add-round-key
+      read state
+      read rk
+      code 0
   send back, read state

@@ -1,9 +1,12 @@
 // Perceus / FBIP tests: precise dup/drop insertion from last-use, and in-place reuse. Run: npx tsx test/ir/perceus.ts
 
 import type { Inst } from '@term/make/code/ir/perceus'
+// ir/perceus is Term since 2026-10-04 (deck/make/code/ir/perceus.tree): a `make` carries `reuse: ''` when nothing is
+// reused, and the heap-aware pass is its own task, `perceusControlHeap`, taking the names as a list
 import {
   perceus,
   perceusControl,
+  perceusControlHeap,
   showInst,
 } from '@term/make/code/ir/perceus'
 
@@ -33,7 +36,7 @@ function expect(
 const make = (
   ctor: string,
   ...args: string[]
-): Inst['value' & keyof Inst] => ({ kind: 'make', ctor, args }) as never
+): Inst['value' & keyof Inst] => ({ kind: 'make', ctor, args, reuse: '' }) as never
 
 function main(): void {
   // a value used exactly once is consumed at its last use: no dup
@@ -45,7 +48,7 @@ function main(): void {
         {
           op: 'let',
           name: 'a',
-          value: { kind: 'make', ctor: 'box', args: ['x'] },
+          value: { kind: 'make', ctor: 'box', args: ['x'], reuse: '' },
         },
         { op: 'return', name: 'a' },
       ],
@@ -84,12 +87,12 @@ function main(): void {
         {
           op: 'let',
           name: 'a',
-          value: { kind: 'make', ctor: 'box', args: ['x'] },
+          value: { kind: 'make', ctor: 'box', args: ['x'], reuse: '' },
         },
         {
           op: 'let',
           name: 'b',
-          value: { kind: 'make', ctor: 'pair', args: ['y', 'z'] },
+          value: { kind: 'make', ctor: 'pair', args: ['y', 'z'], reuse: '' },
         },
         { op: 'return', name: 'b' },
       ],
@@ -118,13 +121,13 @@ function main(): void {
         {
           op: 'let',
           name: 'pair',
-          value: { kind: 'make', ctor: 'cons', args: ['list', 'head'] },
+          value: { kind: 'make', ctor: 'cons', args: ['list', 'head'], reuse: '' },
         },
         // `pair` is never used -> dropped; the next make of arity 2 reuses it
         {
           op: 'let',
           name: 'next',
-          value: { kind: 'make', ctor: 'cons', args: ['list', 'head'] },
+          value: { kind: 'make', ctor: 'cons', args: ['list', 'head'], reuse: '' },
         },
         { op: 'return', name: 'next' },
       ],
@@ -268,7 +271,7 @@ function main(): void {
   // dead); `n` is copyable (an integer) so it is never dup'd or dropped even though it is read twice.
   expect(
     'heap-aware: copyable value gets no dup/drop',
-    perceusControl(
+    perceusControlHeap(
       ['x', 'n'],
       [
         {
@@ -283,7 +286,7 @@ function main(): void {
         },
         { op: 'return', name: 'b' },
       ],
-      new Set(['x', 'a', 'b']),
+      ['x', 'a', 'b'],
     ),
     [
       'dup x',

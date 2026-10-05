@@ -17,6 +17,7 @@ import {
   truthy as isTruthy,
   display as show,
   keyOf,
+  bigOf,
 } from '@term/make/code/engine/value'
 import * as Arr from '@term/make/code/engine/data/array'
 import * as Mp from '@term/make/code/engine/data/map'
@@ -35,10 +36,10 @@ export const array = (items: Value[]): Value => ({
 })
 
 export const mapLit = (pairs: [string, Value][]): Value => {
-  const m = Mp.makeMap<Value>()
+  let m = Mp.makeMap<Value>()
 
   for (const [k, v] of pairs) {
-    Mp.set(m, `s:${k}`, v)
+    m = Mp.set(m, `s:${k}`, v)
   }
 
   return { form: 'map', value: m }
@@ -79,14 +80,14 @@ export function setIndex(c: Value, i: Value, v: Value): Value {
       form: 'array',
       value: Arr.set(
         c.value,
-        Number((i as { value: { value: bigint } }).value.value),
+        Number(bigOf((i as { value: Parameters<typeof bigOf>[0] }).value)),
         v,
       ),
     }
   }
 
   if (c.form === 'map') {
-    Mp.set(c.value, keyOf(i), v)
+    c.value = Mp.set(c.value, keyOf(i), v)
 
     return c
   }
@@ -96,7 +97,7 @@ export function setIndex(c: Value, i: Value, v: Value): Value {
 
 export function setMember(c: Value, name: string, v: Value): Value {
   if (c.form === 'map') {
-    Mp.set(c.value, `s:${name}`, v)
+    c.value = Mp.set(c.value, `s:${name}`, v)
 
     return c
   }
@@ -167,7 +168,7 @@ export const toInt = (v: Value): Value => {
     return int(
       BigInt(
         Math.trunc(
-          Number((v.value as { mantissa: bigint }).mantissa) *
+          Number((v.value as { mantissa: { dock: bigint } }).mantissa.dock) *
             3 ** (v.value as { exponent: number }).exponent,
         ),
       ),

@@ -5,17 +5,24 @@
 // loop endpoints, the non-triviality of the loop, cong-on-refl, and soundness (a different target gives a different
 // result). Run: npx tsx test/check/cubical.ts
 
+// check/cubical is Term since 2026-10-04: the builders are tasks, the term is `CubicalTerm`, the tags kebab
 import {
   normalize,
   equal,
   ap,
-  base,
-  loop,
-  cst,
-  circRec,
-  reflPath,
-  type Term,
+  makeBase,
+  makeLoop,
+  makeConstant,
+  makeCircRec,
+  makeReflPath,
+  type CubicalTerm as Term,
 } from '@term/make/code/check/cubical'
+
+const base = makeBase()
+const loop = makeLoop()
+const cst = makeConstant
+const circRec = makeCircRec
+const reflPath = makeReflPath
 
 let pass = 0
 let fail = 0
@@ -88,7 +95,7 @@ ok(
 
 // 8. the path beta-rule fires UNDER the action even for a recursor into an opaque target loop `p`: circRec(base, p) sends
 // loop to p, so ap on loop is p.
-const p: Term = { t: 'plam', body: { t: 'loopAt', at: { t: 'ivar', index: 0 } } } // <i> loop@i  (= loop by eta)
+const p: Term = { t: 'plam', body: { t: 'loop-at', at: { t: 'ivar', index: 0 } } } // <i> loop@i  (= loop by eta)
 ok(
   'PATH beta with a built path target: ap (circRec(base, <i> loop@i)) loop = loop',
   equal(ap(circRec(base, p), loop), loop),

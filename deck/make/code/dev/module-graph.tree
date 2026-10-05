@@ -27,17 +27,11 @@ form module-node
   # the source file on disk
   link file, like text
   # the ids of the modules that import this one (the upward edge HMR walks)
-  link importers
-    like list
-      like text
+  link importers, like list, like text
   # the ids of the modules this one imports
-  link imported-modules
-    like list
-      like text
+  link imported-modules, like list, like text
   # URLs this module explicitly accepts hot updates for (dep-accept). A parent zone accepting a child zone
-  link accepted-hmr-deps
-    like list
-      like text
+  link accepted-hmr-deps, like list, like text
   # this module accepts updates to itself (a `zone` component is self-accepting)
   link is-self-accepting, like boolean
   # the compiled JS, or `<>` when never compiled or invalidated
@@ -51,22 +45,18 @@ form module-node
 form module-graph
   # every node, by id
   link by-id
-    like hash
-      like text
+    like hash, like text
       like module-node
   # the id of each node, by url
   link by-url
-    like hash
-      like text
+    like hash, like text
       like text
 
 # what `set-imports` gives back: the graph, and the ids of the modules that lost their last importer (candidates to
 # prune or dispose)
 form import-change
   link graph, like module-graph
-  link pruned
-    like list
-      like text
+  link pruned, like list, like text
 
 task make-module-graph
   like module-graph
@@ -135,14 +125,14 @@ task ensure-module
   fork test, has(graph/by-id, id)
     hold
       back graph
-  save node, make-blank-module(id)
+  host node, make-blank-module(id)
   save node/url, url
   save node/file, file
-  save by-id, graph/by-id
-  save by-url, graph/by-url
+  host by-id, graph/by-id
+  host by-url, graph/by-url
   set(by-id, id, node)
   set(by-url, url, id)
-  save next, graph
+  host next, graph
   save next/by-id, by-id
   save next/by-url, by-url
   back next
@@ -153,23 +143,20 @@ task put-module
   take node, like module-node
   like module-graph
 
-  save by-id, graph/by-id
-  save by-url, graph/by-url
+  host by-id, graph/by-id
+  host by-url, graph/by-url
   set(by-id, node/id, node)
   set(by-url, node/url, node/id)
-  save next, graph
+  host next, graph
   save next/by-id, by-id
   save next/by-url, by-url
   back next
 
 # `ids` without `id`, in their order
 task without-id
-  take ids
-    like list
-      like text
+  take ids, like list, like text
   take id, like text
-  like list
-    like text
+  like list, like text
 
   save kept, make list
   walk ids
@@ -185,9 +172,7 @@ task without-id
 task set-imports
   take graph, like module-graph
   take id, like text
-  take deps
-    like list
-      like text
+  take deps, like list, like text
   like import-change
 
   # `deps` once each, in their order, as `new Set(deps)` kept them
@@ -202,14 +187,14 @@ task set-imports
   save pruned, make list
 
   # drop the edges to deps no longer imported
-  save before, module-by-id(current, id)
+  host before, module-by-id(current, id)
   walk before/imported-modules
     take previous
     fork test, contains(next-deps, previous)
       miss
         fork test, has-module(current, previous)
           hold
-            save left, module-by-id(current, previous)
+            host left, module-by-id(current, previous)
             save left/importers, without-id(left/importers, id)
             save current, put-module(current, left)
             fork test, is-equal(left/importers/length, 0)
@@ -221,16 +206,16 @@ task set-imports
     take dep
     fork test, has-module(current, dep)
       hold
-        save gained, module-by-id(current, dep)
+        host gained, module-by-id(current, dep)
         fork test, contains(gained/importers, id)
           miss
-            save importers, copy(gained/importers)
+            host importers, copy(gained/importers)
             push(importers, id)
             save gained/importers, importers
             save current, put-module(current, gained)
 
   # read the node after the edges moved: it may import itself
-  save node, module-by-id(current, id)
+  host node, module-by-id(current, id)
   save node/imported-modules, next-deps
   save current, put-module(current, node)
 
@@ -250,7 +235,7 @@ task invalidate-module
   fork test, has-module(graph, id)
     miss
       back graph
-  save node, module-by-id(graph, id)
+  host node, module-by-id(graph, id)
   save node/compiled, <>
   save node/last-hmr-timestamp, timestamp
   back put-module(graph, node)
@@ -258,8 +243,7 @@ task invalidate-module
 # every node, in the order they were added, for diagnostics and tests
 task list-modules
   take graph, like module-graph
-  like list
-    like module-node
+  like list, like module-node
 
   save nodes, make list
   walk keys(graph/by-id)

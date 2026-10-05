@@ -7,8 +7,8 @@ import { transformSync } from 'esbuild'
 import { compile } from '@term/make/code/compile/compile'
 import type { Resolver } from '@term/make/code/compile/load'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
-import { stdlibResolver } from '@term/make/code/resolve'
 import { closeRun, failRun, field, openRun, printData, report } from '@term/call/code/output'
+import { projectResolver } from '@term/call/code/make'
 
 // the module resolvers now live in the compiler (make), so the CLI, dev server, and language server share them. Kept
 // re-exported here for the CLI's existing call sites and tests.
@@ -63,7 +63,11 @@ export type FeedResult =
 export class Repl {
   private readonly definitions: string[] = []
 
-  constructor(private readonly resolve?: Resolver) {}
+  // `file` is where the session's text is taken to live, so a relative `load` resolves from the project folder
+  constructor(
+    private readonly resolve?: Resolver,
+    private readonly file = 'repl.tree',
+  ) {}
 
   async feed(block: string): Promise<FeedResult> {
     const trimmed = block.replace(/\s+$/, '')
@@ -76,7 +80,7 @@ export class Repl {
       // a definition: accept it only if the program still compiles with it added
       const trial = [...this.definitions, trimmed].join('\n\n')
       const result = compile(
-        { file: 'repl.tree', text: trial },
+        { file: this.file, text: trial },
         { resolve: this.resolve },
       )
 
@@ -88,9 +92,15 @@ export class Repl {
         }
       }
 
-      this.definitions.push(trimmed)
-
       const name = trimmed.trimStart().split(/\s+/)[1] ?? ''
+
+      // a `load` of a path nothing answers is refused, not `added`: it was accepted, and the first call to a name it
+      // was to bring failed as an unknown name
+      if (trimmed.trimStart().startsWith('load ') && this.resolve && !this.resolve(name, this.file)) {
+        return { kind: 'error', text: `nothing answers load ${name}` }
+      }
+
+      this.definitions.push(trimmed)
 
       return { kind: 'definition', text: name }
     }
@@ -103,7 +113,7 @@ export class Repl {
 
     const full = [...this.definitions, wrapped].join('\n\n')
     const result = compile(
-      { file: 'repl.tree', text: full },
+      { file: this.file, text: full },
       { resolve: this.resolve },
     )
 
@@ -177,7 +187,10 @@ export async function callWalk(input: {
     message: ['A definition is task, form or load. Finish a multi-line block with a blank line.'],
   })
 
-  const repl = new Repl(stdlibResolver())
+  // the project the session was started in, as `term make` resolves it: its own files by a relative path and its
+  // linked decks as well as the standard library. It saw the standard library alone, so `load ./code/count` printed
+  // `added` and the next call to a name from it failed as `unknown-name` (guides: commands/walk, 2026-10-04)
+  const repl = new Repl(projectResolver(input.root, 'node', input.root), join(input.root, 'repl.tree'))
   const rl = createInterface({
     input: process.stdin,
     output: process.stdout,

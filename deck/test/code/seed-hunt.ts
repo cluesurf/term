@@ -95,12 +95,12 @@ function sourceFuzzEntry(): FuzzEntry | undefined {
 }
 
 // the hunted files that make good fuzz seeds: small enough that a mutation is still near a real program
-function fuzzSeedsFrom(root: string, files: string[]): string[] {
+function fuzzSeedsFrom(files: string[], read: (file: string) => string): string[] {
   const out: string[] = []
   for (const f of files) {
     if (out.length >= 32) break
     try {
-      const text = readFileSync(path.resolve(root, f), 'utf8')
+      const text = read(f)
       if (text.length > 0 && text.length <= 4000) out.push(text)
     } catch {
       // unreadable files are reported by the corpus phase
@@ -123,8 +123,16 @@ export function huntSeedCompiler(input: {
   perfBudgetMs?: number
   fuzzTimeoutSec?: number
   fuzzEntry?: FuzzEntry
+  // the text the build compiles for a file (an absolute path), when that is not the file as written: a test file with
+  // its `test` blocks rewritten. The caller owns that rule; read as written, a test file never compiled here
+  read?: (file: string) => string
 }): HuntResult {
   const { root, resolve } = input
+  const readText = (f: string): string => {
+    const full = path.resolve(root, f)
+
+    return input.read ? input.read(full) : readFileSync(full, 'utf8')
+  }
   const runs = input.runs ?? 3000
   const seeds = input.seeds ?? 4
   const fuzzTimeoutSec = input.fuzzTimeoutSec ?? 90
@@ -137,7 +145,7 @@ export function huntSeedCompiler(input: {
 
   const corpus = auditCorpus({
     files,
-    readFile: f => readFileSync(path.resolve(root, f), 'utf8'),
+    readFile: readText,
     resolve,
     parseTolerant,
     perfBudgetMs: input.perfBudgetMs ?? 1000,
@@ -164,7 +172,7 @@ export function huntSeedCompiler(input: {
   let totalCrashes = 0
   let seedsRun = 0
   let fuzzRuns = 0
-  const extraSeeds = fuzzSeedsFrom(root, files)
+  const extraSeeds = fuzzSeedsFrom(files, readText)
 
   if (!entry) {
     unrun.push('fuzzing: no fuzz campaign entry (fuzz-campaign.ts is not beside this module and none was passed)')

@@ -4,6 +4,7 @@
 load @term/base/list
   find list
   find sort
+  find sort-by
   find join
   find size
   find map
@@ -30,6 +31,19 @@ task name-of
   take item, like entry
   like text
   send back, read item/name
+
+task key-of
+  take item, like entry
+  like number
+  send back, read item/key
+
+task negated
+  take n, like number
+  like number
+  send back
+    call subtract
+      code 0
+      read n
 
 task numbers
   like list
@@ -118,3 +132,43 @@ test <texts sort by code point>
           read from-texts
         text <,>
       text <A,a,b,～,𝄞>
+
+test <sort-by orders by the key, and keeps equal keys in order>
+  save items
+    make list
+  call items/push
+    make entry
+      bind key, code 2
+      bind name, text <b1>
+  call items/push
+    make entry
+      bind key, code 1
+      bind name, text <a1>
+  call items/push
+    make entry
+      bind key, code 2
+      bind name, text <b2>
+  call items/push
+    make entry
+      bind key, code 1
+      bind name, text <a2>
+  want hold
+    call is-equal
+      call join
+        call map
+          call sort-by
+            read items
+            read key-of
+          read name-of
+        text <,>
+      text <a1,a2,b1,b2>
+
+test <sort-by with a negated key sorts descending>
+  want hold
+    call is-equal
+      call join
+        call sort-by
+          call numbers
+          read negated
+        text <,>
+      text <9,5,4,3,1,1,0>

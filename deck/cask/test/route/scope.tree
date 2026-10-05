@@ -1,0 +1,4 @@
+# What the route app may reach (app-scope, deck/call/code/scope.ts): its page reads the line the driver wrote into the
+# app's own bundle, and nothing else
+host file
+  list read, <$bundle/**>

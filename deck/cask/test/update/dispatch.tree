@@ -12,6 +12,9 @@
 # own and answers its page under it: a handle is kept under `<key>/<id>`, so an id one window's page was given
 # is unknown to every other window's (refused as `absence`, as a forged one is), and when the window closes
 # every handle under its key is dropped. `dispatch` answers as one window, for an app that opens only one.
+#
+# AND EVERY COMMAND IS HELD TO THE APP'S SCOPE (app-scope): `out-of-scope` checks each argument a scoped capability's
+# task names against the patterns its scope.tree lists, and a refused one answers `out-of-scope` and runs nothing.
 
 load @term/cask/cask
   find window
@@ -207,8 +210,16 @@ task run-command
       send back
         call make-null
 
+# the app's scope (scope.tree, deck/call/code/scope.ts): every scoped argument of a command checked against the
+# patterns its access lists, before the command runs. Answers the argument refused, or empty text when it may run
+task out-of-scope
+  take command, like text
+  take arguments, like dynamic
+  like text
+  send back, text <>
+
 # one message in, one reply out. A command that raises answers the exception by name and note, so the page
-# gets a rejection and the cask keeps running
+# gets a rejection and the cask keeps running. One outside the scope answers `out-of-scope` with the argument
 task answer
   mark async
   take owner, like text
@@ -238,26 +249,45 @@ task answer
       call is-allowed
         read command
     hook hold
-      mark unsafe
-        save reply
-          call set-field
-            read reply
-            text <value>
-            call run-command
-              wait true
-              read owner
-              read command
-              call get-field
-                read request
-                text <arguments>
-      halt take
-        take error
-        save reply
-          call set-field
-            read reply
-            text <exception>
-            call from-text
-              text <{{error/form}}: {{error/note}}>
+      save refused
+        call out-of-scope
+          read command
+          call get-field
+            read request
+            text <arguments>
+      fork test
+        hook test
+          call is-unequal
+            read refused
+            text <>
+        hook hold
+          save reply
+            call set-field
+              read reply
+              text <exception>
+              call from-text
+                text <out-of-scope: {command} {refused}>
+        hook miss
+          mark unsafe
+            save reply
+              call set-field
+                read reply
+                text <value>
+                call run-command
+                  wait true
+                  read owner
+                  read command
+                  call get-field
+                    read request
+                    text <arguments>
+          halt take
+            take error
+            save reply
+              call set-field
+                read reply
+                text <exception>
+                call from-text
+                  text <{{error/form}}: {{error/note}}>
     hook miss
       save reply
         call set-field

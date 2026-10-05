@@ -265,6 +265,9 @@ let rustOpaqueTypes = new Map<string, string>()
 // on TypeScript, Swift and Kotlin, so a shared value can be a record's field and a map's key like any other
 let rustSharedForms = new Set<string>()
 
+// whether this program's maps keyed by text hold their keys as a `TermKey` (`textKeysOf`), set per pass
+let rustTextKeys = false
+
 const isSharedType = (type: Type | undefined): boolean =>
   type?.kind === 'named' && rustSharedForms.has(type.name)
 
@@ -302,7 +305,9 @@ function rustType(type: Type | undefined): string {
       const key =
         (type.key?.kind === 'variable' && !rustVarNames.has(type.key.id)) || type.key?.kind === 'unknown' || type.key?.kind === 'dynamic'
           ? 'String'
-          : rustType(type.key)
+          : rustTextKeys && isText(type.key)
+            ? 'TermKey'
+            : rustType(type.key)
 
       return `std::rc::Rc<std::cell::RefCell<TermMap<${key}, ${rustType(type.value)}>>>`
 
@@ -504,6 +509,98 @@ function boxableForms(program: Program, cloned: Set<string>): Set<string> {
   )
 }
 
+// TEXT KEYS THAT DO NOT ALLOCATE. A map keyed by text holds each key as a `String`, an allocation per new key: all of
+// k-nucleotide's gap, a k-mer per position (86 ms against the hand version's 71, `tmp/rust-knuc-key-ab.ts`). A
+// `TermKey` holds up to 22 bytes in place and hashes and compares as the `str` it holds (74 ms). A program's text-keyed
+// maps take it only where no key can be seen as a value again, since a `TermKey` is not a `String`: no map of them
+// walked or answered by a task whose result or callback mentions its key type, none handed where a map is not
+// declared, none in a field of unknown type, and none built or read by a runtime shim, six of which build
+// `TermMap<String, ...>` themselves. A key read out by `keys` is made a `String` there. Lookups take the borrowed `str`,
+// which serves a `String` key as well (`TermMap`'s `Borrow` lookups)
+const KEY_SHIMS = /\b(http2?|server|shape|env-variable)\b/
+
+function textKeysOf(program: Program): boolean {
+  return textKeyReason(program) === undefined
+}
+
+// why a program's text-keyed maps keep `String` keys, or undefined when they take `TermKey`s (a test reads it)
+export function textKeyReason(program: Program): string | undefined {
+  type Loose = Record<string, unknown> & { form?: string; type?: Type }
+  const textMap = (t: Type | undefined): boolean => t?.kind === 'map' && isText(t.key)
+  const fns = new Map(program.flatMap(n => (n.form === 'function' ? [[n.name, n] as const] : [])))
+  const fields = new Map(program.flatMap(n => (n.form === 'record-type' ? [[n.name, new Map([...n.fields, ...n.variants.flatMap(v => v.fields)].map(f => [f.name, f.type]))] as const] : [])))
+  const variantOwner = new Map(program.flatMap(n => (n.form === 'record-type' ? n.variants.map(v => [v.name, n.name] as const) : [])))
+  // whether a type mentions a generic, by its name or its variable, other than as a map's key: a map of the keys
+  // answered or handed on still holds them as `TermKey`s (`hash_set` answers its map)
+  const same = (t: Type, key: Type): boolean =>
+    (key.kind === 'named' && t.kind === 'named' && t.name === key.name) || (key.kind === 'variable' && t.kind === 'variable' && t.id === key.id)
+  const mentions = (t: Type | undefined, key: Type): boolean => {
+    if (!t) return false
+    if (same(t, key)) return true
+    if (t.kind === 'array') return mentions(t.element, key)
+    if (t.kind === 'map') return (!same(t.key, key) && mentions(t.key, key)) || mentions(t.value, key)
+    if (t.kind === 'function') return t.params.some(p => mentions(p, key)) || mentions(t.result, key)
+    if (t.kind === 'named') return (t.args ?? []).some(a => mentions(a, key))
+
+    return false
+  }
+  let any = false
+  let leak: string | undefined
+
+  const visit = (value: unknown): void => {
+    if (leak || typeof value !== 'object' || value === null) return
+    if (Array.isArray(value)) return value.forEach(visit)
+    const node = value as Loose
+
+    if (textMap(node.type)) any = true
+    if (node.form === 'native' && KEY_SHIMS.test(String(node.module ?? ''))) leak = `the runtime shim ${String(node.module)}`
+    if (node.form === 'for-each' && textMap((node.iterable as Loose | undefined)?.type)) leak = 'a walk over a map'
+
+    if (node.form === 'call') {
+      const callee = node.callee as Loose
+      const def = callee.form === 'variable' ? fns.get(callee.name as string) : undefined
+      const name = callee.form === 'variable' ? (callee.name as string) : callee.form === 'member' ? (callee.name as string) : ''
+
+      if (name === 'fill' || name === 'melt') leak = `a call to ${name}`
+      ;(node.args as Loose[]).forEach((arg, i) => {
+        if (!textMap(arg.type)) return
+        const param = def?.params[i]?.type
+
+        // a map handed to a task that is not the program's own, or where no map is declared
+        if (!def || param?.kind !== 'map') {
+          leak = `a map handed to ${name || 'a value'}, argument ${i + 1}`
+
+          return
+        }
+
+        // a generic key: no result and no callback of the task may mention it
+        const key = param.key
+
+        if ((key.kind === 'named' || key.kind === 'variable') && (mentions(def.result, key) || def.params.some(p => p.type?.kind === 'function' && mentions(p.type, key)))) {
+          leak = `${name} answers or calls back with a key`
+        }
+      })
+    }
+
+    // a field of unknown type holding one
+    if (node.form === 'record' && Array.isArray(node.fields)) {
+      const owner = variantOwner.get(node.name as string) ?? (node.name as string)
+
+      for (const f of node.fields as { name: string; value: Loose }[]) {
+        const declared = fields.get(owner)?.get(f.name)
+
+        if (textMap(f.value.type) && (declared?.kind === 'unknown' || declared?.kind === 'dynamic')) leak = `a map in the field ${f.name} of unknown type`
+      }
+    }
+
+    for (const [key, child] of Object.entries(node)) if (key !== 'type' && key !== 'span') visit(child)
+  }
+
+  visit(program)
+
+  return leak ?? (any ? undefined : 'no map keyed by text')
+}
+
 function emitRustPass(
   program: Program,
   options: { wake?: WakeGroup[] } | undefined,
@@ -552,6 +649,32 @@ function emitRustPass(
   )
   // decided below, once the list facts are known (`elementLists`)
   rustOwnedInner = new Set()
+  rustTextKeys = textKeysOf(program)
+  // per generic task, each parameter that is the key type of a map parameter, and that map's position: a text argument
+  // there beside a map of `TermKey`s is made one (`rustTextKeys`). The stdlib's `get`, `get-or-default`, `has`, `set`
+  const keyPositions = new Map<string, Map<number, number>>()
+
+  for (const fn of program) {
+    if (fn.form !== 'function') {
+      continue
+    }
+
+    const generic = (t: Type | undefined): t is Type =>
+      t?.kind === 'variable' || (t?.kind === 'named' && fn.generics.some(g => g.name === t.name))
+    const same = (a: Type, b: Type): boolean =>
+      (a.kind === 'variable' && b.kind === 'variable' && a.id === b.id) || (a.kind === 'named' && b.kind === 'named' && a.name === b.name)
+    const positions = new Map<number, number>()
+
+    fn.params.forEach((p, i) => {
+      if (!generic(p.type)) return
+      const map = fn.params.findIndex(q => q.type?.kind === 'map' && generic(q.type.key) && same(q.type.key, p.type!))
+      if (map >= 0) positions.set(i, map)
+    })
+
+    if (positions.size) {
+      keyPositions.set(fn.name, positions)
+    }
+  }
   // opaque handle types declared by `dock type` shims: seed name -> concrete rust type
   rustOpaqueTypes = new Map(
     program
@@ -2199,6 +2322,8 @@ function emitRustPass(
             : undefined
         const lending =
           node.callee.form === 'variable' && !localNames.has(node.callee.name) ? lendParams.get(node.callee.name) : undefined
+        // a text argument in a generic task's key position, beside a map of `TermKey`s (`rustTextKeys`), is made one
+        const keyed = node.callee.form === 'variable' && rustTextKeys ? keyPositions.get(node.callee.name) : undefined
         // the lent arguments that are a fresh task's `Vec`, taken raw
         const rawLent = new Set<number>()
         const argList = node.args.map((a, i) => {
@@ -2207,6 +2332,13 @@ function emitRustPass(
           // parameter (native-dom-0020: the renderer's `mount` and `dynamic` callbacks)
           const slot = params?.[i]
           closureHint = a.form === 'closure' && slot?.kind === 'function' ? slot.result : undefined
+
+          const besideMap = keyed?.get(i)
+          const mapArg = besideMap === undefined ? undefined : node.args[besideMap]?.type
+
+          if (mapArg?.kind === 'map' && isText(mapArg.key) && isText(a.type)) {
+            return `TermKey::from(${strOf(a)})`
+          }
 
           // a record the callee only reads is borrowed (borrowedRecords): a name that is already a reference passes as
           // it is (`&Rc<R>` derefs to `&R`), anything else is lent as `&`, never cloned first. Decided BEFORE the
@@ -2646,7 +2778,7 @@ function emitRustPass(
           node.entries.length === 0
             ? 'TermMap::new()'
             : `TermMap::from([${node.entries
-                .map(e => `(${expr(e.key)}, ${expr(e.value)})`)
+                .map(e => `(${rustTextKeys && isText(e.key.type) ? `TermKey::from(${strOf(e.key)})` : expr(e.key)}, ${expr(e.value)})`)
                 .join(', ')}])`
         }))`
 
@@ -2827,20 +2959,28 @@ function emitRustPass(
     }
 
     if (op.kind === 'map') {
+      // a text key is looked up borrowed (`TermMap`'s `Borrow` lookups), a `String` key and a `TermKey` alike, and a
+      // key stored into a map of `TermKey`s (`rustTextKeys`) is made one
+      const textKey = op.target.type?.kind === 'map' && isText(op.target.type.key)
+      const stored = (): string => (textKey && rustTextKeys ? `TermKey::from(${strOf(args[0]!)})` : arg[0]!)
+
       switch (op.op) {
         case 'has':
-          return `${target}.borrow().contains_key(&${arg[0]})`
+          return textKey ? `${target}.borrow().has_text(${strOf(args[0]!)})` : `${target}.borrow().contains_key(&${arg[0]})`
         case 'get':
-          return `${target}.borrow().get(&${arg[0]}).cloned().unwrap()`
+          return textKey ? `${target}.borrow().get_text(${strOf(args[0]!)}).cloned().unwrap()` : `${target}.borrow().get(&${arg[0]}).cloned().unwrap()`
         case 'set':
           // the key and value first: a value that reads the same map (`set(k, add(get-or-default(m, k), 1))`) would
           // otherwise find it already borrowed mutably, and RefCell panics
-          return `{ let __set_key = ${arg[0]}; let __set_value = ${arg[1]}; ${target}.borrow_mut().insert(__set_key, __set_value); ${target}.clone() }`
+          return `{ let __set_key = ${stored()}; let __set_value = ${arg[1]}; ${target}.borrow_mut().insert(__set_key, __set_value); ${target}.clone() }`
         case 'delete':
-          return `${target}.borrow_mut().remove(&${arg[0]}).is_some()`
+          return textKey ? `${target}.borrow_mut().remove_text(${strOf(args[0]!)}).is_some()` : `${target}.borrow_mut().remove(&${arg[0]}).is_some()`
         case 'keys':
+          // a `TermKey` read out is a `String` again
           return wrapList(
-            `${target}.borrow().keys().cloned().collect::<Vec<_>>()`,
+            textKey && rustTextKeys
+              ? `${target}.borrow().keys().map(|k| k.as_str().to_string()).collect::<Vec<_>>()`
+              : `${target}.borrow().keys().cloned().collect::<Vec<_>>()`,
           )
         case 'values':
           return wrapList(
@@ -3147,10 +3287,12 @@ function emitRustPass(
       case 'trimEnd':
         return `${t}.trim_end().to_string()`
       // the fill repeats and is cut so the result is exactly the width in code points (semantics.md)
+      // the receiver BORROWED, as every method here borrows it: `let o: String = r.name` moved a field out of a record
+      // read in a loop, E0507 (the time/table port, 2026-10-04). Owned only where it is the answer unchanged
       case 'padStart':
-        return `{ let o: String = ${t}; let f: Vec<char> = (${a[1]}).chars().collect(); let n = o.chars().count() as i64; let w: i64 = ${a[0]}; if n >= w || f.is_empty() { o } else { let p: String = (0..(w - n) as usize).map(|i| f[i % f.len()]).collect(); format!("{}{}", p, o) } }`
+        return `{ let o: &str = ${borrow}; let f: Vec<char> = (${a[1]}).chars().collect(); let n = o.chars().count() as i64; let w: i64 = ${a[0]}; if n >= w || f.is_empty() { o.to_string() } else { let p: String = (0..(w - n) as usize).map(|i| f[i % f.len()]).collect(); format!("{}{}", p, o) } }`
       case 'padEnd':
-        return `{ let o: String = ${t}; let f: Vec<char> = (${a[1]}).chars().collect(); let n = o.chars().count() as i64; let w: i64 = ${a[0]}; if n >= w || f.is_empty() { o } else { let p: String = (0..(w - n) as usize).map(|i| f[i % f.len()]).collect(); format!("{}{}", o, p) } }`
+        return `{ let o: &str = ${borrow}; let f: Vec<char> = (${a[1]}).chars().collect(); let n = o.chars().count() as i64; let w: i64 = ${a[0]}; if n >= w || f.is_empty() { o.to_string() } else { let p: String = (0..(w - n) as usize).map(|i| f[i % f.len()]).collect(); format!("{}{}", o, p) } }`
       case 'replace':
         return `{ let a: String = ${a[0]}; let b: String = ${a[1]}; ${t}.replacen(a.as_str(), b.as_str(), 1) }`
       case 'replaceAll':
@@ -3420,7 +3562,10 @@ function emitRustPass(
           }
 
           if ((kind === 'map' || named === 'hash') && node.op === '=' && node.target.index) {
-            return `{ let __index_value = ${bare(owned(node.value))}; let __index = ${bare(owned(node.target.index))}; ${expr(holder)}.borrow_mut().insert(__index, __index_value); }`
+            const index = node.target.index
+            const key = rustTextKeys && isText(index.type) ? `TermKey::from(${strOf(index)})` : bare(owned(index))
+
+            return `{ let __index_value = ${bare(owned(node.value))}; let __index = ${key}; ${expr(holder)}.borrow_mut().insert(__index, __index_value); }`
           }
         }
 
@@ -3582,7 +3727,14 @@ function emitRustPass(
               : `*__value += ${step};`
 
           // a text key is looked up borrowed and made a String only when it is new
-          const upsert = isText(update.key.type) ? `upsert_ref(${strOf(update.key)}` : `upsert(${bare(owned(update.key))}`
+          // `::<str>` when the key is a reference TO an owned String (`&v`): `upsert_ref` is generic over the borrowed
+          // key, so that inferred `Q = String`, which a map of `TermKey`s cannot lend (`TermKey: Borrow<String>` is not
+          // satisfied, the ir/perceus port, 2026-10-04). Pinned to `str`, the `&String` coerces, and a map of `String`
+          // keys lends a `str` as well. A key that is already a `&str` (a borrowed or sliced name) is written as before
+          const key = isText(update.key.type) ? strOf(update.key) : ''
+          const upsert = isText(update.key.type)
+            ? `upsert_ref${key.startsWith('&') ? '::<str>' : ''}(${key}`
+            : `upsert(${bare(owned(update.key))}`
 
           return `{ let mut __map = ${vname(update.map.name)}.borrow_mut(); let __value = __map.${upsert}, ${bare(expr(update.fallback))}); ${write} }`
         }
@@ -4988,6 +5140,16 @@ impl<K: std::hash::Hash + Eq + Clone, V> TermMap<K, V> {
         }
     }
     pub fn contains_key(&self, key: &K) -> bool { self.find(self.hash(key), key).is_some() }
+    // a text key looked up as the \`str\` it is, so a \`String\` key and a \`TermKey\` are read alike, with nothing made
+    pub fn has_text(&self, key: &str) -> bool where K: std::borrow::Borrow<str> { self.find(self.hash(key), key).is_some() }
+    pub fn get_text(&self, key: &str) -> Option<&V> where K: std::borrow::Borrow<str> {
+        let at = self.find(self.hash(key), key)?;
+        self.entry[self.table[at] as usize].as_ref().map(|e| &e.2)
+    }
+    pub fn remove_text(&mut self, key: &str) -> Option<V> where K: std::borrow::Borrow<str> {
+        let at = self.find(self.hash(key), key)?;
+        self.take_at(at)
+    }
     pub fn get(&self, key: &K) -> Option<&V> {
         let at = self.find(self.hash(key), key)?;
         self.entry[self.table[at] as usize].as_ref().map(|e| &e.2)
@@ -5026,15 +5188,19 @@ impl<K: std::hash::Hash + Eq + Clone, V> TermMap<K, V> {
         let i = match self.find(h, &key) { Some(at) => self.table[at] as usize, None => self.push(h, key, fallback) };
         &mut self.entry[i].as_mut().unwrap().2
     }
-    // the same through a borrowed key (a \`&str\` for a String key), made owned only when it is new: a key read out of a
-    // larger text costs nothing for an entry already there
-    pub fn upsert_ref<Q: std::hash::Hash + Eq + ToOwned<Owned = K> + ?Sized>(&mut self, key: &Q, fallback: V) -> &mut V where K: std::borrow::Borrow<Q> {
+    // the same through a borrowed key (a \`&str\` for a String key or a \`TermKey\`), made owned only when it is new: a
+    // key read out of a larger text costs nothing for an entry already there
+    pub fn upsert_ref<Q: std::hash::Hash + Eq + ?Sized>(&mut self, key: &Q, fallback: V) -> &mut V where K: std::borrow::Borrow<Q> + for<'a> From<&'a Q> {
         let h = self.hash(key);
-        let i = match self.find(h, key) { Some(at) => self.table[at] as usize, None => self.push(h, key.to_owned(), fallback) };
+        let i = match self.find(h, key) { Some(at) => self.table[at] as usize, None => self.push(h, K::from(key), fallback) };
         &mut self.entry[i].as_mut().unwrap().2
     }
     pub fn remove(&mut self, key: &K) -> Option<V> {
         let at = self.find(self.hash(key), key)?;
+        self.take_at(at)
+    }
+    // the entry at a table slot taken out, its slot a tomb
+    fn take_at(&mut self, at: usize) -> Option<V> {
         let i = self.table[at] as usize;
         self.table[at] = Self::TOMB;
         self.tombs += 1;
@@ -5507,7 +5673,50 @@ fn term_box_local_${name}(value: ${type}, spare: &mut Option<${holder}>) -> ${ho
     }`)
   }
 
-  return [...uses, ...termMap, ...carrier, ...budget, ...spawnHelpers, ...reuse, ...(body.length ? [assembled] : []), ...rustFormWalk(fillSpecs, meltSpecs), ...wake].join('\n\n') + '\n'
+  // the key of a map keyed by text where nothing can see a key as a value (`textKeysOf`)
+  const termKey = rustTextKeys
+    ? [
+        `// a map key that holds a text of up to 22 bytes in place and allocates only past that (rust.ts, \`textKeysOf\`).
+// It hashes, compares and prints as the \`str\` it holds, so a map of them means what a map of \`String\`s does
+#[derive(Clone)]
+pub enum TermKey { Inline(u8, [u8; 22]), Heap(Box<str>) }
+impl TermKey {
+    #[inline]
+    pub fn as_str(&self) -> &str {
+        match self {
+            // SAFETY: the bytes were copied whole from a \`str\`, and \`len\` of them are set
+            TermKey::Inline(len, bytes) => unsafe { std::str::from_utf8_unchecked(&bytes[..*len as usize]) },
+            TermKey::Heap(text) => text,
+        }
+    }
+}
+impl From<&str> for TermKey {
+    #[inline]
+    fn from(text: &str) -> Self {
+        if text.len() <= 22 {
+            let mut bytes = [0u8; 22];
+            bytes[..text.len()].copy_from_slice(text.as_bytes());
+            TermKey::Inline(text.len() as u8, bytes)
+        } else {
+            TermKey::Heap(text.into())
+        }
+    }
+}
+// a key built by formatting (\`TermKey::from(&(format!(..)))\`) is a \`&String\`, which trait lookup does not deref to a \`&str\`
+impl From<&String> for TermKey {
+    #[inline]
+    fn from(text: &String) -> Self { TermKey::from(text.as_str()) }
+}
+impl std::borrow::Borrow<str> for TermKey { fn borrow(&self) -> &str { self.as_str() } }
+impl PartialEq for TermKey { fn eq(&self, other: &Self) -> bool { self.as_str() == other.as_str() } }
+impl Eq for TermKey {}
+impl std::hash::Hash for TermKey { fn hash<H: std::hash::Hasher>(&self, state: &mut H) { self.as_str().hash(state) } }
+impl std::fmt::Display for TermKey { fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { std::fmt::Display::fmt(self.as_str(), f) } }
+impl std::fmt::Debug for TermKey { fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { std::fmt::Debug::fmt(self.as_str(), f) } }`,
+      ]
+    : []
+
+  return [...uses, ...termMap, ...termKey, ...carrier, ...budget, ...spawnHelpers, ...reuse, ...(body.length ? [assembled] : []), ...rustFormWalk(fillSpecs, meltSpecs), ...wake].join('\n\n') + '\n'
 }
 
 // how many asynchronous loops the last `emitRust` gave a budget check, and how many it left one out of because a

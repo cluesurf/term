@@ -28,23 +28,17 @@ form hmr-update
 form hmr-result
   mark tag, name type
   case update
-    link updates
-      like list
-        like hmr-update
+    link updates, like list, like hmr-update
   case full-reload
   # a recompile error: the running app keeps its last-good code and state, and the client shows an error overlay. No
   # reload, so the developer fixes the error without losing where they were. The next good build clears the overlay
   case error
-    link errors
-      like list
-        like text
+    link errors, like list, like text
 
 # how far one path of the walk got: whether it dead-ended, and the boundaries found so far
 form boundary-walk
   link dead, like boolean
-  link found
-    like list
-      like hmr-update
+  link found, like list, like hmr-update
 
 task make-hmr-update
   take boundary, like text
@@ -61,12 +55,8 @@ task make-hmr-update
 task walk-boundaries
   take graph, like module-graph
   take node, like module-node
-  take chain
-    like list
-      like text
-  take found
-    like list
-      like hmr-update
+  take chain, like list, like text
+  take found, like list, like hmr-update
   like boundary-walk
 
   save out, copy(found)
@@ -86,7 +76,7 @@ task walk-boundaries
           bind found, out
   walk node/importers
     take id
-    save importer, module-by-id(graph, id)
+    host importer, module-by-id(graph, id)
     # the importer explicitly accepts this dep: it is the boundary for this path
     fork test, contains(importer/accepted-hmr-deps, node/url)
       hold
@@ -99,9 +89,9 @@ task walk-boundaries
           make boundary-walk
             bind dead, true
             bind found, out
-    save longer, copy(chain)
+    host longer, copy(chain)
     push(longer, id)
-    save above, walk-boundaries(graph, importer, longer, out)
+    host above, walk-boundaries(graph, importer, longer, out)
     save out, above/found
     fork test, above/dead
       hold
@@ -126,13 +116,13 @@ task propagate-update
   fork test, has-module(graph, changed-id)
     miss
       back make full-reload
-  save changed, module-by-id(graph, changed-id)
+  host changed, module-by-id(graph, changed-id)
   fork test, changed/loaded
     miss
       back make full-reload
   save chain, make list
   push(chain, changed-id)
-  save walked, walk-boundaries(graph, changed, chain, make list)
+  host walked, walk-boundaries(graph, changed, chain, make list)
   fork test, walked/dead
     hold
       back make full-reload
@@ -142,14 +132,12 @@ task propagate-update
   save updates, make list
   walk walked/found
     take one
-    save key, <{one/boundary}\n{one/accepted}>
+    host key, <{one/boundary}\n{one/accepted}>
     fork test, has(seen, key)
       miss
         set(seen, key, true)
         push(updates, one)
-  back
-    make update
-      bind updates, updates
+  back make update, bind updates, updates
 
 # The modules to invalidate for a change: the changed module plus every module that transitively imports it. The dev
 # server clears each one's compiled output so the next request recompiles. The changed id first, then in the order
@@ -157,8 +145,7 @@ task propagate-update
 task affected-modules
   take graph, like module-graph
   take changed-id, like text
-  like list
-    like text
+  like list, like text
 
   save affected, make list
   fork test, has-module(graph, changed-id)
@@ -170,10 +157,9 @@ task affected-modules
   push(affected, changed-id)
   push(stack, changed-id)
   walk test
-    hook test
-      is-above(stack/length, 0)
+    hook test, is-above(stack/length, 0)
     hook hold
-      save node, module-by-id(graph, pop(stack))
+      host node, module-by-id(graph, pop(stack))
       walk node/importers
         take id
         fork test, has(seen, id)

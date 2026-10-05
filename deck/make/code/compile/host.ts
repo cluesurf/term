@@ -1030,6 +1030,8 @@ export function readStream(source: {
   const trees = new Map<string, DataTree>()
   const entries: DataEntry[] = []
   const items: Data[] = []
+  // each top-level key and the 0-based line that gave it
+  const keys = new Map<string, number>()
   let count = 0
 
   source.text.split('\n').forEach((line, index) => {
@@ -1091,6 +1093,26 @@ export function readStream(source: {
     }
 
     if (expanded.data.kind === 'hash') {
+      // a stream of `h(` lines is ONE map, so a key a later line gives again is a key given twice, refused at that
+      // line as a file refuses it. It was kept: the long form printed both, and JSON kept the last and dropped the
+      // first in silence (guides: commands/mold, 2026-10-04)
+      for (const entry of expanded.data.list) {
+        if (keys.has(entry.name)) {
+          diagnostics.push(
+            diagnose('syntax-error', {
+              file: source.file,
+              span,
+              message: `"${entry.name}" is given twice: line ${keys.get(entry.name)! + 1} gave it first`,
+              hint: 'a stream of "h(" lines is one map. Write each record as an "m(" item instead to keep them all',
+            }),
+          )
+
+          return
+        }
+
+        keys.set(entry.name, index)
+      }
+
       entries.push(...expanded.data.list)
     } else if (expanded.data.kind === 'list') {
       items.push(...expanded.data.list)

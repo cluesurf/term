@@ -3,7 +3,7 @@
 // reader to run, which is the only order a new user ever meets them in.
 import { describe, it, expect } from 'vitest'
 import { format } from '@term/make/code/format/format'
-import { BOOT_TREE, DECK_TREE } from '../../call/code/wake'
+import { BOOT_TREE, DECK_TREE } from '../../call/code/wake-text'
 import { manifestName } from '../../call/code/manifest-name'
 import { manifestSpellings, parseManifest, validateManifest, writeManifest } from '../code/manifest'
 import { bumpCode, showCode } from '../code/code'

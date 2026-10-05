@@ -27,58 +27,62 @@ function check(name: string, ok: boolean, detail = ''): void {
   }
 }
 
-// trit
+// trit. Term since 2026-10-04: its exact integer is the stdlib's `big-integer`, `{ dock: bigint }` on TypeScript
 {
+  const big = (value: bigint) => ({ dock: value })
   let roundtrip = true
 
   for (let v = -200; v <= 200; v++)
-    {if (fromTrits(toTrits(BigInt(v))) !== BigInt(v)) {roundtrip = false}}
+    {if (fromTrits(toTrits(big(BigInt(v)))).dock !== BigInt(v)) {roundtrip = false}}
 
   check('trit: balanced-ternary roundtrip -200..200', roundtrip)
   check(
     'trit: tritString(5) = "+--"',
-    tritString(5n) === '+--',
-    tritString(5n),
+    tritString(big(5n)) === '+--',
+    tritString(big(5n)),
   )
   check(
     'trit: fromTritString roundtrip',
-    fromTritString(tritString(1234n)) === 1234n,
+    fromTritString(tritString(big(1234n))).dock === 1234n,
   )
   check(
     'trit: negate flips sign (free negation)',
-    fromTrits(negateTrits(toTrits(42n))) === -42n,
+    fromTrits(negateTrits(toTrits(big(42n)))).dock === -42n,
   )
 }
 
-// integer (multi-resolution)
+// integer (multi-resolution). Term since 2026-10-04: `makeInteger` takes a big integer (`{ dock: bigint }`) and a
+// resolution, `''` for the smallest that fits, and the operations are `addTernary` and so on
 {
-  const a = I.integer(123),
-    b = I.integer(-45)
+  const integer = (value: bigint | number, resolution = '') =>
+    I.makeInteger({ dock: typeof value === 'bigint' ? value : BigInt(value) }, resolution)
+  const a = integer(123),
+    b = integer(-45)
 
-  check('integer: add', I.toNumber(I.add(a, b)) === 78)
-  check('integer: multiply', I.toNumber(I.multiply(a, b)) === -5535)
+  check('integer: add', I.toNumber(I.addTernary(a, b)) === 78)
+  check('integer: multiply', I.toNumber(I.multiplyTernary(a, b)) === -5535)
   check(
     'integer: divide/remainder',
-    I.toNumber(I.divide(a, I.integer(10))) === 12 &&
-      I.toNumber(I.remainder(a, I.integer(10))) === 3,
+    I.toNumber(I.divideTernary(a, integer(10))) === 12 &&
+      I.toNumber(I.remainderTernary(a, integer(10))) === 3,
   )
-  check('integer: small fits tri8', I.integer(50).resolution === 'tri8')
+  check('integer: small fits tri8', integer(50).resolution === 'tri8')
   check(
     'integer: large promotes to big',
-    I.add(I.integer(3n ** 39n), I.integer(3n ** 39n)).resolution ===
-      'big' || I.integer(3n ** 41n).resolution === 'big',
+    I.addTernary(integer(3n ** 39n), integer(3n ** 39n)).resolution ===
+      'big' || integer(3n ** 41n).resolution === 'big',
   )
   check(
     'integer: compare',
-    I.compare(a, b) === 1 &&
-      I.compare(b, a) === -1 &&
-      I.compare(a, a) === 0,
+    I.compareTernary(a, b) === 1 &&
+      I.compareTernary(b, a) === -1 &&
+      I.compareTernary(a, a) === 0,
   )
   check(
     'integer: fixed resolution overflow throws',
     (() => {
       try {
-        I.integer(10n ** 10n, 'tri8')
+        integer(10n ** 10n, 'tri8')
 
         return false
       } catch {
@@ -88,18 +92,19 @@ function check(name: string, ok: boolean, detail = ''): void {
   )
 }
 
-// boolean (Kleene three-valued)
+// boolean (Kleene three-valued). Term since 2026-10-04: the constants are tasks and the connectives `-ternary`
 {
+  const [TRUE, FALSE, UNKNOWN] = [B.makeTrue(), B.makeFalse(), B.makeUnknown()]
   check(
     'boolean: and/or/not',
-    B.and(B.TRUE, B.FALSE) === B.FALSE &&
-      B.or(B.TRUE, B.FALSE) === B.TRUE &&
-      B.not(B.TRUE) === B.FALSE,
+    B.andTernary(TRUE, FALSE) === FALSE &&
+      B.orTernary(TRUE, FALSE) === TRUE &&
+      B.notTernary(TRUE) === FALSE,
   )
   check(
     'boolean: unknown propagates',
-    B.and(B.TRUE, B.UNKNOWN) === B.UNKNOWN &&
-      B.or(B.TRUE, B.UNKNOWN) === B.TRUE,
+    B.andTernary(TRUE, UNKNOWN) === UNKNOWN &&
+      B.orTernary(TRUE, UNKNOWN) === TRUE,
   )
 }
 
@@ -110,12 +115,12 @@ function check(name: string, ok: boolean, detail = ''): void {
 
   check(
     'float: add ~ 4.75',
-    Math.abs(F.toNumber(F.add(x, y)) - 4.75) < 1e-6,
-    String(F.toNumber(F.add(x, y))),
+    Math.abs(F.toNumber(F.addTernary(x, y)) - 4.75) < 1e-6,
+    String(F.toNumber(F.addTernary(x, y))),
   )
   check(
     'float: multiply ~ 4.375',
-    Math.abs(F.toNumber(F.multiply(x, y)) - 4.375) < 1e-6,
+    Math.abs(F.toNumber(F.multiplyTernary(x, y)) - 4.375) < 1e-6,
   )
   check(
     'float: roundtrip',
@@ -170,27 +175,28 @@ function check(name: string, ok: boolean, detail = ''): void {
   )
 }
 
-// map (ternary trie)
+// map (ternary trie). Term since 2026-10-04: a map is a value, each write answering the new one, and `get` is
+// `lookup` with a fallback
 {
-  const m = M.makeMap<number>()
-  M.set(m, 'alpha', 1)
-  M.set(m, 'beta', 2)
-  M.set(m, 'gamma', 3)
+  let m = M.makeMap<number>()
+  m = M.set(m, 'alpha', 1)
+  m = M.set(m, 'beta', 2)
+  m = M.set(m, 'gamma', 3)
   check(
     'map: get/has',
-    M.get(m, 'beta') === 2 && M.has(m, 'gamma') && !M.has(m, 'delta'),
+    M.lookup(m, 'beta', -1) === 2 && M.has(m, 'gamma') && !M.has(m, 'delta'),
   )
   check(
     'map: overwrite keeps size',
     (() => {
-      M.set(m, 'beta', 20)
+      m = M.set(m, 'beta', 20)
 
-      return M.size(m) === 3 && M.get(m, 'beta') === 20
+      return M.size(m) === 3 && M.lookup(m, 'beta', -1) === 20
     })(),
   )
   check(
     'map: remove',
-    M.remove(m, 'alpha') && !M.has(m, 'alpha') && M.size(m) === 2,
+    M.has(m, 'alpha') && !M.has((m = M.remove(m, 'alpha')), 'alpha') && M.size(m) === 2,
   )
   check('map: keys', M.keys(m).sort().join(',') === 'beta,gamma')
 }

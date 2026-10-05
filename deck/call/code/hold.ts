@@ -393,6 +393,7 @@ export async function callHold(input: {
   let crossOk = true
 
   if (input.cross) {
+    const crossRoleOf = projectRoleOf(root)
     const result = holdIncremental({
       files,
       resolve: projectResolver(root, 'node', root),
@@ -403,12 +404,23 @@ export async function callHold(input: {
       version: compilerVersion(),
       cross: true,
       force: input.force,
+      // each file as the build reads it: a test file's `test` blocks rewritten, a grammar as its reader. Read as
+      // written, every test file failed on `test` and `want` as unknown names (guides: tests/backends, 2026-10-04)
+      read: file => {
+        const source = readFileSync(file, 'utf8')
+        const made = buildable(file, source, crossRoleOf(file))
+
+        return 'text' in made ? made.text : source
+      },
     })
 
     // a backend that disagrees is a ✗ item, the differential's own report quoted under it
     for (const outcome of result.outcomes) {
       if (!outcome.ok && outcome.report) {
-        report({ glyph: 'failed', kind: 'problem', verb: 'cross', subject: 'The backends disagree', quote: renderReport(outcome.report).split('\n') })
+        // say which it is: a file the checker refused never reached a backend to disagree
+        const subject = outcome.report.compiles ? 'The backends disagree' : `${path.relative(root, outcome.file)} does not compile`
+
+        report({ glyph: 'failed', kind: 'problem', verb: 'cross', subject, quote: renderReport(outcome.report).split('\n') })
       }
     }
 

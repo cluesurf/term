@@ -1,0 +1,303 @@
+# The array type, a persistent size-balanced TREE of values, not a flat buffer. Get / set / push / slice are O(log n)
+# with structural sharing, and the tree is the shape the hyperbolic substrate wants (a subtree of the splitting tree,
+# fan-out = the dock's direction count). Generic over the element type, so the engine uses `vector value`. Immutable:
+# every op returns a new vector, which the imperative engine rebinds.
+#
+# Ported from engine/data/array.ts (self-hosting, 2026-10-04). Immutable already, so nothing about it changes under
+# value semantics, and the union keeps the original's tag, `form`, which every Term union uses. The exported names are
+# the original's, so engine.ts, value.ts and backend/runtime.ts call it unchanged; the one private helper that shared a
+# name with a case, `branch`, is `join-halves`. `slice` takes its end: every caller passed one, and a default that reads
+# another parameter (`end = v.size`) has no spelling.
+
+load @term/base/list
+  find list
+
+# elements per leaf chunk
+host max-leaf, 32
+host rebalance-depth, 40
+
+form vector
+  head t
+  case leaf
+    link items, like list, like t
+    link size, like number
+  case branch
+    link left, like vector t
+    link right, like vector t
+    link size, like number
+    link depth, like number
+
+task empty
+  head t
+  like vector t
+
+  back
+    make leaf
+      bind items, make list
+      bind size, 0
+
+task from-array
+  head t
+  take items, like list, like t
+  like vector t
+
+  fork test, is-maximum(items/length, max-leaf)
+    hold
+      back
+        make leaf
+          bind items, copy(items)
+          bind size, items/length
+  host mid, divide(items/length, 2)
+  host left, from-array(items/slice(0, mid))
+  host right, from-array(items/slice(mid, items/length))
+  back join-halves(left, right)
+
+task depth-of
+  head t
+  take v, like vector t
+  like number
+
+  sift v
+    case leaf
+      back 0
+    case branch
+      back depth
+
+task join-halves
+  head t
+  take left, like vector t
+  take right, like vector t
+  like vector t
+
+  host a, depth-of(left)
+  host b, depth-of(right)
+  save deeper, a
+  fork test, is-above(b, a)
+    hold
+      save deeper, b
+  back
+    make branch
+      bind left, left
+      bind right, right
+      bind size, add(size(left), size(right))
+      bind depth, add(1, deeper)
+
+task size
+  head t
+  take v, like vector t
+  like number
+
+  back measure(v)
+
+# `size` under another name: inside a `sift` arm the field `size` is a local, which hides the task of that name
+task measure
+  head t
+  take v, like vector t
+  like number
+
+  sift v
+    case leaf
+      back size
+    case branch
+      back size
+
+task get
+  head t
+  take v, like vector t
+  take index, like number
+  like t
+
+  host count, size(v)
+  fork test, or(is-below(index, 0), is-minimum(index, count))
+    hold
+      halt <index {index} out of range (size {count})>
+  sift v
+    case leaf
+      back items/get(index)
+    case branch
+      host before, measure(left)
+      fork test, is-below(index, before)
+        hold
+          back get(left, index)
+      back get(right, subtract(index, before))
+
+task set
+  head t
+  take v, like vector t
+  take index, like number
+  take value, like t
+  like vector t
+
+  host count, size(v)
+  fork test, or(is-below(index, 0), is-minimum(index, count))
+    hold
+      halt <index {index} out of range (size {count})>
+  sift v
+    case leaf
+      host changed, copy(items)
+      changed/set(index, value)
+      back
+        make leaf
+          bind items, changed
+          bind size, count
+    case branch
+      host before, measure(left)
+      fork test, is-below(index, before)
+        hold
+          back join-halves(set(left, index, value), right)
+      back join-halves(left, set(right, subtract(index, before), value))
+
+task push
+  head t
+  take v, like vector t
+  take value, like t
+  like vector t
+
+  sift v
+    case leaf
+      fork test, is-below(items/length, max-leaf)
+        hold
+          host grown, copy(items)
+          grown/push(value)
+          back
+            make leaf
+              bind items, grown
+              bind size, add(size, 1)
+      save alone, make list
+      alone/push(value)
+      host tail
+        make leaf
+          bind items, alone
+          bind size, 1
+      back join-halves(v, tail)
+    case branch
+      host grown, join-halves(left, push(right, value))
+      fork test, is-above(depth-of(grown), rebalance-depth)
+        hold
+          back from-array(to-array(grown))
+      back grown
+
+# drop the last element, answering the shorter vector (the imperative pop, the value read separately with `get`)
+task pop
+  head t
+  take v, like vector t
+  like vector t
+
+  host count, size(v)
+  fork test, is-equal(count, 0)
+    hold
+      halt <pop on empty vector>
+  back slice(v, 0, subtract(count, 1))
+
+task slice
+  head t
+  take v, like vector t
+  take start, like number
+  take end, like number
+  like vector t
+
+  host count, size(v)
+  save s, start
+  fork test, is-below(s, 0)
+    hold
+      save s, 0
+  save e, end
+  fork test, is-above(e, count)
+    hold
+      save e, count
+  fork test, is-minimum(s, e)
+    hold
+      back empty()
+  sift v
+    case leaf
+      back
+        make leaf
+          bind items, items/slice(s, e)
+          bind size, subtract(e, s)
+    case branch
+      host before, measure(left)
+      fork test, is-maximum(e, before)
+        hold
+          back slice(left, s, e)
+      fork test, is-minimum(s, before)
+        hold
+          back slice(right, subtract(s, before), subtract(e, before))
+      back concat(slice(left, s, before), slice(right, 0, subtract(e, before)))
+
+task concat
+  head t
+  take a, like vector t
+  take b, like vector t
+  like vector t
+
+  fork test, is-equal(size(a), 0)
+    hold
+      back b
+  fork test, is-equal(size(b), 0)
+    hold
+      back a
+  host joined, join-halves(a, b)
+  fork test, is-above(depth-of(joined), rebalance-depth)
+    hold
+      back from-array(to-array(joined))
+  back joined
+
+task to-array
+  head t
+  take v, like vector t
+  like list, like t
+
+  save out, make list
+  save stack, make list
+  stack/push(v)
+  # left before right: a stack pops the last pushed, so the right half goes on first
+  walk test
+    hook test, is-above(stack/length, 0)
+    hook hold
+      host node, stack/pop()
+      sift node
+        case leaf
+          walk items
+            take x
+            out/push(x)
+        case branch
+          stack/push(right)
+          stack/push(left)
+  back out
+
+task map
+  head t
+  head u
+  take v, like vector t
+  take fn
+    like task
+      take value, like t
+      take index, like number
+      like u
+  like vector u
+
+  save out, make list
+  save at, 0
+  walk to-array(v)
+    take x
+    out/push(fn(x, at))
+    save at, add(at, 1)
+  back from-array(out)
+
+task reduce
+  head t
+  head a
+  take v, like vector t
+  take fn
+    like task
+      take acc, like a
+      take value, like t
+      like a
+  take initial, like a
+  like a
+
+  save acc, initial
+  walk to-array(v)
+    take x
+    save acc, fn(acc, x)
+  back acc

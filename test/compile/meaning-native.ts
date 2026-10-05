@@ -229,6 +229,10 @@ const INLINE_WANT = '7:11:10:-1:9:refused:-1:4:3:5'
 // rebuilt mirrored, one with a single case moved layer by layer between piles in a list, its boxes reused
 const PAYLOAD = readFileSync(join(import.meta.dirname, 'meaning-native/payload.tree'), 'utf8')
 const PAYLOAD_WANT = '66:1:66:3:30:-1:1234.:1.|32.|.'
+// a map keyed by text whose keys nothing reads back, each a `TermKey` on Rust (rust.ts, `textKeysOf`): counted, read,
+// tested, removed, written through a slot, a key past 22 bytes beside short ones, sized and summed
+const TEXT_KEYS = readFileSync(join(import.meta.dirname, 'meaning-native/text-keys.tree'), 'utf8')
+const TEXT_KEYS_WANT = '3:2:-1:true:true:false:7:3:12'
 const CURSOR = readFileSync(join(import.meta.dirname, 'meaning-native/cursor.tree'), 'utf8')
 const CURSOR_WANT =
   '6:757073106:çb😀€éa::-1:aé/aé€.é€/é€😀.€😀/€😀b.😀b/😀bç.bç/bç.ç/ç. 5:214865557:nialp::-1:pl/pla.la/lai.ai/ain.in/in.n/n. 6:757073106'
@@ -412,6 +416,7 @@ for (const backend of ['typescript', 'rust', 'swift', 'kotlin']) {
   run(backend, 'case-name', CASE_NAME, CASE_NAME_WANT)
   run(backend, 'inline', INLINE, INLINE_WANT)
   run(backend, 'payload', PAYLOAD, PAYLOAD_WANT)
+  run(backend, 'text-keys', TEXT_KEYS, TEXT_KEYS_WANT)
 }
 
 console.log(`\nmeaning-native: ${pass} pass, ${fail} fail, ${skip} skipped`)

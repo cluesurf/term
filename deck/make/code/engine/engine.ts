@@ -21,6 +21,7 @@ import {
   valuesEqual,
   keyOf,
   display,
+  bigOf,
 } from '@term/make/code/engine/value'
 import * as Int from '@term/make/code/engine/data/integer'
 import * as Flt from '@term/make/code/engine/data/float'
@@ -121,10 +122,10 @@ async function evaluate(
     }
 
     case 'map': {
-      const m = Mp.makeMap<Value>()
+      let m = Mp.makeMap<Value>()
 
       for (const { key, value } of expr.entries) {
-        Mp.set(m, `s:${key}`, await evaluate(value, scope))
+        m = Mp.set(m, `s:${key}`, await evaluate(value, scope))
       }
 
       return { form: 'map', value: m }
@@ -149,11 +150,11 @@ async function evaluate(
       }
 
       if (v.form === 'integer') {
-        return { form: 'integer', value: Int.negate(v.value) }
+        return { form: 'integer', value: Int.negateTernary(v.value) }
       }
 
       if (v.form === 'float') {
-        return { form: 'float', value: Flt.negate(v.value) }
+        return { form: 'float', value: Flt.negateTernary(v.value) }
       }
 
       throw new Error(`unary - on ${v.form}`)
@@ -257,26 +258,26 @@ export function binary(op: BinaryOp, a: Value, b: Value): Value {
   if (a.form === 'integer' && b.form === 'integer') {
     switch (op) {
       case '+':
-        return { form: 'integer', value: Int.add(a.value, b.value) }
+        return { form: 'integer', value: Int.addTernary(a.value, b.value) }
       case '-':
         return {
           form: 'integer',
-          value: Int.subtract(a.value, b.value),
+          value: Int.subtractTernary(a.value, b.value),
         }
       case '*':
         return {
           form: 'integer',
-          value: Int.multiply(a.value, b.value),
+          value: Int.multiplyTernary(a.value, b.value),
         }
       case '/':
-        return { form: 'integer', value: Int.divide(a.value, b.value) }
+        return { form: 'integer', value: Int.divideTernary(a.value, b.value) }
       case '%':
         return {
           form: 'integer',
-          value: Int.remainder(a.value, b.value),
+          value: Int.remainderTernary(a.value, b.value),
         }
       default:
-        return compareResult(op, Int.compare(a.value, b.value))
+        return compareResult(op, Int.compareTernary(a.value, b.value))
     }
   }
 
@@ -285,11 +286,11 @@ export function binary(op: BinaryOp, a: Value, b: Value): Value {
 
   switch (op) {
     case '+':
-      return { form: 'float', value: Flt.add(af, bf) }
+      return { form: 'float', value: Flt.addTernary(af, bf) }
     case '-':
-      return { form: 'float', value: Flt.subtract(af, bf) }
+      return { form: 'float', value: Flt.subtractTernary(af, bf) }
     case '*':
-      return { form: 'float', value: Flt.multiply(af, bf) }
+      return { form: 'float', value: Flt.multiplyTernary(af, bf) }
     case '/':
       return {
         form: 'float',
@@ -301,7 +302,7 @@ export function binary(op: BinaryOp, a: Value, b: Value): Value {
         value: Flt.fromNumber(Flt.toNumber(af) % Flt.toNumber(bf)),
       }
     default:
-      return compareResult(op, Flt.compare(af, bf))
+      return compareResult(op, Flt.compareTernary(af, bf))
   }
 }
 
@@ -311,7 +312,7 @@ function toFloat(v: Value): Flt.TernaryFloat {
   }
 
   if (v.form === 'integer') {
-    return Flt.fromNumber(Number(v.value.value))
+    return Flt.fromNumber(Number(bigOf(v.value)))
   }
 
   throw new Error(`expected a number, got ${v.form}`)
@@ -336,7 +337,7 @@ export function indexGet(target: Value, index: Value): Value {
   if (target.form === 'array') {
     return Arr.get(
       target.value,
-      Number((index as { value: { value: bigint } }).value.value),
+      Number(bigOf((index as { value: Parameters<typeof bigOf>[0] }).value)),
     )
   }
 
@@ -344,13 +345,13 @@ export function indexGet(target: Value, index: Value): Value {
     return string(
       Str.charAt(
         target.value,
-        Number((index as { value: { value: bigint } }).value.value),
+        Number(bigOf((index as { value: Parameters<typeof bigOf>[0] }).value)),
       ),
     )
   }
 
   if (target.form === 'map') {
-    return Mp.get(target.value, keyOf(index)) ?? UNIT
+    return Mp.lookup(target.value, keyOf(index), UNIT)
   }
 
   throw new Error(`cannot index a ${target.form}`)
@@ -372,7 +373,7 @@ export function memberGet(target: Value, name: string): Value {
   }
 
   if (target.form === 'map') {
-    return Mp.get(target.value, `s:${name}`) ?? UNIT
+    return Mp.lookup(target.value, `s:${name}`, UNIT)
   }
 
   throw new Error(`no member "${name}" on ${target.form}`)
@@ -605,7 +606,7 @@ async function assign(
 
     if (container.form === 'array') {
       const i = Number(
-        (index as { value: { value: bigint } }).value.value,
+        bigOf((index as { value: Parameters<typeof bigOf>[0] }).value),
       )
 
       const next = apply(
@@ -623,10 +624,10 @@ async function assign(
     if (container.form === 'map') {
       const k = keyOf(index)
       const next = apply(
-        stmt.op === '=' ? UNIT : (Mp.get(container.value, k) ?? UNIT),
+        stmt.op === '=' ? UNIT : Mp.lookup(container.value, k, UNIT),
       )
 
-      Mp.set(container.value, k, next)
+      container.value = Mp.set(container.value, k, next)
 
       return NORMAL
     }
@@ -646,11 +647,11 @@ async function assign(
     }
 
     const k = `s:${t.name}`
-    Mp.set(
+    container.value = Mp.set(
       container.value,
       k,
       apply(
-        stmt.op === '=' ? UNIT : (Mp.get(container.value, k) ?? UNIT),
+        stmt.op === '=' ? UNIT : Mp.lookup(container.value, k, UNIT),
       ),
     )
 
@@ -768,7 +769,7 @@ export function makeGlobalScope(extra?: Record<string, Value>): Scope {
     const v = a[0]!
 
     return v.form === 'integer'
-      ? { form: 'integer', value: Int.absolute(v.value) }
+      ? { form: 'integer', value: Int.absoluteTernary(v.value) }
       : float(Math.abs(numberOf(v)))
   })
   native('min', a => (compareValues(a[0]!, a[1]!) <= 0 ? a[0]! : a[1]!))
@@ -780,9 +781,9 @@ export function makeGlobalScope(extra?: Record<string, Value>): Scope {
     if (
       x.form === 'integer' &&
       y.form === 'integer' &&
-      y.value.value >= 0n
+      bigOf(y.value) >= 0n
     ) {
-      return integer(x.value.value ** y.value.value)
+      return integer(bigOf(x.value) ** bigOf(y.value))
     }
 
     return float(Math.pow(numberOf(x), numberOf(y)))
@@ -817,12 +818,14 @@ export function makeGlobalScope(extra?: Record<string, Value>): Scope {
     const s = numberOf(a[1]!)
     const e = a[2] ? numberOf(a[2]) : undefined
 
+    // an absent end is the whole length. The original data types defaulted it, and their Term ports take it always: an
+    // `undefined` reached them and made a leaf's size NaN (found by tsc, 2026-10-04)
     if (v.form === 'array') {
-      return { form: 'array', value: Arr.slice(v.value, s, e) }
+      return { form: 'array', value: Arr.slice(v.value, s, e ?? Arr.size(v.value)) }
     }
 
     if (v.form === 'string') {
-      return { form: 'string', value: Str.slice(v.value, s, e) }
+      return { form: 'string', value: Str.slice(v.value, s, e ?? Str.length(v.value)) }
     }
 
     throw new Error(`slice of ${v.form}`)
@@ -956,7 +959,7 @@ export function makeGlobalScope(extra?: Record<string, Value>): Scope {
       throw new Error('setKey needs a map')
     }
 
-    Mp.set(m.value, keyOf(a[1]!), a[2]!)
+    m.value = Mp.set(m.value, keyOf(a[1]!), a[2]!)
 
     return m
   })
@@ -967,7 +970,7 @@ export function makeGlobalScope(extra?: Record<string, Value>): Scope {
       throw new Error('del needs a map')
     }
 
-    Mp.remove(m.value, keyOf(a[1]!))
+    m.value = Mp.remove(m.value, keyOf(a[1]!))
 
     return m
   })
@@ -1017,7 +1020,7 @@ function indexLength(v: Value): Value {
 
 function numberOf(v: Value): number {
   if (v.form === 'integer') {
-    return Number(v.value.value)
+    return Number(bigOf(v.value))
   }
 
   if (v.form === 'float') {

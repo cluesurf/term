@@ -1,0 +1,246 @@
+# Baseline comparison and CI gating. Matches current results against a saved baseline by name, flags a run slower
+# than the threshold as a regression, and renders the verdict for the terminal and for a CI markdown comment.
+#
+# Ported from time/compare.ts (self-hosting, 2026-10-04). What changed shape, with call/code/time.ts, time/benchmark.ts
+# and test/time/run.ts:
+#   - a baseline result is a `side`: its mean, its spread as a `maybe` (a baseline written before 2026-10-04 has the mean
+#     alone), and its sample count, worked out where the saved JSON is read (time/output.ts `fromSaved`). The original
+#     read optional fields and counted `timings?.length || iterations || 0` at every comparison
+#   - an entry's Welch's t is a `maybe`, never an absent field, and its status is the text it always was
+#   - the arguments are positional: `compare-results(current, baseline)`, `should-fail(result, max-regression-pct)`,
+#     `format-comparison(result, summary)`, `format-markdown(result, platform)`
+#   - `buildHistoryEntry` stayed in TypeScript (time/output.ts): it is the history file's on-disk shape
+#   - a percentage is placed with the stdlib's `to-fixed`, as time/stats' durations are. It rounds the decimal a number
+#     prints as, half away from zero, and a change that rounds to zero prints `+0.0%`, never `-0.0%`
+
+load @term/base/float
+  find square-root
+  find to-decimal
+  find absolute
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text/number
+  find to-fixed
+
+load ./stats
+  find benchmark-result
+  find format-duration
+
+# percent change beyond which a difference is reported as a regression / improvement rather than noise
+host significant-percent, 5.0
+
+# Welch's t past this is a difference the two runs' own spread does not explain, about 95% for the sample counts a
+# benchmark takes. 5% alone read noise as change: an unchanged task was called faster six runs in a row (guides:
+# commands/time, 2026-10-04)
+host significant-t, 2.0
+
+# what one side of the comparison knows
+form side
+  link name, like text
+  link mean-ns, like decimal
+  # absent in a baseline written before 2026-10-04, which is compared by the 5% rule alone
+  link std-dev-ns, like maybe decimal
+  link samples, like number
+
+form comparison-entry
+  link name, like text
+  link baseline-ns, like decimal
+  link current-ns, like decimal
+  link pct, like decimal
+  # Welch's t, when both sides kept their spread
+  link t, like maybe decimal
+  # `faster`, `slower`, `same` or `new`
+  link status, like text
+
+form comparison
+  link entries, like list, like comparison-entry
+  link regressions, like number
+  link improvements, like number
+
+# a current result as one side of a comparison
+task side-of
+  take result, like benchmark-result
+  like side
+
+  save samples, result/timings-ns/length
+  fork test, is-equal(samples, 0)
+    hold
+      save samples, result/iterations
+  back
+    make side
+      bind name, result/name
+      bind mean-ns, result/mean-ns
+      bind std-dev-ns, make some(result/std-dev-ns)
+      bind samples, samples
+
+# Welch's t for two means, or none when either side lacks its spread
+task welch
+  take a, like side
+  take b, like side
+  like maybe decimal
+
+  save na, a/samples
+  save nb, b/samples
+  fork test, or(is-below(na, 2), is-below(nb, 2))
+    hold
+      back make none
+  sift a/std-dev-ns
+    case none
+      back make none
+    case some
+      link sa
+      sift b/std-dev-ns
+        case none
+          back make none
+        case some
+          link sb
+          save error, square-root(add(divide(multiply(sa, sa), to-decimal(na)), divide(multiply(sb, sb), to-decimal(nb))))
+          fork test, is-above(error, 0.0)
+            hold
+              back make some(divide(absolute(subtract(a/mean-ns, b/mean-ns)), error))
+          save zero, 0.0
+          back make some(divide(1.0, zero))
+
+task compare-results
+  take current, like list, like benchmark-result
+  take baseline, like list, like side
+  like comparison
+
+  # later entries of one name win, as a Map built from the list kept them
+  save by-name, make hash
+  walk baseline
+    take one
+    by-name/set(one/name, one)
+
+  save regressions, 0
+  save improvements, 0
+  save entries, make list
+  walk current
+    take r
+    fork test, by-name/has(r/name)
+      miss
+        save fresh
+          make comparison-entry
+            bind name, r/name
+            bind baseline-ns, 0.0
+            bind current-ns, r/mean-ns
+            bind pct, 0.0
+            bind t, make none
+            bind status, <new>
+        push(entries, fresh)
+        turn next
+    save before, by-name/get(r/name)
+    save base, before/mean-ns
+    save pct, 0.0
+    fork test, is-above(base, 0.0)
+      hold
+        save pct, multiply(divide(subtract(r/mean-ns, base), base), 100.0)
+    save t, welch(before, side-of(r))
+    # past 5%, and past the spread when both sides kept one
+    save real, true
+    sift t
+      case some
+        link value
+        save real, is-above(value, significant-t)
+      case none
+        save real, true
+    save status, <same>
+    fork test, and(is-above(pct, significant-percent), real)
+      hold
+        save status, <slower>
+        save regressions, add(regressions, 1)
+    fork test, and(is-below(pct, subtract(0.0, significant-percent)), real)
+      hold
+        save status, <faster>
+        save improvements, add(improvements, 1)
+    save entry
+      make comparison-entry
+        bind name, r/name
+        bind baseline-ns, base
+        bind current-ns, r/mean-ns
+        bind pct, pct
+        bind t, t
+        bind status, status
+    push(entries, entry)
+
+  back
+    make comparison
+      bind entries, entries
+      bind regressions, regressions
+      bind improvements, improvements
+
+task should-fail
+  take result, like comparison
+  take max-regression-pct, like decimal
+  like boolean
+
+  walk result/entries
+    take e
+    fork test, and(is-equal(e/status, <slower>), is-above(e/pct, max-regression-pct))
+      hold
+        back true
+  back false
+
+# the change as it is shown: `new`, or a signed percentage to one place
+task delta-of
+  take e, like comparison-entry
+  like text
+
+  fork test, is-equal(e/status, <new>)
+    hold
+      back <new>
+  save sign, <>
+  fork test, is-minimum(e/pct, 0.0)
+    hold
+      save sign, <+>
+  back <{sign}{to-fixed(e/pct, 1)}%>
+
+task mark-of
+  take status, like text
+  like text
+
+  fork test, is-equal(status, <faster>)
+    hold
+      back <↓>
+  fork test, is-equal(status, <slower>)
+    hold
+      back <↑>
+  fork test, is-equal(status, <same>)
+    hold
+      back <=>
+  back <+>
+
+# `summary` false leaves out the closing count line, for a caller that puts the counts on its own closing item
+task format-comparison
+  take result, like comparison
+  take summary, like boolean, fall true
+  like text
+
+  save lines, make list
+  walk result/entries
+    take e
+    push(lines, <  {mark-of(e/status)} {e/name}: {format-duration(e/current-ns)} ({delta-of(e)})>)
+  fork test, summary
+    hold
+      push(lines, <>)
+      push(lines, <  {result/improvements} improvement(s), {result/regressions} regression(s)>)
+  back join(lines, <\n>)
+
+task format-markdown
+  take result, like comparison
+  take platform, like text
+  like text
+
+  save lines, make list
+  push(lines, <### Benchmark results ({platform})>)
+  push(lines, <>)
+  push(lines, <| benchmark | mean | change | status |>)
+  push(lines, <| --- | --- | --- | --- |>)
+  walk result/entries
+    take e
+    push(lines, <| {e/name} | {format-duration(e/current-ns)} | {delta-of(e)} | {e/status} |>)
+  push(lines, <>)
+  push(lines, <{result/improvements} improvement(s), {result/regressions} regression(s)>)
+  back join(lines, <\n>)

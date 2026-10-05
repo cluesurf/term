@@ -1,10 +1,8 @@
-// Reporting for benchmark results: a suite wrapper (with environment stamp), a JSON form for baselines, and a text
-// table for the terminal. Pure except for reading the host platform/version when stamping a suite.
+// Reporting for benchmark results: a suite wrapper (with environment stamp) and the JSON form a baseline and the
+// history are saved in. The host half of reporting: the text table is Term, time/table.tree (2026-10-04).
 
-import {
-  type BenchmarkResult,
-  formatDuration,
-} from '@term/make/code/time/stats'
+import type { BenchmarkResult } from '@term/make/code/time/stats'
+import type { Side } from '@term/make/code/time/compare'
 
 export type Suite = {
   results: BenchmarkResult[]
@@ -20,51 +18,62 @@ export function buildSuite(results: BenchmarkResult[]): Suite {
   }
 }
 
-export function formatJson(suite: Suite): string {
-  return JSON.stringify(suite, null, 2)
+// A result as the saved baseline and `term time --json` spell it: snake_case keys, an on-disk format older than the
+// port of time/stats (2026-10-04), whose fields are camelCase in memory as every Term field is on TypeScript
+export type SavedResult = {
+  name: string
+  iterations: number
+  mean_ns: number
+  median_ns: number
+  std_dev_ns: number
+  min_ns: number
+  max_ns: number
+  ops_per_sec: number
+  cv: number
+  timings_ns: number[]
 }
 
-function pad(text: string, width: number): string {
-  return text.length >= width
-    ? text
-    : text + ' '.repeat(width - text.length)
-}
-
-function padLeft(text: string, width: number): string {
-  return text.length >= width
-    ? text
-    : ' '.repeat(width - text.length) + text
-}
-
-export function formatTable(results: BenchmarkResult[]): string {
-  const rows = results.map(r => ({
+export function toSaved(r: BenchmarkResult): SavedResult {
+  return {
     name: r.name,
-    mean: formatDuration(r.mean_ns),
-    median: formatDuration(r.median_ns),
-    ops: Math.round(r.ops_per_sec).toLocaleString(),
-    cv: `${(r.cv * 100).toFixed(1)}%`,
-  }))
+    iterations: r.iterations,
+    mean_ns: r.meanNs,
+    median_ns: r.medianNs,
+    std_dev_ns: r.stdDevNs,
+    min_ns: r.minNs,
+    max_ns: r.maxNs,
+    ops_per_sec: r.opsPerSec,
+    cv: r.cv,
+    timings_ns: r.timingsNs,
+  }
+}
 
-  const nameWidth = Math.max(9, ...rows.map(r => r.name.length))
-  const header = `  ${pad('benchmark', nameWidth)}  ${padLeft(
-    'mean',
-    10,
-  )}  ${padLeft('median', 10)}  ${padLeft('ops/sec', 14)}  ${padLeft(
-    'cv',
-    7,
-  )}`
+// one saved result read back as one side of a comparison (time/compare's `side`). A baseline written before
+// 2026-10-04, or a history entry, has the mean alone: its spread is `none`, and it is compared by the 5% rule alone
+export function fromSaved(raw: { name: string; mean_ns: number; std_dev_ns?: number; timings_ns?: number[]; iterations?: number }): Side {
+  return {
+    name: raw.name,
+    meanNs: raw.mean_ns,
+    stdDevNs: raw.std_dev_ns !== undefined ? { form: 'some', value: raw.std_dev_ns } : { form: 'none' },
+    samples: raw.timings_ns?.length || raw.iterations || 0,
+  }
+}
 
-  const line = `  ${'-'.repeat(nameWidth)}  ${'-'.repeat(
-    10,
-  )}  ${'-'.repeat(10)}  ${'-'.repeat(14)}  ${'-'.repeat(7)}`
+// a run as the history file keeps it, one mean per benchmark, snake_case like the baseline. It was time/compare's,
+// and stayed TypeScript when that was ported: it is an on-disk shape
+export function buildHistoryEntry(input: { suite: Suite }): {
+  timestamp: string
+  benchmarks: { name: string; mean_ns: number }[]
+} {
+  return {
+    timestamp: input.suite.timestamp,
+    benchmarks: input.suite.results.map(r => ({
+      name: r.name,
+      mean_ns: r.meanNs,
+    })),
+  }
+}
 
-  const body = rows.map(
-    r =>
-      `  ${pad(r.name, nameWidth)}  ${padLeft(r.mean, 10)}  ${padLeft(
-        r.median,
-        10,
-      )}  ${padLeft(r.ops, 14)}  ${padLeft(r.cv, 7)}`,
-  )
-
-  return [header, line, ...body].join('\n')
+export function formatJson(suite: Suite): string {
+  return JSON.stringify({ ...suite, results: suite.results.map(toSaved) }, null, 2)
 }

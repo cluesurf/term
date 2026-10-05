@@ -13,10 +13,11 @@ import {
   compareResults,
   shouldFail,
 } from '@term/make/code/time/compare'
-import type { Comparison } from '@term/make/code/time/compare'
+import type { Comparison, Side } from '@term/make/code/time/compare'
 
-// a saved baseline is the JSON `results` array of a prior suite, narrowed to the fields the comparison reads
-export type Baseline = { results: { name: string; mean_ns: number }[] }
+// a saved baseline is the JSON `results` array of a prior suite, each read back as one side of a comparison
+// (time/output.ts `fromSaved`)
+export type Baseline = { results: Side[] }
 
 export type BenchmarkRun = {
   suite: Suite
@@ -55,15 +56,8 @@ export async function benchmark(input: {
     return { suite, regressed: false }
   }
 
-  const comparison = compareResults({
-    current: results,
-    baseline: input.baseline,
-  })
-
-  const regressed = shouldFail({
-    result: comparison,
-    maxRegressionPct: input.maxRegressionPct ?? 10,
-  })
+  const comparison = compareResults(results, input.baseline.results)
+  const regressed = shouldFail(comparison, input.maxRegressionPct ?? 10)
 
   return { suite, comparison, regressed }
 }

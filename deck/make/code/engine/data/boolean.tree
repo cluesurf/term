@@ -1,0 +1,108 @@
+# The boolean type. A trit gives a natural THREE-valued logic for free: -1 false, 0 unknown, +1 true (balanced Kleene,
+# strong three-valued logic). The "unknown" is the don't-care of associative search and the empty cell. Ordinary
+# two-valued boolean is the {-1, +1} subset. One trit, one cell, so a 24-cell dock holds 24 booleans.
+#
+# Ported from engine/data/boolean.ts (self-hosting, 2026-10-04). A three-valued boolean is a `number` (-1, 0, +1): a
+# closed set of numbers has no spelling until D9. The connectives are `not-ternary`, `and-ternary`, `or-ternary`,
+# `implies-ternary` and `xor-ternary`, as engine/data/integer's operations are, because `not`, `and` and `or` are Term's
+# own operators. The exported constants `FALSE`, `UNKNOWN` and `TRUE` are the tasks `make-false`, `make-unknown` and
+# `make-true`, since a `host` is private to its module.
+
+task make-false
+  like number
+
+  back -1
+
+task make-unknown
+  like number
+
+  back 0
+
+task make-true
+  like number
+
+  back 1
+
+task from-boolean
+  take value, like boolean
+  like number
+
+  fork test, value
+    hold
+      back 1
+  back -1
+
+# to a definite boolean (unknown counts as false, the conservative read)
+task to-boolean
+  take value, like number
+  like boolean
+
+  back is-equal(value, 1)
+
+# strong Kleene three-valued connectives: and is the minimum, or the maximum, not the negation
+task not-ternary
+  take a, like number
+  like number
+
+  back subtract(0, a)
+
+task and-ternary
+  take a, like number
+  take b, like number
+  like number
+
+  fork test, is-below(b, a)
+    hold
+      back b
+  back a
+
+task or-ternary
+  take a, like number
+  take b, like number
+  like number
+
+  fork test, is-above(b, a)
+    hold
+      back b
+  back a
+
+# material implication a -> b = (not a) or b, in three-valued logic
+task implies-ternary
+  take a, like number
+  take b, like number
+  like number
+
+  back or-ternary(not-ternary(a), b)
+
+# exclusive or: true when exactly one side is true and neither is unknown, unknown when either is
+task xor-ternary
+  take a, like number
+  take b, like number
+  like number
+
+  fork test, or(is-equal(a, 0), is-equal(b, 0))
+    hold
+      back 0
+  fork test, is-equal(a, b)
+    hold
+      back -1
+  back 1
+
+# whether the value is definite (not unknown)
+task is-definite
+  take a, like number
+  like boolean
+
+  back is-unequal(a, 0)
+
+task to-string
+  take a, like number
+  like text
+
+  fork test, is-equal(a, 1)
+    hold
+      back <true>
+  fork test, is-equal(a, -1)
+    hold
+      back <false>
+  back <unknown>

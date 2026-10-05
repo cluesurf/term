@@ -3,6 +3,7 @@ note <Integration test for the file module: write a real file and read it back, 
 load @term/base/code/file
   find write
   find read
+  find exists
 
 test <a file round-trips its contents>
   call write
@@ -27,3 +28,21 @@ test <a second write overwrites the first>
         text </tmp/seed-test-roundtrip.txt>
         wait true
       text <second>
+
+test <exists answers true for a file written, and for a directory>
+  call write
+    text </tmp/seed-test-exists.txt>
+    text <here>
+  want hold
+    call exists
+      text </tmp/seed-test-exists.txt>
+  want hold
+    call exists
+      text </tmp>
+
+test <exists answers false for a path nothing made>
+  want hold
+    call is-equal
+      call exists
+        text </tmp/seed-test-nothing-made-here.txt>
+      false

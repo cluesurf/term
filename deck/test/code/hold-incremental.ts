@@ -43,6 +43,8 @@ export function holdIncremental(input: {
   cross?: boolean
   // ignore the cache and re-check everything (still records fresh verdicts)
   force?: boolean
+  // the text the build compiles for a file, when that is not the file as written (see `proveFile`)
+  read?: (file: string) => string
 }): IncrementalResult {
   const { files, resolve, cache, version } = input
   const cross = input.cross ?? true
@@ -52,7 +54,7 @@ export function holdIncremental(input: {
   let cached = 0
 
   for (const file of files) {
-    const source = readFileSync(file, 'utf8')
+    const source = input.read ? input.read(file) : readFileSync(file, 'utf8')
 
     // fold every loaded module's text into the key so a dependency edit invalidates this file's verdict
     let deps: string[] = []
@@ -72,7 +74,7 @@ export function holdIncremental(input: {
       }
     }
 
-    const report = proveFile({ file, resolve, cross })
+    const report = proveFile({ file, resolve, cross, text: source })
     const verdict: Verdict = { ok: report.ok, label: file, backends: report.backends }
     cache.set(key, verdict)
     checked++

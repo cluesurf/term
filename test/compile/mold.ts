@@ -104,7 +104,8 @@ ok('mold --json turns a kebab key snake', run.code === 0 && run.out === '{"retry
 run = term(['look', at('basic.tree')])
 ok(
   'look lists the keys of a data file',
-  run.code === 0 && run.out.includes('x/y/z') && run.out.includes('13 keys'),
+  // the keys are the data, on stdout; the count is the closing item's, on stderr
+  run.code === 0 && run.out.includes('x/y/z') && run.err.includes('13 keys'),
   run.out + run.err,
 )
 

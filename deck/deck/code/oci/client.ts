@@ -54,14 +54,20 @@ export type OciRoute = {
   repository: OciRepository
   // the scope the registry was chosen by, which the namespace's key set governs
   scope: string
-  // `<namespace>/keys`: where the scope's key set lives
+  // `<namespace>/name`: where the scope's key set lives
   keysRepository: string
 }
 
 // The repository below every namespace that holds the scope's key set, so no package may be called this. It sits
 // BELOW the namespace rather than at it because GHCR, like most registries, has no repository at the bare owner:
-// `ghcr.io/alice` is not a repository, and `ghcr.io/alice/keys` is.
-export const KEYS_REPOSITORY = 'keys'
+// `ghcr.io/alice` is not a repository, and `ghcr.io/alice/name` is.
+//
+// `name`, not `keys`, since 2026-10-04: the key set is what says who may publish under the scope's NAME, and that is
+// what a person browsing `ghcr.io/cluesurf/term/` should read it as. The mesh index reads the same repository
+// (`KEYS_REPOSITORY` in mesh/deck/back/code/resource/package/oci.ts), and the two must change together. The tag inside
+// it is still `keys` (`KEYS_TAG`), and its media types are still `...term.keys.v1`: those are wire formats a key set
+// is signed under, not a name anybody browses.
+export const KEYS_REPOSITORY = 'name'
 
 /**
  * The OCI route of a package under a fetch config, or undefined when it is not on an `oci://` registry. The scope

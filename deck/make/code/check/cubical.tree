@@ -1,0 +1,473 @@
+# A primitive INTERVAL and PATH reduction engine, the computational core of the cubical layer that makes a higher
+# inductive type's PATH constructor COMPUTE (its eliminator's path beta-rule holds definitionally, not just
+# propositionally). This is what the pre-cubical circle (`circle.ts`) was missing.
+#
+# The interval `I` has two endpoints `i0`, `i1` and interval variables. A PATH in `A` from `a` to `b` is an interval
+# abstraction `<i> t` (a term `t` with one free interval variable) whose endpoints are `t[i := i0] = a` and
+# `t[i := i1] = b`. The CIRCLE has a point `base` and a path `loop : base = base`; `loop @ r` is the point of the loop at
+# interval coordinate `r`, with `loop @ i0 = loop @ i1 = base`. The recursion principle `circ-rec(b, l)` (mapping out by
+# a point `b` and a target loop `l`) computes BOTH betas:
+#   - on the point:  circ-rec(b, l) (base)       = b
+#   - on the loop:   circ-rec(b, l) (loop @ r)    = l @ r
+# so the action on the loop, `ap (circ-rec(b, l)) loop = <i> circ-rec(b, l) (loop @ i) = <i> (l @ i) = l` (the last step
+# is path eta), reduces DEFINITIONALLY to the target loop `l`. That equation is the whole point of the cubical layer.
+#
+# The reductions form a confluent, terminating rewrite system for this fragment, so `normalize` decides definitional
+# equality on it. Everything is exact and structural.
+#
+# Ported from check/cubical.ts (self-hosting, 2026-10-04). First-order de Bruijn terms, unlike check/kernel's binders as
+# closures, so it ports as written. Both unions keep their tag, `t`. Shapes that changed, with test/check/cubical.ts:
+#   - the term is `cubical-term` (`term` is the language's name), and the camelCase tags are kebab, as every Term case
+#     name is: `loop-at` and `circ-rec` (the original's `loopAt`, `circRec`)
+#   - the exported constants and builders are tasks: `make-base`, `make-loop`, `make-constant` (`cst`), `make-circ-rec`
+#     (`circRec`), `make-refl-path` (`reflPath`)
+
+form interval
+  mark tag, name t
+  case i0
+  case i1
+  # de Bruijn index of an interval variable
+  case ivar
+    link index, like number
+
+# point variables and interval variables have separate de Bruijn scopes
+form cubical-term
+  mark tag, name t
+  # an ordinary (point) variable
+  case pvar
+    link index, like number
+  # the circle's point constructor
+  case base
+  # the loop's point at an interval coordinate: loop @ r
+  case loop-at
+    link at, like interval
+  case app
+    link fun, like cubical-term
+    link arg, like cubical-term
+  # the circle recursor circ-rec(b, l) : circle -> A
+  case circ-rec
+    link point, like cubical-term
+    link loop, like cubical-term
+  # a path abstraction <i> body (binds one interval variable)
+  case plam
+    link body, like cubical-term
+  # path application: p @ r
+  case papp
+    link path, like cubical-term
+    link at, like interval
+  # the circle's path constructor as a first-class path
+  case loop
+  # a free constant (an opaque point or path, for building examples and distinct targets)
+  case const
+    link name, like text
+
+task make-ivar
+  take index, like number
+  like interval
+
+  back
+    make ivar
+      bind index, index
+
+# ---- interval substitution ----
+
+task subst-interval
+  take r, like interval
+  take image, like interval
+  take depth, like number
+  like interval
+
+  sift r
+    case i0
+      back r
+    case i1
+      back r
+    case ivar
+      fork test, is-equal(index, depth)
+        hold
+          back image
+      fork test, is-above(index, depth)
+        hold
+          back make-ivar(subtract(index, 1))
+      back make-ivar(index)
+
+task shift-interval
+  take r, like interval
+  like interval
+
+  sift r
+    case i0
+      back r
+    case i1
+      back r
+    case ivar
+      back make-ivar(add(index, 1))
+
+# replace interval variable `depth` (the one bound by the nearest `plam`) with `image` throughout a term, lowering the
+# indices of interval variables above it. Point binders do not affect interval scope
+task subst-interval-in
+  take term, like cubical-term
+  take image, like interval
+  take depth, like number
+  like cubical-term
+
+  sift term
+    case pvar
+      back term
+    case base
+      back term
+    case loop
+      back term
+    case const
+      back term
+    case loop-at
+      back
+        make loop-at
+          bind at, subst-interval(at, image, depth)
+    case app
+      back
+        make app
+          bind fun, subst-interval-in(fun, image, depth)
+          bind arg, subst-interval-in(arg, image, depth)
+    case circ-rec
+      back
+        make circ-rec
+          bind point, subst-interval-in(point, image, depth)
+          bind loop, subst-interval-in(loop, image, depth)
+    # under a new interval binder: shift the image's free interval variables up by one and go one deeper
+    case plam
+      back
+        make plam
+          bind body, subst-interval-in(body, shift-interval(image), add(depth, 1))
+    case papp
+      back
+        make papp
+          bind path, subst-interval-in(path, image, depth)
+          bind at, subst-interval(at, image, depth)
+
+task is-ivar-at
+  take r, like interval
+  take depth, like number
+  like boolean
+
+  sift r
+    case i0
+      back false
+    case i1
+      back false
+    case ivar
+      back is-equal(index, depth)
+
+task is-endpoint
+  take r, like interval
+  like boolean
+
+  sift r
+    case i0
+      back true
+    case i1
+      back true
+    case ivar
+      back false
+
+# does `term` reference the interval variable at `depth` (used for the path-eta check)
+task mentions-interval
+  take term, like cubical-term
+  take depth, like number
+  like boolean
+
+  sift term
+    case pvar
+      back false
+    case base
+      back false
+    case loop
+      back false
+    case const
+      back false
+    case loop-at
+      back is-ivar-at(at, depth)
+    case app
+      back or(mentions-interval(fun, depth), mentions-interval(arg, depth))
+    case circ-rec
+      back or(mentions-interval(point, depth), mentions-interval(loop, depth))
+    case plam
+      back mentions-interval(body, add(depth, 1))
+    case papp
+      back or(mentions-interval(path, depth), is-ivar-at(at, depth))
+
+# lower every free interval variable by one (after a path-eta strips a binder). The image is never used, since `depth`
+# is not mentioned; this only relabels
+task lower-interval
+  take term, like cubical-term
+  take depth, like number
+  like cubical-term
+
+  # saved first: a multi-word part (`make i0`) cannot be followed by a comma
+  save endpoint, make i0
+  back subst-interval-in(term, endpoint, depth)
+
+# ---- normalization (the reduction rules) ----
+
+task normalize
+  take term, like cubical-term
+  like cubical-term
+
+  sift term
+    case pvar
+      back term
+    case base
+      back term
+    case loop
+      back term
+    case const
+      back term
+    # loop @ i0 = base, loop @ i1 = base (the loop's endpoints are both the base point)
+    case loop-at
+      fork test, is-endpoint(at)
+        hold
+          back make base
+      back term
+    case circ-rec
+      back
+        make circ-rec
+          bind point, normalize(point)
+          bind loop, normalize(loop)
+    case app
+      save f, normalize(fun)
+      save a, normalize(arg)
+      back reduce-app(f, a)
+    case plam
+      save inside, normalize(body)
+      back reduce-plam(inside)
+    case papp
+      save p, normalize(path)
+      back reduce-papp(p, at)
+
+# an application of normal forms: the circle recursor's beta-rules, else the application as it is
+task reduce-app
+  take f, like cubical-term
+  take a, like cubical-term
+  like cubical-term
+
+  save kept
+    make app
+      bind fun, f
+      bind arg, a
+  sift f
+    case circ-rec
+      sift a
+        # circ-rec(b, l) base = b
+        case base
+          back point
+        # circ-rec(b, l) (loop @ r) = l @ r, the PATH beta-rule
+        case loop-at
+          back
+            normalize
+              make papp
+                bind path, loop
+                bind at, at
+        case pvar
+          back kept
+        case app
+          back kept
+        case circ-rec
+          back kept
+        case plam
+          back kept
+        case papp
+          back kept
+        case loop
+          back kept
+        case const
+          back kept
+    case pvar
+      back kept
+    case base
+      back kept
+    case loop-at
+      back kept
+    case app
+      back kept
+    case plam
+      back kept
+    case papp
+      back kept
+    case loop
+      back kept
+    case const
+      back kept
+
+# a path abstraction of a normal body: path eta, else the abstraction as it is
+task reduce-plam
+  take inside, like cubical-term
+  like cubical-term
+
+  save kept
+    make plam
+      bind body, inside
+  sift inside
+    # <i> (p @ i) = p, when p does not mention i
+    case papp
+      fork test, and(is-ivar-at(at, 0), is-equal(mentions-interval(path, 0), false))
+        hold
+          back normalize(lower-interval(path, 0))
+      back kept
+    # the loop's point at an interval coordinate is stored as `loop @ i` (loop-at): `<i> loop@i` is exactly the loop
+    case loop-at
+      fork test, is-ivar-at(at, 0)
+        hold
+          back make loop
+      back kept
+    case pvar
+      back kept
+    case base
+      back kept
+    case app
+      back kept
+    case circ-rec
+      back kept
+    case plam
+      back kept
+    case loop
+      back kept
+    case const
+      back kept
+
+# a path application of a normal path: path beta, the loop's point, else the application as it is
+task reduce-papp
+  take p, like cubical-term
+  take r, like interval
+  like cubical-term
+
+  save kept
+    make papp
+      bind path, p
+      bind at, r
+  sift p
+    # (<i> body) @ r = body[i := r]
+    case plam
+      back normalize(subst-interval-in(body, r, 0))
+    # loop @ r: the loop's point (an endpoint is base, by loop-at)
+    case loop
+      back
+        normalize
+          make loop-at
+            bind at, r
+    case pvar
+      back kept
+    case base
+      back kept
+    case loop-at
+      back kept
+    case app
+      back kept
+    case circ-rec
+      back kept
+    case papp
+      back kept
+    case const
+      back kept
+
+# the ACTION ON PATHS (ap / cong) of a function `f` on a path `p`: `ap f p = <i> f (p @ i)`. For the circle recursor and
+# the loop this reduces, by the rules above, to the recursor's target loop. The recursor and the loop are
+# interval-CLOSED, so passing them under the new binder needs no shifting (a general implementation would shift)
+task ap
+  take fun, like cubical-term
+  take path, like cubical-term
+  like cubical-term
+
+  back
+    normalize
+      make plam
+        bind body
+          make app
+            bind fun, fun
+            bind arg
+              make papp
+                bind path, path
+                bind at, make-ivar(0)
+
+# structural equality of normal forms (definitional equality, since `normalize` is a decision procedure here). A task
+# of this name took the kernel's own equality, which `is-equal` lowers to, until check/elaborate.ts kept them apart
+# (test/check/builtin-name.ts, 2026-10-04)
+task equal
+  take a, like cubical-term
+  take b, like cubical-term
+  like boolean
+
+  back is-equal(term-key(normalize(a)), term-key(normalize(b)))
+
+task interval-key
+  take r, like interval
+  like text
+
+  sift r
+    case i0
+      back <i0>
+    case i1
+      back <i1>
+    case ivar
+      back <iv{index}>
+
+task term-key
+  take term, like cubical-term
+  like text
+
+  sift term
+    case pvar
+      back <pv{index}>
+    case base
+      back <base>
+    case loop
+      back <loop>
+    case const
+      back <c:{name}>
+    case loop-at
+      back <loopAt({interval-key(at)})>
+    case app
+      back <app({term-key(fun)},{term-key(arg)})>
+    case circ-rec
+      back <circRec({term-key(point)},{term-key(loop)})>
+    case plam
+      back <plam({term-key(body)})>
+    case papp
+      back <papp({term-key(path)},{interval-key(at)})>
+
+# ---- builders ----
+
+task make-base
+  like cubical-term
+
+  back make base
+
+task make-loop
+  like cubical-term
+
+  back make loop
+
+task make-constant
+  take name, like text
+  like cubical-term
+
+  back
+    make const
+      bind name, name
+
+task make-circ-rec
+  take point, like cubical-term
+  take loop-image, like cubical-term
+  like cubical-term
+
+  back
+    make circ-rec
+      bind point, point
+      bind loop, loop-image
+
+task make-refl-path
+  take point, like cubical-term
+  like cubical-term
+
+  back
+    make plam
+      bind body, point

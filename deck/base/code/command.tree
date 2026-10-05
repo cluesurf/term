@@ -200,13 +200,16 @@ task flag-at
       code 0
       code 1
 
-# the errors a value gives for its flag: a number that does not read, a choice outside the list
+# the errors a value gives for its flag, added to `errors` and sent back: a number that does not read, a choice outside
+# the list. Sent back rather than pushed onto the caller's list, which a list as a value never shows the caller (D1)
 task flag-value-errors
   take each, like command-flag
   take value, like text
   take errors
     like list
       like text
+  like list
+    like text
   fork test
     hook test
       call and
@@ -236,6 +239,7 @@ task flag-value-errors
     hook hold
       call errors/push
         text <--{{each/name}} is one of the listed choices, not "{{value}}">
+  send back, read errors
 
 # the words a program was given, read against its schema
 task parse
@@ -404,10 +408,11 @@ task parse
                             hook test
                               read has-inline
                             hook hold
-                              call flag-value-errors
-                                read each
-                                read inline
-                                read errors
+                              save errors
+                                call flag-value-errors
+                                  read each
+                                  read inline
+                                  read errors
                               call flags/set
                                 read each/name
                                 read inline
@@ -426,10 +431,11 @@ task parse
                                     call add
                                       read i
                                       code 1
-                                  call flag-value-errors
-                                    read each
-                                    read value
-                                    read errors
+                                  save errors
+                                    call flag-value-errors
+                                      read each
+                                      read value
+                                      read errors
                                   call flags/set
                                     read each/name
                                     read value
@@ -517,10 +523,11 @@ task parse
                                     call add
                                       read i
                                       code 1
-                                  call flag-value-errors
-                                    read each
-                                    read value
-                                    read errors
+                                  save errors
+                                    call flag-value-errors
+                                      read each
+                                      read value
+                                      read errors
                                   call flags/set
                                     read each/name
                                     read value
