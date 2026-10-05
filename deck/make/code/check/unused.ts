@@ -34,6 +34,13 @@ function collectReads(expr: Expression, read: Set<string>): void {
       break
     case 'member':
       collectReads(expr.target, read)
+
+      // `xs/{at}` reads `at` too: the index was skipped, and a binding used only there was warned as never used
+      // (guides: proofs, 2026-10-05)
+      if (expr.index) {
+        collectReads(expr.index, read)
+      }
+
       break
     case 'call':
       collectReads(expr.callee, read)

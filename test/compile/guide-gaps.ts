@@ -181,6 +181,18 @@ task guarded
     )
   }
 
+  // ---- proofs: a binding read only as a computed index is used ----
+  // `xs/{at}` was not seen as a read of `at`, which was warned as never used
+  {
+    const built = build(`task last
+  take xs, like list, like number
+  like number
+  save at, subtract(xs/length, 1)
+  back xs/{at}
+`)
+    ok('a binding read only as a computed index is not warned as unused', built.ok && !built.warnings.some(w => w.includes('"at" is never used')), built.warnings.join(' | ') || built.messages)
+  }
+
   // ---- library/exceptions: a raise on TypeScript carries its stack in `flow` ----
   // every raise built `flow: []`; the class fills it from the Error's own stack where the raise gave none
   {
