@@ -335,5 +335,5 @@ test <a number never wraps away from its unit>
   one/tallies/push make tally, amount(318), noun(<requests>)
   one/tallies/push make tally, amount(1), noun(<errors>), one(<error>)
   save texts, kit-texts(draw-item(one, kit-room(44), true))
-  want hold, is-equal(texts/1, <           14:05:01.002 · up 2m 56s ·>)
-  want hold, is-equal(texts/2, <             318 requests · 1 error>)
+  want hold, is-equal(texts/1, <           14:05:01.002 · up 2m 56s>)
+  want hold, is-equal(texts/2, <           318 requests · 1 error>)

@@ -58,6 +58,7 @@ import {
 import type { Lend, TextCursors } from '@term/make/code/compile/backend'
 import type { CollectionOp } from '@term/make/code/compile/backend'
 import { armLocals } from '@term/make/code/check/arm'
+import { readNames } from '@term/make/code/check/facts'
 import { privateForms } from '@term/make/code/compile/place'
 import { raiseSets } from '@term/make/code/check/effects'
 import { provenIncrements } from '@term/make/code/ir/facts/range'
@@ -561,14 +562,15 @@ export function textKeyReason(program: Program): string | undefined {
       const def = callee.form === 'variable' ? fns.get(callee.name as string) : undefined
       const name = callee.form === 'variable' ? (callee.name as string) : callee.form === 'member' ? (callee.name as string) : ''
 
-      if (name === 'fill' || name === 'melt') leak = `a call to ${name}`
+      // `call fill / ... / like <form>` reaches the backends as `fill-form` (and `melt-form`), the run-time task as `fill`
+      if (['fill', 'melt', 'fill-form', 'melt-form'].includes(name)) leak = `a call to ${name}`
       ;(node.args as Loose[]).forEach((arg, i) => {
         if (!textMap(arg.type)) return
         const param = def?.params[i]?.type
 
         // a map handed to a task that is not the program's own, or where no map is declared
         if (!def || param?.kind !== 'map') {
-          leak = `a map handed to ${name || 'a value'}, argument ${i + 1}`
+          leak ??= `a map handed to ${name || 'a value'}, argument ${i + 1}`
 
           return
         }
@@ -577,7 +579,7 @@ export function textKeyReason(program: Program): string | undefined {
         const key = param.key
 
         if ((key.kind === 'named' || key.kind === 'variable') && (mentions(def.result, key) || def.params.some(p => p.type?.kind === 'function' && mentions(p.type, key)))) {
-          leak = `${name} answers or calls back with a key`
+          leak ??= `${name} answers or calls back with a key`
         }
       })
     }
@@ -962,6 +964,11 @@ function emitRustPass(
   let moveArgs = new Set<string>()
   // the reads that are their name's last (`lastReads`), which move when `lastMove` finds the name held by value
   let moveNodes = new WeakSet<object>()
+  // the reads that are the last of several of their name inside one statement (`lastReads`' `many`), and how each name
+  // has been written so far in the statement being emitted: a marked read moves only when every earlier one was
+  // written as a `.clone()`, since Rust evaluates left to right and an earlier borrow would still be alive (E0505)
+  let manyMoves = new WeakSet<object>()
+  let statementUses = new Map<string, { clone: number; other: number }>()
   // the locals that are a list slot until their last read, and those last reads, which take the slot (`slotTakes`)
   let slotLets = new WeakMap<object, SlotTake & { kept: boolean }>()
   let slotReads = new WeakMap<object, SlotTake>()
@@ -1245,6 +1252,23 @@ function emitRustPass(
     return 'Vec::new()'
   }
   const owned = (value: Expression): string => {
+    // the last of several reads of its name in this statement (`manyMoves`), every earlier one written as a clone
+    const prior = value.form === 'variable' ? statementUses.get(value.name) : undefined
+    const lastOfMany =
+      value.form === 'variable' &&
+      manyMoves.has(value) &&
+      prior !== undefined &&
+      prior.other === 0 &&
+      prior.clone > 0 &&
+      closureDepth === 0 &&
+      value.type?.kind === 'named' &&
+      !copyType(value.type) &&
+      !isSharedType(value.type) &&
+      !cellVars.has(value.name) &&
+      !borrowedNames.has(value.name) &&
+      !lentNames.has(value.name) &&
+      !ownedNames.has(value.name) &&
+      !sliceNames.has(value.name)
     const rendered = expr(value)
     // MOVE ON LAST USE, as a call argument does: a variable read exactly once in the function, and not in a loop or a
     // closure (`moveArgs`), moves into the structure. Building `node(head, into)` cloned `into` at its only read
@@ -1257,11 +1281,22 @@ function emitRustPass(
       !(value.form === 'variable' && cellVars.has(value.name)) &&
       !(value.form === 'variable' && moveArgs.has(value.name) && closureDepth === 0) &&
       !lastMove(value) &&
+      !lastOfMany &&
       !slotReads.has(value) &&
       !ownsInner(elementLists.items, value)
 
     if (clones) {
       noteClone(value.type)
+
+      // this read is written as a clone, not as some other use of its name
+      if (value.form === 'variable') {
+        const uses = statementUses.get(value.name)
+
+        if (uses) {
+          uses.other--
+          uses.clone++
+        }
+      }
     }
 
     return clones ? `${rendered}.clone()` : rendered
@@ -2031,6 +2066,13 @@ function emitRustPass(
         return 'serde_json::Value::Null'
       case 'variable':
       case 'hole': {
+        // every read written counts as a use of its name in this statement; `owned` turns its own into a clone
+        if (node.form === 'variable') {
+          const uses = statementUses.get(node.name) ?? { clone: 0, other: 0 }
+          uses.other++
+          statementUses.set(node.name, uses)
+        }
+
         // the last read of a local that is a list slot until then TAKES the slot (`slotTakes`)
         const taken = slotReads.get(node)
 
@@ -3379,6 +3421,11 @@ function emitRustPass(
   }
 
   const stmt = (node: Statement, d: number): string => {
+    // the uses of each name are counted per statement, for the last of several reads (`manyMoves`)
+    if (node.form === 'let' || node.form === 'assign' || node.form === 'expression' || node.form === 'return') {
+      statementUses = new Map()
+    }
+
     switch (node.form) {
       case 'let': {
         // a local that is a list slot until its last read (`slotTakes`): a reference to the slot where something reads
@@ -4019,8 +4066,10 @@ function emitRustPass(
           const arms = node.cases.map(b => {
             const arm = node.exceptionArms![b.label]!
             const bodyText = block(b.body, d + 2)
+            // only the fields the arm READS, asked of the program and not of the emitted text (swift.ts says why)
+            const read = readNames(b.body)
             const locals = armLocals([...arm.shared, ...arm.link], b.binds ?? [])
-              .filter(({ local }) => new RegExp(`\\b${snake(local)}\\b`).test(bodyText))
+              .filter(({ local }) => read.has(local))
               .map(({ field, local }) =>
                 arm.link.includes(field)
                   ? `${pad(d + 2)}let ${snake(local)} = ${carrier}.base.downcast_ref::<${pascal(b.label)}>().unwrap().link.${snake(field)}.clone();`
@@ -4629,7 +4678,9 @@ function emitRustPass(
         const previousMoveArgs = moveArgs
         const previousMoveNodes = moveNodes
         moveArgs = moveOnLastUse(node.body)
-        moveNodes = lastReads(node.body)
+        const previousManyMoves = manyMoves
+        manyMoves = new WeakSet()
+        moveNodes = lastReads(node.body, manyMoves)
         const previousSlotLets = slotLets
         const previousSlotReads = slotReads
         ;({ lets: slotLets, takes: slotReads } = slotTakes(
@@ -4820,6 +4871,7 @@ function emitRustPass(
         sliceNames = previousSliceNames
         moveArgs = previousMoveArgs
         moveNodes = previousMoveNodes
+        manyMoves = previousManyMoves
         slotLets = previousSlotLets
         slotReads = previousSlotReads
         cellVars = previousCellVars

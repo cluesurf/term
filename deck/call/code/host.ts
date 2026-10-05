@@ -277,7 +277,7 @@ export async function callHost(input: {
       duration: Date.now() - started,
       bytes: result.bytes.uploaded,
       counts: [count(result.blobs.uploaded, 'blobs', 'blob', result.blobs.total), count(result.layers, 'layers', 'layer')],
-      fields: [field('manifest', `${result.manifestSize} B`), field('signed', result.referrer)],
+      fields: [field('manifest', `${result.manifestSize} B`)],
     })
 
     await announce({ route, digest: result.digest, keypair })
@@ -406,7 +406,7 @@ async function readIndexToken(): Promise<string | undefined> {
 
 // The signing keypair. A release is signed so authorship cannot be forged, and the scope's key set says which keys
 // may sign it. Minted on the first publish from this machine, at mode 0600.
-async function loadPublishKeypair(input: { mint: boolean }): Promise<Keypair | undefined> {
+export async function loadPublishKeypair(input: { mint: boolean }): Promise<Keypair | undefined> {
   const fs = await import('fs/promises')
   const file = keptAt(userHome('key'), legacyUserHome('key'))
 

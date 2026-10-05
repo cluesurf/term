@@ -233,8 +233,9 @@ describe('OCI publish and install', () => {
     keysRepository: 'term',
   })
 
-  const publish = (input: { dir: string; version: string; time?: string; signer?: typeof keypair }) =>
+  const publish = (input: { dir: string; version: string; time?: string; signer?: typeof keypair; referrer?: boolean }) =>
     publishToOci({
+      referrer: input.referrer,
       dir: input.dir,
       package: '@term/demo',
       version: input.version,
@@ -274,11 +275,11 @@ describe('OCI publish and install', () => {
 
   afterAll(() => server.close())
 
-  it('publishes, installs byte for byte, and attaches the signature referrer', async () => {
+  it('publishes, installs byte for byte, and attaches the signature referrer when asked', async () => {
     const source = path.join(work, 'v1')
     await writePackage(source, FILES)
 
-    const result = await publish({ dir: source, version: '1.0.0' })
+    const result = await publish({ dir: source, version: '1.0.0', referrer: true })
 
     expect(result.unchanged).toBe(false)
     expect(result.keySet).toBe('created')
@@ -303,6 +304,18 @@ describe('OCI publish and install', () => {
     const again = await installOciVersion({ transport, repository: route().repository.name, version, dest: path.join(work, 'again'), local })
     expect(again.packsFetched).toBe(0)
     expect(again.looseFetched).toBe(0)
+  })
+
+  // On GHCR, which lacks the referrers API, a referrer is an index TAGGED `sha256-<hex>`, listed beside every version
+  it('attaches no signature referrer unless asked', async () => {
+    const source = path.join(work, 'plain')
+    await writePackage(source, FILES)
+
+    const result = await publish({ dir: source, version: '0.9.0' })
+    const referrers = await transport.referrers({ repository: route().repository.name, digest: result.digest })
+
+    expect(result.referrer).toBe('skipped')
+    expect(referrers ?? []).toEqual([])
   })
 
   it('treats an identical republish as a no-op, and refuses to overwrite a version', async () => {

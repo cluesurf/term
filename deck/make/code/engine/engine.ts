@@ -89,7 +89,8 @@ async function evaluate(
 ): Promise<Value> {
   switch (expr.form) {
     case 'integer':
-      return integer(expr.value)
+      // a literal is a number, or a big integer past one (engine/ast, `integer-literal`)
+      return integer(expr.value.form === 'small' ? expr.value.value : (expr.value.value.dock as bigint))
     case 'float':
       return float(expr.value)
     case 'boolean':
@@ -101,7 +102,7 @@ async function evaluate(
       let out = ''
 
       for (const part of expr.parts) {
-        out += typeof part === 'string' ? part : display(await evaluate(part, scope))
+        out += part.form === 'chunk' ? part.value : display(await evaluate(part.value, scope))
       }
 
       return string(out)

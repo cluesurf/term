@@ -7,7 +7,13 @@
 //   4. refuse a version tag that already names a different manifest. Versions are write-once
 //   5. upload each blob the registry lacks, found by HEAD, a few at a time
 //   6. put the manifest under its tag, then read the tag back to catch a racing publish
-//   7. attach the signature as an OCI 1.1 referrer, so tooling that has never heard of Term can see it
+//   7. ONLY WHEN ASKED (`referrer: true`): attach the signature as an OCI 1.1 referrer, so tooling that has never
+//      heard of Term (`oras discover`) can see it
+//
+// THE REFERRER IS OFF BY DEFAULT since 2026-10-04. The signature that is checked lives in the config, and nothing
+// that installs reads the referrer. On a registry without the referrers API, GHCR among them, the spec's fallback is
+// an index TAGGED `sha256-<hex of the version's digest>`, and GHCR lists that tag beside every real version, so each
+// release looked like two. The ORAS interop witness (task/term/oci-witness.ts) is what asks for it.
 //
 // Nothing is uploaded on a dry run, and nothing reaches the registry before the artifact has passed the closure rule.
 
@@ -49,7 +55,8 @@ export type OciPublishResult = {
   layers: number
   manifestSize: number
   keySet: 'created' | 'member'
-  referrer: 'attached' | 'fallback-tag' | 'failed'
+  // `skipped` unless the publish asked for the referrer
+  referrer: 'attached' | 'fallback-tag' | 'failed' | 'skipped'
   artifact: BuiltArtifact
 }
 
@@ -151,6 +158,8 @@ export async function publishToOci(input: {
   annotations?: Record<string, string>
   include?: string[]
   concurrency?: number
+  // also attach the signature as an OCI 1.1 referrer (step 7). Off by default; see the header
+  referrer?: boolean
   log?: (message: string) => void
 }): Promise<OciPublishResult> {
   const log = input.log ?? (() => {})
@@ -192,7 +201,7 @@ export async function publishToOci(input: {
         unchanged: true,
         blobs: { total: artifact.blobs.length, uploaded: 0, mounted: 0, present: artifact.blobs.length },
         bytes: { total: artifact.blobs.reduce((sum, blob) => sum + blob.bytes.length, 0), uploaded: 0 },
-        referrer: 'attached',
+        referrer: 'skipped',
       }
     }
 
@@ -227,17 +236,19 @@ export async function publishToOci(input: {
     throw new OciError(`tag ${tag} names ${landed?.digest ?? 'nothing'} after the publish of ${artifact.digest}: another publish raced this one`)
   }
 
-  // 7. the signature as a referrer. Best effort: the signature that matters is already in the config
-  const referrer = await attachSignature({
-    transport: input.transport,
-    repository: repo,
-    subject: { mediaType: MANIFEST_MEDIA_TYPE, digest: artifact.digest, size: artifact.manifest.length },
-    artifact,
-  }).catch((error: unknown) => {
-    log(`signature referrer not attached: ${(error as Error).message}`)
+  // 7. the signature as a referrer, when asked. Best effort: the signature that matters is already in the config
+  const referrer = input.referrer
+    ? await attachSignature({
+        transport: input.transport,
+        repository: repo,
+        subject: { mediaType: MANIFEST_MEDIA_TYPE, digest: artifact.digest, size: artifact.manifest.length },
+        artifact,
+      }).catch((error: unknown) => {
+        log(`signature referrer not attached: ${(error as Error).message}`)
 
-    return 'failed' as const
-  })
+        return 'failed' as const
+      })
+    : ('skipped' as const)
 
   return {
     ...base,

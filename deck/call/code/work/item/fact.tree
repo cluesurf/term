@@ -4,10 +4,9 @@
 #
 # A FACT IS A COMPONENT OF ITS OWN: `draw-fact` makes the spans of one fact by its
 # name, and `draw-facts-line` puts
-# them in the standard's order, glues each separator to the fact before it (so a
-# line can end in `·` and never start
-# with one, as the mockups wrap at 44 columns), and wraps the whole at the body
-# column with a 2-cell hang.
+# them in the standard's order, joined by the separator, at the body column. A fact
+# that does not fit what is left of a line starts the next one whole, at the body
+# column, with no separator; only a fact wider than a line breaks inside itself.
 load ./standard
   find standard
 
@@ -40,6 +39,9 @@ load ./clean
 load ./wrap
   find wrap-spans
   find text-breaks
+
+load ./measure
+  find measure-text
 
 # one fact's spans, by the standard's name for its position: `clock`, `duration`,
 # `status`, `size`, `counts`,
@@ -258,9 +260,27 @@ task join-facts
     save at, add(at, 1)
   back out
 
-# the facts line of an item, at the body column, wrapped with a hang. No facts, no
-# line. A debug item is dim from end
-# to end (section 9)
+# the cells one fact takes
+task measure-fact
+  take one, like fact-spans
+
+  like number
+
+  save total, 0
+
+  walk one/spans
+    take piece
+    save total, add(total, measure-text(piece/value))
+  back total
+
+# the facts line of an item, at the body column. No facts, no line. A debug item is
+# dim from end to end (section 9)
+#
+# A FACT IS NEVER BROKEN. Each joins the line after a dim `·` when it fits, and
+# otherwise starts the next line at the body column, with no separator and no hang,
+# so `credited to account xfxtrzsv-…` reads whole under the clock rather than as
+# `credited to account` with its code hanging two cells in on the line below
+# (2026-10-04). Only a fact wider than a whole line breaks, by words with the hang.
 task draw-facts-line
   take event, like event
   take room, like room
@@ -272,20 +292,56 @@ task draw-facts-line
   fork test, is-equal(facts/length, 0)
     hold
       back make list
-  save spans, join-facts(facts, room)
-
-  fork test, is-unequal(event/level, <>)
-    hold
-      save spans, tint-spans(spans, <dim>)
+  save mark, find-symbol(room, <separator>)
+  save glue, make-glue()
   save body, room/standard/layout/body-column
   save cells, subtract(room/width, body)
   save hang, room/standard/layout/hang
+  save between, add(measure-text(mark), 2)
+  save lines, make list
+  save current, make list
+  save used, 0
 
-  save lines
-    wrap-spans spans
-      cells
-      subtract(cells, hang)
-      hang
-      text-breaks(room/standard)
-      false
+  walk facts
+    take one
+    save wide, measure-fact(one)
+    save joined, false
+    fork test, is-above(current/length, 0)
+      hold
+        fork test, is-maximum(add(add(used, between), wide), cells)
+          hold
+            current/push make-span(<{glue}{mark}>, <dim>)
+            current/push make-span(< >, <text>)
+            walk one/spans
+              take piece
+              current/push piece
+            save used, add(add(used, between), wide)
+            save joined, true
+          miss
+            lines/push make line, spans(current)
+            save current, make list
+            save used, 0
+    fork test, not(joined)
+      hold
+        fork test, is-maximum(wide, cells)
+          hold
+            walk one/spans
+              take piece
+              current/push piece
+            save used, wide
+          miss
+            walk wrap-spans(one/spans, cells, subtract(cells, hang), hang, text-breaks(room/standard), false)
+              take part
+              lines/push part
+  fork test, is-above(current/length, 0)
+    hold
+      lines/push make line, spans(current)
+
+  fork test, is-unequal(event/level, <>)
+    hold
+      save dimmed, make list
+      walk lines
+        take part
+        dimmed/push make line, spans(tint-spans(part/spans, <dim>))
+      save lines, dimmed
   back indent-lines(lines, body)

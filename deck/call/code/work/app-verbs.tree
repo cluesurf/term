@@ -29,6 +29,7 @@ dock load
   load <@term/call/code/cast>, name cast-module
   load <@term/call/code/host>, name host-module
   load <@term/call/code/bind>, name bind-module
+  load <@term/call/code/self>, name self-module
   load <node:process>, name node-process
 
 form root-ask
@@ -165,6 +166,48 @@ task bind
         bind root, read root
         bind toss, read toss
       wait true
+  halt take
+    take error
+    log-fail format-error error
+    node-process/exit code 1
+
+# `term self check`: verify this install against the signed release
+task self-check
+  mark async
+  like void
+
+  # the project root is READ, not taken: a hook has no `root` argument to pass
+  save root, call project-root
+  mark unsafe
+    call self-module/callSelfCheck, make(root-ask, bind root, read root), wait true
+  halt take
+    take error
+    log-fail format-error error
+    node-process/exit code 1
+
+# `term self update`: install the newest release and switch to it
+task self-update
+  mark async
+  like void
+
+  # the project root is READ, not taken: a hook has no `root` argument to pass
+  save root, call project-root
+  mark unsafe
+    call self-module/callSelfUpdate, make(root-ask, bind root, read root), wait true
+  halt take
+    take error
+    log-fail format-error error
+    node-process/exit code 1
+
+# `term self back`: switch back to the previous version
+task self-back
+  mark async
+  like void
+
+  # the project root is READ, not taken: a hook has no `root` argument to pass
+  save root, call project-root
+  mark unsafe
+    call self-module/callSelfBack, make(root-ask, bind root, read root), wait true
   halt take
     take error
     log-fail format-error error

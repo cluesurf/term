@@ -1158,10 +1158,11 @@ task use
   load <global:title>, name title
 
 task set-title
-  take title, like text
+  take title, like unknown
   call title/set
     read title
 `)
+    // a text parameter is refused outright now (the method check below); one of any other type builds, and warns
     ok('a parameter named like the module its file docks warns, at the parameter', hidden.warnings.some(w => /^dock-shadow: "title" in "set-title" hides the module this file docks as "title"/.test(w)), hidden.warnings.join(' | ') || hidden.messages)
 
     const renamed = build(`dock load
@@ -1173,6 +1174,25 @@ task set-title
     read text
 `)
     ok('renamed, it does not', !renamed.warnings.some(w => w.startsWith('dock-shadow')), renamed.warnings.join(' | ') || renamed.messages)
+  }
+
+  // ---- a method call on a text names a string operation, or is refused ----
+  {
+    const unknown = build(`task shout
+  take s, like text
+  like text
+  send back
+    call s/frobnicate
+`)
+    ok('`s/frobnicate` on a text is refused, naming the text and the method', !unknown.ok && /"s" is a text, which has no method "frobnicate"/.test(unknown.messages), unknown.ok ? unknown.typescript.slice(0, 300) : unknown.messages)
+
+    const known = build(`task tidy
+  take s, like text
+  like text
+  send back
+    call s/trim
+`)
+    ok('`s/trim` builds', known.ok, known.messages)
   }
 
   // ---- library/collections: the method form of a hash task runs on a native `Map` ----

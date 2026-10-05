@@ -86,6 +86,21 @@ task measure
 )
 refuses('no map keyed by text', `task use\n  take word, like text\n  like number\n  send back, code 1\n`, /no map keyed by text/)
 
+// a real `call fill / ... / like <form>` reaches the backends as a call to `fill-form`: the counting program with its
+// `size` call given that name, the shape alone being what the refusal reads
+{
+  const program = structuredClone(build(`${counting('  like number')}  send back, call size(read(counts))\n`))
+  const rename = (value: unknown): void => {
+    if (typeof value !== 'object' || value === null) return
+    if (Array.isArray(value)) return value.forEach(rename)
+    const node = value as { form?: string; callee?: { form?: string; name?: string } }
+    if (node.form === 'call' && node.callee?.form === 'variable' && /size/.test(node.callee.name ?? '')) node.callee.name = 'fill-form'
+    Object.values(node).forEach(rename)
+  }
+  rename(program)
+  ok('keeps String: a call to fill-form', /a call to fill-form/.test(textKeyReason(program) ?? ''), textKeyReason(program))
+}
+
 // 3. a key that is an OWNED String: one built by formatting, and one counted. The emitter wrote `TermKey::from(&(..))`,
 // a `&String` with no `From` (`From<&str>` only), and `upsert_ref(&w, 0)`, whose generic borrow then inferred `String`,
 // which a `TermKey` cannot lend. Both were `rustc` errors in the ir/net and ir/perceus ports (self-hosting, 2026-10-04).

@@ -68,16 +68,19 @@ task prepared-for
       call prepare(make(pattern, read(source)))
   halt take
     take error
-    sift error
+    # anything else the engine can raise on a backend (a native call's `failure`) is still a pattern that could not
+    # be read, as this module always reported it
+    fork case, read error
       case pattern-mismatch
         halt regex-mismatch
           bind thing, text <regex>
           bind at, read at
           bind reason, read reason
-    halt regex-mismatch
-      bind thing, text <regex>
-      bind at, code -1
-      bind reason, text <the pattern could not be read>
+      hook miss
+        halt regex-mismatch
+          bind thing, text <regex>
+          bind at, code -1
+          bind reason, text <the pattern could not be read>
 
 # the engine's match as this module's record
 task record-of

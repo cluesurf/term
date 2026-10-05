@@ -81,7 +81,9 @@ async function main(): Promise<void> {
   ok('emits variant tag', result.typescript.includes('form: "green"'))
   ok(
     'emits match as form switch',
-    result.typescript.includes('.form === "red"'),
+    // a field-less case only ever its frozen constant is tested by identity through its guard (typescript.ts,
+    // `identityCases`); one that is not, by its tag
+    result.typescript.includes('.form === "red"') || /__termIsRed\(\w+\)/.test(result.typescript),
   )
 
   // run it: name-of(green) === "green"

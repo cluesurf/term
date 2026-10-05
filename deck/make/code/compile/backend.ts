@@ -6,6 +6,7 @@ import type {
 } from '@term/make/code/compile/node'
 import { listFree, nativeCall, scalarTasks } from '@term/make/code/ir/facts/bounds'
 import { armLocals } from '@term/make/code/check/arm'
+import { STRING_METHODS, hostMethod } from '@term/make/code/compile/text-methods'
 
 // `keys` / `values` on a map type are stdlib operations that must materialize a list, not return a native iterator.
 // Each backend handles the iterator -> list conversion in its own idiom (Array.from, .cloned().collect(), Array(...),
@@ -100,43 +101,7 @@ export function collectionCall(
   return undefined
 }
 
-// the host string methods the stdlib's `text.tree` delegates to (`call value/char-at` is JavaScript's `charAt`), so
-// a native backend renders each in its own string API instead of emitting a method the platform does not have.
-// The semantics are JavaScript's: an index past the end reads as empty, `indexOf` gives -1, `split` on an empty
-// delimiter gives the characters, `replace` touches the first match and `replaceAll` every one.
-const STRING_METHODS = new Set([
-  'charAt',
-  'at',
-  'charCodeAt',
-  'indexOf',
-  'lastIndexOf',
-  'split',
-  'substring',
-  'slice',
-  'toLowerCase',
-  'toUpperCase',
-  'startsWith',
-  'endsWith',
-  'trim',
-  'trimStart',
-  'trimEnd',
-  'padStart',
-  'padEnd',
-  'replace',
-  'replaceAll',
-  'includes',
-  'repeat',
-  'concat',
-  // not a JavaScript method: the stdlib's code-point comparison (`ordering/from-texts`), -1, 0 or 1
-  'compare',
-])
-
 export type StringOp = { target: Expression; op: string }
-
-// the member name as the host spells it: the stdlib writes `call value/char-at`, the JavaScript method is `charAt`
-function hostMethod(name: string): string {
-  return name.replace(/-([a-z0-9])/g, (_, c: string) => c.toUpperCase())
-}
 
 // a native string METHOD CALL (`value.charAt(i)`) on a text receiver
 // is the value a text? The primitive, or the stdlib's `text` form named as such
@@ -4366,7 +4331,10 @@ export function slotTakes(
 // into each arm, since one arm runs. Answers the variable nodes themselves, so only that read moves; the emitter
 // still decides by type and by how the name is held whether a move is legal there (`lastMove`). Towers' `push-disk`
 // read a pile's top for its size and then built the new node with it, `Rc::new(top.clone())`
-export function lastReads(body: Statement[]): WeakSet<object> {
+// `many`, when given, gets each read that is the LAST of several reads of its name inside one statement, in evaluation
+// order (a call's callee, then its arguments left to right): a backend may move it when every earlier one there was a
+// copy, which only the backend knows (rust.ts, `owned`). Rust List's `tail(rest(z), x, y)` cloned each a third time
+export function lastReads(body: Statement[], many?: WeakSet<object>): WeakSet<object> {
   const out = new WeakSet<object>()
   type Loose = Record<string, unknown> & { form?: string; name?: string }
   // every variable node naming each name, and whether any sits inside a loop, closure or guard
@@ -4467,6 +4435,8 @@ export function lastReads(body: Statement[]): WeakSet<object> {
         for (const [name, seen] of here) {
           if (!after.has(name) && !written.has(name) && !seen.held && seen.nodes.length === 1) {
             out.add(seen.nodes[0]!)
+          } else if (many && !after.has(name) && !written.has(name) && !seen.held && seen.nodes.length > 1) {
+            many.add(seen.nodes[seen.nodes.length - 1]!)
           }
         }
       }

@@ -1,7 +1,15 @@
-# The one regex dialect: a pattern is read here, in Term, and written back in a canonical form every host engine reads
-# the same way (JavaScript with the u flag, Rust's regex crate, Java's java.util.regex, ICU through Swift). A pattern
-# outside the dialect raises `regex-mismatch` with the code point position and the reason, on every backend, before
-# any engine sees it (note/term/stdlib/semantics.md).
+# The common subset of the four host engines (JavaScript with the u flag, Rust's regex crate, Java's
+# java.util.regex, ICU through Swift), and the writer of a code point as text every one of them reads alike.
+#
+# What reads from it now: `regex-literal` and `regex-class-literal`, the writers the pattern engine uses for every
+# native text it hands an engine (pattern/analyze.tree) and `regex.tree` for `escape-pattern`; and `regex-mismatch`,
+# the exception `regex.tree` raises for a text that is not a pattern. `canonical-pattern` still checks and rewrites a
+# pattern into the subset, with the same refusals as before, for a caller that wants a pattern every host engine
+# reads unaided; `regex.tree` no longer goes through it. Until 2026-10-04 it did, and every pattern outside the subset
+# was refused there (note/term/stdlib/semantics.md, "Regular expressions"). The pattern engine now defines every
+# feature once, on every backend (note/term/stdlib/regex-engine.md).
+#
+# The subset `canonical-pattern` accepts:
 #
 #   literals, any code point; escaped punctuation (\. \* \/ ...)       \t \n \r \f \v
 #   .   any code point but a line feed (written [^\n]: the engines disagreed on \r, U+2028 and U+2029)
@@ -10,7 +18,7 @@
 #   ( )  a capturing group    (?: )  a group that does not capture    a|b  either
 #   * + ? {n} {n,} {n,m}  greedy, and lazy with a ? after
 #
-# Refused, because the engines disagree or one lacks it: lookaround, backreferences, named groups, \b and \B (four
+# and refuses, because the engines disagree or one lacks it: lookaround, backreferences, named groups, \b and \B (four
 # meanings of "word" across the four engines), \x \u \p escapes, and inline flags.
 
 mark stable

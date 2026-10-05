@@ -250,11 +250,11 @@ task file-exists
       text <file_test>
       read arguments
 
-task stat-file
+task file-exists
   mark async
   take path
     like text
-  like path-info
+  like boolean
   save arguments
     call make-object
   save json-12
@@ -265,18 +265,39 @@ task stat-file
       read arguments
       text <path>
       read json-12
+  send back
+    call bridge/invoke-boolean
+      wait true
+      text <file_exists>
+      read arguments
+
+task stat-file
+  mark async
+  take path
+    like text
+  like path-info
+  save arguments
+    call make-object
+  save json-13
+    call from-text
+      read path
+  save arguments
+    call set-field
+      read arguments
+      text <path>
+      read json-13
   save reply
     call bridge/invoke
       wait true
       text <file_stat>
       read arguments
-  save value-13
+  save value-14
     call fill
       call data-from-text
         call as-text
           read reply
       like path-info
-  send back, read value-13
+  send back, read value-14
 
 # not carried: result is bytes
 task read-file-bytes

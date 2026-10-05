@@ -1,6 +1,6 @@
 mod regex {
     // The one regex primitive over the regex crate. The pattern arrives in a form this engine reads as Term does
-    // (base/code/regex/dialect.tree); this runs it and turns byte offsets into code point offsets.
+    // (base/code/pattern/analyze.tree, `native-text`); this runs it and turns byte offsets into code point offsets.
     use std::cell::RefCell;
     use std::collections::HashMap;
 

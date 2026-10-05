@@ -123,12 +123,20 @@ test <facts line: the clock first, then the fixed order, a dim dot between>
     is-equal kit-join(draw-facts-line(make-request(), kit-room(80)))
       <           14:02:07.412 · 18 ms · HTTP 200 · 84 B · 2 tries · cached>
 
-test <facts line at 40 columns ends a line on the dot and never splits a fact from its unit>
+test <facts line at 40 columns moves a fact that does not fit to the next line, whole, at the body column>
   save lines, draw-facts-line(make-request(), kit-room(40))
   want hold
     is-equal kit-join(lines)
-      <           14:02:07.412 · 18 ms ·\n             HTTP 200 · 84 B · 2 tries ·\n             cached>
+      <           14:02:07.412 · 18 ms\n           HTTP 200 · 84 B · 2 tries\n           cached>
   want hold, kit-within(lines, 40)
+
+test <a fact too long for what is left of the line starts the next one whole, at the body column>
+  save ping, make event, glyph(<done>), verb(<ping>), subject(plain-subject(<package index>)), clock(kit-clock(19, 45, 44, 560))
+  ping/facts/push <published>
+  ping/facts/push <credited to account xfxtrzsv-kzlktzwn-fvvskssm-bwnkmlmx>
+  want hold
+    is-equal kit-join(draw-facts-line(ping, kit-room(80)))
+      <           19:45:44.560 · published\n           credited to account xfxtrzsv-kzlktzwn-fvvskssm-bwnkmlmx>
 
 test <fact: each fact is its own spans, in the standard's order>
   save facts, list-facts(make-request(), kit-room(80))
@@ -390,7 +398,7 @@ test <status footer: a rule, then one up item per source with its uptime>
   save drawn, draw-footer(ups, kit-room(40), true)
   want hold
     is-equal kit-join(drawn)
-      <────────────────────────────────────────\n✓ up       :4001  api:1\n           14:02:11.300 · up 6.00 s\n✓ up       :4002  api:2\n           14:02:11.300 · up 1.00 s ·\n             1 restart>
+      <────────────────────────────────────────\n✓ up       :4001  api:1\n           14:02:11.300 · up 6.00 s\n✓ up       :4002  api:2\n           14:02:11.300 · up 1.00 s\n           1 restart>
   want hold, kit-within(drawn, 40)
 
 test <item: title, facts and details together, at 40 and wide>
@@ -401,7 +409,7 @@ test <item: title, facts and details together, at 40 and wide>
       <✓ GET      /api/shapes/search?query=regular-hexagon&limit=50  api:1\n           14:02:07.412 · 18 ms · HTTP 200 · 84 B · 2 tries · cached\n           The response was served from the cache.>
   want hold
     is-equal kit-draw(one, 40)
-      <✓ GET      /api/shapes/search?\n             query=regular-hexagon&\n             limit=50  api:1\n           14:02:07.412 · 18 ms ·\n             HTTP 200 · 84 B · 2 tries ·\n             cached\n           The response was served from\n             the cache.>
+      <✓ GET      /api/shapes/search?\n             query=regular-hexagon&\n             limit=50  api:1\n           14:02:07.412 · 18 ms\n           HTTP 200 · 84 B · 2 tries\n           cached\n           The response was served from\n             the cache.>
 
 test <run: the opening, one blank line, the events, one blank line, the closing>
   save opening

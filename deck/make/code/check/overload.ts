@@ -174,13 +174,28 @@ function boundIn(node: unknown, into = new Set<string>()): Set<string> {
 function bindByImport(program: Program, scope: ImportScope | undefined, entry?: string): Diagnostic[] {
   // a task, or a component (module-scope-0004): both are called, both are placed or passed, both are split by file
   type Bindable = Definition | Extract<Statement, { form: 'view' }>
-  type Group = { name: string; index: number; files: string[]; byFile: Map<string, Bindable[]>; renamed: Map<string, string> }
+  // `elsewhere`: formed because a file imports the name from a file that defines it some other way, beside ONE file's task
+  type Group = { name: string; index: number; files: string[]; byFile: Map<string, Bindable[]>; renamed: Map<string, string>; elsewhere?: boolean }
   const groups = new Map<string, Group>()
   const bindable = new Map<string, Bindable[]>()
 
   for (const s of program) {
     if (s.form === 'function' || s.form === 'view') {
       bindable.set(s.name, [...(bindable.get(s.name) ?? []), s])
+    }
+  }
+
+  // every file that defines a name in any way (a task, a method, a binding, a value, a form), for `importedElsewhere`
+  const definedIn = new Map<string, Set<string>>()
+
+  for (const s of program) {
+    // a form's method is a task named apart, and defines the name it is called by (`push` on `list`)
+    const names = [(s as { name?: unknown }).name, s.form === 'function' ? s.method?.name : undefined]
+
+    for (const named of names) {
+      if (typeof named === 'string' && s.span.file) {
+        definedIn.set(named, (definedIn.get(named) ?? new Set()).add(s.span.file))
+      }
     }
   }
 
@@ -192,8 +207,28 @@ function bindByImport(program: Program, scope: ImportScope | undefined, entry?: 
       byFile.set(d.span.file!, [...(byFile.get(d.span.file!) ?? []), d])
     }
 
-    if (byFile.size > 1) {
-      groups.set(name, { name, index: groups.size, files: [...byFile.keys()].sort(), byFile, renamed: new Map() })
+    // ONE file's task, and a file that imports the name from ANOTHER file, which defines it some other way (a form's
+    // method, as the stdlib's `list` has `push`). Without a group the flat program kept the one task under the name
+    // and every call bound to it: `tone.tree`'s `push`, imported from `@term/base/list`, became engine/data/array's
+    // `push(v, value)` the day both were in one program (the engine/value port, 2026-10-04). As a group, that call is
+    // left to the definition its import reached, which is the existing rule below (`asked`)
+    // The other file must DEFINE the name: `@term/base/environment` only imports `current-directory` from its
+    // native module, and a file finding it there means the native task, which no group may rename away
+    const importedElsewhere =
+      byFile.size === 1 &&
+      [...(scope?.values() ?? [])].some(file =>
+        (file.finds.get(name) ?? []).some(target => !byFile.has(target) && (definedIn.get(name)?.has(target) ?? false)),
+      )
+
+    if (byFile.size > 1 || importedElsewhere) {
+      groups.set(name, {
+        name,
+        index: groups.size,
+        files: [...byFile.keys()].sort(),
+        byFile,
+        renamed: new Map(),
+        ...(importedElsewhere ? { elsewhere: true } : {}),
+      })
     }
   }
 
@@ -301,6 +336,12 @@ function bindByImport(program: Program, scope: ImportScope | undefined, entry?: 
     const asked = (file && scope?.get(file)?.finds.get(group.name)) || []
 
     if (imported.length === 0 && asked.length > 0) {
+      return undefined
+    }
+
+    // a name one file defines as a task and another some other way (a method): a reference whose file imported
+    // neither means the other, as the flat program read it, so `push(out, x)` on a list stays the list's method
+    if (group.elsewhere && imported.length === 0) {
       return undefined
     }
 
@@ -675,6 +716,16 @@ function bindSiblingMethods(program: Program): void {
 // its fields, and a field may share a task's name, so those are left to the checker.
 function nestLeanLabels(program: Program): void {
   const definitions = definitionsOf(program)
+  // a native binding's parameters too: a call to one (`big-compare(value, big-of(0))`) was nested only later, by the
+  // resolver, AFTER bindByImport had renamed a task two files define (`big-of__in0_0`), so its label named nothing and
+  // the call was refused. engine/data/trit and float each define `big-of`, found by the engine/value port (2026-10-04)
+  const bound = new Map<string, string[]>()
+
+  for (const s of program) {
+    if (s.form === 'bind') {
+      bound.set(s.name, [...(bound.get(s.name) ?? []), ...s.params.map(p => p.name)])
+    }
+  }
 
   for (const top of program) {
     const local = boundIn(top)
@@ -683,18 +734,53 @@ function nestLeanLabels(program: Program): void {
       const callee = (call.callee as { name: string }).name
       const defs = definitions.get(callee)
 
-      if (!defs) {
+      if (!defs && !bound.has(callee)) {
         return
       }
 
-      const params = new Set(defs.flatMap(d => d.params.map(p => p.name)))
+      const params = new Set([...(defs ?? []).flatMap(d => d.params.map(p => p.name)), ...(bound.get(callee) ?? [])])
 
       nestLeanCalls(
         call,
         name => params.has(name),
-        name => definitions.has(name) || local.has(name),
+        name => definitions.has(name) || bound.has(name) || local.has(name),
       )
     })
+
+    // and a METHOD call (`below/divide(big-of(2))`), whose parameters are not known here: a label naming a task is a
+    // call of it, as the resolver reads one. Left to the resolver it met the renamed task and named nothing
+    eachMethodCall(top, call =>
+      nestLeanCalls(
+        call,
+        () => false,
+        name => definitions.has(name) || bound.has(name) || local.has(name),
+      ),
+    )
+  }
+}
+
+// every call whose callee is a member path (`x/method(...)`) anywhere under a node
+function eachMethodCall(node: unknown, visit: (call: Extract<Expression, { form: 'call' }>) => void): void {
+  if (!node || typeof node !== 'object') {
+    return
+  }
+
+  if (Array.isArray(node)) {
+    node.forEach(item => eachMethodCall(item, visit))
+
+    return
+  }
+
+  const record = node as Record<string, unknown>
+
+  if (record.form === 'call' && (record.callee as { form?: string } | undefined)?.form === 'member') {
+    visit(record as Extract<Expression, { form: 'call' }>)
+  }
+
+  for (const [key, value] of Object.entries(record)) {
+    if (key !== 'span' && key !== 'type' && key !== 'result' && key !== 'declared' && key !== 'generics') {
+      eachMethodCall(value, visit)
+    }
   }
 }
 

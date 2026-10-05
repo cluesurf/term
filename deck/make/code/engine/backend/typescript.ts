@@ -55,7 +55,8 @@ function makeEmitter() {
   const expr = (e: Expression): string => {
     switch (e.form) {
       case 'integer':
-        return `RT.int(${BigInt(e.value)}n)`
+        // a literal is a number, or a big integer past one (engine/ast, `integer-literal`)
+        return `RT.int(${e.value.form === 'small' ? BigInt(e.value.value) : (e.value.value.dock as bigint)}n)`
       case 'float':
         return `RT.flt(${e.value})`
       case 'boolean':
@@ -100,7 +101,7 @@ function makeEmitter() {
         return `RT.member(${expr(e.target)}, ${JSON.stringify(e.name)})`
       case 'template':
         return `\`${e.parts
-          .map(part => (typeof part === 'string' ? part.replace(/[\\`]/g, '\\$&').replace(/\$\{/g, '\\${') : `\${String(${expr(part)})}`))
+          .map(part => (part.form === 'chunk' ? part.value.replace(/[\\`]/g, '\\$&').replace(/\$\{/g, '\\${') : `\${String(${expr(part.value)})}`))
           .join('')}\``
       default:
         return exhausted(e)

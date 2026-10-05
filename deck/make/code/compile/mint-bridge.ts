@@ -2948,12 +2948,15 @@ function constantOf(bridge: Bridge, value: Form): Statement | undefined {
         : (values[0] ?? { form: 'unit' as const, span })
 
   // With no `like`, the constant's type is the one its LITERAL names: an integer literal is `integer`, a
-  // decimal `number`, a text `text`, a boolean `boolean`. Anything else is left to inference.
+  // decimal `decimal`, a text `text`, a boolean `boolean`. Anything else is left to inference. A decimal was named
+  // `number`, from when that was the float's name: `number` is the integer now, so `host limit, 5.0` was declared an
+  // integer, and Swift, which spells a binding's declared type, refused `let limit: Int = 5.0` (time/compare's
+  // `significant-percent`, 2026-10-04). TypeScript writes `number` for both and never showed it
   const literalType: Type | undefined =
     init.form === 'integer'
       ? { kind: 'named', name: 'integer' }
       : init.form === 'float'
-        ? { kind: 'named', name: 'number' }
+        ? { kind: 'named', name: 'decimal' }
         : init.form === 'string'
           ? { kind: 'named', name: 'text' }
           : init.form === 'boolean'
@@ -4674,6 +4677,13 @@ function formOf(bridge: Bridge, value: Form): Statement[] {
         : undefined
     const alias =
       base && !extend && fields.length === 0 ? base : undefined
+    // `mark text` (D9): a closed set of texts, each case its text, `case plus, text <+>`, or its name in snake_case
+    const textual = formsAt(value, 'mark').some(mark => wordAt(mark, 'kind') === 'text')
+    const caseText = (arm: Form): string => {
+      const literal = expressionOf(bridge, firstAt(arm, 'seed'))
+
+      return literal?.form === 'string' ? literal.value : (wordAt(arm, 'name') ?? '').replace(/-/g, '_')
+    }
     const variants = formsAt(value, 'case').map(arm => {
       // `case face, like face-rule` is a single-payload variant: its one field is called `value`
       const payload = typeOf(bridge, firstAt(arm, 'like'))
@@ -4694,6 +4704,7 @@ function formOf(bridge: Bridge, value: Form): Statement[] {
           ? [...armFields, { name: 'value', type: payload, span: spanOf(arm) }]
           : armFields,
         ...(indexValues.length > 0 ? { indexValues } : {}),
+        ...(textual ? { text: caseText(arm) } : {}),
       }
     })
 
@@ -4721,6 +4732,8 @@ function formOf(bridge: Bridge, value: Form): Statement[] {
       // Written only when present and not `form`, so every other form builds the Program it always did. The
       // native backends emit enums, which have no tag field, and ignore it
       ...(tagOf(value) ? { tag: tagOf(value) } : {}),
+      // `mark text` (D9): written only when present, so every other form builds the Program it always did
+      ...(textual ? { text: true } : {}),
       ...(alias ? { alias } : {}),
       ...(extend ? { extend } : {}),
       functionFree:
@@ -4730,6 +4743,63 @@ function formOf(bridge: Bridge, value: Form): Statement[] {
         ),
       span: spanOf(value),
     })
+
+    // A `mark text` form's two conversions, written as ordinary Term tasks so every backend gets them the same way:
+    // `to-text(value)` is the case's text, `from-text(text, fallback)` the case whose text it is, else the fallback.
+    // On TypeScript a value already IS its text; natively it is an enum, and these are how it is printed and read.
+    // Overloads by type, so two text forms in one file each have their own pair. A case that holds a value is refused
+    // by name (check/text-forms.ts), so no pair is built for such a form: it would only fail first, in the kernel
+    if (textual && variants.every(v => v.fields.length === 0)) {
+      const span = spanOf(value)
+      const self: Type = { kind: 'named', name }
+      const text = (value: string): Expression => ({ form: 'string', value, span })
+      const variable = (name: string): Expression => ({ form: 'variable', name, span })
+
+      out.push({
+        form: 'function',
+        name: 'to-text',
+        params: [{ name: 'value', type: self }],
+        result: { kind: 'string' },
+        generics: [],
+        body: [
+          {
+            form: 'match',
+            subject: variable('value'),
+            cases: variants.map(v => ({
+              label: v.name,
+              body: [{ form: 'return', value: text(v.text ?? v.name), span }],
+            })),
+            span,
+          },
+        ],
+        span,
+      } as Statement)
+
+      out.push({
+        form: 'function',
+        name: 'from-text',
+        params: [
+          { name: 'value', type: { kind: 'string' } },
+          { name: 'fallback', type: self },
+        ],
+        result: self,
+        generics: [],
+        body: [
+          ...variants.map(v => ({
+            form: 'if',
+            branches: [
+              {
+                cond: { form: 'binary', op: '==', left: variable('value'), right: text(v.text ?? v.name), span },
+                body: [{ form: 'return', value: { form: 'record', name: v.name, fields: [], functionFree: true, span }, span }],
+              },
+            ],
+            span,
+          })),
+          { form: 'return', value: variable('fallback'), span },
+        ],
+        span,
+      } as unknown as Statement)
+    }
   }
 
   const outer = bridge.owner

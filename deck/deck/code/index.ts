@@ -172,6 +172,20 @@ export {
   trustDir,
 } from './oci/client'
 export type { OciRoute } from './oci/client'
+export {
+  RELEASE_ARTIFACT_TYPE,
+  RELEASE_LAYER_MEDIA_TYPE,
+  RELEASE_PLATFORMS,
+  currentPlatform,
+  publishRelease,
+  readRelease,
+  releaseRoute,
+  releaseStatement,
+  verifyReleaseConfig,
+} from './oci/release'
+export type { ReleaseConfig, ReleaseEntry } from './oci/release'
+export { readTree, valueOf } from './read'
+export type { Form } from './read'
 export { pingIndex, publishStatement } from './oci/index-ping'
 export type { IndexPing } from './oci/index-ping'
 export { parseRoleFile, matchRole, matchRoleRule, globMatch } from './role'

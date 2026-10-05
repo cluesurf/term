@@ -46,6 +46,9 @@ function ok(name: string, good: boolean, detail = ''): void {
 
 type Answer = { status: number; body: string }
 
+// whether the last `serve` was answered on its first request, sent the moment `start` printed
+let answeredAtStart = false
+
 // boot `entry` in `dir` on `port`, ask each path once the server is up, run `visit` while it is, then stop it
 async function serve(
   dir: string,
@@ -65,7 +68,11 @@ async function serve(
     await new Promise(done => setTimeout(done, 100))
   }
 
-  // `start` is printed as the server is told to listen, a moment before it does: ask until it answers
+  // `start` is printed once the server takes connections, so the first request on that line is answered. It was
+  // printed at spawn until 2026-10-04, and this asked until it answered; it still does, so a failure here is the one
+  // `ok` below and not every case after it
+  answeredAtStart = await fetch(`http://127.0.0.1:${port}/base/__id`).then(() => true, () => false)
+
   while (Date.now() - started < 60_000 && child.exitCode === null) {
     const up = await fetch(`http://127.0.0.1:${port}/base/__id`).then(() => true, () => false)
 
@@ -167,6 +174,8 @@ hook /
 
   const { answers, log } = await serve(dir, 'code/route.tree', 4971, ['/nope', '/'], visit)
   const [missing, home] = answers
+
+  ok('`✓ start` prints once the server answers: a request sent on that line is answered', answeredAtStart)
 
   if (seen) {
     ok('in a browser, the client redraws and retitles the page on a popstate, with no error', seen === 'Shelf|Shelf|no map|', seen)

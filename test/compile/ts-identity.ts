@@ -65,7 +65,17 @@ const filled = built(
 task fill
   take x, like number
   like number
-  send back, read x
+  save total, code 0
+  walk size
+    bind base, code 0
+    bind head, read x
+    hook next
+      take site, name i
+      save total
+        call add
+          read total
+          read i
+  send back, read total
 
 task use
   take c, like chain
@@ -78,6 +88,18 @@ task use
   'use',
 )
 ok('a program that fills data keeps the tag', identityCases(filled.program, false).size === 0, [...identityCases(filled.program, false)].join(', '))
+
+// the shape a real `call fill / ... / like <form>` has once it reaches the backends: a call to `fill-form`
+const formFilled = structuredClone(built(`${chain}\ntask use\n  take c, like chain\n  like number\n  send back, call depth(read(c))\n`, 'use').program)
+const rename = (value: unknown): void => {
+  if (typeof value !== 'object' || value === null) return
+  if (Array.isArray(value)) return value.forEach(rename)
+  const node = value as { form?: string; callee?: { form?: string; name?: string } }
+  if (node.form === 'call' && node.callee?.form === 'variable' && node.callee.name === 'depth') node.callee.name = 'fill-form'
+  Object.values(node).forEach(rename)
+}
+rename(formFilled.find(n => n.form === 'function' && n.name === 'use'))
+ok('a program with a `fill-form` call keeps the tag', identityCases(formFilled, false).size === 0, [...identityCases(formFilled, false)].join(', '))
 
 const stubbed = structuredClone(built(`${chain}\ntask use\n  take c, like chain\n  like number\n  send back, call depth(read(c))\n`, 'use').program)
 const stub = stubbed.find((n): n is Extract<Statement, { form: 'function' }> => n.form === 'function' && n.name === 'depth')!

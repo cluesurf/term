@@ -6,7 +6,8 @@
 #   - a baseline result is a `side`: its mean, its spread as a `maybe` (a baseline written before 2026-10-04 has the mean
 #     alone), and its sample count, worked out where the saved JSON is read (time/output.ts `fromSaved`). The original
 #     read optional fields and counted `timings?.length || iterations || 0` at every comparison
-#   - an entry's Welch's t is a `maybe`, never an absent field, and its status is the text it always was
+#   - an entry's Welch's t is a `maybe`, never an absent field, and its status a `verdict`, a closed set of the four
+#     texts it always was (D9): on TypeScript the same strings, so a caller still compares `e.status === 'slower'`
 #   - the arguments are positional: `compare-results(current, baseline)`, `should-fail(result, max-regression-pct)`,
 #     `format-comparison(result, summary)`, `format-markdown(result, platform)`
 #   - `buildHistoryEntry` stayed in TypeScript (time/output.ts): it is the history file's on-disk shape
@@ -44,6 +45,14 @@ form side
   link std-dev-ns, like maybe decimal
   link samples, like number
 
+# how one benchmark compares with its baseline
+form verdict
+  mark text
+  case faster
+  case slower
+  case same
+  case new
+
 form comparison-entry
   link name, like text
   link baseline-ns, like decimal
@@ -51,8 +60,7 @@ form comparison-entry
   link pct, like decimal
   # Welch's t, when both sides kept their spread
   link t, like maybe decimal
-  # `faster`, `slower`, `same` or `new`
-  link status, like text
+  link status, like verdict
 
 form comparison
   link entries, like list, like comparison-entry
@@ -128,7 +136,7 @@ task compare-results
             bind current-ns, r/mean-ns
             bind pct, 0.0
             bind t, make none
-            bind status, <new>
+            bind status, make new
         push(entries, fresh)
         turn next
     save before, by-name/get(r/name)
@@ -146,14 +154,14 @@ task compare-results
         save real, is-above(value, significant-t)
       case none
         save real, true
-    save status, <same>
+    save status, make same
     fork test, and(is-above(pct, significant-percent), real)
       hold
-        save status, <slower>
+        save status, make slower
         save regressions, add(regressions, 1)
     fork test, and(is-below(pct, subtract(0.0, significant-percent)), real)
       hold
-        save status, <faster>
+        save status, make faster
         save improvements, add(improvements, 1)
     save entry
       make comparison-entry
@@ -178,7 +186,8 @@ task should-fail
 
   walk result/entries
     take e
-    fork test, and(is-equal(e/status, <slower>), is-above(e/pct, max-regression-pct))
+    save slower, make slower
+    fork test, and(is-equal(e/status, slower), is-above(e/pct, max-regression-pct))
       hold
         back true
   back false
@@ -188,7 +197,8 @@ task delta-of
   take e, like comparison-entry
   like text
 
-  fork test, is-equal(e/status, <new>)
+  save fresh, make new
+  fork test, is-equal(e/status, fresh)
     hold
       back <new>
   save sign, <>
@@ -198,19 +208,18 @@ task delta-of
   back <{sign}{to-fixed(e/pct, 1)}%>
 
 task mark-of
-  take status, like text
+  take status, like verdict
   like text
 
-  fork test, is-equal(status, <faster>)
-    hold
+  sift status
+    case faster
       back <↓>
-  fork test, is-equal(status, <slower>)
-    hold
+    case slower
       back <↑>
-  fork test, is-equal(status, <same>)
-    hold
+    case same
       back <=>
-  back <+>
+    case new
+      back <+>
 
 # `summary` false leaves out the closing count line, for a caller that puts the counts on its own closing item
 task format-comparison
@@ -240,7 +249,7 @@ task format-markdown
   push(lines, <| --- | --- | --- | --- |>)
   walk result/entries
     take e
-    push(lines, <| {e/name} | {format-duration(e/current-ns)} | {delta-of(e)} | {e/status} |>)
+    push(lines, <| {e/name} | {format-duration(e/current-ns)} | {delta-of(e)} | {to-text(e/status)} |>)
   push(lines, <>)
   push(lines, <{result/improvements} improvement(s), {result/regressions} regression(s)>)
   back join(lines, <\n>)

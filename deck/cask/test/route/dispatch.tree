@@ -43,6 +43,7 @@ load @term/base/file
   find copy, name file-copy
   find move, name file-move
   find test, name file-test
+  find exists, name file-exists
   find stat, name file-stat
 
 load @term/site/http/local
@@ -169,6 +170,12 @@ task is-allowed
       call is-equal
         read command
         text <file_test>
+    hook hold
+      send back, true
+    hook test
+      call is-equal
+        read command
+        text <file_exists>
     hook hold
       send back, true
     hook test
@@ -394,7 +401,7 @@ task run-command
     hook test
       call is-equal
         read command
-        text <file_stat>
+        text <file_exists>
     hook hold
       save field-38
         call get-field
@@ -404,52 +411,72 @@ task run-command
         call as-text
           read field-38
       save answer
-        call file-stat
+        call file-exists
           wait true
           read value-40
       save json-42
+        call from-boolean
+          read answer
+      send back, read json-42
+    hook test
+      call is-equal
+        read command
+        text <file_stat>
+    hook hold
+      save field-43
+        call get-field
+          read arguments
+          text <path>
+      save value-45
+        call as-text
+          read field-43
+      save answer
+        call file-stat
+          wait true
+          read value-45
+      save json-47
         call from-text
           call data-to-text
             call melt
               read answer
               like path-info
-      send back, read json-42
+      send back, read json-47
     hook test
       call is-equal
         read command
         text <local_ask>
     hook hold
-      save field-43
+      save field-48
         call get-field
           read arguments
           text <method>
-      save value-45
+      save value-50
         call as-text
-          read field-43
-      save field-46
+          read field-48
+      save field-51
         call get-field
           read arguments
           text <path>
-      save value-48
+      save value-53
         call as-text
-          read field-46
-      save field-49
+          read field-51
+      save field-54
         call get-field
           read arguments
           text <body>
-      save value-51
+      save value-56
         call as-text
-          read field-49
+          read field-54
       save answer
         call local-ask
           wait true
-          read value-45
-          read value-48
-          read value-51
-      save json-53
+          read value-50
+          read value-53
+          read value-56
+      save json-58
         call from-text
           read answer
-      send back, read json-53
+      send back, read json-58
     hook test
       call is-equal
         read command
@@ -769,6 +796,12 @@ task out-of-scope
         hook hold
           send back, read scoped-0
       send back, text <>
+    hook test
+      call is-equal
+        read command
+        text <file_exists>
+    hook hold
+      send back, text <file_exists is not in the scope table>
     hook test
       call is-equal
         read command

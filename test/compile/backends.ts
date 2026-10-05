@@ -172,8 +172,10 @@ task danger
   )
   ok(
     'kotlin: match is an exhaustive when with smart-cast',
-    ko.includes('when (self)') &&
-      ko.includes('is BoxFull ->') &&
+    // `when (self) { is BoxFull -> }`, or with a field-less case `when { self is BoxFull -> ... self === BoxEmpty }`,
+    // which compares that case's one object by identity (kotlin.ts, `byIdentity`). Either way `is` smart-casts
+    ((ko.includes('when (self)') && ko.includes('is BoxFull ->')) ||
+      (ko.includes('self is BoxFull ->') && ko.includes('self === BoxEmpty ->'))) &&
       ko.includes('self.value'),
     ko,
   )

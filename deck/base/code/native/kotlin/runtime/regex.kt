@@ -1,5 +1,5 @@
 // The one regex primitive over java.util.regex. The pattern arrives in a form this engine reads as Term does
-// (base/code/regex/dialect.tree); this runs it and turns UTF-16 offsets into code point offsets.
+// (base/code/pattern/analyze.tree, `native-text`); this runs it and turns UTF-16 offsets into code point offsets.
 object regex {
     private val compiled = HashMap<String, java.util.regex.Pattern>()
 

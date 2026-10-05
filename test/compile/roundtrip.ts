@@ -18,6 +18,8 @@ import { resolveAsync } from '@term/make/code/check/async-resolve'
 import { extendForms } from '@term/make/code/check/extend'
 import { simplify } from '@term/make/code/ir/simplify'
 import { collectModules } from '@term/make/code/compile/load'
+import { bindFormsByImport } from '@term/make/code/check/scope'
+import { disambiguateOverloads } from '@term/make/code/check/overload'
 import type { Source } from '@term/make/code/compile/load'
 import {
   withNativeEnv,
@@ -128,9 +130,10 @@ function frontEnd(
   env?: 'rust' | 'swift' | 'kotlin' | 'node',
 ): Program {
   const resolver = env ? withNativeEnv(env, stdlib) : stdlib
-  const sources = withStdlib
-    ? collectModules({ file: 'main.tree', text }, resolver).sources
-    : [{ file: 'main.tree', text }]
+  // what each module imports, so a name two modules define binds per file as `compile` binds it
+  const collected = withStdlib ? collectModules({ file: 'main.tree', text }, resolver) : undefined
+  const sources = collected ? collected.sources : [{ file: 'main.tree', text }]
+  const scope = collected?.scope
 
   const program: Program = []
   // the entry module's own functions are the public roots: kept through simplification even when nothing internal
@@ -154,12 +157,21 @@ function frontEnd(
       {for (const node of built.program)
         {if (node.form === 'function') {roots.add(node.name)}}}
 
+    // each definition knows its file, as `compile` stamps it: the module scope splits a name by it
+    for (const node of built.program) {
+      node.span.file = unit.file
+    }
+
     program.push(...built.program)
   }
 
+  // module scope, in the order `compileProgram` runs it. Without it `matches` in regex.tree (a text) and in
+  // pattern.tree (a pattern) merged flat, and the uuid and process cases handed `prepare` a text (2026-10-04)
+  bindFormsByImport(program, scope, 'main.tree')
   // form extension, as compile() runs it first: an exception form (`like timeout`) gets its fields and every `halt
   // <form>` is finished. Without it a raise of a stdlib exception emitted a class with no fields
   extendForms(program, 'main.tree')
+  disambiguateOverloads(program, scope, 'main.tree')
   resolveNames(program, 'main.tree')
   check(program, 'main.tree')
 

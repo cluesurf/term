@@ -10,6 +10,7 @@ import type {
 import { armLocals } from '@term/make/code/check/arm'
 import { raiseSets } from '@term/make/code/check/effects'
 import { diagnose } from '@term/make/code/parser/diagnostic'
+import { STRING_METHODS, hostMethod } from '@term/make/code/compile/text-methods'
 import { Substitution } from '@term/make/code/check/substitution'
 import { instantiate } from '@term/make/code/check/signature'
 import { overloadGroups } from '@term/make/code/check/overload'
@@ -160,6 +161,10 @@ export function check(
   // `pattern` and `condition` resolved to whichever came second, its field name did not match, and the
   // property head stayed an array all the way to the kernel (v4 Sanskrit, 2026-09-12).
   const variantFieldsByOwner = new Map<string, Map<string, Type>[]>()
+  // a case's fields by its FORM and its name: two forms may name a case alike (engine/data/array's `vector` and
+  // engine/data/string's `rope` both have `leaf` and `branch`), and a match arm whose subject's form is known reads
+  // that form's case, never the one declared last (the engine/value port, 2026-10-04)
+  const caseFields = new Map<string, Map<string, Type>>()
   // a form's generic parameter names, e.g. maybe -> ["t"], for parameterized named types (maybe<t>)
   const formGenerics = new Map<string, string[]>()
 
@@ -228,6 +233,7 @@ export function check(
           }
 
           variantFields.set(variant.name, own)
+          caseFields.set(`${statement.name}/${variant.name}`, own)
           variantFieldsByOwner.set(variant.name, [
             ...(variantFieldsByOwner.get(variant.name) ?? []),
             own,
@@ -1114,6 +1120,27 @@ export function check(
           bindMemberMethod(node, env)
         }
 
+        // a method call on a text names one of the string operations every backend renders (compile/text-methods.ts),
+        // or nothing does: `s/frobnicate` built to `s.frobnicate()` and stopped at run time, and a parameter named like
+        // a docked module (`title/set` on the text `title`) did the same, unseen (2026-10-04, guides:
+        // applications/web/routes)
+        if (node.callee.form === 'member' && !node.callee.index && node.callee.target.type) {
+          const member = node.callee
+          const receiver = resolve(member.target.type!)
+
+          if (receiver.kind === 'string' && !STRING_METHODS.has(hostMethod(member.name))) {
+            const named = member.target.form === 'variable' ? `"${member.target.name}"` : 'this value'
+
+            diagnostics.push(
+              diagnose('unknown-name', {
+                file: currentFile,
+                span: member.span,
+                message: `${named} is a text, which has no method "${member.name}". Call a task that takes the text instead: \`call ${member.name}\` with it as the first argument`,
+              }),
+            )
+          }
+        }
+
         // a LABELLED call to a form method that a top-level task of the same name shadows binds to the method of
         // its receiver's form before the labels are placed, so they are placed by the method's parameters
         if (
@@ -1829,6 +1856,7 @@ export function check(
           // so `read start` fell through to a same-named task when one existed (native/node/clock/measurement.tree,
           // found once module-scope stopped renaming that task apart) and was silently `unknown` when none did
           const fields =
+            (subjectType.kind === 'named' ? caseFields.get(`${subjectType.name}/${branch.label}`) : undefined) ??
             variantFields.get(branch.label) ??
             (subjectType.kind === 'named' && subjectType.name === branch.label ? records.get(branch.label) : undefined)
           const inner = new Map(env)
@@ -1836,7 +1864,11 @@ export function check(
           if (fields) {
             // the type parameters of the variant's enum, or of the record matched under its own name
             const params =
-              formGenerics.get(variantEnum.get(branch.label) ?? branch.label) ?? []
+              formGenerics.get(
+                (subjectType.kind === 'named' && caseFields.has(`${subjectType.name}/${branch.label}`) ? subjectType.name : undefined) ??
+                  variantEnum.get(branch.label) ??
+                  branch.label,
+              ) ?? []
             const argMap = new Map<string, Type>()
 
             if (subjectType.kind === 'named' && subjectType.args) {

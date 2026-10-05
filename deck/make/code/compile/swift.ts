@@ -6,6 +6,7 @@
 // needed. Generic functions emit `<T>`. Pure, browser-safe. See note/research/vibe/computation/plans/07-codegen.md.
 
 import { armLocals } from '@term/make/code/check/arm'
+import { readNames } from '@term/make/code/check/facts'
 import { raiseSets } from '@term/make/code/check/effects'
 import { provenIncrements } from '@term/make/code/ir/facts/range'
 import { provenArithmetic, type Proven } from '@term/make/code/compile/proven'
@@ -2872,8 +2873,11 @@ export function emitSwift(
           const arms = node.cases.map(b => {
             const arm = node.exceptionArms![b.label]!
             const bodyText = armBlock(b.body, d + 2, bind)
+            // only the fields the arm READS, asked of the program and not of the emitted text: `time` matched inside
+            // an inlined `time.now()`, bound the caught exception's `time` and shadowed the clock module
+            const read = readNames(b.body)
             const locals = armLocals([...arm.shared, ...arm.link], b.binds ?? [])
-              .filter(({ local }) => new RegExp(`\\b${camel(local).replace(/[^\w$]/g, '\\$&')}\\b`).test(bodyText))
+              .filter(({ local }) => read.has(local))
               .map(({ field, local }) =>
                 arm.link.includes(field)
                   ? `${pad(d + 2)}let ${camel(local)} = (${subject}.base as! ${pascal(b.label)}).link.${camel(field)}`

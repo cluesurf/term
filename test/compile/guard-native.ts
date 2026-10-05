@@ -153,6 +153,45 @@ task checked
     take problem
     send back
       text <caught {{problem/form}}: {{problem/note}}>
+
+# a raise from INSIDE an arm that binds the caught exception's \`time\`. The raise stamps its own time through the
+# stdlib's \`exception-time\` (\`call now\`, the clock module), which was inlined into the arm as \`time.now()\`, where
+# \`time\` is the caught number on Swift and Kotlin, and the file did not build (2026-10-04)
+task translate
+  take key, like text
+  like text
+  note unsafe
+    send back
+      call find-user
+        read key
+  halt take
+    take problem
+    fork case, read problem
+      case user-absence
+        fork test
+          hook test
+            call is-above
+              read time
+              code 0
+          hook hold
+            halt absence
+              bind thing, text <translated {{key}}>
+        send back, text <no time>
+
+task translated
+  take key, like text
+  like text
+  note unsafe
+    send back
+      call translate
+        read key
+  halt take
+    take problem
+    fork case, read problem
+      case absence
+        send back, read thing
+      hook miss
+        send back, text <another exception>
 `
 
 function frontEnd(env: Env): Program {
@@ -186,7 +225,7 @@ function frontEnd(env: Env): Program {
 
   resolveAsync(program)
 
-  return simplify(program, new Set(['lookup', 'unguarded', 'describe', 'checked']))
+  return simplify(program, new Set(['lookup', 'unguarded', 'describe', 'checked', 'translated']))
 }
 
 const dir = runDir('term-guard-native-')
@@ -197,6 +236,7 @@ const WANT_FOUND = 'alice'
 const WANT_CAUGHT = 'caught user-absence: No such user'
 const WANT_CASED = 'no user zed: No such user'
 const WANT_TEXT = 'caught failure: no such key q'
+const WANT_TRANSLATED = 'translated zed'
 
 function judge(env: Env, built: { status: number | null; stdout: string; stderr: string }, uncaught: { status: number | null; stderr: string }): void {
   const lines = built.stdout.split('\n')
@@ -204,6 +244,7 @@ function judge(env: Env, built: { status: number | null; stdout: string; stderr:
   ok(`${env}: the raise reaches the handler with its form and note`, lines[1] === WANT_CAUGHT, JSON.stringify(lines[1]))
   ok(`${env}: a fork case over the caught value binds the form's prop`, lines[2] === WANT_CASED, JSON.stringify(lines[2]))
   ok(`${env}: an interpolated text raises failure with the text as its note`, lines[3] === WANT_TEXT, JSON.stringify(lines[3]))
+  ok(`${env}: an arm that binds the caught time raises another exception`, lines[4] === WANT_TRANSLATED, JSON.stringify(lines[4]))
   ok(`${env}: an uncaught raise ends the program`, uncaught.status !== 0, `exit ${uncaught.status}`)
   ok(`${env}: the uncaught raise names its form and note`, uncaught.stderr.includes('user-absence') && uncaught.stderr.includes('No such user'), uncaught.stderr.slice(0, 200))
 }
@@ -216,7 +257,7 @@ function runSwift(): void {
   const program = frontEnd('swift')
   const source = `${nativePrelude(program, 'swift', readRuntime)}\n${emitSwift(program)}`
   const main = join(dir, 'main.swift')
-  writeFileSync(main, `${source}\nprint(lookup("a"))\nprint(lookup("b"))\nprint(describe("zed"))\nprint(checked("q"))\nif CommandLine.arguments.count > 1 { print(try! unguarded("z")) }\n`)
+  writeFileSync(main, `${source}\nprint(lookup("a"))\nprint(lookup("b"))\nprint(describe("zed"))\nprint(checked("q"))\nprint(translated("zed"))\nif CommandLine.arguments.count > 1 { print(try! unguarded("z")) }\n`)
 
   try {
     execFileSync('swiftc', ['-o', join(dir, 'swift-main'), main], { stdio: 'pipe' })
@@ -242,7 +283,7 @@ function runKotlin(): void {
   writeFileSync(
     file,
     hoistKotlinImports(
-      `${nativePrelude(program, 'kotlin', readRuntime)}\n${emitKotlin(program)}\nfun main(args: Array<String>) { println(lookup("a")); println(lookup("b")); println(describe("zed")); println(checked("q")); if (args.isNotEmpty()) { println(unguarded("z")) } }\n`,
+      `${nativePrelude(program, 'kotlin', readRuntime)}\n${emitKotlin(program)}\nfun main(args: Array<String>) { println(lookup("a")); println(lookup("b")); println(describe("zed")); println(checked("q")); println(translated("zed")); if (args.isNotEmpty()) { println(unguarded("z")) } }\n`,
     ),
   )
   const jar = join(dir, 'main.jar')
@@ -294,7 +335,7 @@ function runRust(): void {
   writeFileSync(join(proj, 'Cargo.toml'), CARGO_TOML)
   writeFileSync(
     join(proj, 'src', 'main.rs'),
-    `${nativePrelude(program, 'rust', readRuntime)}\n${emitRust(program)}\nfn main() { println!("{}", lookup("a".to_string())); println!("{}", lookup("b".to_string())); println!("{}", describe("zed".to_string())); println!("{}", checked("q".to_string())); if std::env::args().count() > 1 { match unguarded("z".to_string()) { Ok(v) => println!("{}", v), Err(e) => { eprintln!("{}", e); std::process::exit(1) } } } }\n`,
+    `${nativePrelude(program, 'rust', readRuntime)}\n${emitRust(program)}\nfn main() { println!("{}", lookup("a".to_string())); println!("{}", lookup("b".to_string())); println!("{}", describe("zed".to_string())); println!("{}", checked("q".to_string())); println!("{}", translated("zed".to_string())); if std::env::args().count() > 1 { match unguarded("z".to_string()) { Ok(v) => println!("{}", v), Err(e) => { eprintln!("{}", e); std::process::exit(1) } } } }\n`,
   )
   const env = { ...process.env, CARGO_TARGET_DIR: join(tmpdir(), 'seed-rust-runtime', 'target') }
 

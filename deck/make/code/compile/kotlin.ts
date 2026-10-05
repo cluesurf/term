@@ -6,6 +6,7 @@
 // construction infers cleanly. Pure, browser-safe. See note/research/vibe/computation/plans/07-codegen.md.
 
 import { armLocals } from '@term/make/code/check/arm'
+import { readNames } from '@term/make/code/check/facts'
 import { provenIncrements } from '@term/make/code/ir/facts/range'
 import { provenArithmetic, type Proven } from '@term/make/code/compile/proven'
 import { boundedLoops, listKey } from '@term/make/code/ir/facts/bounds'
@@ -2775,8 +2776,10 @@ export function emitKotlin(
           const arms = node.cases.map(b => {
             const arm = node.exceptionArms![b.label]!
             const bodyText = block(b.body, d + 2)
+            // only the fields the arm READS, asked of the program and not of the emitted text (swift.ts says why)
+            const read = readNames(b.body)
             const locals = armLocals([...arm.shared, ...arm.link], b.binds ?? [])
-              .filter(({ local }) => new RegExp(`\\b${camel(local).replace(/[^\w$]/g, '\\$&')}\\b`).test(bodyText))
+              .filter(({ local }) => read.has(local))
               .map(({ field, local }) =>
                 arm.link.includes(field)
                   ? `${pad(d + 2)}val ${camel(local)} = (${carrier}.base as ${pascal(b.label)}).link.${camel(field)}`

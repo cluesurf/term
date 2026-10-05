@@ -86,7 +86,9 @@ ok('the untagged union still discriminates on form', /\| \{ form: "red" \}/.test
 ok('a construction writes kind', /\{ kind: "circle", radius: r \}/.test(ts), ts.slice(ts.indexOf('function makeCircle')))
 ok('a field-less constant writes kind', /Object\.freeze\(\{ kind: "point" as const \}\)/.test(ts))
 ok('the match tests kind', /\.kind === "circle"/.test(ts) && !/s\.form === "circle"/.test(ts))
-ok('the untagged match tests form', /\.form === "red"/.test(ts))
+// a field-less case only ever its frozen constant is tested by identity through its guard (`identityCases`), whose
+// narrowing type names the tag: `form` here, `kind` for the tagged union
+ok('the untagged match tests form', /\.form === "red"/.test(ts) || /function __termIsRed\(value: \{ form: string \}\): value is \{ form: "red" \}/.test(ts))
 
 if (out.ok) {
   const dir = mkdtempSync(join(tmpdir(), 'term-union-tag-'))

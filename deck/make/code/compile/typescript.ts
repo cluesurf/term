@@ -39,6 +39,7 @@ import {
 } from '@term/make/code/compile/bind'
 import type { Bind } from '@term/make/code/compile/bind'
 import { armLocals } from '@term/make/code/check/arm'
+import { readNames } from '@term/make/code/check/facts'
 import { provenArithmetic, type Proven } from '@term/make/code/compile/proven'
 import { boundedLoops, listKey } from '@term/make/code/ir/facts/bounds'
 import type { LoopGuard } from '@term/make/code/ir/facts/bounds'
@@ -478,6 +479,23 @@ let tsSharedForms = new Set<string>()
 let tsTagByOwner = new Map<string, string>()
 let tsTagByVariant = new Map<string, string>()
 
+// `mark text` (D9): each closed set of texts, by the form and by each of its cases, case -> its text. A value of one
+// IS its text: the type is the string-literal union, a construction the literal, a match a string comparison. Only
+// such forms are listed, so every other program emits what it always did. Set by emitTypeScript.
+let tsTextByOwner = new Map<string, Map<string, string>>()
+let tsTextByVariant = new Map<string, string>()
+
+// the text of a case of a `mark text` form, or undefined. The union the type names decides, as for the tag
+function textFor(variant: string, type?: Type): string | undefined {
+  const owner = type?.kind === 'named' ? type.name : undefined
+
+  if (owner && tsVariantFieldsByOwner.has(owner)) {
+    return tsTextByOwner.get(owner)?.get(variant)
+  }
+
+  return tsTextByVariant.get(variant)
+}
+
 // the field a variant's union discriminates on. The union, when the type names one, decides: a known union that
 // carries no mark is `form` even if another union reuses the variant's name with a tag. Otherwise the variant's own
 // entry, else `form`
@@ -555,7 +573,8 @@ export function identityCases(program: Program, perModule: boolean): Set<string>
       const name = callee.form === 'variable' || callee.form === 'member' ? (callee.name as string) : ''
       const root = rootOf(callee)
 
-      if (name === 'fill' || name === 'melt') filled = true
+      // `call fill / ... / like <form>` reaches the backends as `fill-form` (and `melt-form`), the run-time task as `fill`
+      if (['fill', 'melt', 'fill-form', 'melt-form'].includes(name)) filled = true
       if (callee.form === 'member' && root !== undefined && aliases.has(root)) namesIn(node.type, fromNative)
     }
 
@@ -1195,7 +1214,8 @@ function tsType(type: Type | undefined): string {
           return 'boolean'
         }
 
-        if (type.name === 'number' || type.name === 'integer') {
+        // `decimal` and `float` are the float's names: a `host` of a decimal literal is declared `decimal`
+        if (type.name === 'number' || type.name === 'integer' || type.name === 'decimal' || type.name === 'float') {
           return 'number'
         }
       }
@@ -1842,6 +1862,13 @@ function makeEmitter(
         // contextual type is never checked against the type it is meant to be. 636 of the v4 grammar's strict
         // errors were one such pattern built without its optional `system`.
         if (variants.has(node.name)) {
+          // a case of a closed set of texts is its text
+          const text = textFor(node.name, node.type)
+
+          if (text !== undefined) {
+            return JSON.stringify(text)
+          }
+
           // a variant with no fields at all, declared or given, and not `mark shared` (whose identity is the point): the
           // module's one frozen constant for it
           if (node.fields.length === 0 && variantCase(node.name, node.type).length === 0 && !tsSharedForms.has(node.name)) {
@@ -2635,9 +2662,10 @@ function makeEmitter(
           let out = ''
           node.cases.forEach((branch, i) => {
             const arm = node.exceptionArms![branch.label]!
-            const bodyText = branch.body.map(s => statement(s, depth + 1)).join('\n')
+            // only the fields the arm READS, asked of the program and not of the emitted text (swift.ts says why)
+            const read = readNames(branch.body)
             const locals = armLocals([...arm.shared, ...arm.link], branch.binds ?? [])
-              .filter(({ local }) => new RegExp(`\\b${toCamel(local).replace(/[^\w$]/g, '\\$&')}\\b`).test(bodyText))
+              .filter(({ local }) => read.has(local))
               .map(({ field, local }) => `${pad(depth + 1)}const ${toCamel(local)} = ${exceptionSubject}.${arm.link.includes(field) ? `link.${toMember(field)}` : toMember(field)}`)
             out += `${i ? ' else ' : ''}if (${exceptionSubject}.form === ${JSON.stringify(branch.label)}) {\n${[...locals, ...branch.body.map(s => `${pad(depth + 1)}${guardStart(statement(s, depth + 1))}`)].join('\n')}\n${pad(depth)}}`
           })
@@ -2782,7 +2810,10 @@ function makeEmitter(
           // read as they are, and an `if` with no `else` read to TypeScript as a task that can fall out of the bottom
           // a field-less case only ever its constant is tested by identity, through its guard (`identityCases`)
           const owner = node.subject.type?.kind === 'named' ? node.subject.type.name : ''
-          const test = tsIdentity.has(`${owner}/${branch.label}`)
+          const text = textFor(branch.label, node.subject.type)
+          const test = text !== undefined
+            ? `${subject} === ${JSON.stringify(text)}`
+            : tsIdentity.has(`${owner}/${branch.label}`)
             ? `${guardFor(branch.label)}(${subject})`
             : `${subject}.${tagFor(branch.label, node.subject.type)} === ${JSON.stringify(branch.label)}`
 
@@ -2836,6 +2867,20 @@ function makeEmitter(
                 .map(p => `${toPascal(p)} = any`)
                 .join(', ')}>`
             : ''
+
+        // an ALIAS form (`form program / like list, like statement`, a base and nothing of its own) is its base. The
+        // checker unifies the two already; written as an interface it was `interface Program {}`, which every value
+        // fits and nothing reads (engine/ast's `Program`, 2026-10-04)
+        if (node.alias && node.fields.length === 0 && node.variants.length === 0) {
+          return `type ${toPascal(node.name)}${generics} = ${tsType(node.alias)}`
+        }
+
+        // a closed set of texts (`mark text`, D9) is the union of its texts
+        if (node.text && node.variants.length > 0) {
+          return `type ${toPascal(node.name)} =\n${node.variants
+            .map(v => `${pad(depth + 1)}| ${JSON.stringify(v.text ?? v.name)}`)
+            .join('\n')}`
+        }
 
         // an enum becomes a discriminated union; a struct becomes an interface
         if (node.variants.length > 0) {
@@ -3086,8 +3131,18 @@ export function emitTypeScript(
   )
   tsTagByOwner = new Map()
   tsTagByVariant = new Map()
+  tsTextByOwner = new Map()
+  tsTextByVariant = new Map()
 
   for (const node of program) {
+    if (node.form === 'record-type' && node.text) {
+      tsTextByOwner.set(node.name, new Map(node.variants.map(v => [v.name, v.text ?? v.name])))
+
+      for (const v of node.variants) {
+        tsTextByVariant.set(v.name, v.text ?? v.name)
+      }
+    }
+
     if (node.form === 'record-type' && node.tag) {
       tsTagByOwner.set(node.name, node.tag)
 

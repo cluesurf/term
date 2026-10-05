@@ -73,6 +73,35 @@ function nodeValue(group: GroupNode): string {
 // the bundle kept (2026-10-04)
 const BOOT_CACHE_EPOCH = '9'
 
+// whether the server child is taking connections on `port`: asked every 50 ms for up to 10 s. False only when the
+// child exits first, so a server that is merely slow is still reported started when the time runs out
+async function listening(port: number, child: ChildProcess): Promise<boolean> {
+  const started = Date.now()
+
+  while (Date.now() - started < 10_000) {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      return false
+    }
+
+    const open = await new Promise<boolean>(done => {
+      const socket = net.connect({ port, host: '127.0.0.1' })
+      socket.once('connect', () => {
+        socket.destroy()
+        done(true)
+      })
+      socket.once('error', () => done(false))
+    })
+
+    if (open) {
+      return true
+    }
+
+    await new Promise(done => setTimeout(done, 50))
+  }
+
+  return child.exitCode === null && child.signalCode === null
+}
+
 // the default port range: `term boot` scans 2400..2499 for the first free port, so an app always starts on a good port
 // no matter where (or how many) you boot, with no manual `--port`.
 const BASE_PORT = 2400
@@ -1045,7 +1074,13 @@ export async function callBoot(input: {
       stdio: ['inherit', 'pipe', 'pipe'],
     })
     followChild(child, 'server')
-    report({ glyph: 'done', kind: 'lifecycle', verb: 'start', subject: address })
+
+    // `start` once the port takes a connection: printed at spawn, a request sent on that line was refused, which
+    // a script that waits for the line before asking met every time (2026-10-04, test/call/page-status.ts). Bounded,
+    // so a server slow to listen still gets its line, and skipped when the child stopped instead
+    if (await listening(port, child)) {
+      report({ glyph: 'done', kind: 'lifecycle', verb: 'start', subject: address })
+    }
 
     // restart the server on a freshly-built entry: wait for the old process to fully EXIT (releasing the port) before
     // binding the new one, so a restart never races into EADDRINUSE. If the child already exited on its own (a crash),

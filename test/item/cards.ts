@@ -621,6 +621,7 @@ export const CARDS: Card[] = [
     patches: [
       replace('D15', 7, 1, row(I, d('14:42:03.305'), d(' ·'), ' ', '1.90', ' ', d('s'), d(' ·'), ' ', '1', ' ', d('warning'), d(' ·'), ' ', d('term make --target ts'))),
       replace('D15 D14', 11, 1, row(I, d('14:42:05.505'), d(' ·'), ' ', '2.20', ' ', d('s'), d(' ·'), ' ', d('exit'), ' ', x('1'), d(' ·'), ' ', d('term make --target rust'))),
+      replace('D32', 15, 2, row(I, d('14:42:05.510'), d(' ·'), ' ', d('term make --target swift')), row(I, d('cancelled because server failed'))),
     ],
   },
   {
@@ -905,13 +906,17 @@ export const CARDS: Card[] = [
     caption: '44 columns',
     segments: [{ command: 'term serve', draw: serveRun }],
     patches: [
+      replace('D32', 2, 2, row(I, d('14:02:05.118'), d(' ·'), ' ', d('term 2.5.22')), row(I, d('PDT, UTC−7'))),
+      replace('D32', 9, 2, row(I, d('14:02:07.412'), d(' ·'), ' ', '2', ' ', d('ms'), d(' ·'), ' ', d('HTTP'), ' ', o('200')), row(I, '12.4', ' ', d('kB'))),
+      replace('D32', 15, 2, row(I, d('14:02:10.388'), d(' ·'), ' ', '31', ' ', d('ms'), d(' ·'), ' ', d('HTTP'), ' ', o('200')), row(I, '2.4', ' ', d('kB'))),
+      replace('D32', 18, 2, row(I, d('14:03:10.871'), d(' ·'), ' ', '12', ' ', d('ms'), d(' ·'), ' ', d('HTTP'), ' ', x('500')), row(I, '0', ' ', d('B'))),
       replace(
-        'D09 D10 D25',
+        'D09 D10 D25 D32',
         25,
         3,
         row(x('✗'), ' serve    ', B('Stopped')),
-        row(I, d('14:05:01.002'), d(' ·'), ' ', d('up'), ' ', '2', d('m'), ' ', '56', d('s'), d(' ·')),
-        row(I, '  ', '318', ' ', d('requests'), d(' ·'), ' ', '1', ' ', d('error')),
+        row(I, d('14:05:01.002'), d(' ·'), ' ', d('up'), ' ', '2', d('m'), ' ', '56', d('s')),
+        row(I, '318', ' ', d('requests'), d(' ·'), ' ', '1', ' ', d('error')),
       ),
     ],
   },

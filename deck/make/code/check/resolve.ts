@@ -172,11 +172,15 @@ export function resolve(
         )
       }
 
+      // TWO FORMS MAY NAME A CASE ALIKE: engine/data/array's `vector` and engine/data/string's `rope` both have `leaf`
+      // and `branch`. Keyed by the case's name alone, the form read last won, so a program holding both read
+      // `rope`'s `case leaf / back length` with `vector`'s fields, declared no `length`, and bound the read to the
+      // TASK `length` (found by the engine/value port, 2026-10-04). An arm here only DECLARES its locals, and the
+      // checker binds each by the subject's real type, so every field any case of that name has is declared
       for (const variant of statement.variants) {
-        variantFields.set(
-          variant.name,
-          variant.fields.map(f => f.name),
-        )
+        variantFields.set(variant.name, [
+          ...new Set([...(variantFields.get(variant.name) ?? []), ...variant.fields.map(f => f.name)]),
+        ])
       }
     }
   }

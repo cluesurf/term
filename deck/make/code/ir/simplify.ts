@@ -2298,6 +2298,28 @@ function boundNames(fn: Extract<Statement, { form: 'function' }>): Set<string> {
       }
     }
 
+    // a match arm binds its variant's fields, renamed or not, and an arm over a caught exception binds every shared
+    // field and prop by name: an inlined `time.now()` (the stdlib's `exception-time`) inside an arm that binds the
+    // caught exception's `time` read the number, on Swift and Kotlin (2026-10-04)
+    if (record.form === 'match' && Array.isArray(record.cases)) {
+      const arms = record.exceptionArms as Record<string, { shared: string[]; link: string[] }> | undefined
+
+      for (const c of record.cases as { label: string; binds?: string[] }[]) {
+        for (const name of [...(c.binds ?? []), ...(arms?.[c.label]?.shared ?? []), ...(arms?.[c.label]?.link ?? [])]) {
+          names.add(name)
+        }
+      }
+    }
+
+    // and a handler binds the caught value
+    if (record.form === 'guard') {
+      const caught = (record.catch as { name?: string } | undefined)?.name
+
+      if (caught) {
+        names.add(caught)
+      }
+    }
+
     for (const [key, value] of Object.entries(record)) {
       if (key !== 'span' && key !== 'type') {
         visit(value)

@@ -1,7 +1,7 @@
 import Foundation
 
 // The one regex primitive over NSRegularExpression (ICU). The pattern arrives in a form this engine reads as Term does
-// (base/code/regex/dialect.tree); this runs it without anchoring bounds, so ^ and \z mean the ends of the whole text
+// (base/code/pattern/analyze.tree, `native-text`); this runs it without anchoring bounds, so ^ and \z mean the ends of the whole text
 // whatever position the search starts from, and turns UTF-16 offsets into code point offsets.
 enum regex {
     static var compiled: [String: NSRegularExpression] = [:]

@@ -9,6 +9,7 @@ import { callZone } from '@term/call/code/zone'
 import { callToss } from '@term/call/code/toss'
 import { callHost } from '@term/call/code/host'
 import { callBind } from '@term/call/code/bind'
+import { callSelfBack, callSelfCheck, callSelfUpdate } from '@term/call/code/self'
 import { callSeek } from '@term/call/code/seek'
 import { callLink, callUnlink } from '@term/call/code/link'
 import { callMake } from '@term/call/code/make'
@@ -68,6 +69,7 @@ const COMMANDS = [
   'seek',
   'host',
   'bind',
+  'self',
   'make',
   'scan',
   'mind',
@@ -612,6 +614,19 @@ const cli = yargs(hideBin(process.argv))
     async argv => {
       await callBind({ root, toss: argv.toss })
     },
+  )
+  .command('self', 'This install of term: check, update, or go back a version', yargs =>
+    yargs
+      .command('check', 'Verify this install against the signed release', {}, async () => {
+        await callSelfCheck({ root })
+      })
+      .command('update', 'Install the newest release and switch to it', {}, async () => {
+        await callSelfUpdate({ root })
+      })
+      .command('back', 'Switch back to the previous version', {}, async () => {
+        await callSelfBack({ root })
+      })
+      .demandCommand(1, 'which self verb?'),
   )
   .command(
     'make [file]',

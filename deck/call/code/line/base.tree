@@ -34,6 +34,9 @@
 
 load @term/call/work/app-verbs
   find bind
+  find self-back
+  find self-check
+  find self-update
   find cast
   find fill
   find host
@@ -342,6 +345,18 @@ hook bind
   take toss
     like boolean
   task bind
+
+hook self
+  note <This install of term: check, update, or go back a version>
+  # Verify this install against the signed release
+  hook check
+    task self-check
+  # Install the newest release and switch to it
+  hook update
+    task self-update
+  # Switch back to the previous version
+  hook back
+    task self-back
 
 # Build/compile the project
 hook make

@@ -1,0 +1,360 @@
+# The runtime values of the engine, over the balanced-ternary data types. Plus the scope (the environment) and the
+# closure. See note/research/vibe/computation/engine/01-values.md.
+#
+# Ported from engine/value.ts (self-hosting, 2026-10-04). What changed shape, and why:
+#   - a NATIVE function is its NAME, run by the engine's one dispatcher (engine.tree `call-native`). The original held
+#     the host function, `fn: (args: Value[]) => Value`, and a value holding a function of values is the shape Term's
+#     strict positivity refuses (check/kernel's binders, log.md)
+#   - a scope, a closure and a map's contents are `mark shared`: one object every binding sees, which is what the
+#     original's mutable `Map` and its `container.value = ...` gave. A closure writing a captured variable, and
+#     `b = a; b.x = 1` showing through `a`, both still hold. D1 makes everything else a value, and these three are
+#     the engine's own identities
+#   - a TASK, an async call, holds its answer or what it threw, made when the call is made (engine.tree): the original
+#     held a JavaScript Promise and interleaved at every `await` in microtask order
+#   - a boolean is the three-valued -1 / 0 / +1 of engine/data/boolean
+
+load ./ast
+  find statement
+
+load ./data/integer
+  find ternary-integer
+  find make-integer
+  find compare-ternary, name integer-compare
+
+load ./data/float
+  find ternary-float
+  find from-number, name float-from-number
+  find to-number, name float-to-number
+  find compare-ternary, name float-compare
+
+load ./data/string
+  find rope
+  find from-string
+  find to-string, name rope-text
+  find length, name rope-length
+  find equals, name rope-equals
+
+load ./data/array
+  find vector
+  find size, name vector-size
+  find get, name vector-get
+  find to-array
+
+load ./data/map
+  find ternary-map
+
+load @term/base/integer/big
+  find big-integer
+  find big-from-number
+
+load @term/base/list
+  find join
+
+form value
+  case unit
+  case boolean
+    link value, like number
+  case integer
+    link value, like ternary-integer
+  case float
+    link value, like ternary-float
+  case string
+    link value, like rope
+  case array
+    link value, like vector value
+  case map
+    link value, like map-cell
+  case function
+    link value, like closure
+  # a built-in, by name: the engine's dispatcher runs it
+  case native
+    link name, like text
+  # an async call: made when the call is made, its answer or what it threw kept for the `await`
+  case task
+    link value, like task-cell
+
+# a map's contents, one object through every binding that holds the map
+form map-cell
+  mark shared
+  link map, like ternary-map value
+
+form task-cell
+  mark shared
+  link result, like value
+  link thrown, like boolean
+
+form closure
+  mark shared
+  link params, like list, like text
+  link body, like list, like statement
+  link env, like scope
+  link is-async, like boolean
+  # empty for an anonymous closure
+  link name, like text, fall <>
+
+# the environment: the variables in force, which of them are constant, and the scope it sits in
+form scope
+  mark shared
+  link vars, like hash, like text, like value
+  link consts, like hash, like text, like boolean
+  link parent, like list, like scope
+
+task make-unit
+  like value
+
+  back make unit
+
+# constructors
+task integer
+  take value, like big-integer
+  like value
+
+  back
+    make integer
+      bind value, make-integer(value, <>)
+
+task integer-of
+  take value, like number
+  like value
+
+  back integer(big-from-number(value))
+
+task float
+  take value, like decimal
+  like value
+
+  back
+    make float
+      bind value, float-from-number(value)
+
+task boolean
+  take truth, like boolean
+  like value
+
+  save trit, -1
+  fork test, truth
+    hold
+      save trit, 1
+  back
+    make boolean
+      bind value, trit
+
+task string
+  take text, like text
+  like value
+
+  back
+    make string
+      bind value, from-string(read text)
+
+# truthiness for conditions: boolean true, nonzero number, non-empty string, array or map; unit and unknown are false
+task truthy
+  take v, like value
+  like boolean
+
+  sift v
+    case unit
+      back false
+    case boolean
+      back is-equal(value, 1)
+    case integer
+      back is-unequal(integer-compare(value, make-integer(big-from-number(0), <>)), 0)
+    case float
+      back is-unequal(float-to-number(value), 0.0)
+    case string
+      back is-above(rope-length(value), 0)
+    case array
+      back is-above(vector-size(value), 0)
+    case map
+      back is-above(value/map/size, 0)
+    case function
+      back true
+    case native
+      back true
+    case task
+      back true
+
+# structural equality across the value forms; a map, a function and a task by identity, a native by its name
+task values-equal
+  take a, like value
+  take b, like value
+  like boolean
+
+  sift a
+    case unit
+      sift b
+        case unit
+          back true
+        miss
+          back false
+    case boolean
+      link left
+      sift b
+        case boolean
+          back is-equal(left, value)
+        miss
+          back false
+    case integer
+      link left
+      sift b
+        case integer
+          back is-equal(integer-compare(left, value), 0)
+        miss
+          back false
+    case float
+      link left
+      sift b
+        case float
+          back is-equal(float-compare(left, value), 0)
+        miss
+          back false
+    case string
+      link left
+      sift b
+        case string
+          back rope-equals(left, value)
+        miss
+          back false
+    case array
+      link left
+      sift b
+        case array
+          save count, vector-size(left)
+          fork test, is-unequal(count, vector-size(value))
+            hold
+              back false
+          save i, 0
+          walk test
+            hook test, is-below(i, count)
+            hook hold
+              fork test, is-equal(values-equal(vector-get(left, i), vector-get(value, i)), false)
+                hold
+                  back false
+              save i, add(i, 1)
+          back true
+        miss
+          back false
+    case map
+      link left
+      sift b
+        case map
+          back is-equal(left, value)
+        miss
+          back false
+    case function
+      link left
+      sift b
+        case function
+          back is-equal(left, value)
+        miss
+          back false
+    case native
+      link left
+      sift b
+        case native
+          back is-equal(left, name)
+        miss
+          back false
+    case task
+      link left
+      sift b
+        case task
+          back is-equal(left, value)
+        miss
+          back false
+
+# a float as JavaScript prints it: the shortest text that reads back as the same double
+task float-text
+  take value, like ternary-float
+  like text
+
+  save n, float-to-number(value)
+  back <{n}>
+
+# the canonical string key for a value used as a map key
+task key-of
+  take v, like value
+  like text
+
+  sift v
+    case integer
+      back <i:{value/value/text()}>
+    case string
+      back <s:{rope-text(value)}>
+    case boolean
+      back <b:{value}>
+    case float
+      back <f:{float-text(value)}>
+    case unit
+      back <unit>
+    miss
+      halt <value of form {to-form-name(v)} cannot be a map key>
+
+# the form's own name, as the original's `v.form` printed it
+task to-form-name
+  take v, like value
+  like text
+
+  sift v
+    case unit
+      back <unit>
+    case boolean
+      back <boolean>
+    case integer
+      back <integer>
+    case float
+      back <float>
+    case string
+      back <string>
+    case array
+      back <array>
+    case map
+      back <map>
+    case function
+      back <function>
+    case native
+      back <native>
+    case task
+      back <task>
+
+# a readable rendering of a value (for print / debugging)
+task display
+  take v, like value
+  like text
+
+  sift v
+    case unit
+      back <null>
+    case boolean
+      fork test, is-equal(value, 1)
+        hold
+          back <true>
+      fork test, is-equal(value, -1)
+        hold
+          back <false>
+      back <unknown>
+    case integer
+      back value/value/text()
+    case float
+      back float-text(value)
+    case string
+      back rope-text(value)
+    case array
+      save shown, make list
+      walk to-array(value)
+        take item
+        push(shown, display(item))
+      back <[{join(shown, <, >)}]>
+    case map
+      back <\{{value/map/size} entries\}>
+    case function
+      link held
+      save name, <(anon)>
+      fork test, is-unequal(held/name, <>)
+        hold
+          save name, held/name
+      back <function {name}>
+    case native
+      back <native {name}>
+    case task
+      back <task>

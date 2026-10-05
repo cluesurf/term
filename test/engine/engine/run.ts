@@ -9,7 +9,7 @@ import { run, callFunction } from '@term/make/code/engine/engine'
 import { display, type Value } from '@term/make/code/engine/value'
 
 // tiny AST builders
-const int = (value: number): Expression => ({ form: 'integer', value })
+const int = (value: number): Expression => ({ form: 'integer', value: { form: 'small', value } })
 const str = (value: string): Expression => ({ form: 'string', value })
 const vbl = (name: string): Expression => ({ form: 'variable', name })
 const bin = (
@@ -250,6 +250,23 @@ async function main(): Promise<void> {
   ]
 
   await check('strings: concat length', run(strProg), '10')
+
+  // a template's chunks and values, and an integer literal past a number: the two shapes engine/ast's port changed (a
+  // `template-part`, an `integer-literal`), each untested before it (2026-10-04)
+  const templated: Statement[] = [
+    lett('n', int(4)),
+    {
+      form: 'expression',
+      expr: { form: 'template', parts: [{ form: 'chunk', value: 'n=' }, { form: 'value', value: bin('+', vbl('n'), int(1)) }, { form: 'chunk', value: '!' }] },
+    },
+  ]
+
+  await check('template: chunks and a value', run(templated), 'n=5!')
+  await check(
+    'integer literal past a number',
+    run([{ form: 'expression', expr: { form: 'integer', value: { form: 'big', value: { dock: 12345678901234567890n } } } }]),
+    '12345678901234567890',
+  )
 
   // slice with no end runs to the end. The array and string data types are Term since 2026-10-04 and take the end
   // always, so an absent one reached them as undefined and a slice's size came back NaN

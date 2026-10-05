@@ -44,6 +44,7 @@ import { checkFinds } from '@term/make/code/check/finds'
 import { checkDuplicateTasks } from '@term/make/code/check/duplicates'
 import { warnDeprecated } from '@term/make/code/check/deprecated'
 import { checkLostWrites, warnLostCollectionWrites } from '@term/make/code/check/lost-writes'
+import { checkTextForms } from '@term/make/code/check/text-forms'
 import { checkRouteMethods } from '@term/make/code/check/routes'
 import { copyForViews, checkLoweredViews } from '@term/make/code/check/views'
 import { checkSupervision } from '@term/make/code/check/supervise'
@@ -996,6 +997,13 @@ export function compileProgram(
 
   if (boundDiagnostics.length) {
     return { ok: false, diagnostics: boundDiagnostics }
+  }
+
+  // a closed set of texts holds only texts, each its own (check/text-forms.ts, D9)
+  const textForms = checkTextForms(program, file)
+
+  if (textForms.length) {
+    return { ok: false, diagnostics: textForms }
   }
 
   // a write through a record parameter reaches somebody (check/lost-writes.ts)

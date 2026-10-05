@@ -1,0 +1,172 @@
+# The imperative AST for the vibe engine. TypeScript-like constructs. Built as a host DSL for now (a parser comes
+# later). Every node is discriminated by `form`. Literals carry raw values; the engine turns them into ternary data
+# values when it evaluates them.
+#
+# Ported from engine/ast.ts (self-hosting, 2026-10-04), the first of the shared-type ports D9 unblocked:
+#   - the operator unions are closed sets of texts (`mark text`), so the TypeScript is the very `'+' | '-'` union the
+#     original declared, and every caller keeps writing `op: '+'`
+#   - an integer literal's `value: number | bigint` is an `integer-literal`, a case per member (D9: a primitive union is
+#     a form, no shortcut): `small` a number, `big` a big integer
+#   - a template's `(string | Expression)[]` is a list of `template-part`, a case per member: `chunk` and `value`
+#   - the optional fields are `need false`, emitted `field?: T`
+#   - a record inside a node (a map entry, an if branch, a switch case) is a form of its own
+
+load @term/base/integer/big
+  find big-integer
+
+form binary-op
+  mark text
+  case plus, text <+>
+  case minus, text <->
+  case times, text <*>
+  case divide, text </>
+  case remainder, text <%>
+  case equal, text <==>
+  case unequal, text <!=>
+  case below, text <\<>
+  case at-most, text <\<=>
+  case above, text <\>>
+  case at-least, text <\>=>
+  case both, text <&&>
+  case either, text <||>
+
+form unary-op
+  mark text
+  case negate, text <->
+  case not, text <!>
+
+form assign-op
+  mark text
+  case set, text <=>
+  case add, text <+=>
+  case subtract, text <-=>
+  case multiply, text <*=>
+  case divide, text </=>
+
+# an integer literal's value: a number, or a big integer past one
+form integer-literal
+  case small, like number
+  case big, like big-integer
+
+# one part of a run-time text: a chunk as written, or an expression shown as text
+form template-part
+  case chunk, like text
+  case value, like expression
+
+form map-entry
+  link key, like text
+  link value, like expression
+
+form expression
+  case integer
+    link value, like integer-literal
+  case float
+    link value, like decimal
+  case boolean
+    link value, like boolean
+  case string
+    link value, like text
+  # run-time text interpolation: chunks and the expressions between them
+  case template
+    link parts, like list, like template-part
+  case unit
+  case array
+    link items, like list, like expression
+  case map
+    link entries, like list, like map-entry
+  case variable
+    link name, like text
+  case binary
+    link op, like binary-op
+    link left, like expression
+    link right, like expression
+  case unary
+    link op, like unary-op
+    link operand, like expression
+  case call
+    link callee, like expression
+    link args, like list, like expression
+  case await
+    link expr, like expression
+  case index
+    link target, like expression
+    link index, like expression
+  case member
+    link target, like expression
+    link name, like text
+  case closure
+    link params, like list, like text
+    link body, like list, like statement
+    link is-async
+      like boolean
+      need false
+
+form branch
+  link cond, like expression
+  link body, like list, like statement
+
+form switch-case
+  link match, like expression
+  link body, like list, like statement
+
+form statement
+  case let
+    link name, like text
+    link init, like expression
+    link mutable, like boolean
+  case assign
+    link target, like expression
+    link op, like assign-op
+    link value, like expression
+  case expression
+    link expr, like expression
+  case if
+    link branches, like list, like branch
+    link otherwise
+      like list, like statement
+      need false
+  case while
+    link cond, like expression
+    link body, like list, like statement
+  case switch
+    link subject, like expression
+    link cases, like list, like switch-case
+    link otherwise
+      like list, like statement
+      need false
+  case function
+    link name, like text
+    link params, like list, like text
+    link body, like list, like statement
+    link is-async
+      like boolean
+      need false
+  case return
+    link value
+      like expression
+      need false
+  case break
+  case continue
+  case block
+    link body, like list, like statement
+  case throw
+    link value, like expression
+  case try
+    link body, like list, like statement
+    link catch-name
+      like text
+      need false
+    link catch-body
+      like list, like statement
+      need false
+    link finally-body
+      like list, like statement
+      need false
+  case for
+    link name, like text
+    link iterable, like expression
+    link body, like list, like statement
+
+# a whole program: its statements, in order
+form program
+  like list, like statement
