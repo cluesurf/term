@@ -39,13 +39,25 @@ function mergeParts(value: unknown): unknown {
     if (key === 'parts' && Array.isArray(raw)) {
       const merged: unknown[] = []
 
+      // a literal piece is a `{ form: 'chunk', value }` record since 2026-10-05 (compile/node.ts `TemplatePart`), where it
+      // was a bare string, and this merged strings alone: every split literal then read as a change of meaning, and the
+      // formatter refused its own layout of deck/site/code/dom/native/memory/dom.tree (format-sweep)
+      const chunk = (part: unknown): string | undefined =>
+        typeof part === 'string'
+          ? part
+          : part && typeof part === 'object' && (part as { form?: unknown }).form === 'chunk'
+            ? String((part as { value: unknown }).value)
+            : undefined
+
       for (const part of raw) {
         const last = merged[merged.length - 1]
+        const piece = chunk(part)
+        const before = chunk(last)
 
-        if (typeof part === 'string' && typeof last === 'string') {
-          merged[merged.length - 1] = last + part
+        if (piece !== undefined && before !== undefined) {
+          merged[merged.length - 1] = { form: 'chunk', value: before + piece }
         } else {
-          merged.push(mergeParts(part))
+          merged.push(piece !== undefined ? { form: 'chunk', value: piece } : mergeParts(part))
         }
       }
 

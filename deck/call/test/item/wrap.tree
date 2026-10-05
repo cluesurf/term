@@ -292,7 +292,7 @@ task is-stack-trimmed
 
   walk texts
     take one
-    # quoted under the `⎿` elbow (D33): the frames sit 3 past it, with no gutter
+    # quoted after a `⇒` (D33): the frames sit under its text, with no gutter
     fork test, contains(one, <   at reconcile>)
       hold
         save top, true

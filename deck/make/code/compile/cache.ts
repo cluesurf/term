@@ -295,10 +295,18 @@ export class CompileCache {
     return fresh
   }
 
+  // one unit of the separate build (compile/separate.ts): the same tiers as `output`, under its own kind, which the
+  // store keeps machine-wide beside the mill. A unit's key is its content and the surfaces it reaches, so the standard
+  // library's units one project built answer every other project's (note/term/plan/incremental-best-in-class.md,
+  // step 1)
+  unit<T>(key: string, build: () => T): T {
+    return this.output(key, build, 'unit')
+  }
+
   // the whole compiled output for a graph key. Looks in memory, then the store, then builds. The value must be
   // JSON-serializable (the compile result is: program AST + emitted text + diagnostics).
-  output<T>(key: string, build: () => T): T {
-    const versioned = hashFields([this.versionFor('output'), key])
+  output<T>(key: string, build: () => T, kind = 'output'): T {
+    const versioned = hashFields([this.versionFor(kind), key])
     const cached = this.outputs.get(versioned) as T | undefined
 
     if (cached !== undefined) {
@@ -308,7 +316,7 @@ export class CompileCache {
       return cached
     }
 
-    const value = readEntry<T>(this.store?.load('output', versioned))
+    const value = readEntry<T>(this.store?.load(kind, versioned))
 
     if (value !== undefined) {
       this.outputs.set(versioned, value)
@@ -323,7 +331,7 @@ export class CompileCache {
     const fresh = build()
     this.outputs.set(versioned, fresh)
     evictTo(this.outputs, this.outputCap)
-    this.store?.save('output', versioned, JSON.stringify(fresh, storeBigint))
+    this.store?.save(kind, versioned, JSON.stringify(fresh, storeBigint))
 
     return fresh
   }

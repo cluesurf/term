@@ -26,7 +26,7 @@ import type {
   Twin,
 } from '@term/make/code/compile/node'
 import { collectModules, makeParseMemo } from '@term/make/code/compile/load'
-import type { ParseMemo, Resolver } from '@term/make/code/compile/load'
+import type { ParseMemo, Resolver, WalkMemo } from '@term/make/code/compile/load'
 import { compileProgram, entryWarnings, graphTemplates, milledModule } from '@term/make/code/compile/compile'
 import type { ModuleEmit } from '@term/make/code/compile/modules'
 import { stubKnown, stubProgram, surfaceHash } from '@term/make/code/compile/stub'
@@ -148,6 +148,8 @@ export function compileSeparate(
     parsed?: ParseMemo
     // the unit answers of this run, shared across the entries of a batch build (`UnitMemo`)
     units?: UnitMemo
+    // each module's own part of the import walk, shared across the entries of a batch build (compile/load.ts)
+    walked?: WalkMemo
   },
 ): SeparateResult {
   // one parse per module, shared by the dependency walk, the edge graph, the templates and the mill
@@ -158,6 +160,7 @@ export function compileSeparate(
     options.resolve,
     parsed,
     cache ? (unit, compute) => cache.scanned(unit.file, unit.text, compute) : undefined,
+    options.walked,
   )
   const { sources } = collected
 
@@ -395,7 +398,7 @@ export function compileSeparate(
       const found =
         memo ??
         (cache
-          ? cache.output<UnitBuild | { diagnostics: Diagnostic[] }>(`unit:${key}`, wrapped)
+          ? cache.unit<UnitBuild | { diagnostics: Diagnostic[] }>(key, wrapped)
           : wrapped())
 
       options.units?.set(key, found)

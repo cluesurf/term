@@ -1,5 +1,5 @@
 deck @term/code
-  head <A TreeCode Programming Framework>
+  head <A reactive modeling language Ψ>
   mark <2.7.0>
   sort tool
   lock <Apache-2.0>

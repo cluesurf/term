@@ -77,7 +77,8 @@ export async function callWash(input: {
   // a cache: an offline install reads them, so they stay (guides: commands/wash, 2026-10-04)
   if (target === 'base') {
     const home = cacheHome()
-    const cleaned = await removeEach(home, ['mill'], dir => `${showPath(path.join(home, dir))}/`)
+    // the separate build's units are kept here too, beside the parsed modules (compile/separate.ts)
+    const cleaned = await removeEach(home, ['mill', 'unit'], dir => `${showPath(path.join(home, dir))}/`)
 
     closeRun({
       verdict: cleaned > 0 ? 'Shared module cache removed' : 'Nothing to clean',

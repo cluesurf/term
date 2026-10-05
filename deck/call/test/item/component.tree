@@ -294,13 +294,13 @@ test <code frame: a tab expands to the file's tab width and a wide character cou
   save drawn, draw-frame(one, narrow-room(kit-room(80), 2), <failed>)
   want hold, is-equal(kit-join(drawn), <2 │     漢 = bad\n  │          ━━━>)
 
-test <quote: under the elbow, a long line wrapped inside it with a hang of 2 (D33)>
+test <quote: `⇒` then the text, a long line wrapped inside it with a hang of 2 (D33)>
   save lines, make list
   lines/push <Error: ledger entry not found (acct_7Q2, 2026-09-30) while running the nightly reconciliation pass>
   save drawn, draw-quote(lines, 0, narrow-room(kit-room(80), 2))
   want hold
     is-equal kit-join(drawn)
-      <⎿  Error: ledger entry not found (acct_7Q2, 2026-09-30) while running the\n     nightly reconciliation pass>
+      <⇒ Error: ledger entry not found (acct_7Q2, 2026-09-30) while running the\n    nightly reconciliation pass>
   save narrow, draw-quote(lines, 0, narrow-room(kit-room(40), 2))
   want hold, kit-within(narrow, 38)
 
@@ -314,9 +314,9 @@ test <quote: long output keeps its last 20 lines and says how many came before>
       save at, add(at, 1)
   save drawn, draw-quote(lines, 0, narrow-room(kit-room(80), 2))
   want hold, is-equal(drawn/length, 21)
-  want hold, is-equal(line-text(drawn/0), <⎿  … 5 earlier lines>)
-  want hold, is-equal(line-text(drawn/1), <   line 6>)
-  want hold, is-equal(line-text(drawn/20), <   line 25>)
+  want hold, is-equal(line-text(drawn/0), <⇒ … 5 earlier lines>)
+  want hold, is-equal(line-text(drawn/1), <  line 6>)
+  want hold, is-equal(line-text(drawn/20), <  line 25>)
 
 test <quote: another program's colors are removed, and what it cannot have meant is shown>
   save escape, rune-to-text(27)
@@ -324,7 +324,7 @@ test <quote: another program's colors are removed, and what it cannot have meant
   lines/push <{escape}[31mred{escape}[0m and plain>
   lines/push <a bell{rune-to-text(0x07)} rung>
   save drawn, draw-quote(lines, 0, narrow-room(kit-room(80), 2))
-  want hold, is-equal(kit-join(drawn), <⎿  red and plain\n   a bell␇ rung>)
+  want hold, is-equal(kit-join(drawn), <⇒ red and plain\n  a bell␇ rung>)
 
 test <progress bar: 24 cells, filled in proportion, nothing without a total>
   save room, narrow-room(kit-room(80), 2)

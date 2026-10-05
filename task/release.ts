@@ -15,7 +15,8 @@
 // that cannot be bundled travel beside it:
 //
 //   term/bin/term            sh launcher: follows its own link to find the install, then `exec node host/need.mjs`
-//                            (bin\term.cmd on the two Windows platforms, the same check and call in cmd.exe)
+//                            (bin\term.cmd on the two Windows platforms, the same check and call in cmd.exe, and
+//                            bin\term.exe beside it, task/launcher/term.go, for winget, which puts only an .exe on PATH)
 //   term/host/need.mjs       the first module: which version runs here (note/term/plan/term-versions.md). It
 //                            imports line.js in-process when the answer is this version, else hands over
 //   term/host/need-hand.mjs  the slow half of that: installs a needed version, prints a refusal. Loaded only then
@@ -141,6 +142,27 @@ function readVersion(): string {
   return manifest.version
 }
 
+/**
+ * What the release says about itself, read from the same package.json as the
+ * version: the description GHCR prints under the package's name, and the
+ * license, as an SPDX id. Both were literals here until 2026-10-05, when the
+ * image still said MIT after Term moved to Apache 2.0, and its description
+ * said something package.json did not. One source, so they cannot drift.
+ */
+
+function readLabels(): { description: string; license: string } {
+  const manifest = JSON.parse(readFileSync(path.join(TERM, 'package.json'), 'utf8')) as {
+    description?: string
+    license?: string
+  }
+
+  if (!manifest.description || !manifest.license) {
+    throw new Error('package.json needs both a description and a license for the release to carry')
+  }
+
+  return { description: manifest.description, license: manifest.license }
+}
+
 // The version installed here, which is the version `pnpm-lock.yaml` resolved, so the release ships what was tested
 // (read from the file itself, not through `require.resolve`: hono's `exports` does not list its package.json)
 function installedVersion(name: string): string {
@@ -214,6 +236,15 @@ function portBuild(): { ok: boolean; built: number; unchanged: number; failed: n
     failed: Number(summary?.[3] ?? (ok ? 0 : 1)),
     lines: text.split('\n').filter(line => line.trim() !== ''),
   }
+}
+
+// bin\term.exe, the Windows launcher winget links onto PATH (task/launcher/term.go), cross-compiled by Go with no C
+// toolchain, stripped, and with no build paths in it, so two builds of one source are the same bytes
+function buildWindowsExe(input: { out: string; arch: 'amd64' | 'arm64' }): void {
+  execFileSync('go', ['build', '-trimpath', '-ldflags', '-s -w', '-o', input.out, path.join(TERM, 'task', 'launcher', 'term.go')], {
+    env: { ...process.env, GOOS: 'windows', GOARCH: input.arch, CGO_ENABLED: '0' },
+    stdio: ['ignore', 'ignore', 'pipe'],
+  })
 }
 
 // line.js, dock.mjs and the two dispatch modules, bundled once: they are the same for every platform
@@ -335,6 +366,7 @@ async function main(): Promise<void> {
 
     if (platform.name.startsWith('windows-')) {
       writeFileSync(path.join(root, 'bin', 'term.cmd'), WINDOWS_LAUNCHER)
+      buildWindowsExe({ out: path.join(root, 'bin', 'term.exe'), arch: platform.name === 'windows-arm64' ? 'arm64' : 'amd64' })
     } else {
       writeFileSync(path.join(root, 'bin', 'term'), LAUNCHER)
       chmodSync(path.join(root, 'bin', 'term'), 0o755)
@@ -569,6 +601,8 @@ async function push(version: string): Promise<void> {
       say({ form: 'key-set', at: `${route.registry.host}/${route.keysRepository}` })
     }
 
+    const labels = readLabels()
+
     const released = await publishRelease({
       transport,
       repository: route.repository.name,
@@ -578,8 +612,8 @@ async function push(version: string): Promise<void> {
       keypair,
       annotations: {
         'org.opencontainers.image.source': SOURCE,
-        'org.opencontainers.image.licenses': 'MIT',
-        'org.opencontainers.image.description': 'The term command: the Term compiler, package manager and toolchain',
+        'org.opencontainers.image.licenses': labels.license,
+        'org.opencontainers.image.description': labels.description,
       },
       // `darwin-arm64: layer sha256:..., manifest sha256:...` is one platform pushed. Any other line is a note
       log: message => {

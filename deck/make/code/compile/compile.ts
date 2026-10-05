@@ -108,7 +108,7 @@ import { emitTypeScript } from '@term/make/code/compile/typescript'
 import { emitModules } from '@term/make/code/compile/modules'
 import type { ModuleEmit } from '@term/make/code/compile/modules'
 import { collectModules, makeParseMemo } from '@term/make/code/compile/load'
-import type { ImportScope, ParseMemo } from '@term/make/code/compile/load'
+import type { ImportScope, ParseMemo, WalkMemo } from '@term/make/code/compile/load'
 import type { Resolver } from '@term/make/code/compile/load'
 import { hashText } from '@term/make/code/term/hash'
 import type { CompileCache } from '@term/make/code/compile/cache'
@@ -245,6 +245,8 @@ export function compile(
     roll?: boolean
     // with `roll`: answer the roll and the diagnostics only, cached on their own (the program and TypeScript left out)
     rollOnly?: boolean
+    // each module's own part of the import walk, shared by a batch build's entries (compile/load.ts `WalkMemo`)
+    walked?: WalkMemo
     // the deck a source file belongs to (name and root), from its nearest `deck.tree`. Names the `host` of every
     // raise and roll entry. The CLI supplies it; without it the deck is read off the path
     deckOf?: (file: string) => { name: string; root: string } | undefined
@@ -324,6 +326,7 @@ export function compile(
         options.resolve,
         parsed,
         scanCache ? (unit, compute) => scanCache.scanned(unit.file, unit.text, compute) : undefined,
+        options.walked,
       )
     : undefined
   const sources = collected ? collected.sources : [source]

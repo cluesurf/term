@@ -98,8 +98,8 @@ function fits(name: string, lines: Line[], width: number): void {
 // value's. A quoted line wrapped inside its quote carries the gutter on every piece
 function holdsWhole(name: string, lines: Line[], value: string): void {
   const flat = texts(lines)
-    // a quote's elbow (`⎿`, `\_` in ASCII) on its first line; the old `│` gutter too, still drawn by a code frame
-    .map(text => text.replace(/^(\s*)(?:[│|]|⎿|\\_) /, '$1'))
+    // a quote's arrow (`⇒`, `=>` in ASCII) on its first line; the `│` gutter too, still drawn by a code frame
+    .map(text => text.replace(/^(\s*)(?:[│|]|⇒|=>) /, '$1'))
     .join('')
     .replace(/\s/g, '')
   ok(name, flat.includes(value.replace(/\s/g, '')), `  value ${value}\n${show(lines)}`)
@@ -411,20 +411,25 @@ same('no terminal: and then again', isProgressDue(0, 10000, 20000, STANDARD), tr
   ok('a crash prints no stack trace', !texts(drawItem(crash, one, true)).some(text => /\bat .*:\d+:\d+\)/.test(text)))
 }
 
-// ---- section 15: a run inside another run nests under its elbow ----
+// ---- section 15: a run inside another run is indented two cells a level, its items children of the item before ----
 
 {
   const one = room(80)
   const item = drawItem(ev({ glyph: 'done', verb: 'boot', subject: 'zone built', clock: '14:42:00.300', duration: 1340 }), one, true)
   const lines = [...item, { spans: [] }, ...item]
   const nested = nestLines(lines, 1, true, one).map(lineText)
-  // the body column (2) and the quote's indent (3): a level is 5 cells
-  same('a nested run opens under the elbow at the body column', nested[0], `${' '.repeat(2)}⎿  ✓ boot zone built`)
-  same('and the rest of it sits under the elbow', nested[1], `${' '.repeat(5)}${lineText(item[1]!)}`)
+  // the body column (2) a level, and no elbow (the user's choice, 2026-10-05)
+  same('a nested run opens two cells in, as a child of the item before it', nested[0], '  ✓ boot zone built')
+  same('and its facts sit two past that', nested[1], `  ${lineText(item[1]!)}`)
   same('blank lines are dropped, so it reads as one block', nested.length, item.length * 2)
-  same('a later item of the same run carries no elbow', nestLines(item, 1, false, one).map(lineText)[0], `${' '.repeat(5)}✓ boot zone built`)
-  same('two levels deep: one level of spaces, then the elbow', nestLines(item, 2, true, one).map(lineText)[0], `${' '.repeat(7)}⎿  ✓ boot zone built`)
-  same('in ASCII the elbow is \\_', nestLines(item, 1, true, room(80, true)).map(lineText)[0]!.slice(2, 5), '\\_ ')
+  same('the first line is drawn as any other', nestLines(item, 1, false, one).map(lineText)[0], nested[0])
+  same('two levels deep is two cells more', nestLines(item, 2, true, one).map(lineText)[0], '    ✓ boot zone built')
+  ok('no arrow in Unicode or ASCII: the indent is the nesting', !nested.some(text => text.includes('⇒')) && !nestLines(item, 1, true, room(80, true)).map(lineText).some(text => text.includes('=>')))
+  // a quote's text lines up under its first line's, in ASCII too, where the arrow is two cells
+  const quoted = drawItem(ev({ glyph: 'info', verb: 'log', subject: 'demo', clock: '14:42:00.300', quote: ['hello from term', 'this is more text'] }), one, true).map(lineText)
+  same('a quote is `⇒` then the text, and the rest under the text', quoted.slice(-2), ['  ⇒ hello from term', '    this is more text'])
+  const quotedAscii = drawItem(ev({ glyph: 'info', verb: 'log', subject: 'demo', clock: '14:42:00.300', quote: ['hello from term', 'this is more text'] }), room(80, true), true).map(lineText)
+  same('and in ASCII `=>`, the rest still under the text', quotedAscii.slice(-2), ['  => hello from term', '     this is more text'])
 }
 
 // ---- section 4 and 18: the worst glyph and the exit codes ----
@@ -644,7 +649,7 @@ function runChild(flags: string[], environment: Record<string, string> = {}) {
   ok('a JSON line is an item: level the glyph, logger the verb cut to 7 cells, msg the subject, tagged', /✗ databa… Connection lost\n {2}[\d:.]+ · server/.test(adapted.stderr), adapted.stderr)
   ok('its other keys are fields', /host +db1/.test(adapted.stderr), adapted.stderr)
   ok('a logfmt line on stderr is an item too, with its duration', /▲ smtp slow to respond\n {2}[\d:.]+ · server · 3\.00 s/.test(adapted.stderr), adapted.stderr)
-  ok('plain text is QUOTED under one `log` item named for the child, off the `⎿` elbow', /● log server\n[\s\S]*?⎿ +listening on 4000/.test(adapted.stderr), adapted.stderr)
+  ok('plain text is QUOTED under one `log` item named for the child, a `⇒` payload line', /● log server\n {2}⇒ listening on 4000/.test(adapted.stderr), adapted.stderr)
   same('nothing the child wrote reaches stdout', adapted.stdout, '')
 
   const raw = follow(['--raw'])

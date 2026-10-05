@@ -55,7 +55,7 @@ test <a stack becomes quoted output, trimmed to its top frame and the user's>
       kit-room(80)
   want hold
     is-equal kit-draw(got/event, 80)
-      <✗ email Unhandled rejection\n  ⎿  TypeError: x\n     at sendEmail (src/jobs/email.ts:42:17)\n     … 2 more frames>
+      <✗ email Unhandled rejection\n  ⇒ TypeError: x\n    at sendEmail (src/jobs/email.ts:42:17)\n    … 2 more frames>
 
 test <a missing logger is the verb log, a long one is cut to 7 cells>
   save plain

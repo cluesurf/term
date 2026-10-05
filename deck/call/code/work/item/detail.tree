@@ -497,6 +497,12 @@ task draw-quote
   save trimmed, trim-quote(written, earlier, room)
   save elbow, find-symbol(room, <elbow>)
   save indent, room/standard/quotes/indent
+
+  # the arrow and one space at least: `=>` in ASCII is two cells, and its text
+  # lines up under the first line's either way
+  fork test, is-below(indent, add(measure-text(elbow), 1))
+    hold
+      save indent, add(measure-text(elbow), 1)
   save more, find-symbol(room, <more>)
   save hang, room/standard/layout/hang
   save cells, subtract(room/width, indent)

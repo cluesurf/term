@@ -254,6 +254,19 @@ const VIEW_RUNTIME_MODULE = '@cluesurf/site/code/view/render'
 // `set-proxy`, and the navigation contract's `route-matches` / `route-param`. Injected like the render runtime
 const ROUTE_RUNTIME_MODULE = '@cluesurf/site/code/view/route-runtime'
 
+// One module's own part of an import walk (`collectModules`), for the text it was walked at: its import scope, the
+// modules it loads in order, the files they are, and the loads nothing answers. The scope is read, never written,
+// by the walks that share it
+export type WalkedModule = {
+  text: string
+  own: ImportScope extends Map<string, infer V> ? V : never
+  deps: Source[]
+  edges: string[]
+  diagnostics: Diagnostic[]
+}
+
+export type WalkMemo = Map<string, WalkedModule>
+
 // the entry plus every module it transitively loads, dependencies first (so forms are defined before use)
 export function collectModules(
   entry: Source,
@@ -264,6 +277,12 @@ export function collectModules(
   // where a module's import scan comes from: the build cache's (`CompileCache.scanned`), so a module whose text is
   // unchanged is not parsed to find its loads. Omitted, it is computed here
   scanOf: (source: Source, compute: () => ImportScan) => ImportScan = (_source, compute) => compute(),
+  // what each module's own part of the walk found, kept across walks: a project build walks one closure per entry, and
+  // every entry reaches the standard library, so each of its modules was scanned, resolved and given its import
+  // scope again for every entry, 42 s of a 147 s warm build of @term/bind (2026-10-05). A module's part depends on its
+  // file, its text and the resolver alone, so a build that shares one resolver shares one memo
+  // (note/term/plan/incremental-best-in-class.md, step 2)
+  walked?: WalkMemo,
 ): { sources: Source[]; diagnostics: Diagnostic[]; scope: ImportScope; edges: Map<string, string[]> } {
   const diagnostics: Diagnostic[] = []
   const ordered: Source[] = []
@@ -282,6 +301,35 @@ export function collectModules(
 
     active.add(source.file)
 
+    const known = walked?.get(source.file)
+    const one = known && known.text === source.text ? known : walkOne(source)
+
+    if (walked && one !== known) {
+      walked.set(source.file, one)
+    }
+
+    scope.set(source.file, one.own)
+    diagnostics.push(...one.diagnostics)
+
+    if (one.edges.length > 0) {
+      edges.set(source.file, [...one.edges])
+    }
+
+    for (const dependency of one.deps) {
+      visit(dependency)
+    }
+
+    active.delete(source.file)
+    done.add(source.file)
+    ordered.push(source) // pushed after its dependencies, so they come first
+  }
+
+  // one module's own part: its scan, the runtimes it is given, its loads resolved, its import scope, its refusals
+  function walkOne(source: Source): WalkedModule {
+    const found: Diagnostic[] = []
+    const deps: Source[] = []
+    const out: string[] = []
+
     // discover dependencies from the module's parse tree. A module that does not parse contributes no dependencies:
     // its own diagnostics are raised where it is compiled, and guessing at its imports here would only bury them.
     const scan: ImportScan = scanOf(source, () => {
@@ -289,7 +337,8 @@ export function collectModules(
 
       return tree.ok ? scanImports(tree.tree) : { paths: [], hasZone: false, hasRoute: false, finds: [] }
     })
-    const paths = scan.paths
+    // a copy: the runtimes below are added to it, and the scan may be the cache's own
+    const paths = [...scan.paths]
     const own = {
       finds: new Map<string, string[]>(),
       bears: [] as string[],
@@ -297,7 +346,6 @@ export function collectModules(
       aliases: new Map<string, string[]>(),
       plain: new Map<string, string[]>(),
     }
-    scope.set(source.file, own)
 
     // a module with a zone implicitly depends on the render runtime (the emitter synthesizes its calls). Inject it
     // unless the module already loads it or IS it (the render module itself must not depend on itself).
@@ -346,10 +394,10 @@ export function collectModules(
         }
 
         if (dependency.file !== source.file) {
-          edges.set(source.file, [...(edges.get(source.file) ?? []), dependency.file])
+          out.push(dependency.file)
         }
 
-        visit(dependency)
+        deps.push(dependency)
       } else if (thirdParty(path) && base === undefined) {
         // (a load with `base` that resolves to nothing has the more exact cause the bridge names: a `base` that is
         // not the path's first segment)
@@ -360,7 +408,7 @@ export function collectModules(
         const at = scan.finds.find(f => f.path === path)?.at
         const deck = path.split('/').slice(0, 2).join('/')
 
-        diagnostics.push(
+        found.push(
           diagnose('unresolved-load', {
             file: source.file,
             span: at ? { ...at, file: source.file } : { file: source.file, start: { line: 0, column: 0 }, end: { line: 0, column: 0 } },
@@ -370,9 +418,7 @@ export function collectModules(
       }
     }
 
-    active.delete(source.file)
-    done.add(source.file)
-    ordered.push(source) // pushed after its dependencies, so they come first
+    return { text: source.text, own, deps, edges: out, diagnostics: found }
   }
 
   visit(entry)

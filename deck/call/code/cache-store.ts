@@ -69,9 +69,16 @@ export const KEEP_VERSIONS = 2
 export const OUTPUT_BUDGET_BYTES = 2 * 1024 * 1024 * 1024
 export const MILL_BUDGET_BYTES = 4 * 1024 * 1024 * 1024
 
+// the separate build's units, machine-wide, the standard library's shared by every project (compile/separate.ts)
+export const UNIT_BUDGET_BYTES = 4 * 1024 * 1024 * 1024
+
 export function budgetFor(kind: string): number {
-  return kind === 'mill' ? MILL_BUDGET_BYTES : OUTPUT_BUDGET_BYTES
+  return kind === 'mill' ? MILL_BUDGET_BYTES : kind === 'unit' ? UNIT_BUDGET_BYTES : OUTPUT_BUDGET_BYTES
 }
+
+// the kinds kept machine-wide rather than per project: an entry of either is keyed by content alone, so any project
+// asking the same question gets the same answer
+export const SHARED_KINDS = new Set(['mill', 'unit'])
 
 // A version string to one filesystem-safe token. The version carries a `:` and a package version; hashing it keeps
 // the path short and makes every namespace directory the same shape, which is what lets them be compared by mtime.
@@ -708,7 +715,7 @@ export function sharedCacheStore(
   const local = diskCacheStore(localDir, version)
   const shared = diskCacheStore(sharedDir, version)
   const storeFor = (kind: string): CacheStore =>
-    kind === 'mill' ? shared : local
+    SHARED_KINDS.has(kind) ? shared : local
 
   return {
     load: (kind, key) => storeFor(kind).load(kind, key),

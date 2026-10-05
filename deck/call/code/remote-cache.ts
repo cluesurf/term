@@ -20,8 +20,11 @@ import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
 import { entryPathBySlug, storedEntries } from '@term/call/code/cache-store'
 
-const KINDS = ['mill', 'output'] as const
+// `unit` is the separate build's (compile/separate.ts), keyed by content alone like the mill
+const KINDS = ['mill', 'output', 'unit'] as const
 type Kind = (typeof KINDS)[number]
+
+const isKind = (kind: string): kind is Kind => (KINDS as readonly string[]).includes(kind)
 
 // an entry's address: its kind, the compiler-version namespace it belongs to, and its key
 type Address = { kind: Kind; version: string; key: string }
@@ -164,7 +167,7 @@ export function startRemoteCacheServer(options: {
 
     const { kind, version, key } = context.req.param()
 
-    if (kind !== 'mill' && kind !== 'output') {
+    if (!isKind(kind)) {
       return context.text('bad kind', 400)
     }
 
@@ -186,7 +189,7 @@ export function startRemoteCacheServer(options: {
 
     const { kind, version, key } = context.req.param()
 
-    if (kind !== 'mill' && kind !== 'output') {
+    if (!isKind(kind)) {
       return context.text('bad kind', 400)
     }
 

@@ -8,6 +8,10 @@
 load @term/base/list
   find list
   find join
+  find get
+
+load @term/base/maybe
+  find maybe
 
 load ./node
   find type
@@ -196,3 +200,167 @@ task keys-of
     take one
     push(keys, type-key(one))
   back join(keys, <, >)
+
+# TWO TYPES ALIKE, structurally, every field but a span. What `JSON.stringify` with spans dropped compared, with three
+# differences, each toward calling two types different rather than alike: a named type's value arguments (a dependent
+# type's indices, expressions) are alike only when both have none; and a flag or a list written empty is alike with
+# one left out, where JSON told them apart
+task type-equal
+  take a, like type
+  take b, like type
+  like boolean
+
+  sift a
+    case number
+      sift b
+        case number
+          back true
+        miss
+          back false
+    case float
+      sift b
+        case float
+          back true
+        miss
+          back false
+    case boolean
+      sift b
+        case boolean
+          back true
+        miss
+          back false
+    case string
+      sift b
+        case string
+          back true
+        miss
+          back false
+    case unit
+      sift b
+        case unit
+          back true
+        miss
+          back false
+    case dynamic
+      sift b
+        case dynamic
+          back true
+        miss
+          back false
+    case bytes
+      sift b
+        case bytes
+          back true
+        miss
+          back false
+    case unknown
+      sift b
+        case unknown
+          link other-free
+          back is-equal(free, other-free)
+        miss
+          back false
+    case array
+      sift b
+        case array
+          link other-element
+          back type-equal(element, other-element)
+        miss
+          back false
+    case map
+      sift b
+        case map
+          link other-key
+          link other-value
+          back and(type-equal(key, other-key), type-equal(value, other-value))
+        miss
+          back false
+    case named
+      sift b
+        case named
+          link other-name
+          link other-args
+          link other-values
+          fork test, is-unequal(name, other-name)
+            hold
+              back false
+          fork test, or(is-above(value-args/length, 0), is-above(other-values/length, 0))
+            hold
+              back false
+          back type-lists-equal(args, other-args)
+        miss
+          back false
+    case function
+      sift b
+        case function
+          link other-params
+          link other-result
+          link other-effects
+          link other-names
+          back and(and(type-lists-equal(params, other-params), type-equal(result, other-result)), and(texts-equal(effects, other-effects), texts-equal(param-names, other-names)))
+        miss
+          back false
+    case variable
+      sift b
+        case variable
+          link other-id
+          back is-equal(id, other-id)
+        miss
+          back false
+
+task type-lists-equal
+  take a, like list, like type
+  take b, like list, like type
+  like boolean
+
+  fork test, is-unequal(a/length, b/length)
+    hold
+      back false
+  walk a
+    take one
+    take at
+    save other, get(b, at)
+    fork test, is-equal(type-equal(one, other), false)
+      hold
+        back false
+  back true
+
+task texts-equal
+  take a, like list, like text
+  take b, like list, like text
+  like boolean
+  mark private
+
+  fork test, is-unequal(a/length, b/length)
+    hold
+      back false
+  walk a
+    take one
+    take at
+    fork test, is-unequal(one, get(b, at))
+      hold
+        back false
+  back true
+
+# two types as a parameter may hold them: both absent, or both present and alike
+task maybe-types-equal
+  take a, like maybe, like type
+  take b, like maybe, like type
+  like boolean
+
+  sift a
+    case some
+      link one
+      sift b
+        case some
+          link other
+          back type-equal(one, other)
+        case none
+          back false
+    case none
+      sift b
+        case some
+          back false
+        case none
+          back true
+

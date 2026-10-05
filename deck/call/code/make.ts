@@ -36,7 +36,7 @@ import {
 } from '@term/make/code/compile/feed-mill'
 import { withNativeEnv } from '@term/make/code/compile/native'
 import type { NativeEnv } from '@term/make/code/compile/native'
-import type { LoadHow, Resolver, Source } from '@term/make/code/compile/load'
+import type { LoadHow, ParseMemo, Resolver, Source, WalkMemo } from '@term/make/code/compile/load'
 // from the compiler, where they live, not through call/code/walk.ts's re-export: walk.ts imports esbuild (for the
 // REPL), and the language server imports `projectResolver` from here into a bundle that ships no node_modules
 import {
@@ -360,6 +360,26 @@ function isWithin(child: string, parent: string): boolean {
   const rel = path.relative(parent, child)
 
   return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel)
+}
+
+// What a separate build learns that the next one may keep (`compileProjectSeparate`): the unit answers, each module's
+// walk, each load's answer and each module's parse. A watch keeps one while the project's files are the same files,
+// since a module's walk and parse are checked against its text, and a load's answer only changes when a file appears
+// or disappears (note/term/plan/incremental-best-in-class.md, step 2)
+export type BuildSession = {
+  resolve: Resolver
+  parsed: ParseMemo
+  units: UnitMemo
+  walked: WalkMemo
+}
+
+export function buildSession(root: string): BuildSession {
+  return {
+    resolve: buildResolver(projectResolver(root)),
+    parsed: makeParseMemo(),
+    units: new Map(),
+    walked: new Map(),
+  }
 }
 
 // A resolver that answers each (load, file it is in, `base`) once for the life of one build. Every entry's import walk
@@ -704,6 +724,8 @@ export function compileProject(
   // cache key, and that walk runs before the cache can be asked, so a memo per entry re-parses the stdlib for every
   // file in the project. See makeParseMemo in compile/load.ts.
   const parsed = makeParseMemo()
+  // and one walk per module, however many entries reach it (compile/load.ts `WalkMemo`)
+  const walked: WalkMemo = new Map()
 
   let compiled = 0
   let written = 0
@@ -743,7 +765,7 @@ export function compileProject(
       // leanOf beside roleOf: a unit's role rule may carry `mark lean`, and the mill has to be told. Left out
       // here on 2026-09-12 while compileSeparate had it, so `term make` read every lean grammar long-form and
       // reported every property head as an unknown name.
-      { resolve, cache, parsed, deckOf, roleOf, leanOf },
+      { resolve, cache, parsed, walked, deckOf, roleOf, leanOf },
     )
 
     if (!result.ok) {
@@ -891,9 +913,10 @@ export function compileProjectSeparate(
   root: string,
   cache: CompileCache = projectCache(root),
   platform = 'node',
-  // one answer per unit for the whole run: the standard library's units are reached by every entry, and are read
-  // once rather than once per entry. A watch passes its own, kept across rebuilds
-  units: UnitMemo = new Map(),
+  // what one build learns and the next may keep: an answer per unit, a walk per module, an answer per load. A batch
+  // build makes its own; a watch keeps one across rebuilds (`watchProject`), so an edit re-walks only the module it
+  // changed and asks the filesystem nothing it asked before, until a file appears or disappears
+  session: BuildSession = buildSession(root),
 ): {
   compiled: number
   written: number
@@ -908,12 +931,10 @@ export function compileProjectSeparate(
   reused: number
 } {
   const files = findTreeFiles(root, [], platform)
-  const resolve = buildResolver(projectResolver(root))
+  const { resolve, parsed, units, walked } = session
   const deckOf = projectDeckOf()
   const roleOf = projectRoleOf(root)
   const leanOf = projectLeanOf(root)
-  // one parse per module for the whole run
-  const parsed = makeParseMemo()
   const problems: BuildProblem[] = []
   const faults: string[] = []
   const warnings: string[] = []
@@ -994,7 +1015,7 @@ export function compileProjectSeparate(
     const whole = role === 'mill' || role === 'host' || (!role && isDataFile({ file, text })) || isLookStylesheet({ file, text })
 
     if (whole) {
-      const one = compile({ file, text }, { resolve, cache, parsed, deckOf, roleOf, leanOf })
+      const one = compile({ file, text }, { resolve, cache, parsed, walked, deckOf, roleOf, leanOf })
 
       if (!one.ok) {
         failed++
@@ -1041,6 +1062,7 @@ export function compileProjectSeparate(
         deckOf,
         parsed,
         units,
+        walked,
       },
     )
 

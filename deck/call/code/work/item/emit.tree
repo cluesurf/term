@@ -251,7 +251,7 @@ task open-output
   fork test, is-below(width, 1)
     hold
       save width, 80
-  # a nested run (section 15) draws in what is left right of its elbows
+  # a nested run (section 15) draws in what is left right of its indent
   save width, subtract(width, multiply(options/depth, nest-step(standard)))
   save started, now()
   save offset, 0
@@ -301,13 +301,13 @@ task nest-step
 
   like number
 
-  back add(standard/layout/body-column, standard/quotes/indent)
+  back standard/layout/body-column
 
-# a run started inside another (section 15): every line under the outer run's `⎿`
-# elbow, at
-# its body column, one level per depth. The elbow is on the nested run's first line
-# only, the rest under it, as a quote is. Blank lines are dropped, so the nested run
-# reads as one block under the item that started it
+# a run started inside another (section 15): every line two cells in per level, the
+# body column, so its items sit as children of the item that started it, the way
+# every detail does (the user's choice, 2026-10-05: no elbow). Blank lines are
+# dropped, so the nested run reads as one block. `first` is kept for the callers:
+# no line is drawn differently now
 task nest-lines
   take lines, like list, like line
   take depth, like number
@@ -317,23 +317,14 @@ task nest-lines
   like list, like line
 
   save out, make list
-  save step, nest-step(room/standard)
-  save column, room/standard/layout/body-column
-  save indent, room/standard/quotes/indent
-  save elbow, find-symbol(room, <elbow>)
-  save outer, make-spaces(multiply(subtract(depth, 1), step))
+  save lead, make-spaces(multiply(depth, nest-step(room/standard)))
 
   walk lines
     take line
     fork test, is-above(measure-spans(line/spans), 0)
       hold
-        save lead, <{outer}{make-spaces(step)}>
-        fork test, and(first, is-equal(out/length, 0))
-          hold
-            save gap, make-spaces(subtract(indent, measure-text(elbow)))
-            save lead, <{outer}{make-spaces(column)}{elbow}{gap}>
         save spans, make list
-        spans/push make-span(lead, <dim>)
+        spans/push make-span(lead, <text>)
         walk line/spans
           take each
           spans/push each
@@ -348,11 +339,10 @@ task print-data
 
   write-data-text(value)
 
-# data printed while a run is open and on the same terminal as it (section 15):
-# under the
-# last item's `⎿` elbow, so it does not break the run's left edge. Never wrapped, so
-# a
-# line copied from the terminal is the line. A pipe gets it as it is (print-data)
+# data printed while a run is open and on the same terminal as it (section 15): a
+# payload line under the last item, `⇒` then the data, further lines under the first
+# one's text, so it does not break the run's left edge. Never wrapped, so a line
+# copied from the terminal is the line. A pipe gets it as it is (print-data)
 task print-data-under
   take one, like runner
   take value, like text
@@ -362,8 +352,13 @@ task print-data-under
   save room, one/output/room
   save step, nest-step(room/standard)
   save column, room/standard/layout/body-column
-  save indent, room/standard/quotes/indent
   save elbow, find-symbol(room, <elbow>)
+
+  # the arrow and one space at least, as a quote's (detail.tree `draw-quote`)
+  save indent, room/standard/quotes/indent
+  fork test, is-below(indent, add(measure-text(elbow), 1))
+    hold
+      save indent, add(measure-text(elbow), 1)
   save outer, make-spaces(multiply(one/output/options/depth, step))
   save lines, make list
   save count, 0
@@ -372,7 +367,7 @@ task print-data-under
     take each
     fork test, is-unequal(each, <>)
       hold
-        save lead, <{outer}{make-spaces(step)}>
+        save lead, <{outer}{make-spaces(add(column, indent))}>
         fork test, is-equal(count, 0)
           hold
             save gap, make-spaces(subtract(indent, measure-text(elbow)))
@@ -460,9 +455,8 @@ task report
 
   fork test, is-above(step/lines/length, 0)
     hold
-      # the first line a run prints carries its elbow when it is nested: the
-      # opening,
-      # unless --quiet left it out
+      # whether this is the run's first line (the opening, unless --quiet left it
+      # out); nesting draws it as any other since 2026-10-05, and keeps the flag
       print-event(next, event, step/lines, is-first(one/session))
     miss
       # hidden from the human view by --quiet or a level, but machine output carries

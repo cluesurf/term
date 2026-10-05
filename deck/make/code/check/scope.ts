@@ -312,34 +312,22 @@ function bindSharedCases(program: Program, scope: ImportScope | undefined): void
     return
   }
 
+  // ONLY where nothing else could be meant: the construction's file defines one owner and imports no other owner's
+  // form. Anything wider is a guess, and both wider rules guessed wrong in @term/host: scan.tree defines `token` and
+  // builds node.tree's `scan-node` cases of the same names, which it imports, and read.tree reaches both
+  // (`compile/host-native` on Kotlin, 2026-10-05). The checker's own choice, by the type the construction flows into,
+  // stays for those, as before
   const ownerFor = (name: string, file: string | undefined): string | undefined => {
-    const list = shared.get(name)!
-
     if (!file) {
       return undefined
     }
 
+    const list = shared.get(name)!
     const own = list.filter(o => o.file === file)
+    const imported = scope?.get(file)?.finds
+    const importsAnother = list.some(o => o.file !== file && imported?.has(o.form))
 
-    if (own.length === 1) {
-      return own[0]!.form
-    }
-
-    if (own.length > 1) {
-      return undefined
-    }
-
-    const reached = list.filter(o => {
-      const reach = new Set<string>()
-
-      for (const target of scope?.get(file)?.finds.get(o.form) ?? []) {
-        exportedBy(scope, target, reach)
-      }
-
-      return reach.has(o.file)
-    })
-
-    return reached.length === 1 ? reached[0]!.form : undefined
+    return own.length === 1 && !importsAnother ? own[0]!.form : undefined
   }
 
   const visit = (node: unknown, file: string | undefined): void => {

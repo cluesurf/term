@@ -1,0 +1,158 @@
+# One file defines a task once per signature.
+#
+# Two tasks of one name and one parameter list in one file both built, the last silently replaced the first, and the
+# build said nothing (guides: language/tasks, 2026-10-03). The same thing across two files is deliberate, a
+# `native/<env>/` shim overriding a shared task, and is left to the overload binder. Inside one file there is nothing it
+# can mean but a copy, so it is refused at the second definition. Tasks that differ in arity or in a written parameter
+# type are overloads and are left alone.
+#
+# Ported from check/duplicates.ts (self-hosting, 2026-10-05). It keyed a task by its parameter types as JSON; here two
+# lists of types are compared by compile/type-text's `type-equal`, which errs toward calling two types different, so it
+# can miss a copy of a dependent type and never refuses an overload.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load ../parser/diagnostic
+  find diagnostic
+  find diagnose
+  find diagnostic-input
+  find span
+
+load ../compile/node
+  find statement
+  find type
+  find method-of
+  find declared-signature
+  find function-param
+
+load ../compile/type-text
+  find maybe-types-equal
+
+task is-in-file
+  take at, like span
+  take file, like text
+  like boolean
+  mark private
+
+  sift at/file
+    case some
+      link written
+      back is-equal(written, file)
+    case none
+      back false
+
+# the form a method belongs to, or empty
+task method-form
+  take method, like maybe, like method-of
+  like text
+  mark private
+
+  sift method
+    case some
+      link of
+      back of/form
+    case none
+      back <>
+
+# the name a person wrote: a method's own name, else the task's
+task written-name
+  take method, like maybe, like method-of
+  take name, like text
+  like text
+  mark private
+
+  sift method
+    case some
+      link of
+      back of/name
+    case none
+      back name
+
+# the parameter types as written: the declared ones where the kernel kept them, else the seeded ones
+task parameter-types
+  take declared, like maybe, like declared-signature
+  take params, like list, like function-param
+  like list, like maybe, like type
+  mark private
+
+  save out, make list
+  sift declared
+    case some
+      link signature
+      walk signature/params
+        take param
+        push(out, param/type)
+    case none
+      walk params
+        take param
+        push(out, param/type)
+  back out
+
+task same-types
+  take a, like list, like maybe, like type
+  take b, like list, like maybe, like type
+  like boolean
+  mark private
+
+  fork test, is-unequal(a/length, b/length)
+    hold
+      back false
+  walk a
+    take one
+    take at
+    fork test, is-equal(maybe-types-equal(one, get(b, at)), false)
+      hold
+        back false
+  back true
+
+task check-duplicate-tasks
+  take program, like list, like statement
+  take file, like text
+  like list, like diagnostic
+
+  save out, make list
+  # each first definition of a signature: its form, name, types and span, at one index
+  save forms, make list
+  save names, make list
+  save types, make list
+  save spans, make list
+  walk program
+    take one
+    sift one
+      case function
+        fork test, or(is-equal(is-in-file(span, file), false), or(is-equal(body/length, 0), or(stub, claim)))
+          hold
+            turn next
+        save own-form, method-form(method)
+        save own-types, parameter-types(declared, params)
+        save earlier, -1
+        walk names
+          take known
+          take at
+          fork test, and(is-equal(earlier, -1), and(is-equal(known, name), and(is-equal(get(forms, at), own-form), same-types(get(types, at), own-types))))
+            hold
+              save earlier, at
+        fork test, is-equal(earlier, -1)
+          hold
+            push(forms, own-form)
+            push(names, name)
+            push(types, own-types)
+            push(spans, span)
+            turn next
+        save first-span, get(spans, earlier)
+        save input
+          make diagnostic-input
+            bind file, file
+            bind span, span
+            bind message, make(some, <`{written-name(method, name)}` is defined twice in this file with the same parameters, first on line {add(first-span/start/line, 1)}, and only one of them could ever be called>)
+            bind hint, make(some, <remove one, or give them different parameters if both are meant>)
+        save kind, make duplicate-definition
+        push(out, diagnose(kind, input))
+      miss
+        turn next
+  back out

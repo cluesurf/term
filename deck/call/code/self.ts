@@ -20,9 +20,9 @@
 // dispatches. Which version a command runs is resolution's answer (need.ts), so `update` and `back` move the front and
 // change nothing a pinned project runs.
 //
-// A COPY THIS DID NOT INSTALL is said to be so. Homebrew updates its own (`brew upgrade cluesurf/tool/term`), and a
-// source checkout is built, not installed, so `update` and `back` refuse both, naming the way that does work. Every
-// other verb works from either: a Homebrew `term` is a front like any other.
+// A COPY THIS DID NOT INSTALL is said to be so. Homebrew, apt, dnf and winget update their own (task/distro.ts makes
+// the last three), and a source checkout is built, not installed, so `update` and `back` refuse all of them, naming the
+// way that does work. Every other verb works from any of them: a packaged `term` is a front like any other.
 
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import nodePath from 'path'
@@ -81,7 +81,22 @@ const WASH_DAYS = 90
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
-type Held = { form: 'installed'; install: Install } | { form: 'homebrew'; version: string } | { form: 'source'; version: string }
+// a package manager that installed `term` and updates it: Homebrew, apt and dnf (both at /usr/lib/term, told apart by
+// dpkg's own record of the package), and winget (its package folder for ClueSurf.Term)
+type Manager = 'homebrew' | 'apt' | 'dnf' | 'winget'
+
+type Held = { form: 'installed'; install: Install } | { form: 'managed'; by: Manager; version: string } | { form: 'source'; version: string }
+
+// each manager as its own project writes its name
+const SPELLED: Record<Manager, string> = { homebrew: 'Homebrew', apt: 'apt', dnf: 'dnf', winget: 'winget' }
+
+// how each manager updates its copy, said when `term self update` or `back` is refused
+const UPDATE: Record<Manager, string> = {
+  homebrew: 'brew upgrade cluesurf/tool/term',
+  apt: 'sudo apt update, then sudo apt install --only-upgrade term',
+  dnf: 'sudo dnf upgrade term',
+  winget: 'winget upgrade ClueSurf.Term',
+}
 
 // ---- check, update, back ----
 
@@ -115,8 +130,10 @@ export async function callSelfCheck(input: { root: string }): Promise<void> {
       verb: 'check',
       subject: `${PACKAGE}@${version} for ${platform} is released and signed by ${verified.keys}`,
       message: [
-        held.form === 'homebrew'
-          ? 'Homebrew installed this copy and checked its download against the same layer digest.'
+        held.form === 'managed'
+          ? held.by === 'homebrew'
+            ? 'Homebrew installed this copy and checked its download against the same layer digest.'
+            : `${SPELLED[held.by]} installed this copy from a package of the same payload, checked by its own signature.`
           : 'This copy is a source build, so its bytes are not compared with the release.',
       ],
     })
@@ -609,7 +626,8 @@ export async function callSelfWash(input: { root: string; days?: number; commit?
 
 // ---- shared ----
 
-// What is running: an install this layout owns (install.tree beside the payload), a Homebrew copy, or a source build
+// What is running: an install this layout owns (install.tree beside the payload), a package manager's copy, or a source
+// build
 function whatRuns(): Held {
   const payload = payloadRoot()
   const install = readInstall(nodePath.join(payload, '..', 'install.tree'))
@@ -618,7 +636,27 @@ function whatRuns(): Held {
     return { form: 'installed', install }
   }
 
-  return { form: /[\\/](Caskroom|Cellar)[\\/]/.test(payload) ? 'homebrew' : 'source', version: readPackageVersion(payload) }
+  const version = readPackageVersion(payload)
+  const by = managerOf(payload)
+
+  return by ? { form: 'managed', by, version } : { form: 'source', version }
+}
+
+/** The package manager that owns the payload at `payload`, by where it put it (task/distro.ts, the Homebrew formula). */
+export function managerOf(payload: string, dpkgKnows = existsSync('/var/lib/dpkg/info/term.list')): Manager | undefined {
+  if (/[\\/](Caskroom|Cellar)[\\/]/.test(payload)) {
+    return 'homebrew'
+  }
+
+  if (/[\\/]WinGet[\\/]Packages[\\/]ClueSurf\.Term_/i.test(payload)) {
+    return 'winget'
+  }
+
+  if (payload === '/usr/lib/term') {
+    return dpkgKnows ? 'apt' : 'dnf'
+  }
+
+  return undefined
 }
 
 // the payload this module was bundled into: host/line.js, one level under it
@@ -632,8 +670,8 @@ function runningVersion(held: Held): string {
 
 function refuseUnmanaged(held: Exclude<Held, { form: 'installed' }>): void {
   const subject =
-    held.form === 'homebrew'
-      ? 'Homebrew installed this copy, so Homebrew updates it: brew upgrade cluesurf/tool/term'
+    held.form === 'managed'
+      ? `${SPELLED[held.by]} installed this copy, so ${SPELLED[held.by]} updates it: ${UPDATE[held.by]}`
       : 'This copy is a source build, which is rebuilt, not updated: pnpm run make:line'
 
   report({ glyph: 'failed', kind: 'problem', verb: 'self', subject })

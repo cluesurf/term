@@ -134,8 +134,8 @@ function oneSpaceFields(lines: Expected[], colorless: boolean): Expected[] {
   })
 }
 
-// D33: a quote is a child program's own lines, and hangs off a dim `⎿` elbow on its first line with the rest under it,
-// 3 cells right of the body column, where the mockups draw a `│ ` gutter on every line (the user's choice, 2026-10-04).
+// D33: a quote is a child program's own lines, a dim `⇒` on its first line and the rest under its text, 2 cells right
+// of the body column, where the mockups draw a `│ ` gutter on every line (the user's choice, 2026-10-05, after a `⎿`).
 // A quote line is one that opens with the body column's 2 spaces and then `│`; a code frame has its line number there,
 // and a tree's stem (`│  └─`) goes on with the tree's own characters
 const QUOTE = /^ {2}│ (?! *[├└│])/
@@ -147,13 +147,14 @@ function elbowQuotes(lines: Expected[]): Expected[] {
       return line
     }
 
+    // `⇒ ` on the first line, two spaces under it on the rest (the user's choice, 2026-10-05, over `⎿` and three)
     const first = at === 0 || !QUOTE.test(lines[at - 1]!.text)
-    const lead = first ? '⎿  ' : '   '
+    const lead = first ? '⇒ ' : '  '
     const rest = [...line.text].slice(4)
 
     return {
       text: `${' '.repeat(2)}${lead}${rest.join('')}`,
-      marks: [...line.marks.slice(0, 2), first ? ELBOW : null, null, null, ...line.marks.slice(4)],
+      marks: [...line.marks.slice(0, 2), first ? ELBOW : null, null, ...line.marks.slice(4)],
     }
   })
 }
