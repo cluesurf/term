@@ -440,4 +440,10 @@ enum cask {
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory.path
     }
+
+    // the person's home directory, which a scope's `$home` names (app-scope): theirs on macOS, the app's sandbox
+    // home on iOS, which is the only home an iOS app has
+    static func homePath() -> String {
+        NSHomeDirectory()
+    }
 }

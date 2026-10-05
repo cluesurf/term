@@ -120,6 +120,19 @@ async function main(): Promise<void> {
 
   eq('roundtrip', m.parse(m.stringify(rows)), rows)
 
+  // a quote left open is refused at the quote, not read as one row holding the rest of the text (guides:
+  // library/formats, 2026-10-04)
+  const refused = (() => {
+    try {
+      return { rows: m.parse('a,"b\nc,d') }
+    } catch (error) {
+      return error as { name?: string; form?: string }
+    }
+  })()
+
+  eq('an open quote raises csv-mismatch', (refused as { form?: string }).form, 'csv-mismatch')
+  eq('at the opening quote', /"at":2\b/.test(JSON.stringify(refused)), true)
+
   console.log(`\ncsv: ${pass} pass, ${fail} fail`)
 
   if (fail) {

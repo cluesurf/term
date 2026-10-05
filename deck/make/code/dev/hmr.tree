@@ -1,0 +1,184 @@
+# HMR propagation (Tier 3, the Vite algorithm). Given a changed module, walk importers upward to find the BOUNDARY
+# modules that can accept the update. A `zone` is self-accepting (handles its own change). A module that explicitly
+# accepts a dep (dep-accept) is a boundary for that dep. If any path reaches the top without an accepting module, the
+# update cannot be applied in place and the page must full-reload. Pure: takes a graph, returns a decision.
+# See note/research/repo/vite/03-hmr-propagation.md and 08-lessons-for-seed.md.
+#
+# Ported from dev/hmr.ts (self-hosting, 2026-10-04) with dev/module-graph, whose nodes now name their importers by id.
+# The result keeps its wire shape, a union tagged on `type`, because the dev server sends it to the browser as JSON.
+# The recursive walk that pushed into a list its closure shared now hands the list along and back (D1).
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+load ./module-graph
+  find module-graph
+  find module-node
+  find has-module
+  find module-by-id
+
+# one hot update: re-import `accepted` (the changed module's URL) and run the accept callback registered at `boundary`
+form hmr-update
+  link boundary, like text
+  link accepted, like text
+
+form hmr-result
+  mark tag, name type
+  case update
+    link updates
+      like list
+        like hmr-update
+  case full-reload
+  # a recompile error: the running app keeps its last-good code and state, and the client shows an error overlay. No
+  # reload, so the developer fixes the error without losing where they were. The next good build clears the overlay
+  case error
+    link errors
+      like list
+        like text
+
+# how far one path of the walk got: whether it dead-ended, and the boundaries found so far
+form boundary-walk
+  link dead, like boolean
+  link found
+    like list
+      like hmr-update
+
+task make-hmr-update
+  take boundary, like text
+  take accepted, like text
+  like hmr-update
+
+  back
+    make hmr-update
+      bind boundary, boundary
+      bind accepted, accepted
+
+# Walk up from `node`, adding each boundary met to `found`. Dead when a path reaches a module that accepts nothing and
+# has no importers, or comes back to a module already on `chain` (a cycle accept cannot resolve)
+task walk-boundaries
+  take graph, like module-graph
+  take node, like module-node
+  take chain
+    like list
+      like text
+  take found
+    like list
+      like hmr-update
+  like boundary-walk
+
+  save out, copy(found)
+  fork test, node/is-self-accepting
+    hold
+      push(out, make-hmr-update(node/url, node/url))
+      back
+        make boundary-walk
+          bind dead, false
+          bind found, out
+  # a non-accepting module with no importers is the top of a path: nothing accepts the change
+  fork test, is-equal(node/importers/length, 0)
+    hold
+      back
+        make boundary-walk
+          bind dead, true
+          bind found, out
+  walk node/importers
+    take id
+    save importer, module-by-id(graph, id)
+    # the importer explicitly accepts this dep: it is the boundary for this path
+    fork test, contains(importer/accepted-hmr-deps, node/url)
+      hold
+        push(out, make-hmr-update(importer/url, node/url))
+        turn next
+    # a cycle back to a module already on this path cannot be resolved by accept: full reload
+    fork test, contains(chain, id)
+      hold
+        back
+          make boundary-walk
+            bind dead, true
+            bind found, out
+    save longer, copy(chain)
+    push(longer, id)
+    save above, walk-boundaries(graph, importer, longer, out)
+    save out, above/found
+    fork test, above/dead
+      hold
+        back
+          make boundary-walk
+            bind dead, true
+            bind found, out
+  back
+    make boundary-walk
+      bind dead, false
+      bind found, out
+
+# Decide how to apply a change to `changed-id`: the boundaries to update, or a full reload if any path dead-ends.
+# Mirrors Vite's `propagateUpdate`: a self-accepting module is its own boundary, a dep-accepting importer is a boundary
+# for the dep, a circular path or a top-level non-accepting module forces a full reload
+task propagate-update
+  take graph, like module-graph
+  take changed-id, like text
+  like hmr-result
+
+  # an unknown or never-loaded module cannot be hot-updated in place
+  fork test, has-module(graph, changed-id)
+    miss
+      back make full-reload
+  save changed, module-by-id(graph, changed-id)
+  fork test, changed/loaded
+    miss
+      back make full-reload
+  save chain, make list
+  push(chain, changed-id)
+  save walked, walk-boundaries(graph, changed, chain, make list)
+  fork test, walked/dead
+    hold
+      back make full-reload
+
+  # the same boundary can be reached by several paths: keep the first
+  save seen, make hash
+  save updates, make list
+  walk walked/found
+    take one
+    save key, <{one/boundary}\n{one/accepted}>
+    fork test, has(seen, key)
+      miss
+        set(seen, key, true)
+        push(updates, one)
+  back
+    make update
+      bind updates, updates
+
+# The modules to invalidate for a change: the changed module plus every module that transitively imports it. The dev
+# server clears each one's compiled output so the next request recompiles. The changed id first, then in the order
+# they are reached
+task affected-modules
+  take graph, like module-graph
+  take changed-id, like text
+  like list
+    like text
+
+  save affected, make list
+  fork test, has-module(graph, changed-id)
+    miss
+      back affected
+  save seen, make hash
+  save stack, make list
+  set(seen, changed-id, true)
+  push(affected, changed-id)
+  push(stack, changed-id)
+  walk test
+    hook test
+      is-above(stack/length, 0)
+    hook hold
+      save node, module-by-id(graph, pop(stack))
+      walk node/importers
+        take id
+        fork test, has(seen, id)
+          miss
+            set(seen, id, true)
+            push(affected, id)
+            push(stack, id)
+  back affected

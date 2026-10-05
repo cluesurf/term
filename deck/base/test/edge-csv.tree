@@ -1,0 +1,45 @@
+# CSV reads the same on every backend: csv.tree is pure Term. A quoted field never closed raises `csv-mismatch` at
+# its opening quote, where it read as one row holding the rest of the text. Held by `pnpm term:base-gate`.
+
+load @term/base/csv
+  find parse
+  find csv-mismatch
+
+load @term/base/text/unicode
+  find rune-to-text
+
+load @term/base/list
+  find list
+
+# how many rows the text reads as, or `at reason`
+task rows
+  take text, like text
+  like text
+  mark unsafe
+    save read
+      call parse
+        read text
+    send back, <{read/length} rows>
+  halt take
+    take problem
+    sift problem
+      case csv-mismatch
+        send back, <{at} {reason}>
+      case failure
+        send back, <failure>
+
+test <a closed quote reads>
+  want hold
+    call is-equal
+      call rows
+        text <a,"b,c">
+      text <1 rows>
+
+test <a quote left open is refused at the quote>
+  want hold
+    call is-equal
+      call rows
+        call add
+          text <a,"b>
+          call rune-to-text, code 10
+      text <2 a quoted field is never closed>

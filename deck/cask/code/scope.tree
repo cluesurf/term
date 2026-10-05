@@ -1,0 +1,359 @@
+
+# Whether one argument of a call from the page lies inside the app's scope (app-scope, deck/call/code/scope.ts). The
+# cask's generated dispatcher asks before anything runs, for each argument a scoped capability's task names, against
+# the patterns of the access that task needs. Term all the way down, so every cask backend answers alike.
+#
+#   in-scope   a value against the patterns one access lists, one a line. A NAME (an environment variable) is in scope
+#              when a pattern is the name or `*`. A PATH is in scope when it is absolute and, with `.` and `..` folded
+#              away, matches a pattern whose leading `$data`, `$bundle` or `$home` is the given directory: `**` is any
+#              number of folders, `*` any part of one name, anything else itself
+#
+# `..` is folded before any match, so `$data/../../etc/passwd` is `/etc/passwd`, and a pattern for `$data/**` does not
+# reach it. A symbolic link is not followed: a link inside the scope to a file outside it reads as inside, which is the
+# one thing this check cannot see, and is why a scope names folders the app owns.
+
+load @term/base/text
+  find split
+  find starts-with
+  find ends-with
+  find index-of
+  find substring
+load @term/base/list
+  find list
+
+task in-scope
+  take value, like text
+  take patterns, like text
+  take kind, like text
+  take data, like text
+  take bundle, like text
+  take home, like text
+  like boolean
+  save lines
+    call split
+      read patterns
+      text <\n>
+  fork test
+    hook test
+      call is-equal
+        read kind
+        text <name>
+    hook hold
+      save found, false
+      walk list, read lines
+        hook next
+          take site, name line
+          fork test
+            hook test
+              meet or
+                call is-equal
+                  read line
+                  read value
+                call is-equal
+                  read line
+                  text <*>
+            hook hold
+              save found, true
+      send back, read found
+  # a path that is not absolute is relative to a working directory the page does not choose, so it is never in scope
+  fork test
+    hook test
+      call is-equal
+        call starts-with
+          read value
+          text </>
+        false
+    hook hold
+      send back, false
+  save path
+    call folded
+      read value
+  save found, false
+  walk list, read lines
+    hook next
+      take site, name line
+      save pattern
+        call expanded
+          read line
+          read data
+          read bundle
+          read home
+      fork test
+        hook test
+          call starts-with
+            read pattern
+            text </>
+        hook hold
+          fork test
+            hook test
+              call matches
+                call folded
+                  read pattern
+                code 0
+                read path
+                code 0
+            hook hold
+              save found, true
+  send back, read found
+
+# a pattern's leading variable replaced by its directory: `$data/x` with the app's data directory, and so on. A pattern
+# with none is itself
+task expanded
+  take pattern, like text
+  take data, like text
+  take bundle, like text
+  take home, like text
+  like text
+  fork test
+    hook test
+      call starts-with
+        read pattern
+        text <$data>
+    hook hold
+      send back
+        call joined
+          read data
+          call substring
+            read pattern
+            code 5
+    hook test
+      call starts-with
+        read pattern
+        text <$bundle>
+    hook hold
+      send back
+        call joined
+          read bundle
+          call substring
+            read pattern
+            code 7
+    hook test
+      call starts-with
+        read pattern
+        text <$home>
+    hook hold
+      send back
+        call joined
+          read home
+          call substring
+            read pattern
+            code 5
+  send back, read pattern
+
+# a directory and what follows its variable in a pattern: `/a` and `/b` are `/a/b`, and `/a` and nothing is `/a`. A
+# directory the platform could not give (an empty one) leaves the pattern relative, which then matches nothing
+task joined
+  take directory, like text
+  take rest, like text
+  like text
+  fork test
+    hook test
+      call is-equal
+        read directory
+        text <>
+    hook hold
+      send back, text <>
+  send back, text <{directory}{rest}>
+
+# a path's names with `.` and `..` folded away and empty ones dropped: `/a/./b/../c//d` is `a`, `c`, `d`. A `..` at the
+# top stays at the top, as the file system has it
+task folded
+  take path, like text
+  like list
+    like text
+  save names
+    make list
+  save parts
+    call split
+      read path
+      text </>
+  walk list, read parts
+    hook next
+      take site, name part
+      fork test
+        hook test
+          meet or
+            call is-equal
+              read part
+              text <>
+            call is-equal
+              read part
+              text <.>
+        hook hold
+          save skip, code 0
+        hook test
+          call is-equal
+            read part
+            text <..>
+        hook hold
+          fork test
+            hook test
+              call is-above
+                read names/length
+                code 0
+            hook hold
+              save gone
+                call names/pop
+        hook miss
+          call names/push
+            read part
+  send back, read names
+
+# whether the pattern's names from `at` match the path's names from `from`: `**` takes any number of names, zero
+# included, and any other name matches one name of the path
+task matches
+  take pattern
+    like list
+      like text
+  take at, like integer
+  take path
+    like list
+      like text
+  take from, like integer
+  like boolean
+  fork test
+    hook test
+      call is-equal
+        read at
+        read pattern/length
+    hook hold
+      send back
+        call is-equal
+          read from
+          read path/length
+  save name, read pattern/{at}
+  save next
+    call add
+      read at
+      code 1
+  fork test
+    hook test
+      call is-equal
+        read name
+        text <**>
+    hook hold
+      save found, false
+      walk size
+        bind base, read from
+        bind head
+          call add
+            read path/length
+            code 1
+        hook next
+          take site, name skip
+          fork test
+            hook test
+              call matches
+                read pattern
+                read next
+                read path
+                read skip
+            hook hold
+              save found, true
+      send back, read found
+  fork test
+    hook test
+      call is-equal
+        read from
+        read path/length
+    hook hold
+      send back, false
+  fork test
+    hook test
+      call name-matches
+        read name
+        read path/{from}
+    hook hold
+      send back
+        call matches
+          read pattern
+          read next
+          read path
+          call add
+            read from
+            code 1
+  send back, false
+
+# one name against one name of a pattern: `*` is any run of characters within the name, anything else itself. The
+# pattern is cut at each `*`: the first piece must begin the name, the last end it, and the ones between appear in
+# order between them
+task name-matches
+  take pattern, like text
+  take name, like text
+  like boolean
+  save pieces
+    call split
+      read pattern
+      text <*>
+  fork test
+    hook test
+      call is-equal
+        read pieces/length
+        code 1
+    hook hold
+      send back
+        call is-equal
+          read pattern
+          read name
+  save first, read pieces/0
+  save last-at
+    call subtract
+      read pieces/length
+      code 1
+  save last, read pieces/{last-at}
+  fork test
+    hook test
+      meet or
+        call is-below
+          read name/length
+          call add
+            read first/length
+            read last/length
+        call is-equal
+          call starts-with
+            read name
+            read first
+          false
+        call is-equal
+          call ends-with
+            read name
+            read last
+          false
+    hook hold
+      send back, false
+  save at, read first/length
+  save end
+    call subtract
+      read name/length
+      read last/length
+  save found, true
+  walk size
+    bind base, code 1
+    bind head, read last-at
+    hook next
+      take site, name index
+      save piece, read pieces/{index}
+      save place
+        call index-of
+          read name
+          read piece
+          read at
+      fork test
+        hook test
+          meet or
+            call is-below
+              read place
+              code 0
+            call is-above
+              call add
+                read place
+                read piece/length
+              read end
+        hook hold
+          save found, false
+        hook miss
+          save at
+            call add
+              read place
+              read piece/length
+  send back, read found

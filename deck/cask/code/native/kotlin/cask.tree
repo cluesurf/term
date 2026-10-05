@@ -160,6 +160,13 @@ task data-path
     call cask/data-path
       read name
 
+# the home directory a scope's `$home` names (app-scope, deck/call/code/scope.ts): an Android app's own data directory
+task home-path
+  mark async
+  like text
+  send back
+    call cask/home-path
+
 # ---- over-the-air page updates (native-dom-0016). Runtime: runtime/cask-update.kt, the twin of the Swift one. Publisher: deck/call/code/update.ts
 
 # the page directory to load: `resources/page` as shipped, or the newest downloaded update that matches this binary

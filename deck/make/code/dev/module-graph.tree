@@ -1,0 +1,268 @@
+# The dev-server module graph (Tier 3, the Vite model). One node per compiled `.tree` module. The `importers` edge
+# (who imports me) is what HMR walks upward to find a boundary. The graph is built as a side effect of compiling each
+# module: after a module is compiled, its imports are recorded, which adds this module to each dep's importers.
+# Pure data, no I/O, so it is unit-testable. See note/research/repo/vite/01-module-graph.md.
+#
+# Ported from dev/module-graph.ts (self-hosting, 2026-10-04). The original was a class whose nodes pointed at each
+# other: `importers: Set<ModuleNode>`, and a caller mutated a node it held and the graph saw it. Under value
+# semantics (D1) a node is a value, so a node held outside the graph is a copy, and identity is not a thing Term has.
+# So the shape changed, and its one caller (deck/call/code/dev/server.ts), dev/hmr and test/dev/hmr.ts changed with it:
+#   - a node names its neighbours by ID, the canonical source path: `importers` and `imported-modules` are lists of
+#     ids, each holding an id once, in the order it was added (a Set's iteration order, kept)
+#   - every task that changes the graph RETURNS it: `ensure-module`, `put-module`, `set-imports`, `invalidate-module`
+#   - a node is read with `module-by-id` after `has-module`, and changed by writing a copy back with `put-module`
+#   - `compiled` is `<>` when there is no compiled output (the original's `undefined`)
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+form module-node
+  # the URL the browser requests this module by (the graph's primary key on the wire)
+  link url, like text
+  # the canonical id (absolute source path). Stable across URL variants (query strings)
+  link id, like text
+  # the source file on disk
+  link file, like text
+  # the ids of the modules that import this one (the upward edge HMR walks)
+  link importers
+    like list
+      like text
+  # the ids of the modules this one imports
+  link imported-modules
+    like list
+      like text
+  # URLs this module explicitly accepts hot updates for (dep-accept). A parent zone accepting a child zone
+  link accepted-hmr-deps
+    like list
+      like text
+  # this module accepts updates to itself (a `zone` component is self-accepting)
+  link is-self-accepting, like boolean
+  # the compiled JS, or `<>` when never compiled or invalidated
+  link compiled, like text
+  # the last time this module was hot-updated (the `?t=` cache-buster the browser re-imports with)
+  link last-hmr-timestamp, like number
+  # whether the browser has fetched (and so the compiler has compiled) this module. A module known only as a
+  # dependency but never loaded is not a valid HMR boundary
+  link loaded, like boolean
+
+form module-graph
+  # every node, by id
+  link by-id
+    like hash
+      like text
+      like module-node
+  # the id of each node, by url
+  link by-url
+    like hash
+      like text
+      like text
+
+# what `set-imports` gives back: the graph, and the ids of the modules that lost their last importer (candidates to
+# prune or dispose)
+form import-change
+  link graph, like module-graph
+  link pruned
+    like list
+      like text
+
+task make-module-graph
+  like module-graph
+
+  back
+    make module-graph
+      bind by-id, make hash
+      bind by-url, make hash
+
+task has-module
+  take graph, like module-graph
+  take id, like text
+  like boolean
+
+  back has(graph/by-id, id)
+
+# a node the graph has not met: no url, no file, no edges, never compiled, never loaded
+task make-blank-module
+  take id, like text
+  like module-node
+
+  back
+    make module-node
+      bind url, <>
+      bind id, id
+      bind file, <>
+      bind importers, make list
+      bind imported-modules, make list
+      bind accepted-hmr-deps, make list
+      bind is-self-accepting, false
+      bind compiled, <>
+      bind last-hmr-timestamp, 0
+      bind loaded, false
+
+# the node of `id`. Ask `has-module` first: an id the graph lacks answers a blank node, which nothing stored
+task module-by-id
+  take graph, like module-graph
+  take id, like text
+  like module-node
+
+  back get-or-default(graph/by-id, id, make-blank-module(id))
+
+task has-url
+  take graph, like module-graph
+  take url, like text
+  like boolean
+
+  back has(graph/by-url, url)
+
+# the node requested as `url`. Ask `has-url` first: a url the graph lacks answers a blank node
+task module-by-url
+  take graph, like module-graph
+  take url, like text
+  like module-node
+
+  back module-by-id(graph, get-or-default(graph/by-url, url, <>))
+
+# get or create the node for (id, url, file). Idempotent: an id the graph holds keeps its node as it is
+task ensure-module
+  take graph, like module-graph
+  take id, like text
+  take url, like text
+  take file, like text
+  like module-graph
+
+  fork test, has(graph/by-id, id)
+    hold
+      back graph
+  save node, make-blank-module(id)
+  save node/url, url
+  save node/file, file
+  save by-id, graph/by-id
+  save by-url, graph/by-url
+  set(by-id, id, node)
+  set(by-url, url, id)
+  save next, graph
+  save next/by-id, by-id
+  save next/by-url, by-url
+  back next
+
+# write a changed node back under its id. Its url keeps pointing at it
+task put-module
+  take graph, like module-graph
+  take node, like module-node
+  like module-graph
+
+  save by-id, graph/by-id
+  save by-url, graph/by-url
+  set(by-id, node/id, node)
+  set(by-url, node/url, node/id)
+  save next, graph
+  save next/by-id, by-id
+  save next/by-url, by-url
+  back next
+
+# `ids` without `id`, in their order
+task without-id
+  take ids
+    like list
+      like text
+  take id, like text
+  like list
+    like text
+
+  save kept, make list
+  walk ids
+    take one
+    fork test, is-equal(one, id)
+      miss
+        push(kept, one)
+  back kept
+
+# record the imports of `id` (after compiling it): the node's imported modules become `deps`, each dep gains `id` as an
+# importer, and a previous dep no longer imported loses it. Every dep must already be in the graph (`ensure-module`).
+# Gives back the graph and the previous deps that lost their last importer
+task set-imports
+  take graph, like module-graph
+  take id, like text
+  take deps
+    like list
+      like text
+  like import-change
+
+  # `deps` once each, in their order, as `new Set(deps)` kept them
+  save next-deps, make list
+  walk deps
+    take dep
+    fork test, contains(next-deps, dep)
+      miss
+        push(next-deps, dep)
+
+  save current, graph
+  save pruned, make list
+
+  # drop the edges to deps no longer imported
+  save before, module-by-id(current, id)
+  walk before/imported-modules
+    take previous
+    fork test, contains(next-deps, previous)
+      miss
+        fork test, has-module(current, previous)
+          hold
+            save left, module-by-id(current, previous)
+            save left/importers, without-id(left/importers, id)
+            save current, put-module(current, left)
+            fork test, is-equal(left/importers/length, 0)
+              hold
+                push(pruned, previous)
+
+  # add the edges to the current deps
+  walk next-deps
+    take dep
+    fork test, has-module(current, dep)
+      hold
+        save gained, module-by-id(current, dep)
+        fork test, contains(gained/importers, id)
+          miss
+            save importers, copy(gained/importers)
+            push(importers, id)
+            save gained/importers, importers
+            save current, put-module(current, gained)
+
+  # read the node after the edges moved: it may import itself
+  save node, module-by-id(current, id)
+  save node/imported-modules, next-deps
+  save current, put-module(current, node)
+
+  back
+    make import-change
+      bind graph, current
+      bind pruned, pruned
+
+# mark a module dirty: clear its compiled output and bump its HMR timestamp. The next request recompiles it, and the
+# new timestamp is the `?t=` the browser re-imports with
+task invalidate-module
+  take graph, like module-graph
+  take id, like text
+  take timestamp, like number
+  like module-graph
+
+  fork test, has-module(graph, id)
+    miss
+      back graph
+  save node, module-by-id(graph, id)
+  save node/compiled, <>
+  save node/last-hmr-timestamp, timestamp
+  back put-module(graph, node)
+
+# every node, in the order they were added, for diagnostics and tests
+task list-modules
+  take graph, like module-graph
+  like list
+    like module-node
+
+  save nodes, make list
+  walk keys(graph/by-id)
+    take id
+    push(nodes, module-by-id(graph, id))
+  back nodes

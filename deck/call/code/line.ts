@@ -170,11 +170,10 @@ if (process.argv[2] === HUNT_FUZZ_CHILD) {
 const cli = yargs(hideBin(process.argv))
   .scriptName('term')
   .usage('Usage: term <verb> [objects] [options]')
-  .option('hint', {
-    alias: 'h',
-    type: 'boolean',
-    description: 'Show help',
-  })
+  // `--hint`, `-h` and `--help` are yargs' own help. `hint` was declared as a plain flag that nothing read, so
+  // `term wash -h` washed and every other `term <verb> -h` ran the verb (guides: commands/wash, 2026-10-04)
+  .help('hint', 'Show help')
+  .alias('hint', ['h', 'help'])
   .option('back', {
     alias: 'b',
     type: 'string',

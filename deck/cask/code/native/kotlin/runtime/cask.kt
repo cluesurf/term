@@ -283,6 +283,13 @@ object cask {
         return directory.path
     }
 
+    // the home directory a scope's `$home` names (app-scope). An Android app has no person's home it may reach, only
+    // its own data directory, the parent of its files directory, so that is its home
+    fun homePath(): String {
+        val files = activity?.filesDir ?: runningApplication()?.filesDir ?: return ""
+        return files.parentFile?.path ?: files.path
+    }
+
     // the process's Application, which Android names only through ActivityThread: public since API 1, reached by
     // reflection because the SDK hides it
     private fun runningApplication(): android.content.Context? =

@@ -129,6 +129,7 @@ const RUNTIME_CACHE = join(process.env.TERM_NATIVE_CACHE ?? join(tmpdir(), 'term
 // file (Android's `package`); the answer names the jars the program needs beside it at run time
 function compileKotlin(input: {
   compiler: KotlinCompiler
+  stages: Stages
   dir: string
   name: string
   header: string
@@ -150,10 +151,10 @@ function compileKotlin(input: {
   if (!existsSync(jar)) {
     mkdirSync(RUNTIME_CACHE, { recursive: true })
     const fresh = join(RUNTIME_CACHE, `${key}.${process.pid}.${Date.now()}.jar`)
-    const built = compile(join(input.dir, `${input.name}-runtime.kt`), input.runtime, input.classpath, fresh)
+    const built = stage(input.stages, 'runtime', () => compile(join(input.dir, `${input.name}-runtime.kt`), input.runtime, input.classpath, fresh))
 
     if (built.status !== 0) {
-      const whole = compile(join(input.dir, `${input.name}.kt`), [input.runtime, input.program].join('\n'), input.classpath, input.out)
+      const whole = stage(input.stages, 'kotlin', () => compile(join(input.dir, `${input.name}.kt`), [input.runtime, input.program].join('\n'), input.classpath, input.out))
 
       return { ...whole, runtimeJars: [] }
     }
@@ -161,15 +162,30 @@ function compileKotlin(input: {
     renameSync(fresh, jar)
   }
 
-  const program = compile(join(input.dir, `${input.name}.kt`), input.program, [jar, ...input.classpath], input.out)
+  const program = stage(input.stages, 'kotlin', () => compile(join(input.dir, `${input.name}.kt`), input.program, [jar, ...input.classpath], input.out))
 
   return { ...program, runtimeJars: [jar] }
 }
 
+// how long each stage of a build took, in order: what a person waiting on a rebuild is shown (`term work`), and what
+// says where a slow build spends its time
+export type Stages = [stage: string, ms: number][]
+
+// run one stage of a build, its time recorded whether it answers or throws
+function stage<T>(stages: Stages, name: string, run: () => T): T {
+  const started = Date.now()
+
+  try {
+    return run()
+  } finally {
+    stages.push([name, Date.now() - started])
+  }
+}
+
 export type ComposeBuilt =
   | { form: 'skipped'; reason: string }
-  | { form: 'failed'; stage: 'compile' | 'prelude' | 'flags' | 'build'; reason: string }
-  | { form: 'built'; jar: string; classpath: string; main: string }
+  | { form: 'failed'; stage: 'compile' | 'scope' | 'prelude' | 'flags' | 'build'; reason: string }
+  | { form: 'built'; jar: string; classpath: string; main: string; stages: Stages }
 
 // compile `text` (entry file `<dir>/<name>.tree`) for Compose on the desktop JVM and build it into a jar. `root` is where
 // the program's packages resolve; `file` is the entry's own path when the program is an app's (see entryOf). A session
@@ -202,15 +218,16 @@ export function buildCompose({
   // the `compose` env: the toolkit dom, Kotlin's JVM natives, and the runtime the prelude finds for it,
   // deck/site/code/dom/native/toolkit/runtime/compose/native-view.kt (the shared Compose runtime and the desktop host)
   const readRuntime = (path: string): string | undefined => (existsSync(path) ? readFileSync(path, 'utf8') : undefined)
+  const stages: Stages = []
   const entry = entryOf({ file, dir, name, text })
   const resolve = projectResolver(root, 'compose')
-  const result = compile({ file: entry, text }, { resolve, env: 'compose', cache })
+  const result = stage(stages, 'term', () => compile({ file: entry, text }, { resolve, env: 'compose', cache }))
 
   if (!result.ok) {
     return { form: 'failed', stage: 'compile', reason: [...new Set(result.diagnostics.map(d => d.message))].slice(0, 6).join(' | ') }
   }
 
-  const refused = refusedScope(scope, entry, text, resolve)
+  const refused = stage(stages, 'scope', () => refusedScope(scope, entry, text, resolve))
 
   if (refused) {
     return { form: 'failed', stage: 'scope', reason: refused }
@@ -228,7 +245,7 @@ export function buildCompose({
   let plugin = ''
 
   try {
-    const out = execFileSync('bash', [toolchainScript(), 'compose-flags'], { encoding: 'utf8' })
+    const out = stage(stages, 'flags', () => execFileSync('bash', [toolchainScript(), 'compose-flags'], { encoding: 'utf8' }))
     ;[classpath = '', plugin = ''] = out.trim().split('\n')
   } catch (e) {
     return { form: 'failed', stage: 'flags', reason: String((e as { stderr?: Buffer }).stderr ?? e).slice(0, 800) }
@@ -241,6 +258,7 @@ export function buildCompose({
   const jar = join(dir, `${name}.jar`)
   const built = compileKotlin({
     compiler,
+    stages,
     dir,
     name,
     header: '',
@@ -261,17 +279,17 @@ export function buildCompose({
   const main = `${name.charAt(0).toUpperCase()}${name.slice(1).replace(/-(\w)/g, (_, c: string) => c.toUpperCase())}Kt`
 
   // the runtime's jar first: the program is run, and packaged, with it beside the Compose libraries
-  return { form: 'built', jar, classpath: [...built.runtimeJars, classpath].join(':'), main }
+  return { form: 'built', jar, classpath: [...built.runtimeJars, classpath].join(':'), main, stages }
 }
 
 export type ComposeAndroidBuilt =
   | { form: 'skipped'; reason: string }
   | { form: 'failed'; stage: string; reason: string }
-  | { form: 'built'; apk: string }
+  | { form: 'built'; apk: string; stages: Stages }
 
 // compile `text` for Jetpack Compose and make a signed APK of it, `identifier` its package. `assets` are files the APK
 // carries, by name, which the program reads as `asset:<name>` (an emulator cannot read the build machine's paths).
-// `compiler` and `cache` are what a session keeps warm, as for buildCompose
+// `compiler` and `cache` are what a session keeps warm, and `scope` is the app's, as for buildCompose
 export function buildComposeAndroid({
   root,
   dir,
@@ -313,13 +331,14 @@ export function buildComposeAndroid({
   const readRuntime = (path: string): string | undefined => (existsSync(path) ? readFileSync(path, 'utf8') : undefined)
   const entry = entryOf({ file, dir: work, name, text })
   const resolve = projectResolver(root, 'compose-android')
-  const result = compile({ file: entry, text }, { resolve, env: 'compose-android', cache })
+  const stages: Stages = []
+  const result = stage(stages, 'term', () => compile({ file: entry, text }, { resolve, env: 'compose-android', cache }))
 
   if (!result.ok) {
     return { form: 'failed', stage: 'compile', reason: [...new Set(result.diagnostics.map(d => d.message))].slice(0, 6).join(' | ') }
   }
 
-  const refused = refusedScope(scope, entry, text, resolve)
+  const refused = stage(stages, 'scope', () => refusedScope(scope, entry, text, resolve))
 
   if (refused) {
     return { form: 'failed', stage: 'scope', reason: refused }
@@ -351,20 +370,22 @@ export function buildComposeAndroid({
   let libraryDex: string
 
   try {
-    libraries = prepareAndroidLibraries(files, tools)
+    libraries = stage(stages, 'unpack', () => prepareAndroidLibraries(files, tools))
   } catch (e) {
     return { form: 'failed', stage: 'unpack', reason: failure(e) }
   }
 
   try {
-    linked = linkAndroidApp({ libraries, tools, identifier, name, assets })
+    linked = stage(stages, 'link', () => linkAndroidApp({ libraries, tools, identifier, name, assets }))
   } catch (e) {
     return { form: 'failed', stage: 'resources', reason: failure(e) }
   }
 
   try {
-    libraryDex = kept(join(ANDROID_CACHE, 'dex'), libraries.key, into =>
-      run(join(tools.buildTools, 'd8'), ['--release', '--lib', tools.platform, '--min-api', String(MINIMUM_SDK), '--output', into, ...libraries.jars]),
+    libraryDex = stage(stages, 'library dex', () =>
+      kept(join(ANDROID_CACHE, 'dex'), libraries.key, into =>
+        run(join(tools.buildTools, 'd8'), ['--release', '--lib', tools.platform, '--min-api', String(MINIMUM_SDK), '--output', into, ...libraries.jars]),
+      ),
     )
   } catch (e) {
     return { form: 'failed', stage: 'd8', reason: failure(e) }
@@ -374,6 +395,7 @@ export function buildComposeAndroid({
   const appJar = join(work, 'app.jar')
   const compiled = compileKotlin({
     compiler,
+    stages,
     dir: work,
     name: 'app',
     header: `package ${identifier}\n\n`,
@@ -396,7 +418,7 @@ export function buildComposeAndroid({
 
   try {
     mkdirSync(programDex, { recursive: true })
-    d8(programDex, appJar, [...compiled.runtimeJars, linked.rJar, ...libraries.jars])
+    stage(stages, 'dex', () => d8(programDex, appJar, [...compiled.runtimeJars, linked.rJar, ...libraries.jars]))
   } catch (e) {
     return { form: 'failed', stage: 'd8', reason: failure(e) }
   }
@@ -404,7 +426,9 @@ export function buildComposeAndroid({
   let runtimeDexes: string[]
 
   try {
-    runtimeDexes = compiled.runtimeJars.map(jar => kept(join(ANDROID_CACHE, 'runtime-dex'), `${basename(jar, '.jar')}-${libraries.key}`, into => d8(into, jar, [linked.rJar, ...libraries.jars])))
+    runtimeDexes = stage(stages, 'runtime dex', () =>
+      compiled.runtimeJars.map(jar => kept(join(ANDROID_CACHE, 'runtime-dex'), `${basename(jar, '.jar')}-${libraries.key}`, into => d8(into, jar, [linked.rJar, ...libraries.jars]))),
+    )
   } catch (e) {
     return { form: 'failed', stage: 'd8', reason: failure(e) }
   }
@@ -418,29 +442,31 @@ export function buildComposeAndroid({
   const keystore = join(process.env.HOME ?? '', '.android', 'debug.keystore')
 
   try {
-    mkdirSync(staged, { recursive: true })
-    const dexes = [programDex, ...runtimeDexes, linked.rDex, libraryDex].flatMap(one => dexFiles(one))
-    const numbered = dexes.map((dex, index) => {
-      const to = join(staged, index === 0 ? 'classes.dex' : `classes${index + 1}.dex`)
-      copyFileSync(dex, to)
+    stage(stages, 'package', () => {
+      mkdirSync(staged, { recursive: true })
+      const dexes = [programDex, ...runtimeDexes, linked.rDex, libraryDex].flatMap(one => dexFiles(one))
+      const numbered = dexes.map((dex, index) => {
+        const to = join(staged, index === 0 ? 'classes.dex' : `classes${index + 1}.dex`)
+        copyFileSync(dex, to)
 
-      return to
+        return to
+      })
+      copyFileSync(linked.base, base)
+      run('zip', ['-q', '-j', base, ...numbered])
+      run(join(tools.buildTools, 'zipalign'), ['-f', '-p', '4', base, aligned])
+
+      if (!existsSync(keystore)) {
+        mkdirSync(join(keystore, '..'), { recursive: true })
+        run('keytool', ['-genkeypair', '-keystore', keystore, '-storepass', 'android', '-alias', 'androiddebugkey', '-keypass', 'android', '-keyalg', 'RSA', '-keysize', '2048', '-validity', '10000', '-dname', 'CN=Android Debug,O=Android,C=US'])
+      }
+
+      run(join(tools.buildTools, 'apksigner'), ['sign', '--ks', keystore, '--ks-pass', 'pass:android', '--ks-key-alias', 'androiddebugkey', '--key-pass', 'pass:android', '--out', apk, aligned])
     })
-    copyFileSync(linked.base, base)
-    run('zip', ['-q', '-j', base, ...numbered])
-    run(join(tools.buildTools, 'zipalign'), ['-f', '-p', '4', base, aligned])
-
-    if (!existsSync(keystore)) {
-      mkdirSync(join(keystore, '..'), { recursive: true })
-      run('keytool', ['-genkeypair', '-keystore', keystore, '-storepass', 'android', '-alias', 'androiddebugkey', '-keypass', 'android', '-keyalg', 'RSA', '-keysize', '2048', '-validity', '10000', '-dname', 'CN=Android Debug,O=Android,C=US'])
-    }
-
-    run(join(tools.buildTools, 'apksigner'), ['sign', '--ks', keystore, '--ks-pass', 'pass:android', '--ks-key-alias', 'androiddebugkey', '--key-pass', 'pass:android', '--out', apk, aligned])
   } catch (e) {
     return { form: 'failed', stage: 'package', reason: failure(e) }
   }
 
-  return { form: 'built', apk }
+  return { form: 'built', apk, stages }
 }
 
 // the dex files d8 wrote into a folder, in its own order: classes.dex, then classes2.dex, classes3.dex, ...
@@ -699,7 +725,7 @@ export async function makeCompose(input: { root: string; target: 'compose' | 'co
     built.form === 'skipped' ? refusal(built.reason, 'environment') : refusal(`${built.stage}: ${built.reason}`, '')
 
   if (input.target === 'compose-android') {
-    const built = buildComposeAndroid({ root: input.root, dir: work, name: 'app', text, file: entry, identifier })
+    const built = buildComposeAndroid({ root: input.root, dir: work, name: 'app', text, file: entry, identifier, scope: { root: input.root } })
 
     if (built.form !== 'built') {
       throw refuse(built)
@@ -713,7 +739,7 @@ export async function makeCompose(input: { root: string; target: 'compose' | 'co
     return { app: apk }
   }
 
-  const built = buildCompose({ root: input.root, dir: work, name: 'app', text, file: entry })
+  const built = buildCompose({ root: input.root, dir: work, name: 'app', text, file: entry, scope: { root: input.root } })
 
   if (built.form !== 'built') {
     throw refuse(built)

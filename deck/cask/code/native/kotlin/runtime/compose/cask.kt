@@ -72,4 +72,7 @@ object cask {
         directory.mkdirs()
         return directory.path
     }
+
+    // the person's home directory, which a scope's `$home` names (app-scope)
+    fun homePath(): String = System.getProperty("user.home") ?: ""
 }

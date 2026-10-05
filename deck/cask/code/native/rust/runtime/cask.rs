@@ -99,6 +99,12 @@ mod cask {
         directory.to_string_lossy().to_string()
     }
 
+    // the person's home directory, which a scope's `$home` names (app-scope): `HOME`, or `USERPROFILE` on Windows
+    pub fn home_path() -> String {
+        let key = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
+        std::env::var(key).unwrap_or_default()
+    }
+
     // ---- Linux: GTK4 and WebKitGTK 6 ----
 
     #[cfg(target_os = "linux")]

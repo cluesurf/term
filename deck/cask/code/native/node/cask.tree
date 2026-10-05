@@ -128,6 +128,11 @@ task data-path
   like text
   halt <A cask has no data directory on node>
 
+task home-path
+  mark async
+  like text
+  halt <A cask has no home directory on node>
+
 # over-the-air page updates (native-dom-0016): the real ones are ../swift and ../kotlin
 
 task update-launch-path

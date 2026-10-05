@@ -178,6 +178,11 @@ type Bridge = {
   grammar: Grammar
   // the file's `twin` declarations, returned beside the program rather than in it (node.ts, `Twin`)
   twins: Twin[]
+  // how many `walk size` loops this file has minted so far, which names each one's temporaries (`walk-head-<n>`,
+  // `walk-step-<n>`, a renamed counter `<item>-walk-<n>`). An object, so the copies a nested body makes share one
+  // count. Named by ORDER, never by position: a position is exactly what formatting moves, and a name that changes
+  // under formatting made the formatter's meaning check (format/meaning.ts) strip it with a regex
+  walks: { count: number }
 }
 
 // Read one node as a value, through the grammar, so an interpolation's contents are lowered by the same rules
@@ -2647,24 +2652,27 @@ function loopOf(
       return unhandled(bridge, value, 'a walk size with no bound')
     }
 
+    // this walk's place among the file's walks, which names its temporaries (Bridge, `walks`)
+    const ordinal = bridge.walks.count++
+
     // A counter whose name is already a local here (the walk around this one, or a `save` of that name) gets a name of
-    // its own, unique by position, and the body's references are rewritten to it. The loop's `let` lands in the scope
+    // its own, unique by the walk's ordinal, and the body's references are rewritten to it. The loop's `let` lands in the scope
     // the walk is written in, so a second `let i` there was the same variable as the first: two nested `walk size`
     // loops shared one counter, the outer step moved the inner one, and the outer loop never ended (guides:
     // language/loops, 2026-10-03). The body still reads it as `i`, which shadows the outer `i` as it should
-    const name = inScope(bridge, item) ? `${item}-walk-${span.start.line}-${span.start.column}` : item
+    const name = inScope(bridge, item) ? `${item}-walk-${ordinal}` : item
     const counter: Expression = { form: 'variable', name, span }
 
     // the head is read ONCE, before the first turn, as a counted loop means. Written into the condition it was called
     // again every turn: `char-count` rebuilt the text's character array per character, and the prover could not read
     // a measure off a native call it has to treat as different each time. A name or a literal is left in place. The
-    // name is unique by position, so two walks in one scope never declare it twice
+    // name is unique by the walk's ordinal, so two walks in one scope never declare it twice
     const steady = to.form === 'variable' || to.form === 'integer'
-    const headName = `walk-head-${span.start.line}-${span.start.column}`
+    const headName = `walk-head-${ordinal}`
     const bound: Expression = steady ? to : { form: 'variable', name: headName, span }
 
     // a step that is not a literal is read once too, and the condition follows its sign
-    const stepName = `walk-step-${span.start.line}-${span.start.column}`
+    const stepName = `walk-step-${ordinal}`
     const stepping: Expression = literal !== undefined || by.form === 'variable' ? by : { form: 'variable', name: stepName, span }
     const zero: Expression = { form: 'integer', value: 0, span }
     const below: Expression = { form: 'binary', op: '<', left: counter, right: bound, span }
@@ -4924,6 +4932,7 @@ export function millByGrammar(
     aliases: new Map(),
     grammar,
     twins: [],
+    walks: { count: 0 },
   }
   const mined = runMine(grammar.mine, 'code', tree)
 

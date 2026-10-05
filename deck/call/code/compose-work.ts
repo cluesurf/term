@@ -18,8 +18,10 @@ import { existsSync, mkdirSync, readFileSync, rmSync, watch } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import { androidDevice, androidTools, launchOnAndroid } from '@term/call/code/cask'
 import { buildCompose, buildComposeAndroid, composeIdentity } from '@term/call/code/compose'
+import type { Stages } from '@term/call/code/compose'
 import { startKotlinWorker } from '@term/call/code/kotlin-worker'
 import { CompileCache } from '@term/make/code/compile/cache'
+import { makeParseMemo } from '@term/make/code/compile/load'
 import { closeRun, followChild, openRun, report } from '@term/call/code/output'
 
 export type ComposeTarget = 'compose' | 'compose-android'
@@ -28,7 +30,7 @@ export type ComposeTarget = 'compose' | 'compose-android'
 // desktop, `adb logcat` of the app's process on Android. A `failed` names its stage: a build stage (`compile`, `build`,
 // ...), a toolchain this machine lacks (`skipped`), or `launch`
 export type WorkEvent =
-  | { kind: 'built'; generation: number; duration: number }
+  | { kind: 'built'; generation: number; duration: number; stages: Stages }
   | { kind: 'failed'; generation: number; stage: string; reason: string }
   | { kind: 'launch'; generation: number; child: ChildProcess }
   | { kind: 'exit'; generation: number }
@@ -67,6 +69,8 @@ export function startComposeWork(input: {
   // starting a JVM, and the Term compiler's parsed modules, so an edit reparses only the files that changed
   const kotlin = startKotlinWorker(join(out, 'kotlin'))
   const cache = new CompileCache()
+  // and the parses the scope check walks (deck/call/code/scope.ts), which an edit to the scope itself rechecks
+  const memo = makeParseMemo()
 
   // a session starts at the app's first screen: the history of an earlier session is not this one's
   forgetAddress(input.target, address, identifier)
@@ -114,7 +118,7 @@ export function startComposeWork(input: {
     mkdirSync(dir, { recursive: true })
     const started = Date.now()
     const text = existsSync(entry) ? readFileSync(entry, 'utf8') : ''
-    const warm = { file: entry, compiler: kotlin.compile, cache }
+    const warm = { file: entry, compiler: kotlin.compile, cache, scope: { root, memo } }
     const built =
       input.target === 'compose'
         ? buildCompose({ root, dir, name: 'app', text, ...warm })
@@ -129,7 +133,7 @@ export function startComposeWork(input: {
       return
     }
 
-    input.onEvent({ kind: 'built', generation: current, duration })
+    input.onEvent({ kind: 'built', generation: current, duration, stages: built.stages })
 
     if (stopped) {
       return
@@ -298,7 +302,8 @@ export async function workCompose(input: { root: string; target: ComposeTarget; 
     entry: input.entry,
     onEvent: event => {
       if (event.kind === 'built') {
-        report({ glyph: 'done', verb: 'build', subject: input.target, duration: event.duration })
+        // where the time went, stage by stage: what a person waiting on a rebuild wants to know
+        report({ glyph: 'done', verb: 'build', subject: input.target, duration: event.duration, facts: event.stages.map(([stage, ms]) => `${stage} ${(ms / 1000).toFixed(1)}s`) })
       } else if (event.kind === 'failed') {
         report({ glyph: 'failed', verb: event.stage === 'launch' ? 'start' : 'build', subject: input.target, message: [event.reason, 'The running app is kept.'] })
       } else if (event.kind === 'launch') {

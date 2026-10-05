@@ -54,7 +54,8 @@ task engine-name
 # that took no part fails here where Term matches the empty text (1 of 2 agree); a group in a repetition keeps an
 # earlier iteration's text (1 of 2); a repetition that can match empty differs (0 of 2); a lookbehind of unbounded
 # length, a reference inside a lookbehind and the empty class are refused. A word edge is admitted but its class is
-# wider than `engine-class-limit`, so it runs on tier B
+# wider than `engine-class-limit`, so it runs on tier B. An unbounded lookahead is claimed and never chosen: the safety
+# rule sends no unbounded lookaround to a backtracking engine
 task engine-features
   like list
     like text

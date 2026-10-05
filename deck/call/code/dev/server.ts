@@ -15,7 +15,17 @@ import { projectResolver } from '@term/call/code/make'
 import { projectCache } from '@term/call/code/cache-store'
 import { findProjectRoot } from '@term/call/code/boot'
 import type { NativeEnv } from '@term/make/code/compile/native'
-import { ModuleGraph } from '@term/make/code/dev/module-graph'
+import {
+  ensureModule,
+  hasModule,
+  hasUrl,
+  invalidateModule,
+  makeModuleGraph,
+  moduleById,
+  moduleByUrl,
+  putModule,
+  setImports,
+} from '@term/make/code/dev/module-graph'
 import {
   propagateUpdate,
   affectedModules,
@@ -64,7 +74,8 @@ export function startDevServer(options: DevOptions): DevServer {
     return `${MOD_PREFIX}${id}.mjs`
   }
 
-  const graph = new ModuleGraph()
+  // the graph is a value (deck/make/code/dev/module-graph.tree): every change hands back the next one
+  let graph = makeModuleGraph()
   const clients = new Set<SSEStreamingApi>()
   const cache = projectCache(projectRoot)
 
@@ -89,19 +100,22 @@ export function startDevServer(options: DevOptions): DevServer {
     }
 
     for (const [file, emit] of result.modules) {
-      const node = graph.ensure(file, urlForFile(file), file)
-      node.isSelfAccepting = emit.isZone
-      node.loaded = true
-      node.compiled = transformSync(emit.code, {
-        loader: 'ts',
-        format: 'esm',
-      }).code
+      graph = ensureModule(graph, file, urlForFile(file), file)
+      graph = putModule(graph, {
+        ...moduleById(graph, file),
+        isSelfAccepting: emit.isZone,
+        loaded: true,
+        compiled: transformSync(emit.code, {
+          loader: 'ts',
+          format: 'esm',
+        }).code,
+      })
 
-      const deps = emit.imports.map(dep =>
-        graph.ensure(dep, urlForFile(dep), dep),
-      )
+      for (const dep of emit.imports) {
+        graph = ensureModule(graph, dep, urlForFile(dep), dep)
+      }
 
-      graph.setImports(node, deps)
+      graph = setImports(graph, file, emit.imports).graph
     }
 
     return []
@@ -124,11 +138,7 @@ export function startDevServer(options: DevOptions): DevServer {
 
     // invalidate the changed module and everything that imports it, then recompile
     for (const id of affectedModules(graph, file)) {
-      const node = graph.getById(id)
-
-      if (node) {
-        graph.invalidate(node, clock)
-      }
+      graph = invalidateModule(graph, id, clock)
     }
 
     const errors = build()
@@ -147,8 +157,7 @@ export function startDevServer(options: DevOptions): DevServer {
     } else {
       // stamp each accepted module's URL with its hmr timestamp so the client re-imports a fresh copy
       const updates = result.updates.map(u => {
-        const node = graph.getByUrl(u.accepted)
-        const t = node?.lastHmrTimestamp || clock
+        const t = (hasUrl(graph, u.accepted) ? moduleByUrl(graph, u.accepted).lastHmrTimestamp : 0) || clock
 
         return { ...u, timestamp: t }
       })
@@ -209,13 +218,14 @@ export function startDevServer(options: DevOptions): DevServer {
   app.get(`${MOD_PREFIX}:name`, context => {
     const name = context.req.param('name').replace(/\.mjs$/, '')
     const file = fileByHash.get(name)
-    const node = file ? graph.getById(file) : undefined
+    // a module never compiled, or invalidated and not yet rebuilt, holds `<>` where the original held undefined
+    const compiled = file && hasModule(graph, file) ? moduleById(graph, file).compiled : ''
 
-    if (node?.compiled === undefined) {
+    if (compiled === '') {
       return context.text('module not found', 404)
     }
 
-    return context.body(node.compiled, 200, {
+    return context.body(compiled, 200, {
       'content-type': 'text/javascript',
     })
   })

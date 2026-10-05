@@ -5,7 +5,7 @@
 // Run: npx tsx test/call/exit-codes.ts (after `pnpm run make:line`)
 
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -294,6 +294,21 @@ mine text-def
 
   ok('`term wake` keeps a readme.md and a .gitignore already there', run.status === 0 && readFileSync(join(woken, 'readme.md'), 'utf8') === '# mine\n' && readFileSync(join(woken, '.gitignore'), 'utf8') === 'secrets\n', run.out)
   ok('and writes the rest, saying which it kept', readFileSync(join(woken, 'deck.tree'), 'utf8').startsWith('deck ') && /keep\s+readme\.md/.test(run.out) && /2 files/.test(run.out), run.out)
+}
+
+// ---- commands/wash: `-h` is help, and a folder that is no project is left alone ----
+{
+  const loose = mkdtempSync(join(tmpdir(), 'term-wash-'))
+  mkdirSync(join(loose, 'make'))
+  writeFileSync(join(loose, 'make/notes.txt'), 'mine\n')
+
+  const hinted = term(loose, 'wash', '-h')
+
+  ok('`term wash -h` prints help and removes nothing', hinted.status === 0 && /Show help/.test(hinted.out) && existsSync(join(loose, 'make/notes.txt')), hinted.out)
+
+  const washed = term(loose, 'wash')
+
+  ok('`term wash` outside a project refuses and keeps `make/`', washed.status === 1 && /no deck\.tree here/.test(washed.out) && existsSync(join(loose, 'make/notes.txt')), washed.out)
 }
 
 console.log(`\nexit-codes: ${pass} pass, ${fail} fail`)

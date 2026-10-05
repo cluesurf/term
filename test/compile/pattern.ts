@@ -19,6 +19,7 @@ import { compile } from '@term/make/code/compile/compile'
 import { stdlibResolver } from '@term/make/code/resolve'
 import { nativePrelude, withNativeEnv } from '@term/make/code/compile/native'
 import { chunked, readRuntime, runProgram } from './pattern-build'
+import { harvestCorpus } from './pattern-corpus'
 import { runDir } from './run-dir'
 
 type Engine = {
@@ -247,8 +248,8 @@ const FEATURES: [string, string, string[]][] = [
   ['look-behind', '(?<=\\$)\\d+', ['cost $10 and 20']],
   ['look-behind, negative', '(?<!\\$)\\d', ['$1 2']],
   ['look-behind, astral', '(?<=𝄞)a', ['a𝄞a']],
-  ['look-unbounded', '(?=\\w*z)\\w+', ['abz cd', 'ab']],
-  ['look-unbounded, behind', '(?<=\\$\\d*)x', ['$12x 3x']],
+  ['look-ahead-unbounded', '(?=\\w*z)\\w+', ['abz cd', 'ab']],
+  ['look-behind-unbounded', '(?<=\\$\\d*)x', ['$12x 3x']],
   ['look-capture', '(?=(a+))a', ['baaa']],
   // the group took part in the attempt the negative lookaround rejected: Term reports it unset
   ['look-capture, negative', '(?!(a)x)(\\w)', ['ab']],
@@ -619,6 +620,50 @@ async function main(): Promise<void> {
 
     if (answer !== '[]') {
       console.log(`FAIL  tier C over a long input answered ${answer.slice(0, 80)}`)
+    }
+  }
+
+  // 5. real patterns (regex-engine-0014): the regular expression literals of the toolchain's own TypeScript, on lines of
+  // the same sources. Every tier against the reference, and each case replayed on the native backends below
+  {
+    const corpus = harvestCorpus(process.cwd(), Number(process.env.PATTERN_CORPUS ?? 400))
+    const refused = new Map<string, number>()
+    let read = 0
+
+    for (const { pattern, inputs } of corpus) {
+      let tier: string
+
+      try {
+        tier = engine.tierOf(pattern)
+      } catch (error) {
+        // the reason, without the position, so like refusals count together
+        const reason = (error instanceof Error ? error.message : String(error)).replace(/\d+/g, 'N').slice(0, 60)
+        refused.set(reason, (refused.get(reason) ?? 0) + 1)
+        continue
+      }
+
+      read++
+      const backOnly = engine.needsBack(pattern)
+
+      for (const input of inputs) {
+        const runes = runesOf(input)
+        const want = engine.referenceAt(pattern, runes, 0)
+
+        same(`corpus ${tier}`, pattern, input, want, engine.chosenAt(pattern, input, 0))
+        same('corpus back', pattern, input, want, engine.backAt(pattern, runes, 0))
+
+        if (!backOnly) {
+          same('corpus linear', pattern, input, want, engine.pikeAt(pattern, runes, 0))
+        }
+
+        replay.push({ pattern, input, want })
+      }
+    }
+
+    console.log(`corpus: ${corpus.length} literals harvested, ${read} read by Term, ${corpus.length - read} refused`)
+
+    for (const [reason, count] of [...refused].sort((a, b) => b[1] - a[1])) {
+      console.log(`  refused ${count}: ${reason}`)
     }
   }
 

@@ -136,3 +136,10 @@ task data-path
         text <name>
         call from-text
           read name
+
+# the home directory is the cask's to know, for its scope's `$home` (app-scope). A page reaches what its scope lets it
+# through the commands it docks, and is never told where the person's home is
+task home-path
+  mark async
+  like text
+  halt <A page is not told the home directory: name `$home` in the app's scope.tree instead>

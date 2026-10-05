@@ -1,8 +1,17 @@
 // Dev HMR test: the module graph (importer edges, prune detection) and the propagation algorithm (self-accept,
 // dep-accept, bubble-to-ancestor, dead-end full-reload, cycles). Pure, no server. Run: npx tsx test/dev/hmr.ts
+//
+// Both modules are Term since 2026-10-04 (deck/make/code/dev/module-graph.tree and hmr.tree). A node names its
+// neighbours by id, and every change hands the graph back, so the test threads `g` through each step.
 
-import { ModuleGraph } from '@term/make/code/dev/module-graph'
-import type { ModuleNode } from '@term/make/code/dev/module-graph'
+import {
+  ensureModule,
+  makeModuleGraph,
+  moduleById,
+  putModule,
+  setImports,
+} from '@term/make/code/dev/module-graph'
+import type { ModuleGraph } from '@term/make/code/dev/module-graph'
 import {
   propagateUpdate,
   affectedModules,
@@ -21,108 +30,93 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-// a node, loaded, optionally self-accepting
-function node(
-  graph: ModuleGraph,
-  name: string,
-  selfAccepting = false,
-): ModuleNode {
-  const n = graph.ensure(
-    `/${name}.tree`,
-    `/${name}.tree`,
-    `/${name}.tree`,
-  )
+// a node, loaded, optionally self-accepting. Its id and url are both `/<name>.tree`
+function node(graph: ModuleGraph, name: string, selfAccepting = false): ModuleGraph {
+  const id = `/${name}.tree`
+  const g = ensureModule(graph, id, id, id)
 
-  n.loaded = true
-  n.isSelfAccepting = selfAccepting
-
-  return n
+  return putModule(g, { ...moduleById(g, id), loaded: true, isSelfAccepting: selfAccepting })
 }
+
+const id = (name: string): string => `/${name}.tree`
 
 // ---- module graph ----
 {
-  const g = new ModuleGraph()
-  const a = node(g, 'a')
+  let g = node(makeModuleGraph(), 'a')
+  const before = moduleById(g, id('a'))
+  g = ensureModule(g, id('a'), id('a'), id('a'))
   ok(
     'graph: ensure is idempotent',
-    g.ensure('/a.tree', '/a.tree', '/a.tree') === a,
+    JSON.stringify(moduleById(g, id('a'))) === JSON.stringify(before),
   )
 
-  const helper = node(g, 'helper')
-  g.setImports(a, [helper])
+  g = node(g, 'helper')
+  g = setImports(g, id('a'), [id('helper')]).graph
   ok(
     'graph: setImports adds the reverse importer edge',
-    helper.importers.has(a),
+    moduleById(g, id('helper')).importers.includes(id('a')),
   )
   ok(
     'graph: setImports records imported modules',
-    a.importedModules.has(helper),
+    moduleById(g, id('a')).importedModules.includes(id('helper')),
   )
 
-  const pruned = g.setImports(a, [])
+  const change = setImports(g, id('a'), [])
+  g = change.graph
   ok(
     'graph: dropping the last importer prunes the dep',
-    pruned.length === 1 && pruned[0] === helper,
+    change.pruned.length === 1 && change.pruned[0] === id('helper'),
   )
   ok(
     'graph: pruned dep has no importers left',
-    helper.importers.size === 0,
+    moduleById(g, id('helper')).importers.length === 0,
   )
 }
 
 // ---- propagation ----
 
 // root (plain) -> zone -> helper
-function appGraph(): {
-  g: ModuleGraph
-  root: ModuleNode
-  zone: ModuleNode
-  helper: ModuleNode
-} {
-  const g = new ModuleGraph()
-  const root = node(g, 'root')
-  const zone = node(g, 'zone', true)
-  const helper = node(g, 'helper')
-  g.setImports(root, [zone])
-  g.setImports(zone, [helper])
+function appGraph(): ModuleGraph {
+  let g = makeModuleGraph()
+  g = node(g, 'root')
+  g = node(g, 'zone', true)
+  g = node(g, 'helper')
+  g = setImports(g, id('root'), [id('zone')]).graph
 
-  return { g, root, zone, helper }
+  return setImports(g, id('zone'), [id('helper')]).graph
 }
 
 {
-  const { g, zone } = appGraph()
-  const r = propagateUpdate(g, zone.id)
+  const r = propagateUpdate(appGraph(), id('zone'))
   ok(
     'hmr: editing a zone updates that zone (self-accept)',
     r.type === 'update' &&
       r.updates.length === 1 &&
-      r.updates[0]!.boundary === zone.url &&
-      r.updates[0]!.accepted === zone.url,
+      r.updates[0]!.boundary === id('zone') &&
+      r.updates[0]!.accepted === id('zone'),
     JSON.stringify(r),
   )
 }
 
 {
-  const { g, zone, helper } = appGraph()
-  const r = propagateUpdate(g, helper.id)
+  const r = propagateUpdate(appGraph(), id('helper'))
   ok(
     'hmr: editing a helper bubbles to the importing zone (re-import the zone)',
     r.type === 'update' &&
       r.updates.length === 1 &&
-      r.updates[0]!.boundary === zone.url &&
-      r.updates[0]!.accepted === zone.url,
+      r.updates[0]!.boundary === id('zone') &&
+      r.updates[0]!.accepted === id('zone'),
     JSON.stringify(r),
   )
 }
 
 {
   // a helper imported only by a non-accepting root: no self-accepting ancestor -> full reload
-  const g = new ModuleGraph()
-  const root = node(g, 'root')
-  const orphan = node(g, 'orphan')
-  g.setImports(root, [orphan])
+  let g = node(makeModuleGraph(), 'root')
+  g = node(g, 'orphan')
+  g = setImports(g, id('root'), [id('orphan')]).graph
 
-  const r = propagateUpdate(g, orphan.id)
+  const r = propagateUpdate(g, id('orphan'))
   ok(
     'hmr: a change with no accepting ancestor is a full reload',
     r.type === 'full-reload',
@@ -132,32 +126,31 @@ function appGraph(): {
 
 {
   // dep-accept: the root explicitly accepts the dep -> boundary is the root, re-import the dep
-  const g = new ModuleGraph()
-  const root = node(g, 'root')
-  const dep = node(g, 'dep')
-  g.setImports(root, [dep])
-  root.acceptedHmrDeps.add(dep.url)
+  let g = node(makeModuleGraph(), 'root')
+  g = node(g, 'dep')
+  g = setImports(g, id('root'), [id('dep')]).graph
+  const root = moduleById(g, id('root'))
+  g = putModule(g, { ...root, acceptedHmrDeps: [...root.acceptedHmrDeps, id('dep')] })
 
-  const r = propagateUpdate(g, dep.id)
+  const r = propagateUpdate(g, id('dep'))
   ok(
     'hmr: dep-accept makes the accepting importer the boundary',
     r.type === 'update' &&
       r.updates.length === 1 &&
-      r.updates[0]!.boundary === root.url &&
-      r.updates[0]!.accepted === dep.url,
+      r.updates[0]!.boundary === id('root') &&
+      r.updates[0]!.accepted === id('dep'),
     JSON.stringify(r),
   )
 }
 
 {
   // a cycle of non-accepting modules -> full reload
-  const g = new ModuleGraph()
-  const a = node(g, 'a')
-  const b = node(g, 'b')
-  g.setImports(a, [b])
-  g.setImports(b, [a])
+  let g = node(makeModuleGraph(), 'a')
+  g = node(g, 'b')
+  g = setImports(g, id('a'), [id('b')]).graph
+  g = setImports(g, id('b'), [id('a')]).graph
 
-  const r = propagateUpdate(g, a.id)
+  const r = propagateUpdate(g, id('a'))
   ok(
     'hmr: a non-accepting cycle is a full reload',
     r.type === 'full-reload',
@@ -166,9 +159,8 @@ function appGraph(): {
 }
 
 {
-  const g = new ModuleGraph()
-  const a = g.ensure('/a.tree', '/a.tree', '/a.tree') // not loaded
-  const r = propagateUpdate(g, a.id)
+  const g = ensureModule(makeModuleGraph(), id('a'), id('a'), id('a')) // not loaded
+  const r = propagateUpdate(g, id('a'))
   ok(
     'hmr: a never-loaded module is a full reload',
     r.type === 'full-reload',
@@ -177,12 +169,20 @@ function appGraph(): {
 }
 
 {
-  const { g, root, zone, helper } = appGraph()
-  const affected = affectedModules(g, helper.id).sort()
+  const r = propagateUpdate(makeModuleGraph(), id('nowhere'))
+  ok(
+    'hmr: a module the graph never met is a full reload',
+    r.type === 'full-reload',
+    JSON.stringify(r),
+  )
+}
+
+{
+  const affected = affectedModules(appGraph(), id('helper')).sort()
   ok(
     'hmr: affectedModules includes the change + all transitive importers',
     affected.join(',') ===
-      [helper.id, zone.id, root.id].sort().join(','),
+      [id('helper'), id('zone'), id('root')].sort().join(','),
     affected.join(','),
   )
 }

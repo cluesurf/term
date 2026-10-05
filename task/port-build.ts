@@ -17,6 +17,7 @@
 //
 //   npx tsx task/port-build.ts            build every port, report what changed
 //   npx tsx task/port-build.ts --check    write nothing, exit 1 if any port's output is missing or stale
+//   npx tsx task/port-build.ts --only dev/hmr    only the ports whose path holds the text, for a fast port loop
 
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
@@ -42,6 +43,8 @@ const DECKS: Record<string, string[]> = {
 }
 
 const check = process.argv.includes('--check')
+const onlyAt = process.argv.indexOf('--only')
+const only = onlyAt >= 0 ? process.argv[onlyAt + 1] : undefined
 
 const SKIP = new Set(['node_modules', 'host', '.base', 'tmp', 'link', 'target', '.build'])
 
@@ -92,6 +95,10 @@ function main(): void {
     const leanOf = projectLeanOf(root)
 
     for (const file of files) {
+      if (only !== undefined && !relative(TERM, file).includes(only)) {
+        continue
+      }
+
       const text = readFileSync(file, 'utf8')
 
       // `mark draft` (or the old `note draft`) shelves a file out of every build, this one included

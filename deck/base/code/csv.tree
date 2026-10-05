@@ -1,7 +1,8 @@
 # CSV (RFC 4180). Pure over the text primitives, so it lowers to every backend with no native shim: quoted fields
 # (delimiters and newlines inside quotes, doubled quotes as a literal quote), CRLF and LF records, and a custom
 # delimiter (tab gives TSV). `parse` yields the rows as a list of lists of text; `stringify` writes them back,
-# quoting a field only when it needs it.
+# quoting a field only when it needs it. A quoted field never closed raises `csv-mismatch` at the opening quote: it
+# read as one row holding the rest of the text, so a truncated file passed for a short one.
 
 mark stable
 
@@ -15,6 +16,15 @@ load @term/base/text/string
 
 load @term/base/list
   find list
+
+load @term/base/exception
+  find mismatch
+
+form csv-mismatch
+  like mismatch
+    bind note, <Not CSV>
+    link at, like number
+    link reason, like text
 
 # parse comma-separated text into rows of fields
 task parse
@@ -38,6 +48,8 @@ task parse-with
   save quoted, false
   save pending, false
   save index, code 0
+  # where the open quoted field began, for the refusal when it never closes
+  save opened, code 0
   walk test
     hook test
       call is-below
@@ -110,6 +122,7 @@ task parse-with
                 hook hold
                   save quoted, true
                   save pending, true
+                  save opened, read index
                   save index
                     call add
                       read index
@@ -181,6 +194,14 @@ task parse-with
                         call add
                           read index
                           code 1
+  fork test
+    hook test
+      read quoted
+    hook hold
+      halt csv-mismatch
+        bind thing, text <csv>
+        bind at, read opened
+        bind reason, text <a quoted field is never closed>
   # the final record (no trailing newline): flush when it has any content
   fork test
     hook test
