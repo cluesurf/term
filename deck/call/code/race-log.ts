@@ -2,7 +2,7 @@
 // including every loss and every disagreement, one record each, kept so the next bake reads an answer instead of
 // measuring it again (level one, optimize-0028) and so a ranker can learn from all of them (optimize-0029).
 //
-// Stored under the project's `.base/@cluesurf/term/race/v1/<shard>/<id>.json.gz` (the path through home.ts, like every
+// Stored under the project's `.base/@term/code/race/v1/<shard>/<id>.json.gz` (the path through home.ts, like every
 // other on-disk path). An id, a region and a rule digest are sha256 digests shown in the 8x8 tone shape, never hex and
 // never truncated. A record is never rewritten: a new measurement is a new record.
 

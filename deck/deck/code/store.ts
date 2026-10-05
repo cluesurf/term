@@ -4,27 +4,23 @@ import os from 'os'
 import { hashFile } from './hash'
 import { existsSync, renameSync } from 'fs'
 
-// The toolchain's directory under `.base`, scoped the way the packages are. Spelled out rather than imported from
+// The toolchain's directory under `.base`, the toolchain package's own name. Spelled out rather than imported from
 // deck/call/code/home.ts on purpose: @term/deck is PUBLISHED and consumed as an installed package, so it must not
 // reach back into the CLI's source. Keep the two in step; home.ts is the source of truth.
-const HOME = path.join('@cluesurf', 'term')
-const LEGACY_HOME = 'term'
-const TERM_DIR = path.join('.base', HOME)
-
-// use the pre-rename location when it is the one that exists, so a link registry is never lost
-function keptAt(current: string, legacy: string): string {
-  return !existsSync(current) && existsSync(legacy) ? legacy : current
-}
+//
+// Every name it has had, newest first: `@term/code` since 2026-10-05, `@cluesurf/term` before that, `term` before
+// 2026-08-30. The CLI MOVES the second to the first (home.ts `settle`); this package only reads, so it never races
+// the CLI's move, and until that move has happened it uses the folder that exists, whole.
+const HOMES = [path.join('@term', 'code'), path.join('@cluesurf', 'term'), 'term']
 
 export function getStoreRoot(): string {
-  return keptAt(
-    path.join(os.homedir(), TERM_DIR),
-    path.join(os.homedir(), '.base', LEGACY_HOME),
-  )
+  const all = HOMES.map(home => path.join(os.homedir(), '.base', home))
+
+  return all.find(dir => existsSync(dir)) ?? all[0]!
 }
 
 /**
- * `~/.base/@cluesurf/term/base/`: the machine's shared store. The installed decks as an OCI image layout (`blobs/`,
+ * `~/.base/@term/code/base/`: the machine's shared store. The installed decks as an OCI image layout (`blobs/`,
  * `index.json`), which an offline install reads, and in `mill/` the parsed modules every project shares.
  *
  * It was `store/` until 2026-10-04. The installed decks are not a cache, so the old folder is MOVED, whole, by one

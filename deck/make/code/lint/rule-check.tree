@@ -26,6 +26,9 @@ load @term/base/text
   find substring
   find last-index-of
   find ends-with
+  find starts-with
+  find split
+  find trim-start
 
 load ../parser/diagnostic
   find span
@@ -37,6 +40,16 @@ load ../compile/node
   find statement
   find binary-op
   find to-text, name op-text
+
+load ../parser/tree
+  find root-node
+
+load ../parser/token
+  find tokenize
+  find token-source
+
+load ../check/note-metadata
+  find note-metadata-sites
 
 load ../compile/expr-equal
   find expressions-equal
@@ -50,6 +63,11 @@ form rule-fix
   case put
     link span, like span
     link text, like text
+  # the text in `span` becomes `text`, offered only where the source there reads `written`
+  case put-where
+    link span, like span
+    link text, like text
+    link written, like text
   # `prefix` then the source text at `from`
   case copy
     link span, like span
@@ -69,6 +87,8 @@ form lint-facts
   link referenced, like list, like text
   # every native module loaded more than once (no-duplicate-load)
   link duplicate-loads, like list, like text
+  # every name a `save` writes after binding it (prefer-host-for-constant)
+  link reassigned, like list, like text
 
 form rule-meta
   link name, like text
@@ -225,6 +245,68 @@ task no-empty-fork-case
     miss
       back none-reported()
   back none-reported()
+
+# L004: a mutable binding (`save`) that is never reassigned should be an immutable one (`host`). The driver computes
+# the set of reassigned names once and hands it in via the context. Fixable: swap the leading `save` keyword for
+# `host`, verified by slicing the source so the edit is only offered when the keyword is exactly where expected.
+task prefer-host-for-constant
+  take node, like statement
+  take facts, like lint-facts
+  like list, like rule-report
+
+  sift node
+    case let
+      fork test, or(not(mutable), has-text(facts/reassigned, name))
+        hold
+          back none-reported()
+      # an EMPTY list or hash is filled after it is bound (`save out, make list` then `push(out, x)`): never
+      # reassigned, and still not a constant. A `host` binding is generalized, so the empty collection never learns its
+      # element from the pushes that follow, and on Rust it comes out a boxed `Vec<Rc<dyn Any>>` where `Vec<T>` was
+      # wanted: the `--fix` turned six compiling ports into `rustc` errors (self-hosting, 2026-10-04). Held by
+      # test/lint/run.ts
+      fork test, is-empty-collection(init)
+        hold
+          back none-reported()
+      save keyword, keyword-span(span)
+      save fix
+        make put-where
+          bind span, keyword
+          bind text, <host>
+          bind written, <save>
+      back one(fixed-report(<"{name}" is never reassigned; use `host` instead of `save`>, span, fix))
+    miss
+      back none-reported()
+
+# `make list` mills to an empty array literal, and `make hash` to a construction of the stdlib's `hash` form
+task is-empty-collection
+  take value, like expression
+  like boolean
+  mark private
+
+  sift value
+    case array
+      back is-equal(items/length, 0)
+    case map
+      back is-equal(entries/length, 0)
+    case record
+      back and(is-equal(name, <hash>), is-equal(fields/length, 0))
+    miss
+      back false
+
+# the four characters a statement's keyword takes, from its start
+task keyword-span
+  take of, like span
+  like span
+  mark private
+
+  save end
+    make position
+      bind line, of/start/line
+      bind column, add(of/start/column, 4)
+  back
+    make span
+      bind start, of/start
+      bind end, end
 
 # L008: a native module binding (`dock load / load <node:fs/promises>, name fs`) whose alias is never referenced is dead
 # weight, and on a strict backend it can pull in a module that need not be linked at all. The driver collects every name
@@ -1282,11 +1364,17 @@ task copy-after
       bind from, from
       bind prefix, prefix
 
+# a function's own returns, split by whether they carry a value: each step adds to the one record the walk holds, so it
+# is `mark shared` (D1), a reference rather than a value copied into each call
+form returns-found
+  mark shared
+  link with-value, like list, like span
+  link without-value, like list, like span
+
 # a function's own returns, split by whether they carry a value: nested tasks and closures have their own contract
 task collect-returns
   take body, like list, like statement
-  take with-value, like list, like span
-  take without-value, like list, like span
+  take returns, like returns-found
   like void
   mark private
 
@@ -1296,31 +1384,31 @@ task collect-returns
       case return
         sift value
           case some
-            push(with-value, span)
+            push(returns/with-value, span)
           case none
-            push(without-value, span)
+            push(returns/without-value, span)
       case if
         walk branches
           take branch
-          collect-returns(branch/body, with-value, without-value)
+          collect-returns(branch/body, returns)
         sift otherwise
           case some
             link miss-body
-            collect-returns(miss-body, with-value, without-value)
+            collect-returns(miss-body, returns)
           case none
             turn next
       case while
-        collect-returns(body, with-value, without-value)
+        collect-returns(body, returns)
       case for-each
-        collect-returns(body, with-value, without-value)
+        collect-returns(body, returns)
       case match
         walk cases
           take arm
-          collect-returns(arm/body, with-value, without-value)
+          collect-returns(arm/body, returns)
         sift otherwise
           case some
             link miss-body
-            collect-returns(miss-body, with-value, without-value)
+            collect-returns(miss-body, returns)
           case none
             turn next
       miss
@@ -1334,12 +1422,14 @@ task consistent-return
 
   sift node
     case function
-      save with-value, make list
-      save without-value, make list
-      collect-returns(body, with-value, without-value)
-      fork test, and(is-above(with-value/length, 0), is-above(without-value/length, 0))
+      save returns
+        make returns-found
+          bind with-value, make list
+          bind without-value, make list
+      collect-returns(body, returns)
+      fork test, and(is-above(returns/with-value/length, 0), is-above(returns/without-value/length, 0))
         hold
-          back one(report(<this function returns a value on some paths and nothing on others>, get(without-value, 0)))
+          back one(report(<this function returns a value on some paths and nothing on others>, get(returns/without-value, 0)))
     miss
       back none-reported()
   back none-reported()
@@ -1549,6 +1639,7 @@ form ported-rule
   mark text
   case kebab-names, text <kebab-names>
   case no-redundant-arithmetic, text <no-redundant-arithmetic>
+  case prefer-host-for-constant, text <prefer-host-for-constant>
   case no-empty-block, text <no-empty-block>
   case no-constant-condition, text <no-constant-condition>
   case no-self-comparison, text <no-self-comparison>
@@ -1577,6 +1668,9 @@ form ported-rule
   case prefer-is-empty, text <prefer-is-empty>
   case no-empty-fork-case, text <no-empty-fork-case>
   case no-duplicate-map-key, text <no-duplicate-map-key>
+  case note-metadata, text <note-metadata>
+  case prefer-sift, text <prefer-sift>
+  case prefer-single-brace, text <prefer-single-brace>
 
 # every rule here, in code order
 task ported-rules
@@ -1586,6 +1680,7 @@ task ported-rules
     make list
       make kebab-names
       make no-redundant-arithmetic
+      make prefer-host-for-constant
       make no-empty-block
       make no-constant-condition
       make no-self-comparison
@@ -1614,6 +1709,9 @@ task ported-rules
       make prefer-is-empty
       make no-empty-fork-case
       make no-duplicate-map-key
+      make note-metadata
+      make prefer-sift
+      make prefer-single-brace
 
 # a rule's name, code, default severity and one-line documentation
 task meta-of
@@ -1625,6 +1723,8 @@ task meta-of
       back meta(<kebab-names>, <L001>, <declared names should be kebab-case (e.g. find-fibonacci, not findFibonacci or find_fibonacci)>, false)
     case no-redundant-arithmetic
       back meta(<no-redundant-arithmetic>, <L003>, <arithmetic against a neutral element (+0, -0, *1, /1) has no effect and should be removed>, true)
+    case prefer-host-for-constant
+      back meta(<prefer-host-for-constant>, <L004>, <a `save` that is never reassigned should be a `host` constant>, true)
     case no-empty-block
       back meta(<no-empty-block>, <L005>, <a branch or loop with no body is probably unfinished>, false)
     case no-constant-condition
@@ -1681,6 +1781,12 @@ task meta-of
       back meta(<no-empty-fork-case>, <L035>, <a fork case with no arms handles nothing and is probably unfinished>, false)
     case no-duplicate-map-key
       back meta(<no-duplicate-map-key>, <L036>, <a map literal sets the same key twice; the later value wins>, false)
+    case note-metadata
+      back meta(<note-metadata>, <L053>, <metadata is `mark async`, not `note async`: `note` is the old spelling, and is left for documentation>, true)
+    case prefer-sift
+      back meta(<prefer-sift>, <L042>, <in a lean file, `fork case, x` is written `sift x`>, true)
+    case prefer-single-brace
+      back meta(<prefer-single-brace>, <L043>, <an interpolation is written `\{x\}`, not `\{\{x\}\}`>, true)
 
 task meta
   take name, like text
@@ -1714,6 +1820,8 @@ task check-statement
       back no-constant-condition(node)
     case no-unused-load
       back no-unused-load(node, facts)
+    case prefer-host-for-constant
+      back prefer-host-for-constant(node, facts)
     case no-duplicate-branch-condition
       back no-duplicate-branch-condition(node)
     case no-self-assignment
@@ -1779,3 +1887,263 @@ task check-expression
       back no-duplicate-map-key(node)
     miss
       back none-reported()
+
+# L053: metadata is written `mark`, and `note <word>` is the old spelling (`note async`, `note unsafe`, `note draft`,
+# ...). The two are read the same, so the fix only swaps the word. Which `note` is metadata is decided once, by form,
+# in check/note-metadata.ts, which the compiler's `note-metadata` warning and `pnpm term:mark-metadata` also read.
+# note/term/plan/await-by-default-and-mark-metadata.md, section 4.
+task note-metadata
+  take tree, like root-node
+  take source, like text
+  like list, like rule-report
+
+  save out, make list
+  walk note-metadata-sites(tree, source)
+    take site
+    save end
+      make position
+        bind line, site/span/start/line
+        bind column, add(site/span/start/column, 4)
+    save at
+      make span
+        bind start, site/span/start
+        bind end, end
+    save fix
+      make put
+        bind span, at
+        bind text, <mark>
+    push(out, fixed-report(<`note {site/word}` is the old spelling of `mark {site/word}`: metadata is `mark`>, at, fix))
+  back out
+
+# what a rule finds in the concrete tree and the source, for the rules that read those rather than the program: the
+# two spellings of one program mill to the same AST, so the program cannot tell which was written
+# `lean` is whether the file is written lean, which a rule about the lean spelling reads
+task check-source
+  take rule, like ported-rule
+  take tree, like root-node
+  take source, like text
+  take lean, like boolean
+  like list, like rule-report
+
+  sift rule
+    case note-metadata
+      back note-metadata(tree, source)
+    case prefer-sift
+      back prefer-sift(tree, source, lean)
+    case prefer-single-brace
+      back prefer-single-brace(source)
+    miss
+      back none-reported()
+
+# whether a rule reads the concrete tree and the source (`check-source`), so a driver parses only when one does
+task reads-source
+  take rule, like ported-rule
+  like boolean
+
+  sift rule
+    case note-metadata
+      back true
+    case prefer-sift
+      back true
+    case prefer-single-brace
+      back true
+    miss
+      back false
+
+# L042: in a lean file, `fork case, <value>` is written `sift <value>`. The two mill to the same `fork-case` form and
+# emit the same code on every backend (test/compile/lean-second.ts), so the fix only respells the head.
+task prefer-sift
+  take tree, like root-node
+  take source, like text
+  take lean, like boolean
+  like list, like rule-report
+
+  save out, make list
+  fork test, not(lean)
+    hold
+      back out
+  save lines, split(source, <\n>)
+  sift tree
+    case root
+      walk nodes
+        take group
+        save out, sift-in(group, lines, out)
+  back out
+
+# the reports given, with this group's and every group under it added, each group before the groups inside it
+task sift-in
+  take group, like node
+  take lines, like list, like text
+  take out, like list, like rule-report
+  like list, like rule-report
+  mark private
+
+  sift group
+    case group
+      save out, sift-at(nodes, lines, out)
+      walk nodes
+        take child
+        save out, sift-in(child, lines, out)
+    miss
+      back out
+  back out
+
+# a group that is `fork case` written on one line: its report, added
+task sift-at
+  take nodes, like list, like node
+  take lines, like list, like text
+  take out, like list, like rule-report
+  like list, like rule-report
+  mark private
+
+  fork test, is-below(nodes/length, 2)
+    hold
+      back out
+  sift plain-word(get(nodes, 0))
+    case some
+      link fork-word
+      fork test, is-unequal(fork-word/text, <fork>)
+        hold
+          back out
+      save marker, get(nodes, 1)
+      sift marker
+        case group
+          fork test, is-unequal(nodes/length, 1)
+            hold
+              back out
+          sift plain-word(get(nodes, 0))
+            case some
+              link case-word
+              fork test, or(is-unequal(case-word/text, <case>), is-unequal(case-word/span/start/line, fork-word/span/start/line))
+                hold
+                  back out
+              save row, fork-word/span/start/line
+              save line, <>
+              fork test, is-below(row, lines/length)
+                hold
+                  save line, get(lines, row)
+              # `/^,\s*/` after `case`: a comma and the whitespace after it
+              save rest, substring(line, case-word/span/end/column)
+              save after, 0
+              fork test, starts-with(rest, <,>)
+                hold
+                  save tail, substring(rest, 1)
+                  save after, add(1, subtract(tail/length, trim-start(tail)/length))
+              save end
+                make position
+                  bind line, row
+                  bind column, add(case-word/span/end/column, after)
+              save at
+                make span
+                  bind start, fork-word/span/start
+                  bind end, end
+              save word, <sift>
+              fork test, is-above(after, 0)
+                hold
+                  save word, <sift >
+              save fix
+                make put
+                  bind span, at
+                  bind text, word
+              push(out, fixed-report(<in a lean file `fork case` is written `sift`>, at, fix))
+              back out
+            miss
+              back out
+        miss
+          back out
+    miss
+      back out
+
+# the one chunk of a name that is a single plain word
+form plain-chunk
+  link text, like text
+  link span, like span
+
+task plain-word
+  take one, like node
+  like maybe, like plain-chunk
+  mark private
+
+  sift one
+    case name
+      fork test, is-unequal(parts/length, 1)
+        hold
+          back make none
+      save part, get(parts, 0)
+      sift part
+        case chunk
+          link written
+          link at
+          save found
+            make plain-chunk
+              bind text, written
+              bind span, at
+          back make(some, found)
+        miss
+          back make none
+    miss
+      back make none
+
+# L043: an interpolation in a text literal is written `{x}`, not `{{x}}`. There is one brace syntax and the compiler
+# decides when it is filled (compile time for a module constant that folds, run time for anything else), so the double
+# brace is the older spelling of the same thing and the fix only drops a brace on each side.
+task prefer-single-brace
+  take source, like text
+  like list, like rule-report
+
+  save out, make list
+  save input
+    make token-source
+      bind file, <lint.tree>
+      bind text, source
+  save tokens, tokenize(input)
+  fork test, is-above(tokens/diagnostics/length, 0)
+    hold
+      back out
+
+  save lines, split(source, <\n>)
+  # how many text literals are open, counted only outside an interpolation
+  save literals, 0
+  # the open braces inside the current text literal, outermost first
+  save open, make list
+
+  walk tokens/tokens/list
+    take token
+    sift token/kind
+      case open-angle
+        fork test, is-equal(open/length, 0)
+          hold
+            save literals, add(literals, 1)
+      case close-angle
+        fork test, and(is-equal(open/length, 0), is-above(literals, 0))
+          hold
+            save literals, subtract(literals, 1)
+      case open-brace
+        fork test, is-above(literals, 0)
+          hold
+            push(open, token)
+      case close-brace
+        fork test, is-equal(open/length, 0)
+          hold
+            turn next
+        save start, open/pop()
+        fork test, or(is-above(open/length, 0), or(is-unequal(start/text, <\{\{>), or(is-unequal(token/text, <\}\}>), is-unequal(start/span/start/line, token/span/end/line))))
+          hold
+            turn next
+        save line, <>
+        fork test, is-below(start/span/start/line, lines/length)
+          hold
+            save line, get(lines, start/span/start/line)
+        save inner, substring(line, start/span/end/column, token/span/start/column)
+        save at
+          make span
+            bind start, start/span/start
+            bind end, token/span/end
+        save fix
+          make put
+            bind span, at
+            bind text, <\{{inner}\}>
+        push(out, fixed-report(<`\{\{{inner}\}\}` is written `\{{inner}\}`: one brace interpolates, and the compiler decides when it is filled>, at, fix))
+      miss
+        turn next
+  back out

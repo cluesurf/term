@@ -14,8 +14,8 @@ load @term/call/work/tint
 #   term halt <port>   stop the app serving on that port
 #   term halt          stop every term boot instance on the machine
 #
-# A boot server is easy to find without a registry: each runs `node <project>/.base/@cluesurf/term/boot/<hash>/run.mjs`,
-# a path unique to `term boot`. Matching that in the process table is machine-wide and cross-process, so `term halt`
+# A boot server is easy to find without a registry: each runs `node <project>/.base/@term/code/boot/<hash>/run.mjs`,
+# a path unique to `term boot` (`.base/@cluesurf/term/boot/` for one an older version started). Matching that in the process table is machine-wide and cross-process, so `term halt`
 # works from anywhere with no shared state to go stale. `term halt <port>` asks the operating system who is
 # listening on the port instead.
 #
@@ -32,8 +32,23 @@ dock load
   load <global:console>, name console
   load <global:Number>, name number
 
-# the marker that identifies a boot server in the process table
-host boot-marker, <.base/@cluesurf/term/boot/>
+# the markers that identify a boot server in the process table: the folder's name now, and the name it had until
+# 2026-10-05, which a server an older `term` started still runs from (home.ts)
+host boot-marker, <.base/@term/code/boot/>
+host previous-boot-marker, <.base/@cluesurf/term/boot/>
+
+# whether one process-table line names a boot server's folder, under either name
+task names-boot
+  take line, like text
+
+  like boolean
+
+  fork test
+    call contains, read(line), read boot-marker
+    hook hold
+      back true
+  back
+    call contains, read(line), read previous-boot-marker
 
 form run-ask
   link encoding, like text
@@ -54,7 +69,7 @@ task boot-ids
       hook next
         take site, name line
         fork test
-          call contains, read(line), read boot-marker
+          call names-boot, read line
           hook hold
             fork test
               call contains, read(line), text <run.mjs>

@@ -7,8 +7,8 @@
 //   2  installed through need-load.ts, the ONE install path `term self load`, `self update` and dispatch take: the
 //      release index, the signature over the layer, the signer in the `@term` key set, the download's sha256, an
 //      unpack beside any other version, files shared with one already installed
-//   3  the front, bin/term, linked to it only after all of that
-//   4  bin on PATH for every new shell: one marked line in the shell's profile, never twice (`putOnPath`).
+//   3  the front, call/term, linked to it only after all of that
+//   4  call/ on PATH for every new shell: one marked line in the shell's profile, never twice (`putOnPath`).
 //      TERM_LOAD_PATH=0 leaves every profile alone
 //
 // IT PRINTS THROUGH THE ONE OUTPUT LIBRARY, as one `load` run, so an install looks like every other term command.
@@ -18,11 +18,11 @@
 // TERM_LOAD_REGISTRY=<http(s)://host> reads releases from another registry (the end-to-end test's loopback one).
 
 import { execFileSync } from 'child_process'
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'fs'
 import { homedir } from 'os'
 import nodePath from 'path'
 
-import { userHome } from '@term/call/code/home'
+import { FRONT, HOME_POSIX, frontDir, userHome } from '@term/call/code/home'
 import { linkFront, loadVersion } from '@term/call/code/need-load'
 import { closeRun, field, location, openRun, printData, report, setOutput, showPath } from '@term/call/code/output'
 import { releases, reportLoaded } from '@term/call/code/self'
@@ -75,13 +75,14 @@ async function main(): Promise<void> {
 
   linkFront(version)
 
-  const bin = nodePath.join(home, 'bin')
+  // the front's folder, the one put on PATH: `call/` (home.ts `frontDir`)
+  const bin = frontDir(home)
 
   report({
     glyph: 'changed',
     kind: 'change',
     verb: 'link',
-    subject: `bin/term to ${version}`,
+    subject: `${nodePath.basename(bin)}/term to ${version}`,
     fields: [location(showPath(nodePath.join(bin, process.platform === 'win32' ? 'term.cmd' : 'term')))],
   })
 
@@ -96,7 +97,9 @@ async function main(): Promise<void> {
     report(
       one.form === 'added'
         ? { glyph: 'added', kind: 'change', verb: 'path', subject: one.shown, fields: [field('line', one.line)] }
-        : { glyph: 'skipped', verb: 'path', subject: one.shown, facts: ['already there'] },
+        : one.form === 'moved'
+          ? { glyph: 'changed', kind: 'change', verb: 'path', subject: one.shown, facts: [`now ${FRONT_POSIX}`] }
+          : { glyph: 'skipped', verb: 'path', subject: one.shown, facts: ['already there'] },
     )
   }
 
@@ -159,10 +162,14 @@ function otherTerms(bin: string): OtherTerm[] {
   const found: OtherTerm[] = []
   const seen = new Set<string>()
 
+  const real = realOf(bin)
+
   for (const dir of (process.env['PATH'] ?? '').split(nodePath.delimiter)) {
     const file = nodePath.join(dir, name)
 
-    if (!dir || dir === bin || seen.has(file) || !existsSync(file)) {
+    // this install's own bin under another name is not another term: `.base/@cluesurf/term/bin` is a link to it since
+    // the folder moved (home.ts), and a terminal opened before the move still has it on PATH
+    if (!dir || dir === bin || realOf(dir) === real || seen.has(file) || !existsSync(file)) {
       continue
     }
 
@@ -184,7 +191,25 @@ function otherTerms(bin: string): OtherTerm[] {
   return found
 }
 
-type Profile = { form: 'added' | 'there'; shown: string; line: string }
+// a folder with its links resolved, or the folder as written when it does not exist
+function realOf(dir: string): string {
+  try {
+    return realpathSync(dir)
+  } catch {
+    return dir
+  }
+}
+
+// `moved`: a profile that named the front's folder by an old name, rewritten to the new one in place
+type Profile = { form: 'added' | 'there' | 'moved'; shown: string; line: string }
+
+// the front's folder as a profile line names it, under `$HOME` or spelled out
+const FRONT_POSIX = `${HOME_POSIX}/${FRONT}`
+
+// its old names: `bin/` under the folder before it moved, and `bin/` under the moved folder before the front was
+// renamed `call/` (home.ts). Both still reach the front through the links the renames left, and are rewritten here so
+// the profile names the folder that exists
+const PREVIOUS_FRONTS = ['.base/@cluesurf/term/bin', `${HOME_POSIX}/bin`]
 
 /**
  * Put bin on PATH for every NEW shell, the way rustup, bun and deno do: one marked line in the profile of the shell
@@ -238,8 +263,19 @@ function writeProfile(input: { file: string; line: string; bin: string; home: st
     // a profile that does not exist yet is made
   }
 
-  if (text.includes(input.bin) || text.includes('.base/@cluesurf/term/bin')) {
+  // the line this writes says `$HOME/...`, and a person may have spelled the path out: either is there already
+  if (text.includes(input.bin) || text.includes(FRONT_POSIX)) {
     return { form: 'there', shown, line: input.line }
+  }
+
+  // the line an earlier install wrote, for an old name: renamed where it stands, nothing else in the file touched, so
+  // the profile keeps one line and it names the folder that exists
+  const previous = PREVIOUS_FRONTS.filter(name => text.includes(name))
+
+  if (previous.length > 0) {
+    writeFileSync(input.file, previous.reduce((written, name) => written.split(name).join(FRONT_POSIX), text))
+
+    return { form: 'moved', shown, line: input.line }
   }
 
   mkdirSync(nodePath.dirname(input.file), { recursive: true })
@@ -253,17 +289,22 @@ function windowsPath(bin: string): Profile {
   const shown = 'the user Path'
   const read = '[Environment]::GetEnvironmentVariable("Path", "User")'
   const current = execFileSync('powershell.exe', ['-NoProfile', '-Command', read], { encoding: 'utf8' }).trim()
-  const there = current.split(';').some(entry => entry.replace(/\\+$/, '').toLowerCase() === bin.toLowerCase())
+  const entries = current.split(';')
+  const named = (entry: string, folder: string) => entry.replace(/\\+$/, '').toLowerCase() === folder.toLowerCase()
 
-  if (there) {
+  if (entries.some(entry => named(entry, bin))) {
     return { form: 'there', shown, line: bin }
   }
 
-  const next = current ? `${bin};${current}` : bin
+  // the entry an earlier install made for an old name, renamed where it stands (home.ts)
+  const previous = [nodePath.join(homedir(), '.base', '@cluesurf', 'term', 'bin'), nodePath.join(homedir(), '.base', '@term', 'code', 'bin')]
+  const isPrevious = (entry: string) => previous.some(folder => named(entry, folder))
+  const moved = entries.some(isPrevious)
+  const next = moved ? entries.map(entry => (isPrevious(entry) ? bin : entry)).join(';') : current ? `${bin};${current}` : bin
 
   execFileSync('powershell.exe', ['-NoProfile', '-Command', `[Environment]::SetEnvironmentVariable("Path", $env:TERM_NEXT_PATH, "User")`], {
     env: { ...process.env, TERM_NEXT_PATH: next },
   })
 
-  return { form: 'added', shown, line: bin }
+  return { form: moved ? 'moved' : 'added', shown, line: bin }
 }

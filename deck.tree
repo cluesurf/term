@@ -23,6 +23,7 @@ deck @term/code
   deck ./deck/flow
   deck ./deck/host
   deck ./deck/make
+  deck ./deck/mark
   deck ./deck/mill
   deck ./deck/scan
   deck ./deck/site

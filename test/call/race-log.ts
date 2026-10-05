@@ -45,7 +45,7 @@ const stored = writeRace(root, record)
 
 ok('an id is a sha256 in the 8x8 tone shape', /^[mndbtkhsfvzxcwlr]{8}(-[mndbtkhsfvzxcwlr]{8}){7}$/.test(stored.id), stored.id)
 ok('a region and a rule digest are too', /^([a-z]{8}-){7}[a-z]{8}$/.test(region) && /^([a-z]{8}-){7}[a-z]{8}$/.test(rules))
-ok('the record lives under .base/@cluesurf/term/race/v1, in a shard', readdirSync(join(root, '.base/@cluesurf/term/race/v1')).length === 1)
+ok('the record lives under .base/@term/code/race/v1, in a shard', readdirSync(join(root, '.base/@term/code/race/v1')).length === 1)
 ok('it reads back whole', JSON.stringify(readRaces(root)[0]) === JSON.stringify(stored))
 ok('the same record is the same id', writeRace(root, record).id === stored.id)
 

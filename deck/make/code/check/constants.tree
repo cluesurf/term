@@ -122,29 +122,39 @@ task nested-bodies
   back out
 
 # the refusals one statement makes, and the constant it binds
+# the refusals found, and the constants bound so far in one block: each step adds to the ones its caller holds, so both
+# are `mark shared` (D1), references rather than values copied into each call
+form refusals
+  mark shared
+  link items, like list, like diagnostic
+
+form constant-names
+  mark shared
+  link names, like list, like text
+
 task check-one
   take one, like statement
-  take constants, like list, like text
+  take constants, like constant-names
   take file, like text
-  take out, like list, like diagnostic
+  take out, like refusals
   like void
   mark private
 
   sift one
     case let
-      fork test, has-text(constants, name)
+      fork test, has-text(constants/names, name)
         hold
-          push(out, refusal(file, span, <"{name}" is a `host`, a constant, and is bound again here>, <give the second value its own name, or make the first a `save`>))
+          push(out/items, refusal(file, span, <"{name}" is a `host`, a constant, and is bound again here>, <give the second value its own name, or make the first a `save`>))
       fork test, is-equal(mutable, false)
         hold
-          push(constants, name)
+          push(constants/names, name)
     case assign
       sift target
         case variable
           link written
-          fork test, has-text(constants, written)
+          fork test, has-text(constants/names, written)
             hold
-              push(out, refusal(file, span, <"{written}" is a `host`, a constant, and is written here>, <give the new value its own name, or make the first a `save`>))
+              push(out/items, refusal(file, span, <"{written}" is a `host`, a constant, and is written here>, <give the new value its own name, or make the first a `save`>))
         miss
           back
     miss
@@ -152,9 +162,9 @@ task check-one
 
 task check-block
   take body, like list, like statement
-  take constants, like list, like text
+  take constants, like constant-names
   take file, like text
-  take out, like list, like diagnostic
+  take out, like refusals
   like void
   mark private
 
@@ -164,14 +174,16 @@ task check-block
     # every nested statement list is the same task: a constant bound before it is still one inside it
     walk nested-bodies(one)
       take nested
-      check-block(nested, copy-texts(constants), file, out)
+      check-block(nested, names-of(copy-texts(constants/names)), file, out)
 
 task check-constants
   take program, like list, like statement
   take file, like text
   like list, like diagnostic
 
-  save out, make list
+  save out
+    make refusals
+      bind items, make list
   walk program
     take one
     sift one
@@ -179,7 +191,16 @@ task check-constants
         fork test, and(is-in-file(span, file), is-equal(stub, false))
           hold
             save none-yet, make list
-            check-block(body, none-yet, file, out)
+            check-block(body, names-of(none-yet), file, out)
       miss
         turn next
-  back out
+  back out/items
+
+task names-of
+  take names, like list, like text
+  like constant-names
+  mark private
+
+  back
+    make constant-names
+      bind names, names

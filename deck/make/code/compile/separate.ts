@@ -539,6 +539,7 @@ export function compileSeparate(
         undefined,
         undefined,
         files[0],
+        new Set(files),
       )
 
       if (!result.ok) {

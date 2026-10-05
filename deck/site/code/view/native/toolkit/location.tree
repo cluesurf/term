@@ -5,9 +5,24 @@
 dock load
   load <global:native-location>, name native-location
   load <global:native-permission>, name native-permission
+  load <global:native-watch>, name native-watch
 
 task read-position
   like text
   send back
     call native-location/position
       wait true
+
+task follow-position
+  take handler
+    like task
+      take value, like text
+  like task
+  # the number the drop gives back: one handler leaves, and the subscription ends with the last (native-watch)
+  save watching
+    call native-location/watch
+      read handler
+  send back
+    task drop
+      call native-location/unwatch
+        read watching

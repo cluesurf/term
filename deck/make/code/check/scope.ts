@@ -153,6 +153,18 @@ function separateCaseNames(program: Program, scope: ImportScope | undefined, ent
           record.raise = renamed
         }
 
+        // an arm of a match over a caught exception names the form its raise was renamed to. A match label is told
+        // apart like a construction with no fields, by what its file defines or imports, so an arm over the case's own
+        // form keeps the case: check/pattern-literal.tree's `case pattern-mismatch` named nothing once
+        // parser/diagnostic.tree's `diagnostic-name` case of that name was in the program (2026-10-05)
+        if (record.form === 'match' && Array.isArray(record.cases)) {
+          for (const arm of record.cases as { label: string }[]) {
+            if (arm.label === name && meansForm(file, [])) {
+              arm.label = renamed
+            }
+          }
+        }
+
         for (const [key, value] of Object.entries(record)) {
           if (key !== 'span') visit(value)
         }

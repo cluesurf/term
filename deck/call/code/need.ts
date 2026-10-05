@@ -10,9 +10,9 @@
 //   1  `+<range>`, the first argument               this command alone
 //   2  TERM_VERSION                                 every command that sees it
 //   3  the nearest deck.tree holding a `need`       its lock.tree's pin while the pin still satisfies it
-//   4  ~/.base/@cluesurf/term/need.tree             the user's default, from `term self pick`
-//   5  the front, bin/term                          the version `update`, `back` and the loader moved it to
-//      else the newest version installed            under ~/.base/@cluesurf/term/code/
+//   4  ~/.base/@term/code/need.tree                 the user's default, from `term self pick`
+//   5  the front, call/term                         the version `update`, `back` and the loader moved it to
+//      else the newest version installed            under ~/.base/@term/code/code/
 //   6  the running term itself                      a Homebrew or source copy, with nothing installed
 //
 // THE RUNNING COPY COUNTS AS INSTALLED in rules 3 to 5. A Homebrew `term` 2.6.6 in a project that needs 2.6.x runs
@@ -29,7 +29,7 @@ import { codeMatch, compareCode, parseCode, parseCodeHold, showCode } from '@ter
 import { formOf, readTree, valueOf, type Form } from '@term/deck/code/read'
 import type { CodeHold, LockNeed } from '@term/deck/code/form'
 
-import { userHome } from '@term/call/code/home'
+import { frontDir, userHome } from '@term/call/code/home'
 
 /** The one package a `need` may name today. */
 export const TOOLCHAIN = '@term/code'
@@ -86,7 +86,7 @@ export type NeedWorld = {
   argv: string[]
   env: NodeJS.ProcessEnv
   cwd: string
-  // ~/.base/@cluesurf/term
+  // ~/.base/@term/code
   home: string
   // the running term's version
   running: string
@@ -125,15 +125,16 @@ export function installedVersions(home: string): string[] {
 }
 
 /**
- * The version the front (bin/term) points at, or undefined when there is no front under this home. A symlink read with
- * `readlink`, or on Windows the one-line `bin\term.cmd` shim, which names its version's folder.
+ * The version the front (call/term) points at, or undefined when there is no front under this home. A symlink read with
+ * `readlink`, or on Windows the one-line `call\term.cmd` shim, which names its version's folder. The folder is `bin/`
+ * where it has not been renamed yet (home.ts `frontDir`).
  */
 export function frontOf(home: string): string | undefined {
   try {
     const text =
       process.platform === 'win32'
-        ? readFileSync(nodePath.join(home, 'bin', 'term.cmd'), 'utf8')
-        : readlinkSync(nodePath.join(home, 'bin', 'term'))
+        ? readFileSync(nodePath.join(frontDir(home), 'term.cmd'), 'utf8')
+        : readlinkSync(nodePath.join(frontDir(home), 'term'))
 
     return /code[\\/](\d+\.\d+\.\d+)[\\/]/.exec(text)?.[1]
   } catch {
@@ -141,7 +142,7 @@ export function frontOf(home: string): string | undefined {
   }
 }
 
-/** The launcher of an installed version: `bin/term`, or `bin\term.cmd` on Windows. */
+/** The launcher inside an installed version's payload: `term/bin/term`, or `term\bin\term.cmd` on Windows. */
 export function launcherOf(input: { home: string; version: string }): string {
   return nodePath.join(input.home, 'code', input.version, 'term', 'bin', process.platform === 'win32' ? 'term.cmd' : 'term')
 }

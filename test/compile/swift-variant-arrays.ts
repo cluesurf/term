@@ -38,7 +38,7 @@ const swift = (file: string, text = readFileSync(join(TERM, file), 'utf8')): str
 const lines = (text: string, pattern: RegExp): string => text.split('\n').filter(l => pattern.test(l)).join(' | ')
 
 // 1. Storage: both variants' lists plain arrays, built and read as the hand version does
-const storage = swift('bench/storage/term.tree')
+const storage = swift('mark/storage/term.tree')
 ok('storage: the leaf holds `[Int]`', /case leaf\(items: \[Int\]\)/.test(storage), lines(storage, /case leaf/))
 ok('storage: the node holds `[Storage]`', /case node\(kids: \[Storage\]\)/.test(storage), lines(storage, /case node/))
 ok('storage: the kids are a plain local, reserved for the four the loop pushes', /var kids: \[Storage\] = \[\]\n\s+kids\.reserveCapacity\(4\)/.test(storage), lines(storage, /kids/))

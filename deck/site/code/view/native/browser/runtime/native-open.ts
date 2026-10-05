@@ -11,7 +11,7 @@ export const nativeOpen = {
     return window.open(address, '_blank', 'noopener') === null ? 'denied' : 'opened'
   },
 
-  // shown, or unavailable
+  // shown, denied (the browser refused to show it, as it does outside a person's click), or unavailable
   async share(text: string): Promise<string> {
     if (typeof navigator === 'undefined' || typeof navigator.share !== 'function') {
       return 'unavailable'
@@ -21,9 +21,9 @@ export const nativeOpen = {
       await navigator.share({ text })
 
       return 'shown'
-    } catch {
-      // dismissed, or refused outside a gesture: the sheet came up or could not
-      return 'shown'
+    } catch (error) {
+      // an AbortError is the person closing the sheet, which was shown; anything else is the sheet never coming up
+      return (error as Error).name === 'AbortError' ? 'shown' : 'denied'
     }
   },
 }

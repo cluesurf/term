@@ -1,5 +1,5 @@
 // A node-backed persistent cache store for the compiler (Tier 1). Reads / writes entries under
-// `.base/@cluesurf/term/cache`, so a cold `term boot` / `term make` reuses the parse + mill + compile work of a prior
+// `.base/@term/code/cache`, so a cold `term boot` / `term make` reuses the parse + mill + compile work of a prior
 // run. Writes are atomic (temp file then rename), so a killed build never leaves a truncated entry a later run would
 // trust. Injected into `CompileCache`, which keeps its own logic browser-safe.
 //
@@ -48,7 +48,7 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import type { CacheStore } from '@term/make/code/compile/cache'
 import { getBaseDir } from '@term/deck/code/store'
-import { env } from '@term/call/code/home'
+import { env, projectHome } from '@term/call/code/home'
 import {
   CACHE_EPOCH,
   CompileCache,
@@ -223,7 +223,7 @@ export function legacyCacheDirs(projectRoot: string): string[] {
 // The same for the CURRENT path: a `cache.*` copy set aside beside the live one is not the live cache and nothing
 // reads it.
 export function asideCacheDirs(projectRoot: string): string[] {
-  const base = path.join(projectRoot, '.base/@cluesurf/term')
+  const base = projectHome(projectRoot)
 
   try {
     return readdirSync(base)
@@ -364,7 +364,7 @@ function removeQuietly(target: string): boolean {
   }
 }
 
-// a disk-backed cache store rooted at `dir` (e.g. `<project>/.base/@cluesurf/term/cache`), namespaced by the
+// a disk-backed cache store rooted at `dir` (e.g. `<project>/.base/@term/code/cache`), namespaced by the
 // compiler `version` so a stale namespace can be reclaimed whole. Entries are gzipped.
 // `version` is a string for one namespace across every kind, or a function for a namespace PER KIND. The per-kind
 // form is what the compiler uses: see compilerSourceHash for why one namespace for everything strands the whole
@@ -692,7 +692,7 @@ export function compilerVersions(): Record<string, string> {
   return out
 }
 
-// the machine-wide shared cache home (Tier 5), `~/.base/@cluesurf/term/base`, beside the installed decks. Mill entries
+// the machine-wide shared cache home (Tier 5), `~/.base/@term/code/base`, beside the installed decks. Mill entries
 // are content + path addressed, and linked stdlib files share a realpath across projects, so the stdlib is milled once
 // for every project on the machine. Overridable for tests / CI via TERM_CACHE_HOME (the SEED_ spelling is still
 // honored; see code/home.ts). It was `store/` until 2026-10-04, and `getBaseDir` moves that folder over whole
@@ -702,7 +702,7 @@ export function cacheHome(): string {
 
 // the project-local cache directory, in one place so the report tool and `term wash` cannot drift from the store.
 export function projectCacheDir(projectRoot: string): string {
-  return path.join(projectRoot, '.base/@cluesurf/term', 'cache')
+  return projectHome(projectRoot, 'cache')
 }
 
 // a store that routes the per-module `mill` level to a shared dir (reused across projects) and the whole-graph

@@ -19,7 +19,7 @@
 // update built against another native half: the path itself is the compatibility check, and the signed
 // `runtimeVersion` field is checked again on the device.
 //
-// The signing key never leaves this machine: `~/.base/@cluesurf/term/update/<identifier>.pem`, written 0600 and never
+// The signing key never leaves this machine: `~/.base/@term/code/update/<identifier>.pem`, written 0600 and never
 // overwritten. Its public half goes into the app at build time, in the two encodings the runtimes read.
 import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, randomUUID, sign } from 'node:crypto'
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'

@@ -1,7 +1,8 @@
-// pnpm term:bench: every program under bench/, built from Term and by hand on each installed target, checked for the
+// pnpm term:bench: every program under mark/, built from Term and by hand on each installed target, checked for the
 // expected output, then timed in shuffled rounds. The number reported is the ratio of the medians, Term over the hand
 // version, with a 95% bootstrap interval over the rounds (note/term/codegen/measurement.md). Reports by default, and
-// writes bench/<program>/results/<machine>.json only on --commit.
+// writes mark/<program>/results/<machine>.json only on --commit. The programs were under bench/ until 2026-10-05, when
+// that folder took the name mark/ and the suite package that held it moved to deck/mark.
 //
 //   pnpm term:bench                          every program, every target
 //   pnpm term:bench --only fannkuch-redux    one program
@@ -27,12 +28,12 @@ import { emitKotlin, hoistKotlinImports } from '@term/make/code/compile/kotlin'
 import { readDataText, toJsonValue } from '@term/make/code/compile/host'
 
 type Target = 'typescript' | 'rust' | 'swift' | 'kotlin'
-// `dir` is the program's directory, `hand` the stem of its hand-written versions (`idiom` here, `same` in mark/kernels)
+// `dir` is the program's directory, `hand` the stem of its hand-written versions (`idiom` here, `same` in deck/mark/kernels)
 type Spec = { dir: string; program: string; entry: string; check: number; expect: string; size: number; runs: number; hand: string }
 type Built = { run: (n: number) => string[] }
 
 const TERM = join(import.meta.dirname, '..')
-const BENCH = join(TERM, 'bench')
+const BENCH = join(TERM, 'mark')
 const WORK = join(TERM, 'tmp', 'bench')
 const argv = process.argv.slice(2)
 const flag = (name: string): string | undefined => {
@@ -69,7 +70,7 @@ function spec(dir: string): Spec {
 
   const value = toJsonValue(read.data.root) as Record<string, unknown>
 
-  // a kernel of the suite (mark/kernels, note/term/bench/rules.md): its entry is `run`, its sizes and expected output
+  // a kernel of the suite (deck/mark/kernels, note/term/bench/rules.md): its entry is `run`, its sizes and expected output
   // are the contract's own, and its hand versions are `same.*`
   if (value.input) {
     const sizes = (value.input as { sizes: { check: number; timed: number } }).sizes
@@ -220,8 +221,8 @@ function interval(term: number[], idiom: number[]): [number, number] {
   return [ratios[Math.floor(ratios.length * 0.025)]!, ratios[Math.floor(ratios.length * 0.975)]!]
 }
 
-// `--kernels` reads the suite's kernels (mark/kernels) instead of bench/, the two overlapping in three programs
-const KERNELS = join(TERM, 'mark', 'kernels')
+// `--kernels` reads the suite's kernels (deck/mark/kernels) instead of mark/, the two overlapping in three programs
+const KERNELS = join(TERM, 'deck', 'mark', 'kernels')
 const root = argv.includes('--kernels') ? KERNELS : BENCH
 const programs = readdirSync(root).filter(name => existsSync(join(root, name, 'bench.tree')) && (!flag('only') || name === flag('only')))
 const targets = TARGETS.filter(t => !flag('target') || t === flag('target'))
@@ -307,7 +308,7 @@ for (const program of programs) {
     const dir = join(BENCH, program, 'results')
     mkdirSync(dir, { recursive: true })
     writeFileSync(join(dir, `${machine}.json`), JSON.stringify({ program, size: s.size, runs: s.runs, machine, host: hostname(), date: new Date().toISOString().slice(0, 10), results }, null, 2) + '\n')
-    console.log(`  wrote ${join('bench', program, 'results', `${machine}.json`)}`)
+    console.log(`  wrote ${join('mark', program, 'results', `${machine}.json`)}`)
   }
 }
 

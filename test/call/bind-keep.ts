@@ -60,8 +60,8 @@ function bind(token: string | undefined, args: string[] = []): Promise<string> {
   const home = mkdtempSync(join(tmpdir(), 'term-bind-'))
 
   if (token) {
-    mkdirSync(join(home, '.base', '@cluesurf', 'term'), { recursive: true })
-    writeFileSync(join(home, '.base', '@cluesurf', 'term', 'auth'), `${token}\n`)
+    mkdirSync(join(home, '.base', '@term', 'code'), { recursive: true })
+    writeFileSync(join(home, '.base', '@term', 'code', 'auth'), `${token}\n`)
   }
 
   asked.length = 0

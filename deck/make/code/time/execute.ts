@@ -58,7 +58,7 @@ export async function prepareModuleDir(input: {
 
   const dir = path.join(
     input.root,
-    '.base/@cluesurf/term',
+    '.base/@term/code',
     'tmp',
     `${input.tag}-${process.pid}-${Date.now()}`,
   )

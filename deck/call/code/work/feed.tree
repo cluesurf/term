@@ -1,49 +1,19 @@
 load @term/call/work/home
   find root, name project-root
 
-load @term/call/work/tint
-  find log-good
-  find log-fail
-  find log-step
-  find log-warn
-  find fade
-  find name, name tint-name
-  find bold
-  find mark
-  find format-error
-
-# `term feed [entry]` -- the dev server. Compiles the app in per-module mode, serves each module lazily over native
-# ESM, and hot-reloads on change over server-sent events, which is what it "feeds" the browser. The entry is an
-# argument or the `boot <path>` the manifest names. It stays alive until interrupted.
-#
-# THE FILE WATCH IS NOT PORTED and delegates, deliberately. It needs a recursive filesystem watcher with debounce,
-# and the stdlib has no watch at all; writing one here would be a worse copy of something the TypeScript already
-# does. What is Term is the verb: finding the entry, choosing the port, starting the server and reporting.
+# `term feed` -- refused. The development server is `term boot` (`term boot moon`, the default, or `dev` /
+# `development`), and production is `term boot star` (`prod` / `production`). The word `feed` belongs to `@term/feed`,
+# the package of readers, and the command says where the server went rather than starting it (2026-10-05).
 #
 # Ported from deck/call/code/feed.ts (cli-in-term-0004).
 
-load @term/base/file
-  find test, name file-test
-
 dock load
   load <@term/call/code/feed>, name feed-module
-  load <@term/call/code/boot>, name boot-module
-  load <node:process>, name node-process
 
 form feed-ask
   link root, like text
-  link entry, like text
-  link port, like number
-  link env, like text
-
-# the port the dev server listens on when none is given
-# `feed-port`, not `default-port`: names are PACKAGE-GLOBAL, and `serve-verbs` declares the worker's default
-# too. Two modules spelling the same host name compile fine on their own and collide the moment the program is
-# merged, which is at `term boot` and nowhere earlier.
-host feed-port, code 5173
 
 task feed
-  mark async
   take entry, like text
   take port, like number
   take env, like text
@@ -52,44 +22,6 @@ task feed
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  log-step <Starting dev server...>
-  save found, call boot-module/findEntry, root, entry
-
-  save there
-    fork test
-      is-equal found, <>
-      hold false
-      miss
-        file-test found, wait true
-  fork test
-    there
-    miss
-      log-fail <No entry to serve: pass one, or name it with a boot path in deck.tree>
-      node-process/exit code 1
-  save chosen
-    fork test
-      is-above port, code 0
-      hold
-        read port
-      miss
-        read feed-port
-  save chosen-env
-    fork test
-      is-equal env, <>
-      hold
-        text <browser>
-      miss
-        read env
-  mark unsafe
-    # the watcher is the TypeScript's, for the reason in the header
-    call feed-module/callFeed
-      make feed-ask
-        bind root, read root
-        bind entry, read found
-        bind port, read chosen
-        bind env, read chosen-env
-      wait true
-  halt take
-    take error
-    log-fail format-error error
-    node-process/exit code 1
+  call feed-module/refuseFeed
+    make feed-ask
+      bind root, read root

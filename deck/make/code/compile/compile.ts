@@ -719,6 +719,9 @@ export function compileProgram(
   // unit the same way whichever entry reached it, so the module it writes exports the same names every time
   // (compile/separate.ts); everywhere else it is `file`
   naming?: string,
+  // the files whose modules are emitted, when not every file's. A separate unit's program holds the stubs of its whole
+  // closure, each under its own file, and their modules belong to the units that own them (compile/separate.ts)
+  emitOnly?: Set<string>,
 ): CompileResult {
   // the certificate checker's refusals so far, so this compile can report its own
   const uncertifiedBefore = uncertifiedCount()
@@ -1250,7 +1253,7 @@ export function compileProgram(
       ok: true,
       program: tsProgram,
       typescript: '',
-      modules: emitModules(tsProgram, modulesUrl),
+      modules: emitModules(tsProgram, modulesUrl, emitOnly),
       warnings,
       ...(claims.open.length ? { openClaims: claims.open } : {}),
     obligations,

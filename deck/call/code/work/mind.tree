@@ -12,7 +12,7 @@ load @term/call/code/work/tint
   find mark
   find format-error
 
-# `term mind` -- the project's durable memory: one fact per file under `.base/@cluesurf/term/memory/`, with an
+# `term mind` -- the project's durable memory: one fact per file under `.base/@term/code/memory/`, with an
 # index.
 #
 #   term mind <fact>            remember a fact

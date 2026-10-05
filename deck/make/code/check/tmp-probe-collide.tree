@@ -1,0 +1,12 @@
+load ../parser/diagnostic
+  find diagnostic
+
+load ./pattern-literal
+  find literal-pattern
+  find read-literal-pattern
+
+task probe-collide
+  take source, like text
+  like literal-pattern
+
+  back read-literal-pattern(source)

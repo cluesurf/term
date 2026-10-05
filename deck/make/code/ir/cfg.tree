@@ -1,0 +1,385 @@
+# The control-flow graph: a function body lowered to basic blocks and the edges between them. Straight-line runs of
+# statements become one block; `if` / `while` / `for-each` / `match` / `return` / `break` / `continue` become the
+# terminators that wire blocks together. This is the structural backbone the later passes (Perceus control flow,
+# register/stack allocation, native lowering) walk. See note/research/vibe/computation/plans/05-ir.md. Pure and
+# browser-safe.
+#
+# Ported from ir/cfg.ts (self-hosting, 2026-10-05). A block was created and its terminator written afterwards (a loop's
+# header before its body, which jumps back to it), so the blocks are a list on a `mark shared` builder and a block is
+# rewritten in place by its id.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load ../compile/node
+  find expression
+  find statement
+
+form switch-case
+  link label, like text
+  link target, like number
+
+form terminator
+  mark tag, name kind
+  # leaves the function
+  case return
+  # unconditional edge
+  case jump
+    link target, like number
+  # if / while header
+  case branch
+    link condition, like expression
+    link when-true, like number
+    link when-false, like number
+  # for-each header
+  case loop
+    link item, like text
+    link iterable, like expression
+    link body, like number
+    link after, like number
+  # match
+  case switch
+    link subject, like expression
+    link cases, like list, like switch-case
+    link otherwise, like number
+
+form block
+  link id, like number
+  link body, like list, like statement
+  link terminator, like terminator
+
+form cfg
+  link entry, like number
+  link blocks, like list, like block
+
+# where a `break` and a `continue` go inside the innermost loop
+form loop-exits
+  link break-to, like number
+  link continue-to, like number
+
+# the blocks built so far: every step adds to and rewrites the one list the build holds, so it is `mark shared` (D1)
+form cfg-builder
+  mark shared
+  link blocks, like list, like block
+
+task build-cfg
+  take body, like list, like statement
+  like cfg
+
+  save b
+    make cfg-builder
+      bind blocks, make list
+
+  # a synthetic exit block (id 0) that every `return` and fall-through reaches
+  save exit, create(b)
+  save outside, make none
+  save entry, sequence(b, body, exit, outside)
+
+  back
+    make cfg
+      bind entry, entry
+      bind blocks, b/blocks
+
+task leaves
+  like terminator
+  mark private
+
+  back make return
+
+task create
+  take b, like cfg-builder
+  like number
+  mark private
+
+  save id, b/blocks/length
+  save none-yet, make list
+  save one
+    make block
+      bind id, id
+      bind body, none-yet
+      bind terminator, leaves()
+  push(b/blocks, one)
+  back id
+
+task set-terminator
+  take b, like cfg-builder
+  take id, like number
+  take ending, like terminator
+  mark private
+
+  save old, get(b/blocks, id)
+  save one
+    make block
+      bind id, id
+      bind body, old/body
+      bind terminator, ending
+  save b/blocks/{id}, one
+
+task set-body
+  take b, like cfg-builder
+  take id, like number
+  take statements, like list, like statement
+  mark private
+
+  save old, get(b/blocks, id)
+  save one
+    make block
+      bind id, id
+      bind body, statements
+      bind terminator, old/terminator
+  save b/blocks/{id}, one
+
+task jump-to
+  take target, like number
+  like terminator
+  mark private
+
+  back
+    make jump
+      bind target, target
+
+task is-control
+  take one, like statement
+  like boolean
+  mark private
+
+  sift one
+    case if
+      back true
+    case while
+      back true
+    case for-each
+      back true
+    case match
+      back true
+    case return
+      back true
+    case break
+      back true
+    case continue
+      back true
+    miss
+      back false
+
+# build a statement sequence; on normal completion control flows to `next`. Answers the entry block id.
+task sequence
+  take b, like cfg-builder
+  take statements, like list, like statement
+  take next, like number
+  take loop, like maybe, like loop-exits
+  like number
+  mark private
+
+  fork test, is-equal(statements/length, 0)
+    hold
+      back next
+
+  save split, 0
+  walk test
+    hook test, and(is-below(split, statements/length), not(is-control(get(statements, split))))
+    hook hold
+      save split, add(split, 1)
+
+  fork test, is-equal(split, statements/length)
+    hold
+      # an all-straight-line run: one block that jumps onward
+      save id, create(b)
+      set-body(b, id, statements/slice(0, statements/length))
+      set-terminator(b, id, jump-to(next))
+      back id
+
+  save prefix, statements/slice(0, split)
+  save rest-entry, sequence(b, statements/slice(add(split, 1), statements/length), next, loop)
+  save control-entry, control(b, get(statements, split), rest-entry, loop)
+
+  fork test, is-equal(prefix/length, 0)
+    hold
+      back control-entry
+
+  save id, create(b)
+  set-body(b, id, prefix)
+  set-terminator(b, id, jump-to(control-entry))
+  back id
+
+task break-target
+  take loop, like maybe, like loop-exits
+  take next, like number
+  like number
+  mark private
+
+  sift loop
+    case some
+      link exits
+      back exits/break-to
+    case none
+      back next
+
+task continue-target
+  take loop, like maybe, like loop-exits
+  take next, like number
+  like number
+  mark private
+
+  sift loop
+    case some
+      link exits
+      back exits/continue-to
+    case none
+      back next
+
+task one-statement
+  take one, like statement
+  like list, like statement
+  mark private
+
+  save out, make list
+  push(out, one)
+  back out
+
+# build a single control-flow statement; answers its entry block id
+task control
+  take b, like cfg-builder
+  take one, like statement
+  take next, like number
+  take loop, like maybe, like loop-exits
+  like number
+  mark private
+
+  sift one
+    case return
+      save id, create(b)
+      set-body(b, id, one-statement(one))
+      set-terminator(b, id, leaves())
+      back id
+
+    case break
+      save id, create(b)
+      set-terminator(b, id, jump-to(break-target(loop, next)))
+      back id
+
+    case continue
+      save id, create(b)
+      set-terminator(b, id, jump-to(continue-target(loop, next)))
+      back id
+
+    case if
+      # build the else side, then chain each branch's condition in front of it
+      save chain, next
+      sift otherwise
+        case some
+          link miss-body
+          save chain, sequence(b, miss-body, next, loop)
+        case none
+          save chain, next
+
+      save at, subtract(branches/length, 1)
+      walk test
+        hook test, is-minimum(at, 0)
+        hook hold
+          save arm, get(branches, at)
+          save when-true, sequence(b, arm/body, next, loop)
+          save header, create(b)
+          save test
+            make branch
+              bind condition, arm/cond
+              bind when-true, when-true
+              bind when-false, chain
+          set-terminator(b, header, test)
+          save chain, header
+          save at, subtract(at, 1)
+      back chain
+
+    case while
+      save header, create(b)
+      save exits
+        make loop-exits
+          bind break-to, next
+          bind continue-to, header
+      save inner, make(some, exits)
+      save body-entry, sequence(b, body, header, inner)
+      save test
+        make branch
+          bind condition, cond
+          bind when-true, body-entry
+          bind when-false, next
+      set-terminator(b, header, test)
+      back header
+
+    case for-each
+      save header, create(b)
+      save exits
+        make loop-exits
+          bind break-to, next
+          bind continue-to, header
+      save inner, make(some, exits)
+      save body-entry, sequence(b, body, header, inner)
+      save each
+        make loop
+          bind item, item
+          bind iterable, iterable
+          bind body, body-entry
+          bind after, next
+      set-terminator(b, header, each)
+      back header
+
+    case match
+      save arms, make list
+      walk cases
+        take arm
+        save target, sequence(b, arm/body, next, loop)
+        save one-case
+          make switch-case
+            bind label, arm/label
+            bind target, target
+        push(arms, one-case)
+
+      save fallback, next
+      sift otherwise
+        case some
+          link miss-body
+          save fallback, sequence(b, miss-body, next, loop)
+        case none
+          save fallback, next
+
+      save id, create(b)
+      save choose
+        make switch
+          bind subject, subject
+          bind cases, arms
+          bind otherwise, fallback
+      set-terminator(b, id, choose)
+      back id
+
+    miss
+      save id, create(b)
+      set-body(b, id, one-statement(one))
+      set-terminator(b, id, jump-to(next))
+      back id
+
+# the successor block ids of a terminator (for graph walks)
+task successors
+  take ending, like terminator
+  like list, like number
+
+  save out, make list
+  sift ending
+    case return
+      back out
+    case jump
+      push(out, target)
+    case branch
+      push(out, when-true)
+      push(out, when-false)
+    case loop
+      push(out, body)
+      push(out, after)
+    case switch
+      walk cases
+        take one
+        push(out, one/target)
+      push(out, otherwise)
+  back out

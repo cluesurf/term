@@ -8,7 +8,7 @@
 // is a different key, so it is checked again. A failure is never remembered. `TERM_MEMO=off` (or the gate's
 // `--fresh`, which sets it) checks everything.
 //
-// Stored under .base/@cluesurf/term/memo/<suite>.json, rebuildable by running.
+// Stored under .base/@term/code/memo/<suite>.json, rebuildable by running.
 
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
@@ -69,7 +69,7 @@ export type Memo = {
 
 export function makeMemo(suite: string, code: string[]): Memo {
   const off = process.env.TERM_MEMO === 'off'
-  const dir = join(TERM, '.base/@cluesurf/term/memo')
+  const dir = join(TERM, '.base/@term/code/memo')
   const file = join(dir, `${suite}.json`)
   const salt = codeHash(code)
   const keyOf = (item: string, input: string | Buffer): string => sha1(`${salt}\0${item}\0${sha1(input)}`)

@@ -8,7 +8,7 @@ import { compile } from '@term/make/code/compile/compile'
 import type { Roll } from '@term/make/code/compile/roll'
 import { projectDeckOf } from '@term/call/code/deck-of'
 import { projectRoleOf, projectLeanOf } from '@term/call/code/role-of'
-import { mergeRolls, showRoll } from '@term/make/code/compile/roll'
+import { makeRollMerger, showRoll } from '@term/make/code/compile/roll'
 import { buildable, buildResolver, findTreeFiles, projectResolver } from '@term/call/code/make'
 import { makeParseMemo } from '@term/make/code/compile/load'
 import type { BuildProblem } from '@term/call/code/make'
@@ -44,7 +44,8 @@ export function projectRoll(root: string, closures?: Map<string, string>): {
   // in it is reported as an unknown name, under the "Compiled N files" line (lean-0035, 2026-09-12).
   const roleOf = projectRoleOf(root)
   const leanOf = projectLeanOf(root)
-  const rolls: Roll[] = []
+  // merged as each entry's roll is read, never all held at once (compile/roll.ts `makeRollMerger`)
+  const merger = makeRollMerger()
   const failed: string[] = []
   const problems: BuildProblem[] = []
 
@@ -74,11 +75,11 @@ export function projectRoll(root: string, closures?: Map<string, string>): {
     }
 
     if (result.roll) {
-      rolls.push(relativize(result.roll, root))
+      merger.add(relativize(result.roll, root))
     }
   }
 
-  return { roll: mergeRolls(rolls), failed, problems }
+  return { roll: merger.done(), failed, problems }
 }
 
 // one entry's roll, and its diagnostics when it does not build: the whole-program compile the roll is read from, with

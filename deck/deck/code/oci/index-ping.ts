@@ -5,7 +5,7 @@
 // index's periodic crawl finds what a lost ping missed, so a failed ping is a warning and never a failed publish.
 //
 // A term.surf token ATTRIBUTES the version. With one (`TERM_TOKEN`, or the `auth` file under
-// `~/.base/@cluesurf/term/`, made at term.surf/settings/tokens with the `package:publish` scope), the ping carries it as
+// `~/.base/@term/code/`, made at term.surf/settings/tokens with the `package:publish` scope), the ping carries it as
 // `Authorization: Bearer` and adds a claim signed by the key that signed the version:
 // `term.publish.v1 <reference> <time>`. The index binds that key to the token's account, which is how a version is
 // credited to a person. The token goes to the index and NEVER to a registry: registry credentials are a separate

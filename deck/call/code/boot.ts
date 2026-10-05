@@ -48,6 +48,7 @@ import type { GroupNode } from '@term/make/code/parser/narrow'
 import { groupsOf } from '@term/make/code/parser/narrow'
 import { manifestValueOf } from '@term/call/code/manifest-name'
 import { closeRun, count, failRun, field, followChild, isRunOpen, location, openRun, report, reportProblems, showPath } from '@term/call/code/output'
+import { HOME_POSIX, projectHome } from '@term/call/code/home'
 
 // the head name of a tree group (its first `name` node), and the group's first argument as text. The structured way to
 // read a `.tree` file (mirrors the helpers in code/deck/install.ts).
@@ -403,7 +404,7 @@ export async function buildClientBundle(opts: {
     }
 
     // bundle once into the shared cache dir (keyed by content), then copy into the app's build output
-    const cacheOut = path.join(projectRoot, '.base/@cluesurf/term', 'client', key)
+    const cacheOut = projectHome(projectRoot, 'client', key)
     const cacheFile = path.join(cacheOut, 'boot.js')
     const cacheMap = path.join(cacheOut, 'import-map.json')
 
@@ -657,8 +658,33 @@ function watchStyles(appDir: string): () => void {
   }
 }
 
+// the words `term boot` takes for its mode: `moon` is development and `star` production, each with its two plain
+// spellings
+const DEVELOPMENT_WORDS = new Set(['moon', 'dev', 'development'])
+const PRODUCTION_WORDS = new Set(['star', 'prod', 'production'])
+
+export type BootMode = 'development' | 'production'
+
+// `term boot [mode] [entry]`: the first word is a mode when it is one of the six, and otherwise it is the entry, so
+// `term boot app.tree` still boots that file. A mode the command line does not name is left undefined, and the boot
+// falls back to `NODE_ENV`, which is development unless it says `production`
+export function bootMode(first?: string, second?: string): { mode?: BootMode; entry?: string } {
+  if (first !== undefined && DEVELOPMENT_WORDS.has(first)) {
+    return { mode: 'development', entry: second }
+  }
+
+  if (first !== undefined && PRODUCTION_WORDS.has(first)) {
+    return { mode: 'production', entry: second }
+  }
+
+  return { entry: first ?? second }
+}
+
 export async function callBoot(input: {
   root: string
+  /** `moon`, `dev` or `development`, or `star`, `prod` or `production`. Absent is development, unless `NODE_ENV`
+   * says production */
+  mode?: string
   entry?: string
   env?: NativeEnv
   port?: number
@@ -676,8 +702,24 @@ export async function callBoot(input: {
   // a run of its own, unless one is open: `term host` builds a package's console inside its own run
   const owned = !isRunOpen()
 
+  // the mode, read once: a console caller passes the word as given, so it is read here as well as on the command line.
+  // A word that is not a mode is the entry
+  const read = input.mode === undefined ? { entry: input.entry } : bootMode(input.mode, input.entry)
+  const mode: BootMode = read.mode ?? (process.env.NODE_ENV === 'production' ? 'production' : 'development')
+
+  // everything below reads `NODE_ENV`, the child server included, so the mode is written there before any of it runs
+  process.env.NODE_ENV = mode
+  input = { ...input, entry: read.entry }
+
+  // development in a browser is the hot-reloading module server, which was `term feed`. It opens its own run
+  if (mode === 'development' && input.env === 'browser' && !input.out && owned) {
+    const { serveBrowserDevelopment } = await import('@term/call/code/feed')
+
+    return serveBrowserDevelopment({ root: input.root, entry: input.entry, port: input.port, env: input.env })
+  }
+
   if (owned) {
-    openRun({ verb: 'boot', root: input.root, facts: input.out ? ['--out'] : [] })
+    openRun({ verb: 'boot', root: input.root, facts: [mode, ...(input.out ? ['--out'] : [])] })
   }
 
   // the run closed, when this call opened it
@@ -718,7 +760,7 @@ export async function callBoot(input: {
     }
 
     // warm the local cache from a remote (Tier 5) before compiling, so a cold machine / CI reuses shared artifacts
-    const cacheDir = path.join(projectRoot, '.base/@cluesurf/term', 'cache')
+    const cacheDir = projectHome(projectRoot, 'cache')
 
     if (input.remote) {
       try {
@@ -743,7 +785,7 @@ export async function callBoot(input: {
     )
 
     // compile the entry (and everything it loads) through the package manager, targeting the chosen env. A persistent
-    // cache (`.base/@cluesurf/term/cache`) makes a cold re-boot reuse the prior parse + mill + compile (Tier 1).
+    // cache (`.base/@term/code/cache`) makes a cold re-boot reuse the prior parse + mill + compile (Tier 1).
     // resolve modules against the APP dir (the entry's package root, holding `deck.tree`), not the link/cache
     // `projectRoot`, so the app's own `@scope/...` and relative imports resolve correctly.
     const resolve = projectResolver(
@@ -777,7 +819,7 @@ export async function callBoot(input: {
     const dev = process.env.NODE_ENV !== 'production'
 
     // ONE persistent cache, reused across every rebuild (exactly as `term make --watch` does). It is the turborepo-style
-    // content-addressed store at `.base/@cluesurf/term/cache`: the in-memory layer survives across rebuilds in this process, and the
+    // content-addressed store at `.base/@term/code/cache`: the in-memory layer survives across rebuilds in this process, and the
     // disk layer survives across runs and machines (and a remote, via pull/push above). So an unchanged module reuses
     // its parse + mill, and an unchanged graph returns its whole result instantly -- the same reuse `term make` gets.
     const cache = processCache(projectRoot)
@@ -785,7 +827,7 @@ export async function callBoot(input: {
     // build the app ONCE: compile the entry, (re)build the client bundle + styles, bundle to ESM, and write the run
     // entry `run.mjs`. Returns its path plus whether the program is a command-line tool (top-level `hook` commands),
     // or null on a compile error (the rich diagnostics are printed and any running server is left up). This is the
-    // SAME incremental compile (shared `.base/@cluesurf/term/cache`) and the SAME diagnostic renderer (`report.ts`) that
+    // SAME incremental compile (shared `.base/@term/code/cache`) and the SAME diagnostic renderer (`report.ts`) that
     // `term make` uses; only the output step (esbuild bundle + run entry) differs.
     const buildOnce = async (): Promise<{
       run: string
@@ -981,7 +1023,7 @@ export async function callBoot(input: {
               banner: {
                 // ANCHORED AT THE PROJECT, NOT THE BUNDLE.
                 //
-                // The bundle lives in `.base/@cluesurf/term/boot/<hash>/`, so a
+                // The bundle lives in `.base/@term/code/boot/<hash>/`, so a
                 // `require` made from `import.meta.url` resolves relative
                 // paths under that directory and finds a project's own
                 // node_modules only by walking up past it. A runtime shim
@@ -999,7 +1041,7 @@ export async function callBoot(input: {
             }),
       }
 
-      // incremental cache in `.base/@cluesurf/term/boot/<hash>`. The key folds in everything that can change the output.
+      // incremental cache in `.base/@term/code/boot/<hash>`. The key folds in everything that can change the output.
       const key = hashText(
         [
           BOOT_CACHE_EPOCH,
@@ -1013,7 +1055,7 @@ export async function callBoot(input: {
 
       // the boot cache always holds the bundler's input, `app.ts`. The bundle itself goes there too, unless `--out`
       // names a directory for it, which then holds only what runs: `app.mjs`, `dock.mjs` and `run.mjs`
-      const cached = path.join(projectRoot, '.base/@cluesurf/term', 'boot', key)
+      const cached = projectHome(projectRoot, 'boot', key)
       const out = input.out ? path.resolve(cwd, input.out) : cached
       const bundle = path.join(out, 'app.mjs')
       // `at` only for an `--out` folder, which the person chose and will open. The boot cache under `.base/` is the
@@ -1270,7 +1312,8 @@ export async function callBoot(input: {
             report({ glyph: 'info', kind: 'lifecycle', verb: 'reload', subject: `${name} changed`, duration: Date.now() - started })
           }
         },
-        ['build/', '.base/@cluesurf/term/', 'node_modules/', 'host/'],
+        // both names of the toolchain's folder: the old one is a link to the new since 2026-10-05 (home.ts)
+        ['build/', `${HOME_POSIX}/`, '.base/@cluesurf/term/', 'node_modules/', 'host/'],
       )
       stops.push(() => codeWatcher.close())
 

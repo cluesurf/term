@@ -345,6 +345,8 @@ function hotEpilogue(): string {
 export function emitModules(
   program: Program,
   urlForFile: (file: string) => string,
+  // the files to emit, when not all of them. Every file's statements are still the context each emit reads
+  only?: Set<string>,
 ): Map<string, ModuleEmit> {
   // group statements by their source file, preserving program order within each file
   const byFile = new Map<string, Statement[]>()
@@ -394,6 +396,12 @@ export function emitModules(
   const out = new Map<string, ModuleEmit>()
 
   for (const [file, statements] of byFile) {
+    // a separate unit's closure stubs sit under their own files, and each emit reads the whole program: emitting them
+    // too made a unit cost its closure's files times its closure, most of a cold separate build (2026-10-05 profile)
+    if (only !== undefined && !only.has(file)) {
+      continue
+    }
+
     const values = new Set<string>()
     const types = new Set<string>()
     walkStatements(statements, values, types)

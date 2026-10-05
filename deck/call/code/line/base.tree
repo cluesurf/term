@@ -7,9 +7,9 @@
 # the CLI still dispatches through yargs until cli-in-term-0004 moves a verb across.
 #
 # HOW A COMMAND IS WRITTEN. Each `hook` is one command and nested `hook`s are its subcommands. A `take` is a
-# parameter: `like text` / `like boolean` / `like number` is its type, `need true` makes it required, `code t`
-# gives it a short `-t`, `bind <value>` a default, `many` collects the rest, and one `pick <value>` per allowed
-# value is its enum. The `#` comment above a hook or a take is its `--help` text. `task <name>` names the
+# parameter: `like text` / `like boolean` / `like number` is its type, and `like list, like text` collects every
+# word left. `need true` makes it required, `code t` gives it a short `-t`, `bind <value>` a default, and one
+# `pick <value>` per allowed value is its enum. The `#` comment above a hook or a take is its `--help` text. `task <name>` names the
 # implementation.
 #
 # ONE CONSTRAINT NOTHING CHECKS. Arguments reach the implementation IN `take` ORDER, so every hook must list its
@@ -576,12 +576,14 @@ hook time
 hook mark
   # a filter on <family>/<program>, or `list`; then --target, --runs, --quick, --check, --size, --export, --markdown, --purpose, --label
   take rest
-    like text
-    many
+    like list, like text
   task mark
 
-# Compile and run an app (entry, or the deck.tree boot entry)
+# Compile and run an app, in development (the default) or production
 hook boot
+  # moon, dev or development (the default), or star, prod or production
+  take mode
+    like text
   # Entry .tree module (defaults to deck.tree boot)
   take entry
     like text
@@ -622,7 +624,7 @@ hook halt
     like text
   task halt
 
-# Start the dev server (lazy ESM + hot reload)
+# Retired: the development server is term boot
 hook feed
   # Entry .tree module (defaults to deck.tree boot)
   take entry
@@ -688,8 +690,7 @@ hook note
 hook form
   # Files or directories to format (default: current directory)
   take paths
-    like text
-    many
+    like list, like text
   # Report which files would change without writing (for CI)
   take check
     like boolean
@@ -782,8 +783,7 @@ hook view
 hook lint
   # Files or directories to lint (default: current directory)
   take paths
-    like text
-    many
+    like list, like text
   # Apply autofixes in place
   take fix
     like boolean
@@ -794,8 +794,7 @@ hook lint
 hook hold
   # Files or directories to verify (default: current directory)
   take paths
-    like text
-    many
+    like list, like text
   # Also run the cross-backend differential
   take cross
     like boolean
@@ -845,8 +844,7 @@ hook show
 hook zone
   # The zone verb and its arguments
   take rest
-    like text
-    many
+    like list, like text
   task zone
 
 

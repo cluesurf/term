@@ -3,4 +3,14 @@
 
 object nativeMotion {
     suspend fun sample(): String = "unavailable"
+
+    // nothing to watch on a desktop JVM: the handler hears `unavailable` once, and the number this answers is one `unwatch` takes (native-watch.kt)
+    fun watch(handler: (String) -> Unit): Int = nativeWatch.join("motion", handler) { tell ->
+        tell("unavailable")
+        this::stop
+    }
+
+    fun unwatch(id: Int) = nativeWatch.leave("motion", id)
+
+    private fun stop() {}
 }

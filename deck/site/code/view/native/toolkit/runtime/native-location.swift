@@ -14,6 +14,63 @@ enum nativeLocation {
         guard grant == "granted" else { return grant == "restricted" ? "denied" : grant }
         return await PositionReader().read()
     }
+
+    // every position CoreLocation reports, the current one first, to `handler` on the main thread, until `unwatch` is
+    // given the number this answers. Without the grant the handler hears the grant's status once. Not isolated: the
+    // program may call from any thread, so it enters the main actor itself (nativeWatch.enter)
+    static func watch(_ handler: @escaping (String) -> Void) -> Int {
+        nativeWatch.enter {
+            nativeWatch.join("position", handler) { tell in
+                let grant = locationGrant()
+                guard grant == "granted" else {
+                    tell(grant)
+                    return {}
+                }
+                let follower = PositionFollower(tell)
+                return { follower.stop() }
+            }
+        }
+    }
+
+    static func unwatch(_ id: Int) {
+        nativeWatch.enter { nativeWatch.leave("position", id) }
+    }
+
+    // the grant as nativePermission reads it, without waiting: a watch starts at once
+    private static func locationGrant() -> String {
+        let status = nativePermission.locationStatus(CLLocationManager().authorizationStatus)
+        return status == "restricted" ? "denied" : status
+    }
+}
+
+// a running position watch, until it is stopped
+final class PositionFollower: NSObject, CLLocationManagerDelegate {
+    private let manager = CLLocationManager()
+    private let handler: (String) -> Void
+
+    init(_ handler: @escaping (String) -> Void) {
+        self.handler = handler
+        super.init()
+        manager.delegate = self
+        manager.desiredAccuracy = kCLLocationAccuracyBest
+        manager.startUpdatingLocation()
+    }
+
+    func stop() {
+        manager.stopUpdatingLocation()
+        manager.delegate = nil
+    }
+
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        guard let at = locations.last else { return }
+        handler(String(format: "%.6f %.6f %.0f", at.coordinate.latitude, at.coordinate.longitude, at.horizontalAccuracy))
+    }
+
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        if (error as? CLError)?.code == .denied {
+            handler("denied")
+        }
+    }
 }
 
 // one position: CoreLocation answers through the delegate, and the manager must live until it has

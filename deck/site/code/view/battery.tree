@@ -10,8 +10,20 @@
 
 load ./native/{platform}/battery
   find read-battery
+  find follow-battery
 
 task battery-status
   like text
   send back
     call read-battery
+
+# the answer above now and at every change the platform reports, to `handler`, until the task it answers is called.
+# One watcher at a time: a second replaces the first
+task watch-battery
+  take handler
+    like task
+      take value, like text
+  like task
+  send back
+    call follow-battery
+      read handler

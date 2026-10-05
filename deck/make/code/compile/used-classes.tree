@@ -29,6 +29,13 @@ load ./node
   find view-node
   find expression
 
+# what the scan has found so far: each step adds to the one record the scan holds, so it is `mark shared` (D1), a
+# reference rather than a value copied into each call
+form class-scan
+  mark shared
+  link classes, like list, like text
+  link dynamic, like boolean
+
 form used-classes
   # the sorted set of statically known class tokens (the JIT keep-list)
   link classes, like list, like text
@@ -97,7 +104,7 @@ task has-text
 # each token of a class list, split on runs of whitespace, added once
 task add-tokens
   take value, like text
-  take out, like list, like text
+  take scan, like class-scan
   like void
   mark private
 
@@ -113,9 +120,9 @@ task add-tokens
           save one, char-at(value, at)
       fork test, or(is-equal(at, size), is-space(one))
         hold
-          fork test, and(is-unequal(token, <>), is-equal(has-text(out, token), false))
+          fork test, and(is-unequal(token, <>), is-equal(has-text(scan/classes, token), false))
             hold
-              push(out, token)
+              push(scan/classes, token)
           save token, <>
         miss
           save token, <{token}{one}>
@@ -124,22 +131,20 @@ task add-tokens
 # a `class` carrier's value: its tokens when it is a text literal, else the dynamic flag
 task add-carrier
   take value, like expression
-  take out, like list, like text
-  take dynamic, like list, like boolean
+  take scan, like class-scan
   like void
   mark private
 
   sift value
     case string
       link written
-      add-tokens(written, out)
+      add-tokens(written, scan)
     miss
-      push(dynamic, true)
+      save scan/dynamic, true
 
 task walk-views
   take nodes, like list, like view-node
-  take out, like list, like text
-  take dynamic, like list, like boolean
+  take scan, like class-scan
   like void
   mark private
 
@@ -152,20 +157,20 @@ task walk-views
           take prop
           fork test, is-equal(prop/name, <class>)
             hold
-              add-carrier(prop/value, out, dynamic)
+              add-carrier(prop/value, scan)
         walk attributes
           take attribute
           fork test, and(is-equal(attribute/name, <class>), is-equal(attribute/event, false))
             hold
-              add-carrier(attribute/value, out, dynamic)
-        walk-views(children, out, dynamic)
+              add-carrier(attribute/value, scan)
+        walk-views(children, scan)
       case fork
         walk branches
           take branch
-          walk-views(branch/body, out, dynamic)
-        walk-views(otherwise, out, dynamic)
+          walk-views(branch/body, scan)
+        walk-views(otherwise, scan)
       case walk
-        walk-views(body, out, dynamic)
+        walk-views(body, scan)
       miss
         turn next
 
@@ -174,21 +179,22 @@ task collect-used-classes
   take program, like list, like statement
   like used-classes
 
-  save out, make list
-  # a flag a task can set through: a list that is empty, or holds one `true`
-  save dynamic, make list
+  save scan
+    make class-scan
+      bind classes, make list
+      bind dynamic, false
   walk program
     take one
     sift one
       case view
-        walk-views(body, out, dynamic)
+        walk-views(body, scan)
       miss
         turn next
-  save classes, sort(out, by-text)
+  save classes, sort(scan/classes, by-text)
   back
     make used-classes
       bind classes, classes
-      bind dynamic, is-above(dynamic/length, 0)
+      bind dynamic, scan/dynamic
 
 task by-text
   take left, like text

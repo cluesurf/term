@@ -5,7 +5,8 @@
 # navigator.share in a browser.
 #
 #   open-address(address)   opened, or unavailable when nothing handles it, or denied when the platform refused
-#   share-text(text)        shown (the sheet is up, and the person decides), or unavailable
+#   share-text(text)        shown (the sheet is up, and the person decides), denied (a browser refuses a share it
+#                           was not asked for by a click), or unavailable
 #
 # A host with no such capability (the server, the memory host) answers `unavailable`. Every answer is text from the
 # closed set above, so an app compares strings and no platform enum ever reaches it.

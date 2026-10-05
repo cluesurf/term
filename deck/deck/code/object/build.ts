@@ -33,6 +33,8 @@ import { ObjectStore } from './store'
 // Directories never published (build artifacts, local install, vcs).
 const DEFAULT_EXCLUDE = new Set([
   'link',
+  // the toolchain's folder under both names it has had (deck/call/code/home.ts)
+  '.base/@term/code',
   '.base/@cluesurf/term',
   '.term',
   'node_modules',

@@ -23,6 +23,45 @@ enum nativeNetwork {
             monitor.start(queue: DispatchQueue(label: "term.network"))
         }
     }
+
+    // every path NWPathMonitor reports, the current one first, to `handler` on the main thread, until `unwatch` is given
+    // the number this answers. A path that reads the same as the last is not reported. Not isolated: the program may
+    // call from any thread, so it enters the main actor itself (nativeWatch.enter)
+    static func watch(_ handler: @escaping (String) -> Void) -> Int {
+        nativeWatch.enter {
+            nativeWatch.join("network", handler) { tell in
+                let monitor = start(tell)
+                return { monitor.cancel() }
+            }
+        }
+    }
+
+    static func unwatch(_ id: Int) {
+        nativeWatch.enter { nativeWatch.leave("network", id) }
+    }
+
+    private static func start(_ handler: @escaping (String) -> Void) -> NWPathMonitor {
+        let monitor = NWPathMonitor()
+        var last = ""
+        monitor.pathUpdateHandler = { path in
+            let now = describe(path)
+            DispatchQueue.main.async {
+                guard now != last else { return }
+                last = now
+                handler(now)
+            }
+        }
+        monitor.start(queue: DispatchQueue(label: "term.network.watch"))
+        return monitor
+    }
+
+    private static func describe(_ path: NWPath) -> String {
+        guard path.status == .satisfied else { return "offline none" }
+        let kind = path.usesInterfaceType(.wifi) ? "wifi"
+            : path.usesInterfaceType(.cellular) ? "cellular"
+            : path.usesInterfaceType(.wiredEthernet) ? "wired" : "other"
+        return "online \(kind)"
+    }
 }
 
 // true the first time it is asked, and false every time after, from any thread

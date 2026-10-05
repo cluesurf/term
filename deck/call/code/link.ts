@@ -36,7 +36,7 @@ export async function callLink(input: {
   root: string
   deck?: string
 }): Promise<void> {
-  // no argument: register the current package in the global link registry (~/.base/@cluesurf/term/link), so any project can later
+  // no argument: register the current package in the global link registry (~/.base/@term/code/link), so any project can later
   // `term link <name>` to use this working copy.
   if (!input.deck) {
     openRun({ verb: 'link', root: input.root, facts: ['global'] })

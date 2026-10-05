@@ -475,6 +475,19 @@ function supervisionEntries(
 }
 
 export function mergeRolls(rolls: Roll[]): Roll {
+  const merger = makeRollMerger()
+
+  for (const roll of rolls) {
+    merger.add(roll)
+  }
+
+  return merger.done()
+}
+
+// the merge one roll at a time, the first entry of each name kept, so a caller holds the merged roll and never every
+// roll at once. Every entry's roll covers its whole closure, and @term/bind's 3,091 of them held together ran the
+// main thread out of its 4 GB heap after a cold build (2026-10-05)
+export function makeRollMerger(): { add: (roll: Roll) => void; done: () => Roll } {
   const out: Roll = {
     deck: [],
     exception: [],
@@ -485,7 +498,7 @@ export function mergeRolls(rolls: Roll[]): Roll {
   }
   const seen = new Set<string>()
 
-  for (const roll of rolls) {
+  const add = (roll: Roll): void => {
     for (const kind of Object.keys(roll)) {
       out[kind] ??= []
 
@@ -502,14 +515,18 @@ export function mergeRolls(rolls: Roll[]): Roll {
     }
   }
 
-  for (const kind of Object.keys(out)) {
-    out[kind]?.sort(
-      (a, b) =>
-        a.host.localeCompare(b.host) || a.name.localeCompare(b.name),
-    )
+  const done = (): Roll => {
+    for (const kind of Object.keys(out)) {
+      out[kind]?.sort(
+        (a, b) =>
+          a.host.localeCompare(b.host) || a.name.localeCompare(b.name),
+      )
+    }
+
+    return out
   }
 
-  return out
+  return { add, done }
 }
 
 // the roll as a tree, the way `term roll` prints it

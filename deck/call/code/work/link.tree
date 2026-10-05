@@ -14,7 +14,7 @@ load @term/call/work/tint
 
 # `term link` -- use a working copy of a package instead of an installed one.
 #
-# With NO argument it registers the current package in the global link registry (`~/.base/@cluesurf/term/link`), so
+# With NO argument it registers the current package in the global link registry (`~/.base/@term/code/link`), so
 # any project can later `term link <name>` and get this working copy. With an argument it consumes that
 # registration by name, and failing that treats the argument as a path to a local package.
 #

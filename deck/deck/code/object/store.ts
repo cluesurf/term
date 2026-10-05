@@ -52,7 +52,7 @@ export function verifyObject(input: {
 
 /**
  * A local filesystem object store. With no root it is the user's store, an OCI image layout at
- * `~/.base/@cluesurf/term/base` (`oci/layout.ts`), which every install fills and an offline install reads as a
+ * `~/.base/@term/code/base` (`oci/layout.ts`), which every install fills and an offline install reads as a
  * registry. With a root it is the older tone-path layout, which the object tests still build in a scratch directory.
  */
 export function localObjectStore(input?: { root: string }): ObjectStore {

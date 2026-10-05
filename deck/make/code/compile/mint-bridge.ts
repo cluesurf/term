@@ -447,6 +447,12 @@ const named = (name: string): Type => typeOfWord(name)
 // A `like` names a type and carries its parts: applied arguments ride in the name as a phrase
 // (`like stack number`), an element or key/value rides as a nested `like`, and a task type carries its
 // parameters as `take` lines plus its result as the nested `like`.
+// a list type, however it was written: `like list, like text` is an array, and a bare `like list` read as a phrase
+// is the named type `list`
+function isListType(type: Type | undefined): boolean {
+  return type?.kind === 'array' || (type?.kind === 'named' && type.name === 'list')
+}
+
 function typeOf(
   bridge: Bridge,
   value: Minted | undefined,
@@ -4416,6 +4422,14 @@ function routeOf(
   )
   const takes = takeList.map(take => {
     const type = typeOf(bridge, firstAt(take, 'like'))
+
+    if (at(take, 'many').length > 0) {
+      refuse(
+        bridge,
+        take,
+        `\`many\` is retired: a take collects every word left when its type is a list. Write \`take ${wordAt(take, 'name') ?? 'x'}, like list, like text\``,
+      )
+    }
     const note = leadingNote(take) ?? wordAt(firstAt(take, 'note'), 'text')
     const short = wordAt(take, 'code')
     // `take code / wait rise` reads a secret without echoing it back
@@ -4451,7 +4465,11 @@ function routeOf(
       ...(masked ? { masked: true } : {}),
       ...(note !== undefined ? { note } : {}),
       ...(fallback !== undefined ? { fallback } : {}),
-      ...(at(take, 'many').length > 0 ? { variadic: true } : {}),
+      // A LIST TAKE IS THE REST OF THE WORDS. `take paths, like list, like text` collects every positional left,
+      // because a list is what it is handed: the type says it, so no second word has to. It was `take paths / many`
+      // beside a `like text` until 2026-10-05, a marker that said the same thing as the type and could disagree
+      // with it (a `many` on a `like text` handed a list to a task that declared text)
+      ...(isListType(type) ? { variadic: true } : {}),
       ...(choices.length > 0 ? { choices } : {}),
       span: spanOf(take),
     }

@@ -29,11 +29,11 @@ task has-name
         back true
   back false
 
-# the rule names a proof tree cites, at any depth
+# the names given, with the rule names a proof tree cites added, at any depth
 task cites-in-proof
   take steps, like list, like proof
   take into, like list, like text
-  like void
+  like list, like text
   mark private
 
   walk steps
@@ -43,32 +43,34 @@ task cites-in-proof
         fork test, is-equal(has-name(into, step/arg), false)
           hold
             push(into, step/arg)
-    cites-in-proof(step/children, into)
+    save into, cites-in-proof(step/children, into)
+  back into
 
-# the rule names a body's holds cite, through its guards' branches
+# the names given, with the rule names a body's holds cite added, through its guards' branches
 task cites-in
   take body, like list, like statement
   take into, like list, like text
-  like void
+  like list, like text
   mark private
 
   walk body
     take one
     sift one
       case hold
-        cites-in-proof(proof, into)
+        save into, cites-in-proof(proof, into)
       case if
         walk branches
           take branch
-          cites-in(branch/body, into)
+          save into, cites-in(branch/body, into)
         sift otherwise
           case some
             link miss-body
-            cites-in(miss-body, into)
+            save into, cites-in(miss-body, into)
           case none
             turn next
       miss
         turn next
+  back into
 
 # every rule reachable from `roots` by citation, roots excluded
 task cited-rules
@@ -113,7 +115,7 @@ task cited-rules
             save last, at
       fork test, is-minimum(last, 0)
         hold
-          cites-in(get(bodies, last), cites)
+          save cites, cites-in(get(bodies, last), cites)
       walk cites
         take cited
         fork test, and(has-name(names, cited), and(is-equal(has-name(roots, cited), false), is-equal(has-name(found, cited), false)))

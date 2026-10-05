@@ -10,7 +10,7 @@ import { layoutObjectStore, layoutTransport } from './layout'
 import { isOciRegistry, parseOciRegistry, repositoryOf, type OciRegistryReference, type OciRepository } from './reference'
 import { httpTransport, type OciTransport } from './transport'
 
-/** The OCI image layout every install fills and every offline install reads: `~/.base/@cluesurf/term/base`. */
+/** The OCI image layout every install fills and every offline install reads: `~/.base/@term/code/base`. */
 export function storeDir(): string {
   return process.env['TERM_STORE']?.trim() || getBaseDir()
 }

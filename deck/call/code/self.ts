@@ -16,7 +16,7 @@
 // `self` RUNS ON THE COPY THAT WAS STARTED, never on a project's version (need-run.ts): managing versions is the
 // front's job, and a project pinned to an older release must not take `term self` back to that release's verbs.
 //
-// THE FRONT AND THE VERSION THAT RUNS ARE TWO THINGS. `bin/term` is the front: the one thing on PATH, which starts and
+// THE FRONT AND THE VERSION THAT RUNS ARE TWO THINGS. `call/term` is the front: the one thing on PATH, which starts and
 // dispatches. Which version a command runs is resolution's answer (need.ts), so `update` and `back` move the front and
 // change nothing a pinned project runs.
 //
@@ -199,7 +199,7 @@ export async function callSelfUpdate(input: { root: string }): Promise<void> {
   }
 
   linkFront(newest)
-  report({ glyph: 'changed', kind: 'change', verb: 'front', subject: `bin/term ${front} to ${newest}` })
+  report({ glyph: 'changed', kind: 'change', verb: 'front', subject: `call/term ${front} to ${newest}` })
 
   // a range default follows on its own; an exact one is named, because it now holds the default back
   const fallback = defaultRequest(userHome()).request
@@ -233,7 +233,7 @@ export async function callSelfBack(input: { root: string }): Promise<void> {
   }
 
   linkFront(previous)
-  report({ glyph: 'changed', kind: 'change', verb: 'front', subject: `bin/term ${front} to ${previous}` })
+  report({ glyph: 'changed', kind: 'change', verb: 'front', subject: `call/term ${front} to ${previous}` })
   closeRun({ verdict: `Back on ${previous}`, done: true, next: 'term self update, to move forward again' })
 }
 
@@ -563,7 +563,7 @@ export async function callSelfToss(input: { root: string; mark: string }): Promi
   }
 
   if (input.mark === front) {
-    report({ glyph: 'failed', kind: 'problem', verb: 'toss', subject: `term ${input.mark} is the front (bin/term)` })
+    report({ glyph: 'failed', kind: 'problem', verb: 'toss', subject: `term ${input.mark} is the front (call/term)` })
     closeRun({ verdict: 'Nothing was removed', failure: 'usage', next: 'term self back or term self update first' })
 
     return

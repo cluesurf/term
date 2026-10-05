@@ -37,7 +37,7 @@ const kotlin = (text: string, entry: string, file = 'main.tree'): string => {
 const lines = (text: string, pattern: RegExp): string => text.split('\n').filter(l => pattern.test(l)).join(' | ')
 
 // 1. List: the empty case by identity, the other by `is` with its smart cast, in a `when` with no subject
-const list = kotlin(readFileSync(join(TERM, 'bench/list/term.tree'), 'utf8'), 'list-runs', 'bench/list/term.tree')
+const list = kotlin(readFileSync(join(TERM, 'mark/list/term.tree'), 'utf8'), 'list-runs', 'mark/list/term.tree')
 ok('list: the empty case by identity', /\w+ === ChainEnd -> \{/.test(list) && !/is ChainEnd/.test(list), lines(list, /ChainEnd/))
 ok('list: the other case keeps `is`', /\w+ is ChainLink -> \{/.test(list), lines(list, /ChainLink ->/))
 ok('list: a `when` with no subject', /when \{/.test(list) && !/when \(\w+\) \{\n\s+\w+ ===/.test(list))

@@ -58,6 +58,7 @@ form mold-ask
 
 form boot-ask
   link root, like text
+  link mode, like text
   link entry, like text
   link env, like text
   link port, like number
@@ -148,9 +149,11 @@ task mold
     log-fail format-error error
     node-process/exit code 1
 
-# `term boot [entry]`: compile and run the app
+# `term boot [mode] [entry]`: compile and run the app, in development (`moon`, `dev`, `development`, the default) or
+# production (`star`, `prod`, `production`)
 task boot
   mark async
+  take mode, like text
   take entry, like text
   take env, like text
   take port, like number
@@ -165,6 +168,7 @@ task boot
     call boot-module/callBoot
       make boot-ask
         bind root, read root
+        bind mode, read mode
         bind entry, read entry
         bind env, read env
         bind port, read port

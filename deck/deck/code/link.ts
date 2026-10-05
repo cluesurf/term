@@ -19,10 +19,11 @@ import { installOciVersion, readOciVersion } from './oci/install'
 import { isOciRegistry, parsePinnedReference } from './oci/reference'
 
 const LINK_DIR = 'link'
-// The toolchain's directory under `.base`, scoped the way the packages are. Spelled out rather than imported from
+// The toolchain's directory under `.base`, the toolchain package's own name. Spelled out rather than imported from
 // deck/call/code/home.ts on purpose: @term/deck is PUBLISHED and consumed as an installed package, so it must not
-// reach back into the CLI's source. Keep the two in step; home.ts is the source of truth.
-const TERM_DIR = path.join('.base', '@cluesurf', 'term')
+// reach back into the CLI's source. Keep the two in step; home.ts is the source of truth. It was `.base/@cluesurf/term`
+// until 2026-10-05: a project's `link/` made before then keeps working, and its next `term load` writes the new one
+const TERM_DIR = path.join('.base', '@term', 'code')
 
 export async function linkPackages(input: {
   root: string
@@ -432,7 +433,7 @@ export async function devUnlink(input: {
   await fsp.rm(targetLink, { force: true })
 }
 
-// the global link registry lives at ~/.base/@cluesurf/term/link/<name>, a symlink to a package's working directory. `seed link` (no
+// the global link registry lives at ~/.base/@term/code/link/<name>, a symlink to a package's working directory. `seed link` (no
 // argument) registers the current package there; `seed link <name>` symlinks a registered package into a project. This
 // is the two-step `npm link` model: register once globally, consume from any project.
 function globalLinkPath(fullName: string): string {

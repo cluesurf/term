@@ -2,9 +2,9 @@
 // navigator.onLine, and the Network Information API's kind where the browser has it (Chromium on Android); elsewhere
 // the kind is `other`.
 
-const KINDS: Record<string, string> = { wifi: 'wifi', cellular: 'cellular', ethernet: 'wired' }
-
 export const nativeNetwork = {
+  kinds: { wifi: 'wifi', cellular: 'cellular', ethernet: 'wired' } as Record<string, string>,
+
   // `<online|offline> <kind>`
   async read(): Promise<string> {
     if (typeof navigator === 'undefined') {
@@ -17,6 +17,32 @@ export const nativeNetwork = {
 
     const type = (navigator as unknown as { connection?: { type?: string } }).connection?.type
 
-    return `online ${(type && KINDS[type]) ?? 'other'}`
+    return `online ${(type && nativeNetwork.kinds[type]) ?? 'other'}`
+  },
+
+  // the network now, and again when the window goes online or offline, to `handler`, until `unwatch` is given the
+  // number this answers: one subscription shared by every watcher (native-watch.ts)
+  watch(handler: (value: string) => void): number {
+    return nativeWatch.join('network', handler, tell => {
+      if (typeof window === 'undefined') {
+        tell('unavailable')
+
+        return () => {}
+      }
+
+      const report = (): void => void nativeNetwork.read().then(tell)
+      report()
+      window.addEventListener('online', report)
+      window.addEventListener('offline', report)
+
+      return () => {
+        window.removeEventListener('online', report)
+        window.removeEventListener('offline', report)
+      }
+    })
+  },
+
+  unwatch(id: number): void {
+    nativeWatch.leave('network', id)
   },
 }

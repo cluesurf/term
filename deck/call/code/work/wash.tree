@@ -14,10 +14,10 @@ load @term/call/work/tint
 
 # `term wash` -- remove a project's build artifacts.
 #
-# `.base/term/cache` is the PRE-RENAME path, kept here on purpose. `.base/term/` became `.base/@cluesurf/term/` on
-# 2026-08-30, and a cache deliberately does not travel through `kept-at` on a rename because the next build
-# regenerates it. Nothing said what happens to the old copy, so it was left behind whole and nothing ever looked at
-# it again: 13 GB of it in `deck/bind` alone by 2026-09-01. A clean means both.
+# EVERY NAME THE FOLDER HAS HAD, kept here on purpose. `.base/term/` became `.base/@cluesurf/term/` on 2026-08-30
+# and `.base/@term/code/` on 2026-10-05 (home.ts). The first rename left the old cache behind whole, and nothing ever
+# looked at it again: 13 GB of it in `deck/bind` alone by 2026-09-01. The second moves the folder and leaves a link,
+# but a move Windows refused leaves the old folder the live one, so a clean names all three.
 #
 # THE FIRST COMPILER-COUPLED CLI MODULE IN TERM, and the point it proves. `wash.ts` imports its colours from
 # `@term/make/code/tint`, a TypeScript module, and that looked like a reason it could not be ported. It is not: a
@@ -36,7 +36,7 @@ load @term/base/file/directory
   find remove, name remove-directory
   find exists, name directory-exists
 
-# The directories a build writes and a clean removes. Both cache paths, for the reason above.
+# The directories a build writes and a clean removes. Every cache path, for the reason above.
 task build-directories
   like list, like text
 
@@ -45,6 +45,7 @@ task build-directories
       <host>
       <make>
       <hold>
+      <.base/@term/code/cache>
       <.base/@cluesurf/term/cache>
       <.base/term/cache>
 
@@ -58,7 +59,7 @@ task wash-logs
   log-step <Clearing logs...>
 
   save log-directory
-    join join(root, <.base/@cluesurf/term>), <log>
+    join join(root, <.base/@term/code>), <log>
   fork test
     directory-exists log-directory
     hold

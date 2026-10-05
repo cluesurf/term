@@ -49,7 +49,7 @@ const facts = (program: Program) => {
 
 // 1. fannkuch-redux: the three working lists come from fresh tasks and are only lent and indexed, so all are fixed,
 // and `flip`, which every caller hands a fixed list, takes a LongArray
-const fannkuch = build(join(TERM, 'bench/fannkuch-redux/term.tree'))
+const fannkuch = build(join(TERM, 'mark/fannkuch-redux/term.tree'))
 const f = facts(fannkuch)
 ok(
   'fannkuch\'s perm, perm1 and count are fixed',

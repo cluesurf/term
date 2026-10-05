@@ -1,4 +1,6 @@
 import { readFileSync } from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import yargs from 'yargs'
 import { hideBin } from 'yargs/helpers'
 import { bannerText } from '@term/make/code/show'
@@ -30,10 +32,10 @@ import { callMind } from '@term/call/code/mind'
 import { callTest } from '@term/call/code/test'
 import { callTime } from '@term/call/code/time'
 import { callMark } from '@term/call/code/mark'
-import { callBoot } from '@term/call/code/boot'
+import { bootMode, callBoot } from '@term/call/code/boot'
 import { callCast } from '@term/call/code/cast'
 import { callHalt } from '@term/call/code/halt'
-import { callFeed } from '@term/call/code/feed'
+import { refuseFeed } from '@term/call/code/feed'
 import { callWork } from '@term/call/code/work'
 import { callWake } from '@term/call/code/wake'
 import { callWash } from '@term/call/code/wash'
@@ -54,6 +56,7 @@ import { callMold } from '@term/call/code/mold'
 import { callView } from '@term/call/code/view'
 import { closeRun, failRun, openRun, printData, report, setOutput } from '@term/call/code/output'
 import type { OutputFlags } from '@term/call/code/output'
+import { settle } from '@term/call/code/home'
 import {
   callBaseCheck,
   callBaseCheckout,
@@ -1056,10 +1059,14 @@ const cli = yargs(hideBin(process.argv))
     },
   )
   .command(
-    'boot [entry]',
-    'Compile and run an app (entry, or the deck.tree boot entry)',
+    'boot [mode] [entry]',
+    'Compile and run an app, in development (the default) or production',
     yargs =>
       yargs
+        .positional('mode', {
+          type: 'string',
+          description: 'moon, dev or development (the default), or star, prod or production',
+        })
         .positional('entry', {
           type: 'string',
           description:
@@ -1094,17 +1101,21 @@ const cli = yargs(hideBin(process.argv))
       // development`), and bare extra positionals work for the simple
       // cases (`term boot cli.tree show`)
       const marker = process.argv.indexOf('--')
+      // a first word that names no mode is the entry (`term boot cli.tree show`), and callBoot reads the two so
+      const { mode, entry } = bootMode(argv.mode, argv.entry)
       const args =
         marker >= 0
           ? process.argv.slice(marker + 1)
           : (argv._ as (string | number)[])
               .slice(1)
               .map(String)
-              .filter(a => a !== argv.entry)
+              // the entry and a mode word are the command's own, and every other word the program's
+              .filter(a => a !== entry && !(mode !== undefined && a === argv.mode))
 
       await callBoot({
         root,
-        entry: argv.entry,
+        mode,
+        entry,
         port: argv.port,
         env: argv.env as never,
         remote: argv.remote,
@@ -1159,7 +1170,7 @@ const cli = yargs(hideBin(process.argv))
   )
   .command(
     'feed [entry]',
-    'Start the dev server (lazy ESM + hot reload)',
+    'Retired: the development server is term boot',
     yargs =>
       yargs
         .positional('entry', {
@@ -1174,12 +1185,7 @@ const cli = yargs(hideBin(process.argv))
         })
         .option('env', { type: 'string', description: 'Target env' }),
     async argv => {
-      await callFeed({
-        root,
-        entry: argv.entry,
-        port: argv.port,
-        env: argv.env as never,
-      })
+      refuseFeed({ root })
     },
   )
   .command(
@@ -1590,6 +1596,12 @@ const cli = yargs(hideBin(process.argv))
   .alias('version', 'v')
 
 async function main(): Promise<void> {
+  // `.base/@cluesurf/term` to `.base/@term/code`, once, before any verb reads a path (home.ts `settle`). Every path
+  // home.ts builds settles itself, and these two are for the verbs ported to Term, which read work/home.tree's
+  // constant and cannot: the user's folder and the working directory's
+  settle(path.join(os.homedir(), '.base'))
+  settle(path.join(root, '.base'), root)
+
   const argv = await cli.parse()
 
   if (argv._.length === 0) {

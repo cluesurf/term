@@ -226,97 +226,118 @@ export function nativePrelude(
 ): string {
   const parts: string[] = []
   const added = new Set<string>()
+  const docks = globalDocks(program)
+  const taken = new Set<number>()
+  // what names a dock as used: the emitted code, and every shim taken so far. A shim may call another shim the program
+  // never names (the Swift location runtime reads its grant through `nativePermission`, every watcher fans out through
+  // `nativeWatch`), and testing the emitted code alone dropped that one: an app that read its position and asked for no
+  // permission failed to build with `cannot find 'nativePermission' in scope`. So the docks are taken to a fixpoint
+  let reach = usedIn
+  let grew = true
 
-  for (const { name, alias, file } of globalDocks(program)) {
-    // Skip a dock whose namespace is unreferenced in the emitted code (keeps unused native deps out of the
-    // bundle). TESTED AGAINST THE ALIAS, not the global: the alias is the identifier the emitted code actually
-    // holds. Testing the global drops the shim of any dock that was renamed, the bundle builds clean, and the
-    // first call dies with `ReferenceError: <alias> is not defined`.
-    //
-    // The alias is spelled in the emitted code the way that backend spells an identifier (`walk-file` is
-    // `walkFile` on swift and kotlin, `walk_file` on rust), so all three spellings are tried.
-    if (usedIn !== undefined && !mentions(usedIn, alias)) {
-      continue
-    }
+  while (grew) {
+    grew = false
 
-    // A shim lives at `<dir>/runtime/<name>`, and the dock that names it is
-    // not always in that directory. `native/node/bytes.tree` docks `octets`
-    // and its shim is one level down at `native/node/runtime/bytes.ts`, but
-    // `native/node/cryptography/cipher.tree` docks `cipher` whose shim is at
-    // `native/node/runtime/cipher.ts`, two levels up from the docking module.
-    //
-    // So each directory on the way up is tried, not only the docking module's
-    // own. Without this every nested native module silently loses its shim:
-    // the bundle builds, and the program dies at runtime with
-    // `ReferenceError: cipher is not defined` the first time it calls one.
-    // That took out the whole `cryptography` surface under `term boot`.
-    //
-    // `runtimePath` stays last as a fallback, though callers that resolve by
-    // filesystem path cannot use it: it returns a package import path.
-    const candidates: string[] = []
+    for (const [index, { name, alias, file }] of docks.entries()) {
+      if (taken.has(index)) {
+        continue
+      }
 
-    if (file) {
-      let dir = directoryOf(file)
+      // Skip a dock whose namespace is unreferenced in the emitted code (keeps unused native deps out of the
+      // bundle). TESTED AGAINST THE ALIAS, not the global: the alias is the identifier the emitted code actually
+      // holds. Testing the global drops the shim of any dock that was renamed, the bundle builds clean, and the
+      // first call dies with `ReferenceError: <alias> is not defined`.
+      //
+      // The alias is spelled in the emitted code the way that backend spells an identifier (`walk-file` is
+      // `walkFile` on swift and kotlin, `walk_file` on rust), so all three spellings are tried.
+      if (reach !== undefined && !mentions(reach, alias)) {
+        continue
+      }
 
-      for (let up = 0; up < RUNTIME_SEARCH_DEPTH; up += 1) {
-        // the env's OWN shim first, `runtime/<env>/<name>`: one module with a runtime per platform that shares an
-        // extension (the toolkit dom's `native-view.kt` is Android's views, `runtime/compose/native-view.kt`
-        // Compose's), then the shim every env of the extension shares
-        candidates.push(
-          `${dir}/runtime/${env}/${name}.${RUNTIME_EXTENSION[env]}`,
-          `${dir}/runtime/${name}.${RUNTIME_EXTENSION[env]}`,
-        )
+      taken.add(index)
+      grew = true
 
-        const above = directoryOf(dir)
+      // A shim lives at `<dir>/runtime/<name>`, and the dock that names it is
+      // not always in that directory. `native/node/bytes.tree` docks `octets`
+      // and its shim is one level down at `native/node/runtime/bytes.ts`, but
+      // `native/node/cryptography/cipher.tree` docks `cipher` whose shim is at
+      // `native/node/runtime/cipher.ts`, two levels up from the docking module.
+      //
+      // So each directory on the way up is tried, not only the docking module's
+      // own. Without this every nested native module silently loses its shim:
+      // the bundle builds, and the program dies at runtime with
+      // `ReferenceError: cipher is not defined` the first time it calls one.
+      // That took out the whole `cryptography` surface under `term boot`.
+      //
+      // `runtimePath` stays last as a fallback, though callers that resolve by
+      // filesystem path cannot use it: it returns a package import path.
+      const candidates: string[] = []
 
-        if (above === dir || above === '.') {
+      if (file) {
+        let dir = directoryOf(file)
+
+        for (let up = 0; up < RUNTIME_SEARCH_DEPTH; up += 1) {
+          // the env's OWN shim first, `runtime/<env>/<name>`: one module with a runtime per platform that shares an
+          // extension (the toolkit dom's `native-view.kt` is Android's views, `runtime/compose/native-view.kt`
+          // Compose's), then the shim every env of the extension shares
+          candidates.push(
+            `${dir}/runtime/${env}/${name}.${RUNTIME_EXTENSION[env]}`,
+            `${dir}/runtime/${name}.${RUNTIME_EXTENSION[env]}`,
+          )
+
+          const above = directoryOf(dir)
+
+          if (above === dir || above === '.') {
+            break
+          }
+
+          dir = above
+        }
+      }
+
+      // a SHARED module (`code/hold/hash/fnv.tree`, `code/native/shared/...`) docks a global whose shim lives
+      // under the target platform's own runtime dir: derive `<pkg>/code/native/<env>/runtime/<name>` from the
+      // docking file's path, since the upward walk from a shared dir never reaches another platform's tree
+      // Each env of the chain is tried in turn (`envChain`): a platform env with no runtime dir of its own (`android`,
+      // `compose`) reaches its language's, `native/kotlin/runtime`, rather than missing the shim
+      if (file) {
+        const at = file.lastIndexOf('/code/')
+
+        if (at >= 0) {
+          for (const rung of envChain(env)) {
+            candidates.push(`${file.slice(0, at)}/code/native/${rung}/runtime/${name}.${RUNTIME_EXTENSION[env]}`)
+          }
+        }
+      }
+
+      // the stdlib's runtime dir for the env, by path: a global the stdlib provides for an env (`bridge` in `webview`)
+      // is for every package that docks it, and a dock in another package (`@term/site`'s db shim, `@term/cask`'s own)
+      // never walks up into the stdlib. Without this the bundle built clean and the first call died with
+      // `ReferenceError: bridge is not defined`. The env's chain, as above
+      const stdlib = stdlibBase()
+
+      if (stdlib) {
+        for (const rung of envChain(env)) {
+          candidates.push(`${stdlib}/code/native/${rung}/runtime/${name}.${RUNTIME_EXTENSION[env]}`)
+        }
+      }
+
+      candidates.push(runtimePath(env, name))
+
+      for (const candidate of candidates) {
+        if (added.has(candidate)) {
           break
         }
 
-        dir = above
-      }
-    }
+        const source = readRuntime(candidate)
 
-    // a SHARED module (`code/hold/hash/fnv.tree`, `code/native/shared/...`) docks a global whose shim lives
-    // under the target platform's own runtime dir: derive `<pkg>/code/native/<env>/runtime/<name>` from the
-    // docking file's path, since the upward walk from a shared dir never reaches another platform's tree
-    // Each env of the chain is tried in turn (`envChain`): a platform env with no runtime dir of its own (`android`,
-    // `compose`) reaches its language's, `native/kotlin/runtime`, rather than missing the shim
-    if (file) {
-      const at = file.lastIndexOf('/code/')
-
-      if (at >= 0) {
-        for (const rung of envChain(env)) {
-          candidates.push(`${file.slice(0, at)}/code/native/${rung}/runtime/${name}.${RUNTIME_EXTENSION[env]}`)
+        if (source !== undefined) {
+          added.add(candidate)
+          const included = withIncludes(candidate, source, readRuntime)
+          parts.push(included)
+          reach = reach === undefined ? undefined : `${reach}\n${included}`
+          break
         }
-      }
-    }
-
-    // the stdlib's runtime dir for the env, by path: a global the stdlib provides for an env (`bridge` in `webview`)
-    // is for every package that docks it, and a dock in another package (`@term/site`'s db shim, `@term/cask`'s own)
-    // never walks up into the stdlib. Without this the bundle built clean and the first call died with
-    // `ReferenceError: bridge is not defined`. The env's chain, as above
-    const stdlib = stdlibBase()
-
-    if (stdlib) {
-      for (const rung of envChain(env)) {
-        candidates.push(`${stdlib}/code/native/${rung}/runtime/${name}.${RUNTIME_EXTENSION[env]}`)
-      }
-    }
-
-    candidates.push(runtimePath(env, name))
-
-    for (const candidate of candidates) {
-      if (added.has(candidate)) {
-        break
-      }
-
-      const source = readRuntime(candidate)
-
-      if (source !== undefined) {
-        added.add(candidate)
-        parts.push(withIncludes(candidate, source, readRuntime))
-        break
       }
     }
   }

@@ -35,4 +35,39 @@ enum nativeMotion {
         return "unavailable"
         #endif
     }
+
+    // every accelerometer sample, a tenth of a second apart, to `handler` on the main thread, until `unwatch` is given
+    // the number this answers; `unavailable` once with no accelerometer. Not isolated: the program may call from any
+    // thread, so it enters the main actor itself (nativeWatch.enter)
+    static func watch(_ handler: @escaping (String) -> Void) -> Int {
+        nativeWatch.enter {
+            nativeWatch.join("motion", handler) { tell in
+                start(tell)
+                return { stop() }
+            }
+        }
+    }
+
+    static func unwatch(_ id: Int) {
+        nativeWatch.enter { nativeWatch.leave("motion", id) }
+    }
+
+    private static func start(_ handler: @escaping (String) -> Void) {
+        #if canImport(UIKit)
+        guard manager.isAccelerometerAvailable else { return handler("unavailable") }
+        manager.accelerometerUpdateInterval = 0.1
+        manager.startAccelerometerUpdates(to: .main) { data, _ in
+            guard let a = data?.acceleration else { return }
+            handler(String(format: "%.2f %.2f %.2f", a.x * gravity, a.y * gravity, a.z * gravity))
+        }
+        #else
+        handler("unavailable")
+        #endif
+    }
+
+    private static func stop() {
+        #if canImport(UIKit)
+        manager.stopAccelerometerUpdates()
+        #endif
+    }
 }

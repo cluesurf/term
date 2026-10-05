@@ -7,7 +7,7 @@
  *   term mark demo --runs 10      the programs whose `<family>/<program>` contains `demo`
  *   term mark list                every program and whether its bench.tree lets it run
  *
- * The runner is a Term program, `mark/code/line.tree` in the Term repository (note/term/bench/rules.md, "The layout").
+ * The runner is a Term program, `deck/mark/code/line.tree` in the Term repository (note/term/bench/rules.md, "The layout").
  * This verb is a thin dispatcher: it finds that directory and boots the runner there, the way `term zone` boots the
  * zone console, passing everything after `mark` through untouched. `term boot` caches the build, so a second run
  * starts at once. The runner's logic stays in `.tree`.
@@ -21,7 +21,8 @@ import { closeRun, field, openRun, report } from '@term/call/code/output'
 
 const MARK_MANIFEST = /^deck @term\/mark$/m
 
-// a directory holding the suite: `mark/deck.tree` declaring `deck @term/mark`
+// a directory holding the suite: `deck/mark/deck.tree` declaring `deck @term/mark`. The repository's `mark/` beside
+// it holds the benchmark programs, and has no manifest
 function isSuite(dir: string): boolean {
   const manifest = join(dir, 'deck.tree')
 
@@ -31,7 +32,7 @@ function isSuite(dir: string): boolean {
 /**
  * Where the suite is. Checked in order:
  *   - the current directory and every directory above it, as the suite itself or as a Term repository holding it in
- *     `mark/`, so `term mark` works from anywhere inside a checkout;
+ *     `deck/mark/` (it was `mark/` until 2026-10-05), so `term mark` works from anywhere inside a checkout;
  *   - beside this CLI: the bundle is `deck/term/deck/term/host/line.js` and the source
  *     `deck/term/deck/term/deck/call/code/mark.ts`, two different depths.
  */
@@ -43,8 +44,8 @@ export function findSuite(root: string): string | undefined {
       return at
     }
 
-    if (isSuite(join(at, 'mark'))) {
-      return join(at, 'mark')
+    if (isSuite(join(at, 'deck', 'mark'))) {
+      return join(at, 'deck', 'mark')
     }
 
     const up = dirname(at)
@@ -58,7 +59,7 @@ export function findSuite(root: string): string | undefined {
 
   const here = dirname(fileURLToPath(import.meta.url))
 
-  return [resolve(here, '../mark'), resolve(here, '../../../mark')].find(isSuite)
+  return [resolve(here, '../deck/mark'), resolve(here, '../../mark')].find(isSuite)
 }
 
 /**
@@ -86,7 +87,7 @@ export async function callMark({ root, argv }: { root: string; argv: string[] })
       kind: 'problem',
       subject: 'There is no benchmark suite here',
       message: [
-        'It is the mark/ directory of the Term repository (deck/term/deck/term/mark in the cluesurf checkout), and this CLI was not started from inside one or installed from one.',
+        'It is the deck/mark/ directory of the Term repository (deck/term/deck/term/deck/mark in the cluesurf checkout), and this CLI was not started from inside one or installed from one.',
       ],
       fields: [field('next', 'node <checkout>/deck/term/deck/term/host/line.js mark')],
     })

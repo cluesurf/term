@@ -10,10 +10,11 @@
 // TWO INSTALLS OF ONE VERSION AT ONCE (two terminals, a CI job with parallel steps) are serialized by a lock directory
 // beside the version, made with one atomic `mkdir`. The second waits, then finds the first one's result.
 //
-// THE LAYOUT, under ~/.base/@cluesurf/term/:
+// THE LAYOUT, under ~/.base/@term/code/:
 //
-//   bin/term                   the FRONT: a link to the newest dispatching version, the one thing on PATH
-//                              (bin\term.cmd on Windows, a one-line shim, because a symlink needs a privilege there)
+//   call/term                  the FRONT: a link to the newest dispatching version, the one thing on PATH
+//                              (call\term.cmd on Windows, a one-line shim, because a symlink needs a privilege there).
+//                              `bin/` until 2026-10-05, renamed with a link left behind (home.ts `settleFront`)
 //   code/<version>/term/       the unpacked payload
 //   code/<version>/install.tree  version, platform, and the layer digest it was unpacked from
 //   code/<version>/used        the day a command last ran on this version, which `term self wash` reads
@@ -40,7 +41,7 @@ import {
 import type { OciRoute, OciTransport, ReleaseConfig } from '@cluesurf/deck.tree'
 import type { CodeHold } from '@term/deck/code/form'
 
-import { userHome } from '@term/call/code/home'
+import { frontDir, userHome } from '@term/call/code/home'
 import { frontOf, installedVersions } from '@term/call/code/need'
 
 /** The toolchain's package name (09, "The name"). */
@@ -222,18 +223,20 @@ export function installFile(version: string): string {
 }
 
 /**
- * Point the front (bin/term) at a version, atomically: a new link beside it, renamed over the old one.
+ * Point the front (call/term) at a version, atomically: a new link beside it, renamed over the old one.
  *
- * ON WINDOWS bin\term.cmd is a one-line shim instead, because a symlink there needs a privilege an ordinary user lacks.
+ * ON WINDOWS call\term.cmd is a one-line shim instead, because a symlink there needs a privilege an ordinary user lacks.
  * The `& exit /b` on the SAME line is what makes replacing it safe while it runs: cmd.exe reads a batch file a line at
  * a time from where it left off, so a second line would be read out of the new file's bytes at the old offset
  */
 export function linkFront(version: string): void {
   const windows = process.platform === 'win32'
-  const bin = userHome('bin', windows ? 'term.cmd' : 'term')
-  const next = `${bin}.${randomUUID()}`
+  // `call/`, or `bin/` while Windows holds it (home.ts `frontDir`). Either is one level under the home, so the link
+  // and the shim reach the version by the same `..`. The payload's own launcher stays at `term/bin/` inside it
+  const front = nodePath.join(frontDir(), windows ? 'term.cmd' : 'term')
+  const next = `${front}.${randomUUID()}`
 
-  mkdirSync(nodePath.dirname(bin), { recursive: true })
+  mkdirSync(nodePath.dirname(front), { recursive: true })
 
   if (windows) {
     writeFileSync(next, `@"%~dp0..\\code\\${version}\\term\\bin\\term.cmd" %* & exit /b\r\n`)
@@ -241,7 +244,7 @@ export function linkFront(version: string): void {
     symlinkSync(nodePath.join('..', 'code', version, 'term', 'bin', 'term'), next)
   }
 
-  renameSync(next, bin)
+  renameSync(next, front)
 }
 
 /** The version the front points at, or undefined when there is no front here. */

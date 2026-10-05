@@ -118,6 +118,99 @@ async function hasDeckTree(input: { root: string }): Promise<boolean> {
   }
 }
 
+// ---- controls ----
+
+// a control is a file under the package's `test/case/` folder (`term test`, guides: proofs/hold)
+function isControl(rel: string): boolean {
+  return rel.split(/[\\/]/).slice(0, 2).join('/') === 'test/case'
+}
+
+// the refusals a control is FOR: a goal not proven, out of reach, or proven wrong, and a proof the kernel refused. Any
+// other error means the control no longer states what it was written to state
+const REFUSALS = new Set([
+  'unproven',
+  'unchecked-hold',
+  'invalid-proof',
+  'unverified-proof',
+  'looping-proof',
+  'impure-proof',
+])
+
+// the count a control's header states: `Expected: 3`, or `Expected refusals: 17 (...)`
+const EXPECTED = /Expected(?: refusals)?:\s*(\d+)/
+
+// build one control and say whether it was refused as its header expects
+async function runControl(input: {
+  file: string
+  source: string
+  // the package root, for the merged build's resolver
+  root: string
+  readRuntime: (path: string) => string | undefined
+  roleOf: Parameters<typeof runTestFile>[0]['roleOf']
+  leanOf: Parameters<typeof runTestFile>[0]['leanOf']
+}): Promise<{
+  held: boolean
+  broken: boolean
+  fact: string
+  others: NonNullable<Awaited<ReturnType<typeof runTestFile>>['diagnostics']>
+}> {
+  const stated = EXPECTED.exec(input.source)
+
+  if (!stated) {
+    return {
+      held: false,
+      broken: true,
+      fact: 'a control states no count: write `Expected: N` in its header, N the goals it must refuse',
+      others: [],
+    }
+  }
+
+  const expected = Number(stated[1])
+  // ALWAYS MERGED. A control is judged by how many refusals it gets, and the unit-at-a-time build reports fewer of a
+  // file's diagnostics than it refuses: on 2026-10-05 it reported 2 for `vibe/group-control.tree`, whose 7 rules it
+  // refuses one by one. Merged reports all 7 (tmp/control-debug-each.ts)
+  const run = await runTestFile({
+    file: input.file,
+    source: input.source,
+    resolve: projectResolver(input.root),
+    env: 'node',
+    readRuntime: input.readRuntime,
+    roleOf: input.roleOf,
+    leanOf: input.leanOf,
+  })
+
+  if (!run.failure) {
+    return {
+      held: false,
+      broken: false,
+      fact: `0 of ${expected} refused: the build accepted every law this control states false`,
+      others: [],
+    }
+  }
+
+  const diagnostics = run.diagnostics ?? []
+  const refused = diagnostics.filter(d => REFUSALS.has(d.name ?? ''))
+  const others = diagnostics.filter(d => !REFUSALS.has(d.name ?? ''))
+
+  if (others.length > 0) {
+    return {
+      held: false,
+      broken: true,
+      fact: `refused for another reason (${[...new Set(others.map(d => d.name))].join(', ')}), so it tests nothing`,
+      others,
+    }
+  }
+
+  return refused.length === expected
+    ? { held: true, broken: false, fact: `${expected} of ${expected} refused`, others: [] }
+    : {
+        held: false,
+        broken: false,
+        fact: `${refused.length} refused where its header expects ${expected}`,
+        others: [],
+      }
+}
+
 async function findTestFiles(input: {
   root: string
   filter?: string
@@ -133,7 +226,8 @@ async function findTestFiles(input: {
       const full = path.join(dir, entry.name)
 
       if (entry.isDirectory()) {
-        if (entry.name === 'node_modules' || entry.name === '.base/@cluesurf/term') {
+        // `.base` whole: an entry is one folder name, so the toolchain's folder path under it never matched here
+        if (entry.name === 'node_modules' || entry.name === '.base') {
           continue
         }
 
@@ -307,7 +401,7 @@ async function runSeedTests(input: {
   // nativePrelude derives from each module's RESOLVED file, exactly as `term boot` runs compiled code
   const round = async (
     roundFiles: string[],
-  ): Promise<{ pass: number; fail: number; proved: number; broken: number; skipped: number }> => {
+  ): Promise<{ pass: number; fail: number; proved: number; broken: number; skipped: number; controls: number }> => {
     // through units the session's resolver, which reads an edited file again; whole, a fresh one each round
     const resolve = units ? session.resolve : projectResolver(input.root)
 
@@ -319,6 +413,8 @@ async function runSeedTests(input: {
     let broken = 0
     // files holding no test `--case` asked for
     let skipped = 0
+    // controls refused exactly as their headers expect (isControl)
+    let controls = 0
 
     for (const file of roundFiles) {
       const rel = path.relative(input.root, file)
@@ -326,6 +422,38 @@ async function runSeedTests(input: {
 
       try {
         const source = await fs.readFile(file, 'utf-8')
+
+        // A CONTROL (a file under `test/case/`) is laws stated FALSE on purpose. It passes when the build refuses it,
+        // and only for proof reasons, exactly as many times as its header says (`Expected: N`). A control that builds
+        // means the provers accepted a false law. A control refused for any other reason (a typo, an unknown name) has
+        // stopped testing anything, so it is broken rather than passed
+        if (isControl(rel)) {
+          if (input.case || native) {
+            skipped++
+            continue
+          }
+
+          const verdict = await runControl({ file, source, root: input.root, readRuntime, roleOf, leanOf })
+
+          if (verdict.broken) {
+            broken++
+            reportProblems(verdict.others.map(diagnostic => ({ diagnostic, text: diagnostic.file === file ? source : undefined })), input.root)
+          } else if (verdict.held) {
+            controls++
+          } else {
+            fail++
+          }
+
+          report({
+            glyph: verdict.held ? 'done' : 'failed',
+            verb: 'test',
+            subject: rel,
+            duration: Date.now() - started,
+            facts: [verdict.fact],
+          })
+          continue
+        }
+
         const listed = testsOf(file, source, native ? { plainWants: true } : {})
         const chosen = input.case ? listed.tests.filter(test => caseMatches(input.case!, test)) : listed.tests
 
@@ -414,14 +542,15 @@ async function runSeedTests(input: {
 
     session.close()
 
-    return { pass, fail, proved, broken, skipped }
+    return { pass, fail, proved, broken, skipped, controls }
   }
 
-  const countsOf = (totals: { pass: number; fail: number; proved: number; broken: number; skipped: number }) => [
+  const countsOf = (totals: { pass: number; fail: number; proved: number; broken: number; skipped: number; controls: number }) => [
     count(totals.pass + totals.fail, 'tests', 'test'),
     count(totals.pass, 'passed'),
     ...(totals.fail > 0 ? [count(totals.fail, 'failed')] : []),
     ...(totals.proved > 0 ? [count(totals.proved, 'proof files checked', 'proof file checked')] : []),
+    ...(totals.controls > 0 ? [count(totals.controls, 'controls refused as expected', 'control refused as expected')] : []),
     ...(totals.broken > 0 ? [count(totals.broken, 'files did not build', 'file did not build')] : []),
     ...(totals.skipped > 0 ? [count(totals.skipped, 'files with no such case', 'file with no such case')] : []),
   ]

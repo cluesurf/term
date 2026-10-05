@@ -41,7 +41,7 @@ const task = (text: string, name: string): string => {
 }
 
 // 1. Towers' move keeps the popped node in its own spare and builds the pushed one in it, with no clear between
-const towers = kotlin('bench/towers/term.tree', 'towers')
+const towers = kotlin('mark/towers/term.tree', 'towers')
 const moveTop = task(towers, 'moveTop')
 ok('towers: the move keeps the node in its own spare', /__spareStackDisk = top\d+/.test(moveTop), moveTop.slice(0, 400))
 ok('towers: and does not clear its links first', !/\.below = StackEmpty/.test(moveTop), moveTop.split('\n').filter(l => /below/.test(l)).join(' | '))
@@ -49,7 +49,7 @@ ok('towers: the push builds in the spare', /val __h\d+ = __spareStackDisk/.test(
 
 // 2. Towers' older shape, the pop and the push called straight from the recursive move, which nothing is inlined into:
 // the pop keeps a node it does not build, so it goes through the program's spare, its links cleared first
-const STACK = readFileSync(join(TERM, 'bench/towers/term.tree'), 'utf8')
+const STACK = readFileSync(join(TERM, 'mark/towers/term.tree'), 'utf8')
 const older = STACK.replace(/  call move-top\n    read piles\n    read from\n    read to\n/g, '  call push-disk\n    read piles\n    call pop-disk\n      read piles\n      read from\n    read to\n')
   .replace(/      call move-top\n        read piles\n        read from\n        read to\n/, '      call push-disk\n        read piles\n        call pop-disk\n          read piles\n          read from\n        read to\n')
 const split = kotlin('older-towers.tree', 'towers', older)

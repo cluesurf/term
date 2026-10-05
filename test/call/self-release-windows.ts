@@ -109,7 +109,7 @@ const tunnel = await windows.tunnel([
 // and store, pointed at the registry through the tunnel, which answers at the same address there as here
 const root = `${profile}\\${folder}`
 const home = `${root}\\home`
-const base = `${home}\\.base\\@cluesurf\\term`
+const base = `${home}\\.base\\@term\\code`
 const env = [
   `New-Item -ItemType Directory -Force -Path '${home}' | Out-Null`,
   `$env:USERPROFILE = '${home}'`,
@@ -122,8 +122,8 @@ const env = [
   `$env:TERM_TRUST_DIR = '${home}\\trust'`,
   `$env:TERM_STORE = '${home}\\store'`,
 ].join('\n')
-const term = `& '${base}\\bin\\term.cmd'`
-const shim = `Get-Content '${base}\\bin\\term.cmd'`
+const term = `& '${base}\\call\\term.cmd'`
+const shim = `Get-Content '${base}\\call\\term.cmd'`
 
 try {
   const loaded = await ps(`${env}\n$env:TERM_LOAD_VERSION = '${VERSION}'\n& '${root}\\load.ps1'\n${shim}\nGet-Content '${base}\\code\\${VERSION}\\install.tree'`)

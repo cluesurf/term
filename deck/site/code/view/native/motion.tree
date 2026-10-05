@@ -4,3 +4,14 @@
 task sample-motion
   like text
   send back, text <unavailable>
+
+task follow-motion
+  take handler
+    like task
+      take value, like text
+  like task
+  call handler
+    text <unavailable>
+  send back
+    task drop
+      save skip, code 0

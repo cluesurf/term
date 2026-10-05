@@ -150,7 +150,7 @@ task zone
     log-fail format-error error
     node-process/exit code 1
 
-# `term mark ...`: the benchmark runner in the Term repository's mark/, booted there with its arguments untouched
+# `term mark ...`: the benchmark runner in the Term repository's deck/mark/, booted there with its arguments untouched
 task mark
   mark async
 

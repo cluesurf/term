@@ -40,7 +40,7 @@ const build = (text: string, entry = 'use', file = 'main.tree'): Program => {
 }
 
 // 1. k-nucleotide: counted, sized, its values read, one key looked up: every key a `TermKey`
-const knuc = build(readFileSync(join(TERM, 'bench/k-nucleotide/term.tree'), 'utf8'), 'k-nucleotide', 'bench/k-nucleotide/term.tree')
+const knuc = build(readFileSync(join(TERM, 'mark/k-nucleotide/term.tree'), 'utf8'), 'k-nucleotide', 'mark/k-nucleotide/term.tree')
 const knucRust = emitRust(knuc)
 ok('k-nucleotide takes TermKey', textKeyReason(knuc) === undefined, textKeyReason(knuc))
 ok('its map is TermMap<TermKey, i64>', /TermMap<TermKey, i64>/.test(knucRust) && !/TermMap<String, i64>/.test(knucRust))

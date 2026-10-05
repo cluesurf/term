@@ -37,7 +37,7 @@ const built = (text: string, entry: string, file = 'main.tree'): { program: Prog
 }
 
 // 1. List: the empty case by identity, through its guard
-const list = built(readFileSync(join(TERM, 'bench/list/term.tree'), 'utf8'), 'list-runs', 'bench/list/term.tree')
+const list = built(readFileSync(join(TERM, 'mark/list/term.tree'), 'utf8'), 'list-runs', 'mark/list/term.tree')
 ok('list: the empty case is an identity case', identityCases(list.program, false).has('chain/end'), [...identityCases(list.program, false)].join(', '))
 ok('list: matches test it through its guard', /__termIsEnd\(\w+\)/.test(list.typescript) && !/\.form === "end"/.test(list.typescript))
 ok('list: the guard narrows by the constant', /function __termIsEnd\(value: \{ form: string \}\): value is \{ form: "end" \} \{ return value === __termVariantEnd \}/.test(list.typescript))

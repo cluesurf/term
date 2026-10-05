@@ -1,7 +1,9 @@
 # The ONE place the toolchain's directory and environment names are written, in Term.
 #
-# Everything Term keeps on disk lives under `.base/@cluesurf/term/`: a project's build cache, its memory, its boot
-# markers and logs, and the user-level auth token, link registry and shared mill cache under the home directory.
+# Everything Term keeps on disk lives under `.base/@term/code/`: a project's build cache, its memory, its boot
+# markers and logs, and the user-level installs, auth token, link registry and shared caches under the home
+# directory. It was `.base/@cluesurf/term/` until 2026-10-05. The move from that folder is home.ts `settle`, which the
+# CLI runs at startup for the user's folder and the working directory's, before any verb here reads a path.
 #
 # WHY THIS FILE EXISTS. The path was spelled out in 59 places across 28 files, so renaming it was 59 chances to
 # miss one, and a missed one does not fail: it reads an empty cache, or writes a fact into a directory nothing
@@ -28,13 +30,13 @@ load @term/base/environment
 load @term/base/environment/path
   find known-directory
 
-# the directory under `.base`, scoped the way the packages are
-host home, <@cluesurf/term>
+# the directory under `.base`, the toolchain package's own name
+host home, <@term/code>
 
 # what it was before 2026-08-30, still read for data that cannot be rebuilt
 host legacy-home, <term>
 
-# `<root>/.base/@cluesurf/term`
+# `<root>/.base/@term/code`
 task project-home
   take root, like text
 
@@ -52,7 +54,7 @@ task legacy-project-home
   back
     join join(root, <.base>), legacy-home
 
-# `~/.base/@cluesurf/term`: the user-level auth token, link registry and shared mill cache
+# `~/.base/@term/code`: the installs, the auth token, the link registry and the shared caches
 task user-home
   like text
 

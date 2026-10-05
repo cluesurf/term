@@ -39,7 +39,7 @@ const lines = (text: string, pattern: RegExp): string => text.split('\n').filter
 
 // 1. Towers: the move pops a node at its local's last read and pushes one, so `stack` is a node class, the pop's match
 // consumes its subject and keeps the node, and the push builds in the spare
-const towers = swift(join(TERM, 'bench/towers/term.tree'), 'towers')
+const towers = swift(join(TERM, 'mark/towers/term.tree'), 'towers')
 ok('towers: the payload case holds a final class', /case disk\(StackDisk\)/.test(towers) && /final class StackDisk \{/.test(towers) && !/indirect enum Stack/.test(towers), lines(towers, /Stack/))
 ok('towers: the pop consumes its subject and keeps the node', /switch consume top\d*/.test(towers) && /isKnownUniquelyReferenced\(&__node\) \{ __spareStack = __node \}/.test(towers), lines(towers, /consume|isKnown/))
 ok('towers: the push builds in the spare', /termNodeStackDisk\(&__spareStack, /.test(towers), lines(towers, /termNode/))
@@ -47,7 +47,7 @@ ok('towers: the class compares by its fields', /a === b \|\| \(a\.size == b\.siz
 ok('towers: a task that only builds builds new', /\.disk\(StackDisk\(size: i, below: top\d*\)\)/.test(towers), lines(towers, /\.disk\(/))
 
 // 2. binary-trees builds trees and reads them through a parameter, opening nothing at a local's last read: `indirect`
-const trees = swift(join(TERM, 'bench/binary-trees/term.tree'), 'binary-trees')
+const trees = swift(join(TERM, 'mark/binary-trees/term.tree'), 'binary-trees')
 ok('binary-trees: the tree stays an indirect enum', /indirect enum Tree/.test(trees) && !/final class Tree/.test(trees), lines(trees, /enum Tree|class Tree/))
 
 // 3. a node opened only from a parameter, then built: a parameter cannot be consumed, so nothing is kept

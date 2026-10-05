@@ -6,6 +6,7 @@ import * as fs from 'fs/promises'
 import * as path from 'path'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { closeRun, count, field, location, openRun, printData, problemOf, report, showPath } from '@term/call/code/output'
+import { projectHome } from '@term/call/code/home'
 import {
   compileBenchmarks,
   runBenchmarks,
@@ -157,7 +158,7 @@ export async function callTime(input: {
     }
 
     if (input.save) {
-      const dir = path.join(input.root, '.base/@cluesurf/term', 'time')
+      const dir = projectHome(input.root, 'time')
       await fs.mkdir(dir, { recursive: true })
       const saved = path.join(dir, `${input.save}.json`)
       await fs.writeFile(saved, formatJson(suite))
@@ -224,7 +225,7 @@ function reportSkipped(placed: { diagnostic: Diagnostic; text?: string }, root: 
 
 // a saved baseline (`term time --save <name>`), or the run stops with exit 1 naming the file it looked for
 async function readBaseline(root: string, name: string): Promise<{ results: ReturnType<typeof fromSaved>[] }> {
-  const where = path.join(root, '.base/@cluesurf/term', 'time', `${name}.json`)
+  const where = projectHome(root, 'time', `${name}.json`)
 
   try {
     const saved = JSON.parse(await fs.readFile(where, 'utf-8'))
@@ -322,7 +323,7 @@ async function showHistory(input: {
   root: string
   name: string
 }): Promise<void> {
-  const historyDir = path.join(input.root, '.base/@cluesurf/term', 'time', 'history')
+  const historyDir = projectHome(input.root, 'time', 'history')
 
   try {
     const files = (await fs.readdir(historyDir))

@@ -16,6 +16,7 @@ import { parseCodeHold, showCode } from './code'
 import { initStore } from './store'
 import { normalizeRegistry, parseScope, rootScope } from './name'
 import fsp from 'fs/promises'
+import { existsSync } from 'fs'
 import path from 'path'
 
 export async function install(input: {
@@ -202,12 +203,11 @@ export async function verifyInstall(input: { root: string }): Promise<{
 
   for (const entry of lockfile.decks) {
     const codeStr = showCode(entry.code)
-    const linkPath = path.join(
-      input.root,
-      'link',
-      '.base/@cluesurf/term',
-      `${entry.name}@${codeStr}`,
-    )
+    // the link folder's name since 2026-10-05, else the one before it: a project's `link/` made by an older load is
+    // still a whole, working install until its next `term load` (link.ts TERM_DIR)
+    const linkPath = ['.base/@term/code', '.base/@cluesurf/term']
+      .map(home => path.join(input.root, 'link', home, `${entry.name}@${codeStr}`))
+      .find(one => existsSync(one)) ?? path.join(input.root, 'link', '.base/@term/code', `${entry.name}@${codeStr}`)
 
     // the store entry, or else the project's own `link/<name>` reaching a deck: a deck from the project's `deck/`
     // folder, or one `term link` points at, is never in the store, and was reported missing with `term load` as the

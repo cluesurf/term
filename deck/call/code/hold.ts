@@ -43,6 +43,7 @@ import {
 } from '@term/test/code/obligation-cache'
 import { renderReport } from '@term/test/code/prove-file'
 import { closeRun, count, field, openRun, printData, problemOf, report, reportProblems } from '@term/call/code/output'
+import { projectHome } from '@term/call/code/home'
 
 // where `holdProject` puts what it found, whole, for the caller to draw as Problem items: every diagnostic of a file
 // that did not compile, and each failed tier-0 obligation by its key. It prints nothing itself
@@ -403,7 +404,7 @@ export async function callHold(input: {
       cache:
         input.cache === false
           ? memoryObligationCache()
-          : diskObligationCache(path.join(root, '.base/@cluesurf/term', 'hold')),
+          : diskObligationCache(projectHome(root, 'hold')),
       version: compilerVersion(),
       cross: true,
       force: input.force,

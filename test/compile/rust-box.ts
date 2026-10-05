@@ -54,7 +54,7 @@ ok(
 ok('an arm opens the box by its fields', /let ChainNode \{ [^}]*\} = /.test(boxesRust), boxesRust.split('\n').filter(l => /ChainNode/.test(l)).join(' | '))
 
 // 2. binary-trees' tree, the benchmark this is for
-const trees = rustBoxing(build(join(TERM, 'bench/binary-trees/term.tree')))
+const trees = rustBoxing(build(join(TERM, 'mark/binary-trees/term.tree')))
 ok('binary-trees\' tree is boxed', JSON.stringify(trees.boxed) === '["tree"]', JSON.stringify(trees))
 
 // 3. a form the program clones (`widest(small.clone(), big.clone())`) keeps its `Rc`
@@ -108,7 +108,7 @@ ok(
 
 // 5. Towers: the move keeps the box it opens in its own spare, and a text it raises hands the spare to the cold
 // function, so the raise path drops nothing of its own; a task with no spare raises through `term_fail` alone
-const towersRust = emitRust(build(join(TERM, 'bench/towers/term.tree')))
+const towersRust = emitRust(build(join(TERM, 'mark/towers/term.tree')))
 const moveTop = towersRust.slice(towersRust.indexOf('fn move_top('), towersRust.indexOf('\n}\n', towersRust.indexOf('fn move_top(')))
 const buildTower = towersRust.slice(towersRust.indexOf('fn build_tower('), towersRust.indexOf('\n}\n', towersRust.indexOf('fn build_tower(')))
 ok(
@@ -123,7 +123,7 @@ ok('`term_fail_with` is cold and out of line', /#\[cold\]\n#\[inline\(never\)\]\
 // exception module brings generic code and a clone of a generic type could be copying any form (`rustBoxing`,
 // `generic`). So no task holding a spare raises a record today, and a raised record keeps its inline drop. When this
 // fails, boxing has become finer: hand a spare to a cold function on a record raise too (`term_fail_with` beside it)
-const recordTowers = readFileSync(join(TERM, 'bench/towers/term.tree'), 'utf8')
+const recordTowers = readFileSync(join(TERM, 'mark/towers/term.tree'), 'utf8')
   .replace('load @term/base/list\n', 'load @term/base/exception\n  find absence\nload @term/base/list\n')
   .replace('form stack\n', 'form pile-clash\n  like absence\n    bind note, <clash>\n    link size, like number\n\nform stack\n')
   .replace(/( +)halt <Cannot put a big disk onto a smaller one>/g, '$1halt pile-clash\n$1  bind thing, text <disk>\n$1  bind size, read size')

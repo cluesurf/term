@@ -79,6 +79,25 @@ hook repeat
   take times
     like number
   task repeat
+
+task join
+  take words, like list, like text
+  send back
+    code 0
+
+hook join
+  take words, like list, like text
+  task join
+
+task gather
+  take items, like list
+  send back
+    code 0
+
+hook gather
+  take items
+    like list
+  task gather
 `
 
 function main(): void {
@@ -94,12 +113,34 @@ function main(): void {
 
   const routes = commandRoutes(r.program)
   expect('top-level commands', routes.map(c => c.path).sort(), [
+    'gather',
+    'join',
     'load',
     'lock',
     'make',
     'pair',
     'repeat',
   ])
+
+  // A LIST TAKE IS THE REST OF THE WORDS: its type says so, with no marker (`many` until 2026-10-05), whether the
+  // element is written (`like list, like text`) or not (`like list`)
+  const join = dispatch(routes, ['join', 'The', 'Name', 'of', 'the', 'Rose'])
+  expect('a list take collects every word left', join.ok && join.args.words, ['The', 'Name', 'of', 'the', 'Rose'])
+  const gather = dispatch(routes, ['gather', 'a.txt', 'b.txt'])
+  expect('a bare `like list` collects them too', gather.ok && gather.args.items, ['a.txt', 'b.txt'])
+  const one = dispatch(routes, ['load', 'one'])
+  expect('a text take still holds one word', one.ok && one.args.name, 'one')
+
+  // and the retired marker is REFUSED by name. Unread, it was dropped in silence and the take held one word of text
+  const retired = compile(
+    { file: 'many.tree', text: 'task join\n  take words, like text\n  send back\n    code 0\n\nhook join\n  take words\n    like text\n    many\n  task join\n' },
+    {},
+  )
+  expect(
+    'a `many` is refused, naming the list type',
+    !retired.ok && retired.diagnostics.some(d => d.message.includes('`many` is retired') && d.message.includes('like list')),
+    true,
+  )
 
   // top-level command + flag
   const a = dispatch(routes, ['make', '--name', 'x'])

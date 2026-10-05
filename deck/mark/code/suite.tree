@@ -1,0 +1,1444 @@
+# The session: find the programs, check each contract, build every implementation for every target, run them in
+# shuffled interleaved rounds with the output checked on every run, compare, report, gate and write the export.
+#
+# Fail-closed. The exit code is 1 when any selected program is refused, any implementation fails to build on an
+# installed toolchain, any run prints the wrong output, or `--check` finds a regression. A target whose toolchain is
+# not installed is printed as skipped and is not a failure.
+
+load @term/base/console
+  find log
+  find error, name log-error
+
+load @term/base/list
+  find list
+  find push
+  find get
+  find set
+  find size
+  find join
+
+load ./lists
+  find words-copy
+  find holds-text
+
+load @term/base/text
+  find trim
+  find split
+  find contains, name text-contains
+  find replace-all
+  find substring
+  find char-count
+
+load @term/base/float
+  find to-decimal
+
+load @term/base/time
+  find now
+
+load @term/base/calendar
+  find format
+
+load ./host
+  find here
+  find arch-name
+  find stamp
+  find load-average
+  find core-count
+
+load ./contract
+  find contract
+  find baseline
+  find named-size
+  find program-names
+  find read-contract
+
+load ./build
+  find built
+  find has-tool
+  find tool-version
+  find build-term
+  find build-source
+  find build-arch
+  find native-arch
+  find runner-translated
+  find check-arch
+  find arch-fix
+  find toolchain-text
+
+load ./time
+  find sample
+  find take-sample
+  find time-flag
+
+load ./stat
+  find interval
+  find ratio-interval
+  find median-of
+  find smallest
+  find largest
+  find deviation-of
+  find outlier-count
+  find trend-of
+  find shuffled
+  find seeded
+
+load ./case
+  find case
+  find comparison
+
+load ./session
+  find session
+  find machine
+  find read-session
+  find export-text
+
+load ./history
+  find earlier
+  find read-history
+  find earlier-of
+
+load ./report
+  find fixed
+  find row-of
+  find header-cells
+  find print-table
+  find print-summary
+
+load ./disk
+  find file-save
+  find make-folder
+
+# warmup rounds before the timed ones, untimed but checked
+host warmup-count, code 3
+
+# a comparison whose median is under this many times the empty process's is dominated by process start
+host floor-factor, code 20
+
+host every-target, text <node,rust,swift,kotlin>
+
+# the parent of a path
+task parent-of
+  take path, like text
+  like text
+  save parts
+    call split
+      read path
+      text </>
+  save kept
+    make list
+  walk size
+    bind base, code 0
+    bind head
+      call subtract
+        call size
+          read parts
+        code 1
+    hook next
+      take site, name at
+      call push
+        read kept
+        call get
+          read parts
+          read at
+  send back
+    call join
+      read kept
+      text </>
+
+# one metric of every sample, as decimals: wall in milliseconds. Empty when any sample did not count it
+task decimals-of
+  take samples
+    like list
+      like sample
+  take metric, like text
+  like list
+    like decimal
+  save out
+    make list
+  walk list, read samples
+    hook next
+      take site, name one
+      save value, read one/wall
+      fork test
+        hook test
+          call is-equal
+            read metric
+            text <instructions>
+        hook hold
+          save value, read one/instructions
+      fork test
+        hook test
+          call is-below
+            read value
+            code 0
+        hook hold
+          send back
+            make list
+      save shown
+        call to-decimal
+          read value
+      fork test
+        hook test
+          call is-equal
+            read metric
+            text <wall>
+        hook hold
+          save shown
+            call divide
+              read shown
+              code 1000000.0
+      call push
+        read out
+        read shown
+  send back, read out
+
+# the largest resident set of any sample, -1 when none counted it
+task peak-rss
+  take samples
+    like list
+      like sample
+  like number
+  save most
+    call subtract
+      code 0
+      code 1
+  walk list, read samples
+    hook next
+      take site, name one
+      fork test
+        hook test
+          call is-above
+            read one/rss
+            read most
+        hook hold
+          save most, read one/rss
+  send back, read most
+
+task status-of
+  take one, like case
+  like text
+  send back
+    call get
+      read one/correctness
+      code 0
+
+# a case, from what it is and how it was built
+task make-case
+  take found, like contract
+  take named, like named-size
+  take implementation, like baseline
+  take target, like text
+  take made, like built
+  like case
+  save correctness
+    make list
+  call push
+    read correctness
+    read made/status
+  fork test
+    hook test
+      call is-equal
+        read made/status
+        text <ok>
+    hook hold
+      call set
+        read correctness
+        code 0
+        text <correct>
+  save note
+    make list
+  call push
+    read note
+    read made/note
+  save track, read implementation/track
+  send back
+    make case
+      bind program, read found/name
+      bind program-digest, read found/digest
+      bind implementation, read implementation/name
+      bind language, read implementation/language
+      bind track, read track
+      bind target, read target
+      bind boundary, read found/boundary
+      bind size-name, read named/name
+      bind size-value, read named/value
+      bind expect, read named/expect
+      bind expect-digest, read named/digest
+      bind correctness, read correctness
+      bind note, read note
+      bind toolchain, read made/toolchain
+      bind line, read made/line
+      bind source, read implementation/source
+      bind commit, read implementation/commit
+      bind license, read implementation/license
+      bind command, read made/command
+      bind arguments, read made/arguments
+      bind artifact, read made/size
+      bind samples
+        make list
+
+# a shortened text, for a note
+task clipped
+  take value, like text
+  like text
+  fork test
+    hook test
+      call is-above
+        call char-count
+          read value
+        code 200
+    hook hold
+      save head
+        call substring
+          read value
+          code 0
+          code 200
+      send back, text <{{head}}...>
+  send back, read value
+
+# warmups then timed rounds over one group: every case of one program at one size on one target. Each round runs
+# the cases in a new shuffled order, and every run's output is checked before its sample is kept
+task run-rounds
+  mark async
+  take group
+    like list
+      like case
+  take rounds, like number
+  take flag, like text
+  take cell
+    like list
+      like number
+  save total
+    call add
+      read warmup-count
+      read rounds
+  walk size
+    bind base, code 0
+    bind head, read total
+    hook next
+      take site, name round
+      save order
+        call shuffled
+          call size
+            read group
+          read cell
+      walk list, read order
+        hook next
+          take site, name at
+          save one
+            call get
+              read group
+              read at
+          fork test
+            hook test
+              call is-unequal
+                call status-of
+                  read one
+                text <correct>
+            hook hold
+              turn next
+          save words
+            call words-copy
+              read one/arguments
+          call push
+            read words
+            text <{{one/size-value}}>
+          save taken
+            call take-sample
+              read one/command
+              read words
+              read flag
+          save printed
+            call trim
+              read taken/output
+          fork test
+            hook test
+              call or
+                call is-unequal
+                  read taken/code
+                  code 0
+                call is-unequal
+                  read printed
+                  read one/expect
+            hook hold
+              call set
+                read one/correctness
+                code 0
+                text <wrong>
+              save shown
+                call clipped
+                  read printed
+              save said
+                call clipped
+                  call trim
+                    read taken/error
+              call set
+                read one/note
+                code 0
+                text <round {{round}}: exit {{taken/code}}, printed "{{shown}}" where expect/{{one/size-name}}.txt holds "{{one/expect}}". stderr: {{said}}>
+              turn next
+          fork test
+            hook test
+              call is-minimum
+                read round
+                read warmup-count
+            hook hold
+              call push
+                read one/samples
+                read taken
+
+# one line per case: its median and spread, and the warnings hyperfine and criterion would give
+task print-cases
+  take group
+    like list
+      like case
+  walk list, read group
+    hook next
+      take site, name one
+      save status
+        call status-of
+          read one
+      save label, text <    {{one/implementation}} ({{one/track}})>
+      fork test
+        hook test
+          call is-unequal
+            read status
+            text <correct>
+        hook hold
+          save why
+            call get
+              read one/note
+              code 0
+          call log
+            text <{{label}}: {{status}}. {{why}}>
+          turn next
+      save walls
+        call decimals-of
+          read one/samples
+          text <wall>
+      fork test
+        hook test
+          call is-equal
+            call size
+              read walls
+            code 0
+        hook hold
+          turn next
+      save middle
+        call fixed
+          call median-of
+            read walls
+          code 2
+      save least
+        call fixed
+          call smallest
+            read walls
+          code 2
+      save most
+        call fixed
+          call largest
+            read walls
+          code 2
+      save spread
+        call fixed
+          call deviation-of
+            read walls
+          code 2
+      call log
+        text <{{label}}: median {{middle}} ms, min {{least}}, max {{most}}, median absolute deviation {{spread}}, {{walls/length}} samples>
+      save strays
+        call outlier-count
+          read walls
+      fork test
+        hook test
+          call is-above
+            read strays
+            code 0
+        hook hold
+          call log
+            text <      warning: {{strays}} of {{walls/length}} samples outside Tukey's fences (1.5 interquartile ranges). Kept: the median resists them>
+      save drift
+        call trend-of
+          read walls
+      fork test
+        hook test
+          call is-above
+            read drift
+            code 1.05
+        hook hold
+          save shown
+            call fixed
+              read drift
+              code 3
+          call log
+            text <      warning: the last third of the rounds ran {{shown}}x the first third. The machine slowed while it ran (thermal throttling until shown otherwise)>
+
+# the comparisons of one group: the Term program against each other correct case
+task compare-group
+  take group
+    like list
+      like case
+  take floor, like decimal
+  take emulated, like boolean
+  like list
+    like comparison
+  save out
+    make list
+  save term-at
+    call subtract
+      code 0
+      code 1
+  walk size
+    bind base, code 0
+    bind head
+      call size
+        read group
+    hook next
+      take site, name at
+      save each
+        call get
+          read group
+          read at
+      fork test
+        hook test
+          call is-equal
+            read each/implementation
+            text <term>
+        hook hold
+          save term-at, read at
+  fork test
+    hook test
+      call is-below
+        read term-at
+        code 0
+    hook hold
+      send back, read out
+  save term
+    call get
+      read group
+      read term-at
+  fork test
+    hook test
+      call is-unequal
+        call status-of
+          read term
+        text <correct>
+    hook hold
+      send back, read out
+  save term-walls
+    call decimals-of
+      read term/samples
+      text <wall>
+  save term-counts
+    call decimals-of
+      read term/samples
+      text <instructions>
+  save limit
+    call multiply
+      read floor
+      call to-decimal
+        read floor-factor
+  walk list, read group
+    hook next
+      take site, name base
+      fork test
+        hook test
+          call or
+            call is-equal
+              read base/implementation
+              text <term>
+            call is-unequal
+              call status-of
+                read base
+              text <correct>
+        hook hold
+          turn next
+      save base-walls
+        call decimals-of
+          read base/samples
+          text <wall>
+      save base-counts
+        call decimals-of
+          read base/samples
+          text <instructions>
+      save wall
+        call ratio-interval
+          read term-walls
+          read base-walls
+      save counted
+        call and
+          call is-above
+            call size
+              read term-counts
+            code 0
+          call is-above
+            call size
+              read base-counts
+            code 0
+      save counts, read wall
+      fork test
+        hook test
+          read counted
+        hook hold
+          save counts
+            call ratio-interval
+              read term-counts
+              read base-counts
+      save term-median
+        call median-of
+          read term-walls
+      save base-median
+        call median-of
+          read base-walls
+      call push
+        read out
+        make comparison
+          bind program, read term/program
+          bind size-name, read term/size-name
+          bind target, read term/target
+          bind baseline, read base/implementation
+          bind track, read base/track
+          bind term-wall, read term-median
+          bind base-wall, read base-median
+          bind ratio, read wall/ratio
+          bind low, read wall/low
+          bind high, read wall/high
+          bind verdict, read wall/verdict
+          bind counted, read counted
+          bind instruction-ratio, read counts/ratio
+          bind instruction-low, read counts/low
+          bind instruction-high, read counts/high
+          bind dominated
+            call or
+              call is-below
+                read term-median
+                read limit
+              call is-below
+                read base-median
+                read limit
+          bind emulated, read emulated
+          bind term-rss
+            call peak-rss
+              read term/samples
+          bind base-rss
+            call peak-rss
+              read base/samples
+          bind term-size, read term/artifact
+          bind base-size, read base/artifact
+  send back, read out
+
+# the regression gate for one comparison: worse than the last session on this machine beyond what both intervals
+# explain. Wall time decides when the two wall intervals do not overlap; when they do, wall time cannot decide, and
+# instructions decide where both sessions counted them. Answers the reason, or empty when it holds
+task regression-of
+  take now, like comparison
+  take before, like earlier
+  like text
+  save then
+    call ratio-interval
+      read before/term-wall
+      read before/base-wall
+  save old, call fixed(read(then/high), code 3)
+  save new, call fixed(read(now/low), code 3)
+  fork test
+    hook test
+      call is-above
+        read now/low
+        read then/high
+    hook hold
+      send back, text <wall time decided: low {{new}} is above the {{before/start}} session's high {{old}}>
+  fork test
+    hook test
+      call is-below
+        read now/high
+        read then/low
+    hook hold
+      send back, text <>
+  fork test
+    hook test
+      call and
+        read now/counted
+        call and
+          call is-above
+            call size
+              read before/term-instructions
+            code 0
+          call is-above
+            call size
+              read before/base-instructions
+            code 0
+    hook hold
+      save counted
+        call ratio-interval
+          read before/term-instructions
+          read before/base-instructions
+      fork test
+        hook test
+          call is-above
+            read now/instruction-low
+            read counted/high
+        hook hold
+          save old-count, call fixed(read(counted/high), code 3)
+          save new-count, call fixed(read(now/instruction-low), code 3)
+          send back, text <instructions decided, the wall intervals overlapping: low {{new-count}} is above the {{before/start}} session's high {{old-count}}>
+  send back, text <>
+
+# the targets asked for, in the order given
+task targets-of
+  take asked, like text
+  like list
+    like text
+  save given, read asked
+  fork test
+    hook test
+      call is-equal
+        read given
+        text <>
+    hook hold
+      save given, read every-target
+  save out
+    make list
+  walk list
+    call split
+      read given
+      text <,>
+    hook next
+      take site, name raw
+      save one
+        call trim
+          read raw
+      fork test
+        hook test
+          call is-unequal
+            read one
+            text <>
+        hook hold
+          call push
+            read out
+            read one
+  send back, read out
+
+# the whole session. Answers the exit code
+task run-suite
+  mark async
+  take only, like text
+  take target, like text
+  take runs, like number
+  take quick, like boolean
+  take check, like boolean
+  take size-name, like text
+  take export, like text
+  take markdown, like boolean
+  take purpose, like text
+  take label, like text
+  like number
+  save mark-root
+    call here
+  # the suite is the package at deck/mark, two levels under the Term repository
+  save term-root
+    call parent-of
+      call parent-of
+        read mark-root
+  save session-dir, text <{{term-root}}/.base/@cluesurf/term/mark/session>
+  # the arguments
+  fork test
+    hook test
+      call and
+        call is-below
+          read runs
+          code 10
+        call not
+          read quick
+    hook hold
+      call log-error
+        text <term mark: --runs {{runs}} is under the 10 rounds measurement.md asks for. Pass --quick to run fewer, which writes no session export>
+      send back, code 2
+  fork test
+    hook test
+      call is-below
+        read runs
+        code 2
+    hook hold
+      call log-error
+        text <term mark: --runs must be at least 2>
+      send back, code 2
+  fork test
+    hook test
+      call not
+        call holds-text
+          call split
+            text <headline diagnostic development>
+            text < >
+          read purpose
+    hook hold
+      call log-error
+        text <term mark: --purpose is headline, diagnostic or development, not "{{purpose}}">
+      send back, code 2
+  save targets
+    call targets-of
+      read target
+  walk list, read targets
+    hook next
+      take site, name one
+      fork test
+        hook test
+          call not
+            call holds-text
+              call split
+                read every-target
+                text <,>
+              read one
+        hook hold
+          call log-error
+            text <term mark: target "{{one}}" is not one of node, rust, swift, kotlin>
+          send back, code 2
+  # the programs
+  save names
+    call program-names
+      read mark-root
+  save chosen
+    make list
+  walk list, read names
+    hook next
+      take site, name name
+      fork test
+        hook test
+          call text-contains
+            read name
+            read only
+        hook hold
+          call push
+            read chosen
+            read name
+  fork test
+    hook test
+      call is-equal
+        call size
+          read chosen
+        code 0
+    hook hold
+      call log-error
+        text <term mark: no program under {{mark-root}} matches "{{only}}">
+      send back, code 1
+  save failures
+    make list
+  save contracts
+    make list
+  walk list, read chosen
+    hook next
+      take site, name name
+      save found
+        call read-contract
+          text <{{mark-root}}/{{name}}>
+          read name
+      fork test
+        hook test
+          call is-above
+            call size
+              read found/refused
+            code 0
+        hook hold
+          save why
+            call join
+              read found/refused
+              text <; >
+          call log
+            text <refused {{name}}: {{why}}>
+          call push
+            read failures
+            text <{{name}} is refused>
+          turn next
+      call push
+        read contracts
+        read found
+  # the session
+  save session
+    call read-session
+      read term-root
+      read mark-root
+      read purpose
+      read label
+      read warmup-count
+      read runs
+  save gear, read session/machine
+  call log
+    text <term mark: {{contracts/length}} of {{chosen/length}} programs, {{runs}} rounds after {{warmup-count}} warmups, purpose {{purpose}}>
+  call log
+    text <machine: {{gear/label}}, {{gear/model}}, {{gear/chip}}, {{gear/core-count}} cores, {{gear/memory}} bytes, power {{gear/power}}, {{gear/system}} {{gear/version}}>
+  fork test
+    hook test
+      read session/dirty
+    hook hold
+      call log
+        text <repository: {{session/commit}} with uncommitted changes under the Term repository. The session is kept and never published as this commit's number>
+  save load
+    call load-average
+  save cores
+    call core-count
+  save busy
+    call divide
+      call to-decimal
+        read cores
+      code 4.0
+  fork test
+    hook test
+      call is-above
+        read load
+        read busy
+    hook hold
+      save shown
+        call fixed
+          read load
+          code 2
+      call log
+        text <warning: the one-minute load average is {{shown}} on {{cores}} cores. Something else is running, and the samples will show it>
+  fork test
+    hook test
+      call is-equal
+        read gear/power
+        text <battery>
+    hook hold
+      call log
+        text <warning: on battery. A laptop may throttle>
+  # the empty process, timed the same way: the floor every median is read against
+  save flag
+    call time-flag
+  save empty
+    make list
+  save nothing
+    make list
+  walk size
+    bind base, code 0
+    bind head, read runs
+    hook next
+      take site, name round
+      call push
+        read empty
+        call take-sample
+          text </usr/bin/true>
+          read nothing
+          read flag
+  save floor
+    call median-of
+      call decimals-of
+        read empty
+        text <wall>
+  save floor-text
+    call fixed
+      read floor
+      code 2
+  call log
+    text <floor: an empty process takes {{floor-text}} ms here. A median under {{floor-factor}} times that is dominated by process start>
+  # the toolchains, and the architecture each one's programs run as. An emulated target is a warning outside a
+  # headline session, and refused in one
+  save native
+    call native-arch
+  save headline
+    call is-equal
+      read purpose
+      text <headline>
+  save refused, false
+  fork test
+    hook test
+      call runner-translated
+    hook hold
+      save own
+        call arch-name
+      fork test
+        hook test
+          read headline
+        hook hold
+          call log-error
+            text <term mark: --purpose headline refuses the runner: its own node is translated (sysctl.proc_translated is 1), a {{own}} process on a {{native}} machine. Run it with a node built for {{native}}>
+          save refused, true
+        hook miss
+          call log
+            text <WARNING: the runner's own node is translated (sysctl.proc_translated is 1), a {{own}} process on a {{native}} machine. Fix: put a node built for {{native}} first on PATH>
+  save installed
+    make list
+  save versions
+    make list
+  save emulations
+    make list
+  walk list, read targets
+    hook next
+      take site, name one
+      save have
+        call has-tool
+          read one
+      call push
+        read installed
+        read have
+      save version, text <>
+      save emulated, false
+      fork test
+        hook test
+          read have
+        hook hold
+          save arch
+            call check-arch
+              read one
+              read native
+          save version
+            call toolchain-text
+              call tool-version
+                read one
+              read arch
+          save emulated, read arch/emulated
+          call log
+            text <{{one}}: {{version}}>
+          fork test
+            hook test
+              read emulated
+            hook hold
+              save fix
+                call arch-fix
+                  read one
+                  read native
+              fork test
+                hook test
+                  read headline
+                hook hold
+                  call log-error
+                    text <term mark: --purpose headline refuses {{one}}: it builds {{arch/named}} programs, which run emulated on this {{native}} machine. Fix: {{fix}}>
+                  save refused, true
+                hook miss
+                  call log
+                    text <WARNING: {{one}} builds {{arch/named}} programs, which run emulated on this {{native}} machine, so every {{one}} time includes the emulation. Its comparisons are flagged and left out of the geometric mean. Fix: {{fix}}>
+        hook miss
+          call log
+            text <{{one}}: skipped, the toolchain is not installed>
+      call push
+        read versions
+        read version
+      call push
+        read emulations
+        read emulated
+  fork test
+    hook test
+      read refused
+    hook hold
+      call log-error
+        text <term mark: nothing built. A headline session times only programs native to the machine>
+      send back, code 1
+  # every program, target and size
+  save cell
+    call seeded
+      call now
+  save cases
+    make list
+  save comparisons
+    make list
+  walk list, read contracts
+    hook next
+      take site, name found
+      save implementations
+        make list
+      call push
+        read implementations
+        make baseline
+          bind name, text <term>
+          bind file, read found/term
+          bind language, text <term>
+          bind target, text <every>
+          bind track, text <term>
+          bind source, text <ours>
+          bind commit, text <>
+          bind license, text <MIT>
+      walk list, read found/baselines
+        hook next
+          take site, name one
+          call push
+            read implementations
+            read one
+      walk size
+        bind base, code 0
+        bind head
+          call size
+            read targets
+        hook next
+          take site, name target-at
+          save target
+            call get
+              read targets
+              read target-at
+          save have
+            call get
+              read installed
+              read target-at
+          save version
+            call get
+              read versions
+              read target-at
+          save dir, text <{{term-root}}/tmp/mark/{{found/name}}/{{target}}>
+          # build every implementation that runs on this target, once for every size
+          save made
+            make list
+          save running
+            make list
+          walk list, read implementations
+            hook next
+              take site, name one
+              fork test
+                hook test
+                  call and
+                    call is-unequal
+                      read one/target
+                      read target
+                    call is-unequal
+                      read one/target
+                      text <every>
+                hook hold
+                  turn next
+              call push
+                read running
+                read one
+              save file, read one/file
+              fork test
+                hook test
+                  call is-unequal
+                    read one/name
+                    text <term>
+                hook hold
+                  save file, text <{{found/dir}}/{{one/file}}>
+              fork test
+                hook test
+                  call not
+                    read have
+                hook hold
+                  call push
+                    read made
+                    make built
+                      bind status, text <skipped>
+                      bind note, text <{{target}}'s toolchain is not installed>
+                      bind command, text <>
+                      bind arguments
+                        make list
+                      bind size, code 0
+                      bind toolchain, text <>
+                      bind line, text <>
+                  turn next
+              save one-made
+                make built
+                  bind status, text <unbuilt>
+                  bind note, text <>
+                  bind command, text <>
+                  bind arguments
+                    make list
+                  bind size, code 0
+                  bind toolchain, text <>
+                  bind line, text <>
+              fork test
+                hook test
+                  call is-equal
+                    read one/language
+                    text <term>
+                hook hold
+                  save one-made
+                    call build-term
+                      read term-root
+                      read file
+                      read target
+                      read dir
+                      read one/name
+                      read version
+                hook miss
+                  save one-made
+                    call build-source
+                      read term-root
+                      read file
+                      read target
+                      read dir
+                      read one/name
+                      read version
+              fork test
+                hook test
+                  call is-equal
+                    read one-made/status
+                    text <unbuilt>
+                hook hold
+                  save why
+                    call clipped
+                      read one-made/note
+                  call log
+                    text <unbuilt {{found/name}} {{one/name}} on {{target}}: {{why}}>
+                  call push
+                    read failures
+                    text <{{found/name}} {{one/name}} did not build on {{target}}>
+              call push
+                read made
+                read one-made
+          walk list, read found/sizes
+            hook next
+              take site, name named
+              fork test
+                hook test
+                  call and
+                    call is-unequal
+                      read size-name
+                      text <>
+                    call is-unequal
+                      read size-name
+                      read named/name
+                hook hold
+                  turn next
+              save group
+                make list
+              walk size
+                bind base, code 0
+                bind head
+                  call size
+                    read running
+                hook next
+                  take site, name at
+                  call push
+                    read group
+                    call make-case
+                      read found
+                      read named
+                      call get
+                        read running
+                        read at
+                      read target
+                      call get
+                        read made
+                        read at
+              fork test
+                hook test
+                  read have
+                hook hold
+                  call log
+                    text <{{found/name}} {{named/name}} ({{named/value}}) on {{target}}>
+                  call run-rounds
+                    read group
+                    read runs
+                    read flag
+                    read cell
+                  call print-cases
+                    read group
+              walk list, read group
+                hook next
+                  take site, name one
+                  call push
+                    read cases
+                    read one
+                  fork test
+                    hook test
+                      call is-equal
+                        call status-of
+                          read one
+                        text <wrong>
+                    hook hold
+                      call push
+                        read failures
+                        text <{{one/program}} {{one/implementation}} printed the wrong output on {{one/target}} at {{one/size-name}}>
+              walk list
+                call compare-group
+                  read group
+                  read floor
+                  call get
+                    read emulations
+                    read target-at
+                hook next
+                  take site, name one
+                  call push
+                    read comparisons
+                    read one
+  # the report
+  call log
+    text <>
+  save rows
+    make list
+  walk list, read comparisons
+    hook next
+      take site, name one
+      call push
+        read rows
+        call row-of
+          read one
+  fork test
+    hook test
+      call is-equal
+        call size
+          read rows
+        code 0
+    hook hold
+      call log
+        text <0 comparisons: no Term program and baseline both ran correctly>
+    hook miss
+      call print-table
+        call header-cells
+        read rows
+        read markdown
+      call log
+        text <>
+      call print-summary
+        read comparisons
+        read targets
+  # the gate
+  fork test
+    hook test
+      read check
+    hook hold
+      save history
+        call read-history
+          read session-dir
+      save checked, code 0
+      save fresh, code 0
+      walk list, read comparisons
+        hook next
+          take site, name one
+          save term-case
+            call find-case
+              read cases
+              read one
+              text <term>
+          save base-case
+            call find-case
+              read cases
+              read one
+              read one/baseline
+          save before
+            call earlier-of
+              read history
+              read gear/digest
+              read session/start
+              read one/program
+              read term-case/program-digest
+              read one/target
+              read one/size-name
+              read term-case/expect-digest
+              read one/baseline
+          fork test
+            hook test
+              call not
+                read before/found
+            hook hold
+              save fresh
+                call add
+                  read fresh
+                  code 1
+              turn next
+          save checked
+            call add
+              read checked
+              code 1
+          save why
+            call regression-of
+              read one
+              read before
+          fork test
+            hook test
+              call is-unequal
+                read why
+                text <>
+            hook hold
+              call log
+                text <regression: {{one/program}} {{one/size-name}} on {{one/target}} against {{one/baseline}}. {{why}}>
+              call push
+                read failures
+                text <{{one/program}} regressed on {{one/target}} against {{one/baseline}}>
+      call log
+        text <check: {{checked}} of {{comparisons/length}} comparisons had an earlier session on this machine to compare with, {{fresh}} had none>
+      # a check that compared nothing has checked nothing, and passing it said a regression gate held when no gate
+      # ran (guides: commands/mark, 2026-10-04)
+      fork test
+        hook test
+          call is-equal
+            read checked
+            code 0
+        hook hold
+          call push
+            read failures
+            text <--check compared nothing: no comparison had an earlier session on this machine. Run once without --check to record one>
+  # the export
+  fork test
+    hook test
+      read quick
+    hook hold
+      call log
+        text <--quick: no session export written>
+    hook miss
+      save finish
+        call format
+          call now
+      save body
+        call export-text
+          read session
+          read cases
+          read finish
+      call make-folder
+        read session-dir
+      save stamp-name
+        call replace-all
+          read session/start
+          text <:>
+          text <->
+      save path, text <{{session-dir}}/{{stamp-name}}.json>
+      call file-save
+        read path
+        read body
+      call log
+        text <session export: {{path}} ({{cases/length}} cases)>
+      fork test
+        hook test
+          call is-unequal
+            read export
+            text <>
+        hook hold
+          call file-save
+            read export
+            read body
+          call log
+            text <copied to {{export}}>
+  fork test
+    hook test
+      call is-above
+        call size
+          read failures
+        code 0
+    hook hold
+      save why
+        call join
+          read failures
+          text <; >
+      call log
+        text <failed: {{why}}>
+      send back, code 1
+  send back, code 0
+
+# the case of one comparison's side
+task find-case
+  take cases
+    like list
+      like case
+  take one, like comparison
+  take implementation, like text
+  like case
+  save hit
+    call get
+      read cases
+      code 0
+  walk list, read cases
+    hook next
+      take site, name each
+      fork test
+        hook test
+          call and
+            call and
+              call is-equal
+                read each/program
+                read one/program
+              call is-equal
+                read each/implementation
+                read implementation
+            call and
+              call is-equal
+                read each/target
+                read one/target
+              call is-equal
+                read each/size-name
+                read one/size-name
+        hook hold
+          save hit, read each
+  send back, read hit

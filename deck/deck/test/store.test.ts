@@ -1,8 +1,22 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import fsp from 'fs/promises'
+import { mkdirSync, mkdtempSync } from 'fs'
 import path from 'path'
 import os from 'os'
 import { getFilePath, getStoreRoot, getTreeDir } from '../code/store'
+
+// each case in a home of its own, so what exists on this machine decides nothing
+let home = ''
+let realHome: string | undefined
+
+beforeEach(() => {
+  realHome = process.env.HOME
+  home = mkdtempSync(path.join(os.tmpdir(), 'term-store-'))
+  process.env.HOME = home
+})
+
+afterEach(() => {
+  process.env.HOME = realHome
+})
 
 describe('getFilePath', () => {
   it('uses 2-char prefix for directory sharding', () => {
@@ -21,15 +35,32 @@ describe('getFilePath', () => {
 })
 
 describe('getStoreRoot', () => {
-  it('lives under home directory', () => {
-    const root = getStoreRoot()
-    expect(root).toBe(path.join(os.homedir(), '.base/@cluesurf/term'))
+  it('is ~/.base/@term/code on a machine with nothing yet', () => {
+    expect(getStoreRoot()).toBe(path.join(home, '.base/@term/code'))
+  })
+
+  it('reads the folder from before 2026-10-05 while the CLI has not moved it yet', () => {
+    mkdirSync(path.join(home, '.base/@cluesurf/term'), { recursive: true })
+
+    expect(getStoreRoot()).toBe(path.join(home, '.base/@cluesurf/term'))
+  })
+
+  it('prefers the new folder once it exists', () => {
+    mkdirSync(path.join(home, '.base/@cluesurf/term'), { recursive: true })
+    mkdirSync(path.join(home, '.base/@term/code'), { recursive: true })
+
+    expect(getStoreRoot()).toBe(path.join(home, '.base/@term/code'))
+  })
+
+  it('reads the folder from before 2026-08-30 when it is the only one', () => {
+    mkdirSync(path.join(home, '.base/term'), { recursive: true })
+
+    expect(getStoreRoot()).toBe(path.join(home, '.base/term'))
   })
 })
 
 describe('getTreeDir', () => {
   it('is tree/ under store root', () => {
-    const dir = getTreeDir()
-    expect(dir).toBe(path.join(os.homedir(), '.base/@cluesurf/term', 'tree'))
+    expect(getTreeDir()).toBe(path.join(home, '.base/@term/code', 'tree'))
   })
 })

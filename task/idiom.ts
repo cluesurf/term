@@ -1,5 +1,5 @@
 // pnpm term:idiom: is the emitted code idiomatic, as the target's own tools judge it (note/term/codegen/readme.md,
-// rule 4). Every program under bench/ and every meaning-native fixture is emitted with its prelude on all four
+// rule 4). Every program under mark/ and every meaning-native fixture is emitted with its prelude on all four
 // targets: Rust linted with `clippy::all`, TypeScript typechecked with `tsc --strict`, Swift and Kotlin counted by
 // their compilers' own warnings and errors. The findings are counted by kind, and the total is the gate: it may only
 // fall. swiftlint, ktlint and detekt join when they are installed on the machine that runs this.
@@ -28,9 +28,9 @@ const stdlib = stdlibResolver()!
 const readRuntime = (path: string): string | undefined => (existsSync(path) ? readFileSync(path, 'utf8') : undefined)
 
 const programs = [
-  ...readdirSync(join(TERM, 'bench'))
-    .filter(name => existsSync(join(TERM, 'bench', name, 'term.tree')))
-    .map(name => ({ name, file: join(TERM, 'bench', name, 'term.tree') })),
+  ...readdirSync(join(TERM, 'mark'))
+    .filter(name => existsSync(join(TERM, 'mark', name, 'term.tree')))
+    .map(name => ({ name, file: join(TERM, 'mark', name, 'term.tree') })),
   ...readdirSync(join(TERM, 'test/compile/meaning-native'))
     .filter(name => name.endsWith('.tree'))
     .map(name => ({ name: `meaning/${name.replace(/\.tree$/, '')}`, file: join(TERM, 'test/compile/meaning-native', name) })),

@@ -2,17 +2,19 @@
 //   term halt -p <port>   stop the app serving on that port
 //   term halt             stop this project's term boot, feed and work, or every one on the machine outside a project
 //
-// Term boot servers are easy to find without a registry: each runs `node <project>/.base/@cluesurf/term/boot/<hash>/run.mjs`, a path
-// that is unique to term boot. We match that in the process table (cross-process, machine-wide), so `term halt` works
+// Term boot servers are easy to find without a registry: each runs `node <project>/.base/@term/code/boot/<hash>/run.mjs`, a path
+// that is unique to term boot (`.base/@cluesurf/term/boot/` for one an older version started). We match that in the process table (cross-process, machine-wide), so `term halt` works
 // from anywhere with no shared state to go stale. `term halt -p <port>` instead asks the OS who is listening on the port.
 
 import { execSync } from 'child_process'
 import { existsSync, realpathSync } from 'fs'
 import path from 'path'
 import { closeRun, count, openRun, report } from '@term/call/code/output'
+import { HOME_POSIX } from '@term/call/code/home'
 
-// the marker that identifies a term boot server process in the process table
-const BOOT_MARKER = '.base/@cluesurf/term/boot/'
+// the markers that identify a term boot server process in the process table: the folder's name now, and the name it
+// had until 2026-10-05, which a server an older `term` started still runs from (home.ts)
+const BOOT_MARKERS = [`${HOME_POSIX}/boot/`, '.base/@cluesurf/term/boot/']
 
 type Process = { pid: number; parent: number; command: string }
 
@@ -36,9 +38,13 @@ function boots(): { program: number; target: number; project: string }[] {
   const byPid = new Map(table.map(one => [one.pid, one]))
 
   return table
-    .filter(one => one.command.includes(BOOT_MARKER) && one.command.includes('run.mjs'))
+    .flatMap(one => {
+      const marker = BOOT_MARKERS.find(each => one.command.includes(each))
+
+      return marker && one.command.includes('run.mjs') ? [{ ...one, marker }] : []
+    })
     .map(one => {
-      const at = one.command.indexOf(BOOT_MARKER)
+      const at = one.command.indexOf(one.marker)
       const start = one.command.lastIndexOf(' ', at) + 1
       const parent = byPid.get(one.parent)
       const owned = parent !== undefined && /\bboot\b/.test(parent.command) && !parent.command.includes('run.mjs')
@@ -49,10 +55,18 @@ function boots(): { program: number; target: number; project: string }[] {
 
 // every running `term feed` and `term work`, the verb, and the project its working folder is in. They run no
 // `run.mjs`, so bare `halt` did not see them, and only `-p` stopped one (guides: commands/halt, commands/feed,
-// 2026-10-05). A service's project is where it was started, which the process table does not say and `lsof` does
+// 2026-10-05). A service's project is where it was started, which the process table does not say and `lsof` does.
+// The browser development server is `term boot --env browser` since 2026-10-05, and runs no `run.mjs` either. `feed`
+// stays, for a server an older version started
 function services(): { pid: number; verb: string; project: string | undefined }[] {
+  const verbOf = (command: string): string | undefined => {
+    const verb = /(?:line\.js|need\.mjs|\bterm)\s+(feed|work|boot)(?:\s|$)/.exec(command)?.[1]
+
+    return verb === 'boot' && !/--env[= ]browser(?:\s|$)/.test(command) ? undefined : verb
+  }
+
   return processTable()
-    .map(one => ({ one, verb: /(?:line\.js|need\.mjs|\bterm)\s+(feed|work)(?:\s|$)/.exec(one.command)?.[1] }))
+    .map(one => ({ one, verb: verbOf(one.command) }))
     .filter((found): found is { one: Process; verb: string } => found.verb !== undefined && found.one.pid !== process.pid)
     .map(({ one, verb }) => ({ pid: one.pid, verb, project: projectOfCwd(one.pid) }))
 }
@@ -174,8 +188,9 @@ export async function callHalt(input: {
     }
   }
 
-  // the project's `term feed` and `term work` too, by where each was started; outside a project, every one
-  const running = services().filter(one => here === undefined || (one.project !== undefined && real(one.project) === here))
+  // the project's browser server and `term work` too, by where each was started; outside a project, every one. A
+  // production browser boot runs a `run.mjs` and was stopped above
+  const running = services().filter(one => !targets.includes(one.pid) && (here === undefined || (one.project !== undefined && real(one.project) === here)))
 
   for (const one of running) {
     if (stop(one.pid)) {

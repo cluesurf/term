@@ -4,7 +4,7 @@
 //     unchanged, even if other modules in the graph changed. Fine-grained, so the persisted entries are small.
 //   - output level: the whole compiled result for an exact module graph. A re-save with no edits returns instantly.
 // The in-memory path is pure and browser-safe (a pure-JS content hash, no node:crypto). Persistence is OPTIONAL and
-// injected as a `CacheStore`, so the browser path stays pure while a node CLI can back the cache with `.base/@cluesurf/term/cache`
+// injected as a `CacheStore`, so the browser path stays pure while a node CLI can back the cache with `.base/@term/code/cache`
 // (see code/call/cache-store.ts). Keys fold in a version, so a toolchain change never serves a stale hit.
 // See note/research/repo/turborepo/07-lessons-for-seed.md and note/seed/plan/compilation-performance.md (Tier 1).
 
@@ -16,7 +16,7 @@ import { hashText } from '@term/make/code/term/hash'
 // this on any change to the cached value shape or the mill/compile pipeline that the per-entry key does not capture.
 //
 // WHICH READER produced an entry is part of the epoch, because the mill cache is SHARED across projects and
-// processes (~/.base/@cluesurf/term/base/mill). While the grammar reader was being brought up behind
+// processes (~/.base/@term/code/base/mill). While the grammar reader was being brought up behind
 // `TERM_MILL_GRAMMAR=1`, a run under the flag wrote its answers, diagnostics included, under keys the ordinary
 // build then read back: a green board turned into six broken packages that no source change explained, and the
 // errors named a reader that was not running. A cache key has to cover everything that changes the answer.
@@ -173,7 +173,7 @@ export type MilledUnit =
   | { ok: false; diagnostics: Diagnostic[] }
 
 // a persistent backend for the cache. `kind` separates namespaces (`mill` / `output`). Synchronous and string-valued,
-// so the in-memory cache stays simple. A node implementation reads / writes `.base/@cluesurf/term/cache`; the browser passes none.
+// so the in-memory cache stays simple. A node implementation reads / writes `.base/@term/code/cache`; the browser passes none.
 export interface CacheStore {
   load(kind: string, key: string): string | undefined
   save(kind: string, key: string, value: string): void

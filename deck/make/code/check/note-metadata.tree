@@ -1,0 +1,525 @@
+# `note <word>` written as METADATA, the old spelling of `mark <word>` (note/term/plan/await-by-default-and-mark-
+# metadata.md, section 4). Read off the concrete tree, because the mill mints `mark async` and `note async` as one form
+# and the program cannot tell which was written. Three readers share it, so they cannot disagree about which `note` is
+# metadata: the compiler's `note-metadata` warning (compile/compile.ts), the lint rule that rewrites it (L053), and the
+# repository fixer `pnpm term:mark-metadata`.
+#
+# WHICH `note` IS METADATA, decided by FORM:
+#   - its word is one of the metadata words below, written bare (never a text literal: `note <Upload too large>` is
+#     documentation and stays `note`)
+#   - nothing follows the word, except a statement body under `note unsafe` (the guarded block) and the `name` of
+#     `note feature, name x` / `note platform, name x`
+#   - it is not under a `call` (a `note` there is read as an argument, quirk 6), a `take` (a CLI parameter's help
+#     text), a `link` (a field's documentation), a `like` (a callback type, where nothing reads it) or a `twin`
+#
+# `note private` is in the list, so the fixer and the lint rule rewrite it, but the compiler warns about it under its
+# own older name, `note-private` (check/private.ts), and not twice.
+#
+# Ported from check/note-metadata.ts (self-hosting, 2026-10-05). The words are read through parser/words.tree. The
+# source `note-metadata-sites` realigns against is optional as before: the empty text, its default, realigns nothing.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+  find substring
+  find trim
+  find trim-end
+  find ends-with
+
+load ../parser/diagnostic
+  find span
+  find position
+
+load ../parser/tree
+  find node
+  find root-node
+
+load ../parser/words
+  find word-of
+  find head-word
+  find word-or-empty
+  find span-of-node
+
+form note-site
+  # the metadata word
+  link word, like text
+  # the `note` word itself, which a fix replaces with `mark`
+  link span, like span
+
+form wait-site
+  # the callee's name as written (`fetch-page`, `fs-promise/read-file`)
+  link callee, like text
+  # the text to remove: the whole line when `wait true` stands on its own, else `, wait true` after the call
+  link remove, like span
+  # where the marker is, for a finding
+  link span, like span
+  # the marker is on a task DEFINITION rather than a call
+  link definition, like boolean
+
+task is-metadata-word
+  take word, like text
+  like boolean
+  mark private
+
+  walk split(<async native unsafe draft stable unstable deprecated keep open roam feature platform shared private>, < >)
+    take one
+    fork test, is-equal(one, word)
+      hold
+        back true
+  back false
+
+# the parents under which a `note` is never metadata
+task under-not-metadata
+  take parent, like text
+  like boolean
+  mark private
+
+  walk split(<call take link like twin>, < >)
+    take one
+    fork test, is-equal(one, parent)
+      hold
+        back true
+  back false
+
+# every metadata `note` in a parsed file, in source order
+task note-metadata-sites
+  take tree, like root-node
+  take source, like text, fall <>
+  like list, like note-site
+
+  save sites, make list
+  sift tree
+    case root
+      walk nodes
+        take group
+        save sites, visit-notes(group, <>, sites)
+
+  fork test, is-equal(source, <>)
+    hold
+      back sites
+  back realign-notes(sites, source)
+
+# the sites given, with the metadata `note`s under `group` added; `parent` is the head of the group above it
+task visit-notes
+  take group, like node
+  take parent, like text
+  take sites, like list, like note-site
+  like list, like note-site
+  mark private
+
+  save head, word-or-empty(group)
+  sift head-word(group)
+    case some
+      link found
+      fork test, and(is-equal(found, <note>), not(under-not-metadata(parent)))
+        hold
+          sift metadata-of(group)
+            case some
+              link site
+              push(sites, site)
+            miss
+              save sites, sites
+    miss
+      save head, <>
+
+  sift group
+    case group
+      save at, 1
+      walk test
+        hook test, is-below(at, nodes/length)
+        hook hold
+          save child, get(nodes, at)
+          sift child
+            case group
+              save sites, visit-notes(child, head, sites)
+            miss
+              save sites, sites
+          save at, add(at, 1)
+    miss
+      back sites
+  back sites
+
+task metadata-of
+  take group, like node
+  like maybe, like note-site
+  mark private
+
+  sift group
+    case group
+      fork test, is-below(nodes/length, 2)
+        hold
+          back make none
+      save note-word, get(nodes, 0)
+      save first, get(nodes, 1)
+      save word, <>
+      sift first
+        case name
+          save word, word-or-empty(first)
+        case group
+          fork test, is-equal(nodes/length, 1)
+            hold
+              save word, word-or-empty(first)
+        miss
+          save word, <>
+
+      fork test, or(is-equal(word, <>), not(is-metadata-word(word)))
+        hold
+          back make none
+
+      # what may follow the word: a guarded body under `unsafe`, a `name` under feature / platform, else nothing
+      save rest, nodes/slice(2, nodes/length)
+      save fits, or(is-equal(word, <unsafe>), is-equal(rest/length, 0))
+      fork test, and(not(fits), or(is-equal(word, <feature>), is-equal(word, <platform>)))
+        hold
+          save fits, all-names(rest)
+      fork test, not(fits)
+        hold
+          back make none
+
+      sift span-of-node(note-word)
+        case some
+          link at
+          save site
+            make note-site
+              bind word, word
+              bind span, at
+          back make(some, site)
+        miss
+          back make none
+    miss
+      back make none
+
+task all-names
+  take nodes, like list, like node
+  like boolean
+  mark private
+
+  walk nodes
+    take one
+    sift head-word(one)
+      case some
+        link found
+        fork test, is-unequal(found, <name>)
+          hold
+            back false
+      miss
+        back false
+  back true
+
+# A token's line is off by the newlines inside any multi-line text literal above it: the tokenizer counts a literal
+# that spans lines as one line. So a span read off the tree is the START of a search, and the site is the first line
+# at or after it (and after the previous site) whose text at that column is what the site says is there. The two
+# readers that edit text by these spans (the lint fixes and the repository fixer) need the real line.
+task realigned-span
+  take at, like span
+  take want, like text
+  take lines, like list, like text
+  take floor, like number
+  like span
+  mark private
+
+  save line, at/start/line
+  save column, at/start/column
+  save row, line
+  fork test, is-below(row, floor)
+    hold
+      save row, floor
+  walk test
+    hook test, is-below(row, lines/length)
+    hook hold
+      fork test, is-equal(substring(get(lines, row), column, add(column, want/length)), want)
+        hold
+          fork test, is-equal(row, line)
+            hold
+              back at
+          back moved-span(at, row)
+      save row, add(row, 1)
+  back at
+
+# the span moved to `row`, its columns kept
+task moved-span
+  take at, like span
+  take row, like number
+  like span
+  mark private
+
+  save start
+    make position
+      bind line, row
+      bind column, at/start/column
+  save end
+    make position
+      bind line, row
+      bind column, at/end/column
+  back
+    make span
+      bind start, start
+      bind end, end
+      bind file, at/file
+
+# the line after a realigned site: the next search starts there. A site that found no line leaves the floor where it was
+task floor-after
+  take before, like span
+  take after, like span
+  take want, like text
+  take lines, like list, like text
+  take floor, like number
+  like number
+  mark private
+
+  save row, after/start/line
+  fork test, is-below(row, lines/length)
+    hold
+      fork test, is-equal(substring(get(lines, row), after/start/column, add(after/start/column, want/length)), want)
+        hold
+          fork test, is-minimum(row, floor)
+            hold
+              back add(row, 1)
+  back floor
+
+task realign-notes
+  take sites, like list, like note-site
+  take source, like text
+  like list, like note-site
+  mark private
+
+  save lines, split(source, <\n>)
+  save floor, 0
+  save out, make list
+  walk sites
+    take site
+    save want, <note {site/word}>
+    save moved, realigned-span(site/span, want, lines, floor)
+    save floor, floor-after(site/span, moved, want, lines, floor)
+    save one
+      make note-site
+        bind word, site/word
+        bind span, moved
+    push(out, one)
+  back out
+
+# ---- the `wait true` markers ----
+#
+# `wait true` under a call says "await this call", which a call to an async TASK does with nothing written since the
+# default flipped (section 1). Read off the concrete tree for the same reason: the program cannot tell an await the
+# source wrote from one async resolution inserted.
+
+form wait-found
+  link callee, like text
+  link definition, like boolean
+  link span, like span
+
+task wait-true-sites
+  take tree, like root-node
+  take source, like text
+  like list, like wait-site
+
+  save found, make list
+  save top, make none
+  sift tree
+    case root
+      walk nodes
+        take group
+        save found, visit-waits(group, top, found)
+
+  save lines, split(source, <\n>)
+  save floor, 0
+  save out, make list
+  walk found
+    take site
+    save moved, realigned-span(site/span, <wait true>, lines, floor)
+    save floor, floor-after(site/span, moved, <wait true>, lines, floor)
+    save one
+      make wait-site
+        bind callee, site/callee
+        bind definition, site/definition
+        bind span, moved
+        bind remove, removal-of(moved, lines)
+    push(out, one)
+  back out
+
+# the sites given, with the `wait true` markers under `group` added; `parent` is the group above it
+task visit-waits
+  take group, like node
+  take parent, like maybe, like node
+  take found, like list, like wait-found
+  like list, like wait-found
+  mark private
+
+  sift parent
+    case some
+      link above
+      fork test, is-wait-true(group)
+        hold
+          sift span-of-node(group)
+            case some
+              link at
+              sift callee-of(above)
+                case some
+                  link callee
+                  save one
+                    make wait-found
+                      bind callee, callee/callee
+                      bind definition, callee/definition
+                      bind span, at
+                  push(found, one)
+                miss
+                  save found, found
+            miss
+              save found, found
+    miss
+      save found, found
+
+  sift group
+    case group
+      save at, 1
+      walk test
+        hook test, is-below(at, nodes/length)
+        hook hold
+          save child, get(nodes, at)
+          sift child
+            case group
+              save found, visit-waits(child, make(some, group), found)
+            miss
+              save found, found
+          save at, add(at, 1)
+    miss
+      back found
+  back found
+
+# `wait true`: a group whose head is `wait` and whose one other node is the word `true`, a bare one or a group of one
+task is-wait-true
+  take group, like node
+  like boolean
+  mark private
+
+  sift group
+    case group
+      fork test, is-unequal(nodes/length, 2)
+        hold
+          back false
+      fork test, is-unequal(word-or-empty(get(nodes, 0)), <wait>)
+        hold
+          back false
+      save second, get(nodes, 1)
+      fork test, is-unequal(word-or-empty(second), <true>)
+        hold
+          back false
+      sift second
+        case group
+          back is-equal(nodes/length, 1)
+        miss
+          back true
+    miss
+      back false
+
+form callee-found
+  link callee, like text
+  link definition, like boolean
+
+# the call a `wait true` sits under: `call f ...` names f, a bare head `f(x)` or `f` over arguments names f, and a
+# `task` is the definition marker
+task callee-of
+  take parent, like node
+  like maybe, like callee-found
+  mark private
+
+  sift head-word(parent)
+    case some
+      link head
+      fork test, or(is-equal(head, <task>), is-equal(head, <bind>))
+        hold
+          save defined, callee-record(second-word(parent), true)
+          back make(some, defined)
+      fork test, is-equal(head, <call>)
+        hold
+          save named, second-word(parent)
+          fork test, is-equal(named, <>)
+            hold
+              back make none
+          save called, callee-record(named, false)
+          back make(some, called)
+      save headed, callee-record(head, false)
+      back make(some, headed)
+    miss
+      back make none
+
+task callee-record
+  take callee, like text
+  take definition, like boolean
+  like callee-found
+  mark private
+
+  back
+    make callee-found
+      bind callee, callee
+      bind definition, definition
+
+# the word of a group's second node, or the empty text
+task second-word
+  take group, like node
+  like text
+  mark private
+
+  sift group
+    case group
+      fork test, is-below(nodes/length, 2)
+        hold
+          back <>
+      back word-or-empty(get(nodes, 1))
+    miss
+      back <>
+
+# the source to cut: `wait true` alone on its line takes the line with it, and `, wait true` after a call on the same
+# line takes the comma
+task removal-of
+  take at, like span
+  take lines, like list, like text
+  like span
+  mark private
+
+  save row, at/start/line
+  save line, <>
+  fork test, is-below(row, lines/length)
+    hold
+      save line, get(lines, row)
+
+  fork test, is-equal(trim(line), <wait true>)
+    hold
+      save start
+        make position
+          bind line, row
+          bind column, 0
+      save end
+        make position
+          bind line, add(row, 1)
+          bind column, 0
+      back
+        make span
+          bind start, start
+          bind end, end
+
+  # `/,\s*$/` on what comes before: a comma with only whitespace after it
+  save before, trim-end(substring(line, 0, at/start/column))
+  save from, at/start/column
+  fork test, ends-with(before, <,>)
+    hold
+      save from, subtract(before/length, 1)
+  save start
+    make position
+      bind line, row
+      bind column, from
+  save end
+    make position
+      bind line, row
+      bind column, add(at/start/column, 9)
+  back
+    make span
+      bind start, start
+      bind end, end

@@ -26,6 +26,8 @@
 //   term/hash.tree           every file with its sha256 and mode, so a second version installed shares the files the
 //                            first holds alike (note/term/plan/term-versions.md, "Disk")
 //   term/deck/base/code/     the stdlib, found by the walk up from host/ (resolve.ts `stdlibBase`)
+//   term/deck/feed/          `@term/feed`, the format readers, its deck.tree and code/, reached by name beside the
+//                            stdlib (resolve.ts `siblingResolver`)
 //   term/node_modules/       esbuild + @esbuild/<platform> (native, run by boot, test, walk, cast),
 //                            hono + @hono/node-server (linked into every `term boot` app, which imports them)
 //
@@ -98,7 +100,7 @@ const BANNER = [
   `if (typeof process.getBuiltinModule !== 'function') { process.stderr.write('term needs Node.js ${NODE_FLOOR} or newer, and this is ' + process.version + '.\\n'); process.exit(69) }`,
 ].join('\n')
 
-// The launcher on PATH. It follows its own symlink, because `~/.base/@cluesurf/term/bin/term` and a Homebrew
+// The launcher on PATH. It follows its own symlink, because `~/.base/@term/code/call/term` and a Homebrew
 // `bin/term` are both links to it, and the install is beside the file, not beside the link
 const LAUNCHER = `#!/bin/sh
 # The term command. Installed by https://term.surf/load or Homebrew; see note/term/plan/term-load-install.md.
@@ -119,7 +121,7 @@ exec node "$root/host/need.mjs" "$@"
 `
 
 // The Windows launcher, bin\term.cmd: the same check and the same call. `%~dp0` is the folder this file is in, and
-// `bin\term.cmd` under ~/.base/@cluesurf/term is a shim that calls this one (self.ts `link`), so this file is never the
+// `call\term.cmd` under ~/.base/@term/code is a shim that calls this one (self.ts `link`), so this file is never the
 // one replaced while it runs. CRLF, which cmd.exe reads either way and Notepad shows right
 const WINDOWS_LAUNCHER = [
   '@echo off',
@@ -280,6 +282,20 @@ function copyStdlib(into: string): void {
   })
 }
 
+// the packages that ship beside the stdlib, each with its manifest so the sibling resolver (resolve.ts
+// `siblingResolver`) reaches it by name from an installed `term`, as it does in this repository. `@term/feed` is the
+// format readers (JSON, hex, gzip, PDF and OpenType). Its tests and shelved drafts stay here: a draft builds nothing
+const SHIPPED_PACKAGES = ['feed']
+
+function copyShippedPackages(into: string): void {
+  for (const name of SHIPPED_PACKAGES) {
+    const from = path.join(TERM, 'deck', name)
+
+    cpSync(path.join(from, 'deck.tree'), path.join(into, 'deck', name, 'deck.tree'))
+    cpSync(path.join(from, 'code'), path.join(into, 'deck', name, 'code'), { recursive: true })
+  }
+}
+
 async function main(): Promise<void> {
   if (process.argv.includes('--ping')) {
     await pingReleased()
@@ -356,6 +372,7 @@ async function main(): Promise<void> {
 
     cpSync(path.join(common, 'host'), path.join(root, 'host'), { recursive: true })
     copyStdlib(root)
+    copyShippedPackages(root)
 
     writeFileSync(
       path.join(root, 'package.json'),

@@ -2,12 +2,14 @@
 // navigator.clipboard, which exists only on a secure page and answers only with the browser's grant (and, for a write,
 // while the page has focus). Outside a browser there is none, and the answers say so.
 
-const live = (): boolean => typeof navigator !== 'undefined' && typeof navigator.clipboard?.readText === 'function'
-
 export const nativeClipboard = {
+  live(): boolean {
+    return typeof navigator !== 'undefined' && typeof navigator.clipboard?.readText === 'function'
+  },
+
   // the text on the clipboard now, or empty text when it holds none or the browser refuses to say
   async read(): Promise<string> {
-    if (!live()) {
+    if (!nativeClipboard.live()) {
       return ''
     }
 
@@ -20,7 +22,7 @@ export const nativeClipboard = {
 
   // `written`, `denied` (no grant, or the page is not focused) or `unavailable` (no clipboard here)
   async write(text: string): Promise<string> {
-    if (!live()) {
+    if (!nativeClipboard.live()) {
       return 'unavailable'
     }
 

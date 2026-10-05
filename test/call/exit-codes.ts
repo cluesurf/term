@@ -442,9 +442,9 @@ view page
   ok('a fact under a used name is a change naming what it was', /~ change\s+integer-ratio/.test(again.out) && /was: Ratios use integer division/.test(again.out) && /Replaced/.test(again.out), again.out)
 
   const forgot = term(minded, 'mind', '--forget', 'integer-ratio')
-  const index = readFileSync(join(minded, '.base/@cluesurf/term/memory/index.md'), 'utf8')
+  const index = readFileSync(join(minded, '.base/@term/code/memory/index.md'), 'utf8')
 
-  ok('`--forget` removes the fact and its index line', forgot.status === 0 && /remove\s+integer-ratio/.test(forgot.out) && !existsSync(join(minded, '.base/@cluesurf/term/memory/integer-ratio.md')) && !index.includes('integer-ratio'), `${forgot.out}\n${index}`)
+  ok('`--forget` removes the fact and its index line', forgot.status === 0 && /remove\s+integer-ratio/.test(forgot.out) && !existsSync(join(minded, '.base/@term/code/memory/integer-ratio.md')) && !index.includes('integer-ratio'), `${forgot.out}\n${index}`)
 
   const unknown = term(minded, 'mind', '--forget', 'nothing-here')
 
@@ -460,7 +460,7 @@ view page
   spawnSync('git', ['-C', woken, 'init', '-q'])
   const ignored = (file: string): boolean => spawnSync('git', ['-C', woken, 'check-ignore', '-q', file]).status === 0
 
-  ok('a new project commits its memory and ignores its cache', !ignored('.base/@cluesurf/term/memory/index.md') && ignored('.base/@cluesurf/term/cache/x') && ignored('.base/other/x') && ignored('host/x.ts'), '')
+  ok('a new project commits its memory and ignores its cache', !ignored('.base/@term/code/memory/index.md') && ignored('.base/@term/code/cache/x') && ignored('.base/other/x') && ignored('host/x.ts'), '')
 }
 
 // ---- packages/decks: a deck under the project's own deck/ folder is linked by `term load` ----
@@ -674,7 +674,7 @@ view page
   const washed = mkdtempSync(join(tmpdir(), 'term-wash-boot-'))
   writeFileSync(join(washed, 'deck.tree'), 'deck demo\n  mark <0.0.1>\n')
 
-  for (const dir of ['.base/@cluesurf/term/boot/x', '.base/@cluesurf/term/client/y', 'build', 'work', 'host']) {
+  for (const dir of ['.base/@term/code/boot/x', '.base/@term/code/client/y', 'build', 'work', 'host']) {
     mkdirSync(join(washed, dir), { recursive: true })
   }
 
@@ -682,7 +682,7 @@ view page
 
   ok(
     '`term wash boot` removes boot/, client/, build/ and work/, and leaves host/',
-    boot.status === 0 && /Boot output removed/.test(boot.out) && !existsSync(join(washed, 'build')) && !existsSync(join(washed, 'work')) && !existsSync(join(washed, '.base/@cluesurf/term/boot')) && existsSync(join(washed, 'host')),
+    boot.status === 0 && /Boot output removed/.test(boot.out) && !existsSync(join(washed, 'build')) && !existsSync(join(washed, 'work')) && !existsSync(join(washed, '.base/@term/code/boot')) && existsSync(join(washed, 'host')),
     boot.out,
   )
 

@@ -44,7 +44,7 @@ task route-methods
   take route, like dock-route
   take file, like text
   take out, like list, like diagnostic
-  like void
+  like list, like diagnostic
   mark private
 
   fork test, route/page
@@ -61,7 +61,8 @@ task route-methods
         push(out, diagnose(name, input))
   walk route/children
     take child
-    route-methods(child, file, out)
+    save out, route-methods(child, file, out)
+  back out
 
 task check-route-methods
   take program, like list, like statement
@@ -75,7 +76,7 @@ task check-route-methods
       case dock
         fork test, is-in-file(span, file)
           hold
-            route-methods(route, file, out)
+            save out, route-methods(route, file, out)
       miss
         turn next
   back out

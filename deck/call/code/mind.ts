@@ -1,4 +1,4 @@
-// `term mind`: the project's durable memory -- one fact per file under `.base/@cluesurf/term/memory/`, with an index. This is what
+// `term mind`: the project's durable memory -- one fact per file under `.base/@term/code/memory/`, with an index. This is what
 // lets an unattended session (a disposable agent) start cold and still know the project's decisions and conventions.
 //
 //   term mind <fact>            remember a fact

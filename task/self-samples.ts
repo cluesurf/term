@@ -59,7 +59,7 @@ const env = {
   TERM_STORE: join(home, 'store'),
   COLUMNS: '76',
 }
-const bin = join(home, '.base', '@cluesurf', 'term', 'bin', 'term')
+const bin = join(home, '.base', '@term', 'code', 'call', 'term')
 
 function run(file: string, args: string[], cwd: string, extra: Record<string, string> = {}): Promise<string> {
   return new Promise(resolve => {

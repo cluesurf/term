@@ -120,12 +120,21 @@ writeFileSync(join(home, 'need.tree'), '\n')
 // 5  the newest installed
 ok('5. no request anywhere: the newest installed', is(run({ cwd: none }), 'run', '2.7.0', 'installed'), show(run({ cwd: none })))
 ok('   a version directory without an install.tree is not an install', !['2.9.0', '2.8.0'].includes((run({ cwd: none }) as { version: string }).version))
-mkdirSync(join(home, 'bin'), { recursive: true })
-symlinkSync(join('..', 'code', '2.6.2', 'term', 'bin', 'term'), join(home, 'bin', 'term'))
+mkdirSync(join(home, 'call'), { recursive: true })
+symlinkSync(join('..', 'code', '2.6.2', 'term', 'bin', 'term'), join(home, 'call', 'term'))
 ok('5. with a front, the front: `self back` and `self load` mean what they say', is(run({ cwd: none }), 'run', '2.6.2', 'installed'), show(run({ cwd: none })))
-ok('   frontOf reads the link', frontOf(home) === '2.6.2')
+ok('   frontOf reads the link, call/term', frontOf(home) === '2.6.2')
 ok('   a project still wins over the front', is(run({ cwd: sixes }), 'run', '2.6.4'))
-unlinkSync(join(home, 'bin', 'term'))
+unlinkSync(join(home, 'call', 'term'))
+
+// a home whose front is still `bin/`, as on Windows while the running term.cmd holds it (home.ts `frontDir`)
+{
+  const before = join(root, 'home-before')
+
+  mkdirSync(join(before, 'bin'), { recursive: true })
+  symlinkSync(join('..', 'code', '2.6.2', 'term', 'bin', 'term'), join(before, 'bin', 'term'))
+  ok('   frontOf reads bin/term where call/ does not exist yet', frontOf(before) === '2.6.2')
+}
 
 // the running copy counts as installed: a Homebrew 2.6.6 in a 2.6.x project runs itself, no handoff to 2.6.4
 {

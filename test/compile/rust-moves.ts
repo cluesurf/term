@@ -49,7 +49,7 @@ const builds = (label: string, text: string): { ok: boolean; errors: string } =>
 const lines = (text: string, pattern: RegExp): string => text.split('\n').filter(l => pattern.test(l)).join(' | ')
 
 // 1. List: the payload behind one `Rc`, and `tail`'s third call moving each list at its last read
-const list = rust(readFileSync(join(TERM, 'bench/list/term.tree'), 'utf8'), 'list-runs', 'bench/list/term.tree')
+const list = rust(readFileSync(join(TERM, 'mark/list/term.tree'), 'utf8'), 'list-runs', 'mark/list/term.tree')
 ok('list: a cloned form holds its payload in one Rc', /Link\(std::rc::Rc<ChainLink>\)/.test(list) && /struct ChainLink \{ value: i64, next: Chain \}/.test(list), lines(list, /Link|ChainLink/))
 ok('list: the third call moves z, x and y', /tail\(rest\(z\), x, y\)/.test(list), lines(list, /return tail/))
 ok('list: the earlier calls still clone', /tail\(rest\(x\.clone\(\)\), y\.clone\(\), z\.clone\(\)\)/.test(list), lines(list, /return tail/))

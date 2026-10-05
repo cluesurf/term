@@ -52,6 +52,8 @@ const LEVEL = 42
 const ACCELERATION = ['1.50', '2.50', '9.50']
 // the notification's title, found again in the platform's own list
 const TITLE = `Term device ${process.pid}`
+// an address the emulator's phone app handles, read back from the activity manager
+const PHONE = '5550100'
 const STATUSES = ['granted', 'denied', 'not-determined', 'restricted', 'unavailable']
 
 const phone = (leg: Leg): boolean => leg === 'ios' || leg === 'android' || leg === 'compose-android'
@@ -81,6 +83,8 @@ function calls(leg: Leg): Call[] {
     ...only(phone(leg), ['share', 'share-text', ['shared by device-features']]),
     ['motion', 'read-motion', []],
     ...only(leg !== 'macos' && leg !== 'compose', ['camera', 'take-photo', []]),
+    // last, because it puts another app in front, and a camera does not open for an app in the background
+    ...only(leg === 'android' || leg === 'compose-android', ['open-handled', 'open-address', [`tel:${PHONE}`]]),
   ]
 }
 
@@ -296,6 +300,14 @@ function judge(leg: Leg, toolkit: string, output: string): void {
 
   if (phone(leg)) {
     ok(`${named}: the share sheet comes up`, said('share') === 'shown', said('share'))
+  }
+
+  if (android) {
+    ok(`${named}: an address an app handles is opened`, said('open-handled') === 'opened', said('open-handled'))
+    const resumed = (adb(serial, 'shell', 'dumpsys', 'activity', 'activities').stdout ?? '').split('\n').filter(line => /ResumedActivity/.test(line)).join(' ')
+    ok(`${named}: and the phone app is the one in front`, /dialer/i.test(resumed), resumed.slice(0, 300))
+    // the phone app out of the way of the next leg
+    adb(serial, 'shell', 'input', 'keyevent', 'KEYCODE_HOME')
   }
 
   // motion

@@ -53,7 +53,7 @@ ok('point is slot-private, pin is not', fixture.forms.has('point') && !fixture.f
 ok('only the pair loop is written in place, both of its writes', JSON.stringify(fixture.writes) === JSON.stringify(['p:a', 'q:b']), fixture.writes.join(' | '))
 
 // 2. n-body: the four writes, and the TypeScript it drives
-const nbody = facts(readFileSync(join(TERM, 'mark/kernels/n-body/term.tree'), 'utf8'))
+const nbody = facts(readFileSync(join(TERM, 'deck/mark/kernels/n-body/term.tree'), 'utf8'))
 ok('n-body writes all four in place', nbody.writes.length === 4, nbody.writes.join(' | '))
 const ts = emitTypeScript(nbody.program)
 ok('TypeScript assigns the changed fields and allocates nothing', /bi\.vx = bi\.vx - dx \* mj/.test(ts) && !/__termPut\(bodies/.test(ts))
@@ -232,7 +232,7 @@ const swiftFacts = (text: string): { locals: string[]; swift: string } => {
   return { locals: [...locals.keys()].map(s => (s as { name?: string }).name ?? ''), swift: emitSwift(built.program) }
 }
 
-const swiftBody = swiftFacts(readFileSync(join(TERM, 'mark/kernels/n-body/term.tree'), 'utf8'))
+const swiftBody = swiftFacts(readFileSync(join(TERM, 'deck/mark/kernels/n-body/term.tree'), 'utf8'))
 ok(
   'Swift reads n-body\'s bodies through their slots and writes only the changed fields',
   /bodies\[i\]\.vx = \(bodies\[i\]\.vx - \(dx \* mj\)\)/.test(swiftBody.swift) && !/let bi = /.test(swiftBody.swift),

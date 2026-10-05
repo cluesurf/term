@@ -1,6 +1,10 @@
-// `term feed [entry]`: the dev server. Compiles the app in per-module mode, serves each module lazily over native
-// ESM, and hot-reloads on change over SSE (it "feeds" live updates to the browser). The entry is an argument or the
-// `deck.tree` boot entry. Stays alive until interrupted. See code/dev/server.ts.
+// The browser development server: `term boot --env browser` in development (`term boot`, `term boot moon`). Compiles
+// the app in per-module mode, serves each module lazily over native ESM, and hot-reloads on change over SSE. The entry
+// is an argument or the `deck.tree` boot entry. Stays alive until interrupted. See code/dev/server.ts.
+//
+// It was `term feed` until 2026-10-05, when the development server became `term boot`'s own mode (`moon`, `dev`,
+// `development`, the default) beside production (`star`, `prod`, `production`). `term feed` now refuses and names
+// `term boot` (`refuseFeed`), and `@term/feed`, the package of readers, has the word to itself.
 //
 // A SERVICE in the terminal output standard's sense (section 11): a `start` item with its address, a `reload` item
 // per hot-applied file, and on ctrl-c the closing `Stopped` item with the uptime, exit 130.
@@ -11,15 +15,31 @@ import { startDevServer } from '@term/call/code/dev/server'
 import { findEntry, portIsFree } from '@term/call/code/boot'
 import type { NativeEnv } from '@term/make/code/compile/native'
 import { closeRun, failRun, field, location, openRun, report, showPath } from '@term/call/code/output'
+import { ANY_HOME } from '@term/call/code/home'
 import { readTree } from '@term/deck/code/read'
 
-export async function callFeed(input: {
+// `term feed`: the development server is `term boot`, and this says so
+export function refuseFeed(input: { root: string }): void {
+  openRun({ verb: 'feed', root: input.root })
+  report({ glyph: 'failed', kind: 'problem', subject: 'The development server is term boot, and term feed no longer starts it' })
+  process.exitCode = closeRun({
+    verdict: 'Nothing was started',
+    failure: 'usage',
+    next: 'term boot, which is term boot moon (development), or term boot star (production)',
+  })
+}
+
+export async function serveBrowserDevelopment(input: {
   root: string
   entry?: string
   port?: number
   env?: NativeEnv
+  // the run this serves under: `term boot` opens its own
+  open?: boolean
 }): Promise<void> {
-  openRun({ verb: 'feed', root: input.root })
+  if (input.open !== false) {
+    openRun({ verb: 'boot', root: input.root, facts: ['development', 'browser'] })
+  }
 
   // ctrl-c is answered from the opening item on, the port checks and the cold build included: the handler was added
   // after `start`, so an interrupt during the first compile met node's default, exit 130 and no closing item (guides:
@@ -55,7 +75,7 @@ export async function callFeed(input: {
     let port = input.port ?? 5173
 
     if (input.port !== undefined && !(await portIsFree(input.port))) {
-      report({ glyph: 'failed', kind: 'problem', subject: `Port ${input.port} is in use`, fields: [field('next', `term halt -p ${input.port}, or term feed -p <another port>`)] })
+      report({ glyph: 'failed', kind: 'problem', subject: `Port ${input.port} is in use`, fields: [field('next', `term halt -p ${input.port}, or term boot -p <another port>`)] })
       closeRun({ verdict: 'Not started', failure: 'environment' })
 
       return
@@ -96,7 +116,8 @@ export async function callFeed(input: {
           return
         }
 
-        if (file.includes('/.base/@cluesurf/term/') || file.includes('/host/')) {
+        // the watched name is relative, so a leading separator lets a folder at the top match too
+        if (ANY_HOME.test(`/${file}`) || file.includes('/host/')) {
           return
         }
 

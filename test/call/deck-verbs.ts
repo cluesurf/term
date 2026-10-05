@@ -18,7 +18,7 @@
 // Both were only ever going to be found by running the verb and then building, which is what this does.
 //
 // HOME IS REDIRECTED. `term link` with no argument registers the current package in the user-level link registry
-// under `~/.base/@cluesurf/term`, and a test must not write into the real one.
+// under `~/.base/@term/code`, and a test must not write into the real one.
 //
 // Run: npx tsx test/call/deck-verbs.ts
 
@@ -171,7 +171,7 @@ ok('`link` registers the package for development', /demo/.test(linked), linked)
 
 ok(
   '`link` wrote into the redirected HOME and nowhere else',
-  existsSync(join(home, '.base/@cluesurf/term/link')) ||
+  existsSync(join(home, '.base/@term/code/link')) ||
     existsSync(join(home, '.base/term/link')),
   linked,
 )

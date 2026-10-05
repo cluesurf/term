@@ -57,7 +57,8 @@ abstract class TermComposeActivity : androidx.activity.ComponentActivity() {
 
     // the platform's answer to a permission request (view/native/toolkit/runtime/native-permission.kt)
     @Deprecated("the framework's callback, which a ComponentActivity still delivers")
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+    // `Array<String>`, AndroidX's declaration of it, where the framework's Activity says `Array<out String>`
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
         @Suppress("DEPRECATION")
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         for (body in hostPermissionAnswers.toList()) body(requestCode)

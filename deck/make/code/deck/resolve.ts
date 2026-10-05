@@ -182,12 +182,12 @@ export function storePath(
   deck: string,
   version: string,
 ): string {
-  return `${home}/.base/@cluesurf/term/deck/link/${host}/${deck}/${version}`
+  return `${home}/.base/@term/code/deck/link/${host}/${deck}/${version}`
 }
 
 // the content-addressed file path in the shared tree store
 export function treePath(home: string, hash: string): string {
-  return `${home}/.base/@cluesurf/term/deck/tree/${hash.slice(0, 2)}/${hash}`
+  return `${home}/.base/@term/code/deck/tree/${hash.slice(0, 2)}/${hash}`
 }
 
 // the unified entry: resolve any load target

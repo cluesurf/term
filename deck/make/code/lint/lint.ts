@@ -19,14 +19,11 @@ import type {
 } from '@term/make/code/lint/rule'
 import { tellMissing, tellOfFailure, tellReveals } from '@term/make/code/lint/rules/tell-advice'
 import { unhandledRaise } from '@term/make/code/lint/rules/unhandled-raise'
-import { preferHostForConstant } from '@term/make/code/lint/rules/prefer-host-for-constant'
 import { dataGrammar } from '@term/make/code/lint/rules/data-grammar'
-import { preferSift } from '@term/make/code/lint/rules/prefer-sift'
-import { preferSingleBrace } from '@term/make/code/lint/rules/prefer-single-brace'
 import { lineLayout } from '@term/make/code/lint/rules/line-layout'
-import { noteMetadata } from '@term/make/code/lint/rules/note-metadata'
 import { redundantWait } from '@term/make/code/lint/rules/redundant-wait'
 import { parse } from '@term/make/code/parser/tree'
+import type { RootNode } from '@term/make/code/parser/tree'
 import * as ruleCheck from '@term/make/code/lint/rule-check'
 
 // A rule ported to Term (lint/rule-check.tree), as the driver's `Rule`. The Term side answers its reports, and a fix
@@ -45,24 +42,36 @@ export function portedRule(name: ruleCheck.PortedRule): Rule {
       const facts = (context.memo.facts ??= {
         referenced: [...context.referenced],
         duplicateLoads: [...context.duplicateLoads],
+        reassigned: [...context.reassigned],
       }) as ruleCheck.LintFacts
       const reports =
         target.kind === 'statement'
           ? ruleCheck.checkStatement(name, target.node, facts)
           : ruleCheck.checkExpression(name, target.node, facts)
 
-      for (const report of reports) {
-        const fix = report.fix
-
-        context.report({
-          message: report.message,
-          span: report.span,
-          ...(fix
-            ? { fix: { span: fix.span, text: fix.form === 'put' ? fix.text : fix.prefix + context.slice(fix.from) } }
-            : {}),
-        })
-      }
+      reportAll(reports, context)
     },
+    // only a rule that reads the concrete tree and the source has this, so the driver parses only when one is on
+    ...(ruleCheck.readsSource(name)
+      ? { checkSource: (tree: RootNode, context: LintContext) => reportAll(ruleCheck.checkSource(name, tree, context.source, context.lean), context) }
+      : {}),
+  }
+}
+
+// a ported rule's reports, through the driver's context: a fix that copies source text is sliced here, and a
+// `put-where` fix is offered only where the source at its span reads what the rule expected
+function reportAll(reports: ruleCheck.RuleReport[], context: LintContext): void {
+  for (const report of reports) {
+    const fix = report.fix
+    const offered = fix && (fix.form !== 'put-where' || context.slice(fix.span) === fix.written) ? fix : undefined
+
+    context.report({
+      message: report.message,
+      span: report.span,
+      ...(offered
+        ? { fix: { span: offered.span, text: offered.form === 'copy' ? offered.prefix + context.slice(offered.from) : offered.text } }
+        : {}),
+    })
   }
 }
 
@@ -73,7 +82,7 @@ const MAX_LINE_LENGTH = 84
 export const RULES: Rule[] = [
   portedRule('kebab-names'),
   portedRule('no-redundant-arithmetic'),
-  preferHostForConstant,
+  portedRule('prefer-host-for-constant'),
   portedRule('no-empty-block'),
   portedRule('no-constant-condition'),
   portedRule('no-self-comparison'),
@@ -103,10 +112,10 @@ export const RULES: Rule[] = [
   portedRule('no-empty-fork-case'),
   portedRule('no-duplicate-map-key'),
   dataGrammar,
-  preferSift,
-  preferSingleBrace,
+  portedRule('prefer-sift'),
+  portedRule('prefer-single-brace'),
   lineLayout,
-  noteMetadata,
+  portedRule('note-metadata'),
   redundantWait,
   tellMissing,
   tellOfFailure,

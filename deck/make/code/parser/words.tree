@@ -1,0 +1,157 @@
+# The words of the concrete tree, for a Term reader of it: a node's word, a group's head word, and where a node
+# starts. compile/mill-run.ts answers the same questions for the TypeScript readers (`wordOf`, `headWord`,
+# `spanOfNode`), with `undefined` where these answer `none`.
+#
+# Written for self-hosting, 2026-10-05, check/note-metadata.tree its first reader, and paired against mill-run's
+# readers on every group of every file (tmp/pair-words.ts).
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load ./diagnostic
+  find span
+
+load ./tree
+  find node
+
+# the word a name spells, or a group's head name spells: its chunks, and an interpolation as written (`{platform}` in a
+# load path is part of the word, its braces holding the first name's chunks)
+task word-of
+  take one, like node
+  like maybe, like text
+
+  sift one
+    case name
+      save out, <>
+      walk parts
+        take part
+        sift part
+          case chunk
+            link written
+            save out, <{out}{written}>
+          case interpolation
+            save out, <{out}\{{hole-word(group)}\}>
+          miss
+            save out, out
+      back make(some, out)
+    case group
+      fork test, is-equal(nodes/length, 0)
+        hold
+          back make none
+      save first, get(nodes, 0)
+      sift first
+        case name
+          back word-of(first)
+        miss
+          back make none
+    miss
+      back make none
+
+# what an interpolation's braces show of their group: the chunks of its first node when that is a name
+task hole-word
+  take group, like maybe, like node
+  like text
+  mark private
+
+  sift group
+    case some
+      link held
+      sift held
+        case group
+          fork test, is-equal(nodes/length, 0)
+            hold
+              back <>
+          save first, get(nodes, 0)
+          sift first
+            case name
+              save out, <>
+              walk parts
+                take part
+                sift part
+                  case chunk
+                    link written
+                    save out, <{out}{written}>
+                  miss
+                    save out, out
+              back out
+            miss
+              back <>
+        miss
+          back <>
+    miss
+      back <>
+
+# a group's head word, when its head is a name
+task head-word
+  take group, like node
+  like maybe, like text
+
+  sift group
+    case group
+      fork test, is-equal(nodes/length, 0)
+        hold
+          back make none
+      save first, get(nodes, 0)
+      sift first
+        case name
+          back word-of(first)
+        miss
+          back make none
+    miss
+      back make none
+
+# the word, or the empty text when there is none
+task word-or-empty
+  take one, like node
+  like text
+
+  sift word-of(one)
+    case some
+      link found
+      back found
+    miss
+      back <>
+
+# the source span a node starts at (its first token's), so a reader's diagnostic can point at the line
+task span-of-node
+  take one, like node
+  like maybe, like span
+
+  sift one
+    case name
+      back first-chunk-span(parts)
+    case text
+      back first-chunk-span(parts)
+    case integer
+      back make(some, span)
+    case decimal
+      back make(some, span)
+    case radix
+      back make(some, span)
+    case group
+      fork test, is-equal(nodes/length, 0)
+        hold
+          back make none
+      back span-of-node(get(nodes, 0))
+    miss
+      back make none
+
+task first-chunk-span
+  take parts, like list, like node
+  like maybe, like span
+  mark private
+
+  fork test, is-equal(parts/length, 0)
+    hold
+      back make none
+  save first, get(parts, 0)
+  sift first
+    case chunk
+      back make(some, span)
+    miss
+      back make none

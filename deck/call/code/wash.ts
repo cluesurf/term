@@ -2,27 +2,19 @@ import fsp from 'fs/promises'
 import path from 'path'
 import { closeRun, count, field, openRun, report, showPath } from '@term/call/code/output'
 import { cacheHome } from '@term/call/code/cache-store'
+import { HOME_POSIX, projectHome } from '@term/call/code/home'
 
-// `.base/term/cache` is the PRE-RENAME path, kept here on purpose. `.base/term/` became
-// `.base/@cluesurf/term/` on 2026-08-30, and a cache deliberately does not travel through `keptAt` on a rename
-// because the next build regenerates it. Nothing said what happens to the old copy, so it was left behind whole and
-// nothing ever looked at it again: 13 GB of it in `deck/bind` alone by 2026-09-01. A clean means both.
-const BUILD_DIRS = [
-  'host',
-  'make',
-  'hold',
-  '.base/@cluesurf/term/cache',
-  '.base/term/cache',
-]
+// EVERY NAME THE FOLDER HAS HAD, kept here on purpose. `.base/term/` became `.base/@cluesurf/term/` on 2026-08-30 and
+// `.base/@term/code/` on 2026-10-05 (home.ts). The first rename left the old cache behind whole, and nothing ever
+// looked at it again: 13 GB of it in `deck/bind` alone by 2026-09-01. The second MOVES the folder and leaves a link,
+// but a move Windows refused leaves the old folder the live one, so a clean names all three
+const HOMES = [HOME_POSIX, '.base/@cluesurf/term']
+
+const BUILD_DIRS = ['host', 'make', 'hold', ...HOMES.map(home => `${home}/cache`), '.base/term/cache']
 
 // what `term boot` and `term cast` write: the program boot runs, the browser bundles by content, the bundle and its
 // import map, and the Worker. Each is written again by the next boot or cast
-const BOOT_DIRS = [
-  '.base/@cluesurf/term/boot',
-  '.base/@cluesurf/term/client',
-  'build',
-  'work',
-]
+const BOOT_DIRS = [...HOMES.flatMap(home => [`${home}/boot`, `${home}/client`]), 'build', 'work']
 
 const TARGETS = ['deck', 'tail', 'boot', 'base']
 
@@ -104,7 +96,7 @@ export async function callWash(input: {
   }
 
   if (input.target === 'tail') {
-    const logDir = path.join(input.root, '.base/@cluesurf/term', 'log')
+    const logDir = projectHome(input.root, 'log')
 
     try {
       // a removal is reported only when there was something to remove
@@ -115,7 +107,7 @@ export async function callWash(input: {
       await fsp.rm(logDir, { recursive: true, force: true })
 
       if (existed) {
-        report({ glyph: 'removed', kind: 'change', verb: 'remove', subject: '.base/@cluesurf/term/log/' })
+        report({ glyph: 'removed', kind: 'change', verb: 'remove', subject: `${showPath(logDir, input.root)}/` })
       }
 
       closeRun({ verdict: existed ? 'Logs cleared' : 'No logs to clear', done: existed })

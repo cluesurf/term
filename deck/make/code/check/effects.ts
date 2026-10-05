@@ -937,9 +937,10 @@ export function raiseSets(
     if (sawNative) {
       nativeShims.add(name)
 
-      if (exceptions.has('failure')) {
-        direct.add('failure')
-      }
+      // whether or not this program holds the `failure` form, as a `halt <text>` raises it either way: the set was
+      // read off the closure, so one task's raises changed with whichever entry built it, and the roll kept the first
+      // (task/term/roll-cover.ts found `float-floor` raising in some entries' rolls and not in others, 2026-10-05)
+      direct.add('failure')
 
       for (const declared of statement.raises ?? []) {
         if (exceptions.has(declared)) {

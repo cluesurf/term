@@ -106,8 +106,8 @@ const env = {
   TERM_TRUST_DIR: join(home, 'trust'),
   TERM_STORE: join(home, 'store'),
 }
-const base = join(home, '.base', '@cluesurf', 'term')
-const bin = join(base, 'bin', 'term')
+const base = join(home, '.base', '@term', 'code')
+const bin = join(base, 'call', 'term')
 
 const first = join(base, 'code', VERSION)
 
@@ -155,10 +155,10 @@ try {
   ok('the loader names the PATH line for this terminal', /export PATH=/.test(loaded.out), loaded.out)
 
   const profile = () => (existsSync(join(home, '.zshrc')) ? readFileSync(join(home, '.zshrc'), 'utf8') : '')
-  ok('the loader puts bin on PATH for new shells, one marked line in ~/.zshrc', profile().split('.base/@cluesurf/term/bin').length === 2 && /# term \(https:\/\/term\.surf\/load\)\nexport PATH="\$HOME\/\.base\/@cluesurf\/term\/bin:\$PATH"/.test(profile()) && /\+ path ~\/\.zshrc/.test(loaded.out), `${profile()}\n${loaded.out}`)
+  ok('the loader puts call/ on PATH for new shells, one marked line in ~/.zshrc', profile().split('.base/@term/code/call').length === 2 && /# term \(https:\/\/term\.surf\/load\)\nexport PATH="\$HOME\/\.base\/@term\/code\/call:\$PATH"/.test(profile()) && /\+ path ~\/\.zshrc/.test(loaded.out), `${profile()}\n${loaded.out}`)
 
   const reloaded = await load({ TERM_LOAD_VERSION: VERSION })
-  ok('   and a second install leaves it as it is', reloaded.code === 0 && profile().split('.base/@cluesurf/term/bin').length === 2 && /○ path ~\/\.zshrc/.test(reloaded.out), `${profile()}\n${reloaded.out}`)
+  ok('   and a second install leaves it as it is', reloaded.code === 0 && profile().split('.base/@term/code/call').length === 2 && /○ path ~\/\.zshrc/.test(reloaded.out), `${profile()}\n${reloaded.out}`)
 
   // eval "$(curl … | sh)": the one line on stdout puts term on THIS shell's PATH, so the same shell runs it next
   const evaluated = await new Promise<{ code: number; out: string; stdout: string }>(resolve => {
@@ -175,7 +175,7 @@ try {
   })
   ok(
     'eval "$(… | sh)" puts term on the PATH of the shell that ran it, and stdout holds that one line alone',
-    evaluated.code === 0 && evaluated.out.includes(`${VERSION}\n`) && /^export PATH="[^"]+\/\.base\/@cluesurf\/term\/bin:\$PATH"; hash -r 2>\/dev\/null \|\| true\n$/.test(evaluated.stdout),
+    evaluated.code === 0 && evaluated.out.includes(`${VERSION}\n`) && /^export PATH="[^"]+\/\.base\/@term\/code\/call:\$PATH"; hash -r 2>\/dev\/null \|\| true\n$/.test(evaluated.stdout),
     `${evaluated.stdout}\n${evaluated.out}`,
   )
 
@@ -186,7 +186,7 @@ try {
     'the loader prints one run in the output standard: opening and closing `load` items, every other line an item or under one',
     // v3 (note/term/output/standard.md): `glyph verb subject` at column 0, every child line two cells in, and the
     // opening's clock only in a service (section 2), which an install is not
-    /(^|\n)● load ~\/\.base\/@cluesurf\/term\n {2}(\d\d:\d\d:\d\d\.\d{3} · )?term\.surf\/load\n/.test(loaded.out) &&
+    /(^|\n)● load ~\/\.base\/@term\/code\n {2}(\d\d:\d\d:\d\d\.\d{3} · )?term\.surf\/load\n/.test(loaded.out) &&
       // ▲ when this machine has another `term` on PATH (an npm global), which the loader names: the worst glyph closes
       new RegExp(`[✓▲] load term ${VERSION.replace(/\./g, '\\.')} is installed`).test(loaded.out) &&
       loaded.out.split('\n').every(line => line === '' || /^[✓✗▲●○◐?+−~] [a-zA-Z]+ \S/.test(line) || line.startsWith('  ') || line.startsWith('export PATH=')),
@@ -323,7 +323,7 @@ try {
   // with no version named, the loader takes the newest, into a second machine
   const fresh = mkdtempSync(join(tmpdir(), 'term-load-'))
   const latest = await load({ HOME: fresh, TERM_TRUST_DIR: join(fresh, 'trust'), TERM_STORE: join(fresh, 'store') })
-  ok(`the loader with no version installs the newest, ${NEXT}`, latest.code === 0 && existsSync(join(fresh, '.base', '@cluesurf', 'term', 'code', NEXT, 'install.tree')), latest.out)
+  ok(`the loader with no version installs the newest, ${NEXT}`, latest.code === 0 && existsSync(join(fresh, '.base', '@term', 'code', 'code', NEXT, 'install.tree')), latest.out)
 
   // a platform the release does not carry is named, and nothing is installed
   const absent = await load({ HOME: fresh, TERM_LOAD_VERSION: '9.9.9' })

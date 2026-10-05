@@ -909,6 +909,22 @@ export function assembleIosBundle({
   return { app, exe: path.join(app, name), resources: app }
 }
 
+// The usage strings a program's device capabilities need (device-declare.ts), added to an Info.plist already written:
+// a cask's bundle is made before its program is compiled, so its capabilities are known only after. A key the plist
+// already carries is left as it is
+export function declareUsage(input: { plist: string; native: string }): void {
+  if (!existsSync(input.plist)) {
+    return
+  }
+
+  const text = readFileSync(input.plist, 'utf8')
+  const missing = Object.entries(appleUsage(input.native)).filter(([key]) => !text.includes(`<key>${key}</key>`))
+
+  if (missing.length > 0) {
+    writeFileSync(input.plist, text.replace('</dict></plist>', `${missing.map(([key, said]) => `<key>${key}</key><string>${said}</string>`).join('')}</dict></plist>`))
+  }
+}
+
 // a booted iOS simulator to run a cask on, or the reason there is none. Boots the first available iPhone when none
 // is booted; creating a device needs a runtime, and installing one is `xcodebuild -downloadPlatform iOS`
 export function simulator(): { udid: string } | { missing: string } {
@@ -1123,6 +1139,8 @@ export async function makeCask(input: {
     target: input.target,
   })
   report({ glyph: 'done', verb: 'build', subject: 'program', duration: Date.now() - programStarted, facts: [input.target] })
+  // the usage strings its device capabilities need, now that the program is known, before the bundle is signed
+  declareUsage({ plist: input.target === 'ios' ? path.join(bundle.app, 'Info.plist') : path.join(bundle.app, 'Contents', 'Info.plist'), native: program.native })
   const stamped = stampRuntimeVersion({ target: input.target, native: program.native, into: bundle.resources })
   stampUpdateKey({ identifier, into: bundle.resources })
   publishBuilt({ publish: input.publish, channel: input.channel, page: pageDir, identifier, platform: input.target, runtimeVersion: stamped.hex })
@@ -1256,7 +1274,7 @@ async function makeAndroidCask({
   const stamped = stampRuntimeVersion({ target: 'android', native, into: assets })
   stampUpdateKey({ identifier, into: assets })
   publishBuilt({ publish, channel, page: path.join(assets, 'webview'), identifier, platform: 'android', runtimeVersion: stamped.hex })
-  const apk = assembleApk({ out, name, identifier, version, dex, assets, work })
+  const apk = assembleApk({ out, name, identifier, version, dex, assets, work, native })
   launchOn(androidDevice(), found => launchOnAndroid({ serial: found.serial, apk, identifier }), 'device')
   finishCask(root, apk, `${name} built for android, debug signed`)
 

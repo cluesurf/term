@@ -1,0 +1,299 @@
+# A pattern literal is read when the program is built (regex-engine-0007).
+#
+# `make pattern, <...>` with a text literal is read by @term/base/pattern's own reader and analysis, through the
+# ported check/pattern-literal.tree, so the build and the program read it identically:
+#
+#   not a pattern                      refused, `pattern-mismatch`, at the literal, naming the position and why. It
+#                                      built, and the program raised the same thing the first time it ran
+#   lands on the backtracking tier     a warning, `pattern-backtracks`, naming what put it there (a back reference,
+#                                      an atomic group, a possessive repetition the analysis could not rewrite)
+#
+# Only the stdlib's `pattern` form is read, never a form of the same name a program declares, and only the file
+# being compiled. A pattern built at run time is the program's to handle.
+#
+# Ported from check/patterns.ts (self-hosting, 2026-10-05). It walked the file's statements by reflection; here it
+# reads compile/node-walk's list of their expressions.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find char-at
+  find char-count
+  find contains
+  find ends-with
+  find starts-with
+  find substring
+
+load ../parser/diagnostic
+  find diagnostic
+  find diagnose
+  find diagnostic-input
+  find span
+
+load ../compile/node
+  find expression
+  find field-value
+  find statement
+
+load ../compile/node-walk
+  find expressions-in
+
+load ./pattern-literal
+  find literal-pattern
+  find read-literal-pattern
+
+form pattern-findings
+  link errors, like list, like diagnostic
+  link warnings, like list, like diagnostic
+
+# the texts read so far and their readings, side by side: every lookup may add one, so it is `mark shared` (D1)
+form readings
+  mark shared
+  link sources, like list, like text
+  link found, like list, like literal-pattern
+
+task reading-of
+  take cache, like readings
+  take source, like text
+  like literal-pattern
+  mark private
+
+  walk cache/sources
+    take one
+    take at
+    fork test, is-equal(one, source)
+      hold
+        back get(cache/found, at)
+  save reading, read-literal-pattern(source)
+  push(cache/sources, source)
+  push(cache/found, reading)
+  back reading
+
+host word-chars, <abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_>
+
+task is-stdlib-pattern-file
+  take at, like span
+  like boolean
+  mark private
+
+  sift at/file
+    case some
+      link written
+      back or(ends-with(written, <deck/base/code/pattern.tree>), ends-with(written, <@term/base/pattern>))
+    case none
+      back false
+
+# `pattern`, or `pattern__in` and one or more word characters, the name binding by file gives it
+task is-pattern-name
+  take name, like text
+  like boolean
+  mark private
+
+  fork test, is-equal(name, <pattern>)
+    hold
+      back true
+  fork test, not(starts-with(name, <pattern__in>))
+    hold
+      back false
+  save count, char-count(name)
+  fork test, is-maximum(count, 11)
+    hold
+      back false
+  save at, 11
+  walk test
+    hook test, is-below(at, count)
+    hook hold
+      fork test, not(contains(word-chars, char-at(name, at)))
+        hold
+          back false
+      save at, add(at, 1)
+  back true
+
+task is-in-file
+  take at, like span
+  take file, like text
+  like boolean
+  mark private
+
+  sift at/file
+    case some
+      link written
+      back is-equal(written, file)
+    case none
+      back false
+
+# the literal text a `make pattern` record holds, by position or by `bind text`, when it is a plain literal: the first
+# positional value when there is one, else the field named `text`
+task literal-of
+  take positional, like list, like expression
+  take fields, like list, like field-value
+  like maybe, like expression
+  mark private
+
+  fork test, is-above(positional/length, 0)
+    hold
+      save first, get(positional, 0)
+      back plain-literal(first)
+  walk fields
+    take one
+    fork test, is-equal(one/name, <text>)
+      hold
+        back plain-literal(one/value)
+  back make none
+
+task plain-literal
+  take value, like expression
+  like maybe, like expression
+  mark private
+
+  sift value
+    case string
+      back make(some, value)
+    miss
+      back make none
+
+task has-name
+  take names, like list, like text
+  take name, like text
+  like boolean
+  mark private
+
+  walk names
+    take one
+    fork test, is-equal(one, name)
+      hold
+        back true
+  back false
+
+task check-patterns
+  take program, like list, like statement
+  take file, like text
+  like pattern-findings
+
+  save errors, make list
+  save warnings, make list
+
+  # the names the stdlib's `pattern` form goes by in this program: its own, or the one binding by file gave it
+  save pattern-names, make list
+  walk program
+    take one
+    sift one
+      case record-type
+        fork test, and(is-stdlib-pattern-file(span), is-pattern-name(name))
+          hold
+            fork test, not(has-name(pattern-names, name))
+              hold
+                push(pattern-names, name)
+      miss
+        turn next
+
+  save none-found
+    make pattern-findings
+      bind errors, errors
+      bind warnings, warnings
+  fork test, is-equal(pattern-names/length, 0)
+    hold
+      back none-found
+
+  # every statement of the file: a task's body, and a top-level `host` constant holding a pattern
+  save in-file, make list
+  walk program
+    take one
+    fork test, is-in-file(one/span, file)
+      hold
+        push(in-file, one)
+
+  # one reading per distinct text: a literal repeated across a file is read once
+  save cache
+    make readings
+      bind sources, make list
+      bind found, make list
+  walk expressions-in(in-file)
+    take expression
+    sift expression
+      case record
+        fork test, has-name(pattern-names, name)
+          hold
+            save held, literal-of(positional, fields)
+            sift held
+              case some
+                link literal
+                sift literal
+                  case string
+                    link source
+                    save literal-span, span
+                    save reading, reading-of(cache, source)
+                    save shown, shown-of(source)
+                    fork test, reading/refused
+                      hold
+                        push(errors, mismatch(file, literal-span, shown, reading))
+                      miss
+                        fork test, is-above(reading/backtracks/length, 0)
+                          hold
+                            push(warnings, backtracks(file, literal-span, shown, reading))
+                  miss
+                    turn next
+              case none
+                turn next
+      miss
+        turn next
+
+  back
+    make pattern-findings
+      bind errors, errors
+      bind warnings, warnings
+
+task shown-of
+  take source, like text
+  like text
+  mark private
+
+  fork test, is-above(source/length, 60)
+    hold
+      save head, substring(source, 0, 57)
+      back <{head}...>
+  back source
+
+task mismatch
+  take file, like text
+  take at, like span
+  take shown, like text
+  take reading, like literal-pattern
+  like diagnostic
+  mark private
+
+  save why, reading/reason
+  save position, reading/at
+  save message, <`{shown}` is not a pattern: {why}>
+  fork test, is-minimum(position, 0)
+    hold
+      save message, <{message}, at code point {position}>
+  save input
+    make diagnostic-input
+      bind file, file
+      bind span, at
+      bind message, make(some, message)
+  save name, make pattern-mismatch
+  back diagnose(name, input)
+
+task backtracks
+  take file, like text
+  take at, like span
+  take shown, like text
+  take reading, like literal-pattern
+  like diagnostic
+  mark private
+
+  save because, reading/backtracks
+  save input
+    make diagnostic-input
+      bind file, file
+      bind span, at
+      bind message, make(some, <`{shown}` needs a backtracking matcher, because of {because}: where the platform's engine cannot run it safely (Rust always) it runs on tier C, which allows 64 steps per instruction per code point of the input and raises `pattern-budget` past that>)
+  save name, make pattern-backtracks
+  back diagnose(name, input)
