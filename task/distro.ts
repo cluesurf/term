@@ -16,7 +16,8 @@
 //   repo/apt/, repo/rpm/                 the repositories as --commit writes them, with the versions they kept
 //
 // THE KEY NEVER ENTERS A CONTAINER. The containers build packages and indexes and sign nothing; Release and repomd.xml
-// are signed here, by gpg, with TERM_DISTRO_KEY (the key `deck/task`'s repositories were made for, by default).
+// are signed here, by gpg, with TERM_DISTRO_KEY (the key `deck/task`'s repositories were made for, by default), which
+// asks for its passphrase once on the terminal. test/call/distro.ts signs with a throwaway key in its own GNUPGHOME.
 //
 // NODE IS RECOMMENDED, NOT REQUIRED, by the .deb and the .rpm. The launcher runs the `node` on PATH, so a Node from
 // nvm, fnm or a tarball, which no package manager can see, works, and one too old is named by the launcher itself.
@@ -350,8 +351,19 @@ function container(input: { image: string; mounts: Record<string, string>; env: 
   ])
 }
 
+// gpg asks for the key's passphrase through pinentry, which draws on the terminal GPG_TTY names. This run captures
+// gpg's output, so it names the terminal itself; with no terminal (a test's throwaway key in GNUPGHOME has no
+// passphrase) gpg runs in batch mode
 function gpg(args: string[]): void {
-  run('gpg', ['--batch', '--yes', '--local-user', KEY, ...args])
+  if (!process.env.GPG_TTY && process.stdin.isTTY) {
+    try {
+      process.env.GPG_TTY = execFileSync('tty', { stdio: ['inherit', 'pipe', 'ignore'], encoding: 'utf8' }).trim()
+    } catch {
+      // no terminal after all: batch mode below
+    }
+  }
+
+  run('gpg', [...(process.env.GPG_TTY ? [] : ['--batch']), '--yes', '--local-user', KEY, ...args])
 }
 
 // A child's output is captured and shown only when it fails, under the item that ran it

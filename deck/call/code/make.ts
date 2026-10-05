@@ -1170,9 +1170,13 @@ export function compileProjectSeparate(
 // Debounced so a burst of saves triggers one rebuild. Runs until the process is killed.
 export function watchProject(root: string, merged = false): void {
   const cache = projectCache(root)
-  // the unit answers of every rebuild, kept for the life of the watch: a unit's key is its own text and its imports'
-  // surfaces, so an edit misses exactly the units it changed and every other is answered from memory
-  const units: UnitMemo = new Map()
+  // the build graph of every rebuild, kept for the life of the watch: a unit's key is its own text and its imports'
+  // surfaces, so an edit misses exactly the units it changed and every other is answered from memory, and a module's
+  // walk (its loads, their files, its edges) is kept while its text is, so an edit re-walks only the module it touched.
+  // The resolver remembers where every load landed, so a file added or removed makes a new session: a load that
+  // failed may now land, and one that landed may now fail
+  let session = buildSession(root)
+  let files = findTreeFiles(root, [], 'node').join('\n')
 
   openRun({ verb: 'make', root, facts: ['watching', ...(merged ? ['merged'] : [])] })
   stopOnInterrupt()
@@ -1181,7 +1185,14 @@ export function watchProject(root: string, merged = false): void {
   // until ctrl-c: it is a stream (section 11)
   const build = (changed: string): void => {
     const started = Date.now()
-    const result = merged ? compileProject(root, cache) : compileProjectSeparate(root, cache, 'node', units)
+    const now = findTreeFiles(root, [], 'node').join('\n')
+
+    if (now !== files) {
+      files = now
+      session = buildSession(root)
+    }
+
+    const result = merged ? compileProject(root, cache) : compileProjectSeparate(root, cache, 'node', session)
     reportProblems(result.problems, root, result.faults)
     report({
       glyph: result.failed > 0 ? 'failed' : 'done',
