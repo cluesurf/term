@@ -1,0 +1,59 @@
+note <A width-8 integer written by @term/feed's writer gives the same bytes on every backend: byte 7 needed 256^7, past 2^53, and raised `excess` on TypeScript until 2026-10-04. Held by `pnpm term:base-gate`.>
+
+load @term/base/list
+  find get
+
+load @term/base/boolean
+  find and
+
+# by path: the base gate resolves the standard library and relative loads, and no other package
+load ../../deck/feed/code/base
+  find make-cursor
+  find read-int
+  find make-writer
+  find write-int
+  find to-bytes
+  find byte-order
+  find integer-sign
+
+# -2 in eight bytes, big-endian, is seven 255s and a 254
+test <a negative value in width 8 is its two's complement>
+  save writer
+    call make-writer
+  call write-int
+    read writer
+    code -2
+    code 8
+    make big
+  save bytes
+    call to-bytes(read writer)
+  want hold
+    call and
+      call is-equal
+        call get
+          read bytes
+          code 0
+        code 255
+      call is-equal
+        call get
+          read bytes
+          code 7
+        code 254
+
+# OpenType's LONGDATETIME for 2024-01-01, seconds since 1904
+test <an OpenType date writes and reads back in width 8>
+  save writer
+    call make-writer
+  call write-int
+    read writer
+    code 3786825600
+    code 8
+    make little
+  want hold
+    call is-equal
+      call read-int
+        call make-cursor(call to-bytes(read writer))
+        code 8
+        make little
+        make signed
+      code 3786825600

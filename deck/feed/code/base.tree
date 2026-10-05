@@ -18,9 +18,6 @@ load @term/base/list
   find slice
   find reverse
 
-load @term/base/bit
-  find bitwise-and
-
 load @term/base/float
   find round-down
   find to-decimal
@@ -384,31 +381,6 @@ task read-bytes
       read start
       read end
 
-# 256^index, built by repeated multiply rather than a bit shift: `bit.tree` documents shift-left/shift-right as
-# 32-bit operations on the TypeScript backend, which would silently truncate any field wider than 4 bytes (OTF's
-# LONGDATETIME is 8). Multiply/divide are ordinary number ops on every backend, exact up to the platform's safe
-# integer range, so this is the one place width > 4 actually matters.
-task byte-place
-  take index, like number
-  like number
-  save result, code 1
-  save counter, code 0
-  walk test
-    hook test
-      call is-below
-        read counter
-        read index
-    hook hold
-      save result
-        call multiply
-          read result
-          code 256
-      save counter
-        call add
-          read counter
-          code 1
-  send back, read result
-
 # the most-significant byte of a signed field reinterpreted as its two's-complement value (128-255 becomes
 # -128 to -1) when `is-top` says this is that byte; every other byte, and every unsigned field, passes through
 # unchanged. Used instead of the old "accumulate as unsigned, then subtract 2^(8*width) if too large" approach,
@@ -477,38 +449,54 @@ task read-int
             call add
               read index
               code 1
+    # the field's bytes first, then folded from the LAST (the top one) down, the way big-endian folds from the
+    # first. It weighted each byte by `byte-place(index)`, and the top byte of a width-8 field needs 256^7, which
+    # is 2^56: past 2^53 on TypeScript, so the checked multiply raised `excess` for any 8-byte little-endian field
+    # (guides: parsers/cursor, 2026-10-04). A running place value multiplied at the end of each pass reached 256^8
+    # and overflowed an i64 on Rust before that. Folding keeps every intermediate value within the result's own
+    # magnitude, on every backend.
     case little
+      save block, make list
       walk test
         hook test
           call is-below
             read index
             read width
         hook hold
+          call push
+            read block
+            call read-byte(read cursor)
+          save index
+            call add
+              read index
+              code 1
+      walk test
+        hook test
+          call is-above
+            read index
+            code 0
+        hook hold
+          save index
+            call subtract
+              read index
+              code 1
           save byte-value
             call sign-extend-byte
-              call read-byte(read cursor)
+              call get
+                read block
+                read index
               call is-equal
                 read index
                 call subtract
                   read width
                   code 1
               read sign
-          # `byte-place(index)`, not a place value carried forward and multiplied at the END of each pass. That
-          # running form multiplied one time too many: after the last byte of a width-8 field it computed 256^8,
-          # which is 2^64 and does not fit in an i64, so Rust panicked with "attempt to multiply with overflow"
-          # the moment a real LONGDATETIME (OTF head's `created` / `modified`) was read natively. Deriving the
-          # place from the index never exceeds 256^(width-1), the largest value the field itself can use. The
-          # cost is quadratic in the width, which for a field of at most eight bytes is at most 28 multiplies.
           save magnitude
             call add
-              read magnitude
               call multiply
-                read byte-value
-                call byte-place(read index)
-          save index
-            call add
-              read index
-              code 1
+                read magnitude
+                code 256
+              read byte-value
   send back, read magnitude
 
 # a position into a text buffer, streaming-capable the same way `feed-cursor` is above — `json`'s and PDF's own
@@ -842,36 +830,13 @@ task write-bytes
         read writer
         read value
 
-# the byte of `value` at a given place value (1, 256, 65536, ...): floor(value / place) mod 256. `round-down`
-# (floor) on a negative `value` is arithmetic-shift-equivalent, so a negative signed value's bytes come out
-# correct without a separate two's-complement step. See read-int/byte-place for why this is multiply/divide, not
-# a bit shift.
-#
-# It takes the PLACE rather than the index on purpose. `int-byte-at(value, index)` had to call `byte-place`,
-# itself an index-long loop, so encoding a width-N field cost N(N-1)/2 multiplies just to rebuild place values
-# each step already knew — quadratic in the field width, for a quantity that only ever moves by one factor of
-# 256 between neighbours. `int-bytes` below carries the place forward instead, so the whole encode is linear.
-#
-# `to-decimal` around the division, `to-number` around the floor: `round-down` is `like decimal` in and out
-# (`@term/base/code/float.tree`), and Rust does not implicitly convert an `i64` division result into the `f64`
-# it expects, the same class of gap `feedback_term_decimal_vs_number_no_implicit_conversion` (memory) documents
-# for JSON's number parser. `to-number` truncates toward zero rather than flooring, but `round-down`'s own output
-# is already integer-valued by the time it gets there, so the distinction never matters at this call site.
-task int-byte-at-place
-  take value, like number
-  take place, like number
-  like u8
-  send back
-    call bitwise-and
-      call to-number
-        call round-down
-          call divide
-            call to-decimal(read value)
-            call to-decimal(read place)
-      code 0xff
-
 # a fixed-width integer's bytes, LOW byte first: the low byte of what is left, then what is left divided by 256,
-# floored. No place value is ever built. It was `int-byte-at-place(value, byte-place(index))`, and byte 7 of a
+# floored. Division, never a bit shift: `bit.tree`'s shifts are 32-bit on TypeScript and would truncate a field
+# wider than 4 bytes. `to-decimal` around the division and `to-number` around the floor because `round-down` is
+# `like decimal` in and out, and Rust does not convert an `i64` division into the `f64` it expects. `to-number`
+# truncates toward zero, but `round-down` has already floored, so the two agree here.
+#
+# No place value is ever built. It was `floor(value / 256^index) mod 256` per byte, and byte 7 of a
 # width-8 field needs 256^7, which is 2^56: past 2^53 on TypeScript, so the checked multiply raised `excess` and
 # OpenType's 8-byte LONGDATETIME could not be written there (guides: parsers/cursor, parsers/binary, 2026-10-04).
 # Carrying the place forward instead reached 256^8 on the last pass and overflowed an i64 on Rust. Dividing down
