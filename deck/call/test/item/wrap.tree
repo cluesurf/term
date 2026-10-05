@@ -1,8 +1,10 @@
-# Wrapping (section 8) on the cases section 21 names, each at 40, 44, 60, 80 and 120 columns: a 70-character URL, a
-# 64-character hash, a 70-character file location, a 100-word message, a long quoted stack trace, and a source name
-# over 12 cells. Every line is within the width, nothing is lost, a continuation indents 2, a URL never breaks inside
+# Wrapping (section 8) on the cases section 21 names, each at 40, 44, 60, 80 and 120
+# columns: a 70-character URL, a
+# 64-character hash, a 70-character file location, a 100-word message, a long quoted
+# stack trace, and a source name
+# over 12 cells. Every line is within the width, nothing is lost, a continuation
+# indents 2, a URL never breaks inside
 # `://`, a location breaks only after `/`, and a width under 40 is treated as 40.
-
 load @term/base/text
   find char-count
   find contains
@@ -35,21 +37,26 @@ load ./kit
 
 task make-url
   like text
+
   back <https://registry.shape.dev/api/v2/packages/geometry/versions?limit=5&p>
 
 task make-hash
   like text
+
   back <9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08>
 
 task make-location
   like text
+
   back <services/payments/reconciler/src/jobs/reconcile-invoices-run.ts:118:22>
 
 # `w1 w2 ... w100`
 task make-words
   like text
+
   save out, <w1>
   save at, 2
+
   walk test
     hook test, is-maximum(at, 100)
     hook hold
@@ -57,13 +64,16 @@ task make-words
       save at, add(at, 1)
   back out
 
-# a stack 30 frames deep, its frames long enough to wrap, the first in the user's code
+# a stack 30 frames deep, its frames long enough to wrap, the first in the user's
+# code
 task make-stack
   like list, like text
+
   save out, make list
   out/push <Error: the ledger refused the write because the account is closed for the period>
   out/push <    at reconcile (src/jobs/reconcile-invoice.ts:118:22)>
   save at, 2
+
   walk test
     hook test, is-maximum(at, 30)
     hook hold
@@ -73,7 +83,13 @@ task make-stack
 
 task make-case
   like event
-  save one, make event, glyph(<failed>), kind(<request>), verb(<GET>), clock(kit-clock(14, 2, 7, 412))
+
+  save one
+    make event
+      glyph(<failed>)
+      kind(<request>)
+      verb(<GET>)
+      clock(kit-clock(14, 2, 7, 412))
   save one/subject, plain-subject(make-url())
   save one/source, <payments-reconciler-worker>
   save one/duration, 48
@@ -88,22 +104,29 @@ task make-case
 
 task draw-case
   take width, like number
+
   like list, like text
+
   back kit-texts(draw-item(make-case(), kit-room(width), true))
 
-# the lines of the item whose trimmed text starts with a prefix, through the next line that starts at column 11
+# the lines of a field whose trimmed text starts with a prefix, and the lines of its
+# value moved under the key, at
+# column 4 and past (v3: the key at column 2, its value 2 past it)
 task joined-from
   take texts, like list, like text
   take prefix, like text
+
   like text
+
   save out, <>
   save inside, false
+
   walk texts
     take one
     save trimmed, trim(one)
     fork test, inside
       hold
-        fork test, starts-with(one, <             >)
+        fork test, starts-with(one, <    >)
           hold
             save out, <{out}{trimmed}>
             turn next
@@ -117,19 +140,30 @@ task joined-from
 # every line within the width, in display cells
 task is-case-within
   take width, like number
+
   like boolean
+
   back kit-within(draw-item(make-case(), kit-room(width), true), width)
 
-# the subject reads back whole, with no break inside `://`, and every subject line is within the line
+# the subject reads back whole, with no break inside `://`, and every subject line
+# is within the line. v3: the
+# subject starts after `✗ GET `, and goes on at column 2 until the facts line, which
+# opens with the clock
 task is-url-whole
   take width, like number
+
   like boolean
+
   save texts, draw-case(width)
   save first, texts/0
-  save subject, trim(substring(first, 11))
+  save subject, trim(substring(first, 6))
   save at, 1
+
   walk test
-    hook test, and(is-below(at, texts/length), starts-with(texts/{at}, <             >))
+    hook test
+      and is-below(at, texts/length)
+        and starts-with(texts/{at}, <  >)
+          is-equal(starts-with(texts/{at}, <  14:>), false)
     hook hold
       save subject, <{subject}{trim(texts/{at})}>
       save at, add(at, 1)
@@ -137,7 +171,9 @@ task is-url-whole
 
 task is-never-inside-scheme
   take width, like number
+
   like boolean
+
   walk draw-case(width)
     take one
     fork test, or(ends-with(one, <https:>), ends-with(one, <https:/>))
@@ -145,27 +181,34 @@ task is-never-inside-scheme
         back false
   back true
 
-# the location reads back whole, and each of its lines but the last ends in `/`, unless it is inside the last path
-# segment and that segment is wider than any line the location can have (section 12: never shortened, so it must
+# the location reads back whole, and each of its lines but the last ends in `/`,
+# unless it is inside the last path
+# segment and that segment is wider than any line the location can have (section 12:
+# never shortened, so it must
 # break somewhere, and the standard's last resort is between path, line and column)
 task is-location-split-at-slash
   take width, like number
+
   like boolean
+
   save texts, draw-case(width)
   save found, false
   save pieces, make list
   save inside, false
+
   walk texts
     take one
     save trimmed, trim(one)
     fork test, inside
       hold
-        fork test, starts-with(one, <             >)
+        fork test, starts-with(one, <    >)
           hold
             pieces/push trimmed
             turn next
         save inside, false
-    fork test, starts-with(trimmed, <at>)
+    # the `at` field's own line, at column 2: a quoted frame (` at reconcile ...`)
+    # starts with `at` too once trimmed, now that no gutter comes before it
+    fork test, or(starts-with(one, <  at >), is-equal(one, <  at>))
       hold
         save found, true
         save rest, trim(substring(trimmed, 2))
@@ -174,13 +217,19 @@ task is-location-split-at-slash
             pieces/push rest
         save inside, true
   save last-segment, <reconcile-invoices-run.ts:118:22>
-  save too-wide, is-above(char-count(last-segment), subtract(width, 13))
+
+  # v3: a location moved under `at` starts at column 4 (the key at 2, the value 2
+  # past)
+  save too-wide, is-above(char-count(last-segment), subtract(width, 4))
   save joined, <>
   save at, 0
+
   walk pieces
     take piece
     save joined, <{joined}{piece}>
-    fork test, and(is-below(at, subtract(pieces/length, 1)), is-equal(ends-with(piece, </>), false))
+    fork test
+      and is-below(at, subtract(pieces/length, 1))
+        is-equal(ends-with(piece, </>), false)
       hold
         fork test, or(contains(piece, </>), is-equal(too-wide, false))
           hold
@@ -188,14 +237,17 @@ task is-location-split-at-slash
     save at, add(at, 1)
   back and(found, is-equal(joined, make-location()))
 
-# the 100 words read back in order, every continuation 2 past column 11
+# the 100 words read back in order, every continuation 2 past column 2 (v3)
 task is-message-whole
   take width, like number
+
   like boolean
+
   save texts, draw-case(width)
   save joined, <>
   save inside, false
   save done, false
+
   walk texts
     take one
     fork test, done
@@ -208,7 +260,7 @@ task is-message-whole
         turn next
     fork test, inside
       hold
-        fork test, starts-with(one, <             w>)
+        fork test, starts-with(one, <    w>)
           hold
             save joined, <{joined} {trim(one)}>
           miss
@@ -219,25 +271,32 @@ task is-message-whole
 # the hash reads back whole
 task is-hash-whole
   take width, like number
+
   like boolean
+
   save texts, draw-case(width)
   save joined, joined-from(texts, <hash>)
   back contains(<{joined}>, make-hash())
 
-# the quote keeps its message, its top frame (the user's), and counts the frames it left out
+# the quote keeps its message, its top frame (the user's), and counts the frames it
+# left out
 task is-stack-trimmed
   take width, like number
+
   like boolean
+
   save texts, draw-case(width)
   save top, false
   save counted, false
   save foreign, false
+
   walk texts
     take one
-    fork test, contains(one, <│ at reconcile>)
+    # quoted under the `⎿` elbow (D33): the frames sit 3 past it, with no gutter
+    fork test, contains(one, <   at reconcile>)
       hold
         save top, true
-    fork test, contains(one, <│ … 29 more frames>)
+    fork test, contains(one, <   … 29 more frames>)
       hold
         save counted, true
     fork test, contains(one, <task_queues>)
@@ -248,9 +307,12 @@ task is-stack-trimmed
 # a source over 12 cells is cut to 12 in the middle
 task is-tag-cut
   take width, like number
+
   like boolean
+
   save texts, draw-case(width)
   save found, false
+
   walk texts
     take one
     fork test, contains(one, <paymen…orker>)
@@ -316,16 +378,18 @@ test <at 120 columns every case wraps within the line, whole>
   want hold, is-stack-trimmed(120)
   want hold, is-tag-cut(120)
 
-test <a width under 40 is treated as 40, and column 11 holds>
-  save narrow, draw-item(make-case(), make-room(20, make-standard(), false, -420, false), true)
+test <a width under 40 is treated as 40, and the title keeps its shape>
+  save narrow
+    draw-item(make-case(), make-room(20, make-standard(), false, -420, false), true)
   save forty, draw-item(make-case(), kit-room(40), true)
   want hold, is-equal(narrow/length, forty/length)
   want hold, kit-within(narrow, 40)
-  save zero, draw-item(make-case(), make-room(0, make-standard(), false, -420, false), true)
+  save zero
+    draw-item(make-case(), make-room(0, make-standard(), false, -420, false), true)
   want hold, kit-within(zero, 40)
   save texts, kit-texts(forty)
   save first, texts/0
-  want hold, is-equal(substring(first, 0, 11), <✗ GET      >)
+  want hold, is-equal(substring(first, 0, 6), <✗ GET >)
 
 test <a number never wraps away from its unit>
   save one, make event, glyph(<done>), verb(<serve>), clock(kit-clock(14, 5, 1, 2))
@@ -334,6 +398,8 @@ test <a number never wraps away from its unit>
   save one/uptime, true
   one/tallies/push make tally, amount(318), noun(<requests>)
   one/tallies/push make tally, amount(1), noun(<errors>), one(<error>)
-  save texts, kit-texts(draw-item(one, kit-room(44), true))
-  want hold, is-equal(texts/1, <           14:05:01.002 · up 2m 56s>)
-  want hold, is-equal(texts/2, <           318 requests · 1 error>)
+  # at 40 the facts line has 38 cells: `318 requests` does not fit after the uptime,
+  # and moves whole, the number with its noun
+  save texts, kit-texts(draw-item(one, kit-room(40), true))
+  want hold, is-equal(texts/1, <  14:05:01.002 · up 2m 56s>)
+  want hold, is-equal(texts/2, <  318 requests · 1 error>)

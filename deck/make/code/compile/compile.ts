@@ -902,9 +902,9 @@ export function compileProgram(
     }
 
     // a rule only CITED by a kept rule is referenced by no call, and must survive the shake (check/cite-roots.ts)
-    const cited = citedRules(program, pruneRoots)
+    const cited = citedRules(program, [...pruneRoots])
 
-    if (cited.size > 0) {
+    if (cited.length > 0) {
       pruneRoots = new Set([...pruneRoots, ...cited])
     }
 

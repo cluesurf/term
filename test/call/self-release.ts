@@ -155,10 +155,10 @@ try {
   ok('the loader names the PATH line for this terminal', /export PATH=/.test(loaded.out), loaded.out)
 
   const profile = () => (existsSync(join(home, '.zshrc')) ? readFileSync(join(home, '.zshrc'), 'utf8') : '')
-  ok('the loader puts bin on PATH for new shells, one marked line in ~/.zshrc', profile().split('.base/@cluesurf/term/bin').length === 2 && /# term \(https:\/\/term\.surf\/load\)\nexport PATH="\$HOME\/\.base\/@cluesurf\/term\/bin:\$PATH"/.test(profile()) && /\+ path {5}~\/\.zshrc/.test(loaded.out), `${profile()}\n${loaded.out}`)
+  ok('the loader puts bin on PATH for new shells, one marked line in ~/.zshrc', profile().split('.base/@cluesurf/term/bin').length === 2 && /# term \(https:\/\/term\.surf\/load\)\nexport PATH="\$HOME\/\.base\/@cluesurf\/term\/bin:\$PATH"/.test(profile()) && /\+ path ~\/\.zshrc/.test(loaded.out), `${profile()}\n${loaded.out}`)
 
   const reloaded = await load({ TERM_LOAD_VERSION: VERSION })
-  ok('   and a second install leaves it as it is', reloaded.code === 0 && profile().split('.base/@cluesurf/term/bin').length === 2 && /○ path {5}~\/\.zshrc/.test(reloaded.out), `${profile()}\n${reloaded.out}`)
+  ok('   and a second install leaves it as it is', reloaded.code === 0 && profile().split('.base/@cluesurf/term/bin').length === 2 && /○ path ~\/\.zshrc/.test(reloaded.out), `${profile()}\n${reloaded.out}`)
 
   // eval "$(curl … | sh)": the one line on stdout puts term on THIS shell's PATH, so the same shell runs it next
   const evaluated = await new Promise<{ code: number; out: string; stdout: string }>(resolve => {
@@ -184,10 +184,12 @@ try {
   ok('   and TERM_LOAD_PATH=0 edits no profile', off.code === 0 && !existsSync(join(kept, '.zshrc')) && /no profile was edited/.test(off.out), off.out)
   ok(
     'the loader prints one run in the output standard: opening and closing `load` items, every other line an item or under one',
-    /(^|\n)· load {5}~\/\.base\/@cluesurf\/term\n {11}\d\d:\d\d:\d\d\.\d{3} · term\.surf\/load\n/.test(loaded.out) &&
+    // v3 (note/term/output/standard.md): `glyph verb subject` at column 0, every child line two cells in, and the
+    // opening's clock only in a service (section 2), which an install is not
+    /(^|\n)● load ~\/\.base\/@cluesurf\/term\n {2}(\d\d:\d\d:\d\d\.\d{3} · )?term\.surf\/load\n/.test(loaded.out) &&
       // ▲ when this machine has another `term` on PATH (an npm global), which the loader names: the worst glyph closes
-      new RegExp(`[✓▲] load {5}term ${VERSION.replace(/\./g, '\\.')} is installed`).test(loaded.out) &&
-      loaded.out.split('\n').every(line => line === '' || /^[✓✗▲·○◐?+−~] [a-zA-Z]+ *  \S/.test(line) || line.startsWith('           ') || line.startsWith('export PATH=')),
+      new RegExp(`[✓▲] load term ${VERSION.replace(/\./g, '\\.')} is installed`).test(loaded.out) &&
+      loaded.out.split('\n').every(line => line === '' || /^[✓✗▲●○◐?+−~] [a-zA-Z]+ \S/.test(line) || line.startsWith('  ') || line.startsWith('export PATH=')),
     loaded.out,
   )
 

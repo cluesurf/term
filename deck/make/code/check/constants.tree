@@ -1,0 +1,185 @@
+# A `host` is written once.
+#
+# Inside a task, `host limit, 10` and then `save limit, 20` compiled, and the TypeScript declared `const limit` twice,
+# which is a syntax error JavaScript reports at load, far from the line that caused it (guides: language/values,
+# 2026-10-03). A `host` binds a constant: any later `save` of the same name in the same task, or a second `host` of it,
+# is refused here, at the line that writes it. A closure or a nested task that binds the name as a parameter is its own
+# scope and is left alone.
+#
+# Ported from check/constants.ts (self-hosting, 2026-10-05). Its sets of names are lists here.
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+load ../parser/diagnostic
+  find diagnostic
+  find diagnose
+  find diagnostic-input
+  find span
+
+load ../compile/node
+  find statement
+
+task is-in-file
+  take at, like span
+  take file, like text
+  like boolean
+  mark private
+
+  sift at/file
+    case some
+      link written
+      back is-equal(written, file)
+    case none
+      back false
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+task copy-texts
+  take values, like list, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  walk values
+    take one
+    push(out, one)
+  back out
+
+task refusal
+  take file, like text
+  take at, like span
+  take message, like text
+  take hint, like text
+  like diagnostic
+  mark private
+
+  save input
+    make diagnostic-input
+      bind file, file
+      bind span, at
+      bind message, make(some, message)
+      bind hint, make(some, hint)
+  save name, make type-mismatch
+  back diagnose(name, input)
+
+# every statement list nested directly in a statement: a branch, an arm, a loop's body, a guard and its handler
+task nested-bodies
+  take value, like statement
+  like list, like list, like statement
+  mark private
+
+  save out, make list
+  sift value
+    case if
+      walk branches
+        take branch
+        push(out, branch/body)
+      sift otherwise
+        case some
+          link miss-body
+          push(out, miss-body)
+        case none
+          back out
+    case while
+      push(out, body)
+    case for-each
+      push(out, body)
+    case match
+      walk cases
+        take arm
+        push(out, arm/body)
+      sift otherwise
+        case some
+          link miss-body
+          push(out, miss-body)
+        case none
+          back out
+    case guard
+      push(out, body)
+      sift catch
+        case some
+          link clause
+          push(out, clause/body)
+        case none
+          back out
+    miss
+      back out
+  back out
+
+# the refusals one statement makes, and the constant it binds
+task check-one
+  take one, like statement
+  take constants, like list, like text
+  take file, like text
+  take out, like list, like diagnostic
+  like void
+  mark private
+
+  sift one
+    case let
+      fork test, has-text(constants, name)
+        hold
+          push(out, refusal(file, span, <"{name}" is a `host`, a constant, and is bound again here>, <give the second value its own name, or make the first a `save`>))
+      fork test, is-equal(mutable, false)
+        hold
+          push(constants, name)
+    case assign
+      sift target
+        case variable
+          link written
+          fork test, has-text(constants, written)
+            hold
+              push(out, refusal(file, span, <"{written}" is a `host`, a constant, and is written here>, <give the new value its own name, or make the first a `save`>))
+        miss
+          back
+    miss
+      back
+
+task check-block
+  take body, like list, like statement
+  take constants, like list, like text
+  take file, like text
+  take out, like list, like diagnostic
+  like void
+  mark private
+
+  walk body
+    take one
+    check-one(one, constants, file, out)
+    # every nested statement list is the same task: a constant bound before it is still one inside it
+    walk nested-bodies(one)
+      take nested
+      check-block(nested, copy-texts(constants), file, out)
+
+task check-constants
+  take program, like list, like statement
+  take file, like text
+  like list, like diagnostic
+
+  save out, make list
+  walk program
+    take one
+    sift one
+      case function
+        fork test, and(is-in-file(span, file), is-equal(stub, false))
+          hold
+            save none-yet, make list
+            check-block(body, none-yet, file, out)
+      miss
+        turn next
+  back out

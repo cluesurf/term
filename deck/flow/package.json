@@ -4,7 +4,7 @@
   "icon": "view/term.png",
   "description": "Syntax highlighting and the language server for Term .tree files",
   "version": "0.5.0",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "publisher": "cluesurf",
   "private": true,
   "repository": {

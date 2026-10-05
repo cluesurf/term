@@ -1,0 +1,139 @@
+# The rules a program's roots CITE, transitively. `cite <rule>` under a rule's goal uses another rule (check/holds.ts
+# `citedFacts`), but a proof step is not a reference: nothing calls a rule, so the merged build's tree-shaking pruned an
+# imported rule that was only cited, and the citation then found no rule to use (2026-10-05). These names are added to
+# the roots before the prune, and each kept rule's own citations are followed in turn.
+#
+# Ported from check/cite-roots.ts (self-hosting, 2026-10-05). Its sets are lists here, in the order found.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load ../compile/node
+  find statement
+  find proof
+
+task has-name
+  take names, like list, like text
+  take name, like text
+  like boolean
+  mark private
+
+  walk names
+    take one
+    fork test, is-equal(one, name)
+      hold
+        back true
+  back false
+
+# the rule names a proof tree cites, at any depth
+task cites-in-proof
+  take steps, like list, like proof
+  take into, like list, like text
+  like void
+  mark private
+
+  walk steps
+    take step
+    fork test, and(is-equal(step/head, <cite>), is-unequal(step/arg, <>))
+      hold
+        fork test, is-equal(has-name(into, step/arg), false)
+          hold
+            push(into, step/arg)
+    cites-in-proof(step/children, into)
+
+# the rule names a body's holds cite, through its guards' branches
+task cites-in
+  take body, like list, like statement
+  take into, like list, like text
+  like void
+  mark private
+
+  walk body
+    take one
+    sift one
+      case hold
+        cites-in-proof(proof, into)
+      case if
+        walk branches
+          take branch
+          cites-in(branch/body, into)
+        sift otherwise
+          case some
+            link miss-body
+            cites-in(miss-body, into)
+          case none
+            turn next
+      miss
+        turn next
+
+# every rule reachable from `roots` by citation, roots excluded
+task cited-rules
+  take program, like list, like statement
+  take roots, like list, like text
+  like list, like text
+
+  save names, make list
+  save bodies, make list
+  walk program
+    take one
+    sift one
+      case function
+        fork test, or(theorem, axiom)
+          hold
+            push(names, name)
+            push(bodies, body)
+      miss
+        turn next
+
+  save found, make list
+  save queue, make list
+  walk roots
+    take root
+    fork test, has-name(names, root)
+      hold
+        push(queue, root)
+
+  walk test
+    hook test, is-above(queue/length, 0)
+    hook hold
+      save current, get(queue, subtract(queue/length, 1))
+      save queue, slice-before(queue, subtract(queue/length, 1))
+      save cites, make list
+      # the LAST rule of the name, as a map keyed by name kept it
+      save last, -1
+      walk names
+        take one-name
+        take at
+        fork test, is-equal(one-name, current)
+          hold
+            save last, at
+      fork test, is-minimum(last, 0)
+        hold
+          cites-in(get(bodies, last), cites)
+      walk cites
+        take cited
+        fork test, and(has-name(names, cited), and(is-equal(has-name(roots, cited), false), is-equal(has-name(found, cited), false)))
+          hold
+            push(found, cited)
+            push(queue, cited)
+  back found
+
+# the first `count` items
+task slice-before
+  take items, like list, like text
+  take count, like number
+  like list, like text
+  mark private
+
+  save out, make list
+  walk items
+    take one
+    take at
+    fork test, is-below(at, count)
+      hold
+        push(out, one)
+  back out

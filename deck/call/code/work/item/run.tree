@@ -236,7 +236,9 @@ task step-session
     hold
       fork test, next/owed
         hold
-          lines/push blank-line()
+          fork test, room/standard/layout/spacing
+            hold
+              lines/push blank-line()
           save next/owed, false
       walk draw-item(event, room, tagged)
         take each
@@ -354,11 +356,12 @@ task close-session
   save shown, close-event(one, closing, room/standard)
   save lines, make list
 
-  # the blank line BEFORE the closing, always: under `--quiet` with nothing above
-  # it, it parts the closing from the
-  # command line the terminal echoed, as the mockups' Quiet card shows (and this
-  # file's header says)
-  lines/push blank-line()
+  # the blank line BEFORE the closing, when the standard spaces a run (v2 did,
+  # always:
+  # under `--quiet` it parted the closing from the echoed command). v3 has none
+  fork test, room/standard/layout/spacing
+    hold
+      lines/push blank-line()
   walk draw-item(shown, room, true)
     take each
     lines/push each
@@ -421,7 +424,8 @@ task draw-command
   spans/push shown
   back make line, spans(spans)
 
-# where problem `a` sorts against problem `b`: by path, then line, then column (section
+# where problem `a` sorts against problem `b`: by path, then line, then column
+# (section
 # 12)
 # ✗ before ▲ before the rest: the cap cuts from the end, so an error sorted by place
 # alone could be cut behind twenty warnings, and a build reporting 12 errors showed
@@ -439,7 +443,8 @@ task problem-rank
       back 1
   back 2
 
-# the path by code point (`from-texts`, the text's own compare). It turned both paths
+# the path by code point (`from-texts`, the text's own compare). It turned both
+# paths
 # into lists of runes on every comparison, which a build of 48,692 warnings made
 # 79% of `term make` on @term/bind (2026-10-05)
 task order-problems
@@ -484,6 +489,7 @@ task arrange-problems
   # twice, which is 48,692 squared on @term/bind
   save ids, make hash
   save caused, make hash
+
   walk problems
     take one
     fork test, is-unequal(one/id, <>)
@@ -493,6 +499,7 @@ task arrange-problems
       hold
         caused/set(one/cause, add(caused/get-or-default(one/cause, 0), 1))
   save kept, make list
+
   walk problems
     take one
     save hidden, and(is-unequal(one/cause, <>), ids/has(one/cause))

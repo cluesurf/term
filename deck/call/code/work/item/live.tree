@@ -1,18 +1,26 @@
 # Progress and the live region (section 10), as pure functions over frames.
 #
-# A LIVE REGION IS THE SET OF ITEMS STILL CHANGING, always the bottom of the output. A frame is the region's lines;
-# `plan-frame` decides what to draw from the region and the clock, and `write-frame` turns a plan into the bytes that
-# move the cursor up over the last frame, clear it, and draw the new one. Nothing above the region is ever redrawn:
-# when the items at the TOP of the region have all finished they are committed, printed once above it for good, and
-# leave the region. An item that finishes below one still running keeps its place until the ones above it finish,
+# A LIVE REGION IS THE SET OF ITEMS STILL CHANGING, always the bottom of the output.
+# A frame is the region's lines;
+# `plan-frame` decides what to draw from the region and the clock, and `write-frame`
+# turns a plan into the bytes that
+# move the cursor up over the last frame, clear it, and draw the new one. Nothing
+# above the region is ever redrawn:
+# when the items at the TOP of the region have all finished they are committed,
+# printed once above it for good, and
+# leave the region. An item that finishes below one still running keeps its place
+# until the ones above it finish,
 # taking its final glyph, clock and duration where it stands.
 #
-# AT MOST TEN REDRAWS A SECOND (the standard's `redraw-ms`), except a frame forced by an item finishing, which is
-# drawn at once so the final state is never late. WITHOUT A TERMINAL nothing redraws: each step prints only its final
-# item, plus a `·` progress item at most every 10 seconds for a step longer than that (`is-progress-due`).
+# AT MOST TEN REDRAWS A SECOND (the standard's `redraw-ms`), except a frame forced
+# by an item finishing, which is
+# drawn at once so the final state is never late. WITHOUT A TERMINAL nothing
+# redraws: each step prints only its final
+# item, plus a `·` progress item at most every 10 seconds for a step longer than
+# that (`is-progress-due`).
 #
-# `--no-motion` makes the running glyph a static ◐; with motion it turns through the standard's four spinner frames.
-
+# `--no-motion` makes the running glyph a static ◐; with motion it turns through the
+# standard's four spinner frames.
 load ./standard
   find standard
 
@@ -35,11 +43,11 @@ load ./paint
   find paint-lines
   find make-escape
 
-# the items of the region in declaration order, how many lines the last frame took, when it was drawn (-1 never) and
+# the items of the region in declaration order, how many lines the last frame took,
+# when it was drawn (-1 never) and
 # the spinner's turn
 form region
-  link items
-    like list, like event
+  link items, like list, like event
     fall make list
   link height, like number, fall 0
   link drawn-at, like number, fall -1
@@ -48,30 +56,34 @@ form region
 form frame-plan
   link region, like region
   # lines printed once, above the region, for good
-  link committed
-    like list, like line
+  link committed, like list, like line
     fall make list
   # the region as it is drawn now
-  link lines
-    like list, like line
+  link lines, like list, like line
     fall make list
   # false when the redraw limit says to wait
   link draw, like boolean, fall true
 
 task is-running
   take one, like event
+
   like boolean
+
   back or(is-equal(one/glyph, <running>), is-equal(one/glyph, <asking>))
 
-# the region with an item put in its place: a new item at the end, a known one (same verb, subject and source)
+# the region with an item put in its place: a new item at the end, a known one (same
+# verb, subject and source)
 # replaced where it stands
 task place-item
   take one, like region
   take item, like event
+
   like region
+
   save next, one
   save items, make list
   save found, false
+
   walk one/items
     take each
     fork test, and(is-equal(found, false), is-same-step(each, item))
@@ -89,27 +101,36 @@ task place-item
 task is-same-step
   take a, like event
   take b, like event
+
   like boolean
+
   save left, <>
+
   walk a/subject
     take one
     save left, <{left}{one/value}>
   save right, <>
+
   walk b/subject
     take one
     save right, <{right}{one/value}>
-  back and(is-equal(a/verb, b/verb), and(is-equal(left, right), is-equal(a/source, b/source)))
+  back
+    and is-equal(a/verb, b/verb)
+      and(is-equal(left, right), is-equal(a/source, b/source))
 
 # the spinner frame for a turn, or the static ◐ under --no-motion
 task spinner-glyph
   take turn, like number
   take motion, like boolean
   take room, like room
+
   like text
+
   fork test, motion
     miss
       back find-symbol(room, <spin-1>)
   save step, modulo(turn, 4)
+
   fork test, is-equal(step, 1)
     hold
       back find-symbol(room, <spin-2>)
@@ -128,13 +149,17 @@ task draw-live-item
   take turn, like number
   take motion, like boolean
   take tagged, like boolean
+
   like list, like line
+
   save lines, draw-item(item, room, tagged)
+
   fork test, and(is-running(item), is-equal(item/glyph, <running>))
     miss
       back lines
   save out, make list
   save at, 0
+
   walk lines
     take one
     fork test, is-equal(at, 0)
@@ -157,7 +182,8 @@ task draw-live-item
     save at, add(at, 1)
   back out
 
-# what to draw now. `footer` is drawn under the region after a blank line (a live closing item, a status footer);
+# what to draw now. `footer` is drawn under the region after a blank line (a live
+# closing item, a status footer);
 # `force` draws even inside the redraw limit, as when an item has just finished
 task plan-frame
   take one, like region
@@ -167,16 +193,22 @@ task plan-frame
   take motion, like boolean
   take room, like room
   take tagged, like boolean
+
   like frame-plan
+
   save next, one
   save limit, room/standard/lives/redraw-ms
-  fork test, and(is-equal(force, false), and(is-minimum(one/drawn-at, 0), is-below(subtract(now, one/drawn-at), limit)))
+
+  fork test
+    and is-equal(force, false)
+      and(is-minimum(one/drawn-at, 0), is-below(subtract(now, one/drawn-at), limit))
     hold
       back make frame-plan, region(one), draw(false)
   # commit the finished items at the top
   save committed, make list
   save kept, make list
   save settling, true
+
   walk one/items
     take each
     fork test, and(settling, is-equal(is-running(each), false))
@@ -188,6 +220,7 @@ task plan-frame
         save settling, false
         kept/push each
   save lines, make list
+
   walk kept
     take each
     walk draw-live-item(each, room, one/turn, motion, tagged)
@@ -195,7 +228,11 @@ task plan-frame
       lines/push each-line
   fork test, is-above(footer/length, 0)
     hold
-      lines/push blank-line()
+      # the blank line above the footer when the standard spaces a run (v2); v3 has
+      # none
+      fork test, room/standard/layout/spacing
+        hold
+          lines/push blank-line()
       walk footer
         take each
         walk draw-live-item(each, room, one/turn, motion, true)
@@ -207,19 +244,23 @@ task plan-frame
   save next/turn, add(one/turn, 1)
   back make frame-plan, region(next), committed(committed), lines(lines), draw(true)
 
-# the bytes of a frame: up over the last frame's `height` lines, clear to the end of the screen, the committed lines,
+# the bytes of a frame: up over the last frame's `height` lines, clear to the end of
+# the screen, the committed lines,
 # then the region. Nothing is written above the last frame
 task write-frame
   take plan, like frame-plan
   take height, like number
   take palette, like palette
   take standard, like standard
+
   like text
+
   fork test, plan/draw
     miss
       back <>
   save escape, make-escape()
   save out, <>
+
   fork test, is-above(height, 0)
     hold
       save out, <{escape}[{height}A\r{escape}[J>
@@ -227,15 +268,19 @@ task write-frame
   save out, <{out}{paint-lines(plan/lines, palette, standard)}>
   back out
 
-# without a terminal: is a step's `·` progress item due. A step longer than the standard's quiet interval reports
+# without a terminal: is a step's `·` progress item due. A step longer than the
+# standard's quiet interval reports
 # once per interval, and never before
 task is-progress-due
   take started, like number
   take reported, like number
   take now, like number
   take standard, like standard
+
   like boolean
+
   save every, standard/lives/quiet-progress-ms
+
   fork test, is-below(subtract(now, started), every)
     hold
       back false
@@ -244,13 +289,16 @@ task is-progress-due
       back true
   back is-minimum(subtract(now, reported), every)
 
-# the `·` progress item for a running step without a terminal: its verb, subject and source, the clock now, the time
+# the `·` progress item for a running step without a terminal: its verb, subject and
+# source, the clock now, the time
 # so far and its counts
 task make-progress-item
   take step, like event
   take started, like number
   take now, like number
+
   like event
+
   save one, step
   save one/glyph, <info>
   save one/kind, <progress>

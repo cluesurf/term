@@ -217,6 +217,6 @@ task draw-item
       is-equal(event/verb, room/standard/services/date-verb)
   fork test, dated
     miss
-      save out, push-lines(out, draw-facts-line(event, room))
+      save out, push-lines(out, draw-facts-line(event, room, tagged))
   save out, push-lines(out, draw-details(event, room))
   back trim-lines(out)

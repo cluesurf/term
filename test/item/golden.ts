@@ -46,8 +46,8 @@ ok('every card on the page has a golden test, and in page order', mockups.length
 // every difference from the mockup is written down, and every one written down is still applied
 const written = new Set([...readFileSync(MOCKUP_DIFFERENCES, 'utf8').matchAll(/^### (D\d+)$/gm)].map(match => match[1]!))
 // D33 and D34 are applied to every card by `elbowQuotes` and `oneSpaceFields`, not by a patch, so they are cited here.
-// D35 is the other way round: the cards are drawn with the mockups' clocks kept (build.ts `STANDARD`)
-const cited = new Set(['D33', 'D34', 'D35',...CARDS.flatMap(card => [...card.patches.flatMap(patch => patch.entry.split(' ')), ...(card.entry ? [card.entry] : [])])])
+// D35 and D41 are the other way round: the cards are drawn with the mockups' clocks and gray verb (build.ts `STANDARD`)
+const cited = new Set(['D33', 'D34', 'D35', 'D41',...CARDS.flatMap(card => [...card.patches.flatMap(patch => patch.entry.split(' ')), ...(card.entry ? [card.entry] : [])])])
 const unwritten = [...cited].filter(entry => !written.has(entry))
 const unapplied = [...written].filter(entry => !cited.has(entry))
 const unjustified = CARDS.filter(card => card.whole && !card.entry).map(card => card.caption)
@@ -109,7 +109,7 @@ function expectedOf(card: Card, mockup: Mockup): Expected[] {
 // D34: a field's value sits one space after its own key, where the mockups pad every key of an item to the widest
 // (the user's choice, 2026-10-04). A field line opens at the body column with a dim key and 2 or more spaces before
 // a value that is not dim; a table's header row is dim all along, so its gaps are left alone
-const FIELD = /^( {11}[a-z][\w-]*)( {2,})(?=\S)/
+const FIELD = /^( {2}[a-z][\w-]*)( {2,})(?=\S)/
 
 function oneSpaceFields(lines: Expected[], colorless: boolean): Expected[] {
   return lines.map(line => {
@@ -136,9 +136,9 @@ function oneSpaceFields(lines: Expected[], colorless: boolean): Expected[] {
 
 // D33: a quote is a child program's own lines, and hangs off a dim `⎿` elbow on its first line with the rest under it,
 // 3 cells right of the body column, where the mockups draw a `│ ` gutter on every line (the user's choice, 2026-10-04).
-// A quote line is one that opens with the body column's 11 spaces and then `│`; a code frame has its line number there,
+// A quote line is one that opens with the body column's 2 spaces and then `│`; a code frame has its line number there,
 // and a tree's stem (`│  └─`) goes on with the tree's own characters
-const QUOTE = /^ {11}│ (?! *[├└│])/
+const QUOTE = /^ {2}│ (?! *[├└│])/
 const ELBOW: Mark = { role: 'dim', strong: false, focus: false }
 
 function elbowQuotes(lines: Expected[]): Expected[] {
@@ -149,11 +149,11 @@ function elbowQuotes(lines: Expected[]): Expected[] {
 
     const first = at === 0 || !QUOTE.test(lines[at - 1]!.text)
     const lead = first ? '⎿  ' : '   '
-    const rest = [...line.text].slice(13)
+    const rest = [...line.text].slice(4)
 
     return {
-      text: `${' '.repeat(11)}${lead}${rest.join('')}`,
-      marks: [...line.marks.slice(0, 11), first ? ELBOW : null, null, null, ...line.marks.slice(13)],
+      text: `${' '.repeat(2)}${lead}${rest.join('')}`,
+      marks: [...line.marks.slice(0, 2), first ? ELBOW : null, null, null, ...line.marks.slice(4)],
     }
   })
 }
@@ -165,7 +165,8 @@ function drawCard(card: Card, width: number, ascii: boolean): Line[] {
   const out: Line[] = []
 
   card.segments.forEach((segment, at) => {
-    if (at > 0) {
+    // a second command on one card follows the first directly in v3, as every line does
+    if (at > 0 && one.standard.layout.spacing) {
       out.push(blankLine())
     }
 

@@ -16,7 +16,7 @@
 // the resolver cannot see as callable, a form or a variant, which only the checker's tables hold.
 
 import type { Expression } from '@term/make/code/compile/node'
-import { BINARY_BUILTIN } from '@term/make/code/compile/mill'
+import { binaryBuiltinOp, isBinaryBuiltin } from '@term/make/code/compile/surface'
 
 type Call = Extract<Expression, { form: 'call' }>
 
@@ -26,11 +26,11 @@ type Call = Extract<Expression, { form: 'call' }>
 // label under a callee with no parameters on record, was refused as a property naming nothing
 // (deck/test/code/abstraction-refinement.tree, 2026-10-05, test/check/lean-not-argument.ts)
 export function isFoldable(name: string): boolean {
-  return name in BINARY_BUILTIN || name === 'increment' || name === 'decrement' || name === 'not'
+  return isBinaryBuiltin(name) || name === 'increment' || name === 'decrement' || name === 'not'
 }
 
 function fold(name: string, args: Expression[], span: Call['span']): Expression | undefined {
-  const op = BINARY_BUILTIN[name]
+  const op = isBinaryBuiltin(name) ? binaryBuiltinOp(name) : undefined
 
   if (op && args.length === 2) {
     return { form: 'binary', op, left: args[0]!, right: args[1]!, span } as Expression

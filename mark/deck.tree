@@ -2,7 +2,7 @@
 deck @term/mark
   head <The benchmark suite: Term's emitted code against hand-written code, per target, with the runner that times them>
   mark <0.0.2>
-  lock mit
+  lock <Apache-2.0>
   line ./code/line
   link @term/base, mark <0.0.x>
   link @term/host, mark <0.0.x>

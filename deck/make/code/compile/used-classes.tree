@@ -1,0 +1,199 @@
+# Tailwind JIT, step one: scan a milled program for the utility classes it actually uses. It walks every component's
+# elements and collects the literal `class` tokens (`bind class, <flex gap-2 md:flex>` gives flex, gap-2 and md:flex).
+# Only text literals are collected: a dynamic `class` (a `read` or a call) can name any class, so one is reported as the
+# `dynamic` escape, and the build falls back to the full catalog.
+#
+# It pairs with the incremental query graph (compile/incremental.ts): a `usedClasses` query derived from the milled
+# program backdates while the class set is unchanged, so editing a component recomputes the stylesheet only when its
+# classes change. See note/library/face/tailwind-jit.md.
+#
+# Ported from compile/used-classes.ts (self-hosting, 2026-10-05). Its set is a list, each token once, sorted.
+
+load @term/base/list
+  find list
+  find sort
+
+load @term/base/ordering
+  find ordering
+  find from-texts
+
+load @term/base/text
+  find char-at
+  find char-count
+
+load @term/base/rune
+  find rune-to-text
+
+load ./node
+  find statement
+  find view-node
+  find expression
+
+form used-classes
+  # the sorted set of statically known class tokens (the JIT keep-list)
+  link classes, like list, like text
+  # whether any element has a non-literal `class`, so the JIT cannot be sure it saw every class
+  link dynamic, like boolean
+
+# what JavaScript's `\s` matches: the ASCII spaces, the no-break and the other Unicode spaces, the line and paragraph
+# separators and the byte-order mark, by code point (a text literal has no escape for most of them)
+task whitespace-codes
+  like list, like number
+  mark private
+
+  save out, make list
+  push(out, 32)
+  push(out, 9)
+  push(out, 10)
+  push(out, 13)
+  push(out, 11)
+  push(out, 12)
+  push(out, 160)
+  push(out, 5760)
+  push(out, 8192)
+  push(out, 8193)
+  push(out, 8194)
+  push(out, 8195)
+  push(out, 8196)
+  push(out, 8197)
+  push(out, 8198)
+  push(out, 8199)
+  push(out, 8200)
+  push(out, 8201)
+  push(out, 8202)
+  push(out, 8232)
+  push(out, 8233)
+  push(out, 8239)
+  push(out, 8287)
+  push(out, 12288)
+  push(out, 65279)
+  back out
+
+task is-space
+  take one, like text
+  like boolean
+  mark private
+
+  walk whitespace-codes()
+    take code
+    fork test, is-equal(rune-to-text(code), one)
+      hold
+        back true
+  back false
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+# each token of a class list, split on runs of whitespace, added once
+task add-tokens
+  take value, like text
+  take out, like list, like text
+  like void
+  mark private
+
+  save token, <>
+  save at, 0
+  save size, char-count(value)
+  walk test
+    hook test, is-maximum(at, size)
+    hook hold
+      save one, <>
+      fork test, is-below(at, size)
+        hold
+          save one, char-at(value, at)
+      fork test, or(is-equal(at, size), is-space(one))
+        hold
+          fork test, and(is-unequal(token, <>), is-equal(has-text(out, token), false))
+            hold
+              push(out, token)
+          save token, <>
+        miss
+          save token, <{token}{one}>
+      save at, add(at, 1)
+
+# a `class` carrier's value: its tokens when it is a text literal, else the dynamic flag
+task add-carrier
+  take value, like expression
+  take out, like list, like text
+  take dynamic, like list, like boolean
+  like void
+  mark private
+
+  sift value
+    case string
+      link written
+      add-tokens(written, out)
+    miss
+      push(dynamic, true)
+
+task walk-views
+  take nodes, like list, like view-node
+  take out, like list, like text
+  take dynamic, like list, like boolean
+  like void
+  mark private
+
+  walk nodes
+    take node
+    sift node
+      case element
+        # `class` arrives as an element prop (`bind class, ...`) or an attribute (`seed class, ...`)
+        walk props
+          take prop
+          fork test, is-equal(prop/name, <class>)
+            hold
+              add-carrier(prop/value, out, dynamic)
+        walk attributes
+          take attribute
+          fork test, and(is-equal(attribute/name, <class>), is-equal(attribute/event, false))
+            hold
+              add-carrier(attribute/value, out, dynamic)
+        walk-views(children, out, dynamic)
+      case fork
+        walk branches
+          take branch
+          walk-views(branch/body, out, dynamic)
+        walk-views(otherwise, out, dynamic)
+      case walk
+        walk-views(body, out, dynamic)
+      miss
+        turn next
+
+# every statically known utility class the program's components use
+task collect-used-classes
+  take program, like list, like statement
+  like used-classes
+
+  save out, make list
+  # a flag a task can set through: a list that is empty, or holds one `true`
+  save dynamic, make list
+  walk program
+    take one
+    sift one
+      case view
+        walk-views(body, out, dynamic)
+      miss
+        turn next
+  save classes, sort(out, by-text)
+  back
+    make used-classes
+      bind classes, classes
+      bind dynamic, is-above(dynamic/length, 0)
+
+task by-text
+  take left, like text
+  take right, like text
+  like ordering
+  mark private
+
+  back from-texts(left, right)

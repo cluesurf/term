@@ -62,10 +62,12 @@ import {
   MINT_SOURCE,
 } from '@term/make/code/compile/mill-grammar.generated'
 import {
-  TYPE_NAME,
-  BINARY_BUILTIN,
-  UNARY_BUILTIN,
-  HALT_WORDS,
+  isTypeName,
+  typeOfWord,
+  isBinaryBuiltin,
+  binaryBuiltinOp,
+  isUnaryBuiltin,
+  isHaltWord,
   unescapeText,
 } from '@term/make/code/compile/surface'
 import {
@@ -443,8 +445,7 @@ function textExpression(
 
 // ---- types ----
 
-const named = (name: string): Type =>
-  TYPE_NAME[name] ?? { kind: 'named', name }
+const named = (name: string): Type => typeOfWord(name)
 
 // A `like` names a type and carries its parts: applied arguments ride in the name as a phrase
 // (`like stack number`), an element or key/value rides as a nested `like`, and a task type carries its
@@ -495,7 +496,7 @@ function typeOf(
     // a primitive takes no argument, so a `like` under it can only be the hash's value
     const only = children.length === 1 ? at(value, 'child')[0] : undefined
     const keyWord = only && isForm(only) ? wordAt(only, 'name') : undefined
-    const keyBase = keyWord !== undefined && !keyWord.includes(' ') ? TYPE_NAME[keyWord] : undefined
+    const keyBase = keyWord !== undefined && !keyWord.includes(' ') && isTypeName(keyWord) ? typeOfWord(keyWord) : undefined
     const spilled = only && isForm(only) ? at(only, 'child') : []
 
     if (keyBase && keyBase.kind !== 'named' && spilled.length === 1) {
@@ -543,7 +544,7 @@ function typeOf(
     }
   }
 
-  const base = TYPE_NAME[name]
+  const base = isTypeName(name) ? typeOfWord(name) : undefined
 
   if (base && applied.length === 0 && children.length === 0) {
     return base
@@ -948,8 +949,8 @@ function expressionOf(
       // Found porting range.tree to lean (lean-0011).
       if (
         isLean(bridge, 'seed-call-open') &&
-        (BINARY_BUILTIN[plainName(callee)] !== undefined ||
-          UNARY_BUILTIN.has(plainName(callee)))
+        (isBinaryBuiltin(plainName(callee)) ||
+          isUnaryBuiltin(plainName(callee)))
       ) {
         const args: Expression[] = []
 
@@ -1197,7 +1198,8 @@ function recordOf(bridge: Bridge, value: Form): Expression | undefined {
     return { form: 'array', items: positional, span: spanOf(value) }
   }
 
-  if (name === 'find') {
+  // with `bind` lines it builds a program's own `find` (the hold grammar's `mint find, like code-find`), as any form
+  if (name === 'find' && fields.length === 0) {
     return refuse(bridge, value, '`make find` is the older spelling of `make hash`. Write `make hash`, with the same `save <key>, <value>` lines under it')
   }
 
@@ -1955,7 +1957,7 @@ function foldBuiltin(
   args: Expression[],
   span: Span,
 ): Expression | undefined {
-  const op = BINARY_BUILTIN[name]
+  const op = isBinaryBuiltin(name) ? binaryBuiltinOp(name) : undefined
 
   if (op && args.length === 2) {
     return { form: 'binary', op, left: args[0]!, right: args[1]!, span }
@@ -3364,7 +3366,7 @@ function functionOf(bridge: Bridge, value: Form): Statement | undefined {
 
     if (
       mode === undefined ||
-      HALT_WORDS.has(mode) ||
+      isHaltWord(mode) ||
       !isForm(step) ||
       at(step, 'seed').length > 0 ||
       at(step, 'bind').length > 0 ||
@@ -4582,7 +4584,9 @@ function routeOf(
     calls,
     // The KEY is what tells a route from a command downstream, so a route writes it whether or not it has a
     // component to put in it: `hook /users / task get` is a route with no view, not a CLI command.
-    ...(isRoute ? { component } : {}),
+    // `page` says the same as a flag a reader can test without asking whether a key exists, which is what check/routes
+    // asked, and which a Term port cannot (check/routes.tree)
+    ...(isRoute ? { component, page: true } : {}),
     // a route's `seed <name>, <value>` lines are its directives: `title`, `layout`, `proxy`, a meta tag. They arrive
     // in the flow, and were dropped here until 2026-10-03, so `seed title` set no title in any build on this path while
     // the legacy mill read it (native-navigation-0002)
@@ -4812,7 +4816,7 @@ function formOf(bridge: Bridge, value: Form): Statement[] {
 
   // A form NAMED for a primitive registers no record-type: the compiler uses the native representation, and a
   // record-type of that name would clash with it. Its methods are still desugared, typed over the primitive.
-  const primitive = TYPE_NAME[name]
+  const primitive = isTypeName(name) ? typeOfWord(name) : undefined
   const self: Type | undefined = primitive
     ? primitive
     : name === 'list'

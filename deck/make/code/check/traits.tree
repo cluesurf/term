@@ -1,0 +1,176 @@
+# Trait checking: masks are records of method signatures, instances (wear/suit) are dictionaries implementing them. This
+# pass checks the two real correctness properties: an instance implements every method its mask declares, and every
+# `need` bound and instance refers to a mask that exists. This is the dictionary-passing trait model (structural, no
+# orphan-coherence machinery). See note/research/vibe/computation/plans/04-typecheck.md.
+#
+# Ported from check/traits.ts (self-hosting, 2026-10-05). Its maps of masks are two lists, a mask's name and its
+# methods at one index, the LAST mask of a name kept, as a map keyed by name kept it.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load ../parser/diagnostic
+  find diagnostic
+  find diagnose
+  find diagnostic-input
+  find span
+  find nearest
+  find diagnostic-name
+
+load ../compile/node
+  find statement
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+# the place of the last mask of this name, or -1
+task mask-at
+  take names, like list, like text
+  take name, like text
+  like number
+  mark private
+
+  save found, -1
+  walk names
+    take one
+    take at
+    fork test, is-equal(one, name)
+      hold
+        save found, at
+  back found
+
+# `did you mean "<name>"?` for the nearest mask, or none
+task suggestion
+  take name, like text
+  take known, like list, like text
+  like maybe, like text
+  mark private
+
+  save near, nearest(name, known)
+  fork test, is-equal(near, <>)
+    hold
+      back make none
+  back make(some, <did you mean "{near}"?>)
+
+task refusal
+  take name, like diagnostic-name
+  take file, like text
+  take at, like span
+  take message, like text
+  take hint, like maybe, like text
+  like diagnostic
+  mark private
+
+  save input
+    make diagnostic-input
+      bind file, file
+      bind span, at
+      bind message, make(some, message)
+      bind hint, hint
+  back diagnose(name, input)
+
+task check-traits
+  take program, like list, like statement
+  take file, like text
+  like list, like diagnostic
+
+  save out, make list
+  # every mask and the methods it declares
+  save mask-names, make list
+  save mask-methods, make list
+  walk program
+    take one
+    sift one
+      case mask
+        push(mask-names, name)
+        push(mask-methods, methods)
+      miss
+        turn next
+  # the names once each, in first order, for the suggestion
+  save known, make list
+  walk mask-names
+    take one
+    fork test, is-equal(has-text(known, one), false)
+      hold
+        push(known, one)
+
+  # coherence: a trait is implemented at most once for a type
+  save seen, make list
+  walk program
+    take one
+    sift one
+      case instance
+        save key, <{mask}:{target}>
+        fork test, has-text(seen, key)
+          hold
+            push(out, refusal(make(duplicate-instance), file, span, <"{target}" implements "{mask}" more than once>, make none))
+          miss
+            push(seen, key)
+      miss
+        turn next
+
+  # each instance implements every method of its mask, and its mask exists
+  walk program
+    take one
+    sift one
+      case instance
+        save at, mask-at(mask-names, mask)
+        fork test, is-below(at, 0)
+          hold
+            push(out, refusal(make(unknown-name), file, span, <the trait "{mask}" is not defined>, suggestion(mask, known)))
+            turn next
+        save missing, make list
+        walk get(mask-methods, at)
+          take required
+          fork test, is-equal(has-text(methods, required), false)
+            hold
+              push(missing, required)
+        fork test, is-above(missing/length, 0)
+          hold
+            push(out, refusal(make(incomplete-instance), file, span, <"{target}" implements "{mask}" but is missing: {join-texts(missing)}>, make none))
+      miss
+        turn next
+
+  # every `need` bound on a generic refers to a mask that exists
+  walk program
+    take one
+    sift one
+      case function
+        walk generics
+          take generic
+          fork test, and(is-unequal(generic/need, <>), is-below(mask-at(mask-names, generic/need), 0))
+            hold
+              push(out, refusal(make(unknown-name), file, span, <the trait bound "{generic/need}" on "{generic/name}" is not a defined trait>, suggestion(generic/need, known)))
+      miss
+        turn next
+  back out
+
+task join-texts
+  take values, like list, like text
+  like text
+  mark private
+
+  save out, <>
+  walk values
+    take one
+    take at
+    fork test, is-equal(at, 0)
+      hold
+        save out, one
+      miss
+        save out, <{out}, {one}>
+  back out

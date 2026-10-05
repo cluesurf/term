@@ -2,7 +2,7 @@
 deck @term/face
   head <Headless user interface components for Term>
   mark <0.0.16>
-  lock mit
+  lock <Apache-2.0>
   link @term/base, mark <0.0.x>
   link @term/bind, mark <0.0.x>
   link @term/site, mark <0.0.x>

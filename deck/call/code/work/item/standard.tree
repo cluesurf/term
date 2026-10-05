@@ -52,14 +52,23 @@ form symbol-rule
 form layout-rule
   # the verb starts here, after the glyph and one space
   link verb-column, like number
+  # the cells a verb is padded to, so subjects line up in a column. 0 pads nothing
+  # (v3, compact): the subject follows the verb after `title-gap` spaces
   link verb-width, like number
-  # subject, facts, details and every continuation start here
+  link title-gap, like number
+  # the role the verb is drawn in. v3 draws it dim; the user's choice (2026-10-05)
+  # is cyan, so it stands apart from the subject after it
+  link verb-role, like text
+  # facts, details and every child line start here. A wrapped title goes on here too
   link body-column, like number
+  # a blank line after the opening item and before the closing one. v3 has none
+  link spacing, like boolean
   # a continuation indents this far past where its text began
   link hang, like number
   # below this many columns the width is treated as this
   link least-width, like number
-  # spaces between the subject and its source tag
+  # spaces between the subject and its source tag. 0 puts no tag on the title: v3
+  # moves the source to the facts line, right after the clock
   link tag-gap, like number
   # spaces between table columns
   link key-gap, like number
@@ -253,6 +262,9 @@ form child-rule
   link duration-keys, like list, like text
   link stack-keys, like list, like text
   link default-verb, like text
+  # a child's logger name becomes the verb cut to this many cells (section 15). Its
+  # own number: the title pads no verb any more, so the layout's width is 0
+  link verb-cells, like number
   link levels, like list, like level-rule
 
 # section 19's keys, by the job each does
@@ -328,11 +340,14 @@ task make-standard
       layout
         make layout-rule
           verb-column 2
-          verb-width 7
-          body-column 11
+          verb-width 0
+          title-gap 1
+          verb-role <verb>
+          body-column 2
+          spacing false
           hang 2
           least-width 40
-          tag-gap 2
+          tag-gap 0
           key-gap 2
           field-gap 1
           align-keys false
@@ -359,7 +374,7 @@ task make-standard
           rank(6)
         make glyph-rule
           name <info>
-          unicode(<·>)
+          unicode(<●>)
           ascii(<->)
           role(<dim>)
           rank(2)
@@ -440,6 +455,13 @@ task make-standard
           dark(<#8FB3D9>)
           light(<#3D6797>)
           ansi(<36>)
+        # the verb of a title (the user's choice, 2026-10-05): cyan, apart from the
+        # source's blue-gray and the subject's text color
+        make role-rule
+          name <verb>
+          dark(<#7FD1D1>)
+          light(<#1B7A80>)
+          ansi(<96>)
         make role-rule
           name <focus>
           dark(<#1D2630>)
@@ -645,6 +667,7 @@ task make-standard
       facts
         make fact-rule
           order <clock>
+            <source>
             <tool>
             <zone>
             <duration>
@@ -787,7 +810,7 @@ task make-standard
             <up>
           facts <duration>, <status>, <counts>, <size>, <rest>
           details <message>, <fields>
-          order <clock>, <duration>, <status>, <counts>, <size>, <rest>
+          order <clock>, <source>, <duration>, <status>, <counts>, <size>, <rest>
         make kind-rule
           name <request>
           verbs <GET>, <POST>, <PUT>, <PATCH>, <DELETE>, <HEAD>, <OPTIONS>
@@ -798,7 +821,7 @@ task make-standard
           verbs <job>
           facts <duration>, <rest>, <counts>
           details <message>, <fields>, <quote>
-          order <clock>, <duration>, <rest>, <counts>, <status>, <size>
+          order <clock>, <source>, <duration>, <rest>, <counts>, <status>, <size>
         make kind-rule
           name <query>
           verbs(<query>)
@@ -848,6 +871,7 @@ task make-standard
           duration-keys <duration>, <ms>
           stack-keys <stack>, <err.stack>
           default-verb <log>
+          verb-cells 7
           levels
             make level-rule, word(<fatal>), glyph(<failed>), quiet(false)
             make level-rule, word(<panic>), glyph(<failed>), quiet(false)

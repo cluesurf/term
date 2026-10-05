@@ -2,7 +2,7 @@
 deck @term/bind
   head <The Term platform binding library: typed handles for the host APIs each backend exposes>
   mark <0.0.2>
-  lock <Apache 2.0>
+  lock <Apache-2.0>
   mind <Lance Pollard>, base <lp@elk.fm>
   term <information>
   term <computation>

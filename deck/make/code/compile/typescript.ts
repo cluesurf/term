@@ -2607,7 +2607,8 @@ function makeEmitter(
           const temps = place.fields.map((f, i) => `const __place${i} = ${expression(f.value)}`)
           const sets = place.fields.map((f, i) => `${local}.${toCamel(f.name)} = __place${i}`)
 
-          return `{ ${[...temps, ...sets].join('; ')} }`
+          // `;{`: a bare block after a statement ending in a parenthesized value is read by tsc as an arrow function
+          return `;{ ${[...temps, ...sets].join('; ')} }`
         }
 
         // a write to a map's slot (`save counts/{key}, ...`) is the Map's `set`: `counts[key] = v` set a property of the
@@ -2861,7 +2862,9 @@ function makeEmitter(
           const walked = `__walked${depth}`
           const body = block(node.body, depth)
 
-          return `{ const ${walked} = ${expression(node.iterable)}; ${named}for (let ${toCamel(node.index)} = 0; ${toCamel(node.index)} < ${walked}.length; ${toCamel(node.index)}++) {\n${pad(depth + 1)}const ${toCamel(node.item)} = ${walked}[${toCamel(node.index)}]!${body.slice(1)} }`
+          // `;{`, as a held match's block opens: after a statement ending in a parenthesized value tsc reads `(...) {`
+          // as an arrow function missing its `=>` (test/compile/held-block.ts)
+          return `;{ const ${walked} = ${expression(node.iterable)}; ${named}for (let ${toCamel(node.index)} = 0; ${toCamel(node.index)} < ${walked}.length; ${toCamel(node.index)}++) {\n${pad(depth + 1)}const ${toCamel(node.item)} = ${walked}[${toCamel(node.index)}]!${body.slice(1)} }`
         }
 
         // a walk that names its INDEX over anything else iterates the entries; one that does not keeps the plain `of`

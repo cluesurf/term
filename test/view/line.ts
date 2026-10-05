@@ -69,15 +69,16 @@ ok('the verb exists and a document reads', plain.code === 0, plain.all)
 // The EXACT line, not a substring. `includes` passed happily against `sound/chart>, <text/heading>, <text/item`
 // when the CLI was regexing the serialized manifest and getting the delimiters back with the names. Since 2026-10-05
 // each is a field of the document's `read` item, at the body column
-ok('it is a read item for the document', /^✓ read {5}page\/quenya\.tree$/m.test(plain.all), plain.all)
+// v3 (note/term/output/standard.md): `✓ read <file>` at column 0, each use a field two cells in
+ok('it is a read item for the document', /^✓ read page\/quenya\.tree$/m.test(plain.all), plain.all)
 ok(
   'it prints every component placed, and only the names',
-  /^ {11}view sound\/chart, text\/heading$/m.test(plain.all),
+  /^ {2}view sound\/chart, text\/heading$/m.test(plain.all),
   plain.all,
 )
-ok('it prints the query', /^ {11}find filter:phoneme$/m.test(plain.all), plain.all)
-ok('it prints the operator', /^ {11}call titlecase$/m.test(plain.all), plain.all)
-ok('it prints the node count and depth', /^ {11}node \d+$/m.test(plain.all) && /^ {11}deep \d+$/m.test(plain.all), plain.all)
+ok('it prints the query', /^ {2}find filter:phoneme$/m.test(plain.all), plain.all)
+ok('it prints the operator', /^ {2}call titlecase$/m.test(plain.all), plain.all)
+ok('it prints the node count and depth', /^ {2}node \d+$/m.test(plain.all) && /^ {2}deep \d+$/m.test(plain.all), plain.all)
 
 const manifest = run(['view', 'page/quenya.tree', '--find'])
 

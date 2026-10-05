@@ -56,8 +56,10 @@ form position
 form span
   link start, like position
   link end, like position
+  # a maybe, so a span built in Term (a fix's whole lines) leaves it out as the TypeScript did, where a plain text
+  # would be written as `""`
   link file
-    like text
+    like maybe, like text
     need false
 
 # ---- diagnostics ----

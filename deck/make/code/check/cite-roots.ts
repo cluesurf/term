@@ -30,8 +30,10 @@ function citesIn(body: Statement[], into: Set<string>): void {
   }
 }
 
-// every rule reachable from `roots` by citation, roots excluded
-export function citedRules(program: Program, roots: Set<string>): Set<string> {
+// every rule reachable from `roots` by citation, roots excluded, in the order found. Lists rather than sets, the shape
+// the port (check/cite-roots.tree) answers, so the one caller works against either
+export function citedRules(program: Program, rootList: string[]): string[] {
+  const roots = new Set(rootList)
   const rules = new Map<string, Statement[]>()
 
   for (const statement of program) {
@@ -55,5 +57,5 @@ export function citedRules(program: Program, roots: Set<string>): Set<string> {
     }
   }
 
-  return found
+  return [...found]
 }

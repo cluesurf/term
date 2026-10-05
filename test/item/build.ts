@@ -7,10 +7,15 @@ import { makeStandard } from '@term/call/code/work/item/standard'
 import { makeRoom } from '@term/call/code/work/item/layout'
 import type { Room, Line } from '@term/call/code/work/item/layout'
 
-// the standard as the mockups draw it: a clock on every item (D35). The standard itself shows one only on a slow item
-// or a live log, which test/item/unit.ts holds against `makeStandard()` as it ships
+// the standard as the mockups draw it: a clock on every item (D35) and the verb dim (D36). The standard itself shows a
+// clock only on a slow item or a live log, and draws the verb cyan, which test/item/unit.ts holds against
+// `makeStandard()` as it ships
 const SHIPPED = makeStandard()
-export const STANDARD = { ...SHIPPED, facts: { ...SHIPPED.facts, clockFrom: -1 } }
+export const STANDARD = {
+  ...SHIPPED,
+  layout: { ...SHIPPED.layout, verbRole: 'dim' },
+  facts: { ...SHIPPED.facts, clockFrom: -1 },
+}
 
 // the mockups' zone: Pacific daylight time, 2026-10-03
 export const OFFSET = -420
@@ -133,8 +138,8 @@ export function plain(text: string): Expected {
 
 export const BLANK: Expected = { text: '', marks: [] }
 
-// the indent of the body column
-export const I = ' '.repeat(11)
+// the indent of the body column: 2 in v3's compact nesting
+export const I = ' '.repeat(2)
 
 // a patch to a mockup's lines, naming the entry of note/term/output/mockup-differences.md that justifies it
 export type Patch =

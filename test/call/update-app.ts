@@ -58,8 +58,9 @@ async function scenario(label: string, cask: string): Promise<void> {
   const program = buildProgram({
     root: CASK,
     entry: join(APP, cask),
-    // the resources directory and the update server, the way an app carries its own address
-    driver: `boot(${JSON.stringify(bundle.resources)}, ${JSON.stringify(`file://${served}`)})`,
+    // the resources directory and the update server, the way an app carries its own address. Swift, so by label: a
+    // task's inputs are labeled by name (compile/swift.ts)
+    driver: `boot(resources: ${JSON.stringify(bundle.resources)}, base: ${JSON.stringify(`file://${served}`)})`,
     exe: bundle.exe,
     work: join(at, 'work'),
   })

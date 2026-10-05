@@ -31,6 +31,8 @@ load ./format
   find format-status
   find group-number
   find make-glue
+  find spans-text
+  find truncate-middle
 
 load ./clean
   find clean-text
@@ -80,6 +82,25 @@ task shows-clock
       hold
         save shown, true
   back shown
+
+# the source of a shared stream (section 11), right after the clock, in the source
+# color: the service and its instance, middle-truncated past the tag width. Left out
+# when it would repeat the subject (`● restart api`)
+task draw-source
+  take event, like event
+  take room, like room
+
+  like list, like span
+
+  save spans, make list
+  save source, clean-text(event/source, room)
+
+  fork test
+    and(is-unequal(source, <>), is-unequal(source, spans-text(event/subject)))
+    hold
+      save shown, truncate-middle(source, room/standard/services/tag-width, room)
+      spans/push make-span(shown, <source>)
+  back spans
 
 # the clock in the display zone: dim, always first, when `shows-clock` says so
 task draw-clock
@@ -207,6 +228,7 @@ task fact-order
 task list-facts
   take event, like event
   take room, like room
+  take tagged, like boolean
 
   like list, like fact-spans
 
@@ -217,6 +239,9 @@ task list-facts
     fork test, is-equal(name, <clock>)
       hold
         save out, push-fact(out, draw-clock(event, room))
+    fork test, and(is-equal(name, <source>), tagged)
+      hold
+        save out, push-fact(out, draw-source(event, room))
     fork test, is-equal(name, <tool>)
       hold
         walk event/tool
@@ -314,10 +339,11 @@ task measure-fact
 task draw-facts-line
   take event, like event
   take room, like room
+  take tagged, like boolean
 
   like list, like line
 
-  save facts, list-facts(event, room)
+  save facts, list-facts(event, room, tagged)
 
   fork test, is-equal(facts/length, 0)
     hold

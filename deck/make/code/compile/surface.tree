@@ -1,0 +1,256 @@
+# The surface vocabulary: the words the language's own syntax reserves, and what each means to the compiler.
+#
+# It lives apart from the readers because two need the same answer: the grammar-driven bridge (mint-bridge) and the
+# checker's name resolution. A second copy of this table is a second language, and the disagreement would be silent.
+#
+# Ported from compile/surface.ts (self-hosting, 2026-10-05). Its tables were exported constants, a record and a set
+# each, and a Term module exports tasks, so each is asked by name: `is-type-name` and `type-of-word`,
+# `is-binary-builtin` and `binary-builtin-op`, `is-unary-builtin`, `is-halt-word`. Asking a record with `in` also
+# answered yes for `toString` and `constructor`, which every JavaScript object has; these do not.
+
+load @term/base/text
+  find char-at
+  find char-count
+  find split
+
+load ./node
+  find type
+  find binary-op
+  find number-type
+  find float-type
+  find boolean-type
+  find string-type
+  find unit-type
+  find unknown-type
+  find dynamic-type
+  find bytes-type
+
+# what a word's primitive is, `none` for a word that names no primitive
+form primitive
+  mark text
+  case number
+  case float
+  case dynamic
+  case bytes
+  case text
+  case boolean
+  case unit
+  case unknown
+  case none
+
+# a type word that is not a form: the primitive it names. A `form` whose NAME is one of these registers no record-type,
+# because the compiler uses the native representation; its methods are still desugared over the primitive kind
+task is-type-name
+  take name, like text
+  like boolean
+
+  sift primitive-of(name)
+    case none
+      back false
+    miss
+      back true
+
+# the type a word names: its primitive, else the named type of that name
+task type-of-word
+  take name, like text
+  like type
+
+  sift primitive-of(name)
+    case number
+      back number-type()
+    case float
+      back float-type()
+    case dynamic
+      back dynamic-type()
+    case bytes
+      back bytes-type()
+    case text
+      back string-type()
+    case boolean
+      back boolean-type()
+    case unit
+      back unit-type()
+    case unknown
+      back unknown-type()
+    case none
+      back named-type(name)
+
+# the named type of a word
+task named-type
+  take name, like text
+  like type
+  mark private
+
+  save named-one
+    make named
+      bind name, name
+  back named-one
+
+# whether a word is one of a space-separated list of words
+task one-of
+  take name, like text
+  take words, like text
+  like boolean
+  mark private
+
+  walk split(words, < >)
+    take one
+    fork test, is-equal(one, name)
+      hold
+        back true
+  back false
+
+task primitive-of
+  take name, like text
+  like primitive
+  mark private
+
+  # `size`: a count or a length, the number every backend already has (94 stdlib signatures said `like size` and no
+  # form declared it, so each backend was handed a `Size` it never defined). The widths are numbers too, and bind's
+  # native primitives ARE Term's, so a value passes to a bind method parameter and back
+  fork test, one-of(name, <size u8 u16 u32 u64 u128 i8 i16 i32 i64 i128 natural-number integer number native-number native-bigint>)
+    hold
+      back make number
+  # floating point: `decimal` / `float` and the sized floats are the distinct float type
+  fork test, one-of(name, <decimal float f32 f64>)
+    hold
+      back make float
+  # the host's dynamic value (the opaque result of json parse)
+  fork test, one-of(name, <dynamic json>)
+    hold
+      back make dynamic
+  # a raw byte buffer (Uint8Array / Vec\<u8\> / Data / ByteArray), the zero-copy currency for crypto and IO
+  fork test, one-of(name, <bytes byte-array buffer>)
+    hold
+      back make bytes
+  fork test, one-of(name, <text native-string>)
+    hold
+      back make text
+  fork test, one-of(name, <boolean native-boolean>)
+    hold
+      back make boolean
+  fork test, one-of(name, <void unit native-void native-null native-undefined>)
+    hold
+      back make unit
+  # `any` is the gradual type, and `unknown` the same value spelled from the holder's side. Both lower to the boxed
+  # dynamic natively, never to a number
+  fork test, one-of(name, <any unknown>)
+    hold
+      back make unknown
+  back make none
+
+# arithmetic and comparison the emitter lowers to a BINARY operation. These have no definition to bind to and are never
+# imported, so every reader knows them by name
+task is-binary-builtin
+  take name, like text
+  like boolean
+
+  back one-of(name, <add subtract multiply divide modulo is-above is-below is-equal is-unequal is-minimum is-maximum and or>)
+
+# the operator a binary builtin lowers to. Ask `is-binary-builtin` first: any other word answers `+`
+task binary-builtin-op
+  take name, like text
+  like binary-op
+
+  fork test, is-equal(name, <subtract>)
+    hold
+      back make minus
+  fork test, is-equal(name, <multiply>)
+    hold
+      back make times
+  fork test, is-equal(name, <divide>)
+    hold
+      back make divide
+  fork test, is-equal(name, <modulo>)
+    hold
+      back make remainder
+  fork test, is-equal(name, <is-above>)
+    hold
+      back make above
+  fork test, is-equal(name, <is-below>)
+    hold
+      back make below
+  fork test, is-equal(name, <is-equal>)
+    hold
+      back make equal
+  fork test, is-equal(name, <is-unequal>)
+    hold
+      back make unequal
+  fork test, is-equal(name, <is-minimum>)
+    hold
+      back make at-least
+  fork test, is-equal(name, <is-maximum>)
+    hold
+      back make at-most
+  fork test, is-equal(name, <and>)
+    hold
+      back make both
+  fork test, is-equal(name, <or>)
+    hold
+      back make either
+  back make plus
+
+# arithmetic the emitter lowers to a UNARY operation: `increment x` is `x + 1`. `not x` is `!x`, a word of the compiler's
+# own like `and` and `or` beside it
+task is-unary-builtin
+  take name, like text
+  like boolean
+
+  back one-of(name, <increment decrement not>)
+
+# the `halt` arguments that are control flow rather than an exception to raise. An exception form may not take one of
+# these names
+task is-halt-word
+  take name, like text
+  like boolean
+
+  back one-of(name, <fork flow code kink take>)
+
+# Unescape a text literal's escape sequences: the delimiters (`\<` `\>` `\{` `\}`, kept in the chunk so the bracket is
+# content and not a delimiter), the standard characters (`\n` `\r` `\t` `\\`), and `\e`, the escape character (0x1B)
+# every ANSI colour sequence opens with. A backslash before anything else stays, with what follows it.
+task unescape-text
+  take value, like text
+  like text
+
+  save out, <>
+  save at, 0
+  save size, char-count(value)
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save one, char-at(value, at)
+      fork test, and(is-equal(one, <\\>), is-below(add(at, 1), size))
+        hold
+          save kept, escaped(char-at(value, add(at, 1)))
+          fork test, is-unequal(kept, <>)
+            hold
+              save out, <{out}{kept}>
+              save at, add(at, 2)
+              turn next
+      save out, <{out}{one}>
+      save at, add(at, 1)
+  back out
+
+# what `\` before `one` stands for, or empty when it is no escape
+task escaped
+  take one, like text
+  like text
+  mark private
+
+  fork test, is-equal(one, <n>)
+    hold
+      back <\n>
+  fork test, is-equal(one, <r>)
+    hold
+      back <\r>
+  fork test, is-equal(one, <t>)
+    hold
+      back <\t>
+  fork test, is-equal(one, <e>)
+    hold
+      back <\e>
+  fork test, one-of(one, <\< \> \{ \} \\>)
+    hold
+      back one
+  back <>

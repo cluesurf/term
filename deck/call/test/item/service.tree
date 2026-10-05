@@ -1,7 +1,8 @@
-# Long-running services (section 11): `date` items when the local date changes and before a stream read later,
-# `--source` filtering, identical items within 10 s collapsing into the first with `×n`, the source tags cut to 12
+# Long-running services (section 11): `date` items when the local date changes and
+# before a stream read later,
+# `--source` filtering, identical items within 10 s collapsing into the first with
+# `×n`, the source tags cut to 12
 # cells and listed in full in the opening, and the zone named once.
-
 load @term/base/text
   find contains
 
@@ -34,8 +35,17 @@ load ./kit
 task make-request
   take clock, like number
   take source, like text
+
   like event
-  save one, make event, glyph(<done>), kind(<request>), verb(<GET>), subject(plain-subject(</shape>)), source(source), clock(clock)
+
+  save one
+    make event
+      glyph(<done>)
+      kind(<request>)
+      verb(<GET>)
+      subject(plain-subject(</shape>))
+      source(source)
+      clock(clock)
   save one/duration, 18
   save one/status/kind, <http>
   save one/status/value, 200
@@ -48,13 +58,16 @@ test <a date item comes before the first item of a new local day>
   save one, make-stream(<>, -420)
   save first, stream-event(one, make-request(day, <api>), day, standard)
   want hold, is-equal(first/events/length, 0)
-  save second, stream-event(first/stream, make-request(next-day, <api>), next-day, standard)
+  save second
+    stream-event(first/stream, make-request(next-day, <api>), next-day, standard)
   want hold, is-equal(second/events/length, 2)
   save held, second/events/0
   save dated, second/events/1
   want hold, is-equal(held/verb, <GET>)
-  want hold, and(is-equal(dated/verb, <date>), is-equal(spans-text(dated/subject), <2026-10-04>))
-  want hold, is-equal(kit-draw(dated, 80), <· date     2026-10-04>)
+  want hold
+    and is-equal(dated/verb, <date>)
+      is-equal(spans-text(dated/subject), <2026-10-04>)
+  want hold, is-equal(kit-draw(dated, 80), <● date 2026-10-04>)
 
 test <a stream read later that starts on an earlier day says the date first>
   save standard, make-standard()
@@ -82,23 +95,42 @@ test <identical items within 10 s collapse into the first, which gains ×n>
   save at, kit-clock(14, 2, 7, 412)
   save one, make-stream(<>, -420)
   save step, stream-event(one, make-request(at, <api>), at, standard)
-  save step, stream-event(step/stream, make-request(add(at, 1000), <api>), add(at, 1000), standard)
-  save step, stream-event(step/stream, make-request(add(at, 9000), <api>), add(at, 9000), standard)
+  save step
+    stream-event step/stream
+      make-request(add(at, 1000), <api>)
+      add(at, 1000)
+      standard
+  save step
+    stream-event step/stream
+      make-request(add(at, 9000), <api>)
+      add(at, 9000)
+      standard
   want hold, is-equal(step/events/length, 0)
-  save different, make event, glyph(<warning>), verb(<GET>), subject(plain-subject(</favicon.ico>)), clock(add(at, 9500))
+  save different
+    make event
+      glyph(<warning>)
+      verb(<GET>)
+      subject(plain-subject(</favicon.ico>))
+      clock(add(at, 9500))
   save step, stream-event(step/stream, different, add(at, 9500), standard)
   want hold, is-equal(step/events/length, 1)
   save first, step/events/0
   want hold, is-equal(first/repeat, 3)
-  want hold, contains(kit-draw(first, 80), <14:02:07.412 · 18 ms · HTTP 200 · ×3>)
-  want hold, contains(write-json-event(first, -420, false, standard), <"facts":["×3"]>)
+  want hold
+    contains(kit-draw(first, 80), <14:02:07.412 · api · 18 ms · HTTP 200 · ×3>)
+  want hold
+    contains(write-json-event(first, -420, false, standard), <"facts":["×3"]>)
 
 test <an identical item after the window is its own item>
   save standard, make-standard()
   save at, kit-clock(14, 2, 7, 412)
   save one, make-stream(<>, -420)
   save step, stream-event(one, make-request(at, <api>), at, standard)
-  save step, stream-event(step/stream, make-request(add(at, 10001), <api>), add(at, 10001), standard)
+  save step
+    stream-event step/stream
+      make-request(add(at, 10001), <api>)
+      add(at, 10001)
+      standard
   want hold, is-equal(step/events/length, 1)
   save printed, step/events/0
   want hold, is-equal(printed/repeat, 0)
@@ -131,9 +163,19 @@ test <the service opening names the zone once and lists a long source in full>
   save sources, make list
   sources/push <api>
   sources/push <payments-reconciler>
-  save opening, make-service-opening(<dev>, <~/shape>, kit-clock(14, 2, 4, 990), <term 2.5.22>, <PDT, UTC−7>, sources, kit-room(80))
-  want hold, is-equal(kit-draw(opening, 80), <· dev      ~/shape\n           14:02:04.990 · term 2.5.22 · PDT, UTC−7 · 2 services\n           sources  api, payments-reconciler>)
+  save opening
+    make-service-opening <dev>
+      <~/shape>
+      kit-clock(14, 2, 4, 990)
+      <term 2.5.22>
+      <PDT, UTC−7>
+      sources
+      kit-room(80)
+  want hold
+    is-equal kit-draw(opening, 80)
+      <● dev ~/shape\n  14:02:04.990 · term 2.5.22 · PDT, UTC−7 · 2 services\n  sources api, payments-reconciler>
 
-test <a source over 12 cells is cut in its tag>
+test <a source over 12 cells is cut on the facts line, after the clock, never on the title>
   save one, make-request(kit-clock(14, 2, 8, 120), <payments-reconciler>)
-  want hold, contains(kit-draw(one, 80), <✓ GET      /shape  paymen…ciler>)
+  want hold
+    contains(kit-draw(one, 80), <✓ GET /shape\n  14:02:08.120 · paymen…ciler>)

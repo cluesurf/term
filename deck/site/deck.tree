@@ -2,6 +2,6 @@
 deck @term/site
   head <The Term application framework>
   mark <0.0.16>
-  lock mit
+  lock <Apache-2.0>
   link @term/base, mark <0.0.x>
   link @term/bind, mark <0.0.x>

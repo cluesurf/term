@@ -1,0 +1,371 @@
+# Structural equality and stability for expressions and statements, shared across the compiler: the lint rules that
+# ask whether two subexpressions are "the same" (no-self-comparison, no-duplicate-branch-condition, no-self-assignment,
+# no-identical-branches) and the IR simplifier's boolean idempotence and absorption.
+#
+# `expressions-equal` is purely structural: same shape, same literals, same names, ignoring spans, types and bindings.
+# `is-stable` is true when an expression reads no call or await, so evaluating it twice gives the same value. A caller
+# that rewrites a "duplicate" pattern fires only on stable (or, in the simplifier, pure) expressions, so an
+# intentional pair of effectful calls is never collapsed.
+#
+# Ported from compile/expr-equal.ts (self-hosting, 2026-10-05), with one fix made in both: a member read compared its
+# NAME alone, and a computed member's name is empty, so `grid/{i}` and `grid/{j}` were the same place and
+# `save grid/{i}, grid/{j}` was reported as assigning a value to itself. The index is compared now, and a computed
+# index must be stable for the read to be (test/lint/expr-equal-index.ts).
+
+load @term/base/list
+  find list
+  find get
+
+load ./node
+  find expression
+  find statement
+  find statement-branch
+
+load ./type-text
+  find integer-text
+
+task expressions-equal
+  take a, like expression
+  take b, like expression
+  like boolean
+
+  sift a
+    case integer
+      sift b
+        # by the exact text, so two literals past 2^53 that round to one number still differ
+        case integer
+          back is-equal(integer-text(a), integer-text(b))
+        miss
+          back false
+    case float
+      sift b
+        case float
+          link other-value
+          back is-equal(value, other-value)
+        miss
+          back false
+    case boolean
+      sift b
+        case boolean
+          link other-value
+          back is-equal(value, other-value)
+        miss
+          back false
+    case string
+      sift b
+        case string
+          link other-value
+          back is-equal(value, other-value)
+        miss
+          back false
+    case null
+      sift b
+        case null
+          back true
+        miss
+          back false
+    case unit
+      sift b
+        case unit
+          back true
+        miss
+          back false
+    case variable
+      sift b
+        case variable
+          link other-name
+          back is-equal(name, other-name)
+        miss
+          back false
+    case member
+      sift b
+        case member
+          link other-target
+          link other-name
+          link other-index
+          fork test, is-unequal(name, other-name)
+            hold
+              back false
+          fork test, is-equal(indexes-equal(index, other-index), false)
+            hold
+              back false
+          back expressions-equal(target, other-target)
+        miss
+          back false
+    case binary
+      sift b
+        case binary
+          link other-op
+          link other-left
+          link other-right
+          back and(is-equal(op, other-op), and(expressions-equal(left, other-left), expressions-equal(right, other-right)))
+        miss
+          back false
+    case unary
+      sift b
+        case unary
+          link other-op
+          link other-operand
+          back and(is-equal(op, other-op), expressions-equal(operand, other-operand))
+        miss
+          back false
+    case call
+      sift b
+        case call
+          link other-callee
+          link other-args
+          back and(expressions-equal(callee, other-callee), expression-lists-equal(args, other-args))
+        miss
+          back false
+    case array
+      sift b
+        case array
+          link other-items
+          back expression-lists-equal(items, other-items)
+        miss
+          back false
+  # records, maps, closures, conditionals and the rest are not equal: too rarely duplicated to be worth the surface,
+  # and answering false keeps every caller from collapsing too much
+    miss
+      back false
+
+# two computed indexes of member reads: both absent, or both present and equal
+task indexes-equal
+  take a, like maybe, like expression
+  take b, like maybe, like expression
+  like boolean
+  mark private
+
+  sift a
+    case some
+      link one
+      sift b
+        case some
+          link other
+          back expressions-equal(one, other)
+        case none
+          back false
+    case none
+      sift b
+        case some
+          back false
+        case none
+          back true
+
+task expression-lists-equal
+  take a, like list, like expression
+  take b, like list, like expression
+  like boolean
+  mark private
+
+  fork test, is-unequal(a/length, b/length)
+    hold
+      back false
+  walk a
+    take item
+    take at
+    fork test, is-equal(expressions-equal(item, get(b, at)), false)
+      hold
+        back false
+  back true
+
+# structural equality for two statement lists (a block), which no-identical-branches uses to tell when a fork's two
+# branches run the same code
+task statement-lists-equal
+  take a, like list, like statement
+  take b, like list, like statement
+  like boolean
+
+  fork test, is-unequal(a/length, b/length)
+    hold
+      back false
+  walk a
+    take item
+    take at
+    fork test, is-equal(statements-equal(item, get(b, at)), false)
+      hold
+        back false
+  back true
+
+# two `otherwise` blocks: both left out, or both written and equal. One left out and one written empty differ
+task optional-lists-equal
+  take a, like maybe, like list, like statement
+  take b, like maybe, like list, like statement
+  like boolean
+  mark private
+
+  sift a
+    case some
+      link one
+      sift b
+        case some
+          link other
+          back statement-lists-equal(one, other)
+        case none
+          back false
+    case none
+      sift b
+        case some
+          back false
+        case none
+          back true
+
+# two maybe values of a `return`: both absent, or both present and equal
+task returns-equal
+  take a, like maybe, like expression
+  take b, like maybe, like expression
+  like boolean
+  mark private
+
+  back indexes-equal(a, b)
+
+task branches-equal
+  take a, like list, like statement-branch
+  take b, like list, like statement-branch
+  like boolean
+  mark private
+
+  fork test, is-unequal(a/length, b/length)
+    hold
+      back false
+  walk a
+    take branch
+    take at
+    save other, get(b, at)
+    fork test, is-equal(expressions-equal(branch/cond, other/cond), false)
+      hold
+        back false
+    fork test, is-equal(statement-lists-equal(branch/body, other/body), false)
+      hold
+        back false
+  back true
+
+# structural equality for two statements: the common branch-body forms, recursing into nested blocks. Any other form
+# is not equal, so a caller only fires on a fully recognized exact match
+task statements-equal
+  take a, like statement
+  take b, like statement
+  like boolean
+
+  sift a
+    case expression
+      sift b
+        case expression
+          link other-expr
+          back expressions-equal(expr, other-expr)
+        miss
+          back false
+    case return
+      sift b
+        case return
+          link other-value
+          back returns-equal(value, other-value)
+        miss
+          back false
+    case throw
+      sift b
+        case throw
+          link other-value
+          back expressions-equal(value, other-value)
+        miss
+          back false
+    case assign
+      sift b
+        case assign
+          link other-target
+          link other-op
+          link other-value
+          back and(is-equal(op, other-op), and(expressions-equal(target, other-target), expressions-equal(value, other-value)))
+        miss
+          back false
+    case let
+      sift b
+        case let
+          link other-name
+          link other-init
+          link other-mutable
+          back and(is-equal(name, other-name), and(is-equal(mutable, other-mutable), expressions-equal(init, other-init)))
+        miss
+          back false
+    case break
+      sift b
+        case break
+          back true
+        miss
+          back false
+    case continue
+      sift b
+        case continue
+          back true
+        miss
+          back false
+    case exit
+      sift b
+        case exit
+          back true
+        miss
+          back false
+    case while
+      sift b
+        case while
+          link other-cond
+          link other-body
+          back and(expressions-equal(cond, other-cond), statement-lists-equal(body, other-body))
+        miss
+          back false
+    case if
+      sift b
+        case if
+          link other-branches
+          link other-otherwise
+          back and(branches-equal(branches, other-branches), optional-lists-equal(otherwise, other-otherwise))
+        miss
+          back false
+  # for-each, match, hold, debug, function and the rest: not equal
+    miss
+      back false
+
+# true when the expression reads no call or await, so evaluating it twice is observationally identical. Any form not
+# cleared here, or whose parts are not all stable, is unstable
+task is-stable
+  take node, like expression
+  like boolean
+
+  sift node
+    case integer
+      back true
+    case float
+      back true
+    case boolean
+      back true
+    case string
+      back true
+    case null
+      back true
+    case unit
+      back true
+    case variable
+      back true
+    case hole
+      back true
+    case binary
+      back and(is-stable(left), is-stable(right))
+    case unary
+      back is-stable(operand)
+    case member
+      sift index
+        case some
+          link computed
+          back and(is-stable(computed), is-stable(target))
+        case none
+          back is-stable(target)
+    case array
+      walk items
+        take item
+        fork test, is-equal(is-stable(item), false)
+          hold
+            back false
+      back true
+  # call, await, closure, record, map, conditional: not provably free of effects
+    miss
+      back false

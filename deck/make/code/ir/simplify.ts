@@ -560,11 +560,7 @@ function propagateStatement(
       }
 
     case 'guard': {
-      const inner = new Map(env)
-
-      if (node.catch) {
-        inner.delete(node.catch.name)
-      }
+      const inner = node.catch ? shadow(env, [node.catch.name]) : env
 
       return {
         ...node,
@@ -586,8 +582,7 @@ function propagateStatement(
     }
 
     case 'for-each': {
-      const inner = new Map(env)
-      inner.delete(node.item)
+      const inner = shadow(env, node.index ? [node.item, node.index] : [node.item])
 
       return {
         ...node,
@@ -600,9 +595,10 @@ function propagateStatement(
       return {
         ...node,
         subject: sub(node.subject),
+        // an arm binds its case's fields, so a substitution naming one, or copying one, stops at the arm
         cases: node.cases.map(c => ({
           ...c,
-          body: propagateConstants(c.body, env, safe, assigned),
+          body: propagateConstants(c.body, shadow(env, armNames(c, node.exceptionArms)), safe, assigned),
         })),
         otherwise: node.otherwise
           ? propagateConstants(node.otherwise, env, safe, assigned)
@@ -2272,6 +2268,34 @@ let caseFields = new Map<string, Set<string>>()
 // every name a function binds anywhere in its body, nested closures included: parameters, `let`s, loop items and
 // indexes, an arm's fields and a handler's caught value. Coarse on purpose: a name bound anywhere in the function
 // blocks an inlining that could be captured by it
+// The names one match arm binds. Its `link` lines, AND every field of its case: a renaming `link` renames the fields it
+// lists in order, and the rest still bind by their own names (`case boolean / link arm` binds `arm` and `span`). Read as
+// "only the `link` names" until 2026-10-05, which let a copied `span` be substituted into such an arm and capture the
+// literal's own `span` (test/compile/simplify-arm-capture.ts). Over a caught exception, every shared field and prop.
+function armNames(
+  c: { label: string; binds?: string[] },
+  arms: { label: string; shared: string[]; link: string[] }[] | undefined,
+): string[] {
+  const arm = arms?.find(one => one.label === c.label)
+
+  return [...(c.binds ?? []), ...(caseFields.get(c.label) ?? []), ...(arm?.shared ?? []), ...(arm?.link ?? [])]
+}
+
+// the substitutions still valid inside a scope that binds `names`: none for a name it rebinds, and none that would
+// substitute a variable it rebinds, which the scope would capture
+function shadow(env: Map<string, Expression>, names: Iterable<string>): Map<string, Expression> {
+  const bound = new Set(names)
+  const inner = new Map<string, Expression>()
+
+  for (const [key, value] of env) {
+    if (!bound.has(key) && !(value.form === 'variable' && bound.has(value.name))) {
+      inner.set(key, value)
+    }
+  }
+
+  return inner
+}
+
 function boundNames(fn: Extract<Statement, { form: 'function' }>): Set<string> {
   const names = new Set<string>(fn.params.map(p => p.name))
   const visit = (node: unknown): void => {
@@ -2314,11 +2338,7 @@ function boundNames(fn: Extract<Statement, { form: 'function' }>): Set<string> {
       const arms = record.exceptionArms as { label: string; shared: string[]; link: string[] }[] | undefined
 
       for (const c of record.cases as { label: string; binds?: string[] }[]) {
-        // an arm's `link` lines name what it binds; without them it binds the case's fields by their own names
-        const own = c.binds?.length ? [] : [...(caseFields.get(c.label) ?? [])]
-        const arm = arms?.find(one => one.label === c.label)
-
-        for (const name of [...(c.binds ?? []), ...own, ...(arm?.shared ?? []), ...(arm?.link ?? [])]) {
+        for (const name of armNames(c, arms)) {
           names.add(name)
         }
       }

@@ -1,0 +1,132 @@
+# A call to a task marked `mark deprecated` is warned about.
+#
+# The mark was read by nothing, so a deprecated task was called with no word to the caller (guides: language/notes,
+# 2026-10-03). A call from the file that defines the task is its own business and is left alone; a call from any other
+# file in the file being compiled is a warning at the call, naming the task.
+#
+# Ported from check/deprecated.ts (self-hosting, 2026-10-05). It walked each task's body by reflection; here it reads
+# compile/node-walk's list of the body's expressions.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load ../parser/diagnostic
+  find diagnostic
+  find diagnose
+  find diagnostic-input
+  find span
+
+load ../compile/node
+  find statement
+
+load ../compile/node-walk
+  find expressions-in
+
+task is-in-file
+  take at, like span
+  take file, like text
+  like boolean
+  mark private
+
+  sift at/file
+    case some
+      link written
+      back is-equal(written, file)
+    case none
+      back false
+
+# the file a deprecated task of this name is defined in, `<none>` for no deprecated task of the name, and `<>` for one
+# whose span names no file. The LAST definition of the name, as a map keyed by name kept it
+task defined-in
+  take names, like list, like text
+  take files, like list, like text
+  take name, like text
+  like text
+  mark private
+
+  save found, <none>
+  walk names
+    take one
+    take at
+    fork test, is-equal(one, name)
+      hold
+        save found, get(files, at)
+  back found
+
+task warn-deprecated
+  take program, like list, like statement
+  take file, like text
+  like list, like diagnostic
+
+  # not `names`: a call's own field of that name would hide it inside the call's arm
+  save deprecated-names, make list
+  save files, make list
+  walk program
+    take one
+    sift one
+      case function
+        fork test, deprecated
+          hold
+            push(deprecated-names, name)
+            sift span/file
+              case some
+                link written
+                push(files, written)
+              case none
+                push(files, <>)
+      miss
+        turn next
+
+  save out, make list
+  fork test, is-equal(deprecated-names/length, 0)
+    hold
+      back out
+
+  walk program
+    take one
+    sift one
+      case function
+        fork test, is-in-file(span, file)
+          hold
+            walk expressions-in(body)
+              take expression
+              sift expression
+                case call
+                  # the CALL's span, before the callee's arm binds the variable's own
+                  save call-span, span
+                  sift callee
+                    case variable
+                      link called
+                      save defined, defined-in(deprecated-names, files, called)
+                      fork test, and(is-unequal(defined, <none>), is-unequal(defined, file))
+                        hold
+                          push(out, warning(file, call-span, called))
+                    miss
+                      turn next
+                miss
+                  turn next
+      miss
+        turn next
+  back out
+
+task warning
+  take file, like text
+  take at, like span
+  take called, like text
+  like diagnostic
+  mark private
+
+  save input
+    make diagnostic-input
+      bind file, file
+      bind span, at
+      bind message, make(some, <"{called}" is marked deprecated>)
+      bind hint, make(some, <its definition says what to use instead>)
+  save name, make unknown-name
+  save found, diagnose(name, input)
+  save found/severity, make warning
+  back found

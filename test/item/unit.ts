@@ -81,14 +81,17 @@ function spansText(spans: { value: string }[]): string {
   return spans.map(one => one.value).join('').replace(/ /g, ' ')
 }
 
-// every line within the room, and every line after the title at column 11 or past it (section 2: column 11 holds)
+// every line within the room, and every line after the title at the body column or past it (section 2: every child
+// line starts at column 2, and nothing of an item goes back to column 0 but its title)
+const BODY = STANDARD.layout.bodyColumn
+
 function fits(name: string, lines: Line[], width: number): void {
   const wide = texts(lines).filter(text => measureText(text) > width)
   ok(`${name}: every line within ${width} cells`, wide.length === 0, show(lines))
   const loose = texts(lines)
     .slice(1)
-    .filter(text => text !== '' && !text.startsWith(' '.repeat(11)))
-  ok(`${name}: every line after the title at column 11`, loose.length === 0, show(lines))
+    .filter(text => text !== '' && !text.startsWith(' '.repeat(BODY)))
+  ok(`${name}: every line after the title at column ${BODY}`, loose.length === 0, show(lines))
 }
 
 // the characters of a value survive, in order: the drawing with its whitespace and quote gutters removed holds the
@@ -154,8 +157,11 @@ for (const width of WIDTHS) {
 
     const tagged = drawItem(ev({ glyph: 'done', kind: 'job', verb: 'job', subject: 'invoice 99231', source: SOURCE, clock: '14:02:08.120', duration: 2400 }), one, true)
     fits(`source over 12 cells at ${mode}`, tagged, width)
-    const tag = texts(tagged)[0]!.split('  ').filter(Boolean).pop()!.trim()
+    // the source is the second fact, right after the clock (section 6), never a tag on the title
+    const separator = ascii ? ' . ' : ' · '
+    const tag = texts(tagged)[1]!.trim().split(separator)[1] ?? ''
     ok(`source over 12 cells at ${mode}: middle-truncated to 12`, measureText(tag) <= 12 && tag.includes(ascii ? '...' : '…') && tag.startsWith('pay'), `  tag ${JSON.stringify(tag)}`)
+    ok(`source over 12 cells at ${mode}: never on the title`, !texts(tagged)[0]!.includes('pay'), show(tagged))
   }
 }
 
@@ -337,10 +343,10 @@ same('FORCE_HYPERLINK=0 unlinks a known terminal', style({ ...UTF, TERM_PROGRAM:
   const swiftDone = ev({ ...swift, glyph: 'done', kind: 'step', duration: 3100, done: -1, total: -1 })
   const below = planFrame(placeItem(later.region, swiftDone), [], 1200, true, true, one, true)
   same('an item finishing below a running one keeps its place', [below.committed.length, below.region.items.length], [0, 2])
-  ok('and takes its final glyph where it stands', texts(below.lines).some(text => text.startsWith('✓ build    swift')), show(below.lines))
+  ok('and takes its final glyph where it stands', texts(below.lines).some(text => text.startsWith('✓ build swift')), show(below.lines))
   const rustDone = ev({ ...rust, glyph: 'done', kind: 'step', duration: 4000, done: -1, total: -1 })
   const settled = planFrame(placeItem(below.region, rustDone), [], 1300, true, true, one, true)
-  same('when the top finishes the finished items commit, in declaration order', texts(settled.committed).filter(text => !text.startsWith(' ')), ['✓ build    rust', '✓ build    swift'])
+  same('when the top finishes the finished items commit, in declaration order', texts(settled.committed).filter(text => !text.startsWith(' ')), ['✓ build rust', '✓ build swift'])
   ok('a finished item drops its bar', !texts(settled.committed).some(text => text.includes('━')), show(settled.committed))
   same('the region is then empty', settled.region.items.length, 0)
 }
@@ -412,12 +418,13 @@ same('no terminal: and then again', isProgressDue(0, 10000, 20000, STANDARD), tr
   const item = drawItem(ev({ glyph: 'done', verb: 'boot', subject: 'zone built', clock: '14:42:00.300', duration: 1340 }), one, true)
   const lines = [...item, { spans: [] }, ...item]
   const nested = nestLines(lines, 1, true, one).map(lineText)
-  same('a nested run opens under the elbow at the body column', nested[0], `${' '.repeat(11)}⎿  ✓ boot     zone built`)
-  same('and the rest of it sits under the elbow', nested[1], `${' '.repeat(14)}${lineText(item[1]!)}`)
+  // the body column (2) and the quote's indent (3): a level is 5 cells
+  same('a nested run opens under the elbow at the body column', nested[0], `${' '.repeat(2)}⎿  ✓ boot zone built`)
+  same('and the rest of it sits under the elbow', nested[1], `${' '.repeat(5)}${lineText(item[1]!)}`)
   same('blank lines are dropped, so it reads as one block', nested.length, item.length * 2)
-  same('a later item of the same run carries no elbow', nestLines(item, 1, false, one).map(lineText)[0], `${' '.repeat(14)}✓ boot     zone built`)
-  same('two levels deep: one level of spaces, then the elbow', nestLines(item, 2, true, one).map(lineText)[0], `${' '.repeat(25)}⎿  ✓ boot     zone built`)
-  same('in ASCII the elbow is \\_', nestLines(item, 1, true, room(80, true)).map(lineText)[0]!.slice(11, 14), '\\_ ')
+  same('a later item of the same run carries no elbow', nestLines(item, 1, false, one).map(lineText)[0], `${' '.repeat(5)}✓ boot zone built`)
+  same('two levels deep: one level of spaces, then the elbow', nestLines(item, 2, true, one).map(lineText)[0], `${' '.repeat(7)}⎿  ✓ boot zone built`)
+  same('in ASCII the elbow is \\_', nestLines(item, 1, true, room(80, true)).map(lineText)[0]!.slice(2, 5), '\\_ ')
 }
 
 // ---- section 4 and 18: the worst glyph and the exit codes ----
@@ -581,10 +588,10 @@ function runChild(flags: string[], environment: Record<string, string> = {}) {
 
 {
   const human = runChild([])
-  ok('the human view goes to stderr, and nothing to stdout', human.stdout === '' && human.stderr.includes('✗ check    There is no task named multipy'), JSON.stringify(human))
+  ok('the human view goes to stderr, and nothing to stdout', human.stdout === '' && human.stderr.includes('✗ check There is no task named multipy'), JSON.stringify(human))
   same('a pipe gets no escapes', human.stderr.includes(ESCAPE), false)
   same('a run with a problem exits 1', human.status, 1)
-  ok('the run opens and closes', human.stderr.startsWith('· make     ~/shape') && human.stderr.includes('✗ make     Build failed'), human.stderr)
+  ok('the run opens and closes', human.stderr.startsWith('● make ~/shape') && human.stderr.includes('✗ make Build failed'), human.stderr)
 
   const json = runChild(['--log-json'])
   const objects = json.stdout.trim().split('\n').map(line => JSON.parse(line) as { kind: string; glyph: string })
@@ -617,7 +624,7 @@ function runChild(flags: string[], environment: Record<string, string> = {}) {
   ok('FORCE_COLOR colors a pipe in truecolor', forced.stderr.includes(`${ESCAPE}[38;2;`), JSON.stringify(forced.stderr.slice(0, 200)))
 
   const dumb = runChild([], { TERM: 'dumb' })
-  ok('TERM=dumb prints ASCII', /^[\x00-\x7f]*$/.test(dumb.stderr) && dumb.stderr.includes('x check    There is no task named multipy'), dumb.stderr)
+  ok('TERM=dumb prints ASCII', /^[\x00-\x7f]*$/.test(dumb.stderr) && dumb.stderr.includes('x check There is no task named multipy'), dumb.stderr)
 }
 
 // ---- section 15: a child process's lines, adapted (deck/call/code/output.ts `followChild`) ----
@@ -633,10 +640,11 @@ function runChild(flags: string[], environment: Record<string, string> = {}) {
       },
     })
   const adapted = follow([])
-  ok('a JSON line is an item: level the glyph, logger the verb cut to 7 cells, msg the subject, tagged', /✗ databa… +Connection lost +server/.test(adapted.stderr), adapted.stderr)
+  // the source is the fact after the clock (section 6), and never a tag on the title
+  ok('a JSON line is an item: level the glyph, logger the verb cut to 7 cells, msg the subject, tagged', /✗ databa… Connection lost\n {2}[\d:.]+ · server/.test(adapted.stderr), adapted.stderr)
   ok('its other keys are fields', /host +db1/.test(adapted.stderr), adapted.stderr)
-  ok('a logfmt line on stderr is an item too, with its duration', /▲ smtp +slow to respond +server[\s\S]*?3\.00 s/.test(adapted.stderr), adapted.stderr)
-  ok('plain text is QUOTED under one `log` item named for the child, off the `⎿` elbow', /· log +server\n[\s\S]*?⎿ +listening on 4000/.test(adapted.stderr), adapted.stderr)
+  ok('a logfmt line on stderr is an item too, with its duration', /▲ smtp slow to respond\n {2}[\d:.]+ · server · 3\.00 s/.test(adapted.stderr), adapted.stderr)
+  ok('plain text is QUOTED under one `log` item named for the child, off the `⎿` elbow', /● log server\n[\s\S]*?⎿ +listening on 4000/.test(adapted.stderr), adapted.stderr)
   same('nothing the child wrote reaches stdout', adapted.stdout, '')
 
   const raw = follow(['--raw'])
@@ -665,7 +673,7 @@ function runChild(flags: string[], environment: Record<string, string> = {}) {
   same('its frame is the line and the one before, 1-based', one.frames[0]!.lines.map(line => line.number), [3, 4])
   same('its mark is the span, with the marker label', one.frames[0]!.marks, [{ line: 4, column: 10, length: 7, label: 'did you mean multiply?', primary: true }])
   const drawn = texts(drawItem(one, room(80), true))
-  ok('it draws as section 12 shows', drawn[0] === '✗ check    The name "multipy" is not defined' && drawn.some(line => line.includes('━━━━━━━ did you mean multiply?')), drawn.join('\n'))
+  ok('it draws as section 12 shows', drawn[0] === '✗ check The name "multipy" is not defined' && drawn.some(line => line.includes('━━━━━━━ did you mean multiply?')), drawn.join('\n'))
   same('a proof diagnostic is verb prove', problemOf({ ...diagnostic, name: 'unchecked-hold' }, '/home/me/shape', text).verb, 'prove')
   same('a warning is ▲', problemOf({ ...diagnostic, severity: 'warning' }, '/home/me/shape', text).glyph, 'warning')
   const twoLines = problemOf({ ...diagnostic, message: 'kernel: type mismatch:\n  expected number\n  found text' }, '/home/me/shape', text)
@@ -690,17 +698,23 @@ function withStandard(change: (standard: Standard) => void): Room {
 {
   const shipped = { ...room(80), standard: makeStandard() }
   const clockOf = (event: Event): string => texts(drawItem(event, shipped, true))[1] ?? ''
-  same('a quick step shows no clock', clockOf(ev({ glyph: 'done', verb: 'build', subject: 'typescript', clock: '14:42:00.410', duration: 410 })), '           410 ms')
+  same('a quick step shows no clock', clockOf(ev({ glyph: 'done', verb: 'build', subject: 'typescript', clock: '14:42:00.410', duration: 410 })), '  410 ms')
   same('a change with nothing else has no facts line at all', texts(drawItem(ev({ glyph: 'added', kind: 'change', verb: 'add', subject: 'deck.tree', clock: '14:42:00.410' }), shipped, true)).length, 1)
   ok('a step that took a second shows its clock', clockOf(ev({ glyph: 'done', verb: 'build', subject: 'rust', clock: '14:42:00.410', duration: 1000 })).includes('14:42:00.410'))
   ok('a request, a line of a live log, shows its clock', clockOf(ev({ glyph: 'done', kind: 'request', verb: 'GET', subject: '/', clock: '14:42:00.410', duration: 4 })).includes('14:42:00.410'))
   ok('a line tagged with its source shows its clock', clockOf(ev({ glyph: 'info', verb: 'log', subject: 'listening', source: 'api', clock: '14:42:00.410' })).includes('14:42:00.410'))
   ok('a service opening, which carries the zone, shows its clock', clockOf(ev({ glyph: 'info', kind: 'open', verb: 'boot', subject: '~/shape', clock: '14:42:00.410', zone: 'PDT, UTC−7' })).includes('14:42:00.410'))
+
+  // D41, the user's choice on 2026-10-05: the verb in its own cyan role, where v3 draws it gray
+  const title = drawItem(ev({ glyph: 'done', verb: 'build', subject: 'typescript', clock: '14:42:00.410' }), shipped, true)[0]!
+  same('the verb is drawn in the verb role', title.spans.find(span => span.value === 'build')?.role, 'verb')
+  same('and the subject in the text role', title.spans.find(span => span.value === 'typescript')?.role, 'text')
+  same('the verb role is cyan', ['dark', 'light', 'ansi'].map(key => (makeStandard().roles.find(one => one.name === 'verb') as Record<string, string> | undefined)?.[key]), ['#7FD1D1', '#1B7A80', '96'])
 }
 
 {
   const event = ev({ glyph: 'done', verb: 'build', subject: 'typescript', clock: '14:42:00.410', duration: 410, tallies: [tally(46, 'files', '', 46)] })
-  same('the standard as written', texts(drawItem(event, room(80), true)), ['✓ build    typescript', '           14:42:00.410 · 410 ms · 46/46 files'])
+  same('the standard as written', texts(drawItem(event, room(80), true)), ['✓ build typescript', '  14:42:00.410 · 410 ms · 46/46 files'])
   same(
     'a wider verb column and body column move every line',
     texts(
@@ -718,17 +732,17 @@ function withStandard(change: (standard: Standard) => void): Room {
   same(
     'a different glyph for done',
     texts(drawItem(event, withStandard(standard => void (standard.glyphs.find(one => one.name === 'done')!.unicode = '✔')), true))[0],
-    '✔ build    typescript',
+    '✔ build typescript',
   )
   same(
     'a different fact separator',
     texts(drawItem(event, withStandard(standard => void (standard.symbols.find(one => one.name === 'separator')!.unicode = '|')), true))[1],
-    '           14:42:00.410 | 410 ms | 46/46 files',
+    '  14:42:00.410 | 410 ms | 46/46 files',
   )
   same(
     'a different duration unit',
     texts(drawItem(event, withStandard(standard => void (standard.durations.millisecondUnit = 'msec')), true))[1],
-    '           14:42:00.410 · 410 msec · 46/46 files',
+    '  14:42:00.410 · 410 msec · 46/46 files',
   )
   const capped = withStandard(standard => void (standard.caps.problems = 2))
   same(
@@ -763,17 +777,18 @@ function withStandard(change: (standard: Standard) => void): Room {
   const hostile = texts(drawItem(ev({ glyph: 'done', verb: 'b\u001b[31mad', subject: 'red\u001b[31m text\u0007 ‮evil‬', clock: '14:42:00.410', message: ['\u001b]8;;http://x\u001b\\click\u001b]8;;\u001b\\'] }), one, true)).join('\n')
   ok('control characters, escapes and bidi overrides never reach the terminal', !/[\u0000-\u0008\u000b-\u001f\u007f‪-‮⁦-⁩]/.test(hostile), JSON.stringify(hostile))
 
+  // v3 pads no verb, so a long one is never cut: it moves the subject along, one space after it (section 2)
   const huge = texts(drawItem(ev({ glyph: 'done', verb: 'transmogrify', subject: 'x', clock: '14:42:00.410' }), one, true))[0]!
-  ok('a huge verb is cut to its width, and the subject stays at column 11', huge.indexOf('x') === 11 && huge.includes('…'), `  |${huge}|`)
+  same('a long verb is whole, and the subject one space after it', huge, '✓ transmogrify x')
   const hugeAscii = texts(drawItem(ev({ glyph: 'done', verb: 'transmogrify', subject: 'x', clock: '14:42:00.410' }), room(80, true), true))[0]!
-  ok('and in ASCII', hugeAscii.indexOf('x') === 11 && /^[\x20-\x7e]*$/.test(hugeAscii), `  |${hugeAscii}|`)
+  same('and in ASCII', hugeAscii, 'v transmogrify x')
 
   const token = 'a'.repeat(200)
   fits('a 200-character token with no break point', drawItem(ev({ glyph: 'done', verb: 'fetch', subject: token, clock: '14:42:00.410' }), room(40), true), 40)
   const wideToken = '漢'.repeat(50)
   fits('a token of wide characters with no break point', drawItem(ev({ glyph: 'done', verb: 'fetch', subject: wideToken, clock: '14:42:00.410' }), room(40), true), 40)
-  same('an unknown glyph draws as info', texts(drawItem(ev({ glyph: 'sparkle', verb: 'x', subject: 'y' }), one, true))[0], '· x        y')
-  same('an event with no clock draws no clock', texts(drawItem(ev({ glyph: 'done', verb: 'build', subject: 'x', duration: 410 }), one, true)), ['✓ build    x', '           410 ms'])
+  same('an unknown glyph draws as info', texts(drawItem(ev({ glyph: 'sparkle', verb: 'x', subject: 'y' }), one, true))[0], '● x y')
+  same('an event with no clock draws no clock', texts(drawItem(ev({ glyph: 'done', verb: 'build', subject: 'x', duration: 410 }), one, true)), ['✓ build x', '  410 ms'])
 }
 
 console.log(`\nitem/unit: ${pass} pass, ${fail} fail`)

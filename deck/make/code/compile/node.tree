@@ -544,9 +544,10 @@ form form-variant
   link index-values
     like list, like expression
     need false
-  # the case's text in a `mark text` form
+  # the case's text in a `mark text` form. A maybe: a case written `text <>` has the empty text, and one with no `text`
+  # is its own name (check/text-forms)
   link text
-    like text
+    like maybe, like text
     need false
 
 form head-link
@@ -641,8 +642,9 @@ form statement
     link span, like span
   case if
     link branches, like list, like statement-branch
+    # a maybe: an `otherwise` left out and one written empty (a bare `hook miss`) are told apart (no-empty-block)
     link otherwise
-      like list, like statement
+      like maybe, like list, like statement
       need false
     link span, like span
   case while
@@ -663,8 +665,9 @@ form statement
   case match
     link subject, like expression
     link cases, like list, like match-case
+    # a maybe: an `otherwise` left out and one written empty (a bare `hook miss`) are told apart (no-empty-block)
     link otherwise
-      like list, like statement
+      like maybe, like list, like statement
       need false
     link span, like span
     link exception-arms
@@ -1066,6 +1069,10 @@ form dock-route
   link calls, like list, like dock-call
   link component
     like maybe, like dock-component
+    need false
+  # a page route rather than a command, with or without a view (check/routes)
+  link page
+    like boolean
     need false
   link directives, like list, like dock-send
   link sends, like list, like dock-send

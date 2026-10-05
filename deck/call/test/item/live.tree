@@ -1,7 +1,9 @@
-# The live region (section 10) as pure functions over frames, with no terminal: what is committed above the region and
-# never redrawn, what stays in it, a finished item keeping its place below a running one, at most ten redraws a
-# second, the bytes of a redraw, the spinner and --no-motion, and the `·` progress item without a terminal.
-
+# The live region (section 10) as pure functions over frames, with no terminal: what
+# is committed above the region and
+# never redrawn, what stays in it, a finished item keeping its place below a running
+# one, at most ten redraws a
+# second, the bytes of a redraw, the spinner and --no-motion, and the `·` progress
+# item without a terminal.
 load @term/base/text
   find starts-with
   find contains
@@ -40,9 +42,17 @@ load ./kit
 task make-step
   take name, like text
   take glyph, like text
+
   like event
-  save one, make event, glyph(glyph), verb(<build>), subject(plain-subject(name)), clock(1000)
+
+  save one
+    make event
+      glyph(glyph)
+      verb(<build>)
+      subject(plain-subject(name))
+      clock(1000)
   save one/duration, 2900
+
   fork test, is-equal(glyph, <running>)
     hold
       save one/done, 31
@@ -53,7 +63,9 @@ task region-of
   take first, like event
   take second, like event
   take third, like event
+
   like region
+
   save one, make region
   save one, place-item(one, first)
   save one, place-item(one, second)
@@ -61,57 +73,92 @@ task region-of
 
 task no-footer
   like list, like event
+
   back make list
 
 test <finished items at the top are committed above the region, never redrawn>
-  save one, region-of(make-step(<typescript>, <done>), make-step(<rust>, <running>), make-step(<kotlin>, <skipped>))
+  save one
+    region-of make-step(<typescript>, <done>)
+      make-step(<rust>, <running>)
+      make-step(<kotlin>, <skipped>)
   save plan, plan-frame(one, no-footer(), 5000, true, false, kit-room(80), true)
-  want hold, contains(kit-join(plan/committed), <✓ build    typescript>)
+  want hold, contains(kit-join(plan/committed), <✓ build typescript>)
   want hold, is-equal(contains(kit-join(plan/lines), <typescript>), false)
   want hold, is-equal(plan/region/items/length, 2)
 
 test <an item finished below a running one keeps its place until the ones above finish>
-  save one, region-of(make-step(<rust>, <running>), make-step(<kotlin>, <skipped>), make-step(<swift>, <running>))
+  save one
+    region-of make-step(<rust>, <running>)
+      make-step(<kotlin>, <skipped>)
+      make-step(<swift>, <running>)
   save plan, plan-frame(one, no-footer(), 5000, true, false, kit-room(80), true)
   want hold, is-equal(plan/committed/length, 0)
   save lines, kit-join(plan/lines)
-  want hold, contains(lines, <○ build    kotlin>)
+  want hold, contains(lines, <○ build kotlin>)
   save done, place-item(plan/region, make-step(<rust>, <done>))
   save next, plan-frame(done, no-footer(), 5200, true, false, kit-room(80), true)
-  want hold, contains(kit-join(next/committed), <✓ build    rust>)
-  want hold, contains(kit-join(next/committed), <○ build    kotlin>)
+  want hold, contains(kit-join(next/committed), <✓ build rust>)
+  want hold, contains(kit-join(next/committed), <○ build kotlin>)
   want hold, contains(kit-join(next/lines), <swift>)
 
 test <a running item finishes in its place, with its final glyph and no bar>
-  save one, region-of(make-step(<rust>, <running>), make-step(<swift>, <running>), make-step(<kotlin>, <running>))
+  save one
+    region-of make-step(<rust>, <running>)
+      make-step(<swift>, <running>)
+      make-step(<kotlin>, <running>)
   save before, plan-frame(one, no-footer(), 5000, true, false, kit-room(80), true)
   want hold, contains(kit-join(before/lines), <━━━━>)
   save swift, make-step(<swift>, <done>)
-  save after, plan-frame(place-item(before/region, swift), no-footer(), 6000, true, false, kit-room(80), true)
+  save after
+    plan-frame place-item(before/region, swift)
+      no-footer()
+      6000
+      true
+      false
+      kit-room(80)
+      true
   save texts, kit-texts(after/lines)
-  want hold, is-equal(texts/3, <✓ build    swift>)
+  want hold, is-equal(texts/3, <✓ build swift>)
 
 test <at most ten redraws a second, unless an item has just finished>
-  save one, region-of(make-step(<rust>, <running>), make-step(<swift>, <running>), make-step(<kotlin>, <running>))
+  save one
+    region-of make-step(<rust>, <running>)
+      make-step(<swift>, <running>)
+      make-step(<kotlin>, <running>)
   save first, plan-frame(one, no-footer(), 1000, false, false, kit-room(80), true)
   want hold, first/draw
-  save soon, plan-frame(first/region, no-footer(), 1050, false, false, kit-room(80), true)
+  save soon
+    plan-frame(first/region, no-footer(), 1050, false, false, kit-room(80), true)
   want hold, is-equal(soon/draw, false)
-  save later, plan-frame(first/region, no-footer(), 1100, false, false, kit-room(80), true)
+  save later
+    plan-frame(first/region, no-footer(), 1100, false, false, kit-room(80), true)
   want hold, later/draw
-  save forced, plan-frame(first/region, no-footer(), 1001, true, false, kit-room(80), true)
+  save forced
+    plan-frame(first/region, no-footer(), 1001, true, false, kit-room(80), true)
   want hold, forced/draw
 
 test <a redraw moves up over the last frame, clears below, then draws>
-  save one, region-of(make-step(<rust>, <running>), make-step(<swift>, <running>), make-step(<kotlin>, <running>))
+  save one
+    region-of make-step(<rust>, <running>)
+      make-step(<swift>, <running>)
+      make-step(<kotlin>, <running>)
   save plan, plan-frame(one, no-footer(), 1000, true, false, kit-room(80), true)
   save escape, rune-to-text(27)
-  save bytes, write-frame(plan, 6, make-palette(<none>, <unknown>, false), make-standard())
+  save bytes
+    write-frame(plan, 6, make-palette(<none>, <unknown>, false), make-standard())
   want hold, starts-with(bytes, <{escape}[6A\r{escape}[J>)
-  save first, write-frame(plan, 0, make-palette(<none>, <unknown>, false), make-standard())
-  want hold, starts-with(first, <◐ build    rust>)
-  save waiting, plan-frame(plan/region, no-footer(), 1010, false, false, kit-room(80), true)
-  want hold, is-equal(write-frame(waiting, 6, make-palette(<none>, <unknown>, false), make-standard()), <>)
+  save first
+    write-frame(plan, 0, make-palette(<none>, <unknown>, false), make-standard())
+  want hold, starts-with(first, <◐ build rust>)
+  save waiting
+    plan-frame(plan/region, no-footer(), 1010, false, false, kit-room(80), true)
+  want hold
+    is-equal
+      write-frame waiting
+        6
+        make-palette(<none>, <unknown>, false)
+        make-standard()
+      <>
 
 test <the spinner turns with motion and is a static ◐ under --no-motion>
   save room, kit-room(80)
@@ -120,7 +167,10 @@ test <the spinner turns with motion and is a static ◐ under --no-motion>
   want hold, is-equal(spinner-glyph(2, true, room), <◑>)
   want hold, is-equal(spinner-glyph(3, true, room), <◒>)
   want hold, is-equal(spinner-glyph(1, false, room), <◐>)
-  save one, region-of(make-step(<rust>, <running>), make-step(<swift>, <running>), make-step(<kotlin>, <running>))
+  save one
+    region-of make-step(<rust>, <running>)
+      make-step(<swift>, <running>)
+      make-step(<kotlin>, <running>)
   save turned, plan-frame(one, no-footer(), 1000, true, true, room, true)
   save again, plan-frame(turned/region, no-footer(), 2000, true, true, room, true)
   save texts, kit-texts(again/lines)
@@ -129,18 +179,28 @@ test <the spinner turns with motion and is a static ◐ under --no-motion>
   save still-texts, kit-texts(still/lines)
   want hold, starts-with(still-texts/0, <◐ build>)
 
-test <a live closing item sits under the region after one blank line>
-  save one, region-of(make-step(<rust>, <running>), make-step(<swift>, <running>), make-step(<kotlin>, <running>))
-  save closing, make event, glyph(<running>), kind(<close>), verb(<make>), subject(plain-subject(<Building targets>)), verdict(true)
+test <a live closing item sits directly under the region (v3: no blank line)>
+  save one
+    region-of make-step(<rust>, <running>)
+      make-step(<swift>, <running>)
+      make-step(<kotlin>, <running>)
+  save closing
+    make event
+      glyph(<running>)
+      kind(<close>)
+      verb(<make>)
+      subject(plain-subject(<Building targets>))
+      verdict(true)
   save footer, make list
   footer/push closing
   save plan, plan-frame(one, footer, 1000, true, false, kit-room(80), true)
   save texts, kit-texts(plan/lines)
-  # the closing here has no clock and no duration, so it has no facts line: its title is the last line
+  # the closing here has no clock and no duration, so it has no facts line: its
+  # title is the last line
   save title-at, subtract(texts/length, 1)
-  want hold, is-equal(texts/{title-at}, <◐ make     Building targets>)
-  save blank-at, subtract(texts/length, 2)
-  want hold, is-equal(texts/{blank-at}, <>)
+  want hold, is-equal(texts/{title-at}, <◐ make Building targets>)
+  save above-at, subtract(texts/length, 2)
+  want hold, is-unequal(texts/{above-at}, <>)
 
 test <without a terminal a long step prints a progress item every 10 s, never sooner>
   save standard, make-standard()

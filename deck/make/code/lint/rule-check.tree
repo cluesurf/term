@@ -1,0 +1,1724 @@
+# The lint rules that read one node of the type-checked AST, in Term.
+#
+# Ported from lint/rules/*.ts (self-hosting, 2026-10-05). A rule there was a record holding a `check` function, handed
+# a context of functions (`report`, `slice`). Term has no function in a record, so here a rule is a NAME (`ported-rule`)
+# and two tasks per rule, one per node kind, each answering the reports it makes. `check-statement` and
+# `check-expression` dispatch by name. lint/lint.ts builds each one's `Rule` for the driver from that name
+# (`portedRule`), keeping its place in the rule order, so findings come out in the order they did.
+#
+# What a rule needs beyond its node comes in as `lint-facts`, computed once per lint call by the driver.
+#
+# A fix that COPIES source text is answered as the span to copy (`copy`), and the driver slices it. Slicing here would
+# count code points, where the parser's columns on TypeScript count UTF-16 units, and a fix applied at the wrong column
+# corrupts the program, which is worse than a wrong underline.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find contains
+  find char-at
+  find char-count
+  find substring
+  find last-index-of
+  find ends-with
+
+load ../parser/diagnostic
+  find span
+  find position
+  find severity
+
+load ../compile/node
+  find expression
+  find statement
+  find binary-op
+  find to-text, name op-text
+
+load ../compile/expr-equal
+  find expressions-equal
+  find statement-lists-equal
+  find is-stable
+
+# ---- what a rule answers ----
+
+# a source replacement: the text in `span` becomes `text`, or becomes the source text at `from`
+form rule-fix
+  case put
+    link span, like span
+    link text, like text
+  # `prefix` then the source text at `from`
+  case copy
+    link span, like span
+    link from, like span
+    link prefix, like text
+
+form rule-report
+  link message, like text
+  link span, like span
+  link fix
+    like maybe, like rule-fix
+    need false
+
+# what the driver knows about the whole program, once per lint call
+form lint-facts
+  # every name read anywhere, closure bodies included (no-unused-load)
+  link referenced, like list, like text
+  # every native module loaded more than once (no-duplicate-load)
+  link duplicate-loads, like list, like text
+
+form rule-meta
+  link name, like text
+  link code, like text
+  link severity, like severity
+  link docs, like text
+  link fixable, like boolean
+
+task report
+  take message, like text
+  take span, like span
+  like rule-report
+  mark private
+
+  back
+    make rule-report
+      bind message, message
+      bind span, span
+
+task fixed-report
+  take message, like text
+  take span, like span
+  take fix, like rule-fix
+  like rule-report
+  mark private
+
+  back
+    make rule-report
+      bind message, message
+      bind span, span
+      bind fix, make(some, fix)
+
+task one
+  take value, like rule-report
+  like list, like rule-report
+  mark private
+
+  save out, make list
+  push(out, value)
+  back out
+
+task none-reported
+  like list, like rule-report
+  mark private
+
+  back make list
+
+# the whole lines a span covers, through the start of the next: a fix that deletes a statement deletes its line
+task whole-lines
+  take of, like span
+  like span
+  mark private
+
+  back
+    make span
+      bind start
+        make position
+          bind line, of/start/line
+          bind column, 0
+      bind end
+        make position
+          bind line, add(of/end/line, 1)
+          bind column, 0
+
+task is-comparison
+  take op, like binary-op
+  like boolean
+  mark private
+
+  sift op
+    case equal
+      back true
+    case unequal
+      back true
+    case below
+      back true
+    case at-most
+      back true
+    case above
+      back true
+    case at-least
+      back true
+    miss
+      back false
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+# ---- statement rules ----
+
+# L024: the same native module is loaded (`dock load`) more than once
+task no-duplicate-load
+  take node, like statement
+  take facts, like lint-facts
+  like list, like rule-report
+
+  sift node
+    case native
+      fork test, has-text(facts/duplicate-loads, module)
+        hold
+          back one(report(<the module "{module}" is loaded more than once>, span))
+    miss
+      back none-reported()
+  back none-reported()
+
+# L006: a `fork test` whose condition is a boolean literal is always, or never, taken
+task no-constant-condition
+  take node, like statement
+  like list, like rule-report
+
+  save out, make list
+  sift node
+    case if
+      walk branches
+        take branch
+        sift branch/cond
+          case boolean
+            push(out, report(<this condition is always {value}; the fork is constant>, span))
+          miss
+            turn next
+    miss
+      back out
+  back out
+
+# L035: a `fork case` with no arms and no `otherwise` handles nothing
+task no-empty-fork-case
+  take node, like statement
+  like list, like rule-report
+
+  sift node
+    case match
+      fork test, is-equal(cases/length, 0)
+        hold
+          sift otherwise
+            case none
+              back one(report(<this fork case has no arms; it matches a value but handles nothing>, span))
+            miss
+              back none-reported()
+    miss
+      back none-reported()
+  back none-reported()
+
+# L008: a native import whose alias nothing reads
+task no-unused-load
+  take node, like statement
+  take facts, like lint-facts
+  like list, like rule-report
+
+  sift node
+    case native
+      fork test, has-text(facts/referenced, alias)
+        hold
+          back none-reported()
+      back one(report(<the import "{alias}" ({module}) is never used>, span))
+    miss
+      back none-reported()
+
+# L012: a two-way fork whose branches run the same statements
+task no-identical-branches
+  take node, like statement
+  like list, like rule-report
+
+  sift node
+    case if
+      fork test, is-unequal(branches/length, 1)
+        hold
+          back none-reported()
+      sift otherwise
+        case some
+          link miss-body
+          save first, get(branches, 0)
+          fork test, statement-lists-equal(first/body, miss-body)
+            hold
+              back one(report(<both branches of this fork run the same statements; the condition has no effect>, span))
+        case none
+          back none-reported()
+    miss
+      back none-reported()
+  back none-reported()
+
+# L013: two arms of a `fork case` with one label: the later can never run
+task no-duplicate-case
+  take node, like statement
+  like list, like rule-report
+
+  save out, make list
+  sift node
+    case match
+      save seen, make list
+      walk cases
+        take arm
+        fork test, has-text(seen, arm/label)
+          hold
+            save at, span
+            fork test, is-above(arm/body/length, 0)
+              hold
+                save at, statement-span(get(arm/body, 0))
+            push(out, report(<the case "{arm/label}" repeats an earlier arm; it can never run>, at))
+          miss
+            push(seen, arm/label)
+    miss
+      back out
+  back out
+
+# L028: a value-less `send back` as the last statement of a task does nothing
+task no-useless-return
+  take node, like statement
+  like list, like rule-report
+
+  sift node
+    case function
+      fork test, is-equal(body/length, 0)
+        hold
+          back none-reported()
+      sift get(body, subtract(body/length, 1))
+        case return
+          link returned
+          link at
+          sift returned
+            case none
+              back one(fixed-report(<this `send back` has no value and is the last statement, so it does nothing>, at, put-text(whole-lines(at), <>)))
+            miss
+              back none-reported()
+        miss
+          back none-reported()
+    miss
+      back none-reported()
+  back none-reported()
+
+task put-text
+  take at, like span
+  take text, like text
+  like rule-fix
+  mark private
+
+  back
+    make put
+      bind span, at
+      bind text, text
+
+task copy-span
+  take at, like span
+  take from, like span
+  like rule-fix
+  mark private
+
+  back
+    make copy
+      bind span, at
+      bind from, from
+      bind prefix, <>
+
+# the last statement of a loop body is `turn next`
+task ends-in-continue
+  take body, like list, like statement
+  take loop-span, like span
+  like list, like rule-report
+  mark private
+
+  fork test, is-equal(body/length, 0)
+    hold
+      back none-reported()
+  sift get(body, subtract(body/length, 1))
+    case continue
+      back one(fixed-report(<this `turn next` is the last statement in the loop, so it does nothing>, span, put-text(whole-lines(span), <>)))
+    miss
+      back none-reported()
+
+# L022: a `turn next` as the last statement of a loop does nothing
+task no-redundant-continue
+  take node, like statement
+  like list, like rule-report
+
+  sift node
+    case while
+      back ends-in-continue(body, span)
+    case for-each
+      back ends-in-continue(body, span)
+    miss
+      back none-reported()
+
+# L025: a negated condition with an else reads backward
+task no-negated-condition
+  take node, like statement
+  like list, like rule-report
+
+  sift node
+    case if
+      fork test, is-unequal(branches/length, 1)
+        hold
+          back none-reported()
+      sift otherwise
+        case some
+          link miss-body
+          fork test, is-equal(miss-body/length, 0)
+            hold
+              back none-reported()
+        case none
+          back none-reported()
+      save first, get(branches, 0)
+      save cond, first/cond
+      fork test, is-negation(cond)
+        hold
+          back one(report(<this fork tests a negative and has an else; invert the condition and swap the branches>, cond-span(cond)))
+    miss
+      back none-reported()
+  back none-reported()
+
+task is-negation
+  take cond, like expression
+  like boolean
+  mark private
+
+  sift cond
+    case unary
+      sift op
+        case not
+          back true
+        miss
+          back false
+    case binary
+      sift op
+        case unequal
+          back true
+        miss
+          back false
+    miss
+      back false
+
+# an expression's span
+task cond-span
+  take value, like expression
+  like span
+  mark private
+
+  sift value
+    case integer
+      back span
+    case float
+      back span
+    case boolean
+      back span
+    case string
+      back span
+    case template
+      back span
+    case unit
+      back span
+    case null
+      back span
+    case variable
+      back span
+    case binary
+      back span
+    case unary
+      back span
+    case call
+      back span
+    case array
+      back span
+    case map
+      back span
+    case record
+      back span
+    case member
+      back span
+    case await
+      back span
+    case closure
+      back span
+    case conditional
+      back span
+    case hole
+      back span
+
+# L009: a branch whose condition repeats an earlier one in the same fork can never run
+task no-duplicate-branch-condition
+  take node, like statement
+  like list, like rule-report
+
+  save out, make list
+  sift node
+    case if
+      walk branches
+        take branch
+        take at
+        fork test, is-equal(at, 0)
+          hold
+            turn next
+        fork test, is-equal(is-stable(branch/cond), false)
+          hold
+            turn next
+        save earlier, 0
+        walk test
+          hook test, is-below(earlier, at)
+          hook hold
+            save before, get(branches, earlier)
+            fork test, expressions-equal(branch/cond, before/cond)
+              hold
+                push(out, report(<this condition repeats an earlier branch in the same fork; it can never run>, cond-span(branch/cond)))
+                halt
+            save earlier, add(earlier, 1)
+    miss
+      back out
+  back out
+
+# L010: an assignment of a stable place to itself has no effect
+task no-self-assignment
+  take node, like statement
+  like list, like rule-report
+
+  sift node
+    case assign
+      sift op
+        case set
+          fork test, and(and(is-stable(target), is-stable(value)), expressions-equal(target, value))
+            hold
+              back one(fixed-report(<this assigns a value to itself; the statement has no effect>, span, put-text(whole-lines(span), <>)))
+        miss
+          back none-reported()
+    miss
+      back none-reported()
+  back none-reported()
+
+# L026: an else holding only another fork should be an else-if arm
+task no-lonely-if
+  take node, like statement
+  like list, like rule-report
+
+  sift node
+    case if
+      sift otherwise
+        case some
+          link miss-body
+          fork test, is-equal(miss-body/length, 1)
+            hold
+              sift get(miss-body, 0)
+                case if
+                  link inner-branches
+                  link inner-otherwise
+                  link inner-span
+                  back one(report(<this else holds only a fork; make it an else-if arm of the outer fork>, inner-span))
+                miss
+                  back none-reported()
+        case none
+          back none-reported()
+    miss
+      back none-reported()
+  back none-reported()
+
+# a block ends in `send back`, `halt`, a throw, `turn next` or a process exit
+task ends-in-exit
+  take body, like list, like statement
+  like boolean
+  mark private
+
+  fork test, is-equal(body/length, 0)
+    hold
+      back false
+  sift get(body, subtract(body/length, 1))
+    case return
+      back true
+    case throw
+      back true
+    case break
+      back true
+    case continue
+      back true
+    case exit
+      back true
+    miss
+      back false
+
+# L023: an else is unnecessary when every branch above it exits
+task no-else-return
+  take node, like statement
+  like list, like rule-report
+
+  sift node
+    case if
+      sift otherwise
+        case some
+          link miss-body
+          fork test, is-equal(miss-body/length, 0)
+            hold
+              back none-reported()
+        case none
+          back none-reported()
+      fork test, is-equal(branches/length, 0)
+        hold
+          back none-reported()
+      walk branches
+        take branch
+        fork test, is-equal(ends-in-exit(branch/body), false)
+          hold
+            back none-reported()
+      back one(report(<every branch already exits, so this else is unnecessary; unindent its body>, span))
+    miss
+      back none-reported()
+
+# an `otherwise` written with no body
+task is-empty-block
+  take block, like maybe, like list, like statement
+  like boolean
+  mark private
+
+  sift block
+    case some
+      link body
+      back is-equal(body/length, 0)
+    case none
+      back false
+
+# L005: a branch or loop with no body. A task with no body is a signature, and is left alone
+task no-empty-block
+  take node, like statement
+  like list, like rule-report
+
+  save empty, false
+  sift node
+    case if
+      walk branches
+        take branch
+        fork test, is-equal(branch/body/length, 0)
+          hold
+            save empty, true
+      fork test, is-empty-block(otherwise)
+        hold
+          save empty, true
+    case while
+      save empty, is-equal(body/length, 0)
+    case for-each
+      save empty, is-equal(body/length, 0)
+    case match
+      walk cases
+        take arm
+        fork test, is-equal(arm/body/length, 0)
+          hold
+            save empty, true
+      fork test, is-empty-block(otherwise)
+        hold
+          save empty, true
+    miss
+      back none-reported()
+  fork test, empty
+    hold
+      back one(report(<this block has no body>, statement-span(node)))
+  back none-reported()
+
+# ---- expression rules ----
+
+# L015: a record literal that sets one field twice
+task no-duplicate-keys
+  take node, like expression
+  like list, like rule-report
+
+  save out, make list
+  sift node
+    case record
+      save seen, make list
+      walk fields
+        take field
+        fork test, has-text(seen, field/name)
+          hold
+            push(out, report(<the field "{field/name}" is set twice; the later value wins>, cond-span(field/value)))
+          miss
+            push(seen, field/name)
+    miss
+      back out
+  back out
+
+# L016: a double negation cancels out
+task no-double-negation
+  take node, like expression
+  like list, like rule-report
+
+  sift node
+    case unary
+      link op
+      link operand
+      link at
+      sift op
+        case not
+          sift operand
+            case unary
+              link inner-op
+              link inner-operand
+              sift inner-op
+                case not
+                  back one(fixed-report(<double negation is redundant; use the value directly>, at, copy-span(at, cond-span(inner-operand))))
+                miss
+                  back none-reported()
+            miss
+              back none-reported()
+        miss
+          back none-reported()
+    miss
+      back none-reported()
+
+# L021: two string literals joined, which can be one literal
+task no-useless-concat
+  take node, like expression
+  like list, like rule-report
+
+  sift node
+    case binary
+      link op
+      link left
+      link right
+      link at
+      sift op
+        case plus
+          sift left
+            case string
+              link first
+              sift right
+                case string
+                  link second
+                  save merged, <{first}{second}>
+                  # only when the merged text has no angle bracket, which would end the literal
+                  fork test, or(contains(merged, <\<>), contains(merged, <\>>))
+                    hold
+                      back one(report(<these two string literals can be written as one>, at))
+                  back one(fixed-report(<these two string literals can be written as one>, at, put-text(at, <text \<{merged}\>>)))
+                miss
+                  back none-reported()
+            miss
+              back none-reported()
+        miss
+          back none-reported()
+    miss
+      back none-reported()
+
+# L033: a negated equality reads better as the opposite comparison
+task no-negated-equality
+  take node, like expression
+  like list, like rule-report
+
+  sift node
+    case unary
+      link op
+      link operand
+      link at
+      sift op
+        case not
+          sift operand
+            case binary
+              link inner-op
+              sift inner-op
+                case equal
+                  back one(report(<negating an equality is clearer as `is-not-equal`>, at))
+                case unequal
+                  back one(report(<negating an equality is clearer as `is-equal`>, at))
+                miss
+                  back none-reported()
+            miss
+              back none-reported()
+        miss
+          back none-reported()
+    miss
+      back none-reported()
+
+# L007: comparing a stable expression to itself is constant
+task no-self-comparison
+  take node, like expression
+  like list, like rule-report
+
+  sift node
+    case binary
+      fork test, is-equal(is-comparison(op), false)
+        hold
+          back none-reported()
+      fork test, is-equal(is-stable(left), false)
+        hold
+          back none-reported()
+      fork test, expressions-equal(left, right)
+        hold
+          back one(report(<both sides of this `{op-text(op)}` are the same expression; the result is constant>, span))
+    miss
+      back none-reported()
+  back none-reported()
+
+task is-literal
+  take value, like expression
+  like boolean
+  mark private
+
+  sift value
+    case integer
+      back true
+    case float
+      back true
+    case boolean
+      back true
+    case string
+      back true
+    case null
+      back true
+    miss
+      back false
+
+# L014: a comparison of two literals never changes
+task no-constant-binary-expression
+  take node, like expression
+  like list, like rule-report
+
+  sift node
+    case binary
+      fork test, and(is-comparison(op), and(is-literal(left), is-literal(right)))
+        hold
+          back one(report(<both operands of this `{op-text(op)}` are constant; the result never changes>, span))
+    miss
+      back none-reported()
+  back none-reported()
+
+# a constant map key as the driver compared it, `s:<text>` or `n:<number>`, else empty
+task map-key-text
+  take key, like expression
+  like text
+  mark private
+
+  sift key
+    case string
+      back <s:{value}>
+    case integer
+      back <n:{value}>
+    miss
+      back <>
+
+# L036: a map literal that sets one constant key twice
+task no-duplicate-map-key
+  take node, like expression
+  like list, like rule-report
+
+  save out, make list
+  sift node
+    case map
+      save seen, make list
+      walk entries
+        take entry
+        save key, map-key-text(entry/key)
+        fork test, is-equal(key, <>)
+          hold
+            turn next
+        fork test, has-text(seen, key)
+          hold
+            push(out, report(<this map key is set twice; the later value wins>, cond-span(entry/value)))
+          miss
+            push(seen, key)
+    miss
+      back out
+  back out
+
+# a boolean literal that keeps the comparison's other side as it is: `== true` and `!= false`
+task keeps-operand
+  take op, like binary-op
+  take literal, like expression
+  like boolean
+  mark private
+
+  sift literal
+    case boolean
+      sift op
+        case equal
+          back is-equal(value, true)
+        case unequal
+          back is-equal(value, false)
+        miss
+          back false
+    miss
+      back false
+
+task is-boolean-literal
+  take value, like expression
+  like boolean
+  mark private
+
+  sift value
+    case boolean
+      back true
+    miss
+      back false
+
+# L017: comparing to a boolean literal is redundant
+task no-boolean-literal-comparison
+  take node, like expression
+  like list, like rule-report
+
+  sift node
+    case binary
+      sift op
+        case equal
+          save equality, true
+        case unequal
+          save equality, true
+        miss
+          back none-reported()
+      fork test, and(is-equal(is-boolean-literal(left), false), is-equal(is-boolean-literal(right), false))
+        hold
+          back none-reported()
+      save message, <comparing to a boolean literal is redundant; use the boolean directly>
+      # `x == true` and `x != false` are `x`; the negating two need a negation, so they are reported without a fix
+      fork test, keeps-operand(op, right)
+        hold
+          back one(fixed-report(message, span, copy-span(span, cond-span(left))))
+      fork test, keeps-operand(op, left)
+        hold
+          back one(fixed-report(message, span, copy-span(span, cond-span(right))))
+      back one(report(message, span))
+    miss
+      back none-reported()
+
+# L032: a conditional whose two arms are opposite boolean literals is its condition
+task no-redundant-conditional
+  take node, like expression
+  like list, like rule-report
+
+  sift node
+    case conditional
+      # the conditional's span, taken before the arms below bind each literal's own `span`
+      save at, span
+      fork test, is-unequal(branches/length, 1)
+        hold
+          back none-reported()
+      sift otherwise
+        case some
+          link other
+          save branch, get(branches, 0)
+          sift branch/value
+            case boolean
+              link arm
+              sift other
+                case boolean
+                  link other-arm
+                  fork test, is-equal(arm, other-arm)
+                    hold
+                      back none-reported()
+                  save message, <each arm of this conditional is a boolean literal; use the condition directly>
+                  fork test, arm
+                    hold
+                      back one(fixed-report(message, at, copy-span(at, cond-span(branch/cond))))
+                  back one(report(message, at))
+                miss
+                  back none-reported()
+            miss
+              back none-reported()
+        case none
+          back none-reported()
+    miss
+      back none-reported()
+
+# a one-argument call of the `size` builtin
+task is-size-call
+  take value, like expression
+  like boolean
+  mark private
+
+  sift value
+    case call
+      fork test, is-unequal(args/length, 1)
+        hold
+          back false
+      sift callee
+        case variable
+          link called
+          back is-equal(called, <size>)
+        miss
+          back false
+    miss
+      back false
+
+task is-zero
+  take value, like expression
+  like boolean
+  mark private
+
+  sift value
+    case integer
+      back is-equal(value, 0)
+    miss
+      back false
+
+# L034: a size compared to zero reads better as an emptiness check
+task prefer-is-empty
+  take node, like expression
+  like list, like rule-report
+
+  sift node
+    case binary
+      fork test, is-equal(is-comparison(op), false)
+        hold
+          back none-reported()
+      fork test, or(and(is-size-call(left), is-zero(right)), and(is-size-call(right), is-zero(left)))
+        hold
+          back one(report(<comparing a size to zero is clearer as an emptiness check (`is-empty` / `is-not-empty`)>, span))
+    miss
+      back none-reported()
+  back none-reported()
+
+# a statement's span
+task statement-span
+  take value, like statement
+  like span
+  mark private
+
+  sift value
+    case let
+      back span
+    case assign
+      back span
+    case expression
+      back span
+    case if
+      back span
+    case while
+      back span
+    case match
+      back span
+    case for-each
+      back span
+    case break
+      back span
+    case continue
+      back span
+    case return
+      back span
+    case exit
+      back span
+    case debug
+      back span
+    case guard
+      back span
+    case throw
+      back span
+    case hold
+      back span
+    case function
+      back span
+    case record-type
+      back span
+    case mask
+      back span
+    case instance
+      back span
+    case native
+      back span
+    case bind
+      back span
+    case view
+      back span
+    case dock
+      back span
+    case roll
+      back span
+    case tell
+      back span
+
+# ---- the rules over blocks ----
+
+# every block a statement holds directly: a task's, a loop's, each branch's and arm's, and an `otherwise`
+task bodies-of
+  take node, like statement
+  like list, like list, like statement
+  mark private
+
+  save out, make list
+  sift node
+    case function
+      push(out, body)
+    case while
+      push(out, body)
+    case for-each
+      push(out, body)
+    case if
+      walk branches
+        take branch
+        push(out, branch/body)
+      sift otherwise
+        case some
+          link miss-body
+          push(out, miss-body)
+        case none
+          back out
+    case match
+      walk cases
+        take arm
+        push(out, arm/body)
+      sift otherwise
+        case some
+          link miss-body
+          push(out, miss-body)
+        case none
+          back out
+    miss
+      back out
+  back out
+
+# a statement that ends its block: `send back`, `halt`, `turn next`, a throw, a process exit
+task is-terminator
+  take value, like statement
+  like boolean
+  mark private
+
+  sift value
+    case return
+      back true
+    case break
+      back true
+    case continue
+      back true
+    case throw
+      back true
+    case exit
+      back true
+    miss
+      back false
+
+# L018: a binding returned on the very next line should be returned directly
+task prefer-direct-return
+  take node, like statement
+  like list, like rule-report
+
+  save out, make list
+  walk bodies-of(node)
+    take body
+    save at, 0
+    walk test
+      hook test, is-below(add(at, 1), body/length)
+      hook hold
+        save declared, get(body, at)
+        save returned, get(body, add(at, 1))
+        sift declared
+          case let
+            link bound
+            link init
+            link mutable
+            link let-span
+            sift returned
+              case return
+                link value
+                sift value
+                  case some
+                    link given
+                    sift given
+                      case variable
+                        link read-name
+                        fork test, is-equal(read-name, bound)
+                          hold
+                            push(out, report(<"{bound}" is bound only to be returned next; return the value directly>, let-span))
+                      miss
+                        save at, at
+                  case none
+                    save at, at
+              miss
+                save at, at
+          miss
+            save at, at
+        save at, add(at, 1)
+  back out
+
+# L011: a statement after a terminator in the same block never runs. The first in each block only
+task no-unreachable-code
+  take node, like statement
+  like list, like rule-report
+
+  save out, make list
+  walk bodies-of(node)
+    take body
+    save at, 0
+    walk test
+      hook test, is-below(at, subtract(body/length, 1))
+      hook hold
+        fork test, is-terminator(get(body, at))
+          hold
+            push(out, report(<this statement is unreachable: the previous statement in this block always exits>, statement-span(get(body, add(at, 1)))))
+            halt
+        save at, add(at, 1)
+  back out
+
+# the boolean a block returns when it is exactly one `send back` of a boolean literal: `yes` or `no`, else empty
+task returned-boolean
+  take body, like list, like statement
+  like text
+  mark private
+
+  fork test, is-unequal(body/length, 1)
+    hold
+      back <>
+  sift get(body, 0)
+    case return
+      link value
+      sift value
+        case some
+          link given
+          sift given
+            case boolean
+              link literal
+              fork test, literal
+                hold
+                  back <yes>
+              back <no>
+            miss
+              back <>
+        case none
+          back <>
+    miss
+      back <>
+
+# L031: a fork returning opposite boolean literals from its two branches is its condition
+task no-redundant-boolean
+  take node, like statement
+  like list, like rule-report
+
+  sift node
+    case if
+      fork test, is-unequal(branches/length, 1)
+        hold
+          back none-reported()
+      sift otherwise
+        case some
+          link miss-body
+          save branch, get(branches, 0)
+          save then-value, returned-boolean(branch/body)
+          save else-value, returned-boolean(miss-body)
+          fork test, or(or(is-equal(then-value, <>), is-equal(else-value, <>)), is-equal(then-value, else-value))
+            hold
+              back none-reported()
+          save message, <each branch returns a boolean literal; return the condition directly>
+          save cond-at, cond-span(branch/cond)
+          # `send back, <cond>` is valid only for a condition on one line
+          fork test, and(is-equal(then-value, <yes>), is-equal(cond-at/start/line, cond-at/end/line))
+            hold
+              back one(fixed-report(message, span, copy-after(span, cond-at, <send back, >)))
+          back one(report(message, span))
+        case none
+          back none-reported()
+    miss
+      back none-reported()
+
+task copy-after
+  take at, like span
+  take from, like span
+  take prefix, like text
+  like rule-fix
+  mark private
+
+  back
+    make copy
+      bind span, at
+      bind from, from
+      bind prefix, prefix
+
+# a function's own returns, split by whether they carry a value: nested tasks and closures have their own contract
+task collect-returns
+  take body, like list, like statement
+  take with-value, like list, like span
+  take without-value, like list, like span
+  like void
+  mark private
+
+  walk body
+    take one-statement
+    sift one-statement
+      case return
+        sift value
+          case some
+            push(with-value, span)
+          case none
+            push(without-value, span)
+      case if
+        walk branches
+          take branch
+          collect-returns(branch/body, with-value, without-value)
+        sift otherwise
+          case some
+            link miss-body
+            collect-returns(miss-body, with-value, without-value)
+          case none
+            turn next
+      case while
+        collect-returns(body, with-value, without-value)
+      case for-each
+        collect-returns(body, with-value, without-value)
+      case match
+        walk cases
+          take arm
+          collect-returns(arm/body, with-value, without-value)
+        sift otherwise
+          case some
+            link miss-body
+            collect-returns(miss-body, with-value, without-value)
+          case none
+            turn next
+      miss
+        turn next
+
+# L027: a function returning a value on some paths and nothing on others
+task consistent-return
+  take node, like statement
+  like list, like rule-report
+
+  sift node
+    case function
+      save with-value, make list
+      save without-value, make list
+      collect-returns(body, with-value, without-value)
+      fork test, and(is-above(with-value/length, 0), is-above(without-value/length, 0))
+        hold
+          back one(report(<this function returns a value on some paths and nothing on others>, get(without-value, 0)))
+    miss
+      back none-reported()
+  back none-reported()
+
+# ---- names ----
+
+host lower-letters, text <abcdefghijklmnopqrstuvwxyz>
+host name-digits, text <0123456789>
+
+# lower-case words of letters and digits joined by single dashes, starting with a letter
+task is-kebab
+  take name, like text
+  like boolean
+  mark private
+
+  save size, char-count(name)
+  fork test, is-equal(size, 0)
+    hold
+      back false
+  fork test, is-equal(contains(lower-letters, char-at(name, 0)), false)
+    hold
+      back false
+  save previous, <>
+  save at, 0
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save one-char, char-at(name, at)
+      fork test, is-equal(one-char, <->)
+        hold
+          fork test, is-equal(previous, <->)
+            hold
+              back false
+        miss
+          fork test, and(is-equal(contains(lower-letters, one-char), false), is-equal(contains(name-digits, one-char), false))
+            hold
+              back false
+      save previous, one-char
+      save at, add(at, 1)
+  back is-unequal(previous, <->)
+
+task is-digits
+  take value, like text
+  like boolean
+  mark private
+
+  fork test, is-equal(char-count(value), 0)
+    hold
+      back false
+  save at, 0
+  walk test
+    hook test, is-below(at, char-count(value))
+    hook hold
+      fork test, is-equal(contains(name-digits, char-at(value, at)), false)
+        hold
+          back false
+      save at, add(at, 1)
+  back true
+
+# a name without one trailing `__<digits>`, or the name as it is
+task strip-counter
+  take name, like text
+  like text
+  mark private
+
+  save at, last-index-of(name, <__>)
+  fork test, is-below(at, 0)
+    hold
+      back name
+  fork test, is-digits(substring(name, add(at, 2)))
+    hold
+      back substring(name, 0, at)
+  back name
+
+# a name as written: without the checker's `__<arity>__<index>` or `__<n>`, which separate same-named definitions
+task written-name
+  take name, like text
+  like text
+  mark private
+
+  save once, strip-counter(name)
+  fork test, is-equal(once, name)
+    hold
+      back name
+  back strip-counter(once)
+
+# L001: declared names are kebab-case. A name the compiler invented (`__slot`) is left alone
+task kebab-names
+  take node, like statement
+  like list, like rule-report
+
+  save names, make list
+  sift node
+    case let
+      push(names, name)
+    case function
+      sift method
+        case some
+          link of
+          push(names, written-name(of/name))
+        case none
+          push(names, written-name(name))
+      walk params
+        take param
+        push(names, param/name)
+    case record-type
+      push(names, name)
+    miss
+      back none-reported()
+  save out, make list
+  save at, statement-span(node)
+  walk names
+    take one-name
+    fork test, or(is-equal(char-count(one-name), 0), starts-with-two(one-name))
+      hold
+        turn next
+    fork test, is-equal(is-kebab(one-name), false)
+      hold
+        push(out, report(<the name "{one-name}" should be kebab-case>, at))
+  back out
+
+task starts-with-two
+  take name, like text
+  like boolean
+  mark private
+
+  fork test, is-below(char-count(name), 2)
+    hold
+      back false
+  back is-equal(substring(name, 0, 2), <__>)
+
+# ---- arithmetic ----
+
+# a number literal equal to `value`, an integer, or a float equal to `fraction-value`
+task is-number-literal
+  take node, like expression
+  take value, like number
+  take fraction-value, like decimal
+  like boolean
+  mark private
+
+  sift node
+    case integer
+      link whole
+      back is-equal(whole, value)
+    case float
+      link fraction
+      back is-equal(fraction, fraction-value)
+    miss
+      back false
+
+# L003: arithmetic with a neutral operand. `x * 0` is left alone: dropping `x` would drop its effects
+task no-redundant-arithmetic
+  take node, like expression
+  like list, like rule-report
+
+  sift node
+    case binary
+      save survivor, <>
+      sift op
+        case plus
+          fork test, is-number-literal(right, 0, 0.0)
+            hold
+              save survivor, <left>
+            miss
+              fork test, is-number-literal(left, 0, 0.0)
+                hold
+                  save survivor, <right>
+        case minus
+          fork test, is-number-literal(right, 0, 0.0)
+            hold
+              save survivor, <left>
+        case times
+          fork test, is-number-literal(right, 1, 1.0)
+            hold
+              save survivor, <left>
+            miss
+              fork test, is-number-literal(left, 1, 1.0)
+                hold
+                  save survivor, <right>
+        case divide
+          fork test, is-number-literal(right, 1, 1.0)
+            hold
+              save survivor, <left>
+        miss
+          back none-reported()
+      fork test, is-equal(survivor, <>)
+        hold
+          back none-reported()
+      save kept, cond-span(left)
+      fork test, is-equal(survivor, <right>)
+        hold
+          save kept, cond-span(right)
+      back one(fixed-report(<this `{op-text(op)}` has no effect; the result is just the other operand>, span, copy-span(span, kept)))
+    miss
+      back none-reported()
+
+# ---- the rules by name ----
+
+# every rule here, by the name the driver and a suppression know it by
+form ported-rule
+  mark text
+  case kebab-names, text <kebab-names>
+  case no-redundant-arithmetic, text <no-redundant-arithmetic>
+  case no-empty-block, text <no-empty-block>
+  case no-constant-condition, text <no-constant-condition>
+  case no-self-comparison, text <no-self-comparison>
+  case no-unused-load, text <no-unused-load>
+  case no-duplicate-branch-condition, text <no-duplicate-branch-condition>
+  case no-self-assignment, text <no-self-assignment>
+  case no-unreachable-code, text <no-unreachable-code>
+  case no-identical-branches, text <no-identical-branches>
+  case no-duplicate-case, text <no-duplicate-case>
+  case no-constant-binary-expression, text <no-constant-binary-expression>
+  case no-duplicate-keys, text <no-duplicate-keys>
+  case no-double-negation, text <no-double-negation>
+  case no-boolean-literal-comparison, text <no-boolean-literal-comparison>
+  case prefer-direct-return, text <prefer-direct-return>
+  case no-useless-concat, text <no-useless-concat>
+  case no-redundant-continue, text <no-redundant-continue>
+  case no-else-return, text <no-else-return>
+  case no-duplicate-load, text <no-duplicate-load>
+  case no-negated-condition, text <no-negated-condition>
+  case no-lonely-if, text <no-lonely-if>
+  case consistent-return, text <consistent-return>
+  case no-useless-return, text <no-useless-return>
+  case no-redundant-boolean, text <no-redundant-boolean>
+  case no-redundant-conditional, text <no-redundant-conditional>
+  case no-negated-equality, text <no-negated-equality>
+  case prefer-is-empty, text <prefer-is-empty>
+  case no-empty-fork-case, text <no-empty-fork-case>
+  case no-duplicate-map-key, text <no-duplicate-map-key>
+
+# every rule here, in code order
+task ported-rules
+  like list, like ported-rule
+
+  back
+    make list
+      make kebab-names
+      make no-redundant-arithmetic
+      make no-empty-block
+      make no-constant-condition
+      make no-self-comparison
+      make no-unused-load
+      make no-duplicate-branch-condition
+      make no-self-assignment
+      make no-unreachable-code
+      make no-identical-branches
+      make no-duplicate-case
+      make no-constant-binary-expression
+      make no-duplicate-keys
+      make no-double-negation
+      make no-boolean-literal-comparison
+      make prefer-direct-return
+      make no-useless-concat
+      make no-redundant-continue
+      make no-else-return
+      make no-duplicate-load
+      make no-negated-condition
+      make no-lonely-if
+      make consistent-return
+      make no-useless-return
+      make no-redundant-boolean
+      make no-redundant-conditional
+      make no-negated-equality
+      make prefer-is-empty
+      make no-empty-fork-case
+      make no-duplicate-map-key
+
+# a rule's name, code, default severity and one-line documentation
+task meta-of
+  take rule, like ported-rule
+  like rule-meta
+
+  sift rule
+    case kebab-names
+      back meta(<kebab-names>, <L001>, <declared names should be kebab-case (e.g. find-fibonacci, not findFibonacci or find_fibonacci)>, false)
+    case no-redundant-arithmetic
+      back meta(<no-redundant-arithmetic>, <L003>, <arithmetic against a neutral element (+0, -0, *1, /1) has no effect and should be removed>, true)
+    case no-empty-block
+      back meta(<no-empty-block>, <L005>, <a branch or loop with no body is probably unfinished>, false)
+    case no-constant-condition
+      back meta(<no-constant-condition>, <L006>, <a fork test condition that is a constant boolean is always (or never) taken>, false)
+    case no-self-comparison
+      back meta(<no-self-comparison>, <L007>, <comparing an expression to itself is always constant and usually a mistake>, false)
+    case no-unused-load
+      back meta(<no-unused-load>, <L008>, <a native import (`dock load`) whose alias is never used should be removed>, false)
+    case no-duplicate-branch-condition
+      back meta(<no-duplicate-branch-condition>, <L009>, <two branches of a fork test share a condition; the later one is unreachable>, false)
+    case no-self-assignment
+      back meta(<no-self-assignment>, <L010>, <assigning a value to itself has no effect>, true)
+    case no-unreachable-code
+      back meta(<no-unreachable-code>, <L011>, <a statement after a terminator (send back / halt / throw) in the same block can never run>, false)
+    case no-identical-branches
+      back meta(<no-identical-branches>, <L012>, <both branches of a fork test run the same statements, so the condition has no effect>, false)
+    case no-duplicate-case
+      back meta(<no-duplicate-case>, <L013>, <two arms of a fork case share a label; the later one is unreachable>, false)
+    case no-constant-binary-expression
+      back meta(<no-constant-binary-expression>, <L014>, <a comparison of two literals is always true or always false>, false)
+    case no-duplicate-keys
+      back meta(<no-duplicate-keys>, <L015>, <a record literal sets the same field twice; the later value wins>, false)
+    case no-double-negation
+      back meta(<no-double-negation>, <L016>, <a double negation is redundant; use the value directly>, true)
+    case no-boolean-literal-comparison
+      back meta(<no-boolean-literal-comparison>, <L017>, <comparing to a boolean literal is redundant; use the boolean directly>, true)
+    case prefer-direct-return
+      back meta(<prefer-direct-return>, <L018>, <a binding used only to be returned on the next line should be returned directly>, false)
+    case no-useless-concat
+      back meta(<no-useless-concat>, <L021>, <two string literals concatenated; write them as a single literal>, true)
+    case no-redundant-continue
+      back meta(<no-redundant-continue>, <L022>, <a continue as the last statement of a loop is redundant>, true)
+    case no-else-return
+      back meta(<no-else-return>, <L023>, <an else is unnecessary when every branch above it already exits>, false)
+    case no-duplicate-load
+      back meta(<no-duplicate-load>, <L024>, <the same native module is loaded more than once>, false)
+    case no-negated-condition
+      back meta(<no-negated-condition>, <L025>, <a negated condition with an else is clearer inverted>, false)
+    case no-lonely-if
+      back meta(<no-lonely-if>, <L026>, <an else that holds only an if should be an else-if arm>, false)
+    case consistent-return
+      back meta(<consistent-return>, <L027>, <a function should return a value on every path or on none>, false)
+    case no-useless-return
+      back meta(<no-useless-return>, <L028>, <a value-less return as the last statement of a function is redundant>, true)
+    case no-redundant-boolean
+      back meta(<no-redundant-boolean>, <L031>, <returning a boolean literal from each branch of a fork is just the condition itself>, true)
+    case no-redundant-conditional
+      back meta(<no-redundant-conditional>, <L032>, <a conditional yielding a boolean literal in each arm is just the condition itself>, true)
+    case no-negated-equality
+      back meta(<no-negated-equality>, <L033>, <negating an equality is clearer as the opposite comparison>, false)
+    case prefer-is-empty
+      back meta(<prefer-is-empty>, <L034>, <comparing a size to zero reads more clearly as an emptiness check>, false)
+    case no-empty-fork-case
+      back meta(<no-empty-fork-case>, <L035>, <a fork case with no arms handles nothing and is probably unfinished>, false)
+    case no-duplicate-map-key
+      back meta(<no-duplicate-map-key>, <L036>, <a map literal sets the same key twice; the later value wins>, false)
+
+task meta
+  take name, like text
+  take code, like text
+  take docs, like text
+  take fixable, like boolean
+  like rule-meta
+  mark private
+
+  back
+    make rule-meta
+      bind name, name
+      bind code, code
+      bind severity, make warning
+      bind docs, docs
+      bind fixable, fixable
+
+# what a rule reports on one statement. A rule about expressions reports nothing here
+task check-statement
+  take rule, like ported-rule
+  take node, like statement
+  take facts, like lint-facts
+  like list, like rule-report
+
+  sift rule
+    case kebab-names
+      back kebab-names(node)
+    case no-empty-block
+      back no-empty-block(node)
+    case no-constant-condition
+      back no-constant-condition(node)
+    case no-unused-load
+      back no-unused-load(node, facts)
+    case no-duplicate-branch-condition
+      back no-duplicate-branch-condition(node)
+    case no-self-assignment
+      back no-self-assignment(node)
+    case no-unreachable-code
+      back no-unreachable-code(node)
+    case no-identical-branches
+      back no-identical-branches(node)
+    case no-duplicate-case
+      back no-duplicate-case(node)
+    case prefer-direct-return
+      back prefer-direct-return(node)
+    case no-redundant-continue
+      back no-redundant-continue(node)
+    case no-else-return
+      back no-else-return(node)
+    case no-duplicate-load
+      back no-duplicate-load(node, facts)
+    case no-negated-condition
+      back no-negated-condition(node)
+    case no-lonely-if
+      back no-lonely-if(node)
+    case consistent-return
+      back consistent-return(node)
+    case no-useless-return
+      back no-useless-return(node)
+    case no-redundant-boolean
+      back no-redundant-boolean(node)
+    case no-empty-fork-case
+      back no-empty-fork-case(node)
+    miss
+      back none-reported()
+
+# what a rule reports on one expression. A rule about statements reports nothing here
+task check-expression
+  take rule, like ported-rule
+  take node, like expression
+  take facts, like lint-facts
+  like list, like rule-report
+
+  sift rule
+    case no-redundant-arithmetic
+      back no-redundant-arithmetic(node)
+    case no-self-comparison
+      back no-self-comparison(node)
+    case no-constant-binary-expression
+      back no-constant-binary-expression(node)
+    case no-duplicate-keys
+      back no-duplicate-keys(node)
+    case no-double-negation
+      back no-double-negation(node)
+    case no-boolean-literal-comparison
+      back no-boolean-literal-comparison(node)
+    case no-useless-concat
+      back no-useless-concat(node)
+    case no-redundant-conditional
+      back no-redundant-conditional(node)
+    case no-negated-equality
+      back no-negated-equality(node)
+    case prefer-is-empty
+      back prefer-is-empty(node)
+    case no-duplicate-map-key
+      back no-duplicate-map-key(node)
+    miss
+      back none-reported()

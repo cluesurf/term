@@ -1,0 +1,81 @@
+# A task named like one of the compiler's own words is passed over at every call, and said so nowhere.
+#
+# `add`, `subtract`, `is-equal`, `not` and the rest are folded to operators where they are written (`foldBuiltin` in
+# compile/mint-bridge.ts), before any name is bound, so a file's own `task add` taking `a` and `b` and multiplying them
+# builds clean and `add(2, 3)` is 5 (guides: language/naming, 2026-10-04). Whether the words stay global is a decision of
+# its own (plan: "The compiler's own words are global"); until it is made, the task that can never be reached by name is
+# warned about where it is declared.
+#
+# Ported from check/builtin-shadow.ts (self-hosting, 2026-10-05).
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+load ../parser/diagnostic
+  find diagnostic
+  find diagnose
+  find diagnostic-input
+  find span
+
+load ../compile/node
+  find statement
+  find method-of
+
+load ../compile/surface
+  find is-binary-builtin
+  find is-unary-builtin
+
+task is-in-file
+  take at, like span
+  take file, like text
+  like boolean
+  mark private
+
+  sift at/file
+    case some
+      link written
+      back is-equal(written, file)
+    case none
+      back false
+
+task is-method
+  take method, like maybe, like method-of
+  like boolean
+  mark private
+
+  sift method
+    case some
+      back true
+    case none
+      back false
+
+task check-builtin-shadow
+  take program, like list, like statement
+  take file, like text
+  like list, like diagnostic
+
+  save found, make list
+  walk program
+    take one
+    sift one
+      case function
+        # a method is named after its form, and is never called by the bare word
+        fork test, or(is-method(method), is-equal(is-in-file(span, file), false))
+          hold
+            turn next
+        fork test, and(is-equal(is-binary-builtin(name), false), is-equal(is-unary-builtin(name), false))
+          hold
+            turn next
+        save input
+          make diagnostic-input
+            bind file, file
+            bind span, span
+            bind message, make(some, <a task named "{name}" is never called by that name: `{name}(...)` is the compiler's own word, folded before names are bound>)
+        save shadow, make builtin-shadow
+        push(found, diagnose(shadow, input))
+      miss
+        turn next
+  back found

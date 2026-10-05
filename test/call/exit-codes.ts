@@ -416,7 +416,8 @@ view page
   writeFileSync(join(viewed, 'page/bare.tree'), query('<vowel>'))
   writeFileSync(join(viewed, 'page/spelled.tree'), query('text <vowel>'))
 
-  const manifestOf = (file: string): string => (term(viewed, 'view', file, '--find').out.split('· view')[0] ?? '').replace(/page\/\w+/g, 'page')
+  // the manifest is the data before the run's opening item (`● view`, `· view` before v3)
+  const manifestOf = (file: string): string => (term(viewed, 'view', file, '--find').out.split(/^[·●] view/m)[0] ?? '').replace(/page\/\w+/g, 'page')
 
   const bare = manifestOf('page/bare.tree')
   const spelled = manifestOf('page/spelled.tree')
@@ -427,7 +428,7 @@ view page
   writeFileSync(join(viewed, 'code/page.tree'), 'view article\n  view h1, <Hello>\n')
   const named = term(viewed, 'view', 'code/page.tree')
 
-  ok('`term view` on a file role.tree reads as code checks it, and warns that make builds it as code', named.status === 0 && /role\.tree gives code\/page\.tree the code role, so term make builds it\s+as code/.test(named.out) && /1 document read/.test(named.out), named.out)
+  ok('`term view` on a file role.tree reads as code checks it, and warns that make builds it as code', named.status === 0 && /role\.tree gives code\/page\.tree the code role, so term make builds it\s+as\s+code/.test(named.out) && /1 document read/.test(named.out), named.out)
 }
 
 // ---- commands/mind: a replaced fact, forgetting one, and the memory kept by git ----
@@ -747,7 +748,7 @@ task boot
 
   ok(
     '`term boot --out` on an entry with no `hook` commands is refused, its subject a sentence',
-    out.status === 1 && /✗ boot\s+An `--out` folder holds a command-line program, and this entry\s+declares no `hook`\s+commands/.test(out.out),
+    out.status === 1 && /✗ boot\s+An `--out` folder holds a command-line program, and this entry\s+declares\s+no\s+`hook`\s+commands/.test(out.out),
     out.out,
   )
 }

@@ -27,13 +27,6 @@ import type { MillResult } from '@term/make/code/compile/mint-bridge'
 
 export type { MillResult } from '@term/make/code/compile/mint-bridge'
 
-// the surface vocabulary, re-exported from its own module so the readers that import it from here keep working
-export {
-  BINARY_BUILTIN,
-  UNARY_BUILTIN,
-  HALT_WORDS,
-} from '@term/make/code/compile/surface'
-
 export function mill(
   tree: RootNode,
   file: string,

@@ -1,0 +1,111 @@
+# The host string methods the stdlib's `text.tree` delegates to (`call value/char-at` is JavaScript's `charAt`), so a
+# native backend renders each in its own string API instead of emitting a method the platform does not have. The
+# semantics are JavaScript's: an index past the end reads as empty, `indexOf` gives -1, `split` on an empty delimiter
+# gives the characters, `replace` touches the first match and `replaceAll` every one.
+#
+# Its own module because the checker reads it too: a member call on a text that names none of these is refused there
+# (check/infer.ts), where until 2026-10-04 `s/frobnicate` built to `s.frobnicate()` and failed at run time.
+#
+# Ported from compile/text-methods.ts (self-hosting, 2026-10-05). The set was an exported constant, and a Term module
+# exports tasks, so it is `is-string-method`. `host-method` was a regex replace, written out here.
+
+load @term/base/list
+  find list
+
+load @term/base/text
+  find char-at
+  find char-count
+  find to-upper-case
+
+# one of the methods, by its host spelling
+task is-string-method
+  take name, like text
+  like boolean
+
+  back has-method(name)
+
+task has-method
+  take name, like text
+  like boolean
+  mark private
+
+  walk string-methods()
+    take one
+    fork test, is-equal(one, name)
+      hold
+        back true
+  back false
+
+# every method, as the host spells it
+task string-methods
+  like list, like text
+
+  save out, make list
+  push(out, <charAt>)
+  push(out, <at>)
+  push(out, <charCodeAt>)
+  push(out, <indexOf>)
+  push(out, <lastIndexOf>)
+  push(out, <split>)
+  push(out, <substring>)
+  push(out, <slice>)
+  push(out, <toLowerCase>)
+  push(out, <toUpperCase>)
+  push(out, <startsWith>)
+  push(out, <endsWith>)
+  push(out, <trim>)
+  push(out, <trimStart>)
+  push(out, <trimEnd>)
+  push(out, <padStart>)
+  push(out, <padEnd>)
+  push(out, <replace>)
+  push(out, <replaceAll>)
+  push(out, <includes>)
+  push(out, <repeat>)
+  push(out, <concat>)
+  # not a JavaScript method: the stdlib's code-point comparison (`ordering/from-texts`), -1, 0 or 1
+  push(out, <compare>)
+  back out
+
+host lower-or-digit, text <abcdefghijklmnopqrstuvwxyz0123456789>
+
+# the member name as the host spells it: the stdlib writes `call value/char-at`, the JavaScript method is `charAt`.
+# A dash before a lower-case letter or a digit goes, and the letter is upper-cased; any other dash stays
+task host-method
+  take name, like text
+  like text
+
+  save out, <>
+  save at, 0
+  save size, char-count(name)
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save one, char-at(name, at)
+      fork test, and(is-equal(one, <->), is-below(add(at, 1), size))
+        hold
+          save after, char-at(name, add(at, 1))
+          fork test, contains-char(lower-or-digit, after)
+            hold
+              save out, <{out}{to-upper-case(after)}>
+              save at, add(at, 2)
+              turn next
+      save out, <{out}{one}>
+      save at, add(at, 1)
+  back out
+
+task contains-char
+  take set, like text
+  take one, like text
+  like boolean
+  mark private
+
+  save at, 0
+  walk test
+    hook test, is-below(at, char-count(set))
+    hook hold
+      fork test, is-equal(char-at(set, at), one)
+        hold
+          back true
+      save at, add(at, 1)
+  back false

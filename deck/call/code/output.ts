@@ -255,7 +255,10 @@ export function printData(value: string): void {
   // thing: `term look` drew its table directly under the opening item (guides: commands/look, 2026-10-04). Paid on
   // stderr, and only when both streams are the terminal, so a pipe never gets a line it did not ask for
   if (runner?.session.owed && process.stdout.isTTY && process.stderr.isTTY) {
-    process.stderr.write('\n')
+    // a standard that spaces its runs (v2); v3 draws no blank lines, and the data follows the opening directly
+    if (STANDARD.layout.spacing) {
+      process.stderr.write('\n')
+    }
     runner = { ...runner, session: { ...runner.session, owed: false } }
   }
 

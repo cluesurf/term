@@ -1,0 +1,106 @@
+# A closed set of texts (`mark text`, D9) is only texts: each case IS its text on TypeScript, so a case cannot carry a
+# field, and two cases cannot share a text, or a value would not say which case it is. Both are refused at the form,
+# naming the case.
+#
+# Ported from check/text-forms.ts (self-hosting, 2026-10-05).
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load ../parser/diagnostic
+  find diagnostic
+  find diagnose
+  find diagnostic-input
+  find span
+
+load ../compile/node
+  find statement
+
+# a span is in `file`: written there, not carried in from another module
+task is-in-file
+  take at, like span
+  take file, like text
+  like boolean
+  mark private
+
+  sift at/file
+    case some
+      link written
+      back is-equal(written, file)
+    case none
+      back false
+
+task refusal
+  take file, like text
+  take at, like span
+  take message, like text
+  take hint, like text
+  like diagnostic
+  mark private
+
+  save input
+    make diagnostic-input
+      bind file, file
+      bind span, at
+      bind message, make(some, message)
+      bind hint, make(some, hint)
+  save name, make type-mismatch
+  back diagnose(name, input)
+
+task check-text-forms
+  take program, like list, like statement
+  take file, like text
+  like list, like diagnostic
+
+  save out, make list
+  walk program
+    take node
+    sift node
+      case record-type
+        # `read`: a bare `text` is the literal word
+        fork test, or(is-equal(read(text), false), is-equal(is-in-file(span, file), false))
+          hold
+            turn next
+        save seen-texts, make list
+        save seen-names, make list
+        walk variants
+          take variant
+          save own, variant/name
+          sift variant/text
+            case some
+              link written
+              save own, written
+            case none
+              save own, variant/name
+          fork test, is-above(variant/fields/length, 0)
+            hold
+              save first, get(variant/fields, 0)
+              save at, span
+              sift first/span
+                case some
+                  link field-span
+                  save at, field-span
+                case none
+                  save at, span
+              push(out, refusal(file, at, <`{name}` is `mark text`, a closed set of texts, so its case `{variant/name}` cannot hold a value>, <drop the field, or drop `mark text` and make `{name}` an ordinary form>))
+          save at-seen, -1
+          walk seen-texts
+            take one
+            take index
+            fork test, is-equal(one, own)
+              hold
+                save at-seen, index
+          fork test, is-minimum(at-seen, 0)
+            hold
+              push(out, refusal(file, span, <`{name}` gives the text "{own}" to both `{get(seen-names, at-seen)}` and `{variant/name}`, so a value cannot say which case it is>, <give `{variant/name}` its own text, `case {variant/name}, text \<...\>`>))
+              save seen-names/{at-seen}, variant/name
+            miss
+              push(seen-texts, own)
+              push(seen-names, variant/name)
+      miss
+        turn next
+  back out

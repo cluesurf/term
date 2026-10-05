@@ -32,6 +32,12 @@ export const STRING_METHODS = new Set([
   'compare',
 ])
 
+// one of the methods, by its host spelling: what the port (compile/text-methods.tree) exports in place of the set, so a
+// caller works against either
+export function isStringMethod(name: string): boolean {
+  return STRING_METHODS.has(name)
+}
+
 // the member name as the host spells it: the stdlib writes `call value/char-at`, the JavaScript method is `charAt`
 export function hostMethod(name: string): string {
   return name.replace(/-([a-z0-9])/g, (_, c: string) => c.toUpperCase())

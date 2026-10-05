@@ -43,6 +43,20 @@ task items-of
     case none
       push(items, 0)
   back items
+
+# a counted walk (one that names its index) right after an empty list: the walk's own block, the same shape
+task first-two
+  take values, like list, like number
+  like list, like number
+
+  save out, make list
+  walk values
+    take value
+    take at
+    fork test, is-below(at, 2)
+      hold
+        push(out, value)
+  back out
 `
 
 const built = compile({ file: 'held-block.tree', text }, { resolve: withNativeEnv('node', stdlibResolver()!), library: true, leanOf: () => true } as never)

@@ -10,7 +10,7 @@ import type {
 import { armLocals } from '@term/make/code/check/arm'
 import { raiseSets } from '@term/make/code/check/effects'
 import { diagnose } from '@term/make/code/parser/diagnostic'
-import { STRING_METHODS, hostMethod } from '@term/make/code/compile/text-methods'
+import { isStringMethod, hostMethod } from '@term/make/code/compile/text-methods'
 import { Substitution } from '@term/make/code/check/substitution'
 import { instantiate } from '@term/make/code/check/signature'
 import { overloadGroups } from '@term/make/code/check/overload'
@@ -1205,7 +1205,7 @@ export function check(
           const member = node.callee
           const receiver = resolve(member.target.type!)
 
-          if (receiver.kind === 'string' && !STRING_METHODS.has(hostMethod(member.name))) {
+          if (receiver.kind === 'string' && !isStringMethod(hostMethod(member.name))) {
             const named = member.target.form === 'variable' ? `"${member.target.name}"` : 'this value'
 
             diagnostics.push(

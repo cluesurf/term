@@ -1,0 +1,81 @@
+# A page route declares only what the build turns into code.
+#
+# `hook /data` / `task get` compiled clean, was counted in host/roll.json as `get /data`, and emitted nothing: the route
+# lowering (compile/route-lower.ts) builds a branch per route that renders a component or proxies an asset, and reads no
+# method (guides: applications/web/routes, 2026-10-03). A method handler under a page route is refused, naming the
+# spelling that does serve one, a `route` record handed to `route-server`.
+#
+# A command (`hook make` / `task make-deck`) is not a route: its `task <impl>` is its handler, collected as a call, so
+# only a dock built as a route is read here. That was the PRESENCE of its `component` key, which a Term value cannot
+# tell from an absent one, so the mill writes `page` beside it and this reads that.
+#
+# Ported from check/routes.ts (self-hosting, 2026-10-05).
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+load ../parser/diagnostic
+  find diagnostic
+  find diagnose
+  find diagnostic-input
+  find span
+
+load ../compile/node
+  find statement
+  find dock-route
+
+task is-in-file
+  take at, like span
+  take file, like text
+  like boolean
+  mark private
+
+  sift at/file
+    case some
+      link written
+      back is-equal(written, file)
+    case none
+      back false
+
+task route-methods
+  take route, like dock-route
+  take file, like text
+  take out, like list, like diagnostic
+  like void
+  mark private
+
+  fork test, route/page
+    hold
+      walk route/methods
+        take method
+        save input
+          make diagnostic-input
+            bind file, file
+            bind span, method/span
+            bind message, make(some, <`task {method/name}` under the page route `{route/path}` builds no code: a page route renders a `view` or proxies an asset>)
+            bind hint, make(some, <serve an HTTP method with a `route` record (method, path, handle) passed to `route-server`, from @term/site/http/http>)
+        save name, make not-implemented
+        push(out, diagnose(name, input))
+  walk route/children
+    take child
+    route-methods(child, file, out)
+
+task check-route-methods
+  take program, like list, like statement
+  take file, like text
+  like list, like diagnostic
+
+  save out, make list
+  walk program
+    take one
+    sift one
+      case dock
+        fork test, is-in-file(span, file)
+          hold
+            route-methods(route, file, out)
+      miss
+        turn next
+  back out

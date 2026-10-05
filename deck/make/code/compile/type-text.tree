@@ -1,0 +1,198 @@
+# The texts of the AST's types and literals: a type as a person reads it (`show-type`), a type as a key (`type-key`),
+# and an integer literal as a backend writes it (`integer-text`).
+#
+# Ported from compile/type-text.ts (self-hosting, 2026-10-05). It was moved out of node.ts because it reads optional
+# fields (a named type's `args`, a function type's `effects`, a literal's `digits`), which D10 has since settled: each
+# is a list or a text whose absence reads as empty, and every one of these reads treats absent and empty alike.
+
+load @term/base/list
+  find list
+  find join
+
+load ./node
+  find type
+
+# the text a backend writes for an integer literal: its exact digits past 2^53, else its number
+task integer-text
+  take node, like expression
+  like text
+
+  sift node
+    case integer
+      fork test, is-unequal(digits, <>)
+        hold
+          back digits
+      back <{value}>
+    miss
+      back <>
+
+# A type as a person reads it, in Term's own words: `text`, `void`, `list, like number`, `hash, like text, like
+# number`. Every diagnostic, `term roll`, `term look` and the language server print through this. It printed the
+# checker's internal names until 2026-10-04 (`string`, `unit`, `number[]`, `map<string, number>`), which a reader had to
+# translate back into what they wrote (guides: types, basics/tour, commands/roll).
+#
+# A type argument the checker has not solved is left off, the way `like list` with nothing after it leaves the element
+# open, so a list built in the call itself prints `list`, not `?2[]`. Alone it is `an unsolved type`.
+task show-type
+  take of, like type
+  like text
+
+  sift of
+    case variable
+      back <an unsolved type>
+    miss
+      back spell(of)
+
+# one type in a `like` chain. A compound argument inside a task's parentheses is wrapped again, so its commas cannot be
+# read as the task's
+task spell
+  take of, like type
+  like text
+  mark private
+
+  sift of
+    case string
+      back <text>
+    case unit
+      back <void>
+    case array
+      back chain(<list>, one-type(element))
+    case map
+      back chain(<hash>, two-types(key, value))
+    case named
+      back chain(name, args)
+    case function
+      save written, make list
+      walk params
+        take param
+        save shown, spell(param)
+        fork test, contains-comma(shown)
+          hold
+            push(written, <({shown})>)
+          miss
+            push(written, shown)
+      back <task({join(written, <, >)}) -\> {spell(result)}{effects-text(effects)}>
+    case variable
+      back <unknown>
+    miss
+      back type-key(of)
+
+task one-type
+  take first, like type
+  like list, like type
+  mark private
+
+  save out, make list
+  push(out, first)
+  back out
+
+task two-types
+  take first, like type
+  take second, like type
+  like list, like type
+  mark private
+
+  save out, make list
+  push(out, first)
+  push(out, second)
+  back out
+
+task contains-comma
+  take value, like text
+  like boolean
+  mark private
+
+  back is-unequal(value/index-of(<,>), -1)
+
+# ` !a,b` after a function type with effects, else nothing
+task effects-text
+  take effects, like list, like text
+  like text
+  mark private
+
+  fork test, is-equal(effects/length, 0)
+    hold
+      back <>
+  back < !{join(effects, <,>)}>
+
+task is-variable
+  take of, like type
+  like boolean
+  mark private
+
+  sift of
+    case variable
+      back true
+    miss
+      back false
+
+# `list, like text`: the head, then each SOLVED argument after a `like`
+task chain
+  take head, like text
+  take args, like list, like type
+  like text
+  mark private
+
+  save parts, make list
+  push(parts, head)
+  save solved, true
+  walk args
+    take one
+    fork test, is-variable(one)
+      hold
+        save solved, false
+  fork test, solved
+    hold
+      walk args
+        take one
+        push(parts, <like {spell(one)}>)
+  back join(parts, <, >)
+
+# A type as a KEY: exact and structural, so two types print alike only when they are alike. An unsolved variable keeps
+# its number here (`?3[]` and `?7[]` are two lists), which is what an overload's shape compares (check/overload.ts).
+# Never shown to a person: that is show-type.
+task type-key
+  take of, like type
+  like text
+
+  sift of
+    case number
+      back <number>
+    case float
+      back <float>
+    case dynamic
+      back <dynamic>
+    case bytes
+      back <bytes>
+    case boolean
+      back <boolean>
+    case string
+      back <string>
+    case unit
+      back <unit>
+    case unknown
+      back <unknown>
+    case array
+      back <{type-key(element)}[]>
+    case map
+      back <map\<{type-key(key)}, {type-key(value)}\>>
+    case named
+      fork test, is-equal(args/length, 0)
+        hold
+          back name
+      back <{name}\<{keys-of(args)}\>>
+    case function
+      back <({keys-of(params)}) -\> {type-key(result)}{effects-text(effects)}>
+    case variable
+      back <?{id}>
+
+task keys-of
+  take types, like list, like type
+  like text
+  mark private
+
+  save keys, make list
+  walk types
+    take one
+    push(keys, type-key(one))
+  back join(keys, <, >)

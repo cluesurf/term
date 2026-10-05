@@ -4,7 +4,9 @@
 // never reads a tag carries none.
 import type { Program } from '@term/make/code/compile/node'
 
-export function taggedForms(program: Program): Set<string> {
+// the names SORTED, the shape the port (compile/tag.tree) answers, so the order a walk meets them in cannot move
+// Swift's accessors
+export function taggedForms(program: Program): string[] {
   const forms = new Set<string>()
   const seen = new Set<object>()
   const visit = (value: unknown): void => {
@@ -35,7 +37,7 @@ export function taggedForms(program: Program): Set<string> {
 
   visit(program)
 
-  return forms
+  return [...forms].sort()
 }
 
 // the text a case's tag reads as: its name as written, which is what TypeScript's values carry

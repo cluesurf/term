@@ -17,39 +17,9 @@ import type {
   LintMemo,
   Rule,
 } from '@term/make/code/lint/rule'
-import { kebabNames } from '@term/make/code/lint/rules/kebab-names'
 import { tellMissing, tellOfFailure, tellReveals } from '@term/make/code/lint/rules/tell-advice'
 import { unhandledRaise } from '@term/make/code/lint/rules/unhandled-raise'
-import { noRedundantArithmetic } from '@term/make/code/lint/rules/no-redundant-arithmetic'
 import { preferHostForConstant } from '@term/make/code/lint/rules/prefer-host-for-constant'
-import { noEmptyBlock } from '@term/make/code/lint/rules/no-empty-block'
-import { noConstantCondition } from '@term/make/code/lint/rules/no-constant-condition'
-import { noSelfComparison } from '@term/make/code/lint/rules/no-self-comparison'
-import { noUnusedLoad } from '@term/make/code/lint/rules/no-unused-load'
-import { noDuplicateBranchCondition } from '@term/make/code/lint/rules/no-duplicate-branch-condition'
-import { noSelfAssignment } from '@term/make/code/lint/rules/no-self-assignment'
-import { noUnreachableCode } from '@term/make/code/lint/rules/no-unreachable-code'
-import { noIdenticalBranches } from '@term/make/code/lint/rules/no-identical-branches'
-import { noDuplicateCase } from '@term/make/code/lint/rules/no-duplicate-case'
-import { noConstantBinaryExpression } from '@term/make/code/lint/rules/no-constant-binary-expression'
-import { noDuplicateKeys } from '@term/make/code/lint/rules/no-duplicate-keys'
-import { noDoubleNegation } from '@term/make/code/lint/rules/no-double-negation'
-import { noBooleanLiteralComparison } from '@term/make/code/lint/rules/no-boolean-literal-comparison'
-import { preferDirectReturn } from '@term/make/code/lint/rules/prefer-direct-return'
-import { noUselessConcat } from '@term/make/code/lint/rules/no-useless-concat'
-import { noRedundantContinue } from '@term/make/code/lint/rules/no-redundant-continue'
-import { noElseReturn } from '@term/make/code/lint/rules/no-else-return'
-import { noDuplicateLoad } from '@term/make/code/lint/rules/no-duplicate-load'
-import { noNegatedCondition } from '@term/make/code/lint/rules/no-negated-condition'
-import { noLonelyIf } from '@term/make/code/lint/rules/no-lonely-if'
-import { consistentReturn } from '@term/make/code/lint/rules/consistent-return'
-import { noUselessReturn } from '@term/make/code/lint/rules/no-useless-return'
-import { noRedundantBoolean } from '@term/make/code/lint/rules/no-redundant-boolean'
-import { noRedundantConditional } from '@term/make/code/lint/rules/no-redundant-conditional'
-import { noNegatedEquality } from '@term/make/code/lint/rules/no-negated-equality'
-import { preferIsEmpty } from '@term/make/code/lint/rules/prefer-is-empty'
-import { noEmptyForkCase } from '@term/make/code/lint/rules/no-empty-fork-case'
-import { noDuplicateMapKey } from '@term/make/code/lint/rules/no-duplicate-map-key'
 import { dataGrammar } from '@term/make/code/lint/rules/data-grammar'
 import { preferSift } from '@term/make/code/lint/rules/prefer-sift'
 import { preferSingleBrace } from '@term/make/code/lint/rules/prefer-single-brace'
@@ -57,43 +27,81 @@ import { lineLayout } from '@term/make/code/lint/rules/line-layout'
 import { noteMetadata } from '@term/make/code/lint/rules/note-metadata'
 import { redundantWait } from '@term/make/code/lint/rules/redundant-wait'
 import { parse } from '@term/make/code/parser/tree'
+import * as ruleCheck from '@term/make/code/lint/rule-check'
+
+// A rule ported to Term (lint/rule-check.tree), as the driver's `Rule`. The Term side answers its reports, and a fix
+// that copies source text names the span to copy, which this slices: the parser's columns are UTF-16 units here, and
+// Term's text counts code points. The facts it reads are built once per lint call, in the shared memo.
+export function portedRule(name: ruleCheck.PortedRule): Rule {
+  const meta = ruleCheck.metaOf(name)
+
+  return {
+    name: meta.name,
+    code: meta.code,
+    severity: meta.severity,
+    docs: meta.docs,
+    fixable: meta.fixable,
+    check(target, context) {
+      const facts = (context.memo.facts ??= {
+        referenced: [...context.referenced],
+        duplicateLoads: [...context.duplicateLoads],
+      }) as ruleCheck.LintFacts
+      const reports =
+        target.kind === 'statement'
+          ? ruleCheck.checkStatement(name, target.node, facts)
+          : ruleCheck.checkExpression(name, target.node, facts)
+
+      for (const report of reports) {
+        const fix = report.fix
+
+        context.report({
+          message: report.message,
+          span: report.span,
+          ...(fix
+            ? { fix: { span: fix.span, text: fix.form === 'put' ? fix.text : fix.prefix + context.slice(fix.from) } }
+            : {}),
+        })
+      }
+    },
+  }
+}
 
 // the line-length limit enforced by the formatter and the max-line-length lint rule (L019)
 const MAX_LINE_LENGTH = 84
 
 // the default rule set, keyed by stable code for config and suppression
 export const RULES: Rule[] = [
-  kebabNames,
-  noRedundantArithmetic,
+  portedRule('kebab-names'),
+  portedRule('no-redundant-arithmetic'),
   preferHostForConstant,
-  noEmptyBlock,
-  noConstantCondition,
-  noSelfComparison,
-  noUnusedLoad,
-  noDuplicateBranchCondition,
-  noSelfAssignment,
-  noUnreachableCode,
-  noIdenticalBranches,
-  noDuplicateCase,
-  noConstantBinaryExpression,
-  noDuplicateKeys,
-  noDoubleNegation,
-  noBooleanLiteralComparison,
-  preferDirectReturn,
-  noUselessConcat,
-  noRedundantContinue,
-  noElseReturn,
-  noDuplicateLoad,
-  noNegatedCondition,
-  noLonelyIf,
-  consistentReturn,
-  noUselessReturn,
-  noRedundantBoolean,
-  noRedundantConditional,
-  noNegatedEquality,
-  preferIsEmpty,
-  noEmptyForkCase,
-  noDuplicateMapKey,
+  portedRule('no-empty-block'),
+  portedRule('no-constant-condition'),
+  portedRule('no-self-comparison'),
+  portedRule('no-unused-load'),
+  portedRule('no-duplicate-branch-condition'),
+  portedRule('no-self-assignment'),
+  portedRule('no-unreachable-code'),
+  portedRule('no-identical-branches'),
+  portedRule('no-duplicate-case'),
+  portedRule('no-constant-binary-expression'),
+  portedRule('no-duplicate-keys'),
+  portedRule('no-double-negation'),
+  portedRule('no-boolean-literal-comparison'),
+  portedRule('prefer-direct-return'),
+  portedRule('no-useless-concat'),
+  portedRule('no-redundant-continue'),
+  portedRule('no-else-return'),
+  portedRule('no-duplicate-load'),
+  portedRule('no-negated-condition'),
+  portedRule('no-lonely-if'),
+  portedRule('consistent-return'),
+  portedRule('no-useless-return'),
+  portedRule('no-redundant-boolean'),
+  portedRule('no-redundant-conditional'),
+  portedRule('no-negated-equality'),
+  portedRule('prefer-is-empty'),
+  portedRule('no-empty-fork-case'),
+  portedRule('no-duplicate-map-key'),
   dataGrammar,
   preferSift,
   preferSingleBrace,

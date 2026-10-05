@@ -18,7 +18,7 @@ export function checkRouteMethods(program: Program, file: string): Diagnostic[] 
   const out: Diagnostic[] = []
 
   const walk = (route: Dock['route']): void => {
-    if ('component' in route) {
+    if (route.page) {
       for (const method of route.methods) {
         out.push(
           diagnose('not-implemented', {

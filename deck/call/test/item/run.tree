@@ -77,7 +77,7 @@ task glyphs-of
   out/push b
   back out
 
-test <the closing glyph is the worst in the run, ranked ✗ › ▲ › ◐ › ✓ › ○ › ·>
+test <the closing glyph is the worst in the run, ranked ✗ › ▲ › ◐ › ✓ › ○ › ●>
   save standard, make-standard()
   want hold
     is-equal
@@ -95,10 +95,12 @@ test <the closing glyph is the worst in the run, ranked ✗ › ▲ › ◐ › 
     is-equal
       closing-glyph(seen(glyphs-of(<done>, <skipped>), make-options()), standard)
       <done>
+  # a run whose worst is ○ did its work and skipped the rest, so it closes ✓; only
+  # Ctrl-C closes ○ (run.tree `closing-glyph`, and the exit 130 case below)
   want hold
     is-equal
       closing-glyph(seen(glyphs-of(<skipped>, <info>), make-options()), standard)
-      <skipped>
+      <done>
 
 test <added, removed and changed are outside the order: a plan of changes closes with ·>
   save standard, make-standard()
@@ -173,7 +175,7 @@ test <debug items print with --verbose, trace items with --trace, neither by def
   want hold, is-equal(is-shown(trace, verbose), false)
   want hold, and(is-shown(debug, tracing), is-shown(trace, tracing))
 
-test <under --quiet the opening is left out and one blank line comes before the closing>
+test <under --quiet the opening is left out, and the closing comes with no blank line (v3)>
   save options, make-options()
   save options/quiet, true
   save opening
@@ -188,7 +190,7 @@ test <under --quiet the opening is left out and one blank line comes before the 
   want hold
     is-equal
       kit-join(draw-run(opening, events, closing, kit-room(80), options, true))
-      <\n✓ make     1 target built\n           14:42:00.700 · 700 ms>
+      <✓ make 1 target built\n  700 ms>
 
 task make-problem
   take path, like text

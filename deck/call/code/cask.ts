@@ -217,6 +217,50 @@ export async function buildPage({
 
 // ---- the program ----
 
+// THE DRIVER'S ARGUMENTS BY LABEL. A Swift task's inputs are labeled by name (compile/swift.ts `label`), so the line
+// calling `boot` must name each one, and an entry names them itself: `bundle`, or `resources` and `base`, or `bundle`,
+// `shoot` and `shot`. The labels are read off the emitted `func boot(...)`, so a driver written by position (every one
+// here, from before the labels) gets the entry's own. `cask/smoke` and the update test stopped compiling on
+// `missing argument labels` until this (2026-10-05). A driver that already labels, or a `boot` with none, is left
+export function labelBoot(driver: string, swift: string): string {
+  const signature = /\bfunc boot\(([^)]*)\)/.exec(swift)
+  const call = /^(\s*)boot\((.*)\)\s*$/.exec(driver)
+
+  if (!signature || !call || /^\s*[a-z][A-Za-z0-9]*\s*:/.test(call[2]!)) {
+    return driver
+  }
+
+  const labels = signature[1]!.split(',').map(param => param.trim().split(/[\s:]/)[0]!).filter(Boolean)
+  const args: string[] = []
+  let depth = 0
+  let quoted = false
+  let start = 0
+  const text = call[2]!
+
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]!
+
+    if (c === '"' && text[i - 1] !== '\\') {
+      quoted = !quoted
+    } else if (!quoted && (c === '(' || c === '[')) {
+      depth++
+    } else if (!quoted && (c === ')' || c === ']')) {
+      depth--
+    } else if (!quoted && depth === 0 && c === ',') {
+      args.push(text.slice(start, i).trim())
+      start = i + 1
+    }
+  }
+
+  if (text.trim() !== '') {
+    args.push(text.slice(start).trim())
+  }
+
+  const named = args.map((arg, i) => (labels[i] && labels[i] !== '_' ? `${labels[i]}: ${arg}` : arg))
+
+  return `${call[1]}boot(${named.join(', ')})`
+}
+
 // the cask program compiled to Swift, the cask runtime prepended, and `driver`, the top-level Swift line that
 // calls the program's `boot`
 export function buildProgram({
@@ -254,7 +298,8 @@ export function buildProgram({
   // the windows cask stopped building once `file/read` raised `absence` (2026-10-04). An error reaching the top
   // level ends the program with its message, which is what a raise nothing caught means
   const throwing = /\bfunc boot\([^{]*\bthrows\b/.test(swift)
-  const line = throwing && !/^\s*try\b/.test(driver) ? `try ${driver}` : driver
+  const labeled = labelBoot(driver, swift)
+  const line = throwing && !/^\s*try\b/.test(labeled) ? `try ${labeled}` : labeled
   const source = ['import Foundation', prelude, swift, line, ''].join('\n')
   const file = path.join(work, 'app.swift')
   mkdirSync(work, { recursive: true })

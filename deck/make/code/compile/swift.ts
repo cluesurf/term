@@ -2296,9 +2296,13 @@ export function emitSwift(
         }
 
         // a call to a task names each argument by its input, as the task declares them (`labeled`)
+        // A task's wrapping copy (`aValueFast`, emitted under `<name>-fast` for a guarded loop) declares the
+        // inputs its task does, so a call to it takes the task's labels: it is in no list of the program's tasks,
+        // and spectral-norm's calls went out unlabeled to a copy that declared `i:` and `j:` (2026-10-05)
         const labels =
           node.callee.form === 'variable' && !boundNames.has(node.callee.name)
-            ? functionLabels.get(node.callee.name)
+            ? (functionLabels.get(node.callee.name) ??
+              (node.callee.name.endsWith('-fast') ? functionLabels.get(node.callee.name.slice(0, -'-fast'.length)) : undefined))
             : undefined
 
         if (labels) {

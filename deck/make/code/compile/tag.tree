@@ -1,0 +1,67 @@
+# The forms whose TAG the program reads as a field (`s/form`, or the name `mark tag, name kind` gives): the checker marks
+# each such member read with `tag`, the form's name. TypeScript reads the field its values already carry. A native
+# backend gives each of these forms one accessor, the case's name as text, and only these, so a program that never reads
+# a tag carries none.
+#
+# Ported from compile/tag.ts (self-hosting, 2026-10-05). It walked the program by reflection; here it filters
+# compile/node-walk's list of every expression. Its set is a list, each form once, SORTED, as the original now answers
+# too: Swift emits one accessor per form in this order, and the two walks need not meet the forms in one order.
+
+load @term/base/list
+  find list
+  find sort
+
+load @term/base/ordering
+  find ordering
+  find from-texts
+
+load ./node
+  find expression
+  find statement
+
+load ./node-walk
+  find expressions-in
+
+task tagged-forms
+  take program, like list, like statement
+  like list, like text
+
+  save out, make list
+  walk expressions-in(program)
+    take one
+    sift one
+      case member
+        fork test, and(is-unequal(tag, <>), is-equal(has-text(out, tag), false))
+          hold
+            push(out, tag)
+      miss
+        turn next
+  back sort(out, compare-names)
+
+task compare-names
+  take left, like text
+  take right, like text
+  like ordering
+  mark private
+
+  back from-texts(left, right)
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+# the text a case's tag reads as: its name as written, which is what TypeScript's values carry
+task tag-text
+  take case-name, like text
+  like text
+
+  back case-name

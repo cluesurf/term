@@ -1,6 +1,7 @@
-# Child processes and foreign output (section 15): JSON lines and logfmt become items by the mapping table, plain text
-# is quoted, `--raw` passes a line through, and a line that only looks like JSON is quoted rather than an error.
-
+# Child processes and foreign output (section 15): JSON lines and logfmt become
+# items by the mapping table, plain text
+# is quoted, `--raw` passes a line through, and a line that only looks like JSON is
+# quoted rather than an error.
 load @term/base/text
   find contains
 
@@ -20,47 +21,107 @@ load ./kit
 
 task received
   like number
+
   back kit-clock(14, 2, 12, 10)
 
 test <a JSON line becomes an item: level the glyph, logger the verb, msg the subject, the rest fields>
-  save got, adapt-line(<\{"level":"warn","logger":"smtp","msg":"slow to respond","host":"smtp.mail.local","waited":3000\}>, received(), -420, false, kit-room(80))
+  save got
+    adapt-line <\{"level":"warn","logger":"smtp","msg":"slow to respond","host":"smtp.mail.local","waited":3000\}>
+      received()
+      -420
+      false
+      kit-room(80)
   want hold, is-equal(got/kind, <item>)
-  want hold, is-equal(kit-draw(got/event, 80), <▲ smtp     slow to respond\n           14:02:12.010\n           host    smtp.mail.local\n           waited  3000>)
+  want hold
+    is-equal kit-draw(got/event, 80)
+      <▲ smtp slow to respond\n  host smtp.mail.local\n  waited 3000>
 
 test <a JSON line's time and duration become the clock and the duration, in the display zone>
-  save got, adapt-line(<\{"level":"info","name":"cache","message":"warmed","time":"2026-10-03T21:02:11.950Z","duration":"4ms","keys":1204\}>, received(), -420, false, kit-room(80))
-  want hold, is-equal(kit-draw(got/event, 80), <· cache    warmed\n           14:02:11.950 · 4 ms\n           keys  1204>)
+  save got
+    adapt-line <\{"level":"info","name":"cache","message":"warmed","time":"2026-10-03T21:02:11.950Z","duration":"4ms","keys":1204\}>
+      received()
+      -420
+      false
+      kit-room(80)
+  want hold
+    is-equal(kit-draw(got/event, 80), <● cache warmed\n  4 ms\n  keys 1204>)
 
 test <a stack becomes quoted output, trimmed to its top frame and the user's>
-  save got, adapt-line(<\{"level":"error","logger":"email","msg":"Unhandled rejection","err":\{"stack":"TypeError: x\\n    at sendEmail (src/jobs/email.ts:42:17)\\n    at run (node_modules/bull/job.js:1:1)\\n    at next (node:internal/timers:1:1)"\}\}>, received(), -420, false, kit-room(80))
-  want hold, is-equal(kit-draw(got/event, 80), <✗ email    Unhandled rejection\n           14:02:12.010\n           │ TypeError: x\n           │ at sendEmail (src/jobs/email.ts:42:17)\n           │ … 2 more frames>)
+  save got
+    adapt-line <\{"level":"error","logger":"email","msg":"Unhandled rejection","err":\{"stack":"TypeError: x\\n    at sendEmail (src/jobs/email.ts:42:17)\\n    at run (node_modules/bull/job.js:1:1)\\n    at next (node:internal/timers:1:1)"\}\}>
+      received()
+      -420
+      false
+      kit-room(80)
+  want hold
+    is-equal kit-draw(got/event, 80)
+      <✗ email Unhandled rejection\n  ⎿  TypeError: x\n     at sendEmail (src/jobs/email.ts:42:17)\n     … 2 more frames>
 
 test <a missing logger is the verb log, a long one is cut to 7 cells>
-  save plain, adapt-line(<\{"level":"info","msg":"hello"\}>, received(), -420, false, kit-room(80))
+  save plain
+    adapt-line <\{"level":"info","msg":"hello"\}>
+      received()
+      -420
+      false
+      kit-room(80)
   want hold, is-equal(plain/event/verb, <log>)
-  save long, adapt-line(<\{"level":"info","logger":"payments","msg":"hello"\}>, received(), -420, false, kit-room(80))
+  save long
+    adapt-line <\{"level":"info","logger":"payments","msg":"hello"\}>
+      received()
+      -420
+      false
+      kit-room(80)
   want hold, is-equal(long/event/verb, <paymen…>)
 
 test <levels map to glyphs, debug and trace to dim debug items, numbers too>
-  save fatal, adapt-line(<\{"level":"fatal","msg":"x"\}>, received(), -420, false, kit-room(80))
+  save fatal
+    adapt-line <\{"level":"fatal","msg":"x"\}>
+      received()
+      -420
+      false
+      kit-room(80)
   want hold, is-equal(fatal/event/glyph, <failed>)
-  save warn, adapt-line(<\{"level":"WARNING","msg":"x"\}>, received(), -420, false, kit-room(80))
+  save warn
+    adapt-line <\{"level":"WARNING","msg":"x"\}>
+      received()
+      -420
+      false
+      kit-room(80)
   want hold, is-equal(warn/event/glyph, <warning>)
-  save debug, adapt-line(<\{"level":"debug","msg":"x"\}>, received(), -420, false, kit-room(80))
-  want hold, and(is-equal(debug/event/glyph, <info>), is-equal(debug/event/level, <debug>))
-  save pino, adapt-line(<\{"level":50,"msg":"x"\}>, received(), -420, false, kit-room(80))
+  save debug
+    adapt-line <\{"level":"debug","msg":"x"\}>
+      received()
+      -420
+      false
+      kit-room(80)
+  want hold
+    and(is-equal(debug/event/glyph, <info>), is-equal(debug/event/level, <debug>))
+  save pino
+    adapt-line(<\{"level":50,"msg":"x"\}>, received(), -420, false, kit-room(80))
   want hold, is-equal(pino/event/glyph, <failed>)
 
 test <a short number with a unit is a fact, any other value a field>
-  save got, adapt-line(<\{"level":"info","msg":"served","took":"12ms","path":"/shape"\}>, received(), -420, false, kit-room(80))
+  save got
+    adapt-line <\{"level":"info","msg":"served","took":"12ms","path":"/shape"\}>
+      received()
+      -420
+      false
+      kit-room(80)
   want hold, is-equal(got/event/facts/0, <12ms>)
   save first, got/event/fields/0
   want hold, is-equal(first/key, <path>)
 
 test <a logfmt line becomes an item by the same mapping>
-  save got, adapt-line(<level=error logger=db msg="connection refused" host=10.0.0.4 port=5432>, received(), -420, false, kit-room(80))
+  save got
+    adapt-line <level=error logger=db msg="connection refused" host=10.0.0.4 port=5432>
+      received()
+      -420
+      false
+      kit-room(80)
   want hold, is-equal(got/kind, <item>)
-  want hold, is-equal(kit-draw(got/event, 80), <✗ db       connection refused\n           14:02:12.010\n           host  10.0.0.4\n           port  5432>)
+  want hold
+    is-equal kit-draw(got/event, 80)
+      <✗ db connection refused\n  host 10.0.0.4\n  port 5432>
 
 test <logfmt keeps quoted values whole, escapes and all>
   save pairs, read-logfmt(<msg="say \\"hi\\" now" ok=true>)
@@ -70,17 +131,24 @@ test <logfmt keeps quoted values whole, escapes and all>
 
 test <plain text is quoted under the item that ran the program>
   save got, adapt-line(<compiling 42 files>, received(), -420, false, kit-room(80))
-  want hold, and(is-equal(got/kind, <quote>), is-equal(got/line, <compiling 42 files>))
+  want hold
+    and(is-equal(got/kind, <quote>), is-equal(got/line, <compiling 42 files>))
   save one, adapt-line(<a=b>, received(), -420, false, kit-room(80))
   want hold, is-equal(one/kind, <quote>)
 
 test <a line that only looks like JSON is quoted, never an error>
-  save got, adapt-line(<\{"level":"warn","msg":"cut off>, received(), -420, false, kit-room(80))
+  save got
+    adapt-line <\{"level":"warn","msg":"cut off>
+      received()
+      -420
+      false
+      kit-room(80)
   want hold, is-equal(got/kind, <quote>)
 
 test <--raw passes a line through untouched>
   save got, adapt-line(<\{"level":"warn"\}>, received(), -420, true, kit-room(80))
-  want hold, and(is-equal(got/kind, <raw>), is-equal(got/line, <\{"level":"warn"\}>))
+  want hold
+    and(is-equal(got/kind, <raw>), is-equal(got/line, <\{"level":"warn"\}>))
 
 test <a child's time is read in any of its spellings>
   save at, kit-clock(14, 2, 7, 412)

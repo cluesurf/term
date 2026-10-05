@@ -44,6 +44,8 @@ export type LintMemo = {
   raises?: Map<string, Set<string>>
   // the tell-advice rules' view of the program (L037 to L039). Shaped by that rule file, opaque here.
   tell?: unknown
+  // what the rules ported to Term read (lint/rule-check.tree `lint-facts`), built from the context's sets
+  facts?: unknown
 }
 
 // what a rule sees while checking a node: the file, the raw source (for span-accurate fixes), a set of names that

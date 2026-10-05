@@ -212,7 +212,9 @@ task draw-branch
             save detail, <{detail}, {word}>
     fork test, is-unequal(detail, <>)
       hold
-        spans/push make-span(<  {detail}>, <dim>)
+        # one space after the label, as a field's value sits after its key (v3)
+        save gap, make-spaces(room/standard/layout/field-gap)
+        spans/push make-span(<{gap}{detail}>, <dim>)
     out/push make line, spans(crop-spans(spans, room/width, room))
     save below, <{prefix}{stem} >
     fork test, last

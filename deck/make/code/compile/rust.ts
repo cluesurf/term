@@ -1928,7 +1928,7 @@ function emitRustPass(
   // can all be keys. A closure and a boxed unknown cannot. The same greatest fixpoint as above, so a recursive form
   // qualifies when nothing outside it disqualifies it. Each one gets a `TermHash` impl (`termHashImpl`)
   // the forms whose tag the program reads as a field, each given `term_tag`
-  const taggedNames = taggedForms(program)
+  const taggedNames = new Set(taggedForms(program))
   const keyableForms = new Set(formDecls.keys())
 
   const keyQualifies = (type: Type, params: Set<string>): boolean => {
@@ -5260,7 +5260,14 @@ function emitRustPass(
               }
             })
 
-            return `\n${pad(d)}impl${bounds} TermHash for ${pascal(node.name)}${typeArgs} {\n${pad(d + 1)}fn term_hash<H: std::hash::Hasher>(&self, h: &mut H) { match self { ${arms.map(a => a.hash).join(', ')} } }\n${pad(d + 1)}#[allow(unreachable_patterns)]\n${pad(d + 1)}fn term_eq(&self, other: &Self) -> bool { match (self, other) { ${arms.map(a => a.eq).join(', ')}, _ => false } }\n${pad(d)}}`
+            // every case field-less: the equality is which case both are, `matches!` over the pairs, as Rust writes it
+            // (clippy: match_like_matches_macro, one finding per such form, seven in the idiom gate on 2026-10-05)
+            const fieldless = node.variants.every(v => v.fields.length === 0 && !payloadOf(node.name, v.name))
+            const eq = fieldless
+              ? `matches!((self, other), ${node.variants.map(v => `(Self::${pascal(v.name)}, Self::${pascal(v.name)})`).join(' | ')})`
+              : `match (self, other) { ${arms.map(a => a.eq).join(', ')}, _ => false }`
+
+            return `\n${pad(d)}impl${bounds} TermHash for ${pascal(node.name)}${typeArgs} {\n${pad(d + 1)}fn term_hash<H: std::hash::Hasher>(&self, h: &mut H) { match self { ${arms.map(a => a.hash).join(', ')} } }\n${pad(d + 1)}#[allow(unreachable_patterns)]\n${pad(d + 1)}fn term_eq(&self, other: &Self) -> bool { ${eq} }\n${pad(d)}}`
           }
 
           // the tag, when the program reads it as a field: the case's name as text (compile/tag.ts)
@@ -5677,7 +5684,7 @@ impl<K: TermHash + Clone, V: TermHash> TermHash for TermMap<K, V> {
         for (k, v) in self.iter() { let mut one = std::collections::hash_map::DefaultHasher::new(); k.term_hash(&mut one); v.term_hash(&mut one); sum = sum.wrapping_add(std::hash::Hasher::finish(&one)); }
         std::hash::Hash::hash(&(self.len(), sum), h)
     }
-    fn term_eq(&self, other: &Self) -> bool { self.len() == other.len() && self.iter().all(|(k, v)| other.get(k).map_or(false, |w| v.term_eq(w))) }
+    fn term_eq(&self, other: &Self) -> bool { self.len() == other.len() && self.iter().all(|(k, v)| other.get(k).is_some_and(|w| v.term_eq(w))) }
 }
 impl<A: TermHash, B: TermHash> TermHash for (A, B) {
     fn term_hash<H: std::hash::Hasher>(&self, h: &mut H) { self.0.term_hash(h); self.1.term_hash(h) }

@@ -680,7 +680,7 @@ export function emitKotlin(
 
   // how many type parameters each generic form declares, for a reference that names the form without them
   // the forms whose tag the program reads as a field, each given `termTag`
-  const taggedNames = taggedForms(program)
+  const taggedNames = new Set(taggedForms(program))
   const genericArity = new Map<string, number>(
     program
       .filter((n): n is Extract<Statement, { form: 'record-type' }> => n.form === 'record-type')

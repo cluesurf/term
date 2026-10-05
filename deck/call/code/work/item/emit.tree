@@ -86,8 +86,10 @@ load ./annotate
 load ./format
   find format-zone
 
-# Every bind here has a case for each backend (check/binds.ts refuses one that leaves a backend out). A page has no
-# terminal and no stderr, so the browser's cases write to the console and answer what a non-terminal answers.
+# Every bind here has a case for each backend (check/binds.ts refuses one that
+# leaves a backend out). A page has no
+# terminal and no stderr, so the browser's cases write to the console and answer
+# what a non-terminal answers.
 bind error-is-terminal, like boolean
   case node
     text <(process.stderr.isTTY === true)>
@@ -174,7 +176,8 @@ bind local-zone-name, take epoch, like number
   case kotlin
     text <java.util.TimeZone.getDefault().getDisplayName(java.util.TimeZone.getDefault().inDaylightTime(java.util.Date($epoch)), java.util.TimeZone.SHORT)>
 
-# the operating system, by Rust's names where node's differ: `macos`, `linux`, `windows`
+# the operating system, by Rust's names where node's differ: `macos`, `linux`,
+# `windows`
 bind platform-name, like text
   case node
     text <(process.platform === 'win32' ? 'windows' : process.platform)>

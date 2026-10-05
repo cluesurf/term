@@ -1,0 +1,324 @@
+# Every expression in a program, as one list, in pre-order: an expression before the expressions inside it, a
+# statement's own expressions before its blocks'.
+#
+# About forty compiler passes walk the AST by reflection (`Object.entries` over whatever object they are handed), which
+# Term has no spelling for, and Term has no closure to hand a visitor either. So the walk is written out once, over
+# every field of node.tree that can hold an expression, and a pass filters the list it answers. A field that is a TYPE
+# is not walked: the passes that read expressions skip `type` (a named type's value arguments are the kernel's).
+#
+# Written for self-hosting, 2026-10-05, with compile/tag.tree its first reader.
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+load ./node
+  find expression
+  find statement
+  find view-node
+  find dock-route
+  find dock-call
+  find template-part
+  find form-extend
+  find dock-component
+
+# every expression in these statements, nested blocks and nested tasks included
+task expressions-in
+  take statements, like list, like statement
+  like list, like expression
+
+  save out, make list
+  gather-block(statements, out)
+  back out
+
+task gather-maybe
+  take value, like maybe, like expression
+  take out, like list, like expression
+  like void
+  mark private
+
+  sift value
+    case some
+      link given
+      gather-expression(given, out)
+    case none
+      back
+
+task gather-list
+  take values, like list, like expression
+  take out, like list, like expression
+  like void
+  mark private
+
+  walk values
+    take one
+    gather-expression(one, out)
+
+task gather-expression
+  take value, like expression
+  take out, like list, like expression
+  like void
+  mark private
+
+  push(out, value)
+  sift value
+    case template
+      walk parts
+        take part
+        sift part
+          case value
+            link inner
+            gather-expression(inner, out)
+          case chunk
+            turn next
+    case binary
+      gather-expression(left, out)
+      gather-expression(right, out)
+    case unary
+      gather-expression(operand, out)
+    case call
+      gather-expression(callee, out)
+      gather-list(args, out)
+    case array
+      gather-list(items, out)
+    case map
+      walk entries
+        take entry
+        gather-expression(entry/key, out)
+        gather-expression(entry/value, out)
+    case record
+      walk fields
+        take field
+        gather-expression(field/value, out)
+      gather-list(positional, out)
+    case member
+      gather-expression(target, out)
+      gather-maybe(index, out)
+    case await
+      gather-expression(expr, out)
+    case closure
+      gather-block(body, out)
+    case conditional
+      walk branches
+        take branch
+        gather-expression(branch/cond, out)
+        gather-expression(branch/value, out)
+      gather-maybe(otherwise, out)
+    miss
+      back
+
+task gather-block
+  take statements, like list, like statement
+  take out, like list, like expression
+  like void
+  mark private
+
+  walk statements
+    take one
+    gather-statement(one, out)
+
+task gather-maybe-block
+  take block, like maybe, like list, like statement
+  take out, like list, like expression
+  like void
+  mark private
+
+  sift block
+    case some
+      link body
+      gather-block(body, out)
+    case none
+      back
+
+task gather-statement
+  take value, like statement
+  take out, like list, like expression
+  like void
+  mark private
+
+  sift value
+    case let
+      gather-expression(init, out)
+    case assign
+      gather-expression(target, out)
+      gather-expression(read(value), out)
+    case expression
+      gather-expression(expr, out)
+    case if
+      walk branches
+        take branch
+        gather-expression(branch/cond, out)
+        gather-block(branch/body, out)
+      gather-maybe-block(otherwise, out)
+    case while
+      gather-expression(cond, out)
+      gather-block(body, out)
+      gather-list(must, out)
+      gather-maybe(down, out)
+    case match
+      gather-expression(subject, out)
+      walk cases
+        take arm
+        gather-block(arm/body, out)
+      gather-maybe-block(otherwise, out)
+    case for-each
+      gather-expression(iterable, out)
+      gather-block(body, out)
+      gather-list(must, out)
+    case return
+      gather-maybe(read(value), out)
+    case throw
+      gather-expression(read(value), out)
+    case guard
+      gather-block(body, out)
+      sift catch
+        case some
+          link clause
+          gather-block(clause/body, out)
+        case none
+          back
+    case hold
+      gather-expression(expr, out)
+    case function
+      walk params
+        take param
+        gather-maybe(param/fallback, out)
+      gather-block(body, out)
+      walk universals
+        take one
+        gather-expression(one/expr, out)
+      gather-list(have, out)
+      gather-list(must, out)
+      gather-maybe(down, out)
+      sift stub-shape
+        case some
+          link shape
+          gather-statement(shape, out)
+        case none
+          back
+    case record-type
+      walk fields
+        take field
+        gather-maybe(field/fallback, out)
+      walk variants
+        take variant
+        gather-list(variant/index-values, out)
+      gather-extend(extend, out)
+      walk pins
+        take pin
+        gather-expression(pin/value, out)
+    case view
+      gather-views(body, out)
+    case dock
+      gather-route(route, out)
+    miss
+      back
+
+task gather-extend
+  take extend, like maybe, like form-extend
+  take out, like list, like expression
+  like void
+  mark private
+
+  sift extend
+    case some
+      link extended
+      walk extended/links
+        take one
+        gather-maybe(one/fallback, out)
+      walk extended/pins
+        take pin
+        gather-expression(pin/value, out)
+    case none
+      back
+
+task gather-component
+  take component, like maybe, like dock-component
+  take out, like list, like expression
+  like void
+  mark private
+
+  sift component
+    case some
+      link given
+      walk given/props
+        take prop
+        gather-expression(prop/value, out)
+    case none
+      back
+
+task gather-views
+  take nodes, like list, like view-node
+  take out, like list, like expression
+  like void
+  mark private
+
+  walk nodes
+    take one
+    sift one
+      case element
+        walk attributes
+          take attribute
+          gather-expression(attribute/value, out)
+        walk props
+          take prop
+          gather-expression(prop/value, out)
+        gather-views(children, out)
+      case read
+        gather-expression(read(value), out)
+      case fork
+        walk branches
+          take branch
+          gather-expression(branch/cond, out)
+          gather-views(branch/body, out)
+        gather-views(otherwise, out)
+      case walk
+        gather-expression(iterable, out)
+        gather-views(body, out)
+      case save
+        gather-expression(read(value), out)
+      case call
+        gather-expression(read(value), out)
+      miss
+        turn next
+
+task gather-calls
+  take calls, like list, like dock-call
+  take out, like list, like expression
+  like void
+  mark private
+
+  walk calls
+    take one-call
+    walk one-call/args
+      take argument
+      gather-expression(argument/value, out)
+
+task gather-route
+  take route, like dock-route
+  take out, like list, like expression
+  like void
+  mark private
+
+  walk route/methods
+    take method
+    gather-calls(method/calls, out)
+    walk method/sends
+      take send
+      gather-maybe(send/value, out)
+  gather-calls(route/calls, out)
+  gather-component(route/component, out)
+  walk route/directives
+    take send
+    gather-maybe(send/value, out)
+  walk route/sends
+    take send
+    gather-maybe(send/value, out)
+  walk route/hooks
+    take hook
+    gather-calls(hook/calls, out)
+  walk route/children
+    take child
+    gather-route(child, out)

@@ -2,6 +2,6 @@
 deck @term/test
   head <Testing and verification tooling for Term>
   mark <0.0.16>
-  lock mit
+  lock <Apache-2.0>
   link @term/base, mark <0.0.x>
   link @term/make, mark <0.0.x>

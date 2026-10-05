@@ -761,6 +761,8 @@ export type DockRoute = {
   calls: DockCall[]
   // a client route renders a component: `view user-detail / bind id, read id`
   component?: { name: string; props: DockArgument[] }
+  // a page route (a `component` key, with or without a view in it) rather than a command: check/routes reads it
+  page?: boolean
   directives: { name: string; value?: Expression }[]
   sends: { name: string; value?: Expression }[]
   hooks: { name: string; calls: DockCall[] }[]

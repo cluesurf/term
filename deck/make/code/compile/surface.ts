@@ -96,6 +96,34 @@ export const UNARY_BUILTIN = new Set(['increment', 'decrement', 'not'])
 // one of these names.
 export const HALT_WORDS = new Set(['fork', 'flow', 'code', 'kink', 'take'])
 
+// The tables asked by name, the shape the port (compile/surface.tree) exports, so a caller works against either. The
+// constants above stay for compile/mill-legacy.ts, the parity gate's reference reader, which is not edited. `hasOwn`,
+// where `in` also said yes to `toString` and `constructor`
+export function isTypeName(name: string): boolean {
+  return Object.hasOwn(TYPE_NAME, name)
+}
+
+export function typeOfWord(name: string): Type {
+  return Object.hasOwn(TYPE_NAME, name) ? structuredClone(TYPE_NAME[name]!) : { kind: 'named', name }
+}
+
+export function isBinaryBuiltin(name: string): boolean {
+  return Object.hasOwn(BINARY_BUILTIN, name)
+}
+
+// ask `isBinaryBuiltin` first: any other word answers `+`
+export function binaryBuiltinOp(name: string): BinaryOp {
+  return Object.hasOwn(BINARY_BUILTIN, name) ? BINARY_BUILTIN[name]! : '+'
+}
+
+export function isUnaryBuiltin(name: string): boolean {
+  return UNARY_BUILTIN.has(name)
+}
+
+export function isHaltWord(name: string): boolean {
+  return HALT_WORDS.has(name)
+}
+
 // Unescape a text literal's escape sequences: the delimiters (`\<` `\>` `\{` `\}`, kept in the chunk so the
 // bracket is content and not a delimiter) and the standard characters (`\n` `\r` `\t` `\\`). This lets a native
 // bind expression carry an arrow (`=>`) or a stray `>` without closing the `text <...>` literal, and lets a plain

@@ -6,7 +6,7 @@ import type {
 } from '@term/make/code/compile/node'
 import { listFree, nativeCall, scalarTasks } from '@term/make/code/ir/facts/bounds'
 import { armLocals } from '@term/make/code/check/arm'
-import { STRING_METHODS, hostMethod } from '@term/make/code/compile/text-methods'
+import { isStringMethod, hostMethod } from '@term/make/code/compile/text-methods'
 
 // `keys` / `values` on a map type are stdlib operations that must materialize a list, not return a native iterator.
 // Each backend handles the iterator -> list conversion in its own idiom (Array.from, .cloned().collect(), Array(...),
@@ -116,7 +116,7 @@ export function stringCall(callee: Expression): StringOp | undefined {
 
   const op = hostMethod(callee.name)
 
-  return STRING_METHODS.has(op) ? { target: callee.target, op } : undefined
+  return isStringMethod(op) ? { target: callee.target, op } : undefined
 }
 
 // the host string methods whose answer is a text
@@ -3324,7 +3324,7 @@ export function borrowedTexts(program: Statement[], gated: Extract<Statement, { 
           const receiver =
             parent?.form === 'member' &&
             key === 'target' &&
-            (stringRead(parent as Expression) !== undefined || (STRING_METHODS.has(op) && !OWNING.has(op)))
+            (stringRead(parent as Expression) !== undefined || (isStringMethod(op) && !OWNING.has(op)))
           // a value read inside a template: its parent is the part (compile/node.ts, `TemplatePart`)
           const part = parent?.form === 'value' && key === 'value'
 

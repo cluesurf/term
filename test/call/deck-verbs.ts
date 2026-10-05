@@ -97,7 +97,7 @@ ok(
 // both defects above passed the first test and failed this one.
 // ONE file: the scaffold's code. The scaffold's `deck.tree` is a manifest and is not compiled as code, since the
 // 2026-10-02 `wake` fix (it used to emit a `host/deck.ts` of its own, which is what "2 files" counted)
-// The closing item of the terminal output standard says it: `✓ make     1 file built`
+// The closing item of the terminal output standard says it: `✓ make 1 file built`
 const BUILT = /\b1 file built\b/
 
 ok(

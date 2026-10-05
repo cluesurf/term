@@ -615,9 +615,9 @@ task adapt-pairs
   fork test, is-equal(verb, <>)
     hold
       save verb, rule/default-verb
-  fork test, is-above(measure-text(verb), standard/layout/verb-width)
+  fork test, is-above(measure-text(verb), rule/verb-cells)
     hold
-      save verb, crop-text(verb, standard/layout/verb-width, room)
+      save verb, crop-text(verb, rule/verb-cells, room)
   save one/verb, verb
   save one/subject, plain-subject(subject)
 

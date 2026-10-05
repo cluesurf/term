@@ -86,6 +86,12 @@ export function readMockups(html: string): Mockup[] {
     const header = /<span style="white-space: pre">([^<]*)<\/span><span style="white-space: pre">(\d+) columns<\/span>/.exec(figure)
     const command = decode(header?.[1] ?? '').replace(/^[^·]*·\s*/, '')
     const width = Number(header?.[2] ?? 0)
+
+    // a card with no terminal in it, such as v3's opening note on compact nesting, is prose about the page
+    if (width === 0) {
+      continue
+    }
+
     const body = figure.split('<div style="padding: 28px 32px; display: flex; flex-direction: column">')[1] ?? ''
     const lines: MockupLine[] = []
     const pattern = /<div style="white-space: pre">(.*?)<\/div>|<div style="height: 22px"><\/div>/g

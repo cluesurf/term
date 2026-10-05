@@ -1,11 +1,16 @@
-# The title line (section 2): the glyph at column 0, the verb padded to 7 at column 2, the subject at column 11, and
-# the source tag after it when processes share a stream.
+# The title line (section 2): the glyph at column 0, one space, the verb, one space,
+# the subject (v3, compact). The
+# verb is drawn in the standard's verb role and never padded, so a long verb moves
+# the subject along rather than
+# being cut. A subject that does not fit wraps, and its continuations start `hang`
+# cells in from column 0, which is
+# the body column. The source of a shared stream is a fact now, right after the
+# clock (fact.tree `draw-source`),
+# never a tag on the title.
 #
-# COLUMN 11 HOLDS AT EVERY WIDTH, so a verb wider than the standard's width is cut with `…` rather than allowed to
-# push the subject along: an odd verb costs its own last letters and nothing else. The subject wraps at column 11
-# with a 2-cell hang, and the tag goes with it, two spaces after, onto the next line when it does not fit (section 21).
-# A tag that would repeat the subject is left out (section 2).
-
+# A standard with a `verb-width` above 0 still pads the verb to that width and cuts
+# a longer one with `…`, and puts
+# the subject at the body column: the layout the v2 mockups drew.
 load ./standard
   find standard
 
@@ -41,49 +46,65 @@ load ./wrap
   find wrap-spans
   find text-breaks
 
-# the cells before the subject: glyph, the space, the verb padded to its width, the gap to the body column
+# the cells before the subject: glyph, the space, the verb padded to its width, the
+# gap to the body column
 task draw-lead
   take event, like event
   take room, like room
+
   like list, like span
+
   save layout, room/standard/layout
   save spans, make list
   save glyph, draw-glyph(room, event/glyph)
   save role, glyph-role(room/standard, event/glyph)
   save debug, is-unequal(event/level, <>)
+
   fork test, debug
     hold
       save role, <dim>
   spans/push make-span(glyph, role)
   save gap, subtract(layout/verb-column, measure-text(glyph))
+
   fork test, is-below(gap, 1)
     hold
       save gap, 1
   spans/push make-span(make-spaces(gap), <text>)
   save verb, clean-text(event/verb, room)
-  fork test, is-above(measure-text(verb), layout/verb-width)
+  save padded, is-above(layout/verb-width, 0)
+
+  fork test, and(padded, is-above(measure-text(verb), layout/verb-width))
     hold
       save verb, crop-text(verb, layout/verb-width, room)
-  save verb-role, <text>
+  save verb-role, layout/verb-role
+
   fork test, debug
     hold
       save verb-role, <dim>
   spans/push make-span(verb, verb-role)
   save used, add(add(measure-text(glyph), gap), measure-text(verb))
-  save rest, subtract(layout/body-column, used)
+  save rest, layout/title-gap
+
+  fork test, padded
+    hold
+      save rest, subtract(layout/body-column, used)
   fork test, is-below(rest, 1)
     hold
       save rest, 1
   spans/push make-span(make-spaces(rest), <text>)
   back spans
 
-# the subject and its tag, as spans to wrap
+# the subject, as spans to wrap. A standard with a `tag-gap` above 0 still puts the
+# source after it as a tag, as v2 did; v3's is 0, and the source is a fact
 task draw-subject
   take event, like event
   take room, like room
   take tagged, like boolean
+
   like list, like span
+
   save spans, link-spans(clean-spans(event/subject, room), false, room)
+
   fork test, event/verdict
     hold
       save bold, make list
@@ -96,14 +117,16 @@ task draw-subject
   fork test, is-unequal(event/level, <>)
     hold
       save spans, tint-spans(spans, <dim>)
-  fork test, tagged
+  fork test, and(tagged, is-above(room/standard/layout/tag-gap, 0))
     miss
       back spans
   save source, clean-text(event/source, room)
+
   fork test, or(is-equal(source, <>), is-equal(source, spans-text(spans)))
     hold
       back spans
   save out, make list
+
   walk spans
     take one
     out/push one
@@ -113,16 +136,20 @@ task draw-subject
   out/push make-span(shown, <source>)
   back out
 
-# the title line of an item, wrapped. `tagged` is false when the stream is filtered to one source (section 11)
+# the title line of an item, wrapped. `tagged` is false when the stream is filtered
+# to one source (section 11)
 task draw-title-line
   take event, like event
   take room, like room
   take tagged, like boolean
+
   like list, like line
+
   save lead, draw-lead(event, room)
   save subject, draw-subject(event, room, tagged)
   save body, room/standard/layout/body-column
   save hang, room/standard/layout/hang
+
   fork test, is-equal(measure-spans(subject), 0)
     hold
       # no subject: the glyph and the verb, with no padding after them
@@ -139,9 +166,22 @@ task draw-title-line
       lines/push make line, spans(bare)
       back lines
   save cells, subtract(room/width, body)
-  save wrapped, wrap-spans(subject, cells, subtract(cells, hang), hang, text-breaks(room/standard), false)
+  save first, cells
+  save rest, subtract(cells, hang)
+
+  # compact (no verb padding): the subject's first line has what the lead leaves,
+  # and
+  # a continuation starts at the body column, 2 past column 0 where the line began
+  fork test, is-below(room/standard/layout/verb-width, 1)
+    hold
+      save first, subtract(room/width, measure-spans(lead))
+      save rest, cells
+      save hang, 0
+  save wrapped
+    wrap-spans(subject, first, rest, hang, text-breaks(room/standard), false)
   save out, make list
   save at, 0
+
   walk wrapped
     take one
     fork test, is-equal(at, 0)

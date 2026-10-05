@@ -9,7 +9,7 @@
 import type { Program } from '@term/make/code/compile/node'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
-import { BINARY_BUILTIN, UNARY_BUILTIN } from '@term/make/code/compile/surface'
+import { isBinaryBuiltin, isUnaryBuiltin } from '@term/make/code/compile/surface'
 
 export function checkBuiltinShadow(program: Program, file: string): Diagnostic[] {
   const found: Diagnostic[] = []
@@ -19,7 +19,7 @@ export function checkBuiltinShadow(program: Program, file: string): Diagnostic[]
       continue
     }
 
-    if (!(node.name in BINARY_BUILTIN) && !UNARY_BUILTIN.has(node.name)) {
+    if (!isBinaryBuiltin(node.name) && !isUnaryBuiltin(node.name)) {
       continue
     }
 

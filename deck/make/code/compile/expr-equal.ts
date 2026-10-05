@@ -40,6 +40,14 @@ export function expressionsEqual(
     case 'member': {
       const o = b as typeof a
 
+      // the computed index too: a computed member's name is empty, so `grid/{i}` and `grid/{j}` were one place and
+      // `save grid/{i}, grid/{j}` was reported as a self-assignment (test/lint/expr-equal-index.ts)
+      if (a.index || o.index) {
+        if (!a.index || !o.index || !expressionsEqual(a.index, o.index)) {
+          return false
+        }
+      }
+
       return a.name === o.name && expressionsEqual(a.target, o.target)
     }
 
@@ -204,7 +212,7 @@ export function isStable(node: Expression): boolean {
     case 'unary':
       return isStable(node.operand)
     case 'member':
-      return isStable(node.target)
+      return (!node.index || isStable(node.index)) && isStable(node.target)
     case 'array':
       return node.items.every(isStable)
     default:

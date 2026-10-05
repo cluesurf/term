@@ -93,7 +93,7 @@ ok('`make` emits host/ from the scaffolded source', existsSync(join(root, 'host/
 // and ONLY the code. `wake` writes an unscoped `deck demo`, and `make` used to accept only `deck @scope/name` as a
 // manifest, so it compiled deck.tree as code into host/deck.ts and said "Compiled 2 files" for a project of one
 ok('`make` does not compile the unscoped manifest as code', !existsSync(join(root, 'host/deck.ts')), made)
-// the closing item of the terminal output standard: `✓ make     1 file built`
+// the closing item of the terminal output standard: `✓ make 1 file built`
 ok('`make` counts one compiled file', /\b1 file built\b/.test(made), made)
 
 // `time`: compiles the project THE WAY THE BUILD DOES, then reports what it found.
@@ -262,7 +262,7 @@ writeFileSync(
 
 const tested = term(root, 'test')
 
-// the closing item, `✓ test     Tests passed`, its facts `1 test · 1 passed`
+// the closing item, `✓ test Tests passed`, its facts `1 test · 1 passed`
 ok('`test` runs a test file and counts it', /Tests passed[\s\S]*?\b1 test\b[\s\S]*?\b1 passed\b/.test(tested), tested)
 
 // `hunt`: reads THIS project's files, really fuzzes, and an empty corpus FAILS rather than passing.

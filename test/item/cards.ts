@@ -126,13 +126,8 @@ function testRun(room: Room): Line[] {
   )
 }
 
-// the patches the two test-run cards share: the blank line after the opening, the padded `at`, the plain values
-const TEST_RUN_PATCHES = [
-  replace('D03', 3, 0, BLANK),
-  replace('D04', 9, 1, row(I, d('at'), '    ', 'code/stats.test.tree:18:3')),
-  retint('D05', 12, 17, 18, 'text'),
-  retint('D05', 13, 17, 18, 'text'),
-]
+// the patches the two test-run cards share: a field's value in the text color
+const TEST_RUN_PATCHES = [retint('D05', 12, 7, 8, 'text'), retint('D05', 13, 7, 8, 'text')]
 
 function serveRun(room: Room): Line[] {
   return run(
@@ -173,7 +168,7 @@ function serveClosing(at: number, count: number): ReturnType<typeof replace> {
     'D09 D10',
     at,
     count,
-    row(x('✗'), ' serve    ', B('Stopped')),
+    row(x('✗'), ' ', d('serve'), ' ', B('Stopped')),
     row(I, d('14:05:01.002'), d(' ·'), ' ', d('up'), ' ', '2', d('m'), ' ', '56', d('s'), d(' ·'), ' ', '318', ' ', d('requests'), d(' ·'), ' ', '1', ' ', d('error')),
   )
 }
@@ -254,7 +249,7 @@ export const CARDS: Card[] = [
           ]),
       },
     ],
-    patches: [replace('D02', 7, 11)],
+    patches: [replace('D02', 7, 9)],
   },
   { caption: 'Light terminal', light: true, segments: [{ command: 'term test', draw: testRun }], patches: TEST_RUN_PATCHES },
   {
@@ -277,18 +272,16 @@ export const CARDS: Card[] = [
     entry: 'D01',
     whole: [
       plain('$ term make'),
-      plain('- make     ~/shape'),
-      plain('           14:42:00.000 . term 2.5.22 . 42 files'),
-      BLANK,
-      plain('x check    There is no task named multipy'),
-      plain('           14:42:00.300'),
-      plain('           at   code/area.tree:14:12'),
-      plain('           14 |     back multipy(side, side)'),
-      plain('              |          ~~~~~~~ did you mean multiply?'),
-      plain('           fix  multipy -> multiply'),
-      BLANK,
-      plain('x make     Build failed'),
-      plain('           14:42:00.302 . 302 ms . 42 files . 1 error'),
+      plain('- make ~/shape'),
+      plain('  14:42:00.000 . term 2.5.22 . 42 files'),
+      plain('x check There is no task named multipy'),
+      plain('  14:42:00.300'),
+      plain('  at code/area.tree:14:12'),
+      plain('  14 |     back multipy(side, side)'),
+      plain('     |          ~~~~~~~ did you mean multiply?'),
+      plain('  fix multipy -> multiply'),
+      plain('x make Build failed'),
+      plain('  14:42:00.302 . 302 ms . 42 files . 1 error'),
     ],
   },
   {
@@ -319,20 +312,18 @@ export const CARDS: Card[] = [
     entry: 'D06',
     whole: [
       plain('❯ term make --target all'),
-      plain('· make     ~/shape'),
-      plain('           14:42:00.000 · term 2.5.22 · 4 targets'),
-      BLANK,
-      plain('○ build    kotlin  lib'),
-      plain('           14:42:00.005 · 46 files'),
-      plain('✓ build    typescript  core'),
-      plain('           14:42:00.410 · 410 ms · 46/46 files'),
-      plain('· build    rust  server'),
-      plain('           14:42:10.000 · 10.0 s · 23/46 files'),
-      plain('✓ build    rust  server'),
-      plain('           14:42:13.600 · 13.6 s · 46/46 files'),
-      BLANK,
-      plain('✓ make     Targets built'),
-      plain('           14:42:13.610 · 13.6 s · 4/4 targets · 1 cached'),
+      plain('● make ~/shape'),
+      plain('  14:42:00.000 · term 2.5.22 · 4 targets'),
+      plain('○ build kotlin'),
+      plain('  14:42:00.005 · lib · 46 files'),
+      plain('✓ build typescript'),
+      plain('  14:42:00.410 · core · 410 ms · 46/46 files'),
+      plain('● build rust'),
+      plain('  14:42:10.000 · server · 10.0 s · 23/46 files'),
+      plain('✓ build rust'),
+      plain('  14:42:13.600 · server · 13.6 s · 46/46 files'),
+      plain('✓ make Targets built'),
+      plain('  14:42:13.610 · 13.6 s · 4/4 targets · 1 cached'),
     ],
   },
   {
@@ -374,12 +365,12 @@ export const CARDS: Card[] = [
       },
     ],
     patches: [
-      replace('D08', 31, 1, row(I, d('00:00:00.002'), d(' ·'), ' ', '48.0', ' ', d('MB'))),
+      replace('D08', 30, 1, row(I, d('00:00:00.002'), d(' ·'), ' ', '48.0', ' ', d('MB'))),
       replace(
         'D09 D10',
-        35,
+        33,
         2,
-        row(x('✗'), ' serve    ', B('Stopped')),
+        row(x('✗'), ' ', d('serve'), ' ', B('Stopped')),
         row(I, d('00:14:51.903'), d(' ·'), ' ', d('up'), ' ', '10', d('h'), ' ', '12', d('m'), d(' ·'), ' ', '31,804', ' ', d('requests'), d(' ·'), ' ', '1', ' ', d('error')),
       ),
     ],
@@ -413,7 +404,11 @@ export const CARDS: Card[] = [
           ),
       },
     ],
-    patches: [retint('D11', 24, 26, 31, 'dim'), retint('D12', 30, 26, 27, 'dim')],
+    patches: [
+      retint('D11', 23, 17, 22, 'dim'),
+      replace('D36', 28, 1, row(d('●'), ' ', d('cache'), ' ', d('39 hits, 3 misses'))),
+      retint('D12', 29, 17, 18, 'dim'),
+    ],
   },
   {
     caption: 'Problems',
@@ -458,7 +453,7 @@ export const CARDS: Card[] = [
           ]),
       },
     ],
-    patches: [replace('D04', 3, 1, row(I, d('at'), '   ', 'code/area.tree:14:12'))],
+    patches: [],
   },
   {
     caption: 'Package install',
@@ -490,7 +485,7 @@ export const CARDS: Card[] = [
           ),
       },
     ],
-    patches: [retint('D11', 19, 26, 31, 'dim'), replace('D09', 23, 1, row(w('▲'), ' install  ', B('412 packages installed')))],
+    patches: [retint('D11', 18, 17, 22, 'dim'), replace('D09', 21, 1, row(w('▲'), ' ', d('install'), ' ', B('412 packages installed')))],
   },
   {
     caption: 'Container build',
@@ -524,7 +519,7 @@ export const CARDS: Card[] = [
           ),
       },
     ],
-    patches: [retint('D14', 15, 35, 39, 'dim'), replace('D04', 16, 1, row(I, d('at'), '    ', 'Dockerfile:6'))],
+    patches: [retint('D14', 14, 26, 30, 'dim')],
   },
   { caption: 'Test run', segments: [{ command: 'term test', draw: testRun }], patches: TEST_RUN_PATCHES },
   {
@@ -574,11 +569,12 @@ export const CARDS: Card[] = [
           // no motion, so the spinner is the static ◐ the mockup shows
           const plan = planFrame(region, [closing], T('14:42:02.900'), true, false, room, true)
 
-          return [...head, blankLine(), ...plan.committed, ...plan.lines]
+          // the opening's blank line when the standard spaces a run (v2); v3 runs straight on
+          return [...head, ...(room.standard.layout.spacing ? [blankLine()] : []), ...plan.committed, ...plan.lines]
         },
       },
     ],
-    patches: [replace('D03', 3, 0, BLANK)],
+    patches: [],
   },
   {
     caption: 'Parallel tasks',
@@ -619,9 +615,9 @@ export const CARDS: Card[] = [
       },
     ],
     patches: [
-      replace('D15', 7, 1, row(I, d('14:42:03.305'), d(' ·'), ' ', '1.90', ' ', d('s'), d(' ·'), ' ', '1', ' ', d('warning'), d(' ·'), ' ', d('term make --target ts'))),
-      replace('D15 D14', 11, 1, row(I, d('14:42:05.505'), d(' ·'), ' ', '2.20', ' ', d('s'), d(' ·'), ' ', d('exit'), ' ', x('1'), d(' ·'), ' ', d('term make --target rust'))),
-      replace('D32', 15, 2, row(I, d('14:42:05.510'), d(' ·'), ' ', d('term make --target swift')), row(I, d('cancelled because server failed'))),
+      replace('D15', 6, 1, row(I, d('14:42:03.305'), d(' ·'), ' ', '1.90', ' ', d('s'), d(' ·'), ' ', '1', ' ', d('warning'), d(' ·'), ' ', d('term make --target ts'))),
+      replace('D15 D14', 10, 1, row(I, d('14:42:05.505'), d(' ·'), ' ', '2.20', ' ', d('s'), d(' ·'), ' ', d('exit'), ' ', x('1'), d(' ·'), ' ', d('term make --target rust'))),
+      replace('D37', 14, 2, row(I, d('14:42:05.510'), d(' ·'), ' ', d('term make --target swift'), d(' ·'), ' ', d('cancelled because server failed'))),
     ],
   },
   {
@@ -655,7 +651,7 @@ export const CARDS: Card[] = [
       },
     ],
     patches: [
-      replace('D16 D17', 12, 4, row(d('○'), ' link     packages'), row(I, d('14:42:55.705'), d(' ·'), ' ', '28.6', ' ', d('s'), d(' ·'), ' ', '180/412', ' ', d('packages'))),
+      replace('D16 D17', 11, 4, row(d('○'), ' ', d('link'), ' ', 'packages'), row(I, d('14:42:55.705'), d(' ·'), ' ', '28.6', ' ', d('s'), d(' ·'), ' ', '180/412', ' ', d('packages'))),
     ],
   },
   {
@@ -708,8 +704,11 @@ export const CARDS: Card[] = [
       },
     ],
     patches: [
-      retint('D12', 24, 26, 27, 'dim'),
-      replace('D12 D31', 28, 1, row(I, d('14:42:02.729'), d(' ·'), ' ', d('310'), ' ', d('ms'), d(' ·'), ' ', d('188'), ' ', d('kB'), d(' ·'), ' ', d('42'), ' ', d('files'))),
+      replace('D36', 15, 1, row(d('●'), ' ', d('config'), ' ', d('~/shape/term.tree'))),
+      replace('D36', 17, 1, row(d('●'), ' ', d('cache'), ' ', d('39 hits, 3 misses'))),
+      retint('D12', 18, 17, 18, 'dim'),
+      replace('D36', 21, 1, row(d('●'), ' ', d('emit'), ' ', d('out/ts'))),
+      replace('D12 D31', 22, 1, row(I, d('14:42:02.729'), d(' ·'), ' ', d('310'), ' ', d('ms'), d(' ·'), ' ', d('188'), ' ', d('kB'), d(' ·'), ' ', d('42'), ' ', d('files'))),
     ],
   },
   {
@@ -761,16 +760,17 @@ export const CARDS: Card[] = [
     patches: [
       replace(
         'D18',
-        19,
+        18,
         1,
         row(I, d('14:02:44.250'), d(' ·'), ' ', w('1.80'), ' ', w('s'), d(' ·'), ' ', d('HTTP'), ' ', o('201'), d(' ·'), ' ', '84', ' ', d('B')),
-        row(I, d('budget'), '  ', '1.00 s'),
+        row(I, d('budget'), ' ', '1.00 s'),
       ),
+      replace('D37', 21, 2, row(I, 'A number went past the i64 range while summing 31 rows of report totals')),
       replace(
         'D09 D10',
-        31,
+        29,
         2,
-        row(x('✗'), ' serve    ', B('Stopped')),
+        row(x('✗'), ' ', d('serve'), ' ', B('Stopped')),
         row(I, d('00:14:51.903'), d(' ·'), ' ', d('up'), ' ', '10', d('h'), ' ', '12', d('m'), d(' ·'), ' ', '31,804', ' ', d('requests'), d(' ·'), ' ', '1', ' ', d('error')),
       ),
     ],
@@ -819,19 +819,19 @@ export const CARDS: Card[] = [
     ],
     patches: [
       replace('D19', 2, 1, row(I, d('14:02:04.990'), d(' ·'), ' ', d('term 2.5.22'), d(' ·'), ' ', d('PDT, UTC−7'), d(' ·'), ' ', '4', ' ', d('services'))),
-      replace('D20', 14, 2, row(o('✓'), ' job      resize-image  ', s('worker')), row(I, d('14:02:08.002'), d(' ·'), ' ', '1.20', ' ', d('s'), d(' ·'), ' ', d('#4812'))),
-      replace('D21', 20, 2, row(d('·'), ' restart  api:2'), row(I, d('14:02:09.661'), d(' ·'), ' ', '1/5', ' ', d('restarts')), row(I, d('wait'), '  ', '1 s')),
+      replace('D20', 13, 2, row(o('✓'), ' ', d('job'), ' ', 'resize-image'), row(I, d('14:02:08.002'), d(' ·'), ' ', s('worker'), d(' ·'), ' ', '1.20', ' ', d('s'), d(' ·'), ' ', d('#4812'))),
+      replace('D21', 19, 2, row(d('●'), ' ', d('restart'), ' ', 'api:2'), row(I, d('14:02:09.661'), d(' ·'), ' ', '1/5', ' ', d('restarts')), row(I, d('wait'), ' ', '1 s')),
       replace(
         'D20',
-        22,
+        21,
         2,
-        row(w('▲'), ' job      send-email  ', s('worker')),
-        row(I, d('14:02:11.020'), d(' ·'), ' ', '3.00', ' ', d('s'), d(' ·'), ' ', d('#4813'), d(' ·'), ' ', '1/3', ' ', d('retries')),
+        row(w('▲'), ' ', d('job'), ' ', 'send-email'),
+        row(I, d('14:02:11.020'), d(' ·'), ' ', s('worker'), d(' ·'), ' ', '3.00', ' ', d('s'), d(' ·'), ' ', d('#4813'), d(' ·'), ' ', '1/3', ' ', d('retries')),
       ),
-      replace('D22', 26, 1, row(I, d('14:02:11.300'), d(' ·'), ' ', d('up'), ' ', '6.00', ' ', d('s'))),
-      replace('D22', 28, 1, row(I, d('14:02:11.300'), d(' ·'), ' ', d('up'), ' ', '1.00', ' ', d('s'), d(' ·'), ' ', '1', ' ', d('restart'))),
-      replace('D22', 30, 1, row(I, d('14:02:11.300'), d(' ·'), ' ', d('up'), ' ', '6.00', ' ', d('s'))),
-      replace('D22', 32, 1, row(I, d('14:02:11.300'), d(' ·'), ' ', d('up'), ' ', '6.00', ' ', d('s'))),
+      replace('D22', 25, 1, row(I, d('14:02:11.300'), d(' ·'), ' ', s('api:1'), d(' ·'), ' ', d('up'), ' ', '6.00', ' ', d('s'))),
+      replace('D22', 27, 1, row(I, d('14:02:11.300'), d(' ·'), ' ', s('api:2'), d(' ·'), ' ', d('up'), ' ', '1.00', ' ', d('s'), d(' ·'), ' ', '1', ' ', d('restart'))),
+      replace('D22', 29, 1, row(I, d('14:02:11.300'), d(' ·'), ' ', s('web'), d(' ·'), ' ', d('up'), ' ', '6.00', ' ', d('s'))),
+      replace('D22', 31, 1, row(I, d('14:02:11.300'), d(' ·'), ' ', s('worker'), d(' ·'), ' ', d('up'), ' ', '6.00', ' ', d('s'))),
     ],
   },
   {
@@ -875,10 +875,10 @@ export const CARDS: Card[] = [
       },
     ],
     patches: [
-      replace('D20', 4, 2, row(o('✓'), ' job      send-email'), row(I, d('14:02:11.020'), d(' ·'), ' ', '3.00', ' ', d('s'), d(' ·'), ' ', d('#4813'))),
-      replace('D23', 8, 3, row(w('▲'), ' smtp     slow to respond'), row(I, d('14:02:12.010')), row(I, d('host'), '    ', 'smtp.mail.local'), row(I, d('waited'), '  ', '3000')),
-      replace('D21', 18, 2, row(d('·'), ' restart  worker'), row(I, d('14:02:12.302'), d(' ·'), ' ', '2/5', ' ', d('restarts')), row(I, d('wait'), '  ', '2 s')),
-      replace('D02', 20, 4),
+      replace('D20', 3, 2, row(o('✓'), ' ', d('job'), ' ', 'send-email'), row(I, d('14:02:11.020'), d(' ·'), ' ', '3.00', ' ', d('s'), d(' ·'), ' ', d('#4813'))),
+      replace('D23', 8, 2, row(I, d('14:02:12.010')), row(I, d('host'), ' ', 'smtp.mail.local'), row(I, d('waited'), ' ', '3000')),
+      replace('D21', 17, 2, row(d('●'), ' ', d('restart'), ' ', 'worker'), row(I, d('14:02:12.302'), d(' ·'), ' ', '2/5', ' ', d('restarts')), row(I, d('wait'), ' ', '2 s')),
+      replace('D02', 19, 3),
     ],
   },
   {
@@ -900,23 +900,33 @@ export const CARDS: Card[] = [
       ),
     ],
   },
-  { caption: '120 columns', segments: [{ command: 'term serve', draw: serveRun }], patches: [serveClosing(16, 2)] },
-  { caption: '60 columns', segments: [{ command: 'term serve', draw: serveRun }], patches: [serveClosing(18, 2)] },
+  { caption: '120 columns', segments: [{ command: 'term serve', draw: serveRun }], patches: [serveClosing(14, 2)] },
+  {
+    caption: '60 columns',
+    segments: [{ command: 'term serve', draw: serveRun }],
+    patches: [
+      replace('D38', 8, 2, row(o('✓'), ' ', d('GET'), ' ', '/api/shapes/search?query=regular-hexagon&limit=50&'), row(I, 'cursor=eyJpZCI6MTIzLCJ0cyI6MTcyOH0')),
+      replace('D39', 13, 2, row(I, 'A number went past the i64 range while summing 31 rows of'), row('    ', 'report totals')),
+      serveClosing(16, 2),
+    ],
+  },
   {
     caption: '44 columns',
     segments: [{ command: 'term serve', draw: serveRun }],
     patches: [
-      replace('D32', 2, 2, row(I, d('14:02:05.118'), d(' ·'), ' ', d('term 2.5.22')), row(I, d('PDT, UTC−7'))),
-      replace('D32', 9, 2, row(I, d('14:02:07.412'), d(' ·'), ' ', '2', ' ', d('ms'), d(' ·'), ' ', d('HTTP'), ' ', o('200')), row(I, '12.4', ' ', d('kB'))),
-      replace('D32', 15, 2, row(I, d('14:02:10.388'), d(' ·'), ' ', '31', ' ', d('ms'), d(' ·'), ' ', d('HTTP'), ' ', o('200')), row(I, '2.4', ' ', d('kB'))),
-      replace('D32', 18, 2, row(I, d('14:03:10.871'), d(' ·'), ' ', '12', ' ', d('ms'), d(' ·'), ' ', d('HTTP'), ' ', x('500')), row(I, '0', ' ', d('B'))),
+      replace('D37', 2, 2, row(I, d('14:02:05.118'), d(' ·'), ' ', d('term 2.5.22'), d(' ·'), ' ', d('PDT, UTC−7'))),
+      replace('D37', 8, 2, row(I, d('14:02:07.412'), d(' ·'), ' ', '2', ' ', d('ms'), d(' ·'), ' ', d('HTTP'), ' ', o('200'), d(' ·'), ' ', '12.4', ' ', d('kB'))),
+      replace('D38', 12, 2, row(I, 'cursor=eyJpZCI6MTIzLCJ0cyI6MTcyOH0')),
+      replace('D37', 14, 2, row(I, d('14:02:10.388'), d(' ·'), ' ', '31', ' ', d('ms'), d(' ·'), ' ', d('HTTP'), ' ', o('200'), d(' ·'), ' ', '2.4', ' ', d('kB'))),
+      replace('D37', 17, 2, row(I, d('14:03:10.871'), d(' ·'), ' ', '12', ' ', d('ms'), d(' ·'), ' ', d('HTTP'), ' ', x('500'), d(' ·'), ' ', '0', ' ', d('B'))),
+      replace('D39', 19, 3, row(I, 'A number went past the i64 range while'), row('    ', 'summing 31 rows of report totals')),
       replace(
-        'D09 D10 D25 D32',
-        25,
+        'D09 D10 D32',
+        23,
         3,
-        row(x('✗'), ' serve    ', B('Stopped')),
-        row(I, d('14:05:01.002'), d(' ·'), ' ', d('up'), ' ', '2', d('m'), ' ', '56', d('s')),
-        row(I, '318', ' ', d('requests'), d(' ·'), ' ', '1', ' ', d('error')),
+        row(x('✗'), ' ', d('serve'), ' ', B('Stopped')),
+        row(I, d('14:05:01.002'), d(' ·'), ' ', d('up'), ' ', '2', d('m'), ' ', '56', d('s'), d(' ·'), ' ', '318', ' ', d('requests')),
+        row(I, '1', ' ', d('error')),
       ),
     ],
   },
@@ -973,11 +983,22 @@ export const CARDS: Card[] = [
         2,
         1,
         row(I, d('14:02:04.990'), d(' ·'), ' ', d('term 2.5.22'), d(' ·'), ' ', d('PDT, UTC−7'), d(' ·'), ' ', '2', ' ', d('services')),
-        row(I, d('sources'), '  ', 'api, payments-reconciler'),
+        row(I, d('sources'), ' ', 'api, payments-reconciler'),
       ),
-      replace('D27', 9, 1, row(x('✗'), ' job      invoice 99231  ', s('paymen…ciler'))),
+      replace('D38', 4, 3, row(I, 'sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08')),
+      replace('D27', 9, 1, row(I, d('14:02:08.120'), d(' ·'), ' ', s('paymen…ciler'), d(' ·'), ' ', '2.40', ' ', d('s'))),
+      replace('D39', 10, 2, row(I, 'Could not reconcile invoice 99231 against the ledger because the ledger entry'), row('    ', 'for 2026-09-30 was missing.')),
       // one space after `at`, not padded to `ledger`, so the location fits beside its key
-      replace('D34', 14, 2, row(I, d('at'), ' ', 'services/payments/reconciler/src/jobs/reconcile-invoice.ts:118:22')),
+      replace('D37', 13, 2, row(I, d('at'), ' ', 'services/payments/reconciler/src/jobs/reconcile-invoice.ts:118:22')),
+      replace('D39', 16, 2, row('    ', 'https://ledger.internal.shape.dev/accounts/acct_7Q2/entries?from=2026-09-30&'), row('      ', 'to=2026-10-01')),
+      replace(
+        'D37',
+        18,
+        3,
+        row(I, d('⎿  '), 'Error: ledger entry not found (acct_7Q2, 2026-09-30) while running the'),
+        row('       ', 'nightly reconciliation pass'),
+        row('     ', 'at reconcile (src/jobs/reconcile-invoice.ts:118:22)'),
+      ),
     ],
   },
   {
@@ -1033,8 +1054,8 @@ export const CARDS: Card[] = [
       },
     ],
     patches: [
-      replace('D28', 5, 1, row(I, d('14:42:00.010')), row(I, d('at'), '   ', 'code/area.tree:14:12')),
-      replace('D28', 11, 1, row(I, d('14:42:00.015')), row(I, d('at'), '  ', 'code/area.tree:9:12')),
+      replace('D28', 4, 1, row(I, d('14:42:00.010')), row(I, d('at'), ' ', 'code/area.tree:14:12')),
+      replace('D28', 10, 1, row(I, d('14:42:00.015')), row(I, d('at'), ' ', 'code/area.tree:9:12')),
     ],
   },
   {
@@ -1075,7 +1096,10 @@ export const CARDS: Card[] = [
           ),
       },
     ],
-    patches: [replace('D28', 5, 1, row(I, d('14:42:00.010')), row(I, d('at'), '    ', 'code/average.tree:9:8'))],
+    patches: [
+      replace('D28', 4, 1, row(I, d('14:42:00.010')), row(I, d('at'), ' ', 'code/average.tree:9:8')),
+      replace('D37', 11, 2, row(I, d('next'), ' ', 'add an assumption that the list is not empty, or weaken the claim')),
+    ],
   },
   {
     caption: 'Theorems',
@@ -1115,8 +1139,8 @@ export const CARDS: Card[] = [
       },
     ],
     patches: [
-      replace('D28', 9, 1, row(I, d('14:42:00.605'), d(' ·'), ' ', '100', ' ', d('ms')), row(I, d('at'), '    ', 'proofs/add.tree:11:7')),
-      replace('D28', 16, 1, row(I, d('14:42:10.605'), d(' ·'), ' ', '10.0', ' ', d('s'), d(' ·'), ' ', d('undecided')), row(I, d('at'), '    ', 'proofs/sort.tree:22:5')),
+      replace('D28', 8, 1, row(I, d('14:42:00.605'), d(' ·'), ' ', '100', ' ', d('ms')), row(I, d('at'), ' ', 'proofs/add.tree:11:7')),
+      replace('D28', 15, 1, row(I, d('14:42:10.605'), d(' ·'), ' ', '10.0', ' ', d('s'), d(' ·'), ' ', d('undecided')), row(I, d('at'), ' ', 'proofs/sort.tree:22:5')),
     ],
   },
   {
@@ -1155,7 +1179,7 @@ export const CARDS: Card[] = [
           ),
       },
     ],
-    patches: [replace('D28', 13, 1, row(I, d('14:42:04.710'), d(' ·'), ' ', '1.20', ' ', d('s')), row(I, d('at'), '    ', 'code/area.tree:4:3'))],
+    patches: [replace('D28', 12, 1, row(I, d('14:42:04.710'), d(' ·'), ' ', '1.20', ' ', d('s')), row(I, d('at'), ' ', 'code/area.tree:4:3'))],
   },
   {
     caption: 'Internal crash',
@@ -1183,7 +1207,7 @@ export const CARDS: Card[] = [
           ),
       },
     ],
-    patches: [],
+    patches: [replace('D37', 7, 3, row(I, d('next'), ' ', 'this is a bug in Term and your code may be fine; term report files it'))],
   },
   {
     caption: 'Long and nested paths',
@@ -1243,7 +1267,15 @@ export const CARDS: Card[] = [
           ),
       },
     ],
-    patches: [replace('D29', 28, 3, ...REACT_DOM_FILES.slice(0, 10).map(([label, detail]) => row(I, `${label.padEnd(28)}  `, d(detail))), row(I, d('… 33 more, --all lists them')))],
+    patches: [
+      replace(
+        'D37',
+        17,
+        2,
+        row(d('●'), ' ', d('path'), ' ', 'app', d(' › '), '@shape/charts', d(' › '), d('… 3 more'), d(' › '), 'react-reconciler 0.29.0', d(' › '), 'react 18.3.1'),
+      ),
+      replace('D29 D40', 23, 3, ...REACT_DOM_FILES.slice(0, 10).map(([label, detail]) => row(I, `${label.padEnd(28)}  `, d(detail))), row(I, d('… 33 more, --all lists them'))),
+    ],
   },
   {
     caption: 'Prompts',
@@ -1301,16 +1333,15 @@ export const CARDS: Card[] = [
       },
     ],
     patches: [
+      replace('D40', 12, 1, row(I, '◯ kotlin')),
       replace(
         'D30',
-        19,
-        3,
-        row(d('·'), ' init     ~/shape'),
+        17,
+        2,
+        row(d('●'), ' ', d('init'), ' ', '~/shape'),
         row(I, d('14:42:00.025'), d(' ·'), ' ', d('term 2.5.22')),
-        BLANK,
-        row(x('✗'), ' init     ', B('term init needs answers, and this is not a terminal')),
+        row(x('✗'), ' ', d('init'), ' ', B('term init needs answers, and this is not a terminal')),
         row(I, d('14:42:00.030'), d(' ·'), ' ', '5', ' ', d('ms')),
-        row(I, d('pass'), '  ', 'term init --name shape --target ts,rust --yes'),
       ),
     ],
   },
@@ -1383,7 +1414,15 @@ export const CARDS: Card[] = [
           ),
       },
     ],
-    patches: [],
+    patches: [
+      replace(
+        'D40',
+        15,
+        2,
+        row(I, 'wgsl        GPU, numbers, arrays    ', w('experimental'), '      3'),
+        row(I, 'hvm         the pure fragment       ', w('experimental'), '      0'),
+      ),
+    ],
   },
 ]
 

@@ -15,10 +15,7 @@ import type {
   Statement,
   ViewNode,
 } from '@term/make/code/compile/node'
-import {
-  BINARY_BUILTIN,
-  UNARY_BUILTIN,
-} from '@term/make/code/compile/mill'
+import { isBinaryBuiltin, isUnaryBuiltin } from '@term/make/code/compile/surface'
 import { isFoldable, nestLeanCalls } from '@term/make/code/check/lean-nest'
 import { armLocals } from '@term/make/code/check/arm'
 import { overloadGroups } from '@term/make/code/check/overload'
@@ -273,8 +270,8 @@ export function resolve(
         } else if (typeNames.has(node.name)) {
           // a type used as a first-class value -- no local binding, resolved as the type itself
         } else if (
-          node.name in BINARY_BUILTIN ||
-          UNARY_BUILTIN.has(node.name)
+          isBinaryBuiltin(node.name) ||
+          isUnaryBuiltin(node.name)
         ) {
           // arithmetic / comparison the emitter lowers to an operator (`is-below` -> `<`). These have no definition
           // to bind to and are never imported, so the resolver must not treat them as unknown names.
@@ -395,8 +392,8 @@ export function resolve(
             arg.form === 'variable' &&
             !look(arg.name) &&
             !typeNames.has(arg.name) &&
-            !(arg.name in BINARY_BUILTIN) &&
-            !UNARY_BUILTIN.has(arg.name)
+            !isBinaryBuiltin(arg.name) &&
+            !isUnaryBuiltin(arg.name)
           ) {
             return
           }
@@ -602,10 +599,14 @@ export function resolve(
             }
           }
 
-          // bind the matched variant's fields as locals for this branch, honoring `binds` field-renames if present
-          for (const fieldName of branch.binds ??
-            variantFields.get(branch.label) ??
-            []) {
+          // bind the matched variant's fields as locals for this branch, by `armLocals`, as the type checker and every
+          // emitter do: a renaming `link` renames the fields in order and a field past the last name keeps its own.
+          // This declared only the `link` names until 2026-10-05, so a later field read by its name was an unknown
+          // name here while the checker typed it and the emitters bound it (test/check/arm-rename-scope.ts)
+          const fields = variantFields.get(branch.label)
+          const locals = fields ? armLocals(fields, branch.binds ?? []).map(one => one.local) : (branch.binds ?? [])
+
+          for (const fieldName of locals) {
             declare(fieldName, { kind: 'local' })
           }
 

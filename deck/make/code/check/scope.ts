@@ -201,6 +201,7 @@ export function bindFormsByImport(program: Program, scope: ImportScope | undefin
   if (groups.size === 0) {
     // nothing to bind, and the aliases a `make` or a `like` carries are dropped all the same
     program.forEach(statement => rewrite(statement, statement.span, () => undefined))
+    bindSharedCases(program, scope)
 
     return []
   }
@@ -280,7 +281,98 @@ export function bindFormsByImport(program: Program, scope: ImportScope | undefin
     rewrite(statement, statement.span, rebind)
   }
 
+  bindSharedCases(program, scope)
+
   return diagnostics
+}
+
+// A CASE NAME TWO MODULES' FORMS SHARE. `make number` in node.tree, which builds its own `type`'s case, built
+// surface.tree's `primitive` case of the same name once both were in one program: node.tree imports nothing from
+// surface.tree, but a field-less case fits every owner, so the checker left the construction's type open and the last
+// form merged won it (found porting compile/surface, 2026-10-05, test/check/shared-case.ts). Renaming the case per file,
+// as forms are separated, would change what the output carries, since a case's tag IS its name. So the construction
+// is told its owner instead (`owner`, which the checker reads first, as it does for `make expression/integer`): the
+// owner its own file defines, else the one owner its file's imports reach. Neither leaves it to the checker's own
+// choice by fields, as before
+function bindSharedCases(program: Program, scope: ImportScope | undefined): void {
+  type Owner = { file: string; form: string }
+  const owners = new Map<string, Owner[]>()
+
+  for (const statement of program) {
+    if (statement.form === 'record-type' && statement.span.file) {
+      for (const variant of statement.variants) {
+        owners.set(variant.name, [...(owners.get(variant.name) ?? []), { file: statement.span.file, form: statement.name }])
+      }
+    }
+  }
+
+  const shared = new Map([...owners].filter(([, list]) => new Set(list.map(o => o.file)).size > 1))
+
+  if (shared.size === 0) {
+    return
+  }
+
+  const ownerFor = (name: string, file: string | undefined): string | undefined => {
+    const list = shared.get(name)!
+
+    if (!file) {
+      return undefined
+    }
+
+    const own = list.filter(o => o.file === file)
+
+    if (own.length === 1) {
+      return own[0]!.form
+    }
+
+    if (own.length > 1) {
+      return undefined
+    }
+
+    const reached = list.filter(o => {
+      const reach = new Set<string>()
+
+      for (const target of scope?.get(file)?.finds.get(o.form) ?? []) {
+        exportedBy(scope, target, reach)
+      }
+
+      return reach.has(o.file)
+    })
+
+    return reached.length === 1 ? reached[0]!.form : undefined
+  }
+
+  const visit = (node: unknown, file: string | undefined): void => {
+    if (!node || typeof node !== 'object') {
+      return
+    }
+
+    if (Array.isArray(node)) {
+      node.forEach(item => visit(item, file))
+
+      return
+    }
+
+    const record = node as Record<string, unknown>
+
+    if (record.form === 'record' && typeof record.name === 'string' && shared.has(record.name) && record.owner === undefined) {
+      const owner = ownerFor(record.name, file)
+
+      if (owner) {
+        record.owner = owner
+      }
+    }
+
+    for (const [key, value] of Object.entries(record)) {
+      if (key !== 'span' && key !== 'type') {
+        visit(value, file)
+      }
+    }
+  }
+
+  for (const statement of program) {
+    visit(statement, statement.span.file)
+  }
 }
 
 // every named type, construction and raise under a node, renamed where `rebind` says. Generic over the tree, so no

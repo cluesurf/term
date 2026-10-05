@@ -3,4 +3,4 @@ deck @term/base
   head <The Term standard library>
   test ./test
   mark <0.0.16>
-  lock mit
+  lock <Apache-2.0>
