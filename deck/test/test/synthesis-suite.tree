@@ -1,0 +1,96 @@
+note <observational-equivalence enumeration, stochastic search and sketching, each finding max>
+
+# Ported from the three pure cases of deck/test/code/demo-synth-extra.ts (self-hosting, 2026-10-05). Every answer and
+# count is the TypeScript's own (tmp/self-host-probes/suite-values.ts). The fourth case, the constraint-based query,
+# is Z3's and stays in the demo.
+
+load ../code/synthesis-suite
+  find observational-enum
+  find stochastic-synth
+  find fill-sketch
+
+load ../code/expression-grammar
+  find expression
+  find condition
+  find show-expr
+  find variable-at
+
+load @term/base/list
+  find list
+
+host names, make list(<a>, <b>)
+
+task max-examples
+  like list, like list, like number
+
+  host out, make list
+  out/push(make list(0, 0))
+  out/push(make list(1, 2))
+  out/push(make list(3, 1))
+  out/push(make list(5, 5))
+  out/push(make list(2, 7))
+  out/push(make list(4, 0))
+  out/push(make list(6, 6))
+  out/push(make list(1, 9))
+
+  back out
+
+task max-targets
+  like list, like number
+
+  host out, make list
+  walk max-examples()
+    take example
+    host a, get(example, 0)
+    host b, get(example, 1)
+    fork test, is-above(b, a)
+      hold
+        out/push(b)
+      miss
+        out/push(a)
+
+  back out
+
+task is-max
+  take inputs, like list, like number
+  take output, like number
+  like boolean
+
+  host a, get(inputs, 0)
+  host b, get(inputs, 1)
+
+  back and(and(is-minimum(output, a), is-minimum(output, b)), or(is-equal(output, a), is-equal(output, b)))
+
+# `hole >= b ? a : b`
+task max-sketch
+  take hole, like expression
+  like expression
+
+  back
+    make ite
+      bind test
+        make ge
+          bind left, hole
+          bind right, variable-at(1)
+      bind then, variable-at(0)
+      bind else, variable-at(1)
+
+test <observational equivalence finds max, passing over three programs that behave like one kept>
+  host found, observational-enum(2, max-examples(), max-targets(), 6)
+  want hold, and(and(found/ok, is-equal(show-expr(found/expr, names), <max(a, b)>)), is-equal(found/pruned, 3))
+
+test <the stochastic walk from seed 4 finds a max in 98 steps>
+  host found, stochastic-synth(2, max-examples(), max-targets(), 200000, 4, 5)
+  want hold, and(and(found/ok, is-equal(show-expr(found/expr, names), <max(max(a, b), a)>)), is-equal(found/iterations, 98))
+
+test <sketching fills the hole with a, completing max>
+  host found, fill-sketch(max-sketch, 2, is-max, 4, 6)
+  want hold, and(and(found/ok, is-equal(show-expr(found/hole, names), <a>)), is-equal(show-expr(found/expr, names), <(a \>= b ? a : b)>))
+
+test <targets no program of the size meets are no answer>
+  host examples, make list
+  examples/push(make list(0, 0))
+  examples/push(make list(1, 1))
+  host targets, make list(5, 7)
+  host found, observational-enum(2, examples, targets, 3)
+  want hold, not(found/ok)

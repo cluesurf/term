@@ -105,6 +105,12 @@ form fact-rule
   link http-label, like text
   link exit-label, like text
   link signal-label, like text
+  # the clock is shown only where it says something (the user's choice, 2026-10-05):
+  # on an item that took at least `clock-from` milliseconds, on a line of a live log
+  # (one of `clock-kinds`, or one tagged with its source), and on a service's
+  # opening. Below 0, on every item, as the mockups draw it
+  link clock-from, like number
+  link clock-kinds, like list, like text
 
 # section 8's break tiers. Each tier is a text of the characters a long token may
 # break AFTER; a token tries the first
@@ -649,6 +655,13 @@ task make-standard
           http-label <HTTP>
           exit-label <exit>
           signal-label <signal>
+          clock-from 1000
+          clock-kinds <lifecycle>
+            <request>
+            <job>
+            <query>
+            <health>
+            <date>
       wraps
         make wrap-rule
           tiers </?&>, <:.=->

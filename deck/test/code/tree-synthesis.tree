@@ -1,0 +1,174 @@
+# Structural recursion over a recursive data type: a catamorphism (a fold) over a binary tree synthesized from what
+# it computes. The fold descends both subtrees and combines, so it is two small expressions: a LEAF handler over the
+# leaf's value, and a NODE combiner over the two recursive results. The search is over the pairs, smallest first,
+# and a tree where the pair computes the wrong value is the counterexample that refines it (tree-sum, tree-size,
+# tree-max).
+#
+# Ported from deck/test/code/tree-synth.ts (self-hosting, 2026-10-05). The tree is tagged on `kind`, as the
+# original's union was. The spec was a closure, and is a task `(tree) -> number`. The result was a union tagged on a
+# boolean, and is one record whose handlers are the constant 0 when nothing fits.
+
+load @term/base/list
+  find list
+
+load ./seeded-random
+  find seed-state
+  find next-random
+  find draw-between
+
+load ./expression-grammar
+  find expression
+  find enumerate
+  find eval-expr
+  find constant-of
+
+form tree
+  mark tag, name kind
+  case leaf
+    link value, like number
+  case node
+    link left, like tree
+    link right, like tree
+
+form tree-result
+  link ok, like boolean
+  link leaf, like expression
+  link node, like expression
+  # how many trees refined the search
+  link counterexamples, like number
+  link reason, like text
+
+# the fold of a tree through its two handlers
+task cata
+  take value, like tree
+  take leaf, like expression
+  take node, like expression
+  like number
+
+  sift value
+    case leaf
+      link payload
+      host point, make list(payload)
+      back eval-expr(leaf, point)
+    case node
+      link left-tree
+      link right-tree
+      host point, make list(cata(left-tree, leaf, node), cata(right-tree, leaf, node))
+      back eval-expr(node, point)
+
+# a random tree, at most `depth` deep: a leaf when the depth runs out or four times in ten
+task random-tree
+  take state, like list, like number
+  take depth, like number
+  like tree
+
+  fork test, or(is-maximum(depth, 0), is-below(next-random(state), 0.4))
+    hold
+      back
+        make leaf
+          bind value, draw-between(state, -4, 7)
+
+  host left, random-tree(state, subtract(depth, 1))
+  host right, random-tree(state, subtract(depth, 1))
+
+  back
+    make node
+      bind left, left
+      bind right, right
+
+task tree-missed
+  take reason, like text
+  like tree-result
+
+  back
+    make tree-result
+      bind ok, false
+      bind leaf, constant-of(0)
+      bind node, constant-of(0)
+      bind counterexamples, 0
+      bind reason, reason
+
+task fits-all
+  take spec
+    like task
+      take value, like tree
+      like number
+  take leaf, like expression
+  take node, like expression
+  take trees, like list, like tree
+  like boolean
+
+  walk trees
+    take one
+    fork test, not(is-equal(cata(one, leaf, node), spec(one)))
+      hold
+        back false
+
+  back true
+
+# a fold matching `spec` on every tree, its handlers of up to `max-size` nodes, checked on 300 random trees from `seed`
+task synthesize-tree
+  take spec
+    like task
+      take value, like tree
+      like number
+  take max-size, like number
+  take seed, like number
+  like tree-result
+
+  host leaves, enumerate(max-size, 1)
+  host nodes, enumerate(max-size, 2)
+  host state, seed-state(seed)
+  host probes, make list
+  save made, 0
+  walk test
+    hook test, is-below(made, 300)
+    hook hold
+      probes/push(random-tree(state, 4))
+      save made, add(made, 1)
+
+  host counterexamples, make list
+  save round, 0
+  walk test
+    hook test, is-maximum(round, multiply(leaves/length, nodes/length))
+    hook hold
+      save found, false
+      save leaf-pick, constant-of(0)
+      save node-pick, constant-of(0)
+      walk leaves
+        take leaf
+        walk nodes
+          take node
+          fork test, fits-all(spec, leaf, node, counterexamples)
+            hold
+              save leaf-pick, leaf
+              save node-pick, node
+              save found, true
+              halt
+        fork test, found
+          hold
+            halt
+      fork test, not(found)
+        hold
+          back tree-missed(<no catamorphism fits the examples>)
+
+      save missed, false
+      walk probes
+        take one
+        fork test, not(is-equal(cata(one, leaf-pick, node-pick), spec(one)))
+          hold
+            counterexamples/push(one)
+            save missed, true
+            halt
+      fork test, not(missed)
+        hold
+          back
+            make tree-result
+              bind ok, true
+              bind leaf, leaf-pick
+              bind node, node-pick
+              bind counterexamples, counterexamples/length
+              bind reason, <>
+      save round, add(round, 1)
+
+  back tree-missed(<did not converge>)

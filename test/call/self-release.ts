@@ -18,7 +18,7 @@ import { execFile, execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 import { writeFileList } from '../../deck/call/code/need-load'
 import { generateKeypair } from '../../deck/deck/code/object/sign'
@@ -160,13 +160,33 @@ try {
   const reloaded = await load({ TERM_LOAD_VERSION: VERSION })
   ok('   and a second install leaves it as it is', reloaded.code === 0 && profile().split('.base/@cluesurf/term/bin').length === 2 && /○ path {5}~\/\.zshrc/.test(reloaded.out), `${profile()}\n${reloaded.out}`)
 
+  // eval "$(curl … | sh)": the one line on stdout puts term on THIS shell's PATH, so the same shell runs it next
+  const evaluated = await new Promise<{ code: number; out: string; stdout: string }>(resolve => {
+    execFile(
+      'sh',
+      ['-c', 'line="$(sh "$LOADER")" || exit 1; printf "%s\\n" "$line" > "$HOME/stdout.txt"; eval "$line"; term --version'],
+      {
+        env: { ...env, LOADER, TERM_LOAD_REGISTRY: `http://${server.host}`, TERM_LOAD_MODULE: LOADER_MODULE, SHELL: '/bin/zsh', ZDOTDIR: home, TERM_LOAD_VERSION: VERSION, PATH: '/usr/bin:/bin:' + dirname(process.execPath) },
+        encoding: 'utf8',
+        timeout: 120_000,
+      },
+      (error, stdout, stderr) => resolve({ code: error ? 1 : 0, out: `${stdout}${stderr}`, stdout: existsSync(join(home, 'stdout.txt')) ? readFileSync(join(home, 'stdout.txt'), 'utf8') : '' }),
+    )
+  })
+  ok(
+    'eval "$(… | sh)" puts term on the PATH of the shell that ran it, and stdout holds that one line alone',
+    evaluated.code === 0 && evaluated.out.includes(`${VERSION}\n`) && /^export PATH="[^"]+\/\.base\/@cluesurf\/term\/bin:\$PATH"; hash -r 2>\/dev\/null \|\| true\n$/.test(evaluated.stdout),
+    `${evaluated.stdout}\n${evaluated.out}`,
+  )
+
   const kept = mkdtempSync(join(tmpdir(), 'term-kept-'))
   const off = await load({ HOME: kept, TERM_TRUST_DIR: join(kept, 'trust'), TERM_STORE: join(kept, 'store'), TERM_LOAD_VERSION: VERSION, TERM_LOAD_PATH: '0' })
   ok('   and TERM_LOAD_PATH=0 edits no profile', off.code === 0 && !existsSync(join(kept, '.zshrc')) && /no profile was edited/.test(off.out), off.out)
   ok(
     'the loader prints one run in the output standard: opening and closing `load` items, every other line an item or under one',
     /(^|\n)· load {5}~\/\.base\/@cluesurf\/term\n {11}\d\d:\d\d:\d\d\.\d{3} · term\.surf\/load\n/.test(loaded.out) &&
-      new RegExp(`✓ load {5}term ${VERSION.replace(/\./g, '\\.')} is installed`).test(loaded.out) &&
+      // ▲ when this machine has another `term` on PATH (an npm global), which the loader names: the worst glyph closes
+      new RegExp(`[✓▲] load {5}term ${VERSION.replace(/\./g, '\\.')} is installed`).test(loaded.out) &&
       loaded.out.split('\n').every(line => line === '' || /^[✓✗▲·○◐?+−~] [a-zA-Z]+ *  \S/.test(line) || line.startsWith('           ') || line.startsWith('export PATH=')),
     loaded.out,
   )

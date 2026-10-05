@@ -1,0 +1,80 @@
+note <a mutually recursive fold over a rose tree synthesized from what it computes: combine, merge and init>
+
+# Ported from deck/test/code/demo-rose-synth.ts (self-hosting, 2026-10-05). The pieces and counterexample counts are
+# the TypeScript's own (tmp/self-host-probes/rose-values.ts).
+
+load ../code/rose-synthesis
+  find rose
+  find rose-result
+  find fold-rose
+  find synthesize-rose
+
+load ../code/expression-grammar
+  find show-expr
+
+load @term/base/list
+  find list
+
+host combine-names, make list(<v>, <agg>)
+host merge-names, make list(<acc>, <c>)
+
+task rose-sum
+  take value, like rose
+  like number
+
+  save total, value/value
+  walk value/children
+    take child
+    save total, add(total, rose-sum(child))
+
+  back total
+
+task rose-count
+  take value, like rose
+  like number
+
+  save total, 1
+  walk value/children
+    take child
+    save total, add(total, rose-count(child))
+
+  back total
+
+task rose-of
+  take value, like number
+  take children, like list, like rose
+  like rose
+
+  back
+    make rose
+      bind value, value
+      bind children, children
+
+# 1 -> [2 -> [4], 3]
+task sample
+  like rose
+
+  host none, make list
+  host four, make list(rose-of(4, none))
+  host below, make list(rose-of(2, four), rose-of(3, none))
+
+  back rose-of(1, below)
+
+task shown
+  take found, like rose-result
+  like text
+
+  back <{show-expr(found/combine, combine-names)} | {show-expr(found/merge, merge-names)} | {found/init} | {found/counterexamples}>
+
+test <rose-sum: the node's value plus its children's, merged by sum from 0>
+  host found, synthesize-rose(rose-sum, 3, 1)
+  want hold, and(found/ok, is-equal(shown(found), <(v + agg) | (acc + c) | 0 | 2>))
+
+test <rose-count: one per node, merged by sum from 0>
+  host found, synthesize-rose(rose-count, 3, 1)
+  want hold, and(found/ok, is-equal(shown(found), <(agg + 1) | (acc + c) | 0 | 2>))
+
+test <each found fold computes its spec on a tree it never saw>
+  host sum, synthesize-rose(rose-sum, 3, 1)
+  host count, synthesize-rose(rose-count, 3, 1)
+  want hold, and(is-equal(fold-rose(sample(), sum/combine, sum/merge, sum/init), 10), is-equal(fold-rose(sample(), count/combine, count/merge, count/init), 4))

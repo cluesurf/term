@@ -1848,8 +1848,11 @@ export function emitKotlin(
         // an empty collection literal gives kotlin nothing to infer from, so emit the element type explicitly. A full
         // one is left to Kotlin, which reads the element from the context: texts passed where a `like list, like
         // unknown` is taken are a `MutableList<Any>` there, which the checked `<String>` would not be (native-dom-0014)
+        // A list of FUNCTIONS is spelled too: `mutableListOf(::double, ::negate)` infers `MutableList<KFunction1<..>>`,
+        // and Kotlin's lists are invariant, so it is not the `MutableList<Function1<..>>` a parameter takes
+        // (deck/test/test/fold-synthesis.tree's list of specs, 2026-10-05)
         const args =
-          node.items.length === 0 && node.type?.kind === 'array'
+          node.type?.kind === 'array' && (node.items.length === 0 || node.type.element.kind === 'function')
             ? `<${kotlinType(node.type.element)}>`
             : ''
 

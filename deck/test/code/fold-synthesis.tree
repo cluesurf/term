@@ -1,0 +1,220 @@
+# Synthesis over structured outputs and recursion, a step from the scalar grammar toward the whole IR:
+#   - a TUPLE result, each component synthesized from its own spec and proven over a bounded domain (minmax, swap)
+#   - a RECURSIVE list function as a fold: the step `step(acc, elem)` found so that folding it over every list from
+#     the seed matches the spec, a list folded wrong being the counterexample that refines the search (sum, length)
+#
+# Ported from deck/test/code/ir-synth.ts (self-hosting, 2026-10-05). The specs were closures and are tasks, and the
+# tuple's specs a list of tasks. The bounded proof is bounded-proof.tree's odometer. Each result was a union tagged on
+# a boolean, and is one record whose expressions are the constant 0, or none, when nothing fits.
+
+load @term/base/list
+  find list
+
+load ./seeded-random
+  find seed-state
+  find draw-between
+
+load ./expression-grammar
+  find expression
+  find enumerate
+  find eval-expr
+  find constant-of
+
+load ./bounded-proof
+  find step-point
+
+form tuple-result
+  link ok, like boolean
+  # one expression per component, in order; empty when one had no fit
+  link exprs, like list, like expression
+  link reason, like text
+
+form fold-result
+  link ok, like boolean
+  link step, like expression
+  link init, like number
+  link counterexamples, like list, like list, like number
+  link reason, like text
+
+# the spec on the expression at every point of [-bound, bound]^arity
+task proved-over-bound
+  take spec
+    like task
+      take inputs, like list, like number
+      take output, like number
+      like boolean
+  take candidate, like expression
+  take arity, like number
+  take bound, like number
+  like boolean
+
+  host point, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, arity)
+    hook hold
+      point/push(subtract(0, bound))
+      save at, add(at, 1)
+
+  walk test
+    hook test, true
+    hook hold
+      fork test, not(spec(point, eval-expr(candidate, point)))
+        hold
+          back false
+      fork test, not(step-point(point, subtract(0, bound), bound))
+        hold
+          back true
+
+  back true
+
+# a tuple, each component the smallest expression of up to `max-size` nodes its spec holds of over the bound
+task synthesize-tuple
+  take var-count, like number
+  take specs
+    like list
+      like task
+        take inputs, like list, like number
+        take output, like number
+        like boolean
+  take max-size, like number
+  take bound, like number
+  like tuple-result
+
+  host candidates, enumerate(max-size, var-count)
+  host exprs, make list
+  walk specs
+    take spec
+    save found, false
+    walk candidates
+      take each
+      fork test, proved-over-bound(spec, each, var-count, bound)
+        hold
+          exprs/push(each)
+          save found, true
+          halt
+    fork test, not(found)
+      hold
+        host none, make list
+        back
+          make tuple-result
+            bind ok, false
+            bind exprs, none
+            bind reason, <a component had no fit in the grammar>
+
+  back
+    make tuple-result
+      bind ok, true
+      bind exprs, exprs
+      bind reason, <>
+
+# a list folded from `init` through the step over (acc, elem)
+task run-fold
+  take step, like expression
+  take init, like number
+  take items, like list, like number
+  like number
+
+  save acc, init
+  walk items
+    take each
+    host point, make list(acc, each)
+    save acc, eval-expr(step, point)
+
+  back acc
+
+task fold-fits
+  take spec
+    like task
+      take items, like list, like number
+      like number
+  take step, like expression
+  take init, like number
+  take lists, like list, like list, like number
+  like boolean
+
+  walk lists
+    take items
+    fork test, not(is-equal(run-fold(step, init, items), spec(items)))
+      hold
+        back false
+
+  back true
+
+task fold-missed
+  take reason, like text
+  take init, like number
+  take counterexamples, like list, like list, like number
+  like fold-result
+
+  back
+    make fold-result
+      bind ok, false
+      bind step, constant-of(0)
+      bind init, init
+      bind counterexamples, counterexamples
+      bind reason, reason
+
+# a fold step of up to `max-size` nodes so that folding from `init` matches `spec`, checked each round on up to 400
+# random lists of up to five items in [-2, 7], drawn on from one generator across rounds
+task synthesize-fold
+  take init, like number
+  take spec
+    like task
+      take items, like list, like number
+      like number
+  take max-size, like number
+  take seed, like number
+  like fold-result
+
+  host candidates, enumerate(max-size, 2)
+  host counterexamples, make list
+  host state, seed-state(seed)
+
+  save round, 0
+  walk test
+    hook test, is-maximum(round, candidates/length)
+    hook hold
+      save found, false
+      save pick, constant-of(0)
+      walk candidates
+        take each
+        fork test, fold-fits(spec, each, init, counterexamples)
+          hold
+            save pick, each
+            save found, true
+            halt
+      fork test, not(found)
+        hold
+          back fold-missed(<no fold step fits the examples>, init, counterexamples)
+
+      save missed, false
+      save tried, 0
+      walk test
+        hook test, and(is-below(tried, 400), not(missed))
+        hook hold
+          host size, draw-between(state, 0, 5)
+          host items, make list
+          save at, 0
+          walk test
+            hook test, is-below(at, size)
+            hook hold
+              items/push(draw-between(state, -2, 7))
+              save at, add(at, 1)
+          fork test, not(is-equal(run-fold(pick, init, items), spec(items)))
+            hold
+              counterexamples/push(items)
+              save missed, true
+          save tried, add(tried, 1)
+      fork test, not(missed)
+        hold
+          back
+            make fold-result
+              bind ok, true
+              bind step, pick
+              bind init, init
+              bind counterexamples, counterexamples
+              bind reason, <>
+      save round, add(round, 1)
+
+  back fold-missed(<did not converge>, init, counterexamples)

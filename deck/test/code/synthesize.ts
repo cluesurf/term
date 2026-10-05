@@ -12,11 +12,12 @@
  *
  * The grammar is a small integer-expression language over named inputs,
  * Term since 2026-10-04 (deck/test/code/expression-grammar.tree). The
- * verifier is the property engine in ./property. The loop is the classic
- * CEGIS skeleton, deterministic throughout.
+ * loop and the checking it runs are Term since 2026-10-05
+ * (deck/test/code/cegis-search.tree, paired against this file's original
+ * over 120 specs by tmp/pair-cegis.ts), and this is its face.
  */
 
-import { check, genInt, genTuple, type Gen } from './property'
+import { synthesize as search } from '@term/test/code/cegis-search'
 import { enumerate, evalExpr, showExpr } from '@term/test/code/expression-grammar'
 import type { Condition, Expression } from '@term/test/code/expression-grammar'
 
@@ -43,62 +44,22 @@ export type SynthResult =
  * Synthesize an expression over `varCount` integer inputs satisfying
  * `spec`. The loop:
  *   1. find the smallest candidate consistent with all counterexamples
- *   2. verify it with the property engine
- *   3. if the verifier finds a new counterexample, add it and repeat
+ *   2. verify it on 500 random inputs, shrinking a failure
+ *   3. if a new counterexample is found, add it and repeat
  * Each counterexample removes a slice of wrong programs, so the loop
- * converges. Deterministic.
+ * converges. Deterministic. The port answers one record, made the union
+ * here.
  */
-export function synthesize(input: {
-  varCount: number
-  spec: Spec
-  maxSize?: number
-  inputGen?: Gen<number[]>
-}): SynthResult {
-  const { varCount, spec } = input
-  const maxSize = input.maxSize ?? 6
-  const inputGen =
-    input.inputGen ??
-    (genTuple(...Array.from({ length: varCount }, () => genInt)) as Gen<number[]>)
-
-  const candidates = enumerate(maxSize, varCount)
-  const counterexamples: number[][] = []
-  let candidatesTried = 0
-
-  // bound the outer loop by the number of candidates (it cannot need
-  // more refinements than there are programs)
-  for (let round = 0; round <= candidates.length; round++) {
-    // the smallest candidate consistent with every counterexample so far
-    const pick = candidates.find(expr => {
-      candidatesTried++
-      return counterexamples.every(ce => spec(ce, evalExpr(expr, ce)))
-    })
-
-    if (!pick) {
-      return {
-        ok: false,
-        reason: 'no expression in the grammar satisfies the constraints',
-        counterexamples,
-      }
-    }
-
-    // verify the pick against random inputs; the verifier is the oracle
-    const result = check(
-      inputGen,
-      ce => spec(ce, evalExpr(pick, ce)),
-      { runs: 500, seed: 7 },
-    )
-
-    if (result.ok) {
-      return { ok: true, expr: pick, counterexamples, candidatesTried }
-    }
-
-    // the verifier found a hole: add it and refine
-    counterexamples.push(result.counterexample)
+export function synthesize(input: { varCount: number; spec: Spec; maxSize?: number }): SynthResult {
+  const found = search(input.varCount, input.spec, input.maxSize ?? 6) as {
+    ok: boolean
+    expr: Expr
+    counterexamples: number[][]
+    candidatesTried: number
+    reason: string
   }
 
-  return {
-    ok: false,
-    reason: 'did not converge within the candidate budget',
-    counterexamples,
-  }
+  return found.ok
+    ? { ok: true, expr: found.expr, counterexamples: found.counterexamples, candidatesTried: found.candidatesTried }
+    : { ok: false, reason: found.reason, counterexamples: found.counterexamples }
 }

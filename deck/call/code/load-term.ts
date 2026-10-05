@@ -18,7 +18,7 @@
 // TERM_LOAD_REGISTRY=<http(s)://host> reads releases from another registry (the end-to-end test's loopback one).
 
 import { execFileSync } from 'child_process'
-import { appendFileSync, mkdirSync, readFileSync } from 'fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'fs'
 import { homedir } from 'os'
 import nodePath from 'path'
 
@@ -100,13 +100,24 @@ async function main(): Promise<void> {
     )
   }
 
-  // THIS shell's PATH is its own, and no installer can change it: the line for it is data, on stdout (section 18)
-  if (!onPath) {
-    printData(
-      windows
-        ? `$env:Path = "${bin};" + $env:Path\n`
-        : `export PATH="${bin}:$PATH"\n`,
-    )
+  for (const other of otherTerms(bin)) {
+    report({
+      glyph: 'warning',
+      verb: 'path',
+      subject: `another term is on PATH, ${other.version}`,
+      message: ['A terminal runs whichever term comes first on its PATH. Remove the other to have one.'],
+      fields: [location(showPath(other.file)), ...(other.remove ? [field('next', other.remove)] : [])],
+    })
+  }
+
+  // THIS shell's PATH is its own, and a child cannot change it. The line that does is data, on stdout (section 18),
+  // so `eval "$(curl -fsSL https://term.surf/load | sh)"` runs it in the shell that asked: PATH, and `hash -r`, which
+  // makes bash and zsh forget where they last found `term`. Everything else this prints is on stderr, so stdout
+  // holds that line and nothing else
+  const captured = !process.stdout.isTTY
+
+  if (!onPath && !windows) {
+    printData(refreshLine(bin))
   }
 
   closeRun({
@@ -116,14 +127,61 @@ async function main(): Promise<void> {
       ? { next: 'term --help' }
       : {
           message: [
-            automatic
-              ? 'New terminals find term. For this one, run the line above, or open a new one.'
+            !automatic
+              ? windows
+                ? 'TERM_LOAD_PATH=0, so the user Path was not changed: add bin to it.'
+                : "TERM_LOAD_PATH=0, so no profile was edited: add the line above to your shell's profile."
               : windows
-                ? 'TERM_LOAD_PATH=0, so PATH was not changed: add bin to your user PATH, and run the line above for this terminal.'
-                : "TERM_LOAD_PATH=0, so no profile was edited: add the line above to your shell's profile.",
+                ? 'This terminal and new ones find term.'
+                : captured
+                  ? 'New terminals find term, and so does this one once it runs the line on standard output.'
+                  : 'New terminals find term. For this one, run the line above, or install with eval "$(curl -fsSL https://term.surf/load | sh)", which does both.',
           ],
         }),
   })
+}
+
+// The line that puts bin first on THIS shell's PATH, in its own syntax
+function refreshLine(bin: string): string {
+  if (nodePath.basename(process.env['SHELL'] ?? '') === 'fish') {
+    return `set -gx PATH ${bin} $PATH\n`
+  }
+
+  return `export PATH="${bin}:$PATH"; hash -r 2>/dev/null || true\n`
+}
+
+type OtherTerm = { file: string; version: string; remove?: string }
+
+// Every other `term` on PATH, with its version and how to remove it: an npm or pnpm global from before term had an
+// installer of its own is the one this finds (2.5.22, `@cluesurf/term`), and a person typing `term` there gets it
+function otherTerms(bin: string): OtherTerm[] {
+  const name = process.platform === 'win32' ? 'term.cmd' : 'term'
+  const found: OtherTerm[] = []
+  const seen = new Set<string>()
+
+  for (const dir of (process.env['PATH'] ?? '').split(nodePath.delimiter)) {
+    const file = nodePath.join(dir, name)
+
+    if (!dir || dir === bin || seen.has(file) || !existsSync(file)) {
+      continue
+    }
+
+    seen.add(file)
+
+    let version = 'version unknown'
+
+    try {
+      version = execFileSync(file, ['--version'], { encoding: 'utf8', timeout: 10_000, stdio: ['ignore', 'pipe', 'ignore'] }).trim() || version
+    } catch {
+      // a `term` that is not this one at all: named by its path alone
+    }
+
+    const remove = /[\\/]pnpm[\\/]/.test(file) ? 'pnpm remove -g @cluesurf/term' : /[\\/](npm|node_modules)[\\/]|[\\/]lib[\\/]node/.test(file) ? 'npm uninstall -g @cluesurf/term' : undefined
+
+    found.push({ file, version, ...(remove ? { remove } : {}) })
+  }
+
+  return found
 }
 
 type Profile = { form: 'added' | 'there'; shown: string; line: string }

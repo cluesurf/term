@@ -1,0 +1,110 @@
+note <a fold over a binary tree synthesized from what it computes: a leaf handler and a node combiner>
+
+# Ported from deck/test/code/demo-tree-synth.ts (self-hosting, 2026-10-05). The handlers and counterexample counts are
+# the TypeScript's own (tmp/self-host-probes/tree-values.ts), so the port holds the original's search exactly.
+
+load ../code/tree-synthesis
+  find tree
+  find tree-result
+  find cata
+  find synthesize-tree
+
+load ../code/expression-grammar
+  find show-expr
+
+load @term/base/list
+  find list
+
+host leaf-names, make list(<v>)
+host node-names, make list(<l>, <r>)
+
+task tree-sum
+  take value, like tree
+  like number
+
+  sift value
+    case leaf
+      link payload
+      back payload
+    case node
+      link left-tree
+      link right-tree
+      back add(tree-sum(left-tree), tree-sum(right-tree))
+
+task tree-size
+  take value, like tree
+  like number
+
+  sift value
+    case leaf
+      back 1
+    case node
+      link left-tree
+      link right-tree
+      back add(tree-size(left-tree), tree-size(right-tree))
+
+task tree-max
+  take value, like tree
+  like number
+
+  sift value
+    case leaf
+      link payload
+      back payload
+    case node
+      link left-tree
+      link right-tree
+      host l, tree-max(left-tree)
+      host r, tree-max(right-tree)
+      fork test, is-above(r, l)
+        hold
+          back r
+      back l
+
+task leaf-of
+  take value, like number
+  like tree
+
+  back
+    make leaf
+      bind value, value
+
+task node-of
+  take left, like tree
+  take right, like tree
+  like tree
+
+  back
+    make node
+      bind left, left
+      bind right, right
+
+# ((3, 7), 2)
+task sample
+  like tree
+
+  back node-of(node-of(leaf-of(3), leaf-of(7)), leaf-of(2))
+
+task shown
+  take found, like tree-result
+  like text
+
+  back <{show-expr(found/leaf, leaf-names)} | {show-expr(found/node, node-names)} | {found/counterexamples}>
+
+test <tree-sum: the leaf's value, and the sum of the two sides>
+  host found, synthesize-tree(tree-sum, 3, 1)
+  want hold, and(found/ok, is-equal(shown(found), <v | (l + r) | 1>))
+
+test <tree-size: one per leaf, and the sum of the two sides>
+  host found, synthesize-tree(tree-size, 3, 1)
+  want hold, and(found/ok, is-equal(shown(found), <1 | (l + r) | 2>))
+
+test <tree-max: the leaf's value, and the larger side>
+  host found, synthesize-tree(tree-max, 3, 1)
+  want hold, and(found/ok, is-equal(shown(found), <v | max(l, r) | 2>))
+
+test <each found fold computes its spec on a tree it never saw>
+  host sum, synthesize-tree(tree-sum, 3, 1)
+  host size, synthesize-tree(tree-size, 3, 1)
+  host max, synthesize-tree(tree-max, 3, 1)
+  want hold, and(and(is-equal(cata(sample(), sum/leaf, sum/node), 12), is-equal(cata(sample(), size/leaf, size/node), 3)), is-equal(cata(sample(), max/leaf, max/node), 7))

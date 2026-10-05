@@ -117,7 +117,7 @@ behavior on every platform it touches.
 ## Install
 
 ```sh
-curl -fsSL https://term.surf/load | sh
+eval "$(curl -fsSL https://term.surf/load | sh)"
 ```
 
 or, with Homebrew:

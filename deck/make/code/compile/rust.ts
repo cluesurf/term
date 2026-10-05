@@ -2750,6 +2750,17 @@ function emitRustPass(
           return `std::rc::Rc::new(std::cell::RefCell::new(Vec::<${rustElement(node.type)}>::new()))`
         }
 
+        // a list of FUNCTIONS: each task is a type of its own in Rust (an fn item), so `vec![Rc::new(f), Rc::new(g)]`
+        // is refused (E0308, "expected fn item, found a different fn item") and each is cast to the element, the
+        // `Rc<dyn Fn>` the list holds (deck/test/test/fold-synthesis.tree's list of specs, 2026-10-05)
+        if (node.type?.kind === 'array' && node.type.element.kind === 'function' && node.items.length > 0) {
+          const element = rustElement(node.type)
+
+          return `std::rc::Rc::new(std::cell::RefCell::new(vec![${node.items
+            .map(item => `${expr(item)} as ${element}`)
+            .join(', ')}]))`
+        }
+
         return `std::rc::Rc::new(std::cell::RefCell::new(vec![${node.items
           .map(expr)
           .join(', ')}]))`

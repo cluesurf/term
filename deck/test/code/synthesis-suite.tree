@@ -1,0 +1,227 @@
+# Three synthesis paradigms beyond the CEGIS loop, over the integer-expression grammar:
+#   - OBSERVATIONAL EQUIVALENCE (Udupa et al.): enumerate, keep one program per distinct behavior on the examples, and
+#     answer the first whose behavior is the targets. The standard fast enumerative synthesis
+#   - STOCHASTIC search (Metropolis-Hastings, STOKE-style): a random walk over programs scored by the examples they get
+#     right, a worse proposal accepted with probability exp((s' - s) / T) as T cools
+#   - SKETCHING (Solar-Lezama): a program with a HOLE, and the hole's expression found so the whole meets the spec over
+#     a bounded domain
+#
+# Ported from deck/test/code/synth-extra.ts (self-hosting, 2026-10-05). Its fourth paradigm, a constraint-based
+# exists-forall query, is one call to Z3 and stays there. The sketch was a closure from the hole to the program, and is
+# a task. Each result was a union tagged on a boolean, and is one record.
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+load @term/base/float
+  find round-down
+  find to-decimal
+  find to-number
+  find exponent
+
+load ./seeded-random
+  find seed-state
+  find next-random
+
+load ./expression-grammar
+  find expression
+  find enumerate
+  find eval-expr
+  find constant-of
+
+load ./bounded-proof
+  find step-point
+
+form enumeration-result
+  link ok, like boolean
+  link expr, like expression
+  # how many programs were passed over as behaving like one already kept
+  link pruned, like number
+
+form stochastic-result
+  link ok, like boolean
+  link expr, like expression
+  link iterations, like number
+
+form sketch-result
+  link ok, like boolean
+  link hole, like expression
+  link expr, like expression
+
+# the first program of up to `max-size` nodes whose outputs on `examples` are `targets`, one kept per behavior
+task observational-enum
+  take var-count, like number
+  take examples, like list, like list, like number
+  take targets, like list, like number
+  take max-size, like number
+  like enumeration-result
+
+  host seen, make hash
+  save pruned, 0
+  walk enumerate(max-size, var-count)
+    take candidate
+    host behavior, make list
+    walk examples
+      take example
+      behavior/push(eval-expr(candidate, example))
+    host signature, join(behavior, <,>)
+    fork test, has(seen, signature)
+      hold
+        save pruned, add(pruned, 1)
+      miss
+        seen/set(signature, true)
+        fork test, is-equal(signature, join(targets, <,>))
+          hold
+            back
+              make enumeration-result
+                bind ok, true
+                bind expr, candidate
+                bind pruned, pruned
+
+  back
+    make enumeration-result
+      bind ok, false
+      bind expr, constant-of(0)
+      bind pruned, pruned
+
+# the share of the examples a program gets right
+task score
+  take candidate, like expression
+  take examples, like list, like list, like number
+  take targets, like list, like number
+  like decimal
+
+  save hits, 0
+  save at, 0
+  walk examples
+    take example
+    fork test, is-equal(eval-expr(candidate, example), get(targets, at))
+      hold
+        save hits, add(hits, 1)
+    save at, add(at, 1)
+
+  back divide(to-decimal(hits), to-decimal(examples/length))
+
+task pick-from
+  take state, like list, like number
+  take pool, like list, like expression
+  like expression
+
+  back get(pool, to-number(round-down(multiply(next-random(state), to-decimal(pool/length)))))
+
+# a random walk over the programs of up to `max-size` nodes, from `seed`, for at most `iterations` steps
+task stochastic-synth
+  take var-count, like number
+  take examples, like list, like list, like number
+  take targets, like list, like number
+  take iterations, like number
+  take seed, like number
+  take max-size, like number
+  like stochastic-result
+
+  host state, seed-state(seed)
+  host pool, enumerate(max-size, var-count)
+  save current, pick-from(state, pool)
+  save current-score, score(current, examples, targets)
+
+  save step, 0
+  walk test
+    hook test, is-below(step, iterations)
+    hook hold
+      fork test, is-equal(current-score, 1.0)
+        hold
+          back
+            make stochastic-result
+              bind ok, true
+              bind expr, current
+              bind iterations, step
+      save temperature, subtract(1.0, divide(to-decimal(step), to-decimal(iterations)))
+      fork test, is-below(temperature, 0.05)
+        hold
+          save temperature, 0.05
+      host proposal, pick-from(state, pool)
+      host proposal-score, score(proposal, examples, targets)
+      # the second draw only when the proposal is worse, as `||` drew it
+      save accept, is-minimum(proposal-score, current-score)
+      fork test, not(accept)
+        hold
+          save accept, is-below(next-random(state), exponent(divide(subtract(proposal-score, current-score), temperature)))
+      fork test, accept
+        hold
+          save current, proposal
+          save current-score, proposal-score
+      save step, add(step, 1)
+
+  back
+    make stochastic-result
+      bind ok, is-equal(current-score, 1.0)
+      bind expr, current
+      bind iterations, iterations
+
+# the spec on the program at every point of [-bound, bound]^arity
+task holds-over-bound
+  take spec
+    like task
+      take inputs, like list, like number
+      take output, like number
+      like boolean
+  take candidate, like expression
+  take arity, like number
+  take bound, like number
+  like boolean
+
+  host point, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, arity)
+    hook hold
+      point/push(subtract(0, bound))
+      save at, add(at, 1)
+
+  walk test
+    hook test, true
+    hook hold
+      fork test, not(spec(point, eval-expr(candidate, point)))
+        hold
+          back false
+      fork test, not(step-point(point, subtract(0, bound), bound))
+        hold
+          back true
+
+  back true
+
+# the hole filled by the first expression of up to `max-size` nodes that makes the sketch meet `spec` over the bound
+task fill-sketch
+  take sketch
+    like task
+      take hole, like expression
+      like expression
+  take var-count, like number
+  take spec
+    like task
+      take inputs, like list, like number
+      take output, like number
+      like boolean
+  take max-size, like number
+  take bound, like number
+  like sketch-result
+
+  walk enumerate(max-size, var-count)
+    take hole
+    host whole, sketch(hole)
+    fork test, holds-over-bound(spec, whole, var-count, bound)
+      hold
+        back
+          make sketch-result
+            bind ok, true
+            bind hole, hole
+            bind expr, whole
+
+  back
+    make sketch-result
+      bind ok, false
+      bind hole, constant-of(0)
+      bind expr, constant-of(0)

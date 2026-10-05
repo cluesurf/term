@@ -1,0 +1,183 @@
+# Mutual recursion synthesis: a rose tree, a value and a LIST of child rose trees. Its fold is mutually recursive,
+# the tree fold reaching each child through a fold over the child list, so it is three pieces: `combine(value,
+# children)` for the node, `merge(acc, child)` for the step over the children's results, and `init` for that step's
+# seed. The search is over the triples (inits, then merges, then combines), and a tree the triple gets wrong refines it
+# (rose-sum, rose-count).
+#
+# Ported from deck/test/code/rose-synth.ts (self-hosting, 2026-10-05). The draws keep the original's order: a tree
+# draws how many children it has, then its children, then its own value. The spec was a closure and is a task; the
+# result was a union tagged on a boolean, and is one record.
+
+load @term/base/list
+  find list
+
+load ./seeded-random
+  find seed-state
+  find draw-between
+
+load ./expression-grammar
+  find expression
+  find enumerate
+  find eval-expr
+  find constant-of
+
+form rose
+  link value, like number
+  link children, like list, like rose
+
+form rose-result
+  link ok, like boolean
+  link combine, like expression
+  link merge, like expression
+  link init, like number
+  # how many trees refined the search
+  link counterexamples, like number
+  link reason, like text
+
+# the fold: each child folded and merged into the seed, then combined with the node's value
+task fold-rose
+  take value, like rose
+  take combine, like expression
+  take merge, like expression
+  take init, like number
+  like number
+
+  save agg, init
+  walk value/children
+    take child
+    host point, make list(agg, fold-rose(child, combine, merge, init))
+    save agg, eval-expr(merge, point)
+  host top, make list(value/value, agg)
+
+  back eval-expr(combine, top)
+
+# a random rose tree, at most `depth` deep, with up to two children a level
+task random-rose
+  take state, like list, like number
+  take depth, like number
+  like rose
+
+  save count, 0
+  fork test, is-above(depth, 0)
+    hold
+      save count, draw-between(state, 0, 2)
+  host children, make list
+  save made, 0
+  walk test
+    hook test, is-below(made, count)
+    hook hold
+      children/push(random-rose(state, subtract(depth, 1)))
+      save made, add(made, 1)
+
+  back
+    make rose
+      bind value, draw-between(state, -3, 6)
+      bind children, children
+
+task rose-missed
+  take reason, like text
+  like rose-result
+
+  back
+    make rose-result
+      bind ok, false
+      bind combine, constant-of(0)
+      bind merge, constant-of(0)
+      bind init, 0
+      bind counterexamples, 0
+      bind reason, reason
+
+task rose-fits
+  take spec
+    like task
+      take value, like rose
+      like number
+  take combine, like expression
+  take merge, like expression
+  take init, like number
+  take trees, like list, like rose
+  like boolean
+
+  walk trees
+    take one
+    fork test, not(is-equal(fold-rose(one, combine, merge, init), spec(one)))
+      hold
+        back false
+
+  back true
+
+# a rose fold matching `spec`, its pieces of up to `max-size` nodes, checked on 250 random trees from `seed`
+task synthesize-rose
+  take spec
+    like task
+      take value, like rose
+      like number
+  take max-size, like number
+  take seed, like number
+  like rose-result
+
+  host combines, enumerate(max-size, 2)
+  host merges, enumerate(max-size, 2)
+  host inits, make list(0, 1)
+  host state, seed-state(seed)
+  host probes, make list
+  save made, 0
+  walk test
+    hook test, is-below(made, 250)
+    hook hold
+      probes/push(random-rose(state, 3))
+      save made, add(made, 1)
+
+  host counterexamples, make list
+  save round, 0
+  walk test
+    hook test, is-maximum(round, multiply(multiply(combines/length, merges/length), inits/length))
+    hook hold
+      save found, false
+      save combine-pick, constant-of(0)
+      save merge-pick, constant-of(0)
+      save init-pick, 0
+      walk inits
+        take init
+        walk merges
+          take merge
+          walk combines
+            take combine
+            fork test, rose-fits(spec, combine, merge, init, counterexamples)
+              hold
+                save combine-pick, combine
+                save merge-pick, merge
+                save init-pick, init
+                save found, true
+                halt
+          fork test, found
+            hold
+              halt
+        fork test, found
+          hold
+            halt
+      fork test, not(found)
+        hold
+          back rose-missed(<no rose fold fits the examples>)
+
+      save missed, false
+      walk probes
+        take one
+        fork test, not(is-equal(fold-rose(one, combine-pick, merge-pick, init-pick), spec(one)))
+          hold
+            counterexamples/push(one)
+            save missed, true
+            halt
+      fork test, not(missed)
+        hold
+          back
+            make rose-result
+              bind ok, true
+              bind combine, combine-pick
+              bind merge, merge-pick
+              bind init, init-pick
+              bind counterexamples, counterexamples/length
+              bind reason, <>
+      save round, add(round, 1)
+
+  back rose-missed(<did not converge>)

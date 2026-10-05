@@ -45,8 +45,9 @@ ok('every card on the page has a golden test, and in page order', mockups.length
 
 // every difference from the mockup is written down, and every one written down is still applied
 const written = new Set([...readFileSync(MOCKUP_DIFFERENCES, 'utf8').matchAll(/^### (D\d+)$/gm)].map(match => match[1]!))
-// D33 and D34 are applied to every card by `elbowQuotes` and `oneSpaceFields`, not by a patch, so they are cited here
-const cited = new Set(['D33', 'D34',...CARDS.flatMap(card => [...card.patches.flatMap(patch => patch.entry.split(' ')), ...(card.entry ? [card.entry] : [])])])
+// D33 and D34 are applied to every card by `elbowQuotes` and `oneSpaceFields`, not by a patch, so they are cited here.
+// D35 is the other way round: the cards are drawn with the mockups' clocks kept (build.ts `STANDARD`)
+const cited = new Set(['D33', 'D34', 'D35',...CARDS.flatMap(card => [...card.patches.flatMap(patch => patch.entry.split(' ')), ...(card.entry ? [card.entry] : [])])])
 const unwritten = [...cited].filter(entry => !written.has(entry))
 const unapplied = [...written].filter(entry => !cited.has(entry))
 const unjustified = CARDS.filter(card => card.whole && !card.entry).map(card => card.caption)

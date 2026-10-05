@@ -1,0 +1,110 @@
+note <counterexample-guided synthesis: the smallest expression meeting a spec, refined by shrunk counterexamples>
+
+# Ported from the synthesis half of deck/test/code/demo.ts (self-hosting, 2026-10-05). Every answer, counterexample
+# and count here is the TypeScript loop's own (tmp/self-host-probes/synthesize-values.ts printed them), so the port
+# holds the original's search exactly: the same draws, the same shrinking, the same order.
+
+load ../code/cegis-search
+  find synthesis-result
+  find synthesize
+  find check-candidate
+  find shrink-int
+  find shrink-tuple
+  find sample-int
+
+load ../code/expression-grammar
+  find expression
+  find show-expr
+  find variable-at
+
+load ../code/seeded-random
+  find seed-state
+
+load @term/base/list
+  find list
+
+host two, make list(<a>, <b>)
+host one, make list(<a>)
+
+task max-spec
+  take inputs, like list, like number
+  take output, like number
+  like boolean
+
+  host a, get(inputs, 0)
+  host b, get(inputs, 1)
+
+  back and(and(is-minimum(output, a), is-minimum(output, b)), or(is-equal(output, a), is-equal(output, b)))
+
+task min-spec
+  take inputs, like list, like number
+  take output, like number
+  like boolean
+
+  host a, get(inputs, 0)
+  host b, get(inputs, 1)
+
+  back and(and(is-maximum(output, a), is-maximum(output, b)), or(is-equal(output, a), is-equal(output, b)))
+
+task abs-spec
+  take inputs, like list, like number
+  take output, like number
+  like boolean
+
+  host a, get(inputs, 0)
+
+  back and(is-minimum(output, 0), or(is-equal(output, a), is-equal(output, subtract(0, a))))
+
+task impossible-spec
+  take inputs, like list, like number
+  take output, like number
+  like boolean
+
+  host a, get(inputs, 0)
+
+  back and(is-above(output, a), is-below(output, a))
+
+# the counterexamples as `[[0,1],[1,0]]`, as JSON writes them
+task shown
+  take lists, like list, like list, like number
+  like text
+
+  host parts, make list
+  walk lists
+    take each
+    parts/push(<[{join(each, <,>)}]>)
+
+  back <[{join(parts, <,>)}]>
+
+test <max is synthesized as max(a, b), the original's way>
+  host found, synthesize(2, max-spec, 6)
+  want hold, and(and(found/ok, is-equal(show-expr(found/expr, two), <max(a, b)>)), and(is-equal(shown(found/counterexamples), <[[0,1],[1,0],[0,0],[1,1]]>), is-equal(found/candidates-tried, 28)))
+
+test <abs is synthesized as max(a, 0 - a)>
+  host found, synthesize(1, abs-spec, 6)
+  want hold, and(and(found/ok, is-equal(show-expr(found/expr, one), <max(a, (0 - a))>)), and(is-equal(shown(found/counterexamples), <[[-1],[0],[1],[-2]]>), is-equal(found/candidates-tried, 340)))
+
+test <min is synthesized as min(a, b)>
+  host found, synthesize(2, min-spec, 6)
+  want hold, and(and(found/ok, is-equal(show-expr(found/expr, two), <min(a, b)>)), and(is-equal(shown(found/counterexamples), <[[1,0],[0,1],[1,1]]>), is-equal(found/candidates-tried, 17)))
+
+test <an unsatisfiable spec is reported, not answered>
+  host found, synthesize(1, impossible-spec, 4)
+  want hold, and(and(not(found/ok), is-equal(found/reason, <no expression in the grammar satisfies the constraints>)), is-equal(shown(found/counterexamples), <[[0]]>))
+
+test <a found expression re-verifies on fresh inputs>
+  host found, synthesize(2, max-spec, 6)
+  host again, check-candidate(max-spec, found/expr, 2, 500, 99, 64)
+  want hold, again/ok
+
+test <a wrong candidate's counterexample is shrunk to the smallest that fails>
+  host verdict, check-candidate(max-spec, variable-at(0), 2, 500, 7, 64)
+  want hold, and(not(verdict/ok), is-equal(join(verdict/counterexample, <,>), <0,1>))
+
+test <an integer shrinks to zero, one step nearer, and its negation>
+  host none, shrink-int(0)
+  want hold, and(and(is-equal(join(shrink-int(5), <,>), <0,4>), is-equal(join(shrink-int(-3), <,>), <0,-2,3>)), and(is-equal(join(shrink-int(1), <,>), <0>), is-equal(none/length, 0)))
+
+test <a tuple shrinks one component at a time>
+  host value, make list(2, -1)
+  want hold, is-equal(shown(shrink-tuple(value)), <[[0,-1],[1,-1],[2,0],[2,1]]>)

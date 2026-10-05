@@ -680,9 +680,22 @@ function runChild(flags: string[], environment: Record<string, string> = {}) {
 // ---- the standard is data: change one value and the output follows ----
 
 function withStandard(change: (standard: Standard) => void): Room {
-  const standard = structuredClone(makeStandard())
+  const standard = structuredClone(STANDARD)
   change(standard)
   return { ...room(80), standard }
+}
+
+// ---- section 6: a clock only where it says something (the user's choice, 2026-10-05) ----
+
+{
+  const shipped = { ...room(80), standard: makeStandard() }
+  const clockOf = (event: Event): string => texts(drawItem(event, shipped, true))[1] ?? ''
+  same('a quick step shows no clock', clockOf(ev({ glyph: 'done', verb: 'build', subject: 'typescript', clock: '14:42:00.410', duration: 410 })), '           410 ms')
+  same('a change with nothing else has no facts line at all', texts(drawItem(ev({ glyph: 'added', kind: 'change', verb: 'add', subject: 'deck.tree', clock: '14:42:00.410' }), shipped, true)).length, 1)
+  ok('a step that took a second shows its clock', clockOf(ev({ glyph: 'done', verb: 'build', subject: 'rust', clock: '14:42:00.410', duration: 1000 })).includes('14:42:00.410'))
+  ok('a request, a line of a live log, shows its clock', clockOf(ev({ glyph: 'done', kind: 'request', verb: 'GET', subject: '/', clock: '14:42:00.410', duration: 4 })).includes('14:42:00.410'))
+  ok('a line tagged with its source shows its clock', clockOf(ev({ glyph: 'info', verb: 'log', subject: 'listening', source: 'api', clock: '14:42:00.410' })).includes('14:42:00.410'))
+  ok('a service opening, which carries the zone, shows its clock', clockOf(ev({ glyph: 'info', kind: 'open', verb: 'boot', subject: '~/shape', clock: '14:42:00.410', zone: 'PDT, UTC−7' })).includes('14:42:00.410'))
 }
 
 {

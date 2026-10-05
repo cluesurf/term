@@ -1,0 +1,133 @@
+note <a tuple result synthesized per component, and a recursive list function synthesized as a fold step>
+
+# Ported from deck/test/code/demo-ir-synth.ts (self-hosting, 2026-10-05). Every expression and counterexample here is
+# the TypeScript's own (tmp/self-host-probes/fold-values.ts).
+
+load ../code/fold-synthesis
+  find tuple-result
+  find fold-result
+  find synthesize-tuple
+  find synthesize-fold
+  find run-fold
+
+load ../code/expression-grammar
+  find show-expr
+
+load @term/base/list
+  find list
+
+host pair-names, make list(<a>, <b>)
+host step-names, make list(<acc>, <elem>)
+
+task is-min
+  take inputs, like list, like number
+  take output, like number
+  like boolean
+
+  host a, get(inputs, 0)
+  host b, get(inputs, 1)
+
+  back and(and(is-maximum(output, a), is-maximum(output, b)), or(is-equal(output, a), is-equal(output, b)))
+
+task is-max
+  take inputs, like list, like number
+  take output, like number
+  like boolean
+
+  host a, get(inputs, 0)
+  host b, get(inputs, 1)
+
+  back and(and(is-minimum(output, a), is-minimum(output, b)), or(is-equal(output, a), is-equal(output, b)))
+
+task is-second
+  take inputs, like list, like number
+  take output, like number
+  like boolean
+
+  back is-equal(output, get(inputs, 1))
+
+task is-first
+  take inputs, like list, like number
+  take output, like number
+  like boolean
+
+  back is-equal(output, get(inputs, 0))
+
+task sum-of
+  take items, like list, like number
+  like number
+
+  save total, 0
+  walk items
+    take each
+    save total, add(total, each)
+
+  back total
+
+task length-of
+  take items, like list, like number
+  like number
+
+  back items/length
+
+task max-from-zero
+  take items, like list, like number
+  like number
+
+  save top, 0
+  walk items
+    take each
+    fork test, is-above(each, top)
+      hold
+        save top, each
+
+  back top
+
+task shown-tuple
+  take found, like tuple-result
+  like text
+
+  host parts, make list
+  walk found/exprs
+    take each
+    parts/push(show-expr(each, pair-names))
+
+  back join(parts, < ; >)
+
+task shown-fold
+  take found, like fold-result
+  like text
+
+  host lists, make list
+  walk found/counterexamples
+    take each
+    lists/push(<[{join(each, <,>)}]>)
+
+  back <{show-expr(found/step, step-names)} [{join(lists, <,>)}]>
+
+test <minmax: each component proven over the bound>
+  host specs, make list(is-min, is-max)
+  host found, synthesize-tuple(2, specs, 5, 6)
+  want hold, and(found/ok, is-equal(shown-tuple(found), <min(a, b) ; max(a, b)>))
+
+test <swap>
+  host specs, make list(is-second, is-first)
+  host found, synthesize-tuple(2, specs, 5, 6)
+  want hold, and(found/ok, is-equal(shown-tuple(found), <b ; a>))
+
+test <sum as a fold, after one counterexample>
+  host found, synthesize-fold(0, sum-of, 5, 1)
+  want hold, and(found/ok, is-equal(shown-fold(found), <(acc + elem) [[-2,3,7]]>))
+
+test <the found sum folds a list it never saw>
+  host found, synthesize-fold(0, sum-of, 5, 1)
+  host items, make list(3, 4, 5)
+  want hold, is-equal(run-fold(found/step, found/init, items), 12)
+
+test <length as a fold>
+  host found, synthesize-fold(0, length-of, 5, 1)
+  want hold, and(found/ok, is-equal(shown-fold(found), <(acc + 1) [[-2,3,7]]>))
+
+test <running max from zero as a fold, after two counterexamples>
+  host found, synthesize-fold(0, max-from-zero, 5, 1)
+  want hold, and(found/ok, is-equal(shown-fold(found), <max(acc, elem) [[-2,3,7],[2,-1]]>))

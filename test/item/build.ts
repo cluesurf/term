@@ -7,7 +7,10 @@ import { makeStandard } from '@term/call/code/work/item/standard'
 import { makeRoom } from '@term/call/code/work/item/layout'
 import type { Room, Line } from '@term/call/code/work/item/layout'
 
-export const STANDARD = makeStandard()
+// the standard as the mockups draw it: a clock on every item (D35). The standard itself shows one only on a slow item
+// or a live log, which test/item/unit.ts holds against `makeStandard()` as it ships
+const SHIPPED = makeStandard()
+export const STANDARD = { ...SHIPPED, facts: { ...SHIPPED.facts, clockFrom: -1 } }
 
 // the mockups' zone: Pacific daylight time, 2026-10-03
 export const OFFSET = -420

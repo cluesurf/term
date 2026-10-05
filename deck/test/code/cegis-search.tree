@@ -1,0 +1,274 @@
+# Counterexample-guided inductive synthesis: a function body found from its specification by letting the checker hand
+# back counterexamples that carve away the wrong programs until a right one remains. The loop takes the smallest
+# expression consistent with every counterexample so far, checks it on 500 random inputs, and on a failure keeps the
+# failing input, shrunk to the smallest that still fails, and goes again.
+#
+# Ported from deck/test/code/synthesize.ts and the part of property.ts it runs (self-hosting, 2026-10-05). The
+# property engine was generic over closures, a generator being `sample` and `shrink` functions and a claim a function
+# of the input. What synthesis uses of it is one generator, a tuple of integers, and one claim, the spec on a
+# candidate's output, so that is what is written here, with the spec and the candidate passed in, as
+# repair-loop.tree's `prove-candidate` does. The general engine stays in property.ts for the callers that need it.
+# The result was a union tagged on a boolean, and is one record whose `expr` is the constant 0 when nothing fits.
+
+load @term/base/list
+  find list
+
+load @term/base/float
+  find round-down
+  find to-decimal
+  find to-number
+
+load @term/base/math
+  find absolute
+
+load ./seeded-random
+  find seed-state
+  find next-random
+  find draw-between
+
+load ./expression-grammar
+  find expression
+  find enumerate
+  find eval-expr
+  find constant-of
+
+form synthesis-result
+  link ok, like boolean
+  # the expression found, the constant 0 when nothing was
+  link expr, like expression
+  link counterexamples, like list, like list, like number
+  # how many times a candidate was weighed against the counterexamples
+  link candidates-tried, like number
+  # why nothing was found, `<>` when something was
+  link reason, like text
+
+form check-result
+  link ok, like boolean
+  # the smallest failing input found, empty when every run held
+  link counterexample, like list, like number
+
+# an integer, biased to the boundaries where bugs cluster: `genInt.sample`
+task sample-int
+  take state, like list, like number
+  take size, like number
+  like number
+
+  host roll, next-random(state)
+  fork test, is-below(roll, 0.15)
+    hold
+      back 0
+  fork test, is-below(roll, 0.25)
+    hold
+      back -1
+  fork test, is-below(roll, 0.35)
+    hold
+      back 1
+
+  back draw-between(state, subtract(0, size), size)
+
+# the smaller integers a failing one is retried as: `genInt.shrink`
+task shrink-int
+  take value, like number
+  like list, like number
+
+  host out, make list
+  fork test, is-equal(value, 0)
+    hold
+      back out
+  out/push(0)
+  fork test, is-above(absolute(value), 1)
+    hold
+      fork test, is-above(value, 0)
+        hold
+          out/push(subtract(value, 1))
+        miss
+          out/push(add(value, 1))
+  fork test, is-below(value, 0)
+    hold
+      out/push(subtract(0, value))
+
+  back out
+
+task sample-tuple
+  take state, like list, like number
+  take size, like number
+  take arity, like number
+  like list, like number
+
+  host out, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, arity)
+    hook hold
+      out/push(sample-int(state, size))
+      save at, add(at, 1)
+
+  back out
+
+# one component at a time shrunk, the others held: `genTuple.shrink`
+task shrink-tuple
+  take value, like list, like number
+  like list, like list, like number
+
+  host out, make list
+  save at, 0
+  walk value
+    take each
+    walk shrink-int(each)
+      take smaller
+      host copied, copy(value)
+      copied/set(at, smaller)
+      out/push(copied)
+    save at, add(at, 1)
+
+  back out
+
+# the spec on the candidate's output at an input. A spec that raises counts as refusing
+task meets
+  take spec
+    like task
+      take inputs, like list, like number
+      take output, like number
+      like boolean
+  take candidate, like expression
+  take inputs, like list, like number
+  like boolean
+
+  mark unsafe
+    back spec(inputs, eval-expr(candidate, inputs))
+  halt take
+    take e
+    back false
+
+# a failing input shrunk greedily to a local minimum
+task minimize
+  take spec
+    like task
+      take inputs, like list, like number
+      take output, like number
+      like boolean
+  take candidate, like expression
+  take start, like list, like number
+  like list, like number
+
+  save current, start
+  walk test
+    hook test, true
+    hook hold
+      save progressed, false
+      walk shrink-tuple(current)
+        take smaller
+        fork test, and(not(progressed), not(meets(spec, candidate, smaller)))
+          hold
+            save current, smaller
+            save progressed, true
+      fork test, not(progressed)
+        hold
+          back current
+
+  back current
+
+# the candidate on `runs` random inputs from `seed`, sizes growing to `max-size`: `check` in property.ts
+task check-candidate
+  take spec
+    like task
+      take inputs, like list, like number
+      take output, like number
+      like boolean
+  take candidate, like expression
+  take arity, like number
+  take runs, like number
+  take seed, like number
+  take max-size, like number
+  like check-result
+
+  host state, seed-state(seed)
+  save run, 0
+  walk test
+    hook test, is-below(run, runs)
+    hook hold
+      host size, add(1, to-number(round-down(multiply(divide(to-decimal(run), to-decimal(runs)), to-decimal(max-size)))))
+      host value, sample-tuple(state, size, arity)
+      fork test, not(meets(spec, candidate, value))
+        hold
+          back
+            make check-result
+              bind ok, false
+              bind counterexample, minimize(spec, candidate, value)
+      save run, add(run, 1)
+
+  host none, make list
+
+  back
+    make check-result
+      bind ok, true
+      bind counterexample, none
+
+task unsynthesized
+  take reason, like text
+  take counterexamples, like list, like list, like number
+  take tried, like number
+  like synthesis-result
+
+  back
+    make synthesis-result
+      bind ok, false
+      bind expr, constant-of(0)
+      bind counterexamples, counterexamples
+      bind candidates-tried, tried
+      bind reason, reason
+
+# an expression over `var-count` integer inputs meeting `spec`, of up to `max-size` nodes
+task synthesize
+  take var-count, like number
+  take spec
+    like task
+      take inputs, like list, like number
+      take output, like number
+      like boolean
+  take max-size, like number
+  like synthesis-result
+
+  host candidates, enumerate(max-size, var-count)
+  host counterexamples, make list
+  save tried, 0
+
+  save round, 0
+  walk test
+    hook test, is-maximum(round, candidates/length)
+    hook hold
+      # the smallest candidate consistent with every counterexample so far, each one weighed counted
+      save found, false
+      save pick, constant-of(0)
+      walk candidates
+        take each
+        save tried, add(tried, 1)
+        save fits, true
+        walk counterexamples
+          take ce
+          fork test, not(spec(ce, eval-expr(each, ce)))
+            hold
+              save fits, false
+        fork test, fits
+          hold
+            save pick, each
+            save found, true
+            halt
+      fork test, not(found)
+        hold
+          back unsynthesized(<no expression in the grammar satisfies the constraints>, counterexamples, tried)
+
+      host verdict, check-candidate(spec, pick, var-count, 500, 7, 64)
+      fork test, verdict/ok
+        hold
+          back
+            make synthesis-result
+              bind ok, true
+              bind expr, pick
+              bind counterexamples, counterexamples
+              bind candidates-tried, tried
+              bind reason, <>
+      counterexamples/push(verdict/counterexample)
+      save round, add(round, 1)
+
+  back unsynthesized(<did not converge within the candidate budget>, counterexamples, tried)

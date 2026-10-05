@@ -51,7 +51,36 @@ load ./measure
 form fact-spans
   link spans, like list, like span
 
-# the clock in the display zone: dim, always first
+# whether an item shows its clock (section 6): when it took a while, when it is a line
+# of a live log (a kind the standard names, or tagged with its source), and on a
+# service's opening, which carries the display zone. A quick step's clock says
+# nothing the line above it did not, and twelve of them were most of `term wake`
+task shows-clock
+  take event, like event
+  take standard, like standard
+
+  like boolean
+
+  save rule, standard/facts
+  save shown, false
+
+  fork test, is-below(rule/clock-from, 0)
+    hold
+      save shown, true
+  fork test, is-minimum(event/duration, rule/clock-from)
+    hold
+      save shown, true
+  fork test, or(is-unequal(event/source, <>), is-unequal(event/zone, <>))
+    hold
+      save shown, true
+  walk rule/clock-kinds
+    take one
+    fork test, is-equal(one, event/kind)
+      hold
+        save shown, true
+  back shown
+
+# the clock in the display zone: dim, always first, when `shows-clock` says so
 task draw-clock
   take event, like event
   take room, like room
@@ -60,7 +89,7 @@ task draw-clock
 
   save spans, make list
 
-  fork test, is-minimum(event/clock, 0)
+  fork test, and(is-minimum(event/clock, 0), shows-clock(event, room/standard))
     hold
       save shift, room/offset
       fork test, room/utc
