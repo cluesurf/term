@@ -786,6 +786,50 @@ task anything
     refused('looping-proof'),
   )
 
+  // the same loop through the task READ AS A VALUE: `save again, read anything` then `call again`. The call graph
+  // counted only calls by name, so this looked non-recursive and was accepted, and with `like equal a` as the result it
+  // proved any two values equal (2026-10-05, check/totality.ts valueEdges)
+  expect(
+    'a claim filled by a loop through the task saved as a value is refused',
+    `rule anything
+  take x, like number
+  like number
+
+task anything
+  take x
+  save again, read anything
+  send back
+    call again
+      read x
+`,
+    refused('looping-proof'),
+  )
+
+  expect(
+    'control: a task handed a DIFFERENT, non-recursive task as a value still ends',
+    `task double
+  take n, like number
+  like number
+  send back
+    call multiply
+      read n
+      code 2
+
+rule twice
+  take x, like number
+  like number
+
+task twice
+  take x
+  save step, read double
+  send back
+    call step
+      call step
+        read x
+`,
+    proven,
+  )
+
   expect(
     'a claim filled by an impure task is refused',
     `task roll

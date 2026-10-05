@@ -12,12 +12,14 @@ import type { Term } from '@term/make/code/check/judge'
 import {
   check,
   contextWithSignature,
+  enableCircle,
   evaluate,
   litLevel,
   resetDefinitions,
   resetMetas,
 } from '@term/make/code/check/judge'
 import type { Mult } from '@term/make/code/check/judge'
+import { compile } from '@term/make/code/compile/compile'
 
 let pass = 0
 let fail = 0
@@ -82,6 +84,8 @@ const sig = [
 function context() {
   resetMetas()
   resetDefinitions()
+  // the circle's rules are the signature's, enabled by whoever postulates it (judge.ts `enableCircle`)
+  enableCircle()
   return contextWithSignature(sig)
 }
 
@@ -118,9 +122,48 @@ rejects('recursor is stuck on a neutral scrutinee: circleRec A0 b0 l0 x != b0', 
   const ctx = contextWithSignature([...sig, { name: 'x', type: kconst('circle') }])
   resetMetas()
   resetDefinitions()
+  enableCircle()
   const recX = apps(kconst('circleRec'), kconst('A0'), kconst('b0'), kconst('l0'), kconst('x'))
   check(ctx, refl(kconst('A0'), kconst('b0')), evaluate([], id(kconst('A0'), recX, kconst('b0'))))
 })
+
+// 6. SOUNDNESS: NOT enabled, the names are only names. A program's own task called `circleApLoop` was rewritten to its
+// third argument against its body until 2026-10-05: here the body answers 0, and `circleApLoop(1, 2, 3) == 3` must be
+// refused, and `== 0` proven
+{
+  const program = (want: number): string => `task circleApLoop
+  take a, like integer
+  take b, like integer
+  take c, like integer
+  like integer
+  send back
+    code 0
+
+rule rewritten
+  show hold
+    call is-equal
+      call circleApLoop
+        code 1
+        code 2
+        code 3
+      code ${want}
+  calm hold
+`
+
+  ok("a program's task named circleApLoop is not rewritten: (1, 2, 3) == 3 is refused", () => {
+    if (compile({ file: 'c.tree', text: program(3) }).ok) {
+      throw new Error('proven equal to 3, against a body answering 0')
+    }
+  })
+
+  ok('and its body is what it computes: (1, 2, 3) == 0 is proven', () => {
+    const result = compile({ file: 'c.tree', text: program(0) })
+
+    if (!result.ok) {
+      throw new Error(result.diagnostics.map(d => d.message).join(' | '))
+    }
+  })
+}
 
 console.log(`\ncircle-kernel: ${pass} pass, ${fail} fail`)
 process.exit(fail > 0 ? 1 : 0)

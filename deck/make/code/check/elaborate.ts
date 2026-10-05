@@ -1718,7 +1718,8 @@ export function elaborateReport(
       // `convert` irrelevance rule fires on it (`wrap x == wrap y`). Ordinary types get their computing defs as usual.
       if (statement.truncation) {
         for (const variant of statement.variants) {
-          registerTruncation(ctorKey(statement.name, variant.name))
+          // the arity is the erased type arguments and the fields: irrelevance holds for that application exactly
+          registerTruncation(ctorKey(statement.name, variant.name), m + variant.fields.length)
         }
       } else {
         statement.variants.forEach((variant, i) => {
@@ -3019,9 +3020,9 @@ export function elaborateReport(
         // universe-as-data (`El : U -> type`, where `El natcode = nat`), the computational core of induction-recursion.
         // The motive is constant (`\_. type`); the branch order is (motive, branches, subject).
         if (resultTerm.tag === 'type') {
-          const largeField = largeForms.get(enumName)
+          const largeField = enumName === null ? undefined : largeForms.get(enumName)
 
-          if (largeField !== undefined) {
+          if (enumName !== null && largeField !== undefined) {
             // the source's name, without the module scope's `__in0_0`
             const form = enumName.replace(/__in\d+_\d+$/, '')
 

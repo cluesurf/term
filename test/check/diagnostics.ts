@@ -136,7 +136,8 @@ test greets
       text <hi>
 `
   const unit = readable(source)
-  const out = compile({ file: '/gate/test/greet.tree', text: unit.text }, {})
+  // with the resolver `term test` compiles it with: a `want` that compares two values loads the exception it raises
+  const out = compile({ file: '/gate/test/greet.tree', text: unit.text }, { resolve: projectResolver(TERM) })
   const first = out.ok ? undefined : out.diagnostics[0]
   const placed = first ? unit.place(first) : undefined
 

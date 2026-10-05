@@ -33,7 +33,7 @@ export type Source = { file: string; text: string; shadowed?: string }
 // There is ONE parser for `.tree` in this codebase. The cost that motivated the scan is paid back by `makeParseMemo`
 // below: the dependency walk, the template scan and the mill all take their tree from the same memo, so a module is
 // parsed once per build instead of the two or three times it was before.
-type ImportScan = {
+export type ImportScan = {
   paths: string[]
   hasZone: boolean
   // a top-level web route (`hook /path`), whose lowering calls the route runtime (ROUTE_RUNTIME_MODULE)
@@ -261,6 +261,9 @@ export function collectModules(
   // the build's shared parse memo. Passing the compile's own means each module is parsed once for the whole build
   // rather than once here and again in the mill. Omitted (the editor and the tests), a private one is made.
   parsed: ParseMemo = makeParseMemo(),
+  // where a module's import scan comes from: the build cache's (`CompileCache.scanned`), so a module whose text is
+  // unchanged is not parsed to find its loads. Omitted, it is computed here
+  scanOf: (source: Source, compute: () => ImportScan) => ImportScan = (_source, compute) => compute(),
 ): { sources: Source[]; diagnostics: Diagnostic[]; scope: ImportScope } {
   const diagnostics: Diagnostic[] = []
   const ordered: Source[] = []
@@ -277,10 +280,11 @@ export function collectModules(
 
     // discover dependencies from the module's parse tree. A module that does not parse contributes no dependencies:
     // its own diagnostics are raised where it is compiled, and guessing at its imports here would only bury them.
-    const tree = parsed(source)
-    const scan: ImportScan = tree.ok
-      ? scanImports(tree.tree)
-      : { paths: [], hasZone: false, hasRoute: false, finds: [] }
+    const scan: ImportScan = scanOf(source, () => {
+      const tree = parsed(source)
+
+      return tree.ok ? scanImports(tree.tree) : { paths: [], hasZone: false, hasRoute: false, finds: [] }
+    })
     const paths = scan.paths
     const own = {
       finds: new Map<string, string[]>(),

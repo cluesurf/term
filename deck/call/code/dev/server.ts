@@ -12,7 +12,7 @@ import { readFileSync, realpathSync } from 'fs'
 import { compile } from '@term/make/code/compile/compile'
 import { hashText } from '@term/make/code/term/hash'
 import { projectResolver } from '@term/call/code/make'
-import { projectCache } from '@term/call/code/cache-store'
+import { processCache, processParse } from '@term/call/code/cache-store'
 import { findProjectRoot } from '@term/call/code/boot'
 import { projectLeanOf, projectRoleOf } from '@term/call/code/role-of'
 import type { NativeEnv } from '@term/make/code/compile/native'
@@ -78,7 +78,7 @@ export function startDevServer(options: DevOptions): DevServer {
   // the graph is a value (deck/make/code/dev/module-graph.tree): every change hands back the next one
   let graph = makeModuleGraph()
   const clients = new Set<SSEStreamingApi>()
-  const cache = projectCache(projectRoot)
+  const cache = processCache(projectRoot)
 
   let clock = 1
 
@@ -91,7 +91,7 @@ export function startDevServer(options: DevOptions): DevServer {
     // longhand (guides: commands/feed, 2026-10-04)
     const result = compile(
       { file: entryFile, text: readFileSync(entryFile, 'utf8') },
-      { resolve, cache, modules: urlForFile, roleOf: projectRoleOf(projectRoot), leanOf: projectLeanOf(projectRoot) },
+      { resolve, cache, parsed: processParse(), modules: urlForFile, roleOf: projectRoleOf(projectRoot), leanOf: projectLeanOf(projectRoot) },
     )
 
     if (!result.ok) {

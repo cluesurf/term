@@ -101,15 +101,17 @@ function guard(group: string[], numbers: number[]): { lines: string[]; from: num
   const conditionFrom = inline ? [line] : numbers.slice(1)
 
   const failOn = mode === 'miss' ? 'hook hold' : 'hook miss'
-  const compared = comparison(inline ?? group.slice(1).join('\n'))
+  const compared = comparison(
+    inline
+      ? [{ text: inline, from: line }]
+      : group.slice(1).map((text, at) => ({ text, from: numbers[at + 1]! })).filter(row => !blank(row.text)),
+  )
 
   if (compared) {
     const left = `want-left-${line + 1}`
     const right = `want-right-${line + 1}`
-
-    const lines = [
-      ...saveOf(left, compared.left),
-      ...saveOf(right, compared.right),
+    const saved = [...saveOf(left, compared.left, line), ...saveOf(right, compared.right, line)]
+    const rest = [
       '  fork test',
       '    hook test',
       `      ${compared.head}`,
@@ -122,7 +124,11 @@ function guard(group: string[], numbers: number[]): { lines: string[]; from: num
       `        bind right, read ${right}`,
     ]
 
-    return { lines, from: lines.map(() => line) }
+    // each value's lines keep their own source line, so an error inside a value is placed where it was written
+    return {
+      lines: [...saved.map(row => row.text), ...rest],
+      from: [...saved.map(row => row.from), ...rest.map(() => line)],
+    }
   }
 
   return {
@@ -148,12 +154,13 @@ const COMPARISONS = new Set(['is-equal', 'is-unequal', 'is-above', 'is-below', '
 //
 // The comparison is its word (`is-equal a, b`) or, in longhand, `call is-equal` with the two values on the lines under
 // it. A value is the lines it was written on, one or several, dedented
-function comparison(text: string): { head: string; left: string[]; right: string[] } | undefined {
+type Row = { text: string; from: number }
+
+function comparison(rows: Row[]): { head: string; left: Row[]; right: Row[] } | undefined {
   // the condition's lines at their own indent, so the comparison is a top-level group
-  const rows = text.split('\n').filter(row => !blank(row))
-  const base = Math.min(...rows.map(indentOf))
-  const flat = rows.map(row => row.slice(base))
-  const source = flat.join('\n')
+  const base = Math.min(...rows.map(row => indentOf(row.text)))
+  const flat = rows.map(row => ({ text: row.text.slice(base), from: row.from }))
+  const source = flat.map(row => row.text).join('\n')
   const parsed = parseTolerant({ file: 'want.tree', text: source })
 
   if (parsed.diagnostics.length > 0 || parsed.tree.nodes.length !== 1) {
@@ -175,32 +182,39 @@ function comparison(text: string): { head: string; left: string[]; right: string
 
   // inline, the pieces are cut at the commas. Stacked, each value starts at a line one level in and holds the deeper
   // lines after it
-  const pieces: string[][] = []
+  // an inline value is a piece of the `want` line, and a stacked one is lines of its own, kept as written
+  const pieces: Row[][] = []
 
   if (flat.length === 1) {
-    pieces.push(...inlineArguments(source).map(piece => [piece]))
+    pieces.push(...inlineArguments(source).map(piece => [{ text: piece, from: flat[0]!.from }]))
   } else {
     for (const row of flat.slice(1)) {
-      if (indentOf(row) === 2) {
-        pieces.push([row.slice(2)])
-      } else if (indentOf(row) > 2 && pieces.length > 0) {
-        pieces[pieces.length - 1]!.push(row.slice(2))
+      if (indentOf(row.text) === 2) {
+        pieces.push([{ text: row.text.slice(2), from: row.from }])
+      } else if (indentOf(row.text) > 2 && pieces.length > 0) {
+        pieces[pieces.length - 1]!.push({ text: row.text.slice(2), from: row.from })
       } else {
         return undefined
       }
     }
   }
 
-  if (pieces.length !== 2 || !pieces.every((piece, at) => readsAs(piece, values[at]!))) {
+  const stacked = flat.length > 1
+
+  if (pieces.length !== 2 || !pieces.every((piece, at) => readsAs(piece, stacked, values[at]!))) {
     return undefined
   }
 
   return { head: first === 'call' ? `call ${word}` : word, left: pieces[0]!, right: pieces[1]! }
 }
 
-// `save <name>` of a value: on its line when the value is one line, else the value's lines under it
-function saveOf(name: string, value: string[]): string[] {
-  return value.length === 1 ? [`  save ${name}, ${value[0]}`] : [`  save ${name}`, ...value.map(row => `    ${row}`)]
+// `save <name>` of a value: on its line when it was written inline, else the value's own lines under it, each the
+// text the person wrote at another indent, so a diagnostic on one is placed back on its line and column. The `save`
+// line itself is placed on the `want`
+function saveOf(name: string, value: Row[], want: number, stacked = value.length > 1 || value[0]!.from !== want): Row[] {
+  return stacked
+    ? [{ text: `  save ${name}`, from: want }, ...value.map(row => ({ text: `    ${row.text}`, from: row.from }))]
+    : [{ text: `  save ${name}, ${value[0]!.text}`, from: want }]
 }
 
 // the text after the first word of a one-line call, cut at its top-level commas: outside parentheses, text and braces
@@ -248,8 +262,9 @@ function inlineArguments(line: string): string[] {
 }
 
 // does `save x` of a piece hold, beside `x`, exactly the node `want`
-function readsAs(piece: string[], want: Node): boolean {
-  const parsed = parseTolerant({ file: 'want.tree', text: saveOf('x', piece).map(row => row.slice(2)).join('\n') })
+function readsAs(piece: Row[], stacked: boolean, want: Node): boolean {
+  const written = saveOf('x', piece, -1, stacked).map(row => row.text.slice(2))
+  const parsed = parseTolerant({ file: 'want.tree', text: written.join('\n') })
   const saved = parsed.diagnostics.length === 0 ? parsed.tree.nodes[0]?.nodes.slice(2) : undefined
 
   return saved?.length === 1 && shapeOf(saved[0]!) === shapeOf(want)

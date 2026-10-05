@@ -494,6 +494,69 @@ ${decodes(`      call el
   ok('small: a recursive universe of codes still decodes (el (listcode natcode) == nat)', result.ok, result.codes)
 }
 
+// ---- 4. proof irrelevance holds for a truncation's constructor at its own arity, and nowhere past it ----
+// `mark prop` makes any two `wrap x` equal. The eliminator's computing rule applies `wrap x` to a motive and branches,
+// and then the LAST argument is a branch: `out1 (wrap true)` (branch \v. true) and `out2 (wrap true)` (branch \v. false)
+// were convertible until 2026-10-05, though in every model of the eliminator they are true and false.
+const TRUNCATION = `${TYPES}
+form trunc
+  mark prop
+  case wrap
+    link v, like bool
+
+task out1
+  take t, like trunc
+  like bool
+  fork case, read t
+    case wrap
+      send back
+        make true
+
+task out2
+  take t, like trunc
+  like bool
+  fork case, read t
+    case wrap
+      send back
+        make false
+`
+
+// `make wrap / bind v / make <v>`, its first line indented `at` spaces
+const wrapped = (v: string, at = 6): string =>
+  [`make wrap`, `  bind v`, `    make ${v}`].map(line => ' '.repeat(at) + line).join('\n')
+
+{
+  const result = compiles(`${TRUNCATION}
+rule irrelevant
+  show hold
+    call is-equal
+${wrapped('true')}
+${wrapped('false')}
+  calm hold
+`)
+
+  ok('a truncation is irrelevant: wrap true == wrap false', result.ok, result.codes)
+}
+
+{
+  const result = compiles(`${TRUNCATION}
+rule past-the-arity
+  show hold
+    call is-equal
+      call out1
+${wrapped('true', 8)}
+      call out2
+${wrapped('true', 8)}
+  calm hold
+`)
+
+  ok(
+    'and only at its arity: out1 (wrap true) == out2 (wrap true) is refused',
+    !result.ok && result.codes.includes('invalid-proof: this proof does not establish the equality'),
+    result.codes,
+  )
+}
+
 console.log(`\nparadox: ${pass} pass, ${fail} fail`)
 
 if (fail > 0) {

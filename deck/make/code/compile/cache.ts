@@ -70,6 +70,22 @@ function readEntry<T>(stored: string | undefined): T | undefined {
   }
 }
 
+// A stored import scan, read back as it was built. JSON writes an `undefined` in an array as `null`, and a scan's
+// `aliases` holds `undefined` for every `find` with no `name`, so read back plainly each one became an alias called
+// `null` and the module's imports bound nothing (`the name "replace" is not defined`, found by the dev-loop bench on
+// 2026-10-05). A scan holds no `null` of its own, so every one is an `undefined` that was written
+function readScan<T>(stored: string | undefined): T | undefined {
+  if (stored === undefined) {
+    return undefined
+  }
+
+  try {
+    return JSON.parse(stored, (_key, value: unknown) => (value === null ? undefined : value)) as T
+  } catch {
+    return undefined
+  }
+}
+
 // THE CONTENT HASH IS TERM: `hashText` is deck/make/code/term/hash.tree, the first compiler module switched to its
 // port (self-hosting-0018, 2026-10-02). The TypeScript original was deleted in the same change, and every importer
 // reaches the emitted module through the `host/port/*` fallback in tsconfig.json (task/port-build.ts writes it).
@@ -83,6 +99,42 @@ function readEntry<T>(stored: string | undefined): T | undefined {
 // with `ab` + `c`). Use for any composite key.
 export function hashFields(fields: string[]): string {
   return hashText(fields.map(f => `${f.length}:${f}`).join(''))
+}
+
+// THE HASH OF A MODULE'S TEXT, ONCE PER PROCESS. Every compile keys its graph and each module's entries by the hash of
+// each text, and a dev loop compiles the same closure again on every edit: `hashText` walked the whole closure twice a
+// compile, 38 ms a megabyte. The memo is keyed by the text itself, which the engine hashes natively and compares by
+// length first, so a text read again from disk with the same content is a hit. Bounded by the bytes it holds.
+const TEXT_HASH_BYTES = 64 * 1024 * 1024
+const textHashes = new Map<string, string>()
+let textHashBytes = 0
+
+export function contentHash(text: string): string {
+  const known = textHashes.get(text)
+
+  if (known !== undefined) {
+    textHashes.delete(text)
+    textHashes.set(text, known)
+
+    return known
+  }
+
+  const hash = hashText(text)
+  textHashes.set(text, hash)
+  textHashBytes += text.length
+
+  while (textHashBytes > TEXT_HASH_BYTES) {
+    const oldest = textHashes.keys().next()
+
+    if (oldest.done) {
+      break
+    }
+
+    textHashes.delete(oldest.value)
+    textHashBytes -= oldest.value.length
+  }
+
+  return hash
 }
 
 // the milled output of one module: a program, or the diagnostics that stopped it
@@ -143,6 +195,7 @@ export const OUTPUT_CACHE_CAP = 32
 export class CompileCache {
   private readonly mills = new Map<string, MilledUnit>()
   private readonly outputs = new Map<string, unknown>()
+  private readonly scans = new Map<string, unknown>()
   // counters for observability (and tests): how often each level was reused vs rebuilt, split by tier
   hits = 0
   misses = 0
@@ -176,7 +229,7 @@ export class CompileCache {
     text: string,
     build: () => MilledUnit,
   ): MilledUnit {
-    const key = hashFields([this.versionFor('mill'), file, hashText(text)])
+    const key = hashFields([this.versionFor('mill'), file, contentHash(text)])
     const cached = this.mills.get(key)
 
     if (cached) {
@@ -204,6 +257,42 @@ export class CompileCache {
     this.store?.save('mill', key, JSON.stringify(fresh, storeBigint))
 
     return cloneUnit(fresh)
+  }
+
+  // what a module's text imports (its `load` lines), for the module walk. A module whose text is unchanged is then
+  // not parsed at all to find its dependencies, in this process or the next: the walk parsed every module of the
+  // closure on every compile, 226 ms of a 1.2 s rebuild of a 40-module app, even when every mill entry hit. Stored
+  // beside the mill entries, under the mill kind's version (whose scope holds the parser and `load.ts`). The value
+  // is read, never changed, so a hit is handed back as it is
+  scanned<T>(file: string, text: string, build: () => T): T {
+    const key = hashFields([this.versionFor('mill'), 'scan', file, contentHash(text)])
+    const cached = this.scans.get(key) as T | undefined
+
+    if (cached !== undefined) {
+      this.hits++
+      touch(this.scans, key, cached)
+
+      return cached
+    }
+
+    const stored = readScan<T>(this.store?.load('mill', key))
+
+    if (stored !== undefined) {
+      this.scans.set(key, stored)
+      evictTo(this.scans, this.millCap)
+      this.diskHits++
+
+      return stored
+    }
+
+    this.misses++
+
+    const fresh = build()
+    this.scans.set(key, fresh)
+    evictTo(this.scans, this.millCap)
+    this.store?.save('mill', key, JSON.stringify(fresh, storeBigint))
+
+    return fresh
   }
 
   // the whole compiled output for a graph key. Looks in memory, then the store, then builds. The value must be

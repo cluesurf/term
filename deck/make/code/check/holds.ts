@@ -43,7 +43,7 @@ import {
 } from '@term/make/code/check/refine'
 import { checkGram, gramKey } from '@term/make/code/check/certificate'
 import type { Fact } from '@term/make/code/check/product'
-import { budgetSpent, fromNumbers, openBudget, productProfile, productProves } from '@term/make/code/check/product'
+import { budgetSpent, fromNumbers, openBudget, productProfile, productProves, workSpent } from '@term/make/code/check/product'
 import {
   positiveEverywhere as sturmPositiveEverywhere,
   nonNegativeEverywhere as sturmNonNegativeEverywhere,
@@ -640,7 +640,7 @@ const PROFILE_GOALS = typeof process !== 'undefined' && Boolean(process.env?.TER
 // THE BUDGET). Set from the library: the costliest proof measured on 2026-10-05 is in
 // note/term/handoff-math-and-proof.md, and this is far above it, so it costs no proof there and stops a refusal where
 // one used to search for half an hour. `TERM_PROOF_BUDGET=<units>` changes it for one run (`Infinity` removes it)
-const PROOF_BUDGET_UNITS = Infinity
+const PROOF_BUDGET_UNITS = 1e10
 
 // read per goal, so a run (or a test) may set it between compiles
 function proofBudget(): number {
@@ -2727,6 +2727,13 @@ function citedFacts(
   const rule = theorems.get(name)
   const how = provenTheorems.get(name)
 
+  // separate compilation hands a dependent only a rule's signature: its hypotheses and goal stay in its own unit
+  if (rule?.stub) {
+    return refuse(
+      'it was compiled separately, and this build holds only its signature, not its hypotheses and goal. Build the two files together to cite it',
+    )
+  }
+
   if (!rule || !how) {
     return refuse(
       'it is not a rule proven above this one by the arithmetic provers. A rule may cite only a rule proven earlier in the program',
@@ -4429,6 +4436,16 @@ function walkHolds(
         for (const step of theorem ? statement.proof ?? [] : []) {
           if (step.head === 'cite' && step.arg && theorems.has(step.arg)) {
             given = [...given, ...citedFacts(step.arg, given, walk, statement.span)]
+          } else if (step.head === 'cite' && step.arg && !(statement.expr.form === 'binary' && statement.expr.op === '==')) {
+            // the kernel pass reads a step only under an equality, where it refuses a name that names nothing. Under any
+            // other goal nothing else would, and a cite that silently did nothing reads as a proof that used it
+            walk.diagnostics.push(
+              diagnose('unproven', {
+                file,
+                span: statement.span,
+                message: `cite ${step.arg}: there is no rule of that name in this build`,
+              }),
+            )
           }
         }
 
@@ -4448,7 +4465,7 @@ function walkHolds(
           console.error(
             `profile ${statement.name}: ${verdict} in ${Date.now() - profiled.at} ms, ${spent('refutes')} searches, ` +
               `${spent('rows')} rows, ${spent('cells')} cells, ${spent('floatDeclined')} declined in floating point, ` +
-              `${spent('exactPivots')} exact pivots, ${spent('exactWork')} work, build ${spent('buildMs')} ms, exact ${spent('exactMs')} ms`,
+              `${spent('exactPivots')} exact pivots, ${spent('exactWork')} work, ${workSpent()} spent, build ${spent('buildMs')} ms, exact ${spent('exactMs')} ms`,
           )
         }
 
@@ -4511,9 +4528,11 @@ function walkHolds(
             diagnose('unchecked-hold', {
               file,
               span: statement.span,
-              message: owed
-                ? `${owed}, and it is outside what the provers decide`
-                : 'this hold is outside the decidable linear fragment: it was neither proven nor refuted, and may still be true',
+              message: stopped
+                ? `${owed ? `${owed}: it` : 'this hold'} was not proven within the proof budget (${budget} units of exact search): the search stopped, so it may still be true. Split it into rules and cite them, or raise TERM_PROOF_BUDGET for one run`
+                : owed
+                  ? `${owed}, and it is outside what the provers decide`
+                  : 'this hold is outside the decidable linear fragment: it was neither proven nor refuted, and may still be true',
             }),
           )
         } else if (verdict === false) {

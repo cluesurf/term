@@ -152,6 +152,50 @@ function camel(name: string): string {
   return escape(camelize(name))
 }
 
+// A TASK'S INPUT IS LABELED BY ITS NAME, as Swift code names arguments, so Swift calling a Term task writes
+// `stepUp(value: 2, step: 3)` the way Kotlin may and the way Term does. Every input was `_` until 2026-10-05, so Swift
+// passed them by position (guides: language/tasks). A label may be any keyword but `inout`, `var` and `let`, which
+// stay unlabeled. Undefined means no label
+function label(name: string): string | undefined {
+  const word = camelize(name)
+
+  return word === 'inout' || word === 'var' || word === 'let' ? undefined : word
+}
+
+// one input as a declaration writes it: `step: Int`, or `self slf: Counter` where the name it is read by inside
+// differs from its label
+function labeled(name: string, rest: string): string {
+  const outer = label(name)
+  const inner = vname(name)
+
+  return outer === undefined ? `_ ${inner}: ${rest}` : outer === inner ? `${inner}: ${rest}` : `${outer} ${inner}: ${rest}`
+}
+
+// an input's `fall` default as Swift writes it, ` = 1`, so Swift calling a Term task may leave it out as TypeScript
+// and Kotlin callers may. Only a literal: a default that reads anything else is filled at each call by the checker,
+// as it always is inside Term, and Swift is given none rather than an expression it might read differently
+function defaultOf(fallback: Expression | undefined): string {
+  switch (fallback?.form) {
+    case 'integer':
+      return ` = ${String(fallback.value)}`
+    case 'float':
+      return Number.isFinite(fallback.value) ? ` = ${String(fallback.value).includes('.') || String(fallback.value).includes('e') ? String(fallback.value) : `${fallback.value}.0`}` : ''
+    case 'boolean':
+      return ` = ${fallback.value}`
+    case 'string':
+      return /^[\x20-\x7e]*$/.test(fallback.value) && !/["\\]/.test(fallback.value) ? ` = "${fallback.value}"` : ''
+    default:
+      return ''
+  }
+}
+
+// one argument as a call writes it, under its input's label
+function labeledArgument(name: string | undefined, argument: string): string {
+  const outer = name === undefined ? undefined : label(name)
+
+  return outer === undefined ? argument : `${outer}: ${argument}`
+}
+
 // type / variant names are capitalized, so they can never collide with a (lowercase) keyword
 // The text operations by code point (note/term/stdlib/semantics.md), over unicodeScalars. Swift's String counts
 // grapheme clusters and its `range(of:)` and `==` match canonically equivalent text, so nothing here uses either:
@@ -1015,6 +1059,15 @@ export function emitSwift(
       )
       .map(n => [n.name, n.params.map(p => p.type)]),
   )
+  // each task's input names, which label its arguments at every call (`labeled`, `labeledArgument`)
+  const functionLabels = new Map<string, string[]>(
+    program
+      .filter(
+        (n): n is Extract<Statement, { form: 'function' }> =>
+          n.form === 'function',
+      )
+      .map(n => [n.name, n.params.map(p => p.name)]),
+  )
 
   // generic tasks with a type parameter that no parameter mentions (`make-sorted-map` names `v` only in its result):
   // the call alone cannot tell Swift what it is, so a binding of one says it (below)
@@ -1706,7 +1759,8 @@ export function emitSwift(
           `_ ${camel(p.name)}: ${swiftType(subSelf(p.type, target))}`,
       )
 
-    const callArgs = ['self', ...restNames].join(', ')
+    // the free task takes its inputs labeled (`labeled`), the receiver first
+    const callArgs = ['self', ...restNames].map((argument, i) => labeledArgument(fn.params[i]?.name, argument)).join(', ')
     const invoke = throwingFns.has(fn.name)
       ? `try! ${camel(fn.name)}(${callArgs})`
       : `${camel(fn.name)}(${callArgs})`
@@ -2082,6 +2136,18 @@ export function emitSwift(
                 : emptyOf(missing),
             )
           }
+        }
+
+        // a call to a task names each argument by its input, as the task declares them (`labeled`)
+        const labels =
+          node.callee.form === 'variable' && !boundNames.has(node.callee.name)
+            ? functionLabels.get(node.callee.name)
+            : undefined
+
+        if (labels) {
+          renderedArgs.forEach((argument, i) => {
+            renderedArgs[i] = labeledArgument(labels[i], argument)
+          })
         }
 
         // an async task called WITHOUT `wait true` runs on its own and the caller goes on, as a promise nobody awaits
@@ -3207,10 +3273,13 @@ export function emitSwift(
             const how = lend?.get(i)
 
             if (how && p.type?.kind === 'array') {
-              return `_ ${vname(p.name)}: ${how === 'write' ? 'inout ' : ''}[${swiftElement(p.type)}]`
+              return labeled(p.name, `${how === 'write' ? 'inout ' : ''}[${swiftElement(p.type)}]`)
             }
 
-            return `_ ${vname(p.name)}: ${p.type?.kind === 'function' && escaping.has(p.name) ? '@escaping ' : ''}${swiftType(p.type)}`
+            return labeled(
+              p.name,
+              `${p.type?.kind === 'function' && escaping.has(p.name) ? '@escaping ' : ''}${swiftType(p.type)}${defaultOf(p.fallback)}`,
+            )
           })
           .join(', ')
         const previousPlain = plainNames

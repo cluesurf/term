@@ -55,6 +55,8 @@ import {
 } from '@term/make/code/compile/cache'
 import { hashText } from '@term/make/code/term/hash'
 import { CACHE_SCOPE } from '@term/make/code/compile/cache-scope.generated'
+import { makeParseMemo } from '@term/make/code/compile/load'
+import type { ParseMemo } from '@term/make/code/compile/load'
 
 // How many compiler versions keep their entries. The current one plus one, so alternating between two binaries (a
 // rebuilt `host/line.js` and the one before it, or two branches) does not cold-start either. A third is already
@@ -317,6 +319,34 @@ export function enforceBudget(
   return { removed, freed }
 }
 
+// THE BUDGET IS HELD ONCE AN HOUR, NOT ONCE A PROCESS. Enforcing it walks and stats every entry in the namespace,
+// and every `term` command paid that on its first cache access: 44 ms for the machine-wide mill namespace of 7,140
+// entries (2026-10-05), on a dev rebuild whose cache work is otherwise a few milliseconds. An hour of builds cannot
+// carry a namespace far past a budget of gigabytes, and the next sweep brings it back. The stamp is a file in the
+// namespace whose mtime is the last sweep; a stamp that cannot be read or written means the sweep runs
+export const BUDGET_INTERVAL_MS = 60 * 60 * 1000
+
+export function budgetDue(dir: string, kind: string, slug: string, now: number = Date.now()): boolean {
+  const stamp = path.join(dir, kind, slug, '.budget')
+
+  try {
+    if (now - lstatSync(stamp).mtimeMs < BUDGET_INTERVAL_MS) {
+      return false
+    }
+  } catch {
+    // no stamp yet: the first sweep of this namespace
+  }
+
+  try {
+    mkdirSync(path.dirname(stamp), { recursive: true })
+    writeFileSync(stamp, '')
+  } catch {
+    // an unwritable cache folder sweeps every time, as it always did
+  }
+
+  return true
+}
+
 function removeQuietly(target: string): boolean {
   try {
     rmSync(target, { recursive: true, force: true })
@@ -365,7 +395,10 @@ export function diskCacheStore(
 
     try {
       reclaimStaleVersions(dir, kind, slugFor(kind))
-      enforceBudget(dir, kind, slugFor(kind))
+
+      if (budgetDue(dir, kind, slugFor(kind))) {
+        enforceBudget(dir, kind, slugFor(kind))
+      }
     } catch {
       // housekeeping must never fail a build
     }
@@ -568,7 +601,17 @@ function compilerSourceHash(kind?: string): string {
 
 // Fall back to hashing the running bundle, for an installed package with no sources beside it. `.mjs` as well as
 // `.js`: a build worker's entry is a temp `seed-build-worker-<pid>.mjs`, and a `.js`-only test skipped it.
+// Memoized: every kind falls back to it on an install with no sources, and it read and hashed the whole bundle once per
+// kind, 3.6 MB at 38 ms a megabyte each time
+let runningHash: string | undefined
+
 function runningFileHash(): string {
+  runningHash ??= hashRunningFile()
+
+  return runningHash
+}
+
+function hashRunningFile(): string {
   const candidates = [process.argv[1], fileURLToPath(import.meta.url)]
 
   for (const file of candidates) {
@@ -688,6 +731,30 @@ export function sharedCacheStore(
 //
 // `version` is now per KIND. A build worker is handed the whole map (`compilerVersions()`), because it cannot work
 // any of them out for itself, and because a parent and a worker that computed them separately could disagree.
+// ONE CACHE PER PROJECT FOR THE LIFE OF THE PROCESS, and one parse memo, for every compile a dev loop runs. `term boot`
+// compiled the client bundle with a fresh `projectCache` on every rebuild, so its in-memory layer was thrown away each
+// time and every module came back from disk (gunzip and JSON.parse); `term boot` and `term feed` also made a new parse
+// memo per compile, so a template-bearing module was parsed again on every edit. A long-lived process asks here
+const processCaches = new Map<string, CompileCache>()
+let processParseMemo: ParseMemo | undefined
+
+export function processCache(projectRoot: string): CompileCache {
+  let cache = processCaches.get(projectRoot)
+
+  if (!cache) {
+    cache = projectCache(projectRoot)
+    processCaches.set(projectRoot, cache)
+  }
+
+  return cache
+}
+
+export function processParse(): ParseMemo {
+  processParseMemo ??= makeParseMemo()
+
+  return processParseMemo
+}
+
 export function projectCache(
   projectRoot: string,
   version: Record<string, string> = compilerVersions(),

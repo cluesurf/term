@@ -305,7 +305,7 @@ function runSwift(): void {
   const file = join(out, 'main.swift')
   writeFileSync(
     file,
-    `${nativePrelude(program, 'swift', readRuntime)}\n${emitSwift(program)}\nfor input in [${inputs.join(', ')}] { print(try! roundLong(input), terminator: "\\u{1e}") }\n`,
+    `${nativePrelude(program, 'swift', readRuntime)}\n${emitSwift(program)}\nfor input in [${inputs.join(', ')}] { print(try! roundLong(input: input), terminator: "\\u{1e}") }\n`,
   )
 
   try {
@@ -324,7 +324,7 @@ function runSwift(): void {
   const fillFile = join(out, 'fill.swift')
   writeFileSync(
     fillFile,
-    `${nativePrelude(fill, 'swift', readRuntime)}\n${emitSwift(fill)}\nprint(try! fillRound(${JSON.stringify(FILL_GOOD)}), terminator: "\\u{1e}")\nprint(try! fillRound(${JSON.stringify(FILL_REGION)}), terminator: "\\u{1e}")\nprint(try! fillBurst(${JSON.stringify(FILL_GOOD)}), terminator: "\\u{1e}")\nprint(try! fillCaught(${JSON.stringify(FILL_GOOD)}), terminator: "\\u{1e}")\nprint(try! fillCaught(${JSON.stringify(FILL_MISSING)}), terminator: "")\n`,
+    `${nativePrelude(fill, 'swift', readRuntime)}\n${emitSwift(fill)}\nprint(try! fillRound(input: ${JSON.stringify(FILL_GOOD)}), terminator: "\\u{1e}")\nprint(try! fillRound(input: ${JSON.stringify(FILL_REGION)}), terminator: "\\u{1e}")\nprint(try! fillBurst(input: ${JSON.stringify(FILL_GOOD)}), terminator: "\\u{1e}")\nprint(try! fillCaught(input: ${JSON.stringify(FILL_GOOD)}), terminator: "\\u{1e}")\nprint(try! fillCaught(input: ${JSON.stringify(FILL_MISSING)}), terminator: "")\n`,
   )
 
   try {

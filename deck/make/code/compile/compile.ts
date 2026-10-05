@@ -18,6 +18,7 @@ import { mill } from '@term/make/code/compile/mill'
 import { checkView, lowerView } from '@term/make/code/compile/view'
 import { checkMillDefinition } from '@term/make/code/compile/mill-check'
 import { resolve } from '@term/make/code/check/resolve'
+import { citedRules } from '@term/make/code/check/cite-roots'
 import { check } from '@term/make/code/check/infer'
 import { checkAsyncArguments, resolveAsync } from '@term/make/code/check/async-resolve'
 import { checkDockShadow } from '@term/make/code/check/dock-shadow'
@@ -109,6 +110,7 @@ import type { ImportScope, ParseMemo } from '@term/make/code/compile/load'
 import type { Resolver } from '@term/make/code/compile/load'
 import { hashText } from '@term/make/code/term/hash'
 import type { CompileCache } from '@term/make/code/compile/cache'
+import { contentHash } from '@term/make/code/compile/cache'
 import type {
   Program,
   Statement,
@@ -311,8 +313,14 @@ export function compile(
   // right for one compile and ruinous for three thousand: see makeParseMemo in compile/load.ts.
   const parsed = options?.parsed ?? makeParseMemo()
 
+  const scanCache = options?.cache
   const collected = options?.resolve
-    ? collectModules(source, options.resolve, parsed)
+    ? collectModules(
+        source,
+        options.resolve,
+        parsed,
+        scanCache ? (unit, compute) => scanCache.scanned(unit.file, unit.text, compute) : undefined,
+      )
     : undefined
   const sources = collected ? collected.sources : [source]
 
@@ -344,7 +352,7 @@ export function compile(
         const role = options?.roleOf?.(unit.file) ?? ''
         const lean = options?.leanOf?.(unit.file) ? '#lean' : ''
 
-        return `${unit.file}@${hashText(unit.text)}${role ? `#${role}` : ''}${lean}`
+        return `${unit.file}@${contentHash(unit.text)}${role ? `#${role}` : ''}${lean}`
       })
       .join('|') +
     (options?.modules ? '|modules' : '') +
@@ -411,9 +419,16 @@ export function compile(
       const unitLean = options?.leanOf?.(unit.file) ?? false
       const leanKey = unitLean ? 'lean:' : ''
 
+      // THE TEMPLATE SET JOINS ONLY THE KEY OF A UNIT THAT CAN USE IT: one with a `fuse` (or a document, which
+      // `checkView` hands the templates). Expansion reads another module's templates at a `fuse` and nowhere else
+      // (compile/template.ts, `expandFuse`). It was in every unit's key, so editing any file that defines a `tree`
+      // missed the mill entry of every module in the closure, and one standard library module had as many keys as
+      // there are closures it sits in, which fragmented the machine-wide mill cache
+      const usesTemplates = unitRole === 'view' || /\bfuse\b/.test(unit.text)
+
       const milled = cache
         ? cache.milledUnit(
-            `${leanKey}${unit.file}\u0000${templateKey}\u0000${unitRole ?? ''}`,
+            `${leanKey}${unit.file}\u0000${usesTemplates ? templateKey : ''}\u0000${unitRole ?? ''}`,
             unit.text,
             () => millUnit(unit, parsed, templates, unitRole, unitLean),
           )
@@ -798,6 +813,13 @@ export function compileProgram(
       for (const helper of ZONE_RENDER_RUNTIME) {
         pruneRoots.add(helper)
       }
+    }
+
+    // a rule only CITED by a kept rule is referenced by no call, and must survive the shake (check/cite-roots.ts)
+    const cited = citedRules(program, pruneRoots)
+
+    if (cited.size > 0) {
+      pruneRoots = new Set([...pruneRoots, ...cited])
     }
 
     program = pruneToReachable(program, pruneRoots)

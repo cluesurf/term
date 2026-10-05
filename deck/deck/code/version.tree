@@ -1,0 +1,458 @@
+# Versions and what a manifest may ask of one: `1.2.3`, `1.2.3-rc.1+build.4`, and the holds `1.2.3` (exact), `1.x.x` /
+# `1.2.x` (wildcard), `0.14.x|0.15.x` (a union of wildcards), `1.0.0..2.0.0` (a band, the head excluded), `^1.2.3` and
+# `~1.2.3` (npm's caret and tilde, each a band). Ordering is semver 2.0's, a build suffix kept and ignored.
+#
+# Ported from deck/deck/code/code.ts (self-hosting, 2026-10-05), which is now its face. A field the TypeScript left
+# out is written here as nothing: `<>` for no prerelease or build, `-1` for a wildcard's open minor or patch. The face
+# turns those back into absent fields. The two patterns are read by hand rather than by a regex, the same strings
+# accepted, so the module needs no regex runtime on a native backend.
+
+load @term/base/list
+  find list
+
+load @term/base/text
+  find split
+  find trim
+  find char-count
+  find substring
+  find index-of
+  find starts-with
+
+load @term/base/text/number
+  find parse-integer
+
+load @term/base/ordering
+  find ordering
+  find from-texts
+
+form code
+  link major, like number
+  link minor, like number
+  link patch, like number
+  # `<>` when there is none
+  link prerelease, like text
+  link build, like text
+
+form code-hold
+  case exact
+    link code, like code
+  # `-1` for a part the wildcard leaves open
+  case wild
+    link major, like number
+    link minor, like number
+    link patch, like number
+  # from `base` up to and not including `head`
+  case band
+    link base, like code
+    link head, like code
+  # any of the wildcards
+  case test
+    link list, like list, like code-hold
+
+task code-of
+  take major, like number
+  take minor, like number
+  take patch, like number
+  like code
+
+  back
+    make code
+      bind major, major
+      bind minor, minor
+      bind patch, patch
+      bind prerelease, <>
+      bind build, <>
+
+# every letter a digit, and at least one
+task is-digits
+  take value, like text
+  like boolean
+
+  fork test, is-equal(value, <>)
+    hold
+      back false
+  walk split(value, <>)
+    take letter
+    fork test, is-below(index-of(<0123456789>, letter), 0)
+      hold
+        back false
+
+  back true
+
+# a build's letters: digits, ASCII letters, `.` and `-`, at least one
+task is-build-text
+  take value, like text
+  like boolean
+
+  fork test, is-equal(value, <>)
+    hold
+      back false
+  walk split(value, <>)
+    take letter
+    fork test, is-below(index-of(<0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.->, letter), 0)
+      hold
+        back false
+
+  back true
+
+# a part that is digits, or `x` read as 0, as the original's `(\d+|x)`; -2 when it is neither
+task part-or-x
+  take value, like text
+  like number
+
+  fork test, is-equal(value, <x>)
+    hold
+      back 0
+  fork test, is-digits(value)
+    hold
+      back parse-integer(value)
+
+  back -2
+
+# `1.2.3`, `1.2.3-rc.1`, `1.2.3+build.4`, `1.2.3-rc.1+build.4`
+task parse-code
+  take text, like text
+  like code
+
+  save rest, text
+  save build, <>
+  host plus, index-of(text, <+>)
+  fork test, is-minimum(plus, 0)
+    hold
+      save build, substring(text, add(plus, 1), char-count(text))
+      save rest, substring(text, 0, plus)
+      fork test, not(is-build-text(build))
+        hold
+          halt <Invalid version: {text}>
+  save prerelease, <>
+  host dash, index-of(rest, <->)
+  fork test, is-minimum(dash, 0)
+    hold
+      save prerelease, substring(rest, add(dash, 1), char-count(rest))
+      save rest, substring(rest, 0, dash)
+      fork test, is-equal(prerelease, <>)
+        hold
+          halt <Invalid version: {text}>
+  host parts, split(rest, <.>)
+  fork test, not(is-equal(parts/length, 3))
+    hold
+      halt <Invalid version: {text}>
+  host first, get(parts, 0)
+  fork test, not(is-digits(first))
+    hold
+      halt <Invalid version: {text}>
+  host minor, part-or-x(get(parts, 1))
+  host patch, part-or-x(get(parts, 2))
+  fork test, or(is-below(minor, 0), is-below(patch, 0))
+    hold
+      halt <Invalid version: {text}>
+
+  back
+    make code
+      bind major, parse-integer(first)
+      bind minor, minor
+      bind patch, patch
+      bind prerelease, prerelease
+      bind build, build
+
+# `1.x.x` or `1.2.x`: the major digits, the others digits or `x`
+task parse-wild
+  take text, like text
+  like code-hold
+
+  host parts, split(text, <.>)
+  fork test, not(is-equal(parts/length, 3))
+    hold
+      halt <Invalid wildcard version: {text}>
+  host first, get(parts, 0)
+  host second, get(parts, 1)
+  host third, get(parts, 2)
+  fork test, not(is-digits(first))
+    hold
+      halt <Invalid wildcard version: {text}>
+  fork test, not(or(is-equal(second, <x>), is-digits(second)))
+    hold
+      halt <Invalid wildcard version: {text}>
+  fork test, not(or(is-equal(third, <x>), is-digits(third)))
+    hold
+      halt <Invalid wildcard version: {text}>
+  save minor, -1
+  fork test, not(is-equal(second, <x>))
+    hold
+      save minor, parse-integer(second)
+  save patch, -1
+  fork test, not(is-equal(third, <x>))
+    hold
+      save patch, parse-integer(third)
+
+  back
+    make wild
+      bind major, parse-integer(first)
+      bind minor, minor
+      bind patch, patch
+
+task parse-code-hold
+  take text, like text
+  like code-hold
+
+  # a union of wildcards: `0.14.x|0.15.x`
+  fork test, is-minimum(index-of(text, <|>), 0)
+    hold
+      host members, make list
+      walk split(text, <|>)
+        take each
+        host part, trim(each)
+        host parsed, parse-code-hold(part)
+        sift parsed
+          case wild
+            members/push(parsed)
+          miss
+            halt <Union members must be wildcard versions: {part}>
+      back
+        make test
+          bind list, members
+
+  # a band: `1.0.0..2.0.0`
+  fork test, is-minimum(index-of(text, <..>), 0)
+    hold
+      host ends, split(text, <..>)
+      fork test, not(is-equal(ends/length, 2))
+        hold
+          halt <Invalid range version: {text}>
+      back
+        make band
+          bind base, parse-code(get(ends, 0))
+          bind head, parse-code(get(ends, 1))
+
+  # a wildcard
+  fork test, is-minimum(index-of(text, <x>), 0)
+    hold
+      back parse-wild(text)
+
+  # caret, npm's rule: the left-most non-zero part is locked, and the base is the version itself
+  fork test, starts-with(text, <^>)
+    hold
+      host base, parse-code(substring(text, 1, char-count(text)))
+      save head, code-of(0, 0, add(base/patch, 1))
+      fork test, is-above(base/major, 0)
+        hold
+          save head, code-of(add(base/major, 1), 0, 0)
+        miss
+          fork test, is-above(base/minor, 0)
+            hold
+              save head, code-of(0, add(base/minor, 1), 0)
+      back
+        make band
+          bind base, base
+          bind head, head
+
+  # tilde, npm's rule: patch changes within the minor
+  fork test, starts-with(text, <~>)
+    hold
+      host base, parse-code(substring(text, 1, char-count(text)))
+      back
+        make band
+          bind base, base
+          bind head, code-of(base/major, add(base/minor, 1), 0)
+
+  back
+    make exact
+      bind code, parse-code(text)
+
+task show-code
+  take value, like code
+  like text
+
+  save shown, <{value/major}.{value/minor}.{value/patch}>
+  fork test, not(is-equal(value/prerelease, <>))
+    hold
+      save shown, <{shown}-{value/prerelease}>
+  fork test, not(is-equal(value/build, <>))
+    hold
+      save shown, <{shown}+{value/build}>
+
+  back shown
+
+# semver 2.0, section 11: identifiers left to right, numbers by value, a number below a word, words in ASCII order,
+# and a shorter list below a longer one it begins
+task compare-prerelease
+  take a, like text
+  take b, like text
+  like number
+
+  host left, split(a, <.>)
+  host right, split(b, <.>)
+  save at, 0
+  walk test
+    hook test, and(is-below(at, left/length), is-below(at, right/length))
+    hook hold
+      host x, get(left, at)
+      host y, get(right, at)
+      host x-number, is-digits(x)
+      host y-number, is-digits(y)
+      fork test, and(x-number, y-number)
+        hold
+          host difference, subtract(parse-integer(x), parse-integer(y))
+          fork test, not(is-equal(difference, 0))
+            hold
+              back difference
+        miss
+          fork test, not(is-equal(x-number, y-number))
+            hold
+              fork test, x-number
+                hold
+                  back -1
+              back 1
+          # by code point, which is the original's `<` on the ASCII a prerelease is written in
+          sift from-texts(x, y)
+            case less
+              back -1
+            case greater
+              back 1
+            miss
+      save at, add(at, 1)
+
+  back subtract(left/length, right/length)
+
+# below 0 when `a` comes first, 0 when they are the same version, above 0 when `b` does. A build suffix is ignored
+task compare-code
+  take a, like code
+  take b, like code
+  like number
+
+  fork test, not(is-equal(a/major, b/major))
+    hold
+      back subtract(a/major, b/major)
+  fork test, not(is-equal(a/minor, b/minor))
+    hold
+      back subtract(a/minor, b/minor)
+  fork test, not(is-equal(a/patch, b/patch))
+    hold
+      back subtract(a/patch, b/patch)
+  host a-pre, not(is-equal(a/prerelease, <>))
+  host b-pre, not(is-equal(b/prerelease, <>))
+  fork test, and(a-pre, not(b-pre))
+    hold
+      back -1
+  fork test, and(not(a-pre), b-pre)
+    hold
+      back 1
+  fork test, and(a-pre, b-pre)
+    hold
+      back compare-prerelease(a/prerelease, b/prerelease)
+
+  back 0
+
+task code-match
+  take value, like code
+  take hold, like code-hold
+  like boolean
+
+  sift hold
+    case exact
+      link exact-code
+      back is-equal(compare-code(value, exact-code), 0)
+    case wild
+      link wild-major
+      link wild-minor
+      link wild-patch
+      fork test, not(is-equal(value/major, wild-major))
+        hold
+          back false
+      fork test, and(is-minimum(wild-minor, 0), not(is-equal(value/minor, wild-minor)))
+        hold
+          back false
+      fork test, and(is-minimum(wild-patch, 0), not(is-equal(value/patch, wild-patch)))
+        hold
+          back false
+      back true
+    case band
+      link base
+      link head
+      back and(is-minimum(compare-code(value, base), 0), is-below(compare-code(value, head), 0))
+    case test
+      link members
+      walk members
+        take member
+        fork test, code-match(value, member)
+          hold
+            back true
+      back false
+
+# the highest version the hold allows, the first of equals as the list holds them; `found` false when none does
+form best-code
+  link found, like boolean
+  link code, like code
+
+task pick-best-code
+  take versions, like list, like code
+  take hold, like code-hold
+  like best-code
+
+  save found, false
+  save best, code-of(0, 0, 0)
+  walk versions
+    take each
+    fork test, code-match(each, hold)
+      hold
+        fork test, or(not(found), is-above(compare-code(each, best), 0))
+          hold
+            save best, each
+            save found, true
+
+  back
+    make best-code
+      bind found, found
+      bind code, best
+
+# 1 the major, 2 the minor, 3 the patch. A prerelease moves to its own release, npm's rule: `1.4.3-rc.2` to `1.4.3`
+task bump-code
+  take value, like code
+  take level, like number
+  like code
+
+  fork test, is-equal(level, 1)
+    hold
+      back code-of(add(value/major, 1), 0, 0)
+  fork test, is-equal(level, 2)
+    hold
+      back code-of(value/major, add(value/minor, 1), 0)
+  fork test, is-equal(value/prerelease, <>)
+    hold
+      back code-of(value/major, value/minor, add(value/patch, 1))
+
+  back code-of(value/major, value/minor, value/patch)
+
+# the next prerelease named `id`: `1.4.2` to `1.4.3-rc.1`, `1.4.3-rc.1` to `1.4.3-rc.2`, and one under another name
+# keeps its version and starts this one: `1.4.3-beta.4` to `1.4.3-rc.1`
+task bump-prerelease
+  take value, like code
+  take id, like text
+  like code
+
+  host next-patch, code-of(value/major, value/minor, add(value/patch, 1))
+  fork test, is-equal(value/prerelease, <>)
+    hold
+      back
+        make code
+          bind major, next-patch/major
+          bind minor, next-patch/minor
+          bind patch, next-patch/patch
+          bind prerelease, <{id}.1>
+          bind build, <>
+  save count, 1
+  host prefix, <{id}.>
+  fork test, starts-with(value/prerelease, prefix)
+    hold
+      host rest, substring(value/prerelease, char-count(prefix), char-count(value/prerelease))
+      fork test, is-digits(rest)
+        hold
+          save count, add(parse-integer(rest), 1)
+
+  back
+    make code
+      bind major, value/major
+      bind minor, value/minor
+      bind patch, value/patch
+      bind prerelease, <{id}.{count}>
+      bind build, <>

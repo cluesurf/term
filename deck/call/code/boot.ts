@@ -28,7 +28,8 @@ import { nativePrelude } from '@term/make/code/compile/native'
 import type { NativeEnv } from '@term/make/code/compile/native'
 import { hashText } from '@term/make/code/term/hash'
 import {
-  projectCache,
+  processCache,
+  processParse,
   compilerVersion,
 } from '@term/call/code/cache-store'
 import {
@@ -285,7 +286,9 @@ export async function buildClientBundle(opts: {
       { file: entry, text: readFileSync(entry, 'utf8') },
       {
         resolve,
-        cache: projectCache(projectRoot),
+        // the process's one cache and parse memo for this project, kept across rebuilds (cache-store.ts)
+        cache: processCache(projectRoot),
+        parsed: processParse(),
         env: 'browser',
         deckOf: projectDeckOf(),
         // the role and the lean surface, exactly as `term make` reads them. Without these a `mark lean` module
@@ -751,7 +754,7 @@ export async function callBoot(input: {
     // content-addressed store at `.base/@cluesurf/term/cache`: the in-memory layer survives across rebuilds in this process, and the
     // disk layer survives across runs and machines (and a remote, via pull/push above). So an unchanged module reuses
     // its parse + mill, and an unchanged graph returns its whole result instantly -- the same reuse `term make` gets.
-    const cache = projectCache(projectRoot)
+    const cache = processCache(projectRoot)
 
     // build the app ONCE: compile the entry, (re)build the client bundle + styles, bundle to ESM, and write the run
     // entry `run.mjs`. Returns its path plus whether the program is a command-line tool (top-level `hook` commands),
@@ -768,6 +771,7 @@ export async function callBoot(input: {
         {
           resolve,
           cache,
+          parsed: processParse(),
           env,
           deckOf: projectDeckOf(),
           // the role and the lean surface, as `term make` reads them (see the client build above)

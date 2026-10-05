@@ -249,20 +249,34 @@ export function defineConstant(name: string, value: Value): void {
 
 // constructors of a PROPOSITIONAL TRUNCATION (an hProp): any two applications of one are equal regardless of the proof
 // argument (proof irrelevance, "a mere proposition has at most one inhabitant"). Registered by the elaborator for a
-// truncation type's constructor; consulted by `convert`.
-const truncationConstructor = new Set<string>()
+// truncation type's constructor, WITH ITS ARITY (type arguments plus fields); consulted by `convert`. The arity matters:
+// a constructor value applied further (the eliminator's computing rule applies it to a motive and branches) is no
+// longer the proof, and its last argument is a branch, so `match (wrap t) (\v. true)` and `match (wrap t) (\v. false)`
+// were equated before 2026-10-05. Irrelevance now holds only for a spine of exactly that length (test/check/paradox.ts)
+const truncationConstructor = new Map<string, number>()
 
-export function registerTruncation(name: string): void {
-  truncationConstructor.add(name)
+export function registerTruncation(name: string, arity: number): void {
+  truncationConstructor.set(name, arity)
 }
 
 export function isTruncationConstructor(name: string): boolean {
   return truncationConstructor.has(name)
 }
 
+// THE CIRCLE's computation rules (`reduceCircle`) fire only once the circle is ENABLED, by whoever postulates its
+// signature. They used to fire on any constant spelled `circleRec` or `circleApLoop`, so a program's own task of that
+// name was rewritten against its body: `circleApLoop(1, 2, 3)` was proven equal to 3 for a body answering 0
+// (2026-10-05). The elaborator never enables it, so a program's names are only ever what they define
+let circleEnabled = false
+
+export function enableCircle(): void {
+  circleEnabled = true
+}
+
 export function resetDefinitions(): void {
   definition.clear()
   truncationConstructor.clear()
+  circleEnabled = false
 }
 
 // unfold a rigid constant that has a definition, replaying its spine onto the definition's value
@@ -892,6 +906,10 @@ export function applyValue(fun: Value, arg: Value): Value {
 // the circle higher-inductive-type reduction rules (see applyValue). Returns the reduced value, or null when the
 // application is not a complete circle redex (then applyValue extends the spine as usual).
 function reduceCircle(fun: { v: 'rigid'; name: string; spine: Elim[] }, arg: Value): Value | null {
+  if (!circleEnabled) {
+    return null
+  }
+
   const args = fun.spine.length
 
   // circleRec A b l circleBase --> b : the recursor on the point constructor returns the point image (its 2nd argument).
@@ -1194,7 +1212,7 @@ function convert(level: number, a: Value, b: Value): boolean {
     a.v === 'rigid' &&
     b.v === 'rigid' &&
     a.name === b.name &&
-    truncationConstructor.has(a.name) &&
+    truncationConstructor.get(a.name) === a.spine.length &&
     a.spine.length === b.spine.length &&
     a.spine.length >= 1
   ) {

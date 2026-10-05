@@ -404,6 +404,69 @@ ${RECURRENCE.replace('code 2\n', 'code 3\n')}${COUNT}${AT_LEAST_N}  cite doubles
   'its universal hypothesis steps-by-two is not one of this rule',
 )
 
+// a cite of a name that is no rule, under a goal that is not an equality: the kernel pass reads steps only under an
+// equality, so here nothing else would refuse it, and a step that did nothing would read as a proof that used it
+expect(
+  'a cite of a name that is no rule is refused, under an inequality too',
+  `
+rule shifted
+  mark a, like integer
+  have a-is-at-least-two
+    call is-minimum
+      read a
+      code 2
+  show hold
+    call is-minimum
+      call add
+        read a
+        code 1
+      code 3
+  cite no-such-rule
+`,
+  'cite no-such-rule: there is no rule of that name in this build',
+)
+
+// ACROSS FILES: the cited rule is in another file, loaded with `find`. The merged build's tree-shaking pruned a rule
+// that was only cited (no call reaches a rule), so the citation found nothing and was skipped in silence until
+// 2026-10-05 (check/cite-roots.ts). Here the citing rule knows a >= 1, so the cited a >= 2 must be refused by name
+{
+  const citing = (least: number): string => `load ./square
+  find square-bound
+
+rule uses-the-square
+  mark a, like integer
+  have a-is-at-least
+    call is-minimum
+      read a
+      code ${least}
+${SQUARE_GOAL}`
+  const square = { file: '/memory/code/square.tree', text: SQUARE }
+  const resolve = (path: string) => (path === './square' ? square : undefined)
+  const build = (least: number) =>
+    compile({ file: '/memory/code/base.tree', text: citing(least) }, { resolve })
+
+  const refused = build(1)
+  const messages = refused.ok ? [] : refused.diagnostics.map(d => d.message)
+
+  if (!refused.ok && messages.some(m => m.includes('cite square-bound: its hypothesis 1 does not follow'))) {
+    pass++
+    console.log('ok    a rule in another file is cited: its hypothesis is checked here (a >= 1 is refused)')
+  } else {
+    fail++
+    console.log(`FAIL  a rule in another file is cited  (ok=${refused.ok})\n      ${messages.join('\n      ')}`)
+  }
+
+  const held = build(3)
+
+  if (held.ok) {
+    pass++
+    console.log('ok    control: and where it holds the citation is accepted (a >= 3)')
+  } else {
+    fail++
+    console.log(`FAIL  control: a >= 3 across files\n      ${held.diagnostics.map(d => d.message).join('\n      ')}`)
+  }
+}
+
 console.log(`\ncite: ${pass} pass, ${fail} fail`)
 
 if (fail > 0) {

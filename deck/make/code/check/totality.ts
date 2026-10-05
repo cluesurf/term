@@ -13,6 +13,7 @@
 
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
+import { localNames } from '@term/make/code/check/facts'
 import type {
   Expression,
   Program,
@@ -216,12 +217,25 @@ function terminationVerdict(program: Program): Map<string, boolean> {
   }
 
   const edges = new Map<string, Set<string>>()
+  // the tasks each task reads as a VALUE (`read f`, handed on or saved, not called by name). Such a task may be called
+  // with any argument, so no descent can be shown for it: a recursion that passes through one is not verified. Until
+  // 2026-10-05 these were no edges at all, so `save again, read p` then `call again` made p look non-recursive, and a
+  // claim that any two values are equal was accepted with that loop as its proof (test/check/soundness.ts)
+  const valueEdges = new Map<string, Set<string>>()
 
   for (const [name, statement] of functions) {
-    edges.set(
-      name,
-      collectCalledNames(statement.body, names, variantFields),
-    )
+    const called = collectCalledNames(statement.body, names, variantFields)
+    const locals = localNames(statement)
+    const values = new Set<string>()
+
+    walkCalls(statement.body, () => {}, variantFields, new Map(), value => {
+      if (names.has(value) && !locals.has(value)) {
+        values.add(value)
+      }
+    })
+
+    valueEdges.set(name, values)
+    edges.set(name, new Set([...called, ...values]))
   }
 
   const reaches = (from: string): Set<string> => {
@@ -264,6 +278,15 @@ function terminationVerdict(program: Program): Map<string, boolean> {
   for (const [name, statement] of functions) {
     if (!reaches(name).has(name)) {
       verdict.set(name, true) // not recursive: trivially terminating
+      continue
+    }
+
+    // a recursion through a task read as a value: some member of the group reads a member as a value, so a call may
+    // reach it with any argument. Not verified, whatever the named calls do
+    const group = sccOf(name)
+
+    if ([...group].some(member => [...(valueEdges.get(member) ?? [])].some(target => group.has(target)))) {
+      verdict.set(name, false)
       continue
     }
 
@@ -561,15 +584,22 @@ function walkCalls(
   // a spurious non-fatal termination warning, never a compiler crash).
   variantFields = new Map<string, string[]>(),
   memberOf = new Map<string, string>(),
+  // every name read as a VALUE, not called: a task handed on as a function may be called with any argument
+  onValue?: (name: string) => void,
 ): void {
   const visitExpression = (node: Expression): void => {
     switch (node.form) {
+      case 'variable':
+        onValue?.(node.name)
+        break
       case 'call':
+        // a named callee is a call, not a value: `visit` has it, and reading it as a value would count every call twice
         if (node.callee.form === 'variable') {
           visit(node.callee.name, node.args, memberOf)
+        } else {
+          visitExpression(node.callee)
         }
 
-        visitExpression(node.callee)
         node.args.forEach(visitExpression)
         break
       case 'binary':
@@ -620,7 +650,7 @@ function walkCalls(
         // a self-call inside an inline function value (the continuation of a well-founded recursor, `\y pf. wf-rec f y
         // (step y pf)`) is still a recursion. Walk the closure body with the SAME `memberOf`, so a field destructured in
         // the enclosing match (`step` from `mkacc step`) is still seen as the parameter's child at the recursive call.
-        walkCalls(node.body, visit, variantFields, memberOf)
+        walkCalls(node.body, visit, variantFields, memberOf, onValue)
         break
       default:
         break
@@ -653,28 +683,28 @@ function walkCalls(
         break
       case 'while':
         visitExpression(node.cond)
-        walkCalls(node.body, visit, variantFields, memberOf)
+        walkCalls(node.body, visit, variantFields, memberOf, onValue)
         break
       case 'guard':
-        walkCalls(node.body, visit, variantFields, memberOf)
+        walkCalls(node.body, visit, variantFields, memberOf, onValue)
 
         if (node.catch) {
-          walkCalls(node.catch.body, visit, variantFields, memberOf)
+          walkCalls(node.catch.body, visit, variantFields, memberOf, onValue)
         }
 
         break
       case 'for-each':
         visitExpression(node.iterable)
-        walkCalls(node.body, visit, variantFields, memberOf)
+        walkCalls(node.body, visit, variantFields, memberOf, onValue)
         break
       case 'if':
         for (const branch of node.branches) {
           visitExpression(branch.cond)
-          walkCalls(branch.body, visit, variantFields, memberOf)
+          walkCalls(branch.body, visit, variantFields, memberOf, onValue)
         }
 
         if (node.otherwise) {
-          walkCalls(node.otherwise, visit, variantFields, memberOf)
+          walkCalls(node.otherwise, visit, variantFields, memberOf, onValue)
         }
 
         break
@@ -702,11 +732,11 @@ function walkCalls(
             }
           }
 
-          walkCalls(branch.body, visit, variantFields, branchMembers)
+          walkCalls(branch.body, visit, variantFields, branchMembers, onValue)
         }
 
         if (node.otherwise) {
-          walkCalls(node.otherwise, visit, variantFields, memberOf)
+          walkCalls(node.otherwise, visit, variantFields, memberOf, onValue)
         }
 
         break

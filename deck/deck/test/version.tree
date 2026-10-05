@@ -1,0 +1,148 @@
+note <versions and holds: parsed, shown, ordered by semver 2.0, matched, the best picked, and moved on>
+
+# Ported from deck/deck/test/mark.test.ts (self-hosting, 2026-10-05), every case it held.
+
+load ../code/version
+  find code
+  find code-hold
+  find best-code
+  find code-of
+  find parse-code
+  find parse-code-hold
+  find show-code
+  find compare-code
+  find code-match
+  find pick-best-code
+  find bump-code
+  find bump-prerelease
+
+load @term/base/list
+  find list
+  find sort
+
+load @term/base/ordering
+  find ordering
+  find from-numbers
+
+# a hold written back as text, the way the original's `toEqual` saw it
+task hold-shown
+  take hold, like code-hold
+  like text
+
+  sift hold
+    case exact
+      link exact-code
+      back <exact {show-code(exact-code)}>
+    case wild
+      link major
+      link minor
+      link patch
+      back <wild {major} {minor} {patch}>
+    case band
+      link base
+      link head
+      back <band {show-code(base)} {show-code(head)}>
+    case test
+      link members
+      host parts, make list
+      walk members
+        take member
+        parts/push(hold-shown(member))
+      back <test {join(parts, <, >)}>
+
+task matches
+  take version, like text
+  take hold, like text
+  like boolean
+
+  back code-match(parse-code(version), parse-code-hold(hold))
+
+task by-code
+  take left, like text
+  take right, like text
+  like ordering
+
+  back from-numbers(compare-code(parse-code(left), parse-code(right)), 0)
+
+task fails-with
+  take text, like text
+  like text
+
+  mark unsafe
+    parse-code(text)
+    back <>
+  halt take
+    take error
+    back error/note
+
+test <a version: its parts, its prerelease, and its build>
+  host plain, parse-code(<1.2.3>)
+  host tagged, parse-code(<1.2.3-rc.1+build.4>)
+  want hold, and(and(is-equal(show-code(plain), <1.2.3>), is-equal(plain/prerelease, <>)), and(is-equal(tagged/prerelease, <rc.1>), is-equal(tagged/build, <build.4>)))
+
+test <a version that is not one is refused, naming it>
+  want hold, is-equal(fails-with(<abc>), <Invalid version: abc>)
+
+test <shown back as written>
+  want hold, and(is-equal(show-code(parse-code(<1.0.0-beta.1>)), <1.0.0-beta.1>), is-equal(show-code(parse-code(<1.2.3+build.4>)), <1.2.3+build.4>))
+
+test <major, then minor, then patch decide, and a prerelease is below its release>
+  host major, compare-code(code-of(2, 0, 0), code-of(1, 0, 0))
+  host minor, compare-code(code-of(1, 2, 0), code-of(1, 1, 0))
+  host patch, compare-code(code-of(1, 0, 2), code-of(1, 0, 1))
+  host pre, compare-code(parse-code(<1.0.0-beta>), parse-code(<1.0.0>))
+  want hold, and(and(is-above(major, 0), is-above(minor, 0)), and(is-above(patch, 0), is-below(pre, 0)))
+
+test <prereleases in semver 2.0's own order, numbers by value>
+  host order, make list(<1.0.0-alpha>, <1.0.0-alpha.1>, <1.0.0-alpha.beta>, <1.0.0-beta>, <1.0.0-beta.2>, <1.0.0-beta.11>, <1.0.0-rc.1>, <1.0.0-rc.2>, <1.0.0-rc.10>, <1.0.0>)
+  host reversed, make list
+  walk order
+    take each
+    reversed/unshift(each)
+  want hold, is-equal(join(sort(reversed, by-code), < >), join(order, < >))
+
+test <a build suffix is ignored when two versions are compared>
+  want hold, is-equal(compare-code(parse-code(<1.2.3+build.4>), parse-code(<1.2.3>)), 0)
+
+test <holds: exact, wildcards, a band, a union>
+  host shown, make list(hold-shown(parse-code-hold(<1.2.3>)), hold-shown(parse-code-hold(<1.x.x>)), hold-shown(parse-code-hold(<1.2.x>)), hold-shown(parse-code-hold(<1.0.0..2.0.0>)), hold-shown(parse-code-hold(<0.14.x|0.15.x>)))
+  want hold, is-equal(join(shown, < / >), <exact 1.2.3 / wild 1 -1 -1 / wild 1 2 -1 / band 1.0.0 2.0.0 / test wild 0 14 -1, wild 0 15 -1>)
+
+test <caret and tilde are npm's precise bands>
+  host shown, make list(hold-shown(parse-code-hold(<^1.2.3>)), hold-shown(parse-code-hold(<^0.2.3>)), hold-shown(parse-code-hold(<^0.0.3>)), hold-shown(parse-code-hold(<~1.2.3>)))
+  want hold, is-equal(join(shown, < / >), <band 1.2.3 2.0.0 / band 0.2.3 0.3.0 / band 0.0.3 0.0.4 / band 1.2.3 1.3.0>)
+
+test <a caret band excludes below its base and from the next major, a tilde band stays in the minor>
+  host caret, and(and(not(matches(<1.0.0>, <^1.2.3>)), matches(<1.9.9>, <^1.2.3>)), not(matches(<2.0.0>, <^1.2.3>)))
+  host tilde, and(matches(<1.2.9>, <~1.2.3>), not(matches(<1.3.0>, <~1.2.3>)))
+  want hold, and(caret, tilde)
+
+test <exact and wildcard matching>
+  host exact, and(matches(<1.2.3>, <1.2.3>), not(matches(<1.2.4>, <1.2.3>)))
+  host wild, and(and(matches(<1.5.3>, <1.x.x>), not(matches(<2.0.0>, <1.x.x>))), matches(<1.2.9>, <1.2.x>))
+  want hold, and(exact, wild)
+
+test <a band takes its base and leaves its head>
+  host inside, and(matches(<1.5.0>, <1.0.0..2.0.0>), matches(<1.0.0>, <1.0.0..2.0.0>))
+  host outside, and(not(matches(<2.0.0>, <1.0.0..2.0.0>)), not(matches(<0.9.0>, <1.0.0..2.0.0>)))
+  want hold, and(inside, outside)
+
+test <a union matches either wildcard and nothing else>
+  host either, and(matches(<0.14.5>, <0.14.x|0.15.x>), matches(<0.15.0>, <0.14.x|0.15.x>))
+  want hold, and(either, not(matches(<0.16.0>, <0.14.x|0.15.x>)))
+
+test <the best version a hold allows is the highest, and none when nothing matches>
+  host versions, make list(code-of(1, 0, 0), code-of(1, 1, 0), code-of(1, 2, 0), code-of(2, 0, 0))
+  host best, pick-best-code(versions, parse-code-hold(<1.x.x>))
+  host lone, make list(code-of(2, 0, 0))
+  host none, pick-best-code(lone, parse-code-hold(<1.x.x>))
+  want hold, and(and(best/found, is-equal(show-code(best/code), <1.2.0>)), not(none/found))
+
+test <a bump: the major, the minor, an even and an odd patch>
+  host from, code-of(1, 2, 3)
+  host bumped, make list(show-code(bump-code(from, 1)), show-code(bump-code(from, 2)), show-code(bump-code(code-of(1, 0, 2), 3)), show-code(bump-code(code-of(1, 0, 3), 3)))
+  want hold, is-equal(join(bumped, < >), <2.0.0 1.3.0 1.0.3 1.0.4>)
+
+test <a prerelease bump: one past the release, its own count, a new name, and a patch move releases it>
+  host moves, make list(show-code(bump-prerelease(parse-code(<1.4.2>), <rc>)), show-code(bump-prerelease(parse-code(<1.4.3-rc.9>), <rc>)), show-code(bump-prerelease(parse-code(<1.4.3-beta.4>), <rc>)), show-code(bump-code(parse-code(<1.4.3-rc.2>), 3)))
+  want hold, is-equal(join(moves, < >), <1.4.3-rc.1 1.4.3-rc.10 1.4.3-rc.1 1.4.3>)

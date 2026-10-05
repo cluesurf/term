@@ -1,244 +1,125 @@
-import { Code, MarkBand, CodeHold, MarkTest, MarkWild } from './form'
+// Versions and holds, for the package manager's TypeScript callers. The logic is Term: deck/deck/code/version.tree
+// (self-hosting, 2026-10-05, paired against this file's original by tmp/pair-version.ts). This face keeps the shapes
+// the callers know: a field the port writes as nothing (`""`, `-1`) is left out here, as the original left it out, and
+// a refusal is an `Error` with the original's message.
 
-// `1.2.3`, `1.2.3-rc.1`, `1.2.3+build.4`, `1.2.3-rc.1+build.4`
-const MARK_PATTERN = /^(\d+)\.(\d+|x)\.(\d+|x)(?:-([^+]+))?(?:\+([0-9A-Za-z.-]+))?$/
+import { Code, CodeHold, MarkWild } from './form'
+import * as version from '@term/deck/code/version'
+
+type PortCode = { major: number; minor: number; patch: number; prerelease: string; build: string }
+type PortHold =
+  | { form: 'exact'; code: PortCode }
+  | { form: 'wild'; major: number; minor: number; patch: number }
+  | { form: 'band'; base: PortCode; head: PortCode }
+  | { form: 'test'; list: PortHold[] }
+
+function toPort(code: Code): PortCode {
+  return { major: code.major, minor: code.minor, patch: code.patch, prerelease: code.prerelease ?? '', build: code.build ?? '' }
+}
+
+// `parseCode` answers `prerelease` always (undefined when there is none) and `build` only when there is one
+function fromParsed(code: PortCode): Code {
+  return {
+    major: code.major,
+    minor: code.minor,
+    patch: code.patch,
+    prerelease: code.prerelease === '' ? undefined : code.prerelease,
+    ...(code.build !== '' ? { build: code.build } : {}),
+  }
+}
+
+// a code the original built field by field: a prerelease only when there is one, never a build
+function fromBuilt(code: PortCode): Code {
+  return {
+    major: code.major,
+    minor: code.minor,
+    patch: code.patch,
+    ...(code.prerelease !== '' ? { prerelease: code.prerelease } : {}),
+  }
+}
+
+function wildOf(hold: Extract<PortHold, { form: 'wild' }>): MarkWild {
+  return {
+    form: 'wild',
+    major: hold.major,
+    ...(hold.minor >= 0 ? { minor: hold.minor } : {}),
+    ...(hold.patch >= 0 ? { patch: hold.patch } : {}),
+  }
+}
+
+// a caret or tilde band's head is built, its base parsed
+function fromPortHold(hold: PortHold, text: string): CodeHold {
+  switch (hold.form) {
+    case 'exact':
+      return { form: 'exact', code: fromParsed(hold.code) }
+    case 'wild':
+      return wildOf(hold)
+    case 'band':
+      return { form: 'band', base: fromParsed(hold.base), head: text.includes('..') ? fromParsed(hold.head) : fromBuilt(hold.head) }
+    case 'test':
+      return { form: 'test', list: hold.list.map(member => wildOf(member as Extract<PortHold, { form: 'wild' }>)) }
+  }
+}
+
+function toPortHold(hold: CodeHold): PortHold {
+  switch (hold.form) {
+    case 'exact':
+      return { form: 'exact', code: toPort(hold.code) }
+    case 'wild':
+      return { form: 'wild', major: hold.major, minor: hold.minor ?? -1, patch: hold.patch ?? -1 }
+    case 'band':
+      return { form: 'band', base: toPort(hold.base), head: toPort(hold.head) }
+    case 'test':
+      return { form: 'test', list: hold.list.map(toPortHold) }
+  }
+}
+
+// a Term refusal raised as the original's Error
+function refused<T>(run: () => T): T {
+  try {
+    return run()
+  } catch (error) {
+    const note = (error as { note?: unknown }).note
+
+    throw typeof note === 'string' ? new Error(note) : error
+  }
+}
 
 export function parseCode(text: string): Code {
-  const match = MARK_PATTERN.exec(text)
-
-  if (!match) {
-    throw new Error(`Invalid version: ${text}`)
-  }
-
-  const major = parseInt(match[1]!, 10)
-  const minor = match[2] === 'x' ? 0 : parseInt(match[2]!, 10)
-  const patch = match[3] === 'x' ? 0 : parseInt(match[3]!, 10)
-  const prerelease = match[4]
-  const build = match[5]
-
-  return { major, minor, patch, prerelease, ...(build !== undefined ? { build } : {}) }
+  return fromParsed(refused(() => version.parseCode(text) as PortCode))
 }
 
 export function parseCodeHold(text: string): CodeHold {
-  // union: "0.14.x|0.15.x"
-  if (text.includes('|')) {
-    const parts = text.split('|').map(p => p.trim())
-    const list = parts.map(p => {
-      const parsed = parseCodeHold(p)
-
-      if (parsed.form !== 'wild') {
-        throw new Error(`Union members must be wildcard versions: ${p}`)
-      }
-
-      return parsed
-    })
-
-    return { form: 'test', list }
-  }
-
-  // range: "1.0.0..2.0.0"
-  if (text.includes('..')) {
-    const parts = text.split('..')
-
-    if (parts.length !== 2) {
-      throw new Error(`Invalid range version: ${text}`)
-    }
-
-    return {
-      form: 'band',
-      base: parseCode(parts[0]!),
-      head: parseCode(parts[1]!),
-    }
-  }
-
-  // wildcard: "1.x.x" or "1.2.x"
-  if (text.includes('x')) {
-    const match = /^(\d+)\.(x|\d+)\.(x|\d+)$/.exec(text)
-
-    if (!match) {
-      throw new Error(`Invalid wildcard version: ${text}`)
-    }
-
-    const result: MarkWild = {
-      form: 'wild',
-      major: parseInt(match[1]!, 10),
-    }
-
-    if (match[2] !== 'x') {
-      result.minor = parseInt(match[2]!, 10)
-    }
-
-    if (match[3] !== 'x') {
-      result.patch = parseInt(match[3]!, 10)
-    }
-
-    return result
-  }
-
-  // caret: compatible-with-`code`, the npm rule. `^1.2.3` allows >=1.2.3 <2.0.0. For a leading-zero version the left-
-  // most non-zero element is locked instead: `^0.2.3` is >=0.2.3 <0.3.0, `^0.0.3` is >=0.0.3 <0.0.4. The lower bound is
-  // the version itself (not a coarse `1.x.x`), so the band excludes earlier patches.
-  if (text.startsWith('^')) {
-    const code = parseCode(text.slice(1))
-
-    let head: Code
-
-    if (code.major > 0) {
-      head = { major: code.major + 1, minor: 0, patch: 0 }
-    } else if (code.minor > 0) {
-      head = { major: 0, minor: code.minor + 1, patch: 0 }
-    } else {
-      head = { major: 0, minor: 0, patch: code.patch + 1 }
-    }
-
-    return { form: 'band', base: code, head }
-  }
-
-  // tilde: approximately-equivalent, the npm rule. `~1.2.3` allows >=1.2.3 <1.3.0 (patch changes within the minor).
-  if (text.startsWith('~')) {
-    const code = parseCode(text.slice(1))
-
-    return {
-      form: 'band',
-      base: code,
-      head: { major: code.major, minor: code.minor + 1, patch: 0 },
-    }
-  }
-
-  return { form: 'exact', code: parseCode(text) }
+  return fromPortHold(refused(() => version.parseCodeHold(text) as PortHold), text)
 }
 
 export function showCode(code: Code): string {
-  const base = `${code.major}.${code.minor}.${code.patch}`
-
-  const tagged = code.prerelease ? `${base}-${code.prerelease}` : base
-
-  return code.build ? `${tagged}+${code.build}` : tagged
+  return version.showCode(toPort(code) as never)
 }
 
 export function compareCode(a: Code, b: Code): number {
-  if (a.major !== b.major) {return a.major - b.major}
-
-  if (a.minor !== b.minor) {return a.minor - b.minor}
-
-  if (a.patch !== b.patch) {return a.patch - b.patch}
-
-  if (a.prerelease && !b.prerelease) {return -1}
-
-  if (!a.prerelease && b.prerelease) {return 1}
-
-  if (a.prerelease && b.prerelease) {
-    return comparePrerelease(a.prerelease, b.prerelease)
-  }
-
-  return 0
-}
-
-// Semver 2.0, section 11: dot-separated identifiers left to right, numbers by value, a number below a word, words in
-// ASCII order, and a shorter list below a longer one it begins. So `rc.2` < `rc.10` < `rc.10.1` < `rc.a`. It
-// compared the whole text, which put `rc.10` below `rc.2`
-function comparePrerelease(a: string, b: string): number {
-  const left = a.split('.')
-  const right = b.split('.')
-
-  for (let i = 0; i < Math.min(left.length, right.length); i++) {
-    const x = left[i]!
-    const y = right[i]!
-    const xNumber = /^\d+$/.test(x)
-    const yNumber = /^\d+$/.test(y)
-
-    if (xNumber && yNumber) {
-      const difference = Number(x) - Number(y)
-
-      if (difference !== 0) {
-        return difference
-      }
-    } else if (xNumber !== yNumber) {
-      return xNumber ? -1 : 1
-    } else if (x !== y) {
-      return x < y ? -1 : 1
-    }
-  }
-
-  return left.length - right.length
+  return version.compareCode(toPort(a) as never, toPort(b) as never)
 }
 
 export function codeMatch(code: Code, hold: CodeHold): boolean {
-  switch (hold.form) {
-    case 'exact':
-      return compareCode(code, hold.code) === 0
+  return version.codeMatch(toPort(code) as never, toPortHold(hold) as never)
+}
 
-    case 'wild':
-      if (code.major !== hold.major) {return false}
+// the original answered one of the codes it was given, so the face hands back that very object
+export function pickBestCode(input: { versions: Code[]; hold: CodeHold }): Code | undefined {
+  const best = version.pickBestCode(input.versions.map(toPort) as never, toPortHold(input.hold) as never) as { found: boolean; code: PortCode }
 
-      if (hold.minor !== undefined && code.minor !== hold.minor)
-        {return false}
-
-      if (hold.patch !== undefined && code.patch !== hold.patch)
-        {return false}
-
-      return true
-
-    case 'band':
-      return (
-        compareCode(code, hold.base) >= 0 &&
-        compareCode(code, hold.head) < 0
-      )
-
-    case 'test':
-      return hold.list.some(wild => codeMatch(code, wild))
+  if (!best.found) {
+    return undefined
   }
+
+  return input.versions.find(v => compareCode(v, best.code as Code) === 0 && (v.build ?? '') === best.code.build)
 }
 
-export function pickBestCode(input: {
-  versions: Code[]
-  hold: CodeHold
-}): Code | undefined {
-  const matching = input.versions
-    .filter(v => codeMatch(v, input.hold))
-    .sort((a, b) => compareCode(b, a))
-
-  return matching[0]
+export function bumpCode(input: { code: Code; level: 1 | 2 | 3 }): Code {
+  return fromBuilt(version.bumpCode(toPort(input.code) as never, input.level) as PortCode)
 }
 
-export function bumpCode(input: {
-  code: Code
-  level: 1 | 2 | 3
-}): Code {
-  switch (input.level) {
-    case 1:
-      return {
-        major: input.code.major + 1,
-        minor: 0,
-        patch: 0,
-      }
-    case 2:
-      return {
-        major: input.code.major,
-        minor: input.code.minor + 1,
-        patch: 0,
-      }
-
-    // a pre-release moves to its own release, npm's rule: `1.4.3-rc.2` is followed by `1.4.3`
-    case 3:
-      return {
-        major: input.code.major,
-        minor: input.code.minor,
-        patch: input.code.prerelease ? input.code.patch : input.code.patch + 1,
-      }
-  }
-}
-
-// `term move mark rc`: the next pre-release named `id`. `1.4.2` moves to `1.4.3-rc.1`, `1.4.3-rc.1` to `1.4.3-rc.2`,
-// and a pre-release under another name keeps its version and starts this one: `1.4.3-beta.4` to `1.4.3-rc.1`
 export function bumpPrerelease(input: { code: Code; id: string }): Code {
-  const { major, minor, patch, prerelease } = input.code
-
-  if (!prerelease) {
-    return { major, minor, patch: patch + 1, prerelease: `${input.id}.1` }
-  }
-
-  const count = new RegExp(`^${input.id}\\.(\\d+)$`).exec(prerelease)
-
-  return { major, minor, patch, prerelease: `${input.id}.${count ? Number(count[1]) + 1 : 1}` }
+  return fromBuilt(version.bumpPrerelease(toPort(input.code) as never, input.id) as PortCode)
 }

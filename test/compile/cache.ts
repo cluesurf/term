@@ -114,11 +114,12 @@ const second = compile(
 
 expect('graph: editing the entry still compiles', second.ok, true)
 // the entry changed (new graph key, new entry mill) but the helper text is identical: exactly one new mill miss for
-// the entry, plus one output miss for the new graph key. The helper mill is a hit, not a miss.
+// the entry, one for the entry's import scan (`CompileCache.scanned`), plus one output miss for the new graph key.
+// The helper's mill and scan are hits, not misses.
 expect(
   'graph: only the changed entry (and the new graph key) miss, the helper is reused',
   graph.misses - millMissesAfterFirst,
-  2,
+  3,
 )
 
 // hashText is content-addressed: same text same hash, different text different hash
@@ -217,7 +218,9 @@ const gzDir = fs.mkdtempSync(nodePath.join(os.tmpdir(), 'seed-cache-gz-'))
 const gzStore = diskCacheStore(gzDir, 'v1')
 gzStore.save('output', 'aabbcc', JSON.stringify({ padding: 'x'.repeat(20000) }))
 
-const written = walkFiles(gzDir)
+// the entries: the namespace's `.budget` stamp (when the byte budget was last held) is housekeeping, not an entry
+const written = walkFiles(gzDir).filter(f => nodePath.basename(f) !== '.budget')
+expect('layout: the budget stamp sits in the namespace, beside the shards', walkFiles(gzDir).some(f => f.endsWith(nodePath.join(versionSlug('v1'), '.budget'))), true)
 expect('layout: an entry is written gzipped', written.every(f => f.endsWith('.json.gz')), true)
 expect(
   'layout: gzip actually shrinks the entry',
@@ -306,7 +309,40 @@ const seen = cacheEntries(linkDir)
 expect('walk: a symlink is never followed', seen.length === 0, true)
 expect('walk: the linked tree is untouched', fs.existsSync(nodePath.join(outside, 'big.bin')), true)
 
-for (const temp of [gzDir, budgetDir, linkDir, outside]) {
+// THE IMPORT SCAN ROUND-TRIPS THROUGH THE DISK. A `find` with no `name` stores an `undefined` alias, which JSON
+// writes as `null`; read back plainly, it bound an alias called `null` and the module's imports bound nothing
+const scanDir = fs.mkdtempSync(nodePath.join(os.tmpdir(), 'seed-cache-scan-'))
+const scanWarm = new CompileCache(diskCacheStore(scanDir, 'v1'), 'v1')
+const scanFirst = compile({ file: 'a.tree', text: entryText(4) }, { resolve, cache: scanWarm })
+const scanCold = new CompileCache(diskCacheStore(scanDir, 'v1'), 'v1')
+// another entry text, so the output level misses and the scans are what the walk reads from the disk
+const scanSecond = compile({ file: 'a.tree', text: entryText(5) }, { resolve, cache: scanCold })
+expect('scan: the first compile builds', scanFirst.ok, true)
+expect('scan: a fresh process reads the helper scan from disk', scanCold.diskHits > 0, true)
+expect('scan: and its imports still bind (`triple` is found)', scanSecond.ok, true)
+
+// THE TEMPLATE SET JOINS ONLY THE KEY OF A UNIT WITH A `fuse`. An edit to a template-bearing module re-mills only the
+// units that can use it, not the whole closure
+const shapes: Source = { file: 'shapes.tree', text: `tree twice\n  take name\n  hook fuse\n    task {name}-twice\n      take n, like number\n      like number\n      back multiply(n, 2)\n` }
+const templateResolve = (path: string): Source | undefined =>
+  path === '@app/helper' ? helper : path === '@app/shapes' ? shapes : undefined
+const withTemplates = `load @app/helper\n  find triple\n\nload @app/shapes\n\ntask run\n  like number\n  back\n    call triple\n      code 1\n`
+const templateCache = new CompileCache()
+compile({ file: 'a.tree', text: withTemplates }, { resolve: templateResolve, cache: templateCache })
+const builtBefore = templateCache.misses
+shapes.text = `${shapes.text}# edited\n`
+compile({ file: 'a.tree', text: withTemplates }, { resolve: templateResolve, cache: templateCache })
+// the edit re-mills shapes.tree itself and its scan, and builds the output: three, never the helper or the entry
+expect('templates: editing a template module leaves units with no `fuse` cached', templateCache.misses - builtBefore, 3)
+
+// THE BUDGET IS HELD ONCE AN HOUR. The stamp in the namespace says when it last ran
+const stampDir = fs.mkdtempSync(nodePath.join(os.tmpdir(), 'seed-cache-stamp-'))
+const { budgetDue } = await import('@term/call/code/cache-store')
+expect('budget stamp: the first sweep is due', budgetDue(stampDir, 'mill', 'slug'), true)
+expect('budget stamp: one just after it is not', budgetDue(stampDir, 'mill', 'slug'), false)
+expect('budget stamp: an hour later it is again', budgetDue(stampDir, 'mill', 'slug', Date.now() + 60 * 60 * 1000 + 1), true)
+
+for (const temp of [gzDir, budgetDir, linkDir, outside, scanDir, stampDir]) {
   fs.rmSync(temp, { recursive: true, force: true })
 }
 

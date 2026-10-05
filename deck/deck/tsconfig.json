@@ -21,6 +21,7 @@
     "noImplicitAny": false,
     "paths": {
       "@/*": ["./code/*"],
+      "@term/deck/*": ["./*", "./host/port/*"],
       "@term/make/*": ["../make/*"],
       "@cluesurf/save/*": ["../../../../../../mesh/deck/save/code/*"]
     }

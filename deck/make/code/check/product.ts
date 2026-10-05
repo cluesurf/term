@@ -385,7 +385,7 @@ function plainlyInfeasible(a: Rational[][], b: Rational[]): boolean {
   }
 
   const basis = Array.from({ length: m }, (_, i) => n + i)
-  const cost = Array.from({ length: width + 1 }, (_, j) => (j >= n && j < width ? 1 : 0))
+  const cost: number[] = Array.from({ length: width + 1 }, (_, j) => (j >= n && j < width ? 1 : 0))
 
   for (let i = 0; i < m; i++) {
     for (let j = 0; j <= width; j++) {
@@ -425,21 +425,36 @@ function plainlyInfeasible(a: Rational[][], b: Rational[]): boolean {
     }
 
     const pivot = table[leave]![enter]!
-    table[leave] = table[leave]!.map(c => c / pivot)
+    const lead = table[leave]!.map(c => c / pivot)
+    // only the columns the pivot row is not exactly zero in change, in any row: c - k * 0 is c, so skipping them gives
+    // the same numbers. And these pivots are paid from the budget too, one unit per cell, so a table too big to settle
+    // in floating point stops here rather than spending minutes before the exact search is ever asked
+    const live = lead.flatMap((c, j) => (c === 0 ? [] : [j]))
+
+    if (spent + m * live.length > budget) {
+      spent = budget
+
+      return false
+    }
+
+    spent += m * live.length
+    table[leave] = lead
 
     for (let i = 0; i < m; i++) {
       const k = table[i]![enter]!
 
       if (i !== leave && k !== 0) {
-        const lead = table[leave]!
-        table[i] = table[i]!.map((c, j) => c - k * lead[j]!)
+        const row = table[i]!
+
+        for (const j of live) {
+          row[j] = row[j]! - k * lead[j]!
+        }
       }
     }
 
     const k = cost[enter]!
-    const lead = table[leave]!
 
-    for (let j = 0; j <= width; j++) {
+    for (const j of live) {
       cost[j] = cost[j]! - k * lead[j]!
     }
 

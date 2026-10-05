@@ -1905,6 +1905,56 @@ function emitRustPass(
     }
   }
 
+  // THE FORMS THAT CAN BE A MAP KEY: every field can be, by the key rule (TermHash), where a float, a list and a map
+  // can all be keys. A closure and a boxed unknown cannot. The same greatest fixpoint as above, so a recursive form
+  // qualifies when nothing outside it disqualifies it. Each one gets a `TermHash` impl (`termHashImpl`)
+  const keyableForms = new Set(formDecls.keys())
+
+  const keyQualifies = (type: Type, params: Set<string>): boolean => {
+    switch (type.kind) {
+      case 'number':
+      case 'boolean':
+      case 'string':
+      case 'bytes':
+      case 'unit':
+      case 'float':
+        return true
+      case 'array':
+        return keyQualifies(type.element, params)
+      case 'map':
+        return keyQualifies(type.key, params) && keyQualifies(type.value, params)
+      case 'named': {
+        const args = type.args ?? []
+
+        if (type.name === 'text' || type.name === 'boolean' || params.has(type.name) || rustSharedForms.has(type.name)) {
+          return true
+        }
+
+        if (type.name === 'list' || type.name === 'hash') {
+          return args.every(a => keyQualifies(a, params))
+        }
+
+        return keyableForms.has(type.name) && args.every(a => keyQualifies(a, params))
+      }
+      default:
+        return false
+    }
+  }
+
+  for (let changed = true; changed; ) {
+    changed = false
+
+    for (const name of [...keyableForms]) {
+      const node = formDecls.get(name)!
+      const params = new Set(node.params)
+
+      if (![...node.fields, ...node.variants.flatMap(v => v.fields)].every(f => keyQualifies(f.type, params))) {
+        keyableForms.delete(name)
+        changed = true
+      }
+    }
+  }
+
   // the generic parameters of a form that sit in a map KEY somewhere in its fields: comparing the form compares that
   // map, which needs the key `Eq + Hash + Clone` (TermMap's PartialEq), a bound `#[derive(PartialEq)]` cannot add
   const keyParams = (node: { params: string[]; fields: { type: Type }[]; variants: { fields: { type: Type }[] }[] }): Set<string> => {
@@ -1970,7 +2020,7 @@ function emitRustPass(
   ): string => {
     const name = pascal(node.name)
     const generics = node.params.length
-      ? `<${node.params.map(p => `${p.toUpperCase()}: PartialEq${keyed.has(p) ? ' + Eq + std::hash::Hash + Clone' : ''}`).join(', ')}>`
+      ? `<${node.params.map(p => `${p.toUpperCase()}: PartialEq${keyed.has(p) ? ' + TermHash + Clone' : ''}`).join(', ')}>`
       : ''
     const applied = node.params.length ? `<${node.params.map(p => p.toUpperCase()).join(', ')}>` : ''
     // `a` and `b` are references in both uses below; a `TermShared` field compares by identity through its own `==`
@@ -4675,8 +4725,9 @@ function emitRustPass(
           // shims (shape, compare, text) require it for the Any-based dispatch
           const traits = ['Clone', "'static"]
 
+          // a key is hashed and compared by the key rule (TermHash), and may still be compared as a value
           if (isKey) {
-            traits.push('Eq', 'std::hash::Hash')
+            traits.push('PartialEq', 'TermHash')
           } else if (isEq) {
             traits.push('PartialEq')
           }
@@ -5066,6 +5117,17 @@ function emitRustPass(
         // A generic form holding a map keyed by one of its parameters (`set<t>` holds `items: hash<t, boolean>`)
         // cannot DERIVE it: the derive bounds `T: PartialEq`, and a map's equality needs its key `Eq + Hash`. That
         // form gets the impl written out with the bound the derive cannot spell (`keyedEquality` below).
+        // a form that can be a map key hashes and compares by the key rule (TermHash): its fields one by one, a case by
+        // its index and then its fields
+        const keyable = keyableForms.has(node.name)
+        const bounds = node.params.length ? `<${node.params.map(p => `${p.toUpperCase()}: TermHash`).join(', ')}>` : ''
+        const structKey = (name: string, typeArgs: string, fields: string[]): string => {
+          const hash = fields.map(f => `self.${f}.term_hash(h);`).join(' ')
+          const eq = fields.map(f => `self.${f}.term_eq(&other.${f})`).join(' && ') || 'true'
+
+          return `\n${pad(d)}impl${bounds} TermHash for ${name}${typeArgs} {\n${pad(d + 1)}fn term_hash<H: std::hash::Hasher>(&self, h: &mut H) { let _ = &h; ${hash} }\n${pad(d + 1)}fn term_eq(&self, other: &Self) -> bool { let _ = other; ${eq} }\n${pad(d)}}`
+        }
+        const typeArgs = node.params.length ? `<${node.params.map(p => p.toUpperCase()).join(', ')}>` : ''
         const keyed = equatableForms.has(node.name) ? keyParams(node) : new Set<string>()
         const writeIt = equatableForms.has(node.name) && keyed.size > 0
         const derive = `#[derive(${[
@@ -5103,6 +5165,10 @@ function emitRustPass(
             if (payload) {
               structs.push(`\n${pad(d)}${derive}struct ${payload} { ${fields.join(', ')} }`)
 
+              if (keyable && node.params.length === 0) {
+                structs.push(structKey(payload, '', v.fields.map(f => snake(f.name))))
+              }
+
               return `${pad(d + 1)}${pascal(v.name)}(${payloadHolder(node.name)}<${payload}>)`
             }
 
@@ -5111,9 +5177,38 @@ function emitRustPass(
             }`
           })
 
+          // the key rule over the cases: the case's index, then its fields (or its payload, which is keyed itself)
+          const enumKey = (): string => {
+            const arms = node.variants.map((v, at) => {
+              const payload = payloadOf(node.name, v.name)
+              const names = v.fields.map(f => snake(f.name))
+
+              if (payload) {
+                return {
+                  hash: `Self::${pascal(v.name)}(p) => { std::hash::Hash::hash(&${at}u32, h); p.term_hash(h) }`,
+                  eq: `(Self::${pascal(v.name)}(a), Self::${pascal(v.name)}(b)) => a.term_eq(b)`,
+                }
+              }
+
+              if (names.length === 0) {
+                return {
+                  hash: `Self::${pascal(v.name)} => std::hash::Hash::hash(&${at}u32, h)`,
+                  eq: `(Self::${pascal(v.name)}, Self::${pascal(v.name)}) => true`,
+                }
+              }
+
+              return {
+                hash: `Self::${pascal(v.name)} { ${names.join(', ')} } => { std::hash::Hash::hash(&${at}u32, h); ${names.map(n => `${n}.term_hash(h);`).join(' ')} }`,
+                eq: `(Self::${pascal(v.name)} { ${names.map(n => `${n}: a_${n}`).join(', ')} }, Self::${pascal(v.name)} { ${names.map(n => `${n}: b_${n}`).join(', ')} }) => ${names.map(n => `a_${n}.term_eq(b_${n})`).join(' && ')}`,
+              }
+            })
+
+            return `\n${pad(d)}impl${bounds} TermHash for ${pascal(node.name)}${typeArgs} {\n${pad(d + 1)}fn term_hash<H: std::hash::Hasher>(&self, h: &mut H) { match self { ${arms.map(a => a.hash).join(', ')} } }\n${pad(d + 1)}#[allow(unreachable_patterns)]\n${pad(d + 1)}fn term_eq(&self, other: &Self) -> bool { match (self, other) { ${arms.map(a => a.eq).join(', ')}, _ => false } }\n${pad(d)}}`
+          }
+
           return `${derive}enum ${pascal(
             node.name,
-          )}${generics} {\n${cases.join(',\n')}\n${pad(d)}}${structs.join('')}${written}`
+          )}${generics} {\n${cases.join(',\n')}\n${pad(d)}}${structs.join('')}${written}${keyable ? enumKey() : ''}`
         }
 
         // a list the record owns is the plain `Vec` (`ownedFields`)
@@ -5135,7 +5230,7 @@ function emitRustPass(
 
         return `${derive}struct ${pascal(
           node.name,
-        )}${generics} {\n${fields.join(',\n')}\n${pad(d)}}${written}`
+        )}${generics} {\n${fields.join(',\n')}\n${pad(d)}}${written}${keyable ? structKey(pascal(node.name), typeArgs, node.fields.map(f => snake(f.name))) : ''}`
       }
 
       case 'hold':
@@ -5330,7 +5425,7 @@ function emitRustPass(
 #[derive(Clone)]
 pub struct TermMap<K, V> { table: Vec<u32>, entry: Vec<Option<(u64, K, V)>>, live: usize, tombs: usize, dead: usize, state: std::collections::hash_map::RandomState }
 #[allow(dead_code)]
-impl<K: std::hash::Hash + Eq + Clone, V> TermMap<K, V> {
+impl<K: TermHash + Clone, V> TermMap<K, V> {
     // each key is held once, in its entry: the table holds entry indexes (EMPTY, or TOMB where one was removed), probed
     // linearly from the key's hash, and a key is compared in its entry. The entries keep insertion order, which is
     // what a walk visits
@@ -5339,16 +5434,18 @@ impl<K: std::hash::Hash + Eq + Clone, V> TermMap<K, V> {
     pub fn new() -> Self { TermMap { table: Vec::new(), entry: Vec::new(), live: 0, tombs: 0, dead: 0, state: std::collections::hash_map::RandomState::new() } }
     pub fn len(&self) -> usize { self.live }
     pub fn is_empty(&self) -> bool { self.live == 0 }
-    fn hash<Q: std::hash::Hash + ?Sized>(&self, key: &Q) -> u64 { std::hash::BuildHasher::hash_one(&self.state, key) }
+    // a key hashed and compared AS A KEY (TermHash), never by value equality: a NaN key is one key and \`-0.0\` is
+    // \`0.0\`, as on every backend
+    fn hash<Q: TermHash + ?Sized>(&self, key: &Q) -> u64 { let mut h = std::hash::BuildHasher::build_hasher(&self.state); key.term_hash(&mut h); std::hash::Hasher::finish(&h) }
     // the table slot holding the key, if it is present
-    fn find<Q: Eq + ?Sized>(&self, h: u64, key: &Q) -> Option<usize> where K: std::borrow::Borrow<Q> {
+    fn find<Q: TermHash + ?Sized>(&self, h: u64, key: &Q) -> Option<usize> where K: std::borrow::Borrow<Q> {
         if self.table.is_empty() { return None; }
         let mask = self.table.len() - 1;
         let mut at = (h as usize) & mask;
         loop {
             let i = self.table[at];
             if i == Self::EMPTY { return None; }
-            if i != Self::TOMB { if let Some((eh, k, _)) = &self.entry[i as usize] { if *eh == h && k.borrow() == key { return Some(at); } } }
+            if i != Self::TOMB { if let Some((eh, k, _)) = &self.entry[i as usize] { if *eh == h && k.borrow().term_eq(key) { return Some(at); } } }
             at = (at + 1) & mask;
         }
     }
@@ -5417,7 +5514,7 @@ impl<K: std::hash::Hash + Eq + Clone, V> TermMap<K, V> {
     }
     // the same through a borrowed key (a \`&str\` for a String key or a \`TermKey\`), made owned only when it is new: a
     // key read out of a larger text costs nothing for an entry already there
-    pub fn upsert_ref<Q: std::hash::Hash + Eq + ?Sized>(&mut self, key: &Q, fallback: V) -> &mut V where K: std::borrow::Borrow<Q> + for<'a> From<&'a Q> {
+    pub fn upsert_ref<Q: TermHash + ?Sized>(&mut self, key: &Q, fallback: V) -> &mut V where K: std::borrow::Borrow<Q> + for<'a> From<&'a Q> {
         let h = self.hash(key);
         let i = match self.find(h, key) { Some(at) => self.table[at] as usize, None => self.push(h, K::from(key), fallback) };
         &mut self.entry[i].as_mut().unwrap().2
@@ -5448,19 +5545,78 @@ impl<K: std::hash::Hash + Eq + Clone, V> TermMap<K, V> {
     pub fn keys(&self) -> impl Iterator<Item = &K> { self.iter().map(|(k, _)| k) }
     pub fn values(&self) -> impl Iterator<Item = &V> { self.iter().map(|(_, v)| v) }
 }
-impl<K: std::hash::Hash + Eq + Clone, V> Default for TermMap<K, V> { fn default() -> Self { Self::new() } }
-impl<K: std::hash::Hash + Eq + Clone, V, const N: usize> From<[(K, V); N]> for TermMap<K, V> {
+impl<K: TermHash + Clone, V> Default for TermMap<K, V> { fn default() -> Self { Self::new() } }
+impl<K: TermHash + Clone, V, const N: usize> From<[(K, V); N]> for TermMap<K, V> {
     fn from(items: [(K, V); N]) -> Self { let mut m = Self::new(); for (k, v) in items { m.insert(k, v); } m }
 }
-impl<K: std::hash::Hash + Eq + Clone, V> std::iter::FromIterator<(K, V)> for TermMap<K, V> {
+impl<K: TermHash + Clone, V> std::iter::FromIterator<(K, V)> for TermMap<K, V> {
     fn from_iter<I: IntoIterator<Item = (K, V)>>(items: I) -> Self { let mut m = Self::new(); for (k, v) in items { m.insert(k, v); } m }
 }
 // two maps are equal when they hold the same keys with equal values, in any order (Kotlin's Map.equals)
-impl<K: std::hash::Hash + Eq + Clone, V: PartialEq> PartialEq for TermMap<K, V> {
+impl<K: TermHash + Clone, V: PartialEq> PartialEq for TermMap<K, V> {
     fn eq(&self, other: &Self) -> bool { self.len() == other.len() && self.iter().all(|(k, v)| other.get(k) == Some(v)) }
 }
-impl<K: std::hash::Hash + Eq + Clone + std::fmt::Debug, V: std::fmt::Debug> std::fmt::Debug for TermMap<K, V> {
+impl<K: TermHash + Clone + std::fmt::Debug, V: std::fmt::Debug> std::fmt::Debug for TermMap<K, V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { f.debug_map().entries(self.iter()).finish() }
+}
+// A VALUE AS A MAP KEY: hashed and compared the way a JavaScript \`Map\` compares keys, the rule on every backend. A
+// NaN is one key and \`-0.0\` is \`0.0\`; a record by its fields, a list by its items, a shared value by identity. Value
+// equality (\`PartialEq\`, \`is-equal\`) stays IEEE: NaN is not equal to itself. A float key did not build on Rust, nor
+// did a record holding a float, a list or a map (guides: language/forms, language/collections, 2026-10-05)
+pub trait TermHash {
+    fn term_hash<H: std::hash::Hasher>(&self, h: &mut H);
+    fn term_eq(&self, other: &Self) -> bool;
+}
+macro_rules! term_hash_by_value { ($($t:ty),*) => { $(impl TermHash for $t {
+    fn term_hash<H: std::hash::Hasher>(&self, h: &mut H) { std::hash::Hash::hash(self, h) }
+    fn term_eq(&self, other: &Self) -> bool { self == other }
+})* } }
+term_hash_by_value!(i8, i16, i32, i64, i128, u8, u16, u32, u64, u128, usize, isize, bool, char, (), str, String);
+// the canonical key of a float: one NaN, and \`-0.0\` folded into \`0.0\`
+impl TermHash for f64 {
+    fn term_hash<H: std::hash::Hasher>(&self, h: &mut H) { let x = if self.is_nan() { f64::NAN } else if *self == 0.0 { 0.0 } else { *self }; std::hash::Hash::hash(&x.to_bits(), h) }
+    fn term_eq(&self, other: &Self) -> bool { (self.is_nan() && other.is_nan()) || self == other }
+}
+impl TermHash for f32 {
+    fn term_hash<H: std::hash::Hasher>(&self, h: &mut H) { (*self as f64).term_hash(h) }
+    fn term_eq(&self, other: &Self) -> bool { (*self as f64).term_eq(&(*other as f64)) }
+}
+impl<T: TermHash> TermHash for Vec<T> {
+    fn term_hash<H: std::hash::Hasher>(&self, h: &mut H) { std::hash::Hash::hash(&self.len(), h); for x in self { x.term_hash(h) } }
+    fn term_eq(&self, other: &Self) -> bool { self.len() == other.len() && self.iter().zip(other).all(|(a, b)| a.term_eq(b)) }
+}
+impl<T: TermHash> TermHash for [T] {
+    fn term_hash<H: std::hash::Hasher>(&self, h: &mut H) { std::hash::Hash::hash(&self.len(), h); for x in self { x.term_hash(h) } }
+    fn term_eq(&self, other: &Self) -> bool { self.len() == other.len() && self.iter().zip(other).all(|(a, b)| a.term_eq(b)) }
+}
+impl<T: TermHash> TermHash for Option<T> {
+    fn term_hash<H: std::hash::Hasher>(&self, h: &mut H) { match self { Some(x) => { std::hash::Hash::hash(&1u8, h); x.term_hash(h) } None => std::hash::Hash::hash(&0u8, h) } }
+    fn term_eq(&self, other: &Self) -> bool { match (self, other) { (Some(a), Some(b)) => a.term_eq(b), (None, None) => true, _ => false } }
+}
+impl<T: TermHash + ?Sized> TermHash for std::rc::Rc<T> {
+    fn term_hash<H: std::hash::Hasher>(&self, h: &mut H) { (**self).term_hash(h) }
+    fn term_eq(&self, other: &Self) -> bool { (**self).term_eq(&**other) }
+}
+impl<T: TermHash + ?Sized> TermHash for std::cell::RefCell<T> {
+    fn term_hash<H: std::hash::Hasher>(&self, h: &mut H) { self.borrow().term_hash(h) }
+    fn term_eq(&self, other: &Self) -> bool { self.borrow().term_eq(&*other.borrow()) }
+}
+impl<T: TermHash + ?Sized> TermHash for Box<T> {
+    fn term_hash<H: std::hash::Hasher>(&self, h: &mut H) { (**self).term_hash(h) }
+    fn term_eq(&self, other: &Self) -> bool { (**self).term_eq(&**other) }
+}
+// a map as a key: by its entries in any order, so the hash is the sum of each entry's own hash
+impl<K: TermHash + Clone, V: TermHash> TermHash for TermMap<K, V> {
+    fn term_hash<H: std::hash::Hasher>(&self, h: &mut H) {
+        let mut sum: u64 = 0;
+        for (k, v) in self.iter() { let mut one = std::collections::hash_map::DefaultHasher::new(); k.term_hash(&mut one); v.term_hash(&mut one); sum = sum.wrapping_add(std::hash::Hasher::finish(&one)); }
+        std::hash::Hash::hash(&(self.len(), sum), h)
+    }
+    fn term_eq(&self, other: &Self) -> bool { self.len() == other.len() && self.iter().all(|(k, v)| other.get(k).map_or(false, |w| v.term_eq(w))) }
+}
+impl<A: TermHash, B: TermHash> TermHash for (A, B) {
+    fn term_hash<H: std::hash::Hasher>(&self, h: &mut H) { self.0.term_hash(h); self.1.term_hash(h) }
+    fn term_eq(&self, other: &Self) -> bool { self.0.term_eq(&other.0) && self.1.term_eq(&other.1) }
 }`,
     // a value of a `mark shared` form: one object behind every binding. Equal, and hashed, by IDENTITY, the meaning
     // on every backend, so it can be a record's field and a map's key. Derefs to the RefCell, so `.borrow()` and
@@ -5473,6 +5629,10 @@ impl<T> TermShared<T> { pub fn new(value: T) -> Self { TermShared(std::rc::Rc::n
 impl<T> Clone for TermShared<T> { fn clone(&self) -> Self { TermShared(self.0.clone()) } }
 impl<T> PartialEq for TermShared<T> { fn eq(&self, other: &Self) -> bool { std::rc::Rc::ptr_eq(&self.0, &other.0) } }
 impl<T> Eq for TermShared<T> {}
+impl<T> TermHash for TermShared<T> {
+    fn term_hash<H: std::hash::Hasher>(&self, h: &mut H) { std::hash::Hash::hash(&(std::rc::Rc::as_ptr(&self.0) as *const () as usize), h) }
+    fn term_eq(&self, other: &Self) -> bool { std::rc::Rc::ptr_eq(&self.0, &other.0) }
+}
 impl<T> std::hash::Hash for TermShared<T> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) { (std::rc::Rc::as_ptr(&self.0) as *const () as usize).hash(state) }
 }
@@ -5971,6 +6131,11 @@ impl std::borrow::Borrow<str> for TermKey { fn borrow(&self) -> &str { self.as_s
 impl PartialEq for TermKey { fn eq(&self, other: &Self) -> bool { self.as_str() == other.as_str() } }
 impl Eq for TermKey {}
 impl std::hash::Hash for TermKey { fn hash<H: std::hash::Hasher>(&self, state: &mut H) { self.as_str().hash(state) } }
+// hashed as the \`str\` it holds, so a \`TermKey\` key is found by a \`&str\` lookup (TermMap's \`get_text\`)
+impl TermHash for TermKey {
+    fn term_hash<H: std::hash::Hasher>(&self, h: &mut H) { self.as_str().term_hash(h) }
+    fn term_eq(&self, other: &Self) -> bool { self.as_str() == other.as_str() }
+}
 impl std::fmt::Display for TermKey { fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { std::fmt::Display::fmt(self.as_str(), f) } }
 impl std::fmt::Debug for TermKey { fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { std::fmt::Debug::fmt(self.as_str(), f) } }`,
       ]

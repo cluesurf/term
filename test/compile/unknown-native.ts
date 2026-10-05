@@ -157,7 +157,7 @@ function runSwift(): void {
   const main = join(dir, 'main.swift')
   writeFileSync(
     main,
-    `${source}\nlet e = holdUser("alice")\nlet kept = carry(e.base)\nlet user = kept as! User\nprint("\\(e.tag) \\(user.name)")\n`,
+    `${source}\nlet e = holdUser(name: "alice")\nlet kept = carry(value: e.base)\nlet user = kept as! User\nprint("\\(e.tag) \\(user.name)")\n`,
   )
 
   try {

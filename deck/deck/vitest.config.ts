@@ -4,6 +4,13 @@ import path from 'path'
 
 const MAKE = path.resolve(__dirname, '../make')
 
+// this package's own ports the same way: `@term/deck/code/version` is deck/deck/code/version.tree, built to
+// host/port by `task/port-build.ts`, and code/code.ts is its face (self-hosting, 2026-10-05)
+const ROOTS: Record<string, string> = {
+  '@term/make/': MAKE,
+  '@term/deck/': __dirname,
+}
+
 // `@term/make/<path>` the way the parent tsconfig's `paths` reads it: the TypeScript source under deck/make first,
 // else the PORT `make:port` writes to deck/make/host/port for a compiler module written in Term (`hashText` is
 // deck/make/code/term/hash.tree, `arm` is deck/make/code/check/arm.tree, since 2026-10-02). A bare alias to ../make
@@ -12,13 +19,16 @@ const makeModules = {
   name: 'term-make-port',
   enforce: 'pre' as const,
   resolveId(id: string) {
-    if (!id.startsWith('@term/make/')) {
+    const prefix = Object.keys(ROOTS).find(one => id.startsWith(one))
+
+    if (!prefix) {
       return null
     }
 
-    const rest = id.slice('@term/make/'.length)
+    const root = ROOTS[prefix]!
+    const rest = id.slice(prefix.length)
 
-    for (const base of [MAKE, path.join(MAKE, 'host/port')]) {
+    for (const base of [root, path.join(root, 'host/port')]) {
       for (const file of [`${rest}.ts`, `${rest}.tsx`, path.join(rest, 'index.ts'), rest]) {
         const full = path.join(base, file)
 

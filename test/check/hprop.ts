@@ -32,7 +32,7 @@ const app = (fun: Term, ...args: Term[]): Term =>
   args.reduce<Term>((f, a) => ({ tag: 'app', fun: f, arg: a }), fun)
 
 resetDefinitions()
-registerTruncation('squash')
+registerTruncation('squash', 2)
 
 // squash A x  and  squash A y  -- same type, different proofs
 const sx = evaluate([], app(kconst('squash'), kconst('A'), kconst('x')))
@@ -55,6 +55,17 @@ const py = evaluate([], app(kconst('pair'), kconst('y')))
 ok(
   'non-truncation constructor is proof-relevant',
   !areConvertible(0, px, py),
+)
+
+// SOUNDNESS CONTROL: applied PAST its arity the constructor is not the proof any more. The eliminator's computing rule
+// applies it to a motive and a branch, and the branch is then the last argument: two different branches must not be
+// equated (they were, before 2026-10-05)
+const branchTrue = evaluate([], app(kconst('squash'), kconst('A'), kconst('x'), kconst('motive'), kconst('yes')))
+const branchFalse = evaluate([], app(kconst('squash'), kconst('A'), kconst('x'), kconst('motive'), kconst('no')))
+
+ok(
+  'past its arity a truncation constructor is proof-relevant again',
+  !areConvertible(0, branchTrue, branchFalse),
 )
 
 console.log(`\nhprop (proof irrelevance): ${pass} pass, ${fail} fail`)
