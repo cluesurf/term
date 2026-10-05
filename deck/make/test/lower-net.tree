@@ -1,0 +1,113 @@
+note <lowering the lambda fragment to interaction combinators, where reducing the net IS beta reduction>
+
+# Ported from test/ir/lower-net.ts (self-hosting, 2026-10-04). (\x. f x) y lowers to three constructor nodes, and
+# reduces to one: the application f y, its function port wired to f, its argument port to y, and its result to the
+# root.
+
+load ../code/ir/lower-net
+  find lambda-term
+  find lower
+  find agent-count
+  find lowered
+
+load ../code/ir/net
+  find make-port
+  find normalize-net
+  find peer-of
+  find has-peer
+  find is-boundary
+
+load @term/base/hash
+  find hash
+
+task var-of
+  take name, like text
+  like lambda-term
+
+  back
+    make var
+      bind name, name
+
+task lam-of
+  take param, like text
+  take body, like lambda-term
+  like lambda-term
+
+  back
+    make lam
+      bind param, param
+      bind body, body
+
+task app-of
+  take fn, like lambda-term
+  take arg, like lambda-term
+  like lambda-term
+
+  back
+    make app
+      bind fn, fn
+      bind arg, arg
+
+# (\x. f x) y
+task applied
+  like lambda-term
+
+  back app-of(lam-of(<x>, app-of(var-of(<f>), var-of(<x>))), var-of(<y>))
+
+# the term lowered and its net reduced
+task reduced
+  like lowered
+
+  host found, lower(applied())
+
+  back
+    make lowered
+      bind graph, normalize-net(found/graph)
+      bind root, found/root
+      bind free, found/free
+
+# the one node left that is not a boundary
+task survivor-of
+  take done, like lowered
+  like number
+
+  save found, -1
+  walk done/graph/nodes/keys()
+    take id
+    fork test, and(is-below(found, 0), not(is-boundary(done/graph, id)))
+      hold
+        save found, id
+
+  back found
+
+test <before reduction there are three constructor nodes>
+  want hold, is-equal(agent-count(lower(applied())), 3)
+
+test <it reduces to a single application node, f y>
+  want hold, is-equal(agent-count(reduced()), 1)
+
+test <the reduction fired the beta rule>
+  host done, reduced()
+  want hold, is-minimum(done/graph/rewrites, 1)
+
+test <every port of the survivor is wired>
+  host done, reduced()
+  host survivor, survivor-of(done)
+  want hold, and(has-peer(done/graph, make-port(survivor, 0)), has-peer(done/graph, make-port(survivor, 1)))
+
+test <the application calls f>
+  host done, reduced()
+  host peer, peer-of(done/graph, make-port(survivor-of(done), 0))
+  host f, get-or-default(done/free, <f>, make-port(-1, 0))
+  want hold, is-equal(peer/node, f/node)
+
+test <the application is applied to y>
+  host done, reduced()
+  host peer, peer-of(done/graph, make-port(survivor-of(done), 1))
+  host y, get-or-default(done/free, <y>, make-port(-1, 0))
+  want hold, is-equal(peer/node, y/node)
+
+test <the result is wired to the root>
+  host done, reduced()
+  host peer, peer-of(done/graph, done/root)
+  want hold, is-equal(peer/node, survivor-of(done))

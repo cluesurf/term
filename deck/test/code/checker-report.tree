@@ -1,0 +1,133 @@
+# A checker diagnostic as a structured gap: the one machine- and AI-readable description of a verification hole that
+# every proposer (a mechanical fix, synthesis, a model) consumes, with the offending source line and a caret under the
+# span, so a fixer has what it needs and nothing it does not.
+#
+# Ported from deck/test/code/checker-gap.ts (self-hosting, 2026-10-04). A compiler diagnostic leaves `file`, `span`,
+# `hint` and `severity` out when it has none, and Term has no test for a field's presence, so checker-gap.ts keeps the
+# face that fills them where presence can still be seen: `has-span`, `<source>` for an absent file, `error` for an
+# absent severity, `<>` for an absent hint. A field given EMPTY is kept empty, as the original kept it. A gap's absent hint is `<>`, which every reader already
+# treated as none (`if (gap.hint)`). A caret's width counts code points, where `.length` counted UTF-16 units: the two
+# differ only on a line holding a character outside the Basic Multilingual Plane.
+
+load @term/base/list
+  find list
+
+load @term/base/text
+  find split
+  find char-count
+
+# a checker diagnostic with every field present. The span is zero-based, as the compiler counts
+form diagnostic-in
+  link name, like text
+  link message, like text
+  # the file, `<source>` when the diagnostic leaves it out (an empty one is kept: it was given)
+  link file, like text
+  link has-span, like boolean
+  link start-line, like number
+  link start-column, like number
+  link end-line, like number
+  link end-column, like number
+  # a suggested direction, or `<>`
+  link hint, like text
+  # `error`, `warning`, ..., `error` when the diagnostic leaves it out
+  link severity, like text
+
+form checker-gap
+  # `file:line:column` of the hole, counted from one
+  link location, like text
+  link kind, like text
+  link message, like text
+  # a suggested direction, `<>` when the checker offers none
+  link hint, like text
+  link severity, like text
+  # the offending line with a caret under the span, `<>` without a span
+  link excerpt, like text
+
+task repeat-text
+  take piece, like text
+  take count, like number
+  like text
+
+  save out, <>
+  save at, 0
+  walk test
+    hook test, is-below(at, count)
+    hook hold
+      save out, <{out}{piece}>
+      save at, add(at, 1)
+
+  back out
+
+# the offending line with a caret under the failing span. A span counts from zero and a person from one
+task excerpt-for
+  take source, like text
+  take found, like diagnostic-in
+  like text
+
+  fork test, found/has-span
+    miss
+      back <>
+
+  host lines, split(source, <\n>)
+  host line-number, add(found/start-line, 1)
+  save line, <>
+  fork test, and(is-minimum(found/start-line, 0), is-below(found/start-line, lines/length))
+    hold
+      save line, get(lines, found/start-line)
+  save end, char-count(line)
+  fork test, is-equal(found/end-line, found/start-line)
+    hold
+      save end, found/end-column
+  save width, subtract(end, found/start-column)
+  fork test, is-below(width, 1)
+    hold
+      save width, 1
+  save lead, found/start-column
+  fork test, is-below(lead, 0)
+    hold
+      save lead, 0
+  host caret, <{repeat-text(< >, lead)}{repeat-text(<^>, width)}>
+  host gutter, repeat-text(< >, char-count(<{line-number}>))
+
+  back <{line-number} | {line}\n{gutter} | {caret}>
+
+# one diagnostic as a gap
+task gap-from-diagnostic
+  take source, like text
+  take found, like diagnostic-in
+  like checker-gap
+
+  save line, 1
+  save column, 1
+  fork test, found/has-span
+    hold
+      save line, add(found/start-line, 1)
+      save column, add(found/start-column, 1)
+
+  back
+    make checker-gap
+      bind location, <{found/file}:{line}:{column}>
+      bind kind, found/name
+      bind message, found/message
+      bind hint, found/hint
+      bind severity, found/severity
+      bind excerpt, excerpt-for(source, found)
+
+# a gap as a compact, AI-readable block
+task show-gap
+  take gap, like checker-gap
+  like text
+
+  host lines, make list
+  lines/push(<gap [{gap/severity}] {gap/kind} at {gap/location}>)
+  lines/push(<  {gap/message}>)
+  fork test, not(is-equal(gap/excerpt, <>))
+    hold
+      walk split(gap/excerpt, <\n>)
+        take each
+        lines/push(<  {each}>)
+  fork test, not(is-equal(gap/hint, <>))
+    hold
+      lines/push(<  hint: {gap/hint}>)
+
+  back join(lines, <\n>)

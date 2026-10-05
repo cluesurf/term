@@ -9,6 +9,8 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { compile } from '@term/make/code/compile/compile'
+import { mill } from '@term/make/code/compile/mill'
+import { parse } from '@term/make/code/parser/tree'
 import { projectResolver } from '@term/call/code/make'
 
 const TERM = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
@@ -61,6 +63,62 @@ async function load(typescript: string): Promise<Record<string, (...args: unknow
 }
 
 async function main(): Promise<void> {
+  // ---- applications/web, commands/cast: a call to a component or task named like a word of the binding dialect ----
+  // `home`, `rank`, `time` and fourteen more are words @term/bind writes on a signature (code/drop/mine.tree), and
+  // the grammar matched them in any task body and dropped the line. `home host` placed nothing and the page served
+  // an empty `<div></div>`. A head the file defines or imports is a call, in written order
+  {
+    // read off the mill, before the inliner folds the one-line tasks into their values
+    const text = `task home
+  take n, like number
+  like number
+  send back, read n
+
+task rank
+  take n, like number
+  like number
+  send back, read n
+
+task order
+  like text
+  save seen, <a>
+  home 1
+  rank 2
+  save seen, <b>
+  send back, read seen
+`
+    const parsed = parse({ file: '/gate/code/gap.tree', text })
+    const milled = parsed.ok ? mill(parsed.tree, '/gate/code/gap.tree') : undefined
+    const order = milled?.ok
+      ? milled.program.find(node => node.form === 'function' && node.name === 'order')
+      : undefined
+    const steps = order?.form === 'function'
+      ? order.body.map(step =>
+          step.form === 'expression' && step.expr.form === 'call' && step.expr.callee.form === 'variable'
+            ? step.expr.callee.name
+            : step.form,
+        )
+      : []
+    ok('a task named `home` or `rank` is called from a body, in the order written', steps.join(' ') === 'let home rank assign return', steps.join(' '))
+    ok('and the build keeps both', build(text).ok)
+  }
+
+  {
+    const built = build(`load @term/site/dom/dom
+  find view
+
+view home
+  take host, like view
+  view h1, <Home>
+
+task route
+  take host, like view
+  take path, like text
+  home host
+`, undefined, true)
+    ok('`home host` alone in `route` places the component', built.ok && /function route\([^)]*\)[^{]*\{\s*home\(host\)/.test(built.typescript), built.messages || /function route[\s\S]{0,120}/.exec(built.typescript)?.[0])
+  }
+
   // ---- language/loops: nested `walk size` loops each keep their own counter ----
   {
     const built = build(`task grid

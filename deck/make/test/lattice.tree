@@ -1,0 +1,93 @@
+note <the hyperbolic lattice: the tessellation tree grows exponentially, and a net places onto distinct cells>
+
+# Ported from test/ir/lattice.ts (self-hosting, 2026-10-04): the module it tests, ir/lattice, has been Term since the
+# morning. The {7,3} tessellation's shells grow 1, 7, 28, 112, each at least twice the last, where a Euclidean grid
+# grows linearly. A chain of three constructors places onto three distinct cells, and the 3D and 4D honeycombs grow
+# exponentially too.
+
+load ../code/ir/lattice
+  find lattice
+  find honeycomb
+  find place
+  find tiling
+
+load ../code/ir/net
+  find make-net
+  find make-port
+  find add-node
+  find wire-ports
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+# each shell at least twice the one before, from the second on
+task grows-exponentially
+  take per-shell, like list, like number
+  like boolean
+
+  save at, 2
+  walk test
+    hook test, is-below(at, per-shell/length)
+    hook hold
+      fork test, is-below(get(per-shell, at), multiply(2, get(per-shell, subtract(at, 1))))
+        hold
+          back false
+      save at, add(at, 1)
+
+  back true
+
+test <the centre, then shells of 7, 28 and 112>
+  host t, lattice(7, 3, 3)
+  want hold, is-equal(join(t/per-shell, <,>), <1,7,28,112>)
+
+test <the growth is exponential, hyperbolic and not Euclidean>
+  host t, lattice(7, 3, 3)
+  want hold, grows-exponentially(t/per-shell)
+
+test <the centre has 7 children>
+  host t, lattice(7, 3, 3)
+  host centre, get(t/cells, 0)
+  want hold, is-equal(centre/children/length, 7)
+
+test <a cell of the first shell has 7 - 3 children>
+  host t, lattice(7, 3, 3)
+  save children, -1
+  walk t/cells
+    take each
+    fork test, and(is-equal(each/shell, 1), is-below(children, 0))
+      hold
+        save children, each/children/length
+  want hold, is-equal(children, 4)
+
+test <a chain of three nodes places onto three distinct cells>
+  host t, lattice(7, 3, 3)
+  host first, add-node(make-net(), <con>)
+  host second, add-node(first/graph, <con>)
+  host third, add-node(second/graph, <con>)
+  host wired, wire-ports(third/graph, make-port(first/id, 0), make-port(second/id, 0))
+  host net, wire-ports(wired, make-port(second/id, 1), make-port(third/id, 0))
+  host laid, place(net, t/cells)
+  host cells, make hash
+  walk laid/placement/values()
+    take cell
+    cells/set(cell, true)
+  want hold, and(is-equal(laid/placement/size, 3), is-equal(cells/size, 3))
+
+test <locality is a fraction between 0 and 1>
+  host t, lattice(7, 3, 3)
+  host first, add-node(make-net(), <con>)
+  host second, add-node(first/graph, <con>)
+  host net, wire-ports(second/graph, make-port(first/id, 0), make-port(second/id, 0))
+  host laid, place(net, t/cells)
+  want hold, and(is-minimum(laid/locality, 0.0), is-maximum(laid/locality, 1.0))
+
+test <the {5,3,4} honeycomb grows exponentially>
+  host h, honeycomb(<{5,3,4}>, 3)
+  want hold, grows-exponentially(h/per-shell)
+
+test <the {3,4,3,4} honeycomb grows exponentially>
+  host h, honeycomb(<{3,4,3,4}>, 3)
+  want hold, grows-exponentially(h/per-shell)

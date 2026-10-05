@@ -1,0 +1,155 @@
+note <dev HMR: the module graph's importer edges and pruning, and how an update propagates to a boundary or a reload>
+
+# Ported from test/dev/hmr.ts (self-hosting, 2026-10-04). A node names its neighbours by id and every change hands the
+# graph back, so each test threads the graph through its steps.
+
+load ../code/dev/module-graph
+  find module-graph
+  find make-module-graph
+  find ensure-module
+  find module-by-id
+  find put-module
+  find set-imports
+
+load ../code/dev/hmr
+  find hmr-result
+  find propagate-update
+  find affected-modules
+
+load @term/base/list
+  find list
+  find sort
+
+load @term/base/ordering
+  find ordering
+  find from-texts
+
+task id-of
+  take name, like text
+  like text
+
+  back </{name}.tree>
+
+# a node, loaded, self-accepting or not, whose id and url are both its path
+task with-node
+  take graph, like module-graph
+  take name, like text
+  take self-accepting, like boolean
+  like module-graph
+
+  host id, id-of(name)
+  host ensured, ensure-module(graph, id, id, id)
+  save found, module-by-id(ensured, id)
+  save found/loaded, true
+  save found/is-self-accepting, self-accepting
+
+  back put-module(ensured, found)
+
+task imports
+  take graph, like module-graph
+  take from, like text
+  take to, like text
+  like module-graph
+
+  host deps, make list
+  deps/push(id-of(to))
+  host change, set-imports(graph, id-of(from), deps)
+
+  back change/graph
+
+# root, plain, imports zone, self-accepting, which imports helper
+task app-graph
+  like module-graph
+
+  host one, with-node(make-module-graph(), <root>, false)
+  host two, with-node(one, <zone>, true)
+  host three, with-node(two, <helper>, false)
+
+  back imports(imports(three, <root>, <zone>), <zone>, <helper>)
+
+# one update, with this boundary and this accepted module
+task one-update
+  take result, like hmr-result
+  take boundary, like text
+  take accepted, like text
+  like boolean
+
+  sift result
+    case update
+      fork test, is-equal(updates/length, 1)
+        miss
+          back false
+      host only, get(updates, 0)
+      back and(is-equal(only/boundary, id-of(boundary)), is-equal(only/accepted, id-of(accepted)))
+    miss
+      back false
+
+task is-full-reload
+  take result, like hmr-result
+  like boolean
+
+  sift result
+    case full-reload
+      back true
+    miss
+      back false
+
+task by-text
+  take left, like text
+  take right, like text
+  like ordering
+
+  back from-texts(left, right)
+
+test <graph: ensure is idempotent>
+  host g, with-node(make-module-graph(), <a>, false)
+  host before, module-by-id(g, id-of(<a>))
+  host again, ensure-module(g, id-of(<a>), id-of(<a>), id-of(<a>))
+  host after, module-by-id(again, id-of(<a>))
+  want hold, is-equal(after, before)
+
+test <graph: set-imports adds the reverse importer edge and records the import>
+  host g, imports(with-node(with-node(make-module-graph(), <a>, false), <helper>, false), <a>, <helper>)
+  host helper, module-by-id(g, id-of(<helper>))
+  host a, module-by-id(g, id-of(<a>))
+  want hold, and(contains(helper/importers, id-of(<a>)), contains(a/imported-modules, id-of(<helper>)))
+
+test <graph: dropping the last importer prunes the dep, which has no importers left>
+  host g, imports(with-node(with-node(make-module-graph(), <a>, false), <helper>, false), <a>, <helper>)
+  host none, make list
+  host change, set-imports(g, id-of(<a>), none)
+  host helper, module-by-id(change/graph, id-of(<helper>))
+  want hold, and(and(is-equal(change/pruned/length, 1), is-equal(get(change/pruned, 0), id-of(<helper>))), is-equal(helper/importers/length, 0))
+
+test <hmr: editing a zone updates that zone, which accepts itself>
+  want hold, one-update(propagate-update(app-graph(), id-of(<zone>)), <zone>, <zone>)
+
+test <hmr: editing a helper bubbles to the zone that imports it>
+  want hold, one-update(propagate-update(app-graph(), id-of(<helper>)), <zone>, <zone>)
+
+test <hmr: a change with no accepting ancestor is a full reload>
+  host g, imports(with-node(with-node(make-module-graph(), <root>, false), <orphan>, false), <root>, <orphan>)
+  want hold, is-full-reload(propagate-update(g, id-of(<orphan>)))
+
+test <hmr: a dep-accept makes the accepting importer the boundary>
+  host g, imports(with-node(with-node(make-module-graph(), <root>, false), <dep>, false), <root>, <dep>)
+  save root, module-by-id(g, id-of(<root>))
+  host accepted, copy(root/accepted-hmr-deps)
+  accepted/push(id-of(<dep>))
+  save root/accepted-hmr-deps, accepted
+  want hold, one-update(propagate-update(put-module(g, root), id-of(<dep>)), <root>, <dep>)
+
+test <hmr: a non-accepting cycle is a full reload>
+  host g, imports(imports(with-node(with-node(make-module-graph(), <a>, false), <b>, false), <a>, <b>), <b>, <a>)
+  want hold, is-full-reload(propagate-update(g, id-of(<a>)))
+
+test <hmr: a never-loaded module is a full reload>
+  host g, ensure-module(make-module-graph(), id-of(<a>), id-of(<a>), id-of(<a>))
+  want hold, is-full-reload(propagate-update(g, id-of(<a>)))
+
+test <hmr: a module the graph never met is a full reload>
+  want hold, is-full-reload(propagate-update(make-module-graph(), id-of(<nowhere>)))
+
+test <hmr: the affected modules are the change and every transitive importer>
+  host affected, sort(affected-modules(app-graph(), id-of(<helper>)), by-text)
+  want hold, is-equal(join(affected, <,>), </helper.tree,/root.tree,/zone.tree>)

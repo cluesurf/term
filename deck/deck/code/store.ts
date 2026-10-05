@@ -2,7 +2,7 @@ import fsp from 'fs/promises'
 import path from 'path'
 import os from 'os'
 import { hashFile } from './hash'
-import { existsSync } from 'fs'
+import { existsSync, renameSync } from 'fs'
 
 // The toolchain's directory under `.base`, scoped the way the packages are. Spelled out rather than imported from
 // deck/call/code/home.ts on purpose: @term/deck is PUBLISHED and consumed as an installed package, so it must not
@@ -21,6 +21,31 @@ export function getStoreRoot(): string {
     path.join(os.homedir(), TERM_DIR),
     path.join(os.homedir(), '.base', LEGACY_HOME),
   )
+}
+
+/**
+ * `~/.base/@cluesurf/term/base/`: the machine's shared store. The installed decks as an OCI image layout (`blobs/`,
+ * `index.json`), which an offline install reads, and in `mill/` the parsed modules every project shares.
+ *
+ * It was `store/` until 2026-10-04. The installed decks are not a cache, so the old folder is MOVED, whole, by one
+ * rename the first time anything asks: a rename is atomic, so it cannot half-migrate, and afterwards there is one
+ * folder rather than a fallback read forever. A rename that fails (another filesystem, a permission) leaves the old
+ * folder in use whole, the way `keptAt` does.
+ */
+export function getBaseDir(): string {
+  const root = getStoreRoot()
+  const current = path.join(root, 'base')
+  const legacy = path.join(root, 'store')
+
+  if (!existsSync(current) && existsSync(legacy)) {
+    try {
+      renameSync(legacy, current)
+    } catch {
+      return existsSync(current) ? current : legacy
+    }
+  }
+
+  return current
 }
 
 export function getTreeDir(): string {

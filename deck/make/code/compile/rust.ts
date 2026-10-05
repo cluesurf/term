@@ -122,11 +122,51 @@ function bare(rendered: string): string {
   return rendered.slice(1, -1)
 }
 
+// every `format!(...)` in a text replaced by `__formatted`, its parentheses matched outside quoted text
+function withoutFormats(text: string): string {
+  let out = ''
+  let at = 0
+
+  for (;;) {
+    const start = text.indexOf('format!(', at)
+
+    if (start < 0) {
+      return out + text.slice(at)
+    }
+
+    let depth = 0
+    let quoted = false
+    let end = start + 'format!'.length
+
+    for (; end < text.length; end++) {
+      const c = text[end]
+
+      if (quoted) {
+        if (c === '\\') end++
+        else if (c === '"') quoted = false
+        continue
+      }
+
+      if (c === '"') quoted = true
+      else if (c === '(') depth++
+      else if (c === ')' && --depth === 0) break
+    }
+
+    out += `${text.slice(at, start)}__formatted`
+    at = end + 1
+  }
+}
+
 // does a value, made a function's tail expression, hold a borrow guard (`Ref`, `MutexGuard`, a `with` closure's) in a
 // temporary? Before edition 2024 a tail expression's temporaries outlive the body's locals (E0597), so such a value
 // stays a `return` statement. Every block `{ a; b; c }` inside the value is asked of its own tail `c` only: a guard in
 // a statement before it (a temporary, or a `let` the block owns) is dropped by the time the block ends
-function borrowsAtTail(value: string): boolean {
+function borrowsAtTail(whole: string): boolean {
+  // a `format!(...)` keeps no temporary past itself: it expands to a block of its own that binds its result, so a
+  // borrow among its arguments is dropped inside it. Cut out, `compute`'s `return Ok(format!(.., x.borrow()[0], ..))`
+  // stayed a `return` (clippy: needless_return), and the tail compiles (tmp/tail-borrow-plain.rs, 2026-10-05)
+  const value = withoutFormats(whole)
+
   // the statement part of each block, `{` up to its last `;`, is cut out; what is left can reach the tail
   const cuts: [number, number][] = []
   const blocks: { open: number; semi: number }[] = []
@@ -1299,10 +1339,13 @@ function emitRustPass(
     const rendered = expr(value)
     // MOVE ON LAST USE, as a call argument does: a variable read exactly once in the function, and not in a loop or a
     // closure (`moveArgs`), moves into the structure. Building `node(head, into)` cloned `into` at its only read
+    // a FIELD of function type is held as `Rc<dyn Fn>` and clones like any `Rc`: building `make gap / bind spec,
+    // gap/spec` in a loop moved the field out of `gap` on the first turn, E0382 (the repair-loop port, 2026-10-04). A
+    // function-typed VARIABLE is an `impl Fn` parameter or a closure, and is passed as it stands
     const clones =
       (value.form === 'variable' || value.form === 'member') &&
       value.type &&
-      value.type.kind !== 'function' &&
+      (value.type.kind !== 'function' || value.form === 'member') &&
       !copyType(value.type) &&
       !rendered.endsWith('.clone()') &&
       !(value.form === 'variable' && cellVars.has(value.name)) &&
@@ -2647,19 +2690,21 @@ function emitRustPass(
           maskMethods.has(node.callee.name) &&
           argList.length >= 1
         ) {
-          return `(${argList[0]}).${snake(node.callee.name)}(${argList
+          return lendWrap(`(${argList[0]}).${snake(node.callee.name)}(${argList
             .slice(1)
-            .join(', ')})`
+            .join(', ')})`)
         }
 
         // a slashed callee (`fs/read-to-string`) is a module path: emit Rust `::` segments. A field holding a closure
-        // is invoked with parens (`(r.handle)(x)`), distinguishing it from a method call.
+        // is invoked with parens (`(r.handle)(x)`), distinguishing it from a method call. Both go through `lendWrap`,
+        // which declares the arguments hoisted above: without it a call through a closure field named `__lend_1` and
+        // nothing declared it (the repair-loop port, 2026-10-04)
         if (node.callee.form === 'member') {
           const callee = memberPath(node.callee)
 
-          return closureFields.has(node.callee.name)
+          return lendWrap(closureFields.has(node.callee.name)
             ? `(${callee})(${args})`
-            : `${callee}(${args})`
+            : `${callee}(${args})`)
         }
 
         // a parameter called by name is the callback it holds, whose type says it returns a plain value: `list/find-index`
@@ -3136,11 +3181,20 @@ function emitRustPass(
         return wrapList(
           `${data}.iter().rev().cloned().collect::<Vec<_>>()`,
         )
-      case 'join':
-        // each item as `to-text` renders it, so a float reads as on every backend
-        return op.target.type?.kind === 'array' && op.target.type.element.kind === 'float'
-          ? `${data}.iter().map(|e| term_number(*e)).collect::<Vec<_>>().join(&${arg[0]})`
-          : `${data}.iter().map(|e| format!("{}", e)).collect::<Vec<_>>().join(&${arg[0]})`
+      case 'join': {
+        // each item as `to-text` renders it, so a float reads as on every backend. A list of texts joins as it is,
+        // where each was formatted again into a new `String` (clippy: useless_format), and a literal separator is the
+        // `&str` it is rather than a `String` made to be borrowed (unnecessary_to_owned)
+        const element = op.target.type?.kind === 'array' ? op.target.type.element.kind : undefined
+        const literal = /^("(?:[^"\\]|\\.)*")\.to_string\(\)$/.exec(arg[0] ?? '')
+        const separator = literal ? literal[1]! : `&${arg[0]}`
+
+        return element === 'float'
+          ? `${data}.iter().map(|e| term_number(*e)).collect::<Vec<_>>().join(${separator})`
+          : element === 'string'
+            ? `${data}.join(${separator})`
+            : `${data}.iter().map(|e| format!("{}", e)).collect::<Vec<_>>().join(${separator})`
+      }
       case 'map':
         return wrapList(
           `${data}.iter().map(|e| ${arg[0]}(e.clone())).collect::<Vec<_>>()`,
@@ -3356,12 +3410,15 @@ function emitRustPass(
     // (typed `i64`: a bare `1.min(n)` is an ambiguous numeric type, E0689)
     const atLeastZero = (x: string): string => (/^-?\d+$/.test(x) ? `${Math.max(Number(x), 0)}i64` : `(${x}).max(0)`)
 
+    // the position read once, into `i`, unless it is a variable named `i` already (clippy: redundant_locals)
+    const position = a[0] === 'i' ? '' : `let i = ${a[0]}; `
+
     switch (op) {
       case 'charAt':
       case 'at':
-        return `{ let h: &str = ${borrow}; let i = ${a[0]}; if i < 0 { String::new() } else { h.chars().nth(i as usize).map(|c| c.to_string()).unwrap_or_default() } }`
+        return `{ let h: &str = ${borrow}; ${position}if i < 0 { String::new() } else { h.chars().nth(i as usize).map(|c| c.to_string()).unwrap_or_default() } }`
       case 'charCodeAt':
-        return `{ let h: &str = ${borrow}; let i = ${a[0]}; if i < 0 { -1i64 } else { h.chars().nth(i as usize).map(|c| c as i64).unwrap_or(-1) } }`
+        return `{ let h: &str = ${borrow}; ${position}if i < 0 { -1i64 } else { h.chars().nth(i as usize).map(|c| c as i64).unwrap_or(-1) } }`
       case 'indexOf':
         return `{ let h: &str = ${borrow}; let n: String = ${a[0]}; let from = ${atLeastZero(a[1] ?? '0')} as usize; let start = h.char_indices().nth(from).map(|(b, _)| b).unwrap_or(h.len()); match h[start..].find(n.as_str()) { Some(b) => h[..start + b].chars().count() as i64, None => -1 } }`
       case 'lastIndexOf':
@@ -5483,14 +5540,6 @@ fn term_fail(note: impl Into<String>) -> TermException {
 fn term_fail_with<T>(held: T, note: impl Into<String>) -> TermException {
     drop(held);
     term_fail(note)
-}
-// the same for a raise built where it was (a record, a caught value passed on): only the drop goes out of line
-#[allow(dead_code)]
-#[cold]
-#[inline(never)]
-fn term_raise_with<T>(held: T, raised: TermException) -> TermException {
-    drop(held);
-    raised
 }`,
       ]
     : []
@@ -5651,9 +5700,10 @@ fn __term_drain() {
     // `return` may be its own
     if (spares.length > 0 && !out.includes('move |') && !out.includes('(|| ') && !out.includes('async {')) {
       const held = spares.length === 1 ? spares[0]! : `(${spares.join(', ')})`
+      // a raised RECORD keeps its inline drop: a program that raises one carries the exception module's generic code,
+      // which turns boxing off (`rustBoxing`, `generic`), so no task holding a spare can raise one today
+      // (test/compile/rust-box.ts holds that, so a finer boxing fact is pointed back here)
       out = out.split('return std::result::Result::Err(term_fail(').join(`return std::result::Result::Err(term_fail_with(${held}, `)
-      // any other raise (a record, a caught value passed on) is built where it was, and the spares go with it
-      out = out.replace(/return std::result::Result::Err\((?!term_fail_with\()(.*)\);$/gm, `return std::result::Result::Err(term_raise_with(${held}, $1));`)
     }
 
     return out

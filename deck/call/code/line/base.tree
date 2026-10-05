@@ -36,7 +36,15 @@ load @term/call/work/app-verbs
   find bind
   find self-back
   find self-check
+  find self-find
+  find self-list
+  find self-load
+  find self-need
+  find self-pick
+  find self-show
+  find self-toss
   find self-update
+  find self-wash
   find cast
   find fill
   find host
@@ -347,14 +355,68 @@ hook bind
   task bind
 
 hook self
-  note <This install of term: check, update, or go back a version>
+  note <The versions of term on this machine: list, find, load, pick, need, show, toss, wash, check, update, back>
+  # Installed versions, the front, the default, and what runs here
+  hook list
+    task self-list
+  # Released versions, newest first
+  hook find
+    # Only versions in this range: 2.6.x
+    take range
+      like text
+    # Every platform, not only this one
+    take all
+      like boolean
+    task self-find
+  # Install a version, verified, without switching to it
+  hook load
+    # A version or a range: 2.6.4, 2.6.x
+    take range
+      like text
+      need true
+    task self-load
+  # The version that runs outside any project
+  hook pick
+    # A version or a range: 2.6.4, 2.6.x
+    take range
+      like text
+      need true
+    task self-pick
+  # The version this project needs, written to deck.tree and pinned in lock.tree
+  hook need
+    # A version or a range: 2.6.4, 2.6.x
+    take range
+      like text
+    # Remove the project's request instead
+    take none
+      like boolean
+    task self-need
+  # Which version runs here, and every rule that decided it
+  hook show
+    task self-show
+  # Remove one installed version
+  hook toss
+    # The exact version: 2.6.2
+    take mark
+      like text
+      need true
+    task self-toss
+  # Versions nothing has used in --days; removed only with --commit
+  hook wash
+    # Unused for this many days (default 90)
+    take days
+      like number
+    # Remove them, rather than list them
+    take commit
+      like boolean
+    task self-wash
   # Verify this install against the signed release
   hook check
     task self-check
-  # Install the newest release and switch to it
+  # Install the newest release and move the front to it
   hook update
     task self-update
-  # Switch back to the previous version
+  # Move the front back to the previous version
   hook back
     task self-back
 

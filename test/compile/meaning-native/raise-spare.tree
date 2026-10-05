@@ -2,14 +2,14 @@ load @term/base/list
   find list
   find push
 load @term/base/exception
-  find conflict
+  find absence
 
-# a task that keeps a box in its own spare and raises after opening it (compile/rust.ts, `term_fail_with` and
-# `term_raise_with`): `move-top`, with the pop and the push inlined into it, opens the popped disk's box and then
-# refuses the push, once by raising a record and once a text. It is called from a recursive task, which nothing is
-# inlined into, so `move-top` stays a task of its own holding the spare. Each raise is caught by its caller, which
-# answers the exception's note, and the piles are read after: the refused disk is gone, popped before the refusal,
-# and every other disk is where its moves left it
+# a raise after a node is opened for reuse: `move-top`, with the pop and the push inlined into it, opens the popped
+# disk and then refuses the push, once by raising a record (a form `like absence`) and once a text. It is called from a
+# recursive task, which nothing is inlined into, so `move-top` stays a task of its own. Each raise is caught by its
+# caller, which answers the exception's note, and the piles are read after: the refused disk is gone, popped before
+# the refusal, and every other disk is where its moves left it. On Rust this program boxes nothing (the exception
+# module's generic code, `rustBoxing`), so it holds the meaning, and test/compile/rust-box.ts the spare's raise
 
 form stack
   case empty
@@ -18,9 +18,8 @@ form stack
     link below, like stack
 
 form pile-clash
-  like conflict
+  like absence
     bind note, <clash>
-    bind thing, <disk>
     link size, like number
 
 task push-disk
@@ -38,6 +37,7 @@ task push-disk
             read on
         hook hold
           halt pile-clash
+            bind thing, text <disk>
             bind size, read size
     case empty
   save piles/{pile}
@@ -103,12 +103,11 @@ task try-move
   take to, like number
   like text
   mark unsafe
-    host moved
-      call move-many
-        read piles
-        read count
-        read from
-        read to
+    call move-many
+      read piles
+      read count
+      read from
+      read to
     send back, text <moved>
   halt take
     take problem
@@ -123,6 +122,12 @@ task show
       send back, text <.>
     case disk
       send back, text <{size}{show(below)}>
+
+# every pile in the list, read where it lies, so nothing clones a stack and Rust keeps its boxes
+task show-all
+  take piles, like list, like stack
+  like text
+  send back, text <{show(piles/0)}|{show(piles/1)}|{show(piles/2)}>
 
 task compute
   like text
@@ -176,4 +181,4 @@ task compute
       code 2
       code 0
       code 2
-  send back, text <{first}:{second}:{third}:{fourth}:{show(piles/0)}|{show(piles/1)}|{show(piles/2)}>
+  send back, text <{first}:{second}:{third}:{fourth}:{show-all(piles)}>

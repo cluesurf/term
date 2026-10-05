@@ -2,11 +2,11 @@
 // plus nearest-wins, a stale pin, a pin not installed, and every refusal. Real files in a scratch directory: a home with
 // installed versions, projects with deck.tree and lock.tree. No network: resolution never reaches one.
 // Run: npx tsx test/call/need-resolve.ts
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { chooseVersion, splitFlag, type NeedChoice, type NeedWorld } from '@term/call/code/need'
+import { chooseVersion, frontOf, markUsed, splitFlag, type NeedChoice, type NeedWorld } from '@term/call/code/need'
 
 let pass = 0
 let fail = 0
@@ -120,6 +120,25 @@ writeFileSync(join(home, 'need.tree'), '\n')
 // 5  the newest installed
 ok('5. no request anywhere: the newest installed', is(run({ cwd: none }), 'run', '2.7.0', 'installed'), show(run({ cwd: none })))
 ok('   a version directory without an install.tree is not an install', !['2.9.0', '2.8.0'].includes((run({ cwd: none }) as { version: string }).version))
+mkdirSync(join(home, 'bin'), { recursive: true })
+symlinkSync(join('..', 'code', '2.6.2', 'term', 'bin', 'term'), join(home, 'bin', 'term'))
+ok('5. with a front, the front: `self back` and `self load` mean what they say', is(run({ cwd: none }), 'run', '2.6.2', 'installed'), show(run({ cwd: none })))
+ok('   frontOf reads the link', frontOf(home) === '2.6.2')
+ok('   a project still wins over the front', is(run({ cwd: sixes }), 'run', '2.6.4'))
+unlinkSync(join(home, 'bin', 'term'))
+
+// the running copy counts as installed: a Homebrew 2.6.6 in a 2.6.x project runs itself, no handoff to 2.6.4
+{
+  const choice = run({ cwd: sixes, running: '2.6.6' })
+
+  ok('   a newer running copy in range runs itself', is(choice, 'run', '2.6.6', 'running') && choice.form === 'run' && choice.launcher === undefined, show(choice))
+}
+
+// markUsed: once a day, only for an install
+markUsed({ home, version: '2.6.4' })
+ok('markUsed stamps an installed version', existsSync(join(home, 'code', '2.6.4', 'used')))
+markUsed({ home, version: '2.9.0' })
+ok('   and never a directory that is not an install', !existsSync(join(home, 'code', '2.9.0', 'used')))
 
 // 6  the running copy
 {

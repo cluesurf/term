@@ -1,3 +1,6 @@
+load @term/base/environment
+  find variable
+
 load @term/call/work/home
   find root, name project-root
 
@@ -147,6 +150,33 @@ task host
     log-fail format-error error
     node-process/exit code 1
 
+form self-find-ask
+  link root, like text
+  link range, like text
+  link all, like boolean
+
+form self-range-ask
+  link root, like text
+  link range, like text
+
+form self-need-ask
+  link root, like text
+  link range, like text
+  link none, like boolean
+
+form self-show-ask
+  link root, like text
+  link flag, like text
+
+form self-toss-ask
+  link root, like text
+  link mark, like text
+
+form self-wash-ask
+  link root, like text
+  link days, like number
+  link commit, like boolean
+
 form bind-ask
   link root, like text
   link toss, like boolean
@@ -208,6 +238,166 @@ task self-back
   save root, call project-root
   mark unsafe
     call self-module/callSelfBack, make(root-ask, bind root, read root), wait true
+  halt take
+    take error
+    log-fail format-error error
+    node-process/exit code 1
+
+# `term self list`: the installed versions, the front, the default, and what runs here
+task self-list
+  mark async
+  like void
+
+  # the project root is READ, not taken: a hook has no `root` argument to pass
+  save root, call project-root
+  mark unsafe
+    call self-module/callSelfList, make(root-ask, bind root, read root), wait true
+  halt take
+    take error
+    log-fail format-error error
+    node-process/exit code 1
+
+# `term self find`: the released versions, newest first
+task self-find
+  mark async
+  take range, like text
+  take all, like boolean
+
+  like void
+
+  # the project root is READ, not taken: a hook has no `root` argument to pass
+  save root, call project-root
+  mark unsafe
+    call self-module/callSelfFind
+      make self-find-ask
+        bind root, read root
+        bind range, read range
+        bind all, read all
+      wait true
+  halt take
+    take error
+    log-fail format-error error
+    node-process/exit code 1
+
+# `term self load`: install a version, verified, switching nothing
+task self-load
+  mark async
+  take range, like text
+
+  like void
+
+  # the project root is READ, not taken: a hook has no `root` argument to pass
+  save root, call project-root
+  mark unsafe
+    call self-module/callSelfLoad
+      make self-range-ask
+        bind root, read root
+        bind range, read range
+      wait true
+  halt take
+    take error
+    log-fail format-error error
+    node-process/exit code 1
+
+# `term self pick`: the version that runs outside any project
+task self-pick
+  mark async
+  take range, like text
+
+  like void
+
+  # the project root is READ, not taken: a hook has no `root` argument to pass
+  save root, call project-root
+  mark unsafe
+    call self-module/callSelfPick
+      make self-range-ask
+        bind root, read root
+        bind range, read range
+      wait true
+  halt take
+    take error
+    log-fail format-error error
+    node-process/exit code 1
+
+# `term self need`: the version this project needs, in deck.tree and lock.tree
+task self-need
+  mark async
+  take range, like text
+  take none, like boolean
+
+  like void
+
+  # the project root is READ, not taken: a hook has no `root` argument to pass
+  save root, call project-root
+  mark unsafe
+    call self-module/callSelfNeed
+      make self-need-ask
+        bind root, read root
+        bind range, read range
+        bind none, read none
+      wait true
+  halt take
+    take error
+    log-fail format-error error
+    node-process/exit code 1
+
+# `term self show`: which version runs here, and why
+task self-show
+  mark async
+  like void
+
+  # the project root is READ, not taken: a hook has no `root` argument to pass
+  save root, call project-root
+  # a `+range` before `self` is handed over by the dispatcher (need-run.ts), never by argv
+  save flag, variable <TERM_NEED_FLAG>
+  mark unsafe
+    call self-module/callSelfShow
+      make self-show-ask
+        bind root, read root
+        bind flag, read flag
+      wait true
+  halt take
+    take error
+    log-fail format-error error
+    node-process/exit code 1
+
+# `term self toss`: remove one installed version
+task self-toss
+  mark async
+  take mark, like text
+
+  like void
+
+  # the project root is READ, not taken: a hook has no `root` argument to pass
+  save root, call project-root
+  mark unsafe
+    call self-module/callSelfToss
+      make self-toss-ask
+        bind root, read root
+        bind mark, read mark
+      wait true
+  halt take
+    take error
+    log-fail format-error error
+    node-process/exit code 1
+
+# `term self wash`: the versions nothing has used, removed only with --commit
+task self-wash
+  mark async
+  take days, like number
+  take commit, like boolean
+
+  like void
+
+  # the project root is READ, not taken: a hook has no `root` argument to pass
+  save root, call project-root
+  mark unsafe
+    call self-module/callSelfWash
+      make self-wash-ask
+        bind root, read root
+        bind days, read days
+        bind commit, read commit
+      wait true
   halt take
     take error
     log-fail format-error error

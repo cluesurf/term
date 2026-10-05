@@ -1,0 +1,165 @@
+note <the repair loop: proposers offer, the driver proves over the bound, and a refuted candidate refines the gap>
+
+# repair-loop.tree is gap.ts's driver. gap.ts builds its proposers as closures over their arguments, which Term has no
+# spelling for, so here each proposer's `propose` is a named task fixing the argument (`cegis-small`, `max-hint`).
+# These hold what demo-loop.ts printed: the loop converges on a correct body, never accepts an unproven one, and a
+# wrong proposal hands over to the next proposer.
+
+load ../code/repair-loop
+  find gap-report
+  find proposer
+  find repair
+  find cegis-propose
+  find hint-propose
+  find show-repair
+
+load ../code/expression-grammar
+  find expression
+  find variable-at
+  find eval-expr
+  find show-expr
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+load @term/base/maybe
+  find maybe
+
+host names, make list(<x>, <y>)
+
+# the larger of the two inputs
+task is-max
+  take inputs, like list, like number
+  take output, like number
+  like boolean
+
+  host x, get(inputs, 0)
+  host y, get(inputs, 1)
+  fork test, is-above(x, y)
+    hold
+      back is-equal(output, x)
+  back is-equal(output, y)
+
+task max-gap
+  like gap-report
+
+  host none, make list
+
+  back
+    make gap-report
+      bind goal, <max>
+      bind var-count, 2
+      bind spec, is-max
+      bind counterexamples, none
+      bind bound, 2
+
+task cegis-small
+  take gap, like gap-report
+  like maybe, like expression
+
+  back cegis-propose(3, gap)
+
+# a hint table whose `max` is wrong: the difference
+task wrong-hint
+  take gap, like gap-report
+  like maybe, like expression
+
+  host difference
+    make sub
+      bind left, variable-at(0)
+      bind right, variable-at(1)
+  host hints, make hash
+  hints/set(<max>, difference)
+
+  back hint-propose(hints, gap)
+
+# a hint table with nothing for `max`
+task other-hint
+  take gap, like gap-report
+  like maybe, like expression
+
+  host hints, make hash
+  hints/set(<min>, variable-at(0))
+
+  back hint-propose(hints, gap)
+
+task proposer-of
+  take name, like text
+  take propose
+    like task
+      take gap, like gap-report
+      like maybe, like expression
+  like proposer
+
+  back
+    make proposer
+      bind name, name
+      bind propose, propose
+
+# does the expression compute the larger input everywhere over the bound
+task computes-max
+  take expr, like expression
+  like boolean
+
+  save x, -2
+  walk test
+    hook test, is-maximum(x, 2)
+    hook hold
+      save y, -2
+      walk test
+        hook test, is-maximum(y, 2)
+        hook hold
+          host point, make list(x, y)
+          fork test, not(is-max(point, eval-expr(expr, point)))
+            hold
+              back false
+          save y, add(y, 1)
+      save x, add(x, 1)
+
+  back true
+
+test <synthesis converges on the larger input, proven over the bound>
+  host proposers, make list(proposer-of(<cegis>, cegis-small))
+  host result, repair(max-gap(), proposers, 20)
+  want hold, and(and(result/ok, computes-max(result/expr)), is-equal(result/proposer, <cegis>))
+
+test <every refuted round leaves a counterexample>
+  host proposers, make list(proposer-of(<cegis>, cegis-small))
+  host result, repair(max-gap(), proposers, 20)
+  want hold, and(is-above(result/rounds, 1), is-equal(result/counterexamples/length, subtract(result/rounds, 1)))
+
+test <a wrong hint is refuted, and the next proposer takes over>
+  host proposers, make list
+  proposers/push(proposer-of(<hint>, wrong-hint))
+  proposers/push(proposer-of(<cegis>, cegis-small))
+  host result, repair(max-gap(), proposers, 20)
+  want hold, and(and(result/ok, computes-max(result/expr)), is-equal(result/proposer, <cegis>))
+
+test <no proposer with an answer: nothing is accepted>
+  host proposers, make list(proposer-of(<hint>, other-hint))
+  host result, repair(max-gap(), proposers, 20)
+  want hold, and(not(result/ok), is-equal(result/reason, <no proposer produced a usable candidate>))
+
+test <a wrong hint alone does not converge, and is never accepted>
+  host proposers, make list(proposer-of(<hint>, wrong-hint))
+  host result, repair(max-gap(), proposers, 20)
+  want hold, and(not(result/ok), is-equal(result/reason, <no proposer produced a usable candidate>))
+
+test <no rounds, no repair>
+  host proposers, make list(proposer-of(<cegis>, cegis-small))
+  host result, repair(max-gap(), proposers, 0)
+  want hold, and(not(result/ok), is-equal(result/reason, <did not converge within the round budget>))
+
+test <a repair shown: the body, who found it, and how>
+  host proposers, make list(proposer-of(<cegis>, cegis-small))
+  host result, repair(max-gap(), proposers, 20)
+  host shown, show-repair(result, names)
+  want hold, is-equal(shown, <{show-expr(result/expr, names)}  [via cegis, {result/rounds} rounds, {result/counterexamples/length} counterexamples, proven over bound]>)
+
+test <a failed repair shown>
+  host proposers, make list(proposer-of(<cegis>, cegis-small))
+  host result, repair(max-gap(), proposers, 0)
+  want hold, is-equal(show-repair(result, names), <unsynthesized: did not converge within the round budget>)

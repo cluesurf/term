@@ -1,4 +1,8 @@
 # Run a subprocess to completion and capture its result. The clean uniform interface; each backend wraps its platform process API (node child_process, rust std::process::Command, swift Process, kotlin ProcessBuilder), selected at build time. Async, because a subprocess runs over time. `run-result` carries the exit code plus whatever the process wrote to standard output and standard error.
+# A command that cannot start raises `command-absence`, its `thing` the command and its `reason` the platform's own
+# words. It answered code -1, so a typo in a program's name read as a program that ran and failed (guides:
+# library/processes, 2026-10-04). Each runner still reports -1 for it, and the raise is made here, in Term, so all
+# four agree on when.
 
 mark stable
 
@@ -7,11 +11,20 @@ load @term/base/native/{platform}/process/run
   find spawn-on-terminal
   find spawn-with-input
 
+load @term/base/exception
+  find absence
+
 # the outcome of a finished subprocess
 form run-result
   link code, like number
   link output, like text
   link error, like text
+
+# a command that could not be started: not on the PATH, not executable, or not there at all
+form command-absence
+  like absence
+    bind note, <Command not found>
+    link reason, like text
 
 # run `command` with `argument-list`, wait for it to finish, return its result
 task run
@@ -21,15 +34,19 @@ task run
     like list
       like text
   like run-result
-  send back
+  save result
     call spawn-process
       read command
       read argument-list
       wait true
+  call started
+    read command
+    read result
+  send back, read result
 
 # run `command` on this terminal: it reads the keyboard and writes as it goes, so a password prompt or a progress bar
-# reaches the person at the terminal, and nothing is captured. The answer is the exit code, -1 when the command could
-# not be started (and always -1 in a browser, which runs no processes)
+# reaches the person at the terminal, and nothing is captured. The answer is the exit code. A browser runs no
+# processes, so there every command is a `command-absence`
 task run-attached
   mark async
   take command, like text
@@ -37,11 +54,21 @@ task run-attached
     like list
       like text
   like number
-  send back
+  save code
     call spawn-on-terminal
       read command
       read argument-list
       wait true
+  fork test
+    hook test
+      call is-equal
+        read code
+        code -1
+    hook hold
+      halt command-absence
+        bind thing, read command
+        bind reason, text <could not start>
+  send back, read code
 
 # run `command` with `input` written to its standard input, then closed: the answers to a program's prompts (the `y` an
 # installer asks for), handed over without a shell or a pipe. Output is captured as `run` captures it
@@ -53,9 +80,28 @@ task run-with-input
       like text
   take input, like text
   like run-result
-  send back
+  save result
     call spawn-with-input
       read command
       read argument-list
       read input
       wait true
+  call started
+    read command
+    read result
+  send back, read result
+
+# a runner answers -1 for a command it could not start, with the platform's reason in `error`
+task started
+  mark private
+  take command, like text
+  take result, like run-result
+  fork test
+    hook test
+      call is-equal
+        read result/code
+        code -1
+    hook hold
+      halt command-absence
+        bind thing, read command
+        bind reason, read result/error

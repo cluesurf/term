@@ -195,9 +195,15 @@ export function checkTypeNames(program: Program, file: string): Diagnostic[] {
     if (s.form === 'record-type') {
       constructible.add(s.name)
 
+      // a form named like a case of another (`expression`, beside `statement`'s case `expression`) is renamed
+      // `expression__form` to keep the two kinds apart, and its qualified constructions are still written by the
+      // name the author gave it
+      const written = s.name.replace(/__form$/, '')
+
       for (const variant of s.variants) {
         constructible.add(variant.name)
         constructible.add(`${s.name}/${variant.name}`)
+        constructible.add(`${written}/${variant.name}`)
       }
     }
   }

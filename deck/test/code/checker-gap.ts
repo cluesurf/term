@@ -5,12 +5,13 @@
  * and AI-readable description of a verification hole that every
  * proposer (mechanical fix, CEGIS, AI) consumes.
  *
- * The checker already produces rich diagnostics (a kind, a message, a
- * span, an optional hint, a severity). This adds the one missing
- * piece: a self-contained, actionable report including the offending
- * source line with a caret, so a fixer - human or model - has exactly
- * what it needs and nothing it does not.
+ * The report is Term since 2026-10-04, deck/test/code/checker-report.tree.
+ * This is the face that fills what a compiler diagnostic leaves out
+ * (`file`, `span`, `hint`, `severity`), which Term cannot test for.
  */
+
+import { gapFromDiagnostic as gapFromComplete, showGap } from '@term/test/code/checker-report'
+import type { CheckerGap } from '@term/test/code/checker-report'
 
 /** A position in the source. */
 export type Spot = { line: number; column: number }
@@ -25,74 +26,28 @@ export type Diagnostic = {
   severity?: string
 }
 
-/** A structured, actionable verification hole. */
-export type CheckerGap = {
-  /** `file:line:column` of the hole. */
-  location: string
-  /** The diagnostic kind (e.g. `type-mismatch`, `non-exhaustive`). */
-  kind: string
-  /** The obligation that failed, in plain language. */
-  message: string
-  /** A suggested direction, when the checker offers one. */
-  hint?: string
-  /** `error` | `warning` | ... */
-  severity: string
-  /** The offending source line with a caret under the span. */
-  excerpt: string
-}
-
-/** Render the offending line(s) with a caret under the failing span. */
-function excerptFor(source: string, span?: { start: Spot; end: Spot }): string {
-  if (!span) return ''
-
-  // a span counts from zero and a person counts from one. Read as one-based, the excerpt showed the line above the
-  // problem, and the location was a line and a column early (guides: tests/backends, 2026-10-04)
-  const lines = source.split('\n')
-  const lineNo = span.start.line + 1
-  const line = lines[span.start.line] ?? ''
-  const width = Math.max(
-    1,
-    (span.end.line === span.start.line ? span.end.column : line.length) -
-      span.start.column,
-  )
-  const caret = ' '.repeat(Math.max(0, span.start.column)) + '^'.repeat(width)
-
-  return `${lineNo} | ${line}\n${' '.repeat(String(lineNo).length)} | ${caret}`
-}
+export type { CheckerGap }
+export { showGap }
 
 /** Turn one diagnostic into a CheckerGap. */
-export function gapFromDiagnostic(
-  source: string,
-  diagnostic: Diagnostic,
-): CheckerGap {
-  const start = diagnostic.span?.start
-  const location = `${diagnostic.file ?? '<source>'}:${(start?.line ?? 0) + 1}:${(start?.column ?? 0) + 1}`
+export function gapFromDiagnostic(source: string, diagnostic: Diagnostic): CheckerGap {
+  const span = diagnostic.span
 
-  return {
-    location,
-    kind: diagnostic.name,
+  return gapFromComplete(source, {
+    name: diagnostic.name,
     message: diagnostic.message,
-    hint: diagnostic.hint,
+    file: diagnostic.file ?? '<source>',
+    hasSpan: span !== undefined,
+    startLine: span?.start.line ?? 0,
+    startColumn: span?.start.column ?? 0,
+    endLine: span?.end.line ?? 0,
+    endColumn: span?.end.column ?? 0,
+    hint: diagnostic.hint ?? '',
     severity: diagnostic.severity ?? 'error',
-    excerpt: excerptFor(source, diagnostic.span),
-  }
+  })
 }
 
 /** Turn a compile's diagnostics into the gap reports the loop consumes. */
-export function gapsFromDiagnostics(
-  source: string,
-  diagnostics: Diagnostic[] | undefined,
-): CheckerGap[] {
+export function gapsFromDiagnostics(source: string, diagnostics: Diagnostic[] | undefined): CheckerGap[] {
   return (diagnostics ?? []).map(d => gapFromDiagnostic(source, d))
-}
-
-/** Render a gap as a compact, AI-readable block. */
-export function showGap(gap: CheckerGap): string {
-  const lines = [
-    `gap [${gap.severity}] ${gap.kind} at ${gap.location}`,
-    `  ${gap.message}`,
-  ]
-  if (gap.excerpt) lines.push(...gap.excerpt.split('\n').map(l => '  ' + l))
-  if (gap.hint) lines.push(`  hint: ${gap.hint}`)
-  return lines.join('\n')
 }

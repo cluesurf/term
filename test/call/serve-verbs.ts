@@ -199,12 +199,15 @@ const cast = spawnSync('node', [LINE, 'cast'], {
 })
 const castOut = `${cast.stdout ?? ''}${cast.stderr ?? ''}`
 
-// the closing item of the terminal output standard: `✓ cast     Cast to a Cloudflare Worker`
-ok('`cast` builds the scaffolded app for Cloudflare', /✓ cast\s+Cast to a Cloudflare Worker/.test(castOut), castOut)
+// The scaffold's `boot` logs a line and returns nothing, so it is not a server, and since 2026-10-04 `cast` says
+// that rather than writing a Worker with no `fetch` (guides: commands/cast; test/call/cast.ts casts a real page
+// application). What this case holds is the original defect: the program COMPILES for Cloudflare, so the refusal is
+// the one about `boot`, not a stdlib name that does not exist
+ok('`cast` compiles the scaffolded app for Cloudflare', !/is not defined/.test(castOut) && !/✗ check/.test(castOut), castOut)
 
 ok(
-  'and writes the worker entry and the client bundle it names',
-  existsSync(join(root, 'work/index.ts')) && existsSync(join(root, 'build')),
+  'and refuses it as no server, writing no worker entry, exit 1',
+  cast.status === 1 && /`boot` returns nothing, so the Worker would have no fetch handler/.test(castOut) && !existsSync(join(root, 'work/index.ts')),
   castOut,
 )
 

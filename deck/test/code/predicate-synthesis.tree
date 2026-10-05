@@ -1,0 +1,325 @@
+# Synthesis beyond integer arithmetic: boolean-valued PREDICATES, comparisons over the integer expressions joined by
+# and, or and not, so the synthesizer produces functions like `in-range`, `is-positive`, `ordered`. The same
+# counterexample-guided loop, with a new output type, and every candidate verified by enumerating the bounded domain.
+#
+# Ported from deck/test/code/predicate.ts (self-hosting, 2026-10-04), which keeps the defaults its TypeScript callers
+# leave out. The union is tagged on `form`, as the original's was. One shape changed: the result was a union tagged on
+# a BOOLEAN (`ok`), which a form cannot spell, and is one record. When nothing fits, `ok` is false, `reason` says why,
+# and `pred` is the always-true `0 >= 0`, which no caller reads.
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+load ./expression-grammar
+  find expression
+  find eval-expr
+  find show-expr
+  find enumerate
+  find constant-of
+
+load ./bounded-proof
+  find step-point
+
+form predicate
+  case ge
+    link left, like expression
+    link right, like expression
+  case le
+    link left, like expression
+    link right, like expression
+  case eq
+    link left, like expression
+    link right, like expression
+  case and
+    link left, like predicate
+    link right, like predicate
+  case or
+    link left, like predicate
+    link right, like predicate
+  case not
+    link inner, like predicate
+
+form predicate-result
+  link ok, like boolean
+  link pred, like predicate
+  link counterexamples, like list, like list, like number
+  # why nothing was found, `<>` when something was
+  link reason, like text
+
+task eval-pred
+  take pred, like predicate
+  take inputs, like list, like number
+  like boolean
+
+  sift pred
+    case ge
+      back is-minimum(eval-expr(left, inputs), eval-expr(right, inputs))
+    case le
+      back is-maximum(eval-expr(left, inputs), eval-expr(right, inputs))
+    case eq
+      back is-equal(eval-expr(left, inputs), eval-expr(right, inputs))
+    case and
+      fork test, eval-pred(left, inputs)
+        hold
+          back eval-pred(right, inputs)
+      back false
+    case or
+      fork test, eval-pred(left, inputs)
+        hold
+          back true
+      back eval-pred(right, inputs)
+    case not
+      back not(eval-pred(inner, inputs))
+
+task show-pred
+  take pred, like predicate
+  take names, like list, like text
+  like text
+
+  sift pred
+    case ge
+      back <{show-expr(left, names)} \>= {show-expr(right, names)}>
+    case le
+      back <{show-expr(left, names)} \<= {show-expr(right, names)}>
+    case eq
+      back <{show-expr(left, names)} == {show-expr(right, names)}>
+    case and
+      back <({show-pred(left, names)} and {show-pred(right, names)})>
+    case or
+      back <({show-pred(left, names)} or {show-pred(right, names)})>
+    case not
+      back <not {show-pred(inner, names)}>
+
+task compare-pred
+  take kind, like text
+  take left, like expression
+  take right, like expression
+  like predicate
+
+  fork test, is-equal(kind, <ge>)
+    hold
+      back
+        make ge
+          bind left, left
+          bind right, right
+  fork test, is-equal(kind, <le>)
+    hold
+      back
+        make le
+          bind left, left
+          bind right, right
+
+  back
+    make eq
+      bind left, left
+      bind right, right
+
+# predicates up to a size, smallest first: the atoms compare two expressions of up to `expr-size` nodes, and a larger
+# predicate is the negation of a smaller one or the conjunction or disjunction of two whose sizes sum to one less
+task enumerate-preds
+  take var-count, like number
+  take expr-size, like number
+  take pred-size, like number
+  like list, like predicate
+
+  host exprs, enumerate(expr-size, var-count)
+  host atoms, make list
+  walk exprs
+    take left
+    walk exprs
+      take right
+      atoms/push(compare-pred(<ge>, left, right))
+      atoms/push(compare-pred(<le>, left, right))
+      atoms/push(compare-pred(<eq>, left, right))
+
+  host by-size, make hash
+  by-size/set(1, atoms)
+
+  save size, 2
+  walk test
+    hook test, is-maximum(size, pred-size)
+    hook hold
+      host here, make list
+      walk get-or-default(by-size, subtract(size, 1), make list)
+        take inner
+        here/push
+          make not
+            bind inner, inner
+      save a, 1
+      walk test
+        hook test, is-below(a, size)
+        hook hold
+          host b, subtract(subtract(size, 1), a)
+          fork test, is-minimum(b, 1)
+            hold
+              walk get-or-default(by-size, a, make list)
+                take left
+                walk get-or-default(by-size, b, make list)
+                  take right
+                  here/push
+                    make and
+                      bind left, left
+                      bind right, right
+                  here/push
+                    make or
+                      bind left, left
+                      bind right, right
+          save a, add(a, 1)
+      by-size/set(size, here)
+      save size, add(size, 1)
+
+  host out, make list
+  save size, 1
+  walk test
+    hook test, is-maximum(size, pred-size)
+    hook hold
+      walk get-or-default(by-size, size, make list)
+        take each
+        out/push(each)
+      save size, add(size, 1)
+
+  back out
+
+# does the candidate meet the spec on every counterexample so far
+task fits-all
+  take spec
+    like task
+      take inputs, like list, like number
+      take out, like boolean
+      like boolean
+  take pred, like predicate
+  take counterexamples, like list, like list, like number
+  like boolean
+
+  walk counterexamples
+    take each
+    fork test, call(spec, each, eval-pred(pred, each))
+      miss
+        back false
+
+  back true
+
+# the first point of the bounded domain, in odometer order, where the candidate breaks the spec, or an empty list
+task find-counterexample
+  take arity, like number
+  take bound, like number
+  take spec
+    like task
+      take inputs, like list, like number
+      take out, like boolean
+      like boolean
+  take pred, like predicate
+  like list, like number
+
+  host point, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, arity)
+    hook hold
+      point/push(subtract(0, bound))
+      save at, add(at, 1)
+
+  walk test
+    hook test, true
+    hook hold
+      fork test, call(spec, point, eval-pred(pred, point))
+        miss
+          back copy(point)
+      fork test, step-point(point, subtract(0, bound), bound)
+        miss
+          host none, make list
+          back none
+
+  host none, make list
+
+  back none
+
+task no-predicate
+  take reason, like text
+  take counterexamples, like list, like list, like number
+  like predicate-result
+
+  host zero, constant-of(0)
+
+  back
+    make predicate-result
+      bind ok, false
+      bind pred
+        make ge
+          bind left, zero
+          bind right, zero
+      bind counterexamples, counterexamples
+      bind reason, reason
+
+# counterexample-guided synthesis of a predicate: the smallest candidate consistent with every counterexample so far,
+# verified over the whole bounded domain, and refined with the input that breaks it
+task synthesize-pred
+  take var-count, like number
+  take spec
+    like task
+      take inputs, like list, like number
+      take out, like boolean
+      like boolean
+  take bound, like number
+  take expr-size, like number
+  take pred-size, like number
+  like predicate-result
+
+  host candidates, enumerate-preds(var-count, expr-size, pred-size)
+  host counterexamples, make list
+
+  save round, 0
+  walk test
+    hook test, is-maximum(round, candidates/length)
+    hook hold
+      save found, false
+      save at, 0
+      walk test
+        hook test, and(not(found), is-below(at, candidates/length))
+        hook hold
+          fork test, fits-all(spec, get(candidates, at), counterexamples)
+            hold
+              save found, true
+            miss
+              save at, add(at, 1)
+      fork test, found
+        miss
+          back no-predicate(<no predicate in the grammar fits>, counterexamples)
+
+      host pick, get(candidates, at)
+      host counter, find-counterexample(var-count, bound, spec, pick)
+      # an empty counterexample is no counterexample, except for a predicate over no inputs, where the one point of
+      # the domain is the empty tuple: it is found failing by the first `call(spec, ...)`, never returned empty here
+      fork test, and(is-equal(counter/length, 0), not(fails-at-empty(var-count, spec, pick)))
+        hold
+          back
+            make predicate-result
+              bind ok, true
+              bind pred, pick
+              bind counterexamples, counterexamples
+              bind reason, <>
+      counterexamples/push(counter)
+      save round, add(round, 1)
+
+  back no-predicate(<did not converge>, counterexamples)
+
+# over no inputs the domain is the one empty tuple, so an empty counterexample is a real one
+task fails-at-empty
+  take var-count, like number
+  take spec
+    like task
+      take inputs, like list, like number
+      take out, like boolean
+      like boolean
+  take pred, like predicate
+  like boolean
+
+  fork test, is-above(var-count, 0)
+    hold
+      back false
+  host empty, make list
+
+  back not(call(spec, empty, eval-pred(pred, empty)))

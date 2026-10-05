@@ -603,13 +603,38 @@ task context-at
         call add(read(i), code(1))
   send back, read bits
 
-# whether bit `bit` (1, 2 or 4) of a context is set
+# whether bit `bit` of a context is set: 1, 2 and 4 the edges, 8, 16 and 32 the lookarounds, anything else never. One
+# constant divisor per bit, so every division is by a number `term hold` sees is not zero
 task context-has
   take context, like number
   take bit, like number
   like boolean
-  send back
-    call is-minimum(call(modulo, read(context), call(multiply, read(bit), code(2))), read(bit))
+  fork test
+    hook test
+      call is-equal(read(bit), code(1))
+    hook hold
+      send back, call(is-minimum, call(modulo, read(context), code(2)), code(1))
+    hook test
+      call is-equal(read(bit), code(2))
+    hook hold
+      send back, call(is-minimum, call(modulo, read(context), code(4)), code(2))
+    hook test
+      call is-equal(read(bit), code(4))
+    hook hold
+      send back, call(is-minimum, call(modulo, read(context), code(8)), code(4))
+    hook test
+      call is-equal(read(bit), code(8))
+    hook hold
+      send back, call(is-minimum, call(modulo, read(context), code(16)), code(8))
+    hook test
+      call is-equal(read(bit), code(16))
+    hook hold
+      send back, call(is-minimum, call(modulo, read(context), code(32)), code(16))
+    hook test
+      call is-equal(read(bit), code(32))
+    hook hold
+      send back, call(is-minimum, call(modulo, read(context), code(64)), code(32))
+  send back, false
 
 # every instruction the seeds reach without reading a code point, in priority order, each once: instructions that
 # read, and MATCH. `at` and `n` decide the text edges, which hold only at 0 and at n, and `context` (`context-at`) the

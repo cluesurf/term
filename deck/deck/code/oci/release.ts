@@ -225,6 +225,33 @@ export async function publishRelease(input: {
   return { index: tagged.digest, entries }
 }
 
+type ReleaseIndex = { manifests?: { digest: string; platform?: { os?: string; architecture?: string } }[] }
+
+// the platforms an index carries, in 09's names, in the order of RELEASE_PLATFORMS
+function platformsOf(index: ReleaseIndex): string[] {
+  return Object.entries(RELEASE_PLATFORMS)
+    .filter(([, want]) => index.manifests?.some(one => one.platform?.os === want.os && one.platform?.architecture === want.architecture))
+    .map(([name]) => name)
+}
+
+/**
+ * One release's index: its digest (what a lock.tree pins, covering every platform) and the platforms it carries.
+ * Undefined when the version is not released. Reads the index only, so it costs one request and verifies nothing.
+ */
+export async function readReleaseIndex(input: {
+  transport: OciTransport
+  repository: string
+  version: string
+}): Promise<{ digest: string; platforms: string[] } | undefined> {
+  const indexed = await input.transport.getManifest({ repository: input.repository, reference: input.version })
+
+  if (!indexed) {
+    return undefined
+  }
+
+  return { digest: indexed.digest, platforms: platformsOf(JSON.parse(indexed.bytes.toString('utf8')) as ReleaseIndex) }
+}
+
 /**
  * Read one platform's release and check it: the index under the version tag, the platform's manifest, its config,
  * and the signature over the layer the manifest names. Does NOT check the signer against the key set; the caller
@@ -243,14 +270,12 @@ export async function readRelease(input: {
     throw new OciError(`${input.package}@${input.version} is not released`)
   }
 
-  const index = JSON.parse(indexed.bytes.toString('utf8')) as {
-    manifests?: { digest: string; platform?: { os?: string; architecture?: string } }[]
-  }
+  const index = JSON.parse(indexed.bytes.toString('utf8')) as ReleaseIndex
   const want = RELEASE_PLATFORMS[input.platform]
   const entry = index.manifests?.find(one => one.platform?.os === want?.os && one.platform?.architecture === want?.architecture)
 
   if (!want || !entry) {
-    throw new OciError(`${input.package}@${input.version} has no release for ${input.platform}`)
+    throw new OciError(`${input.package}@${input.version} has no release for ${input.platform}. It has ${platformsOf(index).join(', ') || 'none'}`)
   }
 
   const fetched = await input.transport.getManifest({ repository: input.repository, reference: entry.digest })

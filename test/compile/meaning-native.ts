@@ -23,6 +23,7 @@ import { mill } from '@term/make/code/compile/mill'
 import { resolve as resolveNames } from '@term/make/code/check/resolve'
 import { check } from '@term/make/code/check/infer'
 import { bindFormsByImport } from '@term/make/code/check/scope'
+import { extendForms } from '@term/make/code/check/extend'
 import { simplify } from '@term/make/code/ir/simplify'
 import { collectModules } from '@term/make/code/compile/load'
 import type { Source } from '@term/make/code/compile/load'
@@ -298,6 +299,14 @@ function frontEnd(text: string, env: 'rust' | 'swift' | 'kotlin' | 'node'): Prog
   }
 
   bindFormsByImport(program, collected.scope, 'main.tree')
+  // a form `like` an exception made an ordinary record and every `halt <form>` finished, as compileProgram does
+  // (check/extend.ts): without it a fixture's own exception form was built with only the fields its raise named
+  const extended = extendForms(program, 'main.tree')
+
+  if (extended.length) {
+    throw new Error('extend failed: ' + extended.map(d => d.message).join(', '))
+  }
+
   resolveNames(program, 'main.tree')
   check(program, 'main.tree')
 

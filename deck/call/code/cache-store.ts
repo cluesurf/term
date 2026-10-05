@@ -47,7 +47,8 @@ import { gzipSync, gunzipSync } from 'zlib'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import type { CacheStore } from '@term/make/code/compile/cache'
-import { env, userHome } from '@term/call/code/home'
+import { getBaseDir } from '@term/deck/code/store'
+import { env } from '@term/call/code/home'
 import {
   CACHE_EPOCH,
   CompileCache,
@@ -641,11 +642,12 @@ export function compilerVersions(): Record<string, string> {
   return out
 }
 
-// the machine-wide shared cache home (Tier 5). Mill entries are content + path addressed, and linked stdlib files
-// share a realpath across projects, so the stdlib is milled once for every project on the machine. Overridable for
-// tests / CI via TERM_CACHE_HOME (the SEED_ spelling is still honored; see code/home.ts).
+// the machine-wide shared cache home (Tier 5), `~/.base/@cluesurf/term/base`, beside the installed decks. Mill entries
+// are content + path addressed, and linked stdlib files share a realpath across projects, so the stdlib is milled once
+// for every project on the machine. Overridable for tests / CI via TERM_CACHE_HOME (the SEED_ spelling is still
+// honored; see code/home.ts). It was `store/` until 2026-10-04, and `getBaseDir` moves that folder over whole
 export function cacheHome(): string {
-  return env('CACHE_HOME') ?? userHome('store')
+  return env('CACHE_HOME') ?? getBaseDir()
 }
 
 // the project-local cache directory, in one place so the report tool and `term wash` cannot drift from the store.

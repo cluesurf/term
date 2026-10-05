@@ -1,0 +1,94 @@
+note <what term time --cpu and --memory report: samples attributed to frames, ranked, and byte counts in their units>
+
+# time/profile.tree, the pure halves of time/cpu.ts and time/memory.ts, tested directly. Their process work (a spawned
+# node under --cpu-prof, a forced collection) stays in TypeScript.
+
+load ../code/time/profile
+  find v8-profile
+  find profile-node
+  find call-frame
+  find summarize
+  find format-bytes
+  find make-memory-result
+  find format-memory-result
+  find format-cpu-result
+
+load @term/base/list
+  find list
+
+task node-of
+  take id, like number
+  take name, like text
+  take url, like text
+  take line, like number
+  like profile-node
+
+  back
+    make profile-node
+      bind id, id
+      bind call-frame
+        make call-frame
+          bind function-name, name
+          bind url, url
+          bind line-number, line
+
+# three frames: `hot` sampled three times, `cold` once, and V8's own `(program)`, which is never reported
+task sample-profile
+  like v8-profile
+
+  host nodes, make list
+  nodes/push(node-of(1, <(program)>, <>, 0))
+  nodes/push(node-of(2, <hot>, <file:///work/module.mjs>, 9))
+  nodes/push(node-of(3, <cold>, <file:///work/module.mjs>, 19))
+  nodes/push(node-of(4, <>, <>, 0))
+
+  back
+    make v8-profile
+      bind nodes, nodes
+      bind start-time, 1000
+      bind end-time, 9000
+      bind samples, make list(2, 3, 2, 1, 2, 4)
+      bind time-deltas, make list(1000, 500, 1000, 4000, 1000, 250)
+
+test <the hottest frame comes first, its self time summed>
+  host found, summarize(sample-profile(), <run>, 15)
+  host first, get(found/frames, 0)
+  want hold, and(is-equal(first/name, <hot>), is-equal(first/self-ms, 3.0))
+
+test <a frame's location is its file and line, counted from one>
+  host found, summarize(sample-profile(), <run>, 15)
+  host first, get(found/frames, 0)
+  want hold, is-equal(first/location, <module.mjs:10>)
+
+test <V8's own frames are not reported, and a nameless one is anonymous>
+  host found, summarize(sample-profile(), <run>, 15)
+  host names, make list
+  walk found/frames
+    take frame
+    names/push(frame/name)
+  want hold, is-equal(join(names, <,>), <hot,cold,(anonymous)>)
+
+test <the duration and the sample count>
+  host found, summarize(sample-profile(), <run>, 15)
+  want hold, and(is-equal(found/duration-ms, 8.0), is-equal(found/sample-count, 6))
+
+test <only the top frames are kept>
+  host found, summarize(sample-profile(), <run>, 1)
+  want hold, is-equal(found/frames/length, 1)
+
+test <bytes under a kilobyte are bytes>
+  want hold, is-equal(format-bytes(1023), <1023B>)
+
+test <kilobytes, megabytes and gigabytes>
+  want hold, and(and(is-equal(format-bytes(1536), <1.5KB>), is-equal(format-bytes(3145728), <3.00MB>)), is-equal(format-bytes(2147483648), <2.00GB>))
+
+test <a negative count keeps its sign>
+  want hold, is-equal(format-bytes(-2048), <-2.0KB>)
+
+test <the memory result: what was retained is after less before>
+  host result, make-memory-result(<run>, 1048576, 3145728, 50000000)
+  want hold, is-equal(result/heap-delta-bytes, 2097152)
+
+test <the memory report>
+  host result, make-memory-result(<run>, 1048576, 3145728, 52428800)
+  want hold, is-equal(format-memory-result(result), <  run\n    heap before: 1.00MB\n    heap after:  3.00MB\n    retained:    2.00MB\n    rss:         50.00MB>)

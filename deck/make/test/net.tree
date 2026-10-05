@@ -1,0 +1,85 @@
+note <interaction combinators: annihilation, erasure and commutation in the substrate's pure-plane reducer>
+
+# Ported from test/ir/net.ts (self-hosting, 2026-10-04). Two erasers facing each other annihilate to nothing. Two
+# constructors annihilate, and their closing erasers then cancel pairwise. An eraser meeting a constructor erases it,
+# and the erasers it leaves cascade away. A constructor meeting a duplicator commutes: one step removes the pair and
+# makes two of each.
+
+load ../code/ir/net
+  find net
+  find make-net
+  find make-port
+  find add-node
+  find wire-ports
+  find net-size
+  find normalize-net
+  find step-net
+
+# two nodes facing each other at their principal ports, and their ids
+form facing
+  link graph, like net
+  link left, like number
+  link right, like number
+
+task facing-pair
+  take left, like text
+  take right, like text
+  like facing
+
+  host one, add-node(make-net(), left)
+  host two, add-node(one/graph, right)
+
+  back
+    make facing
+      bind graph, wire-ports(two/graph, make-port(one/id, 0), make-port(two/id, 0))
+      bind left, one/id
+      bind right, two/id
+
+# each auxiliary port of `binary` wired to a fresh eraser, so the net is closed
+task close-aux
+  take graph, like net
+  take binary, like number
+  like net
+
+  host one, add-node(graph, <era>)
+  host wired, wire-ports(one/graph, make-port(binary, 1), make-port(one/id, 0))
+  host two, add-node(wired, <era>)
+
+  back wire-ports(two/graph, make-port(binary, 2), make-port(two/id, 0))
+
+task count-of
+  take graph, like net
+  take label, like text
+  like number
+
+  save found, 0
+  walk graph/nodes/values()
+    take each
+    fork test, is-equal(each, label)
+      hold
+        save found, add(found, 1)
+
+  back found
+
+test <era ~ era annihilates to empty>
+  host pair, facing-pair(<era>, <era>)
+  want hold, is-equal(net-size(normalize-net(pair/graph)), 0)
+
+test <con ~ con annihilates, then the erasers cancel>
+  host pair, facing-pair(<con>, <con>)
+  host closed, close-aux(close-aux(pair/graph, pair/left), pair/right)
+  want hold, is-equal(net-size(normalize-net(closed)), 0)
+
+test <era ~ con erases the constructor, cascading to empty>
+  host pair, facing-pair(<con>, <era>)
+  want hold, is-equal(net-size(normalize-net(close-aux(pair/graph, pair/left))), 0)
+
+test <con ~ dup commutes into two con and two dup>
+  host pair, facing-pair(<con>, <dup>)
+  host stepped, step-net(close-aux(close-aux(pair/graph, pair/left), pair/right))
+  want hold, and(is-equal(count-of(stepped/graph, <con>), 2), is-equal(count-of(stepped/graph, <dup>), 2))
+
+test <the commutation recorded one rewrite>
+  host pair, facing-pair(<con>, <dup>)
+  host stepped, step-net(close-aux(close-aux(pair/graph, pair/left), pair/right))
+  want hold, is-equal(stepped/graph/rewrites, 1)

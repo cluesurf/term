@@ -1,0 +1,184 @@
+note <the benchmark harness's pure pieces: statistics, durations, comparison and its gate, the spread rule, and the table>
+
+# Ported from the pure checks of test/time/run.ts (self-hosting, 2026-10-04). What stays there needs the host: the
+# saved baseline's on-disk keys and reading it back (time/output.ts), discovering `time-*` tasks (the compiler), and
+# the end-to-end run (a spawned node).
+
+load ../code/time/stats
+  find benchmark-result
+  find compute-stats
+  find format-duration
+
+load ../code/time/compare
+  find side
+  find verdict
+  find comparison
+  find comparison-entry
+  find compare-results
+  find should-fail
+  find side-of
+  find to-text
+
+load ../code/time/table
+  find format-table
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+  find index-of
+  find starts-with
+  find ends-with
+  find char-count
+
+# a baseline side holding a mean alone, as an old saved result reads back
+task saved-side
+  take name, like text
+  take mean, like decimal
+  like side
+
+  back
+    make side
+      bind name, name
+      bind mean-ns, mean
+      bind std-dev-ns, make none
+      bind samples, 0
+
+task status-of
+  take result, like comparison
+  take name, like text
+  like text
+
+  walk result/entries
+    take each
+    fork test, is-equal(each/name, name)
+      hold
+        back to-text(each/status)
+
+  back <absent>
+
+# slow was 100 and is 200, fast was 100 and is 50, flat stays 100, fresh is new
+task four-way
+  like comparison
+
+  host current, make list
+  current/push(compute-stats(<slow>, make list(200.0, 200.0, 200.0)))
+  current/push(compute-stats(<fast>, make list(50.0, 50.0, 50.0)))
+  current/push(compute-stats(<flat>, make list(100.0, 100.0, 100.0)))
+  current/push(compute-stats(<fresh>, make list(10.0, 10.0, 10.0)))
+  host baseline, make list
+  baseline/push(saved-side(<slow>, 100.0))
+  baseline/push(saved-side(<fast>, 100.0))
+  baseline/push(saved-side(<flat>, 100.0))
+
+  back compare-results(current, baseline)
+
+# noisy moves 10% inside its spread, steady 10% outside its own
+task spread
+  like comparison
+
+  host noisy, compute-stats(<noisy>, make list(60.0, 140.0, 80.0, 120.0, 100.0, 110.0))
+  host noisy-before, compute-stats(<noisy>, make list(50.0, 150.0, 70.0, 130.0, 90.0, 100.0))
+  host steady, compute-stats(<steady>, make list(110.0, 111.0, 109.0, 110.0, 110.0, 111.0))
+  host steady-before, compute-stats(<steady>, make list(100.0, 101.0, 99.0, 100.0, 100.0, 101.0))
+  host current, make list(noisy, steady)
+  host baseline, make list(side-of(noisy-before), side-of(steady-before))
+
+  back compare-results(current, baseline)
+
+task table-lines
+  like list, like text
+
+  save r, compute-stats(<time-a-long-benchmark>, make list(500.0))
+  save r/ops-per-sec, 1234567.5
+  save r/cv, 0.123
+
+  back split(format-table(make list(r)), <\n>)
+
+test <stats: the mean>
+  host r, compute-stats(<s>, make list(10.0, 20.0, 30.0, 40.0))
+  want hold, is-equal(r/mean-ns, 25.0)
+
+test <stats: the median of an even count>
+  host r, compute-stats(<s>, make list(10.0, 20.0, 30.0, 40.0))
+  want hold, is-equal(r/median-ns, 25.0)
+
+test <stats: min and max>
+  host r, compute-stats(<s>, make list(10.0, 20.0, 30.0, 40.0))
+  want hold, and(is-equal(r/min-ns, 10.0), is-equal(r/max-ns, 40.0))
+
+test <stats: iterations>
+  host r, compute-stats(<s>, make list(10.0, 20.0, 30.0, 40.0))
+  want hold, is-equal(r/iterations, 4)
+
+test <stats: operations per second>
+  host r, compute-stats(<s>, make list(10.0, 20.0, 30.0, 40.0))
+  want hold, is-equal(r/ops-per-sec, divide(1000000000.0, 25.0))
+
+test <a duration in nanoseconds>
+  want hold, is-equal(format-duration(500.0), <500.0ns>)
+
+test <a duration in microseconds>
+  want hold, is-equal(format-duration(2000.0), <2.00us>)
+
+test <a duration in milliseconds>
+  want hold, is-equal(format-duration(2000000.0), <2.00ms>)
+
+test <a duration in seconds>
+  want hold, is-equal(format-duration(2000000000.0), <2.00s>)
+
+test <compare marks a regression>
+  want hold, is-equal(status-of(four-way(), <slow>), <slower>)
+
+test <compare marks an improvement>
+  want hold, is-equal(status-of(four-way(), <fast>), <faster>)
+
+test <compare marks the unchanged>
+  want hold, is-equal(status-of(four-way(), <flat>), <same>)
+
+test <compare marks a new benchmark>
+  want hold, is-equal(status-of(four-way(), <fresh>), <new>)
+
+test <compare counts one regression and one improvement>
+  host found, four-way()
+  want hold, and(is-equal(found/regressions, 1), is-equal(found/improvements, 1))
+
+test <the gate fails on a regression past the threshold>
+  want hold, should-fail(four-way(), 10.0)
+
+test <the gate passes when the threshold is generous>
+  want hold, not(should-fail(four-way(), 500.0))
+
+test <a 10% change inside the spread is the same>
+  want hold, is-equal(status-of(spread(), <noisy>), <same>)
+
+test <a 10% change outside it is slower>
+  want hold, is-equal(status-of(spread(), <steady>), <slower>)
+
+test <the table has a header, a rule and a row>
+  host lines, table-lines()
+  want hold, is-equal(lines/length, 3)
+
+test <operations per second are grouped by thousands, with commas on every machine>
+  host lines, table-lines()
+  want hold, is-minimum(index-of(get(lines, 2), <1,234,568>), 0)
+
+test <the name column widens past nine>
+  host lines, table-lines()
+  save rule, <  >
+  save at, 0
+  walk test
+    hook test, is-below(at, char-count(<time-a-long-benchmark>))
+    hook hold
+      save rule, <{rule}->
+      save at, add(at, 1)
+  want hold, starts-with(get(lines, 1), <{rule}  >)
+
+test <the row reads its mean and CV>
+  host lines, table-lines()
+  host row, get(lines, 2)
+  want hold, and(is-minimum(index-of(row, <500.0ns>), 0), ends-with(row, <12.3%>))

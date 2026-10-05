@@ -14,7 +14,7 @@
 import { compile } from '@term/make/code/compile/compile'
 import { projectResolver } from '@term/call/code/make'
 import { synthesizeContract, verifyContract, type Contract } from './contract'
-import { emitSeed } from './emit'
+import { emitSeed } from '@term/test/code/source-emit'
 
 let pass = 0
 let fail = 0

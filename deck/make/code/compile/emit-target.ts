@@ -10,7 +10,7 @@
 //   kotlin   one `.kt` file for `kotlinc`, every import hoisted to the top
 
 import type { Program } from '@term/make/code/compile/node'
-import { nativePrelude } from '@term/make/code/compile/native'
+import { joinTypeScriptPrelude, nativePrelude } from '@term/make/code/compile/native'
 import { emitRust } from '@term/make/code/compile/rust'
 import { emitSwift } from '@term/make/code/compile/swift'
 import { emitKotlin, hoistKotlinImports } from '@term/make/code/compile/kotlin'
@@ -36,7 +36,7 @@ export function emitTarget(input: {
 
   switch (input.target) {
     case 'node':
-      return `${prelude}\n${input.typescript}`
+      return joinTypeScriptPrelude(prelude, input.typescript)
     case 'rust':
       return `${prelude}\n${emitRust(input.program)}`
     case 'swift':

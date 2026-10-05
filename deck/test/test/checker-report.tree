@@ -1,0 +1,84 @@
+note <a checker diagnostic as a structured gap: where, what, and the line with a caret under the span>
+
+# checker-report.tree is checker-gap.ts's pure half. These hold what demo-gap.ts printed for a person to read, without
+# the compile that produced its diagnostics: a diagnostic is written out here as the compiler would give it.
+
+load ../code/checker-report
+  find diagnostic-in
+  find checker-gap
+  find excerpt-for
+  find gap-from-diagnostic
+  find show-gap
+
+host source, <task one\n  save x, y\n>
+
+task spanning
+  take start-line, like number
+  take start-column, like number
+  take end-line, like number
+  take end-column, like number
+  like diagnostic-in
+
+  back
+    make diagnostic-in
+      bind name, <unknown-name>
+      bind message, <y names nothing>
+      bind file, <app.tree>
+      bind has-span, true
+      bind start-line, start-line
+      bind start-column, start-column
+      bind end-line, end-line
+      bind end-column, end-column
+      bind hint, <did you mean x>
+      bind severity, <error>
+
+task spanless
+  like diagnostic-in
+
+  back
+    make diagnostic-in
+      bind name, <cycle>
+      bind message, <the import graph has a cycle>
+      bind file, <app.tree>
+      bind has-span, false
+      bind start-line, 0
+      bind start-column, 0
+      bind end-line, 0
+      bind end-column, 0
+      bind hint, <>
+      bind severity, <warning>
+
+test <the location counts lines and columns from one>
+  host gap, gap-from-diagnostic(source, spanning(1, 9, 1, 10))
+  want hold, is-equal(gap/location, <app.tree:2:10>)
+
+test <the excerpt is the line, and a caret under the span>
+  want hold, is-equal(excerpt-for(source, spanning(1, 9, 1, 10)), <2 |   save x, y\n  |          ^>)
+
+test <a span running past its line is underlined to the line's end>
+  want hold, is-equal(excerpt-for(source, spanning(1, 9, 2, 0)), <2 |   save x, y\n  |          ^^>)
+
+test <an empty span still gets one caret>
+  want hold, is-equal(excerpt-for(source, spanning(0, 5, 0, 5)), <1 | task one\n  |      ^>)
+
+test <a caret counts code points>
+  want hold, is-equal(excerpt-for(<a😀b>, spanning(0, 0, 1, 0)), <1 | a😀b\n  | ^^^>)
+
+test <a span past the last line has an empty line>
+  want hold, is-equal(excerpt-for(source, spanning(9, 0, 9, 1)), <10 | \n   | ^>)
+
+test <a diagnostic without a span sits at the start and has no excerpt>
+  host gap, gap-from-diagnostic(source, spanless())
+  want hold, and(is-equal(gap/location, <app.tree:1:1>), is-equal(gap/excerpt, <>))
+
+test <the kind, message, hint and severity carry over>
+  host gap, gap-from-diagnostic(source, spanning(1, 9, 1, 10))
+  want hold, and(and(is-equal(gap/kind, <unknown-name>), is-equal(gap/message, <y names nothing>)), and(is-equal(gap/hint, <did you mean x>), is-equal(gap/severity, <error>)))
+
+test <a gap shown: its head, message, excerpt and hint>
+  host shown, show-gap(gap-from-diagnostic(source, spanning(1, 9, 1, 10)))
+  want hold, is-equal(shown, <gap [error] unknown-name at app.tree:2:10\n  y names nothing\n  2 |   save x, y\n    |          ^\n  hint: did you mean x>)
+
+test <a gap shown without an excerpt or a hint is two lines>
+  host shown, show-gap(gap-from-diagnostic(source, spanless()))
+  want hold, is-equal(shown, <gap [warning] cycle at app.tree:1:1\n  the import graph has a cycle>)

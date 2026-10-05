@@ -9,7 +9,19 @@ import { callZone } from '@term/call/code/zone'
 import { callToss } from '@term/call/code/toss'
 import { callHost } from '@term/call/code/host'
 import { callBind } from '@term/call/code/bind'
-import { callSelfBack, callSelfCheck, callSelfUpdate } from '@term/call/code/self'
+import {
+  callSelfBack,
+  callSelfCheck,
+  callSelfFind,
+  callSelfList,
+  callSelfLoad,
+  callSelfNeed,
+  callSelfPick,
+  callSelfShow,
+  callSelfToss,
+  callSelfUpdate,
+  callSelfWash,
+} from '@term/call/code/self'
 import { callSeek } from '@term/call/code/seek'
 import { callLink, callUnlink } from '@term/call/code/link'
 import { callMake } from '@term/call/code/make'
@@ -616,15 +628,79 @@ const cli = yargs(hideBin(process.argv))
       await callBind({ root, toss: argv.toss })
     },
   )
-  .command('self', 'This install of term: check, update, or go back a version', yargs =>
+  .command('self', 'The versions of term on this machine: list, find, load, pick, need, show, toss, wash, check, update, back', yargs =>
     yargs
+      .command('list', 'Installed versions, the front, the default, and what runs here', {}, async () => {
+        await callSelfList({ root })
+      })
+      .command(
+        'find [range]',
+        'Released versions, newest first',
+        yargs =>
+          yargs
+            .positional('range', { type: 'string', description: 'Only versions in this range: 2.6.x' })
+            .option('all', { type: 'boolean', description: 'Every platform, not only this one' }),
+        async argv => {
+          await callSelfFind({ root, range: argv.range, all: argv.all })
+        },
+      )
+      .command(
+        'load <range>',
+        'Install a version, verified, without switching to it',
+        yargs => yargs.positional('range', { type: 'string', demandOption: true, description: 'A version or a range: 2.6.4, 2.6.x' }),
+        async argv => {
+          await callSelfLoad({ root, range: argv.range })
+        },
+      )
+      .command(
+        'pick <range>',
+        'The version that runs outside any project',
+        yargs => yargs.positional('range', { type: 'string', demandOption: true, description: 'A version or a range: 2.6.4, 2.6.x' }),
+        async argv => {
+          await callSelfPick({ root, range: argv.range })
+        },
+      )
+      .command(
+        'need [range]',
+        "The version this project needs, written to deck.tree and pinned in lock.tree",
+        yargs =>
+          yargs
+            .positional('range', { type: 'string', description: 'A version or a range: 2.6.4, 2.6.x' })
+            .option('none', { type: 'boolean', description: 'Remove the project\'s request instead' }),
+        async argv => {
+          await callSelfNeed({ root, range: argv.range, none: argv.none })
+        },
+      )
+      .command('show', 'Which version runs here, and every rule that decided it', {}, async () => {
+        await callSelfShow({ root, flag: process.env['TERM_NEED_FLAG'] })
+      })
+      .command(
+        'toss <mark>',
+        'Remove one installed version',
+        // `mark`, not `version`: yargs keeps `--version` for itself, and a positional of that name reads as its flag
+        yargs => yargs.positional('mark', { type: 'string', demandOption: true, description: 'The exact version: 2.6.2' }),
+        async argv => {
+          await callSelfToss({ root, mark: argv.mark })
+        },
+      )
+      .command(
+        'wash',
+        'Versions nothing has used in --days; removed only with --commit',
+        yargs =>
+          yargs
+            .option('days', { type: 'number', description: 'Unused for this many days (default 90)' })
+            .option('commit', { type: 'boolean', description: 'Remove them, rather than list them' }),
+        async argv => {
+          await callSelfWash({ root, days: argv.days, commit: argv.commit })
+        },
+      )
       .command('check', 'Verify this install against the signed release', {}, async () => {
         await callSelfCheck({ root })
       })
-      .command('update', 'Install the newest release and switch to it', {}, async () => {
+      .command('update', 'Install the newest release and move the front to it', {}, async () => {
         await callSelfUpdate({ root })
       })
-      .command('back', 'Switch back to the previous version', {}, async () => {
+      .command('back', 'Move the front back to the previous version', {}, async () => {
         await callSelfBack({ root })
       })
       .demandCommand(1, 'which self verb?'),
@@ -1101,7 +1177,7 @@ const cli = yargs(hideBin(process.argv))
     yargs =>
       yargs.positional('target', {
         type: 'string',
-        description: 'What to clean: deck, the build output (the default); tail, the logs; boot, what boot and cast write; store, the machine-wide module cache',
+        description: 'What to clean: deck, the build output (the default); tail, the logs; boot, what boot and cast write; base, the machine-wide module cache',
       }),
     async argv => {
       await callWash({

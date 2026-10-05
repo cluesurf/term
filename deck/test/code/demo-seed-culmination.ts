@@ -24,7 +24,7 @@ import {
   fillSketch,
   type Sketch,
 } from './synth-extra'
-import { emitSeed } from './emit'
+import { emitSeed } from '@term/test/code/source-emit'
 import { showExpr, type Expr, type Spec } from './synthesize'
 import { makeSmt } from './smt'
 

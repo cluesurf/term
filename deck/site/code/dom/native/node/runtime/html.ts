@@ -162,6 +162,17 @@ function htmlNamespace() {
       return manifest
     }
 
+    // baked in by the Cloudflare cast, the way the import map is below: a Worker has no `build/` to read
+    const baked = (globalThis as Record<string, unknown>).__SEED_ASSET_MANIFEST__ as
+      | Record<string, string>
+      | undefined
+
+    if (baked) {
+      manifest = baked
+
+      return manifest
+    }
+
     try {
       const file = join(process.cwd(), 'build', 'asset-manifest.json')
       manifest = JSON.parse(readFileSync(file, 'utf8')) as Record<

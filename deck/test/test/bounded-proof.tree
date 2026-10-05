@@ -1,0 +1,73 @@
+note <bounded exhaustive proof: every input over the bound decided, or the first counterexample in odometer order>
+
+# bounded-proof.tree is prove.ts's port. A claim that raises counts as failing (`holds`), and that case is not held
+# here: on Rust a task that can raise is not yet a function value (log.md), and these run on every backend.
+
+load ../code/bounded-proof
+  find prove-result
+  find prove-over
+  find step-point
+
+load @term/base/list
+  find list
+
+task commutes
+  take inputs, like list, like number
+  like boolean
+
+  host x, get(inputs, 0)
+  host y, get(inputs, 1)
+
+  back is-equal(add(x, y), add(y, x))
+
+task square-at-least
+  take inputs, like list, like number
+  like boolean
+
+  host x, get(inputs, 0)
+
+  back is-minimum(multiply(x, x), x)
+
+task below-two
+  take inputs, like list, like number
+  like boolean
+
+  back is-below(get(inputs, 0), 2)
+
+task sum-not-one
+  take inputs, like list, like number
+  like boolean
+
+  back not(is-equal(add(get(inputs, 0), get(inputs, 1)), 1))
+
+test <a claim that holds is proven over every point: seven squared>
+  host result, prove-over(2, commutes, 3)
+  want hold, and(and(result/ok, is-equal(result/checked, 49)), is-equal(result/counterexample/length, 0))
+
+test <one input over the bound>
+  host result, prove-over(1, square-at-least, 3)
+  want hold, and(result/ok, is-equal(result/checked, 7))
+
+test <the first counterexample, counted from the lowest>
+  host result, prove-over(1, below-two, 3)
+  want hold, and(and(not(result/ok), is-equal(get(result/counterexample, 0), 2)), is-equal(result/checked, 6))
+
+test <the last component turns fastest>
+  host result, prove-over(2, sum-not-one, 1)
+  host found, result/counterexample
+  want hold, and(and(is-equal(get(found, 0), 0), is-equal(get(found, 1), 1)), is-equal(result/checked, 6))
+
+test <a step turns the last component>
+  host point, make list(-1, -1)
+  host stepped, step-point(point, -1, 1)
+  want hold, and(stepped, is-equal(join(point, <,>), <-1,0>))
+
+test <a step carries past the high end>
+  host point, make list(-1, 1)
+  host stepped, step-point(point, -1, 1)
+  want hold, and(stepped, is-equal(join(point, <,>), <0,-1>))
+
+test <past the last point a step wraps and says so>
+  host point, make list(1, 1)
+  host stepped, step-point(point, -1, 1)
+  want hold, and(not(stepped), is-equal(join(point, <,>), <-1,-1>))

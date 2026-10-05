@@ -57,6 +57,7 @@ export {
   storeFile,
   pruneStore,
   getStoreRoot,
+  getBaseDir,
   getTreeDir,
 } from './store'
 export {
@@ -179,6 +180,7 @@ export {
   currentPlatform,
   publishRelease,
   readRelease,
+  readReleaseIndex,
   releaseRoute,
   releaseStatement,
   verifyReleaseConfig,

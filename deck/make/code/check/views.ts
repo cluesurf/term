@@ -16,7 +16,7 @@ import type { Program } from '@term/make/code/compile/node'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { check } from '@term/make/code/check/infer'
 import { elaborateReport } from '@term/make/code/check/elaborate'
-import { lowerZones } from '@term/make/code/compile/view-lower'
+import { lowerViews } from '@term/make/code/compile/view-lower'
 
 // the copy to check later, or nothing when the file defines no component
 export function copyForViews(program: Program, file: string): Program | undefined {
@@ -25,7 +25,7 @@ export function copyForViews(program: Program, file: string): Program | undefine
 
 export function checkLoweredViews(copy: Program, file: string, merged?: boolean): Diagnostic[] {
   const views = copy.filter(s => s.form === 'view' && s.span.file === file).map(s => s.span)
-  const lowered = lowerZones(copy)
+  const lowered = lowerViews(copy)
 
   // inside a component of this file, by the source position the lowering kept: the user's own expressions keep theirs,
   // and what the lowering built carries the component's

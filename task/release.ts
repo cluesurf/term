@@ -8,11 +8,16 @@
 // has not produced yet, so each platform's tarball is `deck/call/code/line.ts` bundled for Node, and only the parts
 // that cannot be bundled travel beside it:
 //
-//   term/bin/term            sh launcher: follows its own link to find the install, then `exec node host/line.js`
+//   term/bin/term            sh launcher: follows its own link to find the install, then `exec node host/need.mjs`
 //                            (bin\term.cmd on the two Windows platforms, the same check and call in cmd.exe)
+//   term/host/need.mjs       the first module: which version runs here (note/term/plan/term-versions.md). It
+//                            imports line.js in-process when the answer is this version, else hands over
+//   term/host/need-hand.mjs  the slow half of that: installs a needed version, prints a refusal. Loaded only then
 //   term/host/line.js        the CLI, every pure-JS dependency (yargs, chalk) BUNDLED
 //   term/host/dock.mjs       the hook dispatcher, chalk bundled
 //   term/package.json        the name and version `--version` and the build cache key read
+//   term/hash.tree           every file with its sha256 and mode, so a second version installed shares the files the
+//                            first holds alike (note/term/plan/term-versions.md, "Disk")
 //   term/deck/base/code/     the stdlib, found by the walk up from host/ (resolve.ts `stdlibBase`)
 //   term/node_modules/       esbuild + @esbuild/<platform> (native, run by boot, test, walk, cast),
 //                            hono + @hono/node-server (linked into every `term boot` app, which imports them)
@@ -29,6 +34,7 @@ import path from 'node:path'
 import { build } from 'esbuild'
 import { ensurePublisher, publishRelease, releaseRoute, transportFor } from '@cluesurf/deck.tree'
 import { loadPublishKeypair } from '@term/call/code/host'
+import { writeFileList } from '@term/call/code/need-load'
 // the terminal output library, as a TYPE only: the module itself is loaded after the port build has run, because the
 // port build is what writes the modules it is made of (see `main`)
 import type * as Output from '@term/call/code/output'
@@ -101,7 +107,7 @@ if ! command -v node >/dev/null 2>&1; then
   echo "term needs Node.js ${NODE_FLOOR} or newer on PATH: https://nodejs.org" >&2
   exit 69
 fi
-exec node "$root/host/line.js" "$@"
+exec node "$root/host/need.mjs" "$@"
 `
 
 // The Windows launcher, bin\term.cmd: the same check and the same call. `%~dp0` is the folder this file is in, and
@@ -112,7 +118,7 @@ const WINDOWS_LAUNCHER = [
   'rem The term command. Installed by https://term.surf/load.ps1; see note/term/plan/term-load-install.md.',
   'where node >nul 2>nul',
   `if errorlevel 1 (echo term needs Node.js ${NODE_FLOOR} or newer on PATH: https://nodejs.org 1>&2 & exit /b 69)`,
-  'node "%~dp0..\\host\\line.js" %*',
+  'node "%~dp0..\\host\\need.mjs" %*',
   '',
 ].join('\r\n')
 
@@ -203,7 +209,7 @@ function portBuild(): { ok: boolean; built: number; unchanged: number; failed: n
   }
 }
 
-// line.js and dock.mjs, bundled once: they are the same for every platform
+// line.js, dock.mjs and the two dispatch modules, bundled once: they are the same for every platform
 async function bundle(into: string): Promise<void> {
   const common = {
     absWorkingDir: TERM,
@@ -218,6 +224,8 @@ async function bundle(into: string): Promise<void> {
 
   await build({ ...common, entryPoints: ['deck/call/code/line.ts'], outfile: path.join(into, 'host', 'line.js') })
   await build({ ...common, entryPoints: ['deck/call/code/hook-dispatch.ts'], outfile: path.join(into, 'host', 'dock.mjs') })
+  await build({ ...common, entryPoints: ['deck/call/code/need-run.ts'], outfile: path.join(into, 'host', 'need.mjs') })
+  await build({ ...common, entryPoints: ['deck/call/code/need-hand.ts'], outfile: path.join(into, 'host', 'need-hand.mjs') })
 }
 
 // the stdlib as the npm package ships it: no native build output, no build info
@@ -267,7 +275,7 @@ async function main(): Promise<void> {
 
   const bundled = Date.now()
   await bundle(common)
-  output.report({ glyph: 'done', verb: 'bundle', subject: 'line.js and dock.mjs', duration: Date.now() - bundled })
+  output.report({ glyph: 'done', verb: 'bundle', subject: 'line.js, dock.mjs, need.mjs and need-hand.mjs', duration: Date.now() - bundled })
 
   const built: Built[] = []
 
@@ -304,6 +312,10 @@ async function main(): Promise<void> {
       dir: path.join(root, 'node_modules', platform.esbuild),
       cache,
     })
+
+    // every file with its sha256 and mode, inside the signed layer, so an install shares what an installed version
+    // holds alike (need-load.ts `extractShared`)
+    writeFileList(root)
 
     const file = path.join(out, `term-${platform.name}.tar.gz`)
 

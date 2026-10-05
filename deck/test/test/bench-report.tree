@@ -1,0 +1,87 @@
+note <a benchmark's statistics, its growth exponent across sizes, and its table>
+
+# bench-report.tree is the pure half of bench.ts: the timing loop stays in TypeScript, and what it measured is summed,
+# fitted and printed here. These replace the arithmetic demo-bench.ts printed without holding. A list is bound to a
+# name before a call takes it, because a comma after `make list(...)` would pop into the list.
+
+load ../code/bench-report
+  find bench-result
+  find stats-of
+  find scaling
+  find render-bench
+  find at-quantile
+
+load @term/base/list
+  find list
+
+load @term/base/text
+  find index-of
+
+# a result of one sample, run at `size`
+task sized
+  take size, like number
+  take median, like decimal
+  like bench-result
+
+  host samples, make list(median)
+
+  back stats-of(<grow {size}>, samples, true, size)
+
+task four
+  like bench-result
+
+  host samples, make list(3.0, 1.0, 2.0, 4.0)
+
+  back stats-of(<four>, samples, false, 0)
+
+test <the statistics of four samples, sorted first>
+  host found, four()
+  want hold, and(and(is-equal(found/min, 1.0), is-equal(found/max, 4.0)), and(is-equal(found/mean, 2.5), is-equal(found/iterations, 4)))
+
+test <the median is the sample at half, rounded down past the middle>
+  host found, four()
+  want hold, and(is-equal(found/median, 3.0), is-equal(found/p95, 4.0))
+
+test <a quantile never reads past the last sample>
+  host sorted, make list(1.0, 2.0)
+  want hold, is-equal(at-quantile(sorted, 1.0), 2.0)
+
+test <operations per second are a thousand over the median in milliseconds>
+  host found, sized(0, 4.0)
+  want hold, is-equal(found/ops-per-sec, 250.0)
+
+test <a median growing with size is linear>
+  host results, make list
+  results/push(sized(10, 1.0))
+  results/push(sized(100, 10.0))
+  results/push(sized(1000, 100.0))
+  host fit, scaling(results)
+  want hold, and(and(is-above(fit/exponent, 0.999), is-below(fit/exponent, 1.001)), is-equal(fit/verdict, <linear (good)>))
+
+test <a median growing with the square of size is quadratic>
+  host results, make list
+  results/push(sized(10, 1.0))
+  results/push(sized(100, 100.0))
+  results/push(sized(1000, 10000.0))
+  host fit, scaling(results)
+  want hold, and(and(is-above(fit/exponent, 1.999), is-below(fit/exponent, 2.001)), is-equal(fit/verdict, <quadratic (fix)>))
+
+test <fewer than two sized points fit nothing>
+  host results, make list
+  results/push(sized(10, 1.0))
+  results/push(four())
+  host fit, scaling(results)
+  want hold, is-equal(fit/verdict, <need \>= 2 sized points>)
+
+test <the table's row: the median and p95 to three places, the rate rounded, no size shown as a dash>
+  host samples, make list(1.5, 2.25)
+  host results, make list
+  results/push(stats-of(<one>, samples, false, 0))
+  host table, render-bench(results)
+  want hold, is-minimum(index-of(table, <    2.250ms  p95     2.250ms        444/s  size        ->), 0)
+
+test <a sized row shows its size>
+  host results, make list
+  results/push(sized(4096, 2.0))
+  host table, render-bench(results)
+  want hold, is-minimum(index-of(table, <size     4096>), 0)

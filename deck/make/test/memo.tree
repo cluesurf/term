@@ -1,0 +1,141 @@
+note <the query engine's bookkeeping: inputs, revisions, dependency frames, backdating and the durability shortcut>
+
+# The store compile/query.ts drives (compile/memo.tree), tested directly. test/compile/query.ts and
+# test/compile/incremental.ts hold the driver, the closures and promises the store leaves to the host. Values here are
+# texts, held as `unknown` as the driver holds them.
+
+load ../code/compile/memo
+  find store
+  find make-store
+  find make-frame
+  find runs
+  find has-input
+  find set-input
+  find read-input
+  find note-dependency
+  find has-memo
+  find memo-deps
+  find note-query
+  find is-verified
+  find mark-verified
+  find is-unchanged-by-durability
+  find input-changed-after
+  find memo-changed-after
+  find store-result
+  find revision-of
+  find recomputes-of
+
+load @term/base/list
+  find list
+
+task with-input
+  take key, like text
+  take durability, like number
+  like store
+
+  host s, make-store()
+  set-input(s, key, <one>, durability, false)
+
+  back s
+
+test <a new store starts at revision 1 with nothing computed>
+  host s, make-store()
+  want hold, and(is-equal(revision-of(s), 1), is-equal(recomputes-of(s), 0))
+
+test <setting an input bumps the revision>
+  host s, with-input(<n>, 0)
+  want hold, and(has-input(s, <n>), is-equal(revision-of(s), 2))
+
+test <setting an input to its own value at its own durability changes nothing>
+  host s, with-input(<n>, 0)
+  set-input(s, <n>, <one>, 0, true)
+  want hold, is-equal(revision-of(s), 2)
+
+test <the same value at another durability is a change>
+  host s, with-input(<n>, 0)
+  set-input(s, <n>, <one>, 2, true)
+  want hold, is-equal(revision-of(s), 3)
+
+test <reading an input records it once, at its durability>
+  host s, with-input(<n>, 0)
+  host f, make-frame()
+  read-input(s, f, <n>)
+  read-input(s, f, <n>)
+  want hold, and(is-equal(f/deps/length, 1), is-equal(f/durability, 0))
+
+test <a frame keeps the order its keys were first read>
+  host f, make-frame()
+  note-dependency(f, <b>, 2)
+  note-dependency(f, <a>, 1)
+  note-dependency(f, <b>, 2)
+  want hold, and(is-equal(join(f/deps, <,>), <b,a>), is-equal(f/durability, 1))
+
+test <a stored result is verified at this revision and counted>
+  host s, with-input(<n>, 0)
+  host f, make-frame()
+  read-input(s, f, <n>)
+  store-result(s, <double>, <two>, false, f)
+  want hold, and(and(is-verified(s, <double>), is-equal(runs(s, <double>), 1)), is-equal(join(memo-deps(s, <double>), <,>), <n>))
+
+test <an input changed after a memo was verified unverifies it>
+  host s, with-input(<n>, 0)
+  host f, make-frame()
+  read-input(s, f, <n>)
+  store-result(s, <double>, <two>, false, f)
+  host verified, revision-of(s)
+  set-input(s, <n>, <five>, 0, false)
+  want hold, and(not(is-verified(s, <double>)), input-changed-after(s, <n>, verified))
+
+test <backdating: an equal recompute keeps the old changed-at>
+  host s, with-input(<n>, 0)
+  host f, make-frame()
+  read-input(s, f, <n>)
+  store-result(s, <count>, <three>, false, f)
+  host first, revision-of(s)
+  set-input(s, <n>, <other>, 0, false)
+  store-result(s, <count>, <three>, true, f)
+  want hold, and(not(memo-changed-after(s, <count>, first)), is-equal(runs(s, <count>), 2))
+
+test <a recompute that differs moves changed-at>
+  host s, with-input(<n>, 0)
+  host f, make-frame()
+  read-input(s, f, <n>)
+  store-result(s, <count>, <three>, false, f)
+  host first, revision-of(s)
+  set-input(s, <n>, <other>, 0, false)
+  store-result(s, <count>, <four>, false, f)
+  want hold, memo-changed-after(s, <count>, first)
+
+test <the durability shortcut: a low input changing cannot touch a high memo>
+  host s, with-input(<stdlib>, 2)
+  set-input(s, <buffer>, <text>, 0, false)
+  host f, make-frame()
+  read-input(s, f, <stdlib>)
+  store-result(s, <types>, <checked>, false, f)
+  set-input(s, <buffer>, <edited>, 0, false)
+  want hold, is-unchanged-by-durability(s, <types>)
+
+test <a high input changing can>
+  host s, with-input(<stdlib>, 2)
+  host f, make-frame()
+  read-input(s, f, <stdlib>)
+  store-result(s, <types>, <checked>, false, f)
+  set-input(s, <stdlib>, <upgraded>, 2, false)
+  want hold, not(is-unchanged-by-durability(s, <types>))
+
+test <a sub-query lowers its caller's frame to its own durability>
+  host s, with-input(<buffer>, 0)
+  host inner, make-frame()
+  read-input(s, inner, <buffer>)
+  store-result(s, <parse>, <tree>, false, inner)
+  host outer, make-frame()
+  note-query(s, outer, <parse>)
+  want hold, and(is-equal(outer/durability, 0), is-equal(join(outer/deps, <,>), <parse>))
+
+test <marking verified catches a memo up to the revision>
+  host s, with-input(<n>, 0)
+  host f, make-frame()
+  store-result(s, <constant>, <k>, false, f)
+  set-input(s, <n>, <moved>, 0, false)
+  mark-verified(s, <constant>)
+  want hold, and(is-verified(s, <constant>), has-memo(s, <constant>))

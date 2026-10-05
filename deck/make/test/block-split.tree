@@ -1,0 +1,81 @@
+note <the streaming block boundary: a .tree split into its top-level definitions one line at a time>
+
+# compile/block-split.tree, fed the lines of a source as compile/stream.ts feeds them. A column-0 line that is not
+# blank and not a comment starts a definition, the blank and comment lines directly above it ride forward onto it, and
+# a block is never left empty.
+
+load ../code/compile/block-split
+  find top-block
+  find make-block-splitter
+  find feed-line
+  find finish-blocks
+
+load ../code/term/hash
+  find hash-text
+
+load @term/base/list
+  find list
+
+load @term/base/text
+  find split
+
+# every block of a source, in order
+task blocks-of
+  take source, like text
+  like list, like top-block
+
+  host splitter, make-block-splitter()
+  host out, make list
+  walk split(source, <\n>)
+    take line
+    walk feed-line(splitter, line)
+      take block
+      out/push(block)
+  out/push(finish-blocks(splitter))
+
+  back out
+
+task texts-of
+  take blocks, like list, like top-block
+  like text
+
+  host out, make list
+  walk blocks
+    take block
+    out/push(<{block/start-line}:{block/text}>)
+
+  back join(out, < | >)
+
+test <three definitions are three blocks>
+  host found, blocks-of(<task a\n  back 1\ntask b\n  back 2\ntask c\n  back 3>)
+  want hold, is-equal(texts-of(found), <0:task a\n  back 1 | 2:task b\n  back 2 | 4:task c\n  back 3>)
+
+test <a comment above a definition rides with it>
+  host found, blocks-of(<task one\n  back 1\n\n# the second\ntask two\n  back 2>)
+  want hold, is-equal(texts-of(found), <0:task one\n  back 1 | 2:\n# the second\ntask two\n  back 2>)
+
+test <lines before the first head belong to it>
+  host found, blocks-of(<# a file note\n\ntask only\n  back 1>)
+  want hold, is-equal(texts-of(found), <0:# a file note\n\ntask only\n  back 1>)
+
+test <the blocks partition the source exactly>
+  host source, <# top\ntask a\n  back 1\n\n# b\ntask b\n\n  back 2\n>
+  host found, blocks-of(source)
+  host texts, make list
+  walk found
+    take block
+    texts/push(block/text)
+  want hold, is-equal(join(texts, <\n>), source)
+
+test <a line of non-breaking space is a head and a trivia line, and never empties the block before it>
+  host found, blocks-of(< \ntask a\ntask a>)
+  want hold, is-equal(texts-of(found), <0:  | 1:task a | 2:task a>)
+
+test <the empty source is one empty block>
+  host found, blocks-of(<>)
+  want hold, and(is-equal(found/length, 1), is-equal(texts-of(found), <0:>))
+
+test <each block carries the hash of its text>
+  host found, blocks-of(<task a\n  back 1\ntask b>)
+  host first, get(found, 0)
+  want hold, is-equal(first/hash, hash-text(first/text))

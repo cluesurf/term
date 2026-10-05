@@ -1,4 +1,4 @@
-// View lowering: rewrite every `zone` (view component) Statement into a plain
+// View lowering: rewrite every `view` (component) Statement into a plain
 // `function` Statement whose body builds the DOM through ordinary calls to the
 // reactive-render runtime (`make-element` / `make-text` / `make-dynamic-text` /
 // `write-attribute` / `attach-event` / `append` / `show` / `render-each`, named in
@@ -7,7 +7,7 @@
 // components for free as ordinary functions — the composition logic lives here,
 // once, instead of being reimplemented in each code generator.
 //
-// The zone's attribute / prop / read values are already `Expression` IR (the
+// The view's attribute / prop / read values are already `Expression` IR (the
 // mill produced them), so lowering only assembles `let` / `expression` / `if`
 // statements and `call` / `closure` expressions AROUND those existing nodes.
 //
@@ -67,7 +67,7 @@ function emptyFor(type: Type | undefined, span: Span): Expression {
 }
 
 // Standard HTML/SVG tags that are ALWAYS rendered as elements, never treated as
-// component calls even if a same-named zone exists. Kebab zone names have no
+// component calls even if a same-named view exists. Kebab view names have no
 // case to distinguish a component from a tag (unlike React's <Button> vs
 // <button>), and the component registry is program-wide, so without this a
 // module defining `view span` would hijack every `view span` everywhere. This
@@ -199,7 +199,7 @@ function collectComponents(program: Program): Map<string, Component> {
   const components = new Map<string, Component>()
 
   for (const node of program) {
-    // a zone named after an HTML tag is not a component (it would be
+    // a view named after an HTML tag is not a component (it would be
     // unreachable as one anyway, since `view <tag>` renders the element); skip
     // it so `components.has(name)` cleanly means "this is a component call".
     if (node.form === 'view' && !HTML_TAGS.has(node.name)) {
@@ -242,12 +242,12 @@ function hasSlot(nodes: ViewNode[]): boolean {
   return false
 }
 
-// lower one zone Statement into a function Statement.
-function lowerZone(
-  zone: Extract<Statement, { form: 'view' }>,
+// lower one view Statement into a function Statement.
+function lowerView(
+  definition: Extract<Statement, { form: 'view' }>,
   components: Map<string, Component>,
 ): Statement {
-  const span = zone.span
+  const span = definition.span
 
   let counter = 0
 
@@ -261,7 +261,7 @@ function lowerZone(
       return undefined
     }
 
-    const type = zone.params.find(p => p.name === iterable.name)?.type
+    const type = definition.params.find(p => p.name === iterable.name)?.type
 
     if (type?.kind === 'array') {
       return type.element.kind === 'variable' ? undefined : type.element
@@ -322,7 +322,7 @@ function lowerZone(
         )
 
   const slotted =
-    components.get(zone.name)?.slotted ?? hasSlot(zone.body)
+    components.get(definition.name)?.slotted ?? hasSlot(definition.body)
 
   // build a body list as a `(params) => view` thunk returning exactly one node.
   // A single static node is returned directly (no wrapper) so list/conditional
@@ -614,10 +614,10 @@ function lowerZone(
 
   // the function body: declare top-level `save`s first (so later nodes can read
   // them), then attach each view node under `host`.
-  const host = zone.params[0]?.name ?? 'host'
+  const host = definition.params[0]?.name ?? 'host'
   const body: Statement[] = []
 
-  for (const node of zone.body) {
+  for (const node of definition.body) {
     if (node.form === 'save') {
       body.push({
         form: 'let',
@@ -629,13 +629,13 @@ function lowerZone(
     }
   }
 
-  for (const node of zone.body) {
+  for (const node of definition.body) {
     if (node.form !== 'save') {
       attach(node, host, body)
     }
   }
 
-  const params = zone.params.map(p => ({ name: p.name, type: p.type }))
+  const params = definition.params.map(p => ({ name: p.name, type: p.type }))
 
   if (slotted) {
     // a task that builds into the view it is handed: typed, so a native backend (whose closures are typed) emits a real
@@ -651,7 +651,7 @@ function lowerZone(
   // return (guides: applications/web/components, 2026-10-03)
   return {
     form: 'function',
-    name: zone.name,
+    name: definition.name,
     params,
     body,
     result: { kind: 'unit' },
@@ -660,8 +660,9 @@ function lowerZone(
   }
 }
 
-// the pass: replace every zone with its lowered function.
-export function lowerZones(program: Program): Program {
+// the pass: replace every view with its lowered function. It was `lowerZones`, from when a component was a `zone`,
+// a word that now means only the secret system (renamed 2026-10-04)
+export function lowerViews(program: Program): Program {
   const components = collectComponents(program)
 
   if (components.size === 0) {
@@ -669,6 +670,6 @@ export function lowerZones(program: Program): Program {
   }
 
   return program.map(node =>
-    node.form === 'view' ? lowerZone(node, components) : node,
+    node.form === 'view' ? lowerView(node, components) : node,
   )
 }

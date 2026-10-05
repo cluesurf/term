@@ -14,7 +14,7 @@ import { join } from 'node:path'
 import { compile } from '@term/make/code/compile/compile'
 import { stdlibResolver } from '@term/make/code/resolve'
 import type { Source } from '@term/make/code/compile/load'
-import { withNativeEnv, nativePrelude } from '@term/make/code/compile/native'
+import { withNativeEnv, nativePrelude, joinTypeScriptPrelude } from '@term/make/code/compile/native'
 import { emitRust } from '@term/make/code/compile/rust'
 import { emitSwift } from '@term/make/code/compile/swift'
 import { emitKotlin, hoistKotlinImports } from '@term/make/code/compile/kotlin'
@@ -83,7 +83,7 @@ for (const { name, file } of programs) {
 
   // each file a module of its own, so two programs' declarations never meet
   const path = join(out, `${name.replace(/\//g, '-')}.ts`)
-  writeFileSync(path, `${nativePrelude(built.program, 'node', readRuntime)}\n${built.typescript}\nexport {}\n`)
+  writeFileSync(path, `${joinTypeScriptPrelude(nativePrelude(built.program, 'node', readRuntime), built.typescript)}\nexport {}\n`)
   tsFiles.push(path)
 }
 

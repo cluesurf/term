@@ -11,6 +11,7 @@ import { startDevServer } from '@term/call/code/dev/server'
 import { findEntry, portIsFree } from '@term/call/code/boot'
 import type { NativeEnv } from '@term/make/code/compile/native'
 import { closeRun, failRun, field, openRun, report, showPath } from '@term/call/code/output'
+import { readTree } from '@term/deck/code/read'
 
 export async function callFeed(input: {
   root: string
@@ -55,8 +56,12 @@ export async function callFeed(input: {
 
     // a page entry with a `boot` task that nothing calls: the shell calls it once the module loads, so the scaffold's
     // `log` runs. A `hook` table boots itself. Nothing called it, and `term wake`'s program logged nothing
-    const text = readFileSync(entry, 'utf8')
-    const callsBoot = /^task boot\b/m.test(text) && !/^hook /m.test(text)
+    // Read by the parser, never a pattern (note/term/one-parser.md). A file that does not parse calls nothing here, and
+    // the build says why
+    const read = readTree({ file: entry, text: readFileSync(entry, 'utf8') })
+    const forms = read.ok ? read.forms : []
+    const definesBoot = forms.some(form => form.head === 'task' && (form.terms[0] ?? form.forms[0]?.head) === 'boot')
+    const callsBoot = definesBoot && !forms.some(form => form.head === 'hook')
 
     const server = startDevServer({
       root: input.root,

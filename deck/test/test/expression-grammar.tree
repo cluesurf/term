@@ -1,0 +1,76 @@
+note <the synthesis grammar: evaluating, printing and enumerating small integer expressions>
+
+load ../code/expression-grammar
+  find expression
+  find condition
+  find variable-at
+  find constant-of
+  find eval-expr
+  find show-expr
+  find enumerate
+
+load @term/base/list
+  find list
+
+host names, make list(<x>, <y>)
+
+# max(x, y) written as a conditional: x >= y ? x : y
+task by-condition
+  like expression
+
+  back
+    make ite
+      bind test
+        make ge
+          bind left, variable-at(0)
+          bind right, variable-at(1)
+      bind then, variable-at(0)
+      bind else, variable-at(1)
+
+task difference
+  like expression
+
+  back
+    make sub
+      bind left, variable-at(0)
+      bind right, variable-at(1)
+
+test <a variable reads its input and a constant is itself>
+  host inputs, make list(7, 3)
+  want hold, and(is-equal(eval-expr(variable-at(1), inputs), 3), is-equal(eval-expr(constant-of(5), inputs), 5))
+
+test <subtraction keeps its order>
+  host inputs, make list(7, 3)
+  want hold, is-equal(eval-expr(difference(), inputs), 4)
+
+test <a conditional picks its branch>
+  host above, make list(7, 3)
+  host below, make list(2, 9)
+  want hold, and(is-equal(eval-expr(by-condition(), above), 7), is-equal(eval-expr(by-condition(), below), 9))
+
+test <printed as pseudocode, by the inputs' names>
+  want hold, and(is-equal(show-expr(difference(), names), <(x - y)>), is-equal(show-expr(by-condition(), names), <(x \>= y ? x : y)>))
+
+test <the atoms are the inputs, then zero and one>
+  host found, enumerate(1, 2)
+  host shown, make list
+  walk found
+    take each
+    shown/push(show-expr(each, names))
+  want hold, is-equal(join(shown, <,>), <x,y,0,1>)
+
+test <no expression has two nodes>
+  host found, enumerate(2, 1)
+  want hold, is-equal(found/length, 3)
+
+test <three nodes: four operators over every pair of atoms>
+  host found, enumerate(3, 1)
+  want hold, is-equal(found/length, 39)
+
+test <four nodes: a conditional over four atoms, two comparisons each>
+  host found, enumerate(4, 1)
+  want hold, is-equal(found/length, 201)
+
+test <the first binary expression is x + x>
+  host found, enumerate(3, 1)
+  want hold, is-equal(show-expr(get(found, 3), names), <(x + x)>)

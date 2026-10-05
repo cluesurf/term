@@ -1,0 +1,172 @@
+# Synthesis over sum types (tagged unions): a function that dispatches on a variant's tag and computes a per-variant
+# result. With record synthesis this covers both halves of an algebraic data type, products and sums. Each variant's
+# handler is synthesized on its own, over that variant's payload, against the spec restricted to its tag, and proved
+# over the bounded domain. The dispatch is the `sift` the result lowers to.
+#
+# Ported from deck/test/code/variant.ts (self-hosting, 2026-10-04), retired whole with its demo, which is
+# deck/test/test/variant-synthesis.tree. Two shapes changed: the handlers were a `Record` and are a hash, in the order
+# the variants were given (the order `Object.entries` read the record in), and the result was a union tagged on a
+# boolean and is one record. A variant is enumerated over the inputs it HAS: the original's `Math.max(1, arity)`
+# offered a payload-less variant `var(0)`, which read past the empty payload (the expression-grammar port).
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+load ./expression-grammar
+  find expression
+  find enumerate
+  find eval-expr
+  find show-expr
+  find constant-of
+
+# a tagged value: which variant, and its integer payload
+form tagged
+  link tag, like text
+  link payload, like list, like number
+
+# one variant of the input sum type: its tag and its payload's arity
+form variant
+  link tag, like text
+  link arity, like number
+
+form variant-result
+  link ok, like boolean
+  # a handler per tag, in the order the variants were given
+  link handlers
+    like hash
+      like text
+      like expression
+  # why nothing was found, `<>` when every variant has a handler
+  link reason, like text
+
+# does a handler meet the spec on every payload of one variant, in [-bound, bound]^arity in odometer order from the
+# lowest. A variant with no payload is asked at an odometer of one place, so the empty payload is asked 2 * bound + 1
+# times, as the original did. The payloads are walked here rather than through a task value, which would have to
+# capture the variant
+task handler-holds
+  take variant, like variant
+  take bound, like number
+  take spec
+    like task
+      take value, like tagged
+      take out, like number
+      like boolean
+  take handler, like expression
+  like boolean
+
+  save at, 0
+  save arity, variant/arity
+  save width, arity
+  fork test, is-below(width, 1)
+    hold
+      save width, 1
+  host point, make list
+  walk test
+    hook test, is-below(at, width)
+    hook hold
+      point/push(subtract(0, bound))
+      save at, add(at, 1)
+
+  walk test
+    hook test, true
+    hook hold
+      host payload, slice(point, 0, arity)
+      host value
+        make tagged
+          bind tag, variant/tag
+          bind payload, payload
+      fork test, call(spec, value, eval-expr(handler, payload))
+        miss
+          back false
+      save at, subtract(width, 1)
+      save stepped, false
+      walk test
+        hook test, and(not(stepped), is-minimum(at, 0))
+        hook hold
+          fork test, is-below(get(point, at), bound)
+            hold
+              point/set(at, add(get(point, at), 1))
+              save stepped, true
+            miss
+              point/set(at, subtract(0, bound))
+              save at, subtract(at, 1)
+      fork test, stepped
+        miss
+          back true
+
+  back true
+
+# a function over a sum type: a handler per variant, the first in the grammar's smallest-first order that the spec
+# accepts on every payload
+task synthesize-variant
+  take variants, like list, like variant
+  take spec
+    like task
+      take value, like tagged
+      take out, like number
+      like boolean
+  take max-size, like number
+  take bound, like number
+  like variant-result
+
+  host handlers, make hash
+  walk variants
+    take each
+    save found, false
+    walk enumerate(max-size, each/arity)
+      take handler
+      fork test, not(found)
+        hold
+          fork test, handler-holds(each, bound, spec, handler)
+            hold
+              handlers/set(each/tag, handler)
+              save found, true
+    fork test, found
+      miss
+        back
+          make variant-result
+            bind ok, false
+            bind handlers, handlers
+            bind reason, <variant {each/tag} had no handler in the grammar>
+
+  back
+    make variant-result
+      bind ok, true
+      bind handlers, handlers
+      bind reason, <>
+
+# the synthesized dispatch, run on a tagged value. The handler of a tag the dispatch lacks is the constant 0
+task run-variant
+  take handlers
+    like hash
+      like text
+      like expression
+  take value, like tagged
+  like number
+
+  fork test, has(handlers, value/tag)
+    miss
+      back 0
+  host handler, get-or-default(handlers, value/tag, constant-of(0))
+
+  back eval-expr(handler, value/payload)
+
+# the dispatch as pseudocode, a line per variant
+task show-variant
+  take handlers
+    like hash
+      like text
+      like expression
+  take payload-names, like list, like text
+  like text
+
+  host lines, make list
+  walk handlers/keys()
+    take tag
+    host handler, get-or-default(handlers, tag, constant-of(0))
+    lines/push(<  case {tag}: {show-expr(handler, payload-names)}>)
+
+  back join(lines, <\n>)

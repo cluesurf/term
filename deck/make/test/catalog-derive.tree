@@ -1,0 +1,74 @@
+note <deriving a view catalog's per-field table from a database's own indexes>
+
+# Ported from the derive checks of test/view/derive.ts (self-hosting, 2026-10-04). A `hold` is refused unless the
+# catalog says the field accepts that predicate, and it says so because an index answers it. What stays in TypeScript
+# reads the written catalog back through `readCatalog`, the data reader.
+
+load ../code/compile/catalog-derive
+  find index-row
+  find site-entry
+  find make-row
+  find derive-sites
+  find read-rows
+  find write-catalog
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+load @term/base/text
+  find index-of
+
+task row
+  take site, like text
+  take kind, like text
+  take sort, like boolean
+  take bond, like boolean
+  take pattern, like boolean
+  like index-row
+
+  back make-row(<phoneme>, site, kind, sort, bond, pattern)
+
+# the one field the derivation holds for the phoneme form
+task only-site
+  take rows, like list, like index-row
+  like site-entry
+
+  host derived, derive-sites(rows)
+  host sites, get-or-default(derived, <phoneme>, make list)
+
+  back get(sites, 0)
+
+test <a hash index answers equality only, and does not sort>
+  host entry, only-site(make list(row(<tag>, <hash>, false, false, false)))
+  want hold, and(is-equal(join(entry/hold, <,>), <is-equal,is-unequal>), not(entry/sort))
+
+test <an ordered index answers ranges too, and sorts>
+  host entry, only-site(make list(row(<rank>, <btree>, true, false, false)))
+  want hold, and(is-equal(join(entry/hold, <,>), <is-above,is-below,is-equal,is-unequal>), entry/sort)
+
+test <a pattern index answers containment>
+  host entry, only-site(make list(row(<symbol>, <btree>, true, false, true)))
+  want hold, contains(entry/hold, <is-within>)
+
+test <a foreign key answers equality alone, and never sorts>
+  host entry, only-site(make list(row(<language__id>, <btree>, true, true, false)))
+  want hold, and(is-equal(join(entry/hold, <,>), <is-equal,is-unequal>), not(entry/sort))
+
+test <two indexes on one column union their answers>
+  host rows, make list(row(<symbol>, <hash>, false, false, false), row(<symbol>, <gin>, false, false, true))
+  host entry, only-site(rows)
+  want hold, contains(entry/hold, <is-within>)
+
+test <the reader takes the query output and reads the flags>
+  host rows, read-rows(<phoneme\tkind\tbtree\tt\tf\tf\nphoneme\tlanguage__id\tbtree\tt\tt\tf\n\n>)
+  host first, get(rows, 0)
+  host second, get(rows, 1)
+  want hold, and(is-equal(rows/length, 2), and(second/bond, not(first/bond)))
+
+test <it writes a select and a filter per form>
+  host rows, make list(row(<kind>, <btree>, false, false, false), row(<rank>, <btree>, true, false, false))
+  host text, write-catalog(derive-sites(rows))
+  want hold, and(is-minimum(index-of(text, <select:phoneme>), 0), is-minimum(index-of(text, <filter:phoneme>), 0))

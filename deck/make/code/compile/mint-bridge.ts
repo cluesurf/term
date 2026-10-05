@@ -168,6 +168,8 @@ type Bridge = {
   inBody?: boolean
   // the file defines a task named `host` or imports one, so a `host` statement in a body may mean the call
   hostTask?: boolean
+  // every name the file defines or imports (`namesInFile`)
+  named: Set<string>
   // the owning form's type parameters: every method of the form carries them as leading generics
   ownerParams?: string[]
   // `find X, name Y`: Y is a local synonym for X in this file, rewritten to X across the built program
@@ -1211,7 +1213,7 @@ function closureOf(bridge: Bridge, value: Form): Expression | undefined {
   const enclosing = bridge.declared
   bridge.bound = new Set([...outer, ...params.map(p => p.name)])
   bridge.declared = new Set(enclosing)
-  const body = flowOf(bridge, bodySteps(value))
+  const body = flowOf(bridge, bodySteps(bridge, value))
   bridge.bound = outer
   bridge.declared = enclosing
 
@@ -1482,30 +1484,40 @@ function opensParen(node: Node | undefined): boolean {
   return (last.token as { next?: { kind: string } }).next?.kind === 'open-paren'
 }
 
-// Does the file define a task named `host`, or import one: `task host` at the top level, or `find host` (or a
-// `find x, name host`) under a `load`. Read off the parse tree before anything mints, because a `host` statement
-// in a body can sit above the definition it may be calling.
-function namesHostTask(tree: RootNode): boolean {
-  const named = (node: Node | undefined): boolean => wordOf(node) === 'host'
+// The names the file defines or imports that a body line may call: `task x` and `view x` at the top level, and
+// `find x` (or a `find y, name x`) under a `load`. Read off the parse tree before anything mints, because a call in
+// a body can sit above the definition it calls. Two readers ask it: whether a `host` statement is the task of that
+// name, and whether a line the grammar matched as the binding dialect's vocabulary (`home`, `rank`, `time`, ...,
+// code/drop/mine.tree) is a call after all
+function namesInFile(tree: RootNode): Set<string> {
+  const names = new Set<string>()
+  const add = (node: Node | undefined): void => {
+    const word = wordOf(node)
 
-  return tree.nodes.some(group => {
+    if (word !== undefined) {
+      names.add(word)
+    }
+  }
+
+  for (const group of tree.nodes) {
     if (group.kind !== 'group') {
-      return false
+      continue
     }
 
     const head = headWord(group)
 
-    if (head === 'task') {
-      return named(group.nodes[1])
+    if (head === 'task' || head === 'view') {
+      add(group.nodes[1])
+      continue
     }
 
     if (head !== 'load') {
-      return false
+      continue
     }
 
-    return group.nodes.some(child => {
+    for (const child of group.nodes) {
       if (child.kind !== 'group' || headWord(child) !== 'find') {
-        return false
+        continue
       }
 
       // `find x, name y` imports x under the local name y, so only the alias counts
@@ -1514,9 +1526,11 @@ function namesHostTask(tree: RootNode): boolean {
           part.kind === 'group' && headWord(part) === 'name',
       )
 
-      return alias ? named(alias.nodes[1]) : named(child.nodes[1])
-    })
-  })
+      add(alias ? alias.nodes[1] : child.nodes[1])
+    }
+  }
+
+  return names
 }
 
 // ---- the lean surface ----
@@ -3183,7 +3197,7 @@ function functionOf(bridge: Bridge, value: Form): Statement | undefined {
   bridge.inBody = true
   // `task read-synchronously, name <read-file>` annotates the task with the host name it maps to. The comma
   // leaves it where a body statement would sit, and it is not one: the mill emits an empty body here.
-  const written = bodySteps(value).filter(
+  const written = bodySteps(bridge, value).filter(
     step =>
       !(
         isForm(step) &&
@@ -3660,17 +3674,28 @@ function waitsTrue(value: Form): boolean {
 // test/compile/silent-defects.ts). A `wait` whose value is not the literal `true` or `false` is an awaited
 // statement, and it goes back where it was written: each one's position among the task's own children is the
 // order, the way `callOf` orders a call's arguments.
-function bodySteps(value: Form): Minted[] {
+function bodySteps(bridge: Bridge, value: Form): Minted[] {
   const flow = at(value, 'flow')
   const awaited = formsAt(value, 'wait').filter(wait => {
     const word = wordAt(wait, 'seed')
 
     return word !== 'true' && word !== 'false'
   })
+  // A line the grammar matched as the binding dialect's vocabulary (code/drop/mine.tree) whose head the file defines
+  // or imports is a call, read again as one. `home host` placing a component called `home` was dropped in silence,
+  // and the page served an empty `<div></div>` (guides: applications/web, commands/cast, 2026-10-04). In
+  // `@term/bind`, `home true` and `rank value` name nothing the file defines, and stay dropped
+  const called = at(value, 'drop').flatMap(drop =>
+    drop.node?.kind === 'group' && bridge.named.has(headWord(drop.node) ?? '')
+      ? flowFromNodes(bridge, [drop.node]).map(step => ({ ...step, node: drop.node }))
+      : [],
+  )
 
-  if (awaited.length === 0) {
+  if (awaited.length === 0 && called.length === 0) {
     return flow
   }
+
+  const steps = [...flow, ...awaited, ...called]
 
   const order = new Map<Node, number>()
 
@@ -3678,7 +3703,7 @@ function bodySteps(value: Form): Minted[] {
     value.node.nodes.forEach((child, index) => order.set(child, index))
   }
 
-  return [...flow, ...awaited]
+  return steps
     .map((step, index) => ({
       step,
       at: step.node ? (order.get(step.node) ?? index) : index,
@@ -5025,6 +5050,7 @@ export function millByGrammar(
   // reader downstream of it sees the longhand shape and cannot tell the two spellings apart. note/term/lean.md.
   lean?: boolean,
 ): MillResult {
+  const named = namesInFile(tree)
   const bridge: Bridge = {
     file,
     role,
@@ -5032,7 +5058,8 @@ export function millByGrammar(
     diagnostics: [],
     declared: new Set(),
     bound: new Set(),
-    hostTask: namesHostTask(tree),
+    hostTask: named.has('host'),
+    named,
     aliases: new Map(),
     grammar,
     twins: [],

@@ -1,0 +1,193 @@
+# What a micro-benchmark reports from its timings: robust statistics (min, median, p95, mean, operations per second)
+# so a real change is distinguishable from noise, the growth exponent across sizes so a super-linear pass is caught
+# before it bites, and the table.
+#
+# Ported from the pure half of deck/test/code/bench.ts (self-hosting, 2026-10-04). The timing stays there: it runs a
+# caller's closure under the clock, warmed up, synchronously or awaited. Two shapes changed: a result's `size` was
+# optional, and `has-size` says whether it was given (a size of 0 is given and not used in a fit, as before); and a
+# figure is placed with `to-fixed`, which rounds the decimal a number prints as where `toFixed` rounded the bits.
+
+load @term/base/list
+  find list
+  find sort
+
+load @term/base/ordering
+  find ordering
+
+load @term/base/float
+  find natural-logarithm
+  find round-down
+  find round
+  find to-decimal
+  find to-number
+
+load @term/base/text
+  find pad-left
+  find pad-right
+
+load @term/base/text/number
+  find to-fixed
+
+form bench-result
+  link name, like text
+  link iterations, like number
+  link min, like decimal
+  link median, like decimal
+  link mean, like decimal
+  link p95, like decimal
+  link max, like decimal
+  link ops-per-sec, like decimal
+  # whether the caller gave a size, for the scaling fit
+  link has-size, like boolean
+  link size, like number
+
+form scaling-fit
+  link exponent, like decimal
+  link verdict, like text
+
+task by-value
+  take left, like decimal
+  take right, like decimal
+  like ordering
+
+  fork test, is-below(left, right)
+    hold
+      back make less
+  fork test, is-above(left, right)
+    hold
+      back make greater
+
+  back make equal
+
+# the sample at quantile `q` of a sorted list: the index q * n rounded down, never past the last
+task at-quantile
+  take sorted, like list, like decimal
+  take q, like decimal
+  like decimal
+
+  host n, sorted/length
+  save index, to-number(round-down(multiply(q, to-decimal(n))))
+  fork test, is-above(index, subtract(n, 1))
+    hold
+      save index, subtract(n, 1)
+
+  back get(sorted, index)
+
+# the statistics of one benchmark's per-iteration timings, in milliseconds
+task stats-of
+  take name, like text
+  take samples, like list, like decimal
+  take has-size, like boolean
+  take size, like number
+  like bench-result
+
+  host sorted, sort(samples, by-value)
+  host n, sorted/length
+  save sum, 0.0
+  walk sorted
+    take each
+    save sum, add(sum, each)
+  host median, at-quantile(sorted, 0.5)
+  save ops, divide(1.0, 0.0)
+  fork test, is-above(median, 0.0)
+    hold
+      save ops, divide(1000.0, median)
+
+  back
+    make bench-result
+      bind name, name
+      bind iterations, n
+      bind min, get(sorted, 0)
+      bind median, median
+      bind mean, divide(sum, to-decimal(n))
+      bind p95, at-quantile(sorted, 0.95)
+      bind max, get(sorted, subtract(n, 1))
+      bind ops-per-sec, ops
+      bind has-size, has-size
+      bind size, size
+
+task mean-of
+  take values, like list, like decimal
+  like decimal
+
+  save sum, 0.0
+  walk values
+    take each
+    save sum, add(sum, each)
+
+  back divide(sum, to-decimal(values/length))
+
+# the growth exponent across sizes: the least-squares slope of log(median) against log(size). Near 1 is linear, near 2
+# quadratic. Fewer than two sized points fit nothing, and the exponent is not a number
+task scaling
+  take results, like list, like bench-result
+  like scaling-fit
+
+  host xs, make list
+  host ys, make list
+  walk results
+    take each
+    fork test, and(and(each/has-size, is-above(each/size, 0)), is-above(each/median, 0.0))
+      hold
+        xs/push(natural-logarithm(to-decimal(each/size)))
+        ys/push(natural-logarithm(each/median))
+
+  fork test, is-below(xs/length, 2)
+    hold
+      back
+        make scaling-fit
+          bind exponent, divide(0.0, 0.0)
+          bind verdict, <need \>= 2 sized points>
+
+  host x-bar, mean-of(xs)
+  host y-bar, mean-of(ys)
+  save num, 0.0
+  save den, 0.0
+  save at, 0
+  walk xs
+    take x
+    host dx, subtract(x, x-bar)
+    save num, add(num, multiply(dx, subtract(get(ys, at), y-bar)))
+    save den, add(den, multiply(dx, dx))
+    save at, add(at, 1)
+
+  save k, divide(0.0, 0.0)
+  fork test, not(is-equal(den, 0.0))
+    hold
+      save k, divide(num, den)
+
+  save verdict, <worse than quadratic (fix now)>
+  fork test, is-below(k, 2.5)
+    hold
+      save verdict, <quadratic (fix)>
+  fork test, is-below(k, 1.7)
+    hold
+      save verdict, <super-linear (watch)>
+  fork test, is-below(k, 1.3)
+    hold
+      save verdict, <linear (good)>
+
+  back
+    make scaling-fit
+      bind exponent, k
+      bind verdict, verdict
+
+# the results as a table
+task render-bench
+  take results, like list, like bench-result
+  like text
+
+  host lines, make list
+  lines/push(<  benchmark                          median        p95        ops/sec     size>)
+  walk results
+    take r
+    save shown-size, <       ->
+    fork test, r/has-size
+      hold
+        save shown-size, pad-left(<{r/size}>, 8, < >)
+    host median, pad-left(to-fixed(r/median, 3), 9, < >)
+    host p95, pad-left(to-fixed(r/p95, 3), 9, < >)
+    host ops, pad-left(<{to-number(round(r/ops-per-sec))}>, 9, < >)
+    lines/push(<  {pad-right(r/name, 34, < >)} {median}ms  p95 {p95}ms  {ops}/s  size {shown-size}>)
+
+  back join(lines, <\n>)

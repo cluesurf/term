@@ -892,13 +892,13 @@ export async function callBoot(input: {
       const cached = path.join(projectRoot, '.base/@cluesurf/term', 'boot', key)
       const out = input.out ? path.resolve(cwd, input.out) : cached
       const bundle = path.join(out, 'app.mjs')
-      const shown = input.out
-        ? path.relative(cwd, out) || '.'
-        : `.base/@cluesurf/term/boot/${key.slice(0, 8)}`
+      // `at` only for an `--out` folder, which the person chose and will open. The boot cache under `.base/` is the
+      // build's own business: the title already names the source, and the cache path read as where the program was
+      const shown = input.out ? path.relative(cwd, out) || '.' : undefined
 
       // an `--out` directory is always rewritten: it is somebody's published copy, not a cache keyed by its input
       if (!input.out && existsSync(bundle)) {
-        report({ glyph: 'skipped', verb: 'build', subject: path.relative(cwd, entry) || entry, duration: Date.now() - started, facts: ['cached'], fields: [location(shown)] })
+        report({ glyph: 'skipped', verb: 'build', subject: path.relative(cwd, entry) || entry, duration: Date.now() - started, facts: ['cached'], fields: shown ? [location(shown)] : [] })
       } else {
         mkdirSync(cached, { recursive: true })
         mkdirSync(out, { recursive: true })
@@ -908,7 +908,7 @@ export async function callBoot(input: {
           outfile: bundle,
           ...bundleConfig,
         })
-        report({ glyph: 'done', verb: 'build', subject: path.relative(cwd, entry) || entry, duration: Date.now() - started, fields: [location(shown)] })
+        report({ glyph: 'done', verb: 'build', subject: path.relative(cwd, entry) || entry, duration: Date.now() - started, fields: shown ? [location(shown)] : [] })
       }
 
       // link the CLI install's node_modules next to the bundle so ESM resolves the external bare specifiers

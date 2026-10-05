@@ -13,7 +13,7 @@ import { projectResolver } from '@term/call/code/make'
 import { compile } from '@term/make/code/compile/compile'
 import { makeSmt, type SymSpec } from './smt'
 import { synthesizeSmt } from './synth-smt'
-import { emitSeed } from './emit'
+import { emitSeed } from '@term/test/code/source-emit'
 import { showExpr, type Spec } from './synthesize'
 
 async function main(): Promise<void> {

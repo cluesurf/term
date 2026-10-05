@@ -806,25 +806,31 @@ export function check(
         // `expected light, found light/red`. Every use of it in the tree was in the four proof files, which is
         // why an obviously-wrong spelling survived: nothing else spells it that way. Normalize to the bare name
         // and let the paths below type it exactly as they type `make red`.
-        // Only where the bare name is UNAMBIGUOUS: one owning enum, and it is the prefix written. A shared
-        // constructor name is the one case where the prefix carries information the bare name does not, and
-        // dropping it there would turn a precise construction into an ambiguous one. That case still fails, and
-        // fixing it means carrying the owner through the paths below rather than rewriting the name.
+        // Where the bare name is SHARED, the prefix carries what the bare name does not, so the owner it names is
+        // carried through as the choice below (`qualifiedOwner`), and the name is the bare case. `make
+        // expression/integer` beside the engine's `value` union, whose case `integer` has the same field, typed as
+        // `value` and the kernel refused it (the engine test port, 2026-10-04). The owner is read through a form's
+        // `__form` rename, which a form named like another's case gets.
         const slash = node.name.lastIndexOf('/')
+        let qualifiedOwner: string | undefined
 
         if (slash > 0) {
-          const owner = node.name.slice(0, slash)
+          const written = node.name.slice(0, slash)
           const bare = node.name.slice(slash + 1)
           const owners = variantOwners.get(bare) ?? []
+          const owner = enums.get(written)?.has(bare) ? written : enums.get(`${written}__form`)?.has(bare) ? `${written}__form` : undefined
 
-          if (
-            enums.get(owner)?.has(bare) &&
-            owners.length === 1 &&
-            owners[0] === owner
-          ) {
+          if (owner && owners.length === 1 && owners[0] === owner) {
             node.name = bare
+          } else if (owner && owners.includes(owner)) {
+            node.name = bare
+            qualifiedOwner = owner
+            // kept on the node: a construction is inferred again on a later pass, when its name is already bare
+            ;(node as { owner?: string }).owner = owner
           }
         }
+
+        qualifiedOwner ??= (node as { owner?: string }).owner
 
         // THE LEAN UNWRAP RUNS FIRST, before the overloaded-variant escape below. A property head builds an
         // array whatever the construction turns out to be, so a variant whose name two enums share (`not` on
@@ -845,7 +851,7 @@ export function check(
 
           return own !== undefined && given.every(name => own.has(name)) && own.size === given.length
         })
-        const chosen = owners.length > 1 && fitting.length === 1 ? fitting[0] : undefined
+        const chosen = qualifiedOwner ?? (owners.length > 1 && fitting.length === 1 ? fitting[0] : undefined)
 
         if (owners.length > 1 && chosen === undefined) {
           for (const field of node.fields) {

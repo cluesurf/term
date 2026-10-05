@@ -1,0 +1,665 @@
+note <the vibe engine: programs built as ASTs and run, each answer held as it displays>
+
+# Ported from test/engine/engine/run.ts (self-hosting, 2026-10-04): loops, recursion, switch, arrays, maps, strings,
+# templates, a literal past an integer, slices with no end, async calls, for-each with and without break, try, catch
+# and finally, closures through map, filter and reduce, and the engine's stdlib.
+
+load ../code/engine/ast
+  find expression
+  find statement
+  find branch
+  find catch-clause
+  find switch-case
+  find template-part
+  find integer-literal
+  find binary-op
+
+load ../code/engine/engine
+  find run
+  find call-function
+
+load ../code/engine/value
+  find value
+  find display
+  find integer-value
+
+load ../code/engine/data/integer
+  find make-integer
+
+load @term/base/integer/big
+  find big-integer
+  find big-from-number
+  find big-add
+  find big-multiply
+
+load @term/base/list
+  find list
+
+# expressions
+
+task int
+  take n, like number
+  like expression
+
+  back
+    make expression/integer
+      bind value
+        make small
+          bind value, n
+
+task str
+  take text, like text
+  like expression
+
+  back
+    make expression/string
+      bind value, text
+
+task vbl
+  take name, like text
+  like expression
+
+  back
+    make variable
+      bind name, name
+
+# each operator a task, so a call can name it before a comma (`make plus` is two words, and a comma after it would
+# put the next argument under it)
+task plus-op
+  like binary-op
+
+  back make plus
+
+task minus-op
+  like binary-op
+
+  back make minus
+
+task times-op
+  like binary-op
+
+  back make times
+
+task remainder-op
+  like binary-op
+
+  back make remainder
+
+task equal-op
+  like binary-op
+
+  back make equal
+
+task unequal-op
+  like binary-op
+
+  back make unequal
+
+task below-op
+  like binary-op
+
+  back make below
+
+task above-op
+  like binary-op
+
+  back make above
+
+task at-most-op
+  like binary-op
+
+  back make at-most
+
+task bin
+  take op, like binary-op
+  take left, like expression
+  take right, like expression
+  like expression
+
+  back
+    make binary
+      bind op, op
+      bind left, left
+      bind right, right
+
+task call-of
+  take name, like text
+  take args, like list, like expression
+  like expression
+
+  back
+    make call
+      bind callee, vbl(name)
+      bind args, args
+
+task member-of
+  take target, like expression
+  take name, like text
+  like expression
+
+  back
+    make member
+      bind target, target
+      bind name, name
+
+task array-of
+  take items, like list, like expression
+  like expression
+
+  back
+    make expression/array
+      bind items, items
+
+task lambda
+  take params, like list, like text
+  take body, like list, like statement
+  like expression
+
+  back
+    make closure
+      bind params, params
+      bind body, body
+      bind is-async, false
+
+# statements
+
+task lett
+  take name, like text
+  take init, like expression
+  like statement
+
+  back
+    make let
+      bind name, name
+      bind init, init
+      bind mutable, true
+
+task set-to
+  take name, like text
+  take value, like expression
+  like statement
+
+  back
+    make assign
+      bind target, vbl(name)
+      bind op, make set
+      bind value, value
+
+task ret
+  take value, like expression
+  like statement
+
+  back
+    make return
+      bind value, value
+
+task expr-of
+  take e, like expression
+  like statement
+
+  back
+    make expression
+      bind expr, e
+
+task fn
+  take name, like text
+  take params, like list, like text
+  take body, like list, like statement
+  take is-async, like boolean
+  like statement
+
+  back
+    make function
+      bind name, name
+      bind params, params
+      bind body, body
+      bind is-async, is-async
+
+task when
+  take cond, like expression
+  take body, like list, like statement
+  like branch
+
+  back
+    make branch
+      bind cond, cond
+      bind body, body
+
+task if-of
+  take branches, like list, like branch
+  take otherwise, like list, like statement
+  like statement
+
+  back
+    make if
+      bind branches, branches
+      bind otherwise, otherwise
+
+task while-of
+  take cond, like expression
+  take body, like list, like statement
+  like statement
+
+  back
+    make while
+      bind cond, cond
+      bind body, body
+
+task for-of
+  take name, like text
+  take iterable, like expression
+  take body, like list, like statement
+  like statement
+
+  back
+    make for
+      bind name, name
+      bind iterable, iterable
+      bind body, body
+
+task throw-of
+  take value, like expression
+  like statement
+
+  back
+    make throw
+      bind value, value
+
+task try-of
+  take body, like list, like statement
+  take name, like text
+  take handler, like list, like statement
+  take finally-body, like list, like statement
+  like statement
+
+  host catches, make list
+  catches/push
+    make catch-clause
+      bind name, name
+      bind body, handler
+
+  back
+    make try
+      bind body, body
+      bind catches, catches
+      bind finally-body, finally-body
+
+# names as a list, by a call, so a list can stand before a comma (`make list(<n>)` is a multi-word part)
+task texts
+  take a, like text
+  like list, like text
+
+  host out, make list
+  out/push(a)
+
+  back out
+
+task texts-2
+  take a, like text
+  take b, like text
+  like list, like text
+
+  host out, make list
+  out/push(a)
+  out/push(b)
+
+  back out
+
+task no-texts
+  like list, like text
+
+  host out, make list
+
+  back out
+
+task one
+  take s, like statement
+  like list, like statement
+
+  host out, make list
+  out/push(s)
+
+  back out
+
+task shown
+  take v, like value
+  like text
+
+  back display(v)
+
+task int-arg
+  take n, like number
+  like list, like value
+
+  host out, make list
+  out/push(integer-value(make-integer(big-from-number(n), <>)))
+
+  back out
+
+# the programs
+
+task fib-program
+  like list, like statement
+
+  host body, make list
+  body/push(set-to(<n>, bin(minus-op(), vbl(<n>), int(1))))
+  body/push(set-to(<t>, bin(plus-op(), vbl(<a>), vbl(<b>))))
+  body/push(set-to(<a>, vbl(<b>)))
+  body/push(set-to(<b>, vbl(<t>)))
+  host steps, make list
+  steps/push(lett(<a>, int(0)))
+  steps/push(lett(<b>, int(1)))
+  steps/push(lett(<t>, int(0)))
+  steps/push(while-of(bin(unequal-op(), vbl(<n>), int(0)), body))
+  steps/push(ret(vbl(<a>)))
+
+  back one(fn(<fib>, texts(<n>), steps, false))
+
+task fact-program
+  like list, like statement
+
+  host smaller, call-of(<fact>, make list(bin(minus-op(), vbl(<n>), int(1))))
+  host branches, make list(when(bin(at-most-op(), vbl(<n>), int(1)), one(ret(int(1)))))
+  host body, one(if-of(branches, one(ret(bin(times-op(), vbl(<n>), smaller)))))
+
+  back one(fn(<fact>, texts(<n>), body, false))
+
+task classify-program
+  like list, like statement
+
+  host cases, make list
+  cases/push
+    make switch-case
+      bind match, int(-1)
+      bind body, one(ret(str(<negative>)))
+  cases/push
+    make switch-case
+      bind match, int(0)
+      bind body, one(ret(str(<zero>)))
+  host switching
+    make switch
+      bind subject, call-of(<sign>, make list(vbl(<n>)))
+      bind cases, cases
+      bind otherwise, one(ret(str(<positive>)))
+  host signs, make list
+  signs/push(when(bin(below-op(), vbl(<n>), int(0)), one(ret(int(-1)))))
+  signs/push(when(bin(above-op(), vbl(<n>), int(0)), one(ret(int(1)))))
+  host out, make list
+  out/push(fn(<classify>, texts(<n>), one(switching), false))
+  out/push(fn(<sign>, texts(<n>), one(if-of(signs, one(ret(int(0))))), false))
+
+  back out
+
+task array-program
+  like list, like statement
+
+  host xs, array-of(make list(int(2), int(3), int(5), int(7)))
+  host index
+    make index
+      bind target, vbl(<xs>)
+      bind index, vbl(<i>)
+  host body, make list
+  body/push(set-to(<sum>, bin(plus-op(), vbl(<sum>), index)))
+  body/push(set-to(<i>, bin(plus-op(), vbl(<i>), int(1))))
+  host out, make list
+  out/push(lett(<xs>, xs))
+  out/push(set-to(<xs>, call-of(<push>, make list(vbl(<xs>), int(11)))))
+  out/push(lett(<sum>, int(0)))
+  out/push(lett(<i>, int(0)))
+  out/push(while-of(bin(below-op(), vbl(<i>), member-of(vbl(<xs>), <length>)), body))
+  out/push(expr-of(vbl(<sum>)))
+
+  back out
+
+task map-program
+  like list, like statement
+
+  host none, make list
+  host empty
+    make expression/map
+      bind entries, none
+  host out, make list
+  out/push(lett(<m>, empty))
+  out/push
+    make assign
+      bind target, member-of(vbl(<m>), <alpha>)
+      bind op, make set
+      bind value, int(1)
+  out/push
+    make assign
+      bind target, member-of(vbl(<m>), <beta>)
+      bind op, make set
+      bind value, int(2)
+  out/push(expr-of(bin(plus-op(), member-of(vbl(<m>), <alpha>), member-of(vbl(<m>), <beta>))))
+
+  back out
+
+task template-program
+  like list, like statement
+
+  host parts, make list
+  parts/push
+    make chunk
+      bind value, <n=>
+  parts/push
+    make value
+      bind value, bin(plus-op(), vbl(<n>), int(1))
+  parts/push
+    make chunk
+      bind value, <!>
+  host out, make list
+  out/push(lett(<n>, int(4)))
+  out/push
+    make expression
+      bind expr
+        make template
+          bind parts, parts
+
+  back out
+
+# 12345678901234567890, past an integer: 1234567890 * 10^10 + 1234567890
+task big-literal-program
+  like list, like statement
+
+  host high, big-multiply(big-from-number(1234567890), big-from-number(10000000000))
+  host whole, big-add(high, big-from-number(1234567890))
+  host literal
+    make expression/integer
+      bind value
+        make big
+          bind value, whole
+
+  back one(expr-of(literal))
+
+task tail-program
+  take target, like expression
+  like list, like statement
+
+  host out, make list
+  out/push(lett(<t>, call-of(<slice>, make list(target, int(1)))))
+  out/push(expr-of(member-of(vbl(<t>), <length>)))
+
+  back out
+
+task async-program
+  like list, like statement
+
+  host awaited
+    make await
+      bind expr, call-of(<inner>, make list)
+  host again
+    make await
+      bind expr, call-of(<inner>, make list)
+  host body, make list
+  body/push(lett(<x>, awaited))
+  body/push(lett(<y>, again))
+  body/push(ret(bin(plus-op(), vbl(<x>), vbl(<y>))))
+  host out, make list
+  out/push(fn(<inner>, no-texts(), one(ret(int(21))), true))
+  out/push(fn(<outer>, no-texts(), body, true))
+
+  back out
+
+task for-program
+  like list, like statement
+
+  host out, make list
+  out/push(lett(<sum>, int(0)))
+  out/push(for-of(<x>, array-of(make list(int(1), int(2), int(3), int(4))), one(set-to(<sum>, bin(plus-op(), vbl(<sum>), vbl(<x>))))))
+  out/push(expr-of(vbl(<sum>)))
+
+  back out
+
+task for-break-program
+  like list, like statement
+
+  host none, make list
+  host past-five, make list(when(bin(above-op(), vbl(<x>), int(5)), one(make break)))
+  host stop, if-of(past-five, none)
+  host body, make list
+  body/push(stop)
+  body/push(set-to(<sum>, bin(plus-op(), vbl(<sum>), vbl(<x>))))
+  host out, make list
+  out/push(lett(<sum>, int(0)))
+  out/push(for-of(<x>, call-of(<range>, make list(int(0), int(100))), body))
+  out/push(expr-of(vbl(<sum>)))
+
+  back out
+
+task try-program
+  like list, like statement
+
+  host none, make list
+  host body, make list
+  body/push(throw-of(str(<boom>)))
+  body/push(set-to(<out>, str(<unreached>)))
+  host out, make list
+  out/push(lett(<out>, str(<none>)))
+  out/push(try-of(body, <e>, one(set-to(<out>, vbl(<e>))), none))
+  out/push(expr-of(vbl(<out>)))
+
+  back out
+
+task try-call-program
+  like list, like statement
+
+  host none, make list
+  host body, make list
+  body/push(expr-of(call-of(<bad>, make list)))
+  body/push(ret(str(<ok>)))
+  host out, make list
+  out/push(fn(<bad>, no-texts(), one(throw-of(str(<inner>))), false))
+  out/push(fn(<safe>, no-texts(), one(try-of(body, <e>, one(ret(vbl(<e>))), none)), false))
+
+  back out
+
+task finally-program
+  like list, like statement
+
+  host out, make list
+  out/push(lett(<log>, str(<>)))
+  out/push(try-of(one(throw-of(str(<x>))), <e>, one(set-to(<log>, bin(plus-op(), vbl(<log>), str(<c>)))), one(set-to(<log>, bin(plus-op(), vbl(<log>), str(<f>))))))
+  out/push(expr-of(vbl(<log>)))
+
+  back out
+
+task pipeline-program
+  like list, like statement
+
+  host doubled, lambda(texts(<x>), one(ret(bin(times-op(), vbl(<x>), int(2)))))
+  host fours, lambda(texts(<x>), one(ret(bin(equal-op(), bin(remainder-op(), vbl(<x>), int(4)), int(0)))))
+  host summed, lambda(texts-2(<a>, <b>), one(ret(bin(plus-op(), vbl(<a>), vbl(<b>)))))
+  host out, make list
+  out/push(lett(<xs>, call-of(<range>, make list(int(1), int(6)))))
+  out/push(lett(<doubled>, call-of(<map>, make list(vbl(<xs>), doubled))))
+  out/push(lett(<evens>, call-of(<filter>, make list(vbl(<doubled>), fours))))
+  out/push(expr-of(call-of(<reduce>, make list(vbl(<evens>), summed, int(0)))))
+
+  back out
+
+task call-program
+  take name, like text
+  take args, like list, like expression
+  like list, like statement
+
+  back one(expr-of(call-of(name, args)))
+
+test <while loop: fib(10) is 55>
+  want hold, is-equal(shown(call-function(fib-program(), <fib>, int-arg(10))), <55>)
+
+test <recursion and if/else: fact(5) is 120>
+  want hold, is-equal(shown(call-function(fact-program(), <fact>, int-arg(5))), <120>)
+
+test <switch: classify(-7) is negative>
+  want hold, is-equal(shown(call-function(classify-program(), <classify>, int-arg(-7))), <negative>)
+
+test <switch default: classify(7) is positive>
+  want hold, is-equal(shown(call-function(classify-program(), <classify>, int-arg(7))), <positive>)
+
+test <arrays: push and sum is 28>
+  want hold, is-equal(shown(run(array-program())), <28>)
+
+test <maps: set and read fields is 3>
+  want hold, is-equal(shown(run(map-program())), <3>)
+
+test <strings: the length of a concatenation is 10>
+  host program, one(lett(<s>, bin(plus-op(), str(<hyper>), str(<bolic>))))
+  program/push(expr-of(member-of(vbl(<s>), <length>)))
+  want hold, is-equal(shown(run(program)), <10>)
+
+test <a template's chunks and a value>
+  want hold, is-equal(shown(run(template-program())), <n=5!>)
+
+test <an integer literal past a number>
+  want hold, is-equal(shown(run(big-literal-program())), <12345678901234567890>)
+
+test <the slice of an array with no end: its length>
+  want hold, is-equal(shown(run(tail-program(array-of(make list(int(1), int(2), int(3), int(4)))))), <3>)
+
+test <the slice of a string with no end: its length>
+  want hold, is-equal(shown(run(tail-program(str(<hyperbolic>)))), <9>)
+
+test <the slice of a string with no end: its text>
+  host program, one(lett(<t>, call-of(<slice>, make list(str(<hyperbolic>), int(5)))))
+  program/push(expr-of(vbl(<t>)))
+  want hold, is-equal(shown(run(program)), <bolic>)
+
+test <async and await: outer() is 42>
+  host none, make list
+  want hold, is-equal(shown(call-function(async-program(), <outer>, none)), <42>)
+
+test <for-each: the sum of 1 to 4 is 10>
+  want hold, is-equal(shown(run(for-program())), <10>)
+
+test <for-each and break over a range is 15>
+  want hold, is-equal(shown(run(for-break-program())), <15>)
+
+test <try and catch: a throw is caught>
+  want hold, is-equal(shown(run(try-program())), <boom>)
+
+test <try and catch: across a call>
+  host none, make list
+  want hold, is-equal(shown(call-function(try-call-program(), <safe>, none)), <inner>)
+
+test <try: finally runs after catch>
+  want hold, is-equal(shown(run(finally-program())), <cf>)
+
+test <stdlib: range, map, filter and reduce is 12>
+  want hold, is-equal(shown(run(pipeline-program())), <12>)
+
+test <stdlib: upper>
+  want hold, is-equal(shown(run(call-program(<upper>, make list(str(<vibe>))))), <VIBE>)
+
+test <stdlib: join>
+  host letters, array-of(make list(str(<a>), str(<b>), str(<c>)))
+  want hold, is-equal(shown(run(call-program(<join>, make list(letters, str(<->))))), <a-b-c>)
+
+test <stdlib: sort>
+  host numbers, array-of(make list(int(3), int(1), int(2)))
+  want hold, is-equal(shown(run(call-program(<sort>, make list(numbers)))), <[1, 2, 3]>)
+
+test <stdlib: max>
+  want hold, is-equal(shown(run(call-program(<max>, make list(int(4), int(9))))), <9>)
+
+test <stdlib: abs>
+  want hold, is-equal(shown(run(call-program(<abs>, make list(int(-12))))), <12>)

@@ -12,7 +12,7 @@ mod octets {
         (0..text.len()).step_by(2).map(|i| u8::from_str_radix(&text[i..i + 2], 16).unwrap_or(0)).collect()
     }
     pub fn to_base64(value: Vec<u8>) -> String {
-        let mut out = String::with_capacity((value.len() + 2) / 3 * 4);
+        let mut out = String::with_capacity(value.len().div_ceil(3) * 4);
         for chunk in value.chunks(3) {
             let a = chunk[0] as u32;
             let b = *chunk.get(1).unwrap_or(&0) as u32;

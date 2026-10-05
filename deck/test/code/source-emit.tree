@@ -1,0 +1,172 @@
+# A synthesized expression written out as Term source: a complete task that compiles. Add and subtract are global
+# calls, maximum and minimum come from the math module (so the matching `load` is written), an if-then-else lowers to
+# `fork test`, a constant is `code`, and an input is `read`. The body goes on its own line under `send back`.
+#
+# Ported from deck/test/code/emit.ts (self-hosting, 2026-10-04), retired whole: its callers import this. The task to
+# emit keeps its field names, `name`, `params` and `body`, so a TypeScript caller builds it unchanged.
+
+load @term/base/list
+  find list
+  find sort
+
+load @term/base/ordering
+  find ordering
+  find from-texts
+
+load ./expression-grammar
+  find expression
+  find condition
+
+form seed-task
+  link name, like text
+  link params, like list, like text
+  link body, like expression
+
+task pad-of
+  take depth, like number
+  like text
+
+  save out, <>
+  save at, 0
+  walk test
+    hook test, is-below(at, depth)
+    hook hold
+      save out, <{out}  >
+      save at, add(at, 1)
+
+  back out
+
+# a call of `name` over two expressions, one level deeper
+task emit-call
+  take name, like text
+  take left, like expression
+  take right, like expression
+  take depth, like number
+  take names, like list, like text
+  take into, like list, like text
+
+  into/push(<{pad-of(depth)}call {name}>)
+  emit-expr(left, add(depth, 1), names, into)
+  emit-expr(right, add(depth, 1), names, into)
+
+# an expression as indented lines at `depth`, appended to `into`
+task emit-expr
+  take expr, like expression
+  take depth, like number
+  take names, like list, like text
+  take into, like list, like text
+
+  host pad, pad-of(depth)
+  sift expr
+    case var
+      into/push(<{pad}read {get(names, index)}>)
+    case const
+      into/push(<{pad}code {value}>)
+    case add
+      emit-call(<add>, left, right, depth, names, into)
+    case sub
+      emit-call(<subtract>, left, right, depth, names, into)
+    case max
+      emit-call(<maximum>, left, right, depth, names, into)
+    case min
+      emit-call(<minimum>, left, right, depth, names, into)
+    case ite
+      into/push(<{pad}fork test>)
+      into/push(<{pad}  hook test>)
+      emit-cond(test, add(depth, 2), names, into)
+      into/push(<{pad}  hook hold>)
+      emit-expr(then, add(depth, 2), names, into)
+      into/push(<{pad}  hook miss>)
+      emit-expr(else, add(depth, 2), names, into)
+
+task emit-cond
+  take cond, like condition
+  take depth, like number
+  take names, like list, like text
+  take into, like list, like text
+
+  sift cond
+    case ge
+      emit-call(<is-minimum>, left, right, depth, names, into)
+    case gt
+      emit-call(<is-above>, left, right, depth, names, into)
+    case eq
+      emit-call(<is-equal>, left, right, depth, names, into)
+
+# the math functions an expression uses, each once, added to `into`
+task math-uses
+  take expr, like expression
+  take into, like list, like text
+
+  sift expr
+    case max
+      fork test, contains(into, <maximum>)
+        miss
+          into/push(<maximum>)
+      math-uses(left, into)
+      math-uses(right, into)
+    case min
+      fork test, contains(into, <minimum>)
+        miss
+          into/push(<minimum>)
+      math-uses(left, into)
+      math-uses(right, into)
+    case add
+      math-uses(left, into)
+      math-uses(right, into)
+    case sub
+      math-uses(left, into)
+      math-uses(right, into)
+    case ite
+      math-uses(then, into)
+      math-uses(else, into)
+      math-uses-cond(test, into)
+    miss
+
+task math-uses-cond
+  take cond, like condition
+  take into, like list, like text
+
+  sift cond
+    case ge
+      math-uses(left, into)
+      math-uses(right, into)
+    case gt
+      math-uses(left, into)
+      math-uses(right, into)
+    case eq
+      math-uses(left, into)
+      math-uses(right, into)
+
+task by-text
+  take left, like text
+  take right, like text
+  like ordering
+
+  back from-texts(left, right)
+
+# a complete, compilable Term source for a synthesized task, with the math `load` when it needs one
+task emit-seed
+  take task, like seed-task
+  like text
+
+  host lines, make list
+  host uses, make list
+  math-uses(task/body, uses)
+  fork test, is-above(uses/length, 0)
+    hold
+      lines/push(<load @term/base/code/math>)
+      walk sort(uses, by-text)
+        take each
+        lines/push(<  find {each}>)
+      lines/push(<>)
+
+  lines/push(<task {task/name}>)
+  walk task/params
+    take param
+    lines/push(<  take {param}, like number>)
+  lines/push(<  like number>)
+  lines/push(<  send back>)
+  emit-expr(task/body, 2, task/params, lines)
+
+  back <{join(lines, <\n>)}\n>

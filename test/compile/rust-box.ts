@@ -119,6 +119,17 @@ ok(
 ok('a raise in a task with no spare is `term_fail`', /Err\(term_fail\("/.test(buildTower) && !/term_fail_with/.test(buildTower))
 ok('`term_fail_with` is cold and out of line', /#\[cold\]\n#\[inline\(never\)\]\nfn term_fail_with<T>/.test(towersRust))
 
+// 6. THE LIMIT, held so a change to it is noticed: Towers with its push raising a RECORD boxes nothing, because the
+// exception module brings generic code and a clone of a generic type could be copying any form (`rustBoxing`,
+// `generic`). So no task holding a spare raises a record today, and a raised record keeps its inline drop. When this
+// fails, boxing has become finer: hand a spare to a cold function on a record raise too (`term_fail_with` beside it)
+const recordTowers = readFileSync(join(TERM, 'bench/towers/term.tree'), 'utf8')
+  .replace('load @term/base/list\n', 'load @term/base/exception\n  find absence\nload @term/base/list\n')
+  .replace('form stack\n', 'form pile-clash\n  like absence\n    bind note, <clash>\n    link size, like number\n\nform stack\n')
+  .replace(/( +)halt <Cannot put a big disk onto a smaller one>/g, '$1halt pile-clash\n$1  bind thing, text <disk>\n$1  bind size, read size')
+const recordFacts = rustBoxing(build(join(TERM, 'tmp/rust-box-raise.tree'), recordTowers))
+ok('a program raising a record is generic, and boxes nothing', recordFacts.generic && recordFacts.boxed.length === 0, JSON.stringify(recordFacts))
+
 console.log(`\nrust-box: ${pass} pass, ${fail} fail`)
 
 if (fail > 0) {

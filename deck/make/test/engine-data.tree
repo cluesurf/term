@@ -1,0 +1,289 @@
+note <the vibe computer's base data types: balanced ternary, multi-resolution integers, Kleene booleans, ternary floats, ropes, tree vectors and ternary tries>
+
+# Ported from test/engine/data/run.ts (self-hosting, 2026-10-04). Each data type is its own module and several share
+# names (`add-ternary`, `to-number`, `size`), so each is imported under the alias its section reads.
+
+load ../code/engine/data/trit
+  find to-trits
+  find from-trits
+  find trit-string
+  find from-trit-string
+  find negate-trits
+
+load ../code/engine/data/integer
+  find ternary-integer
+  find make-integer
+  find add-ternary, name integer-add
+  find multiply-ternary, name integer-multiply
+  find divide-ternary, name integer-divide
+  find remainder-ternary, name integer-remainder
+  find compare-ternary, name integer-compare
+  find to-number, name integer-number
+
+load ../code/engine/data/boolean
+  find make-true
+  find make-false
+  find make-unknown
+  find and-ternary
+  find or-ternary
+  find not-ternary
+
+load ../code/engine/data/float
+  find from-number, name float-of
+  find to-number, name float-number
+  find add-ternary, name float-add
+  find multiply-ternary, name float-multiply
+
+load ../code/engine/data/string
+  find from-string
+  find concat
+  find length, name rope-length
+  find char-at, name rope-char-at
+  find slice, name rope-slice
+  find to-string, name rope-text
+
+load ../code/engine/data/array
+  find vector
+  find empty
+  find push, name vector-push
+  find get, name vector-get
+  find set, name vector-set
+  find size, name vector-size
+  find slice, name vector-slice
+  find to-array
+  find map, name vector-map
+  find reduce, name vector-reduce
+
+load ../code/engine/data/map
+  find ternary-map
+  find make-map
+  find set, name map-set
+  find lookup
+  find has, name map-has
+  find remove, name map-remove
+  find size, name map-size
+  find keys, name map-keys
+
+load @term/base/integer/big
+  find big-integer
+  find big-from-number
+  find big-multiply
+
+load @term/base/float
+  find absolute
+
+load @term/base/list
+  find list
+  find sort
+
+load @term/base/ordering
+  find ordering
+  find from-texts
+
+task big
+  take n, like number
+  like big-integer
+
+  back big-from-number(n)
+
+task integer-of
+  take n, like number
+  like ternary-integer
+
+  back make-integer(big(n), <>)
+
+# 3^39 and 3^41, past 2^53 and past an integer: (3^13)^3 and that times 9
+task three-to-39
+  like big-integer
+
+  host thirteen, big(1594323)
+
+  back big-multiply(big-multiply(thirteen, thirteen), thirteen)
+
+task close-to
+  take got, like decimal
+  take want, like decimal
+  take within, like decimal
+  like boolean
+
+  back is-below(absolute(subtract(got, want)), within)
+
+task clamp-negative
+  take value, like number
+  take index, like number
+  like number
+
+  fork test, is-below(value, 0)
+    hold
+      back 0
+
+  back value
+
+task sum-of
+  take acc, like number
+  take value, like number
+  like number
+
+  back add(acc, value)
+
+task squares
+  like vector, like number
+
+  save v, empty()
+  save at, 0
+  walk test
+    hook test, is-below(at, 100)
+    hook hold
+      save v, vector-push(v, multiply(at, at))
+      save at, add(at, 1)
+
+  back v
+
+task by-text
+  take left, like text
+  take right, like text
+  like ordering
+
+  back from-texts(left, right)
+
+task greek
+  like ternary-map, like number
+
+  save m, make-map()
+  save m, map-set(m, <alpha>, 1)
+  save m, map-set(m, <beta>, 2)
+
+  back map-set(m, <gamma>, 3)
+
+# a fixed resolution too small for the value raises
+task overflows
+  like boolean
+
+  mark unsafe
+    host fixed, make-integer(big(10000000000), <tri8>)
+    back false
+  halt take
+    take e
+    back true
+
+test <trit: the balanced-ternary roundtrip from -200 to 200>
+  save all, true
+  save v, -200
+  walk test
+    hook test, is-maximum(v, 200)
+    hook hold
+      host back-again, from-trits(to-trits(big(v)))
+      fork test, not(is-equal(back-again, big(v)))
+        hold
+          save all, false
+      save v, add(v, 1)
+  want hold, all
+
+test <trit: 5 is +-->
+  want hold, is-equal(trit-string(big(5)), <+-->)
+
+test <trit: from-trit-string undoes trit-string>
+  want hold, is-equal(from-trit-string(trit-string(big(1234))), big(1234))
+
+test <trit: negation flips the sign, for free>
+  want hold, is-equal(from-trits(negate-trits(to-trits(big(42)))), big(-42))
+
+test <integer: add>
+  want hold, is-equal(integer-number(integer-add(integer-of(123), integer-of(-45))), 78)
+
+test <integer: multiply>
+  want hold, is-equal(integer-number(integer-multiply(integer-of(123), integer-of(-45))), -5535)
+
+test <integer: divide and remainder>
+  host a, integer-of(123)
+  want hold, and(is-equal(integer-number(integer-divide(a, integer-of(10))), 12), is-equal(integer-number(integer-remainder(a, integer-of(10))), 3))
+
+test <integer: a small value fits tri8>
+  host small, integer-of(50)
+  want hold, is-equal(small/resolution, <tri8>)
+
+test <integer: a large one promotes to big>
+  host large, make-integer(three-to-39(), <>)
+  host doubled, integer-add(large, large)
+  host larger, make-integer(big-multiply(three-to-39(), big(9)), <>)
+  want hold, or(is-equal(doubled/resolution, <big>), is-equal(larger/resolution, <big>))
+
+test <integer: compare>
+  host a, integer-of(123)
+  host b, integer-of(-45)
+  want hold, and(and(is-equal(integer-compare(a, b), 1), is-equal(integer-compare(b, a), -1)), is-equal(integer-compare(a, a), 0))
+
+test <integer: a fixed resolution's overflow raises>
+  want hold, overflows()
+
+test <boolean: and, or, not>
+  want hold, and(and(is-equal(and-ternary(make-true(), make-false()), make-false()), is-equal(or-ternary(make-true(), make-false()), make-true())), is-equal(not-ternary(make-true()), make-false()))
+
+test <boolean: unknown propagates through and, not through a true or>
+  want hold, and(is-equal(and-ternary(make-true(), make-unknown()), make-unknown()), is-equal(or-ternary(make-true(), make-unknown()), make-true()))
+
+test <float: 3.5 + 1.25 is about 4.75>
+  want hold, close-to(float-number(float-add(float-of(3.5), float-of(1.25))), 4.75, 0.000001)
+
+test <float: 3.5 * 1.25 is about 4.375>
+  want hold, close-to(float-number(float-multiply(float-of(3.5), float-of(1.25))), 4.375, 0.000001)
+
+test <float: a roundtrip>
+  want hold, close-to(float-number(float-of(2.71828)), 2.71828, 0.0001)
+
+test <string: length>
+  host r, concat(from-string(<hello >), from-string(<hyperbolic world>))
+  want hold, is-equal(rope-length(r), 22)
+
+test <string: char-at>
+  host r, concat(from-string(<hello >), from-string(<hyperbolic world>))
+  want hold, is-equal(rope-char-at(r, 6), <h>)
+
+test <string: slice>
+  host r, concat(from-string(<hello >), from-string(<hyperbolic world>))
+  want hold, is-equal(rope-text(rope-slice(r, 6, 16)), <hyperbolic>)
+
+test <string: a roundtrip through text, accents and CJK included>
+  want hold, is-equal(rope-text(from-string(<café 日本>)), <café 日本>)
+
+test <array: push and get>
+  host v, squares()
+  want hold, and(is-equal(vector-get(v, 12), 144), is-equal(vector-size(v), 100))
+
+test <array: set>
+  want hold, is-equal(vector-get(vector-set(squares(), 12, -1), 12), -1)
+
+test <array: slice>
+  host v, vector-set(squares(), 12, -1)
+  want hold, is-equal(join(to-array(vector-slice(v, 0, 3)), <,>), <0,1,4>)
+
+test <array: map and reduce>
+  host v, vector-set(squares(), 12, -1)
+  host total, vector-reduce(vector-map(v, clamp-negative), sum-of, 0)
+  save want, 0
+  save at, 0
+  walk test
+    hook test, is-below(at, 100)
+    hook hold
+      fork test, not(is-equal(at, 12))
+        hold
+          save want, add(want, multiply(at, at))
+      save at, add(at, 1)
+  want hold, is-equal(total, want)
+
+test <map: lookup and has>
+  host m, greek()
+  want hold, and(and(is-equal(lookup(m, <beta>, -1), 2), map-has(m, <gamma>)), not(map-has(m, <delta>)))
+
+test <map: an overwrite keeps the size>
+  host m, map-set(greek(), <beta>, 20)
+  want hold, and(is-equal(map-size(m), 3), is-equal(lookup(m, <beta>, -1), 20))
+
+test <map: remove>
+  host m, greek()
+  host removed, map-remove(m, <alpha>)
+  want hold, and(and(map-has(m, <alpha>), not(map-has(removed, <alpha>))), is-equal(map-size(removed), 2))
+
+test <map: keys>
+  host m, map-remove(map-set(greek(), <beta>, 20), <alpha>)
+  want hold, is-equal(join(sort(map-keys(m), by-text), <,>), <beta,gamma>)

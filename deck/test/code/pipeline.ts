@@ -14,7 +14,7 @@
  */
 
 import { compile } from '@term/make/code/compile/compile'
-import { emitSeed } from './emit'
+import { emitSeed } from '@term/test/code/source-emit'
 import { synthesizeContract, verifyContract, type Contract } from './contract'
 import { type Proposer } from './gap'
 import { type Expr } from './synthesize'

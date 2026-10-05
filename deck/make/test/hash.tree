@@ -1,0 +1,36 @@
+note <the compiler's cache key: cyrb53 over code points, spelled in base 36>
+
+# term/hash.tree is the cache key every cached mill and compile is addressed by, so these hold its exact output. The
+# values are cyrb53's (tmp/pair-hash.ts holds the port to cyrb53 written from its definition over 220,037 values), and
+# the native backends must give the same (test/compile/hash-native.ts, Rust).
+
+load ../code/term/hash
+  find hash-text
+  find to-base-36
+
+test <the empty text>
+  want hold, is-equal(hash-text(<>), <wvjl67o803>)
+
+test <one letter>
+  want hold, is-equal(hash-text(<a>), <262p94epp1d>)
+
+test <a line of Term>
+  want hold, is-equal(hash-text(<task one>), <9c02gd7uz9>)
+
+test <an accented letter, one code point>
+  want hold, is-equal(hash-text(<é>), <2dw1k5a5uc5>)
+
+test <characters outside the Basic Multilingual Plane, by code point>
+  want hold, is-equal(hash-text(<𝔸😀>), <175rr1747zv>)
+
+test <base 36: zero>
+  want hold, is-equal(to-base-36(0), <0>)
+
+test <base 36: the last single digit and the first two>
+  want hold, and(is-equal(to-base-36(35), <z>), is-equal(to-base-36(36), <10>))
+
+test <base 36: a power of 36>
+  want hold, is-equal(to-base-36(1296), <100>)
+
+test <base 36: the largest integer a double holds exactly>
+  want hold, is-equal(to-base-36(9007199254740991), <2gosa7pa2gv>)

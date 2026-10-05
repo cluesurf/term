@@ -25,11 +25,8 @@ function ok(name: string, holds: boolean, detail = ''): void {
 }
 
 const TERM = join(import.meta.dirname, '../..')
-const kotlin = (file: string, entry: string): string => {
-  const built = compile(
-    { file, text: readFileSync(join(TERM, file), 'utf8') },
-    { resolve: withNativeEnv('kotlin', stdlibResolver()!), env: 'kotlin', entryPoints: [entry] },
-  )
+const kotlin = (file: string, entry: string, text = readFileSync(join(TERM, file), 'utf8')): string => {
+  const built = compile({ file, text }, { resolve: withNativeEnv('kotlin', stdlibResolver()!), env: 'kotlin', entryPoints: [entry] })
 
   if (!built.ok) {
     throw new Error(`${file}: ${built.diagnostics[0]?.message}`)
@@ -50,15 +47,16 @@ ok('towers: the move keeps the node in its own spare', /__spareStackDisk = top\d
 ok('towers: and does not clear its links first', !/\.below = StackEmpty/.test(moveTop), moveTop.split('\n').filter(l => /below/.test(l)).join(' | '))
 ok('towers: the push builds in the spare', /val __h\d+ = __spareStackDisk/.test(moveTop))
 
-// 2. a task that keeps a node it does not build goes through the program's spare, its links cleared first
-const slot = kotlin('test/compile/meaning-native/slot.tree', 'compute')
-const keeps = slot.split('\n').map((l, i, all) => ({ line: l, before: all[i - 1] ?? '' })).filter(({ line }) => /termSpareStackDisk = \w+$/.test(line.trim()))
-ok('slot: some task keeps a node for the program\'s spare', keeps.length > 0, slot.split('\n').filter(l => /termSpare/.test(l)).join(' | '))
-ok(
-  'slot: each one clears the node\'s links first',
-  keeps.length > 0 && keeps.every(({ before }) => /\.below = StackEmpty$/.test(before.trim())),
-  keeps.map(({ before, line }) => `${before.trim()} / ${line.trim()}`).join(' | '),
-)
+// 2. Towers' older shape, the pop and the push called straight from the recursive move, which nothing is inlined into:
+// the pop keeps a node it does not build, so it goes through the program's spare, its links cleared first
+const STACK = readFileSync(join(TERM, 'bench/towers/term.tree'), 'utf8')
+const older = STACK.replace(/  call move-top\n    read piles\n    read from\n    read to\n/g, '  call push-disk\n    read piles\n    call pop-disk\n      read piles\n      read from\n    read to\n')
+  .replace(/      call move-top\n        read piles\n        read from\n        read to\n/, '      call push-disk\n        read piles\n        call pop-disk\n          read piles\n          read from\n        read to\n')
+const split = kotlin('older-towers.tree', 'towers', older)
+const popDisk = task(split, 'popDisk')
+ok('older towers: the move no longer calls move-top', older !== STACK && !/call move-top\n    read piles/.test(older.slice(older.indexOf('task move-disks'))))
+ok('older towers: the pop keeps the node for the program\'s spare', /termSpareStackDisk = top\d*$/m.test(popDisk), popDisk)
+ok('older towers: and clears its links first', /\.below = StackEmpty\n\s+termSpareStackDisk = /.test(popDisk), popDisk)
 
 console.log(`\nkotlin-spare: ${pass} pass, ${fail} fail`)
 

@@ -1,0 +1,67 @@
+note <predicate synthesis: from a boolean spec alone, a predicate proven over the bounded domain>
+
+# Ported from deck/test/code/demo-predicate.ts (self-hosting, 2026-10-04). Each spec says whether a predicate's value
+# is the intended one on an input. The synthesizer finds the smallest predicate the spec accepts on the whole domain
+# |x| <= 6, with expressions of up to 2 nodes. Each test holds both that one was found and the predicate the demo
+# printed.
+
+load ../code/predicate-synthesis
+  find synthesize-pred
+  find show-pred
+
+load @term/base/list
+  find list
+
+task in-range
+  take inputs, like list, like number
+  take out, like boolean
+  like boolean
+
+  host x, get(inputs, 0)
+  host within, and(is-minimum(x, get(inputs, 1)), is-maximum(x, get(inputs, 2)))
+
+  back is-equal(out, within)
+
+task outside
+  take inputs, like list, like number
+  take out, like boolean
+  like boolean
+
+  host x, get(inputs, 0)
+  host within, and(is-minimum(x, get(inputs, 1)), is-maximum(x, get(inputs, 2)))
+
+  back is-equal(out, not(within))
+
+task is-nonneg
+  take inputs, like list, like number
+  take out, like boolean
+  like boolean
+
+  back is-equal(out, is-minimum(get(inputs, 0), 0))
+
+task ordered
+  take inputs, like list, like number
+  take out, like boolean
+  like boolean
+
+  back is-equal(out, is-maximum(get(inputs, 0), get(inputs, 1)))
+
+test <in-range(x, lo, hi) is (x >= lo and x <= hi)>
+  host found, synthesize-pred(3, in-range, 6, 2, 3)
+  want hold, and(found/ok, is-equal(show-pred(found/pred, make list(<x>, <lo>, <hi>)), <(x \>= lo and x \<= hi)>))
+
+test <in-range takes four counterexamples to find>
+  host found, synthesize-pred(3, in-range, 6, 2, 3)
+  want hold, is-equal(found/counterexamples/length, 4)
+
+test <is-nonneg(x) is x >= 0>
+  host found, synthesize-pred(1, is-nonneg, 6, 2, 3)
+  want hold, and(found/ok, is-equal(show-pred(found/pred, make list(<x>)), <x \>= 0>))
+
+test <ordered(a, b) is a <= b>
+  host found, synthesize-pred(2, ordered, 6, 2, 3)
+  want hold, and(found/ok, is-equal(show-pred(found/pred, make list(<a>, <b>)), <a \<= b>))
+
+test <outside(x, lo, hi) uses not over and>
+  host found, synthesize-pred(3, outside, 6, 2, 4)
+  want hold, and(found/ok, is-equal(show-pred(found/pred, make list(<x>, <lo>, <hi>)), <not (x \>= lo and x \<= hi)>))

@@ -16,7 +16,7 @@ import { hashText } from '@term/make/code/term/hash'
 // this on any change to the cached value shape or the mill/compile pipeline that the per-entry key does not capture.
 //
 // WHICH READER produced an entry is part of the epoch, because the mill cache is SHARED across projects and
-// processes (~/.base/@cluesurf/term/store/mill). While the grammar reader was being brought up behind
+// processes (~/.base/@cluesurf/term/base/mill). While the grammar reader was being brought up behind
 // `TERM_MILL_GRAMMAR=1`, a run under the flag wrote its answers, diagnostics included, under keys the ordinary
 // build then read back: a green board turned into six broken packages that no source change explained, and the
 // errors named a reader that was not running. A cache key has to cover everything that changes the answer.

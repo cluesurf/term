@@ -1,0 +1,258 @@
+# The synthesis loop: the gap report (the one interface between "found a hole" and "fill it"), the proposer (every fix
+# source is one), and the driver that tries proposers and re-verifies. A proposer PROPOSES a candidate (synthesis by
+# enumeration, a mechanical fix, or a model), and the driver CHECKS it by exhaustive proof over the bound. A wrong
+# proposal is rejected with a fresh counterexample that refines the gap, so the loop converges and never accepts an
+# unverified fix.
+#
+# Ported from deck/test/code/gap.ts (self-hosting, 2026-10-04), which keeps the proposer factories as its face. Three
+# shapes changed. A proposer answered a candidate or `null`; it answers a `maybe`, and the face wraps a TypeScript
+# proposer that answers `null`. The two factories returned closures over their arguments, which Term has no spelling
+# for, so each is a TypeScript proposer whose `propose` calls a task here (`cegis-propose`, `hint-propose`). And the
+# result was a union tagged on a boolean, and is one record whose `expr` is the constant 0 when nothing was found.
+
+load @term/base/list
+  find list
+
+load @term/base/hash
+  find hash
+
+load @term/base/maybe
+  find maybe
+
+load ./expression-grammar
+  find expression
+  find enumerate
+  find eval-expr
+  find show-expr
+  find constant-of
+
+load ./bounded-proof
+  find prove-result
+  find step-point
+
+# a verification hole: what is missing, how many integer inputs the missing code takes, what correct means, the inputs
+# known to break a wrong candidate (growing as the loop refines), and the domain a candidate is proved over
+form gap-report
+  link goal, like text
+  link var-count, like number
+  link spec
+    like task
+      take inputs, like list, like number
+      take output, like number
+      like boolean
+  link counterexamples, like list, like list, like number
+  link bound, like number
+
+# a fix source: given the gap with every counterexample so far, a candidate, or none
+form proposer
+  link name, like text
+  link propose
+    like task
+      take gap, like gap-report
+      like maybe, like expression
+
+form repair-result
+  link ok, like boolean
+  # the proven expression, the constant 0 when nothing was found
+  link expr, like expression
+  link proposer, like text
+  link rounds, like number
+  link counterexamples, like list, like list, like number
+  # why nothing was found, `<>` when something was
+  link reason, like text
+
+# does the candidate meet the spec on every counterexample
+task consistent
+  take gap, like gap-report
+  take candidate, like expression
+  take counterexamples, like list, like list, like number
+  like boolean
+
+  walk counterexamples
+    take each
+    fork test, call(gap/spec, each, eval-expr(candidate, each))
+      miss
+        back false
+
+  back true
+
+# does the spec accept the candidate at a point. A spec that raises counts as refusing, as bounded proof's claims do
+task accepts
+  take gap, like gap-report
+  take candidate, like expression
+  take point, like list, like number
+  like boolean
+
+  mark unsafe
+    back call(gap/spec, point, eval-expr(candidate, point))
+  halt take
+    take e
+    back false
+
+# the candidate proved over the gap's bound, every point in odometer order from the lowest, as `prove-over` proves a
+# claim. Written out here because the claim would be a task capturing the candidate
+task prove-candidate
+  take gap, like gap-report
+  take candidate, like expression
+  like prove-result
+
+  host point, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, gap/var-count)
+    hook hold
+      point/push(subtract(0, gap/bound))
+      save at, add(at, 1)
+
+  save checked, 0
+  walk test
+    hook test, true
+    hook hold
+      save checked, add(checked, 1)
+      fork test, accepts(gap, candidate, point)
+        miss
+          back
+            make prove-result
+              bind ok, false
+              bind counterexample, copy(point)
+              bind checked, checked
+      fork test, step-point(point, subtract(0, gap/bound), gap/bound)
+        miss
+          host none, make list
+          back
+            make prove-result
+              bind ok, true
+              bind counterexample, none
+              bind checked, checked
+
+  host none, make list
+
+  back
+    make prove-result
+      bind ok, true
+      bind counterexample, none
+      bind checked, checked
+
+task with-counterexamples
+  take gap, like gap-report
+  take counterexamples, like list, like list, like number
+  like gap-report
+
+  back
+    make gap-report
+      bind goal, gap/goal
+      bind var-count, gap/var-count
+      bind spec, gap/spec
+      bind counterexamples, counterexamples
+      bind bound, gap/bound
+
+task unrepaired
+  take reason, like text
+  take counterexamples, like list, like list, like number
+  like repair-result
+
+  back
+    make repair-result
+      bind ok, false
+      bind expr, constant-of(0)
+      bind proposer, <>
+      bind rounds, 0
+      bind counterexamples, counterexamples
+      bind reason, reason
+
+# the loop. Each round takes the first proposer whose candidate is consistent with every counterexample so far (one
+# re-offering a refuted candidate is passed over, so the next takes its turn), then PROVES it over the bound. Proven,
+# it is done; refuted, the counterexample joins the gap and the loop goes again
+task repair
+  take gap, like gap-report
+  take proposers, like list, like proposer
+  take max-rounds, like number
+  like repair-result
+
+  host counterexamples, copy(gap/counterexamples)
+
+  save round, 0
+  walk test
+    hook test, is-below(round, max-rounds)
+    hook hold
+      host working, with-counterexamples(gap, counterexamples)
+      save found, false
+      save candidate, constant-of(0)
+      save who, <>
+      walk proposers
+        take each
+        fork test, not(found)
+          hold
+            sift call(each/propose, working)
+              case some
+                fork test, consistent(gap, value, counterexamples)
+                  hold
+                    save candidate, value
+                    save who, each/name
+                    save found, true
+              case none
+      fork test, found
+        miss
+          back unrepaired(<no proposer produced a usable candidate>, counterexamples)
+
+      host verdict, prove-candidate(gap, candidate)
+      fork test, verdict/ok
+        hold
+          back
+            make repair-result
+              bind ok, true
+              bind expr, candidate
+              bind proposer, who
+              bind rounds, add(round, 1)
+              bind counterexamples, counterexamples
+              bind reason, <>
+      counterexamples/push(verdict/counterexample)
+      save round, add(round, 1)
+
+  back unrepaired(<did not converge within the round budget>, counterexamples)
+
+# the synthesis proposer's answer: the smallest grammar expression of up to `max-size` nodes consistent with every
+# counterexample so far. The driver proves it and feeds back, so this is the inductive core, fitted to the proposer
+task cegis-propose
+  take max-size, like number
+  take gap, like gap-report
+  like maybe, like expression
+
+  walk enumerate(max-size, gap/var-count)
+    take each
+    fork test, consistent(gap, each, gap/counterexamples)
+      hold
+        back
+          make some
+            bind value, each
+
+  back make none
+
+# the hint proposer's answer: the body a hint table holds for the gap's goal, or none, so the next proposer takes over
+task hint-propose
+  take hints
+    like hash
+      like text
+      like expression
+  take gap, like gap-report
+  like maybe, like expression
+
+  fork test, has(hints, gap/goal)
+    hold
+      back
+        make some
+          bind value, get-or-default(hints, gap/goal, constant-of(0))
+
+  back make none
+
+# a repair outcome, for logging
+task show-repair
+  take result, like repair-result
+  take names, like list, like text
+  like text
+
+  fork test, result/ok
+    miss
+      back <unsynthesized: {result/reason}>
+
+  back <{show-expr(result/expr, names)}  [via {result/proposer}, {result/rounds} rounds, {result/counterexamples/length} counterexamples, proven over bound]>

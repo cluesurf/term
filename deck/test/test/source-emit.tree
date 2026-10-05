@@ -1,0 +1,78 @@
+note <a synthesized expression written out as a complete Term task>
+
+# source-emit.tree replaced emit.ts. demo-emit.ts also compiles what it writes, through the TypeScript compiler, and
+# that half stays there: these hold the text exactly.
+
+load ../code/source-emit
+  find seed-task
+  find emit-seed
+
+load ../code/expression-grammar
+  find expression
+  find variable-at
+  find constant-of
+
+load @term/base/list
+  find list
+
+task task-of
+  take name, like text
+  take body, like expression
+  like seed-task
+
+  host params, make list(<a>, <b>)
+
+  back
+    make seed-task
+      bind name, name
+      bind params, params
+      bind body, body
+
+task larger
+  like expression
+
+  back
+    make max
+      bind left, variable-at(0)
+      bind right, variable-at(1)
+
+task clamp
+  like expression
+
+  back
+    make min
+      bind left, larger()
+      bind right, constant-of(9)
+
+task one-more
+  like expression
+
+  back
+    make add
+      bind left, variable-at(0)
+      bind right, constant-of(1)
+
+task choose
+  like expression
+
+  back
+    make ite
+      bind test
+        make ge
+          bind left, variable-at(0)
+          bind right, variable-at(1)
+      bind then, variable-at(0)
+      bind else, variable-at(1)
+
+test <a global call needs no load: an input is read, a constant is code>
+  want hold, is-equal(emit-seed(task-of(<inc>, one-more())), <task inc\n  take a, like number\n  take b, like number\n  like number\n  send back\n    call add\n      read a\n      code 1\n>)
+
+test <maximum is loaded from the math module>
+  want hold, is-equal(emit-seed(task-of(<larger>, larger())), <load @term/base/code/math\n  find maximum\n\ntask larger\n  take a, like number\n  take b, like number\n  like number\n  send back\n    call maximum\n      read a\n      read b\n>)
+
+test <each math function is found once, sorted>
+  host source, emit-seed(task-of(<clamp>, clamp()))
+  want hold, is-equal(source, <load @term/base/code/math\n  find maximum\n  find minimum\n\ntask clamp\n  take a, like number\n  take b, like number\n  like number\n  send back\n    call minimum\n      call maximum\n        read a\n        read b\n      code 9\n>)
+
+test <a conditional lowers to fork test>
+  want hold, is-equal(emit-seed(task-of(<choose>, choose())), <task choose\n  take a, like number\n  take b, like number\n  like number\n  send back\n    fork test\n      hook test\n        call is-minimum\n          read a\n          read b\n      hook hold\n        read a\n      hook miss\n        read b\n>)

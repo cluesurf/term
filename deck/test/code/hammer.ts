@@ -12,7 +12,7 @@
 
 import { makeSmt, proveExpr, type SymSpec } from './smt'
 import { synthesizeSmt } from './synth-smt'
-import { emitSeed } from './emit'
+import { emitSeed } from '@term/test/code/source-emit'
 import { showExpr, type Expr, type Spec } from './synthesize'
 
 /** A goal the hammer can attempt. */

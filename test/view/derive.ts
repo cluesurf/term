@@ -1,19 +1,11 @@
-// Deriving a catalog's per-field table from a database's own indexes.
+// Deriving a catalog's per-field table from a database's own indexes: the catalog it writes, read back by the
+// compiler's catalog reader.
 //
-// A `hold` is refused unless the catalog says the field accepts that predicate, and it says so because an index
-// answers it. Writing that by hand is two hundred rows for ten forms and it goes stale the day an index changes.
-//
-// The derivation is a pure function so it is testable without a database, which matters here: local development
-// points at production, so a script that opens a connection is a script that can surprise someone. The query is
-// checked in beside it and a person runs it.
+// The derivation itself is Term since 2026-10-04 (deck/make/code/compile/catalog-derive.tree) and so are its checks,
+// deck/make/test/catalog-derive.tree. What stays here reads the written catalog back through `readCatalog`, which goes
+// through the data reader (compile/host.ts) and is TypeScript.
 
-import {
-  deriveSites,
-  writeCatalog,
-  readRows,
-  readCatalog,
-  type IndexRow,
-} from '@term/make/code/compile/view-catalog'
+import { deriveSites, writeCatalog, readCatalog, type IndexRow } from '@term/make/code/compile/view-catalog'
 
 let pass = 0
 let fail = 0
@@ -28,8 +20,6 @@ function ok(what: string, held: boolean, note = ''): void {
   }
 }
 
-// the table is the form, and `pattern` says the index matches text patterns (the TypeScript original named them
-// `form` and `like`, both Term words: compile/catalog-derive.tree)
 const row = (over: Partial<IndexRow>): IndexRow => ({
   table: 'phoneme',
   site: 'kind',
@@ -40,61 +30,6 @@ const row = (over: Partial<IndexRow>): IndexRow => ({
   ...over,
 })
 
-// ---- the mapping, one case per rule ----
-
-const hash = deriveSites([row({ site: 'tag', kind: 'hash', sort: false })])
-  .get('phoneme')![0]!
-
-ok('a hash index answers equality only', hash.hold.join(',') === 'is-equal,is-unequal')
-ok('and does not sort', hash.sort === false)
-
-const btree = deriveSites([row({ site: 'rank' })]).get('phoneme')![0]!
-
-ok(
-  'an ordered index answers ranges too',
-  btree.hold.join(',') === 'is-above,is-below,is-equal,is-unequal',
-  btree.hold.join(','),
-)
-ok('and sorts', btree.sort === true)
-
-const pattern = deriveSites([row({ site: 'symbol', pattern: true })]).get('phoneme')![0]!
-
-ok('a pattern index answers containment', pattern.hold.includes('is-within'))
-
-const bond = deriveSites([row({ site: 'language__id', bond: true })]).get('phoneme')![0]!
-
-ok(
-  'a foreign key answers equality alone',
-  bond.hold.join(',') === 'is-equal,is-unequal',
-  bond.hold.join(','),
-)
-ok(
-  'and never sorts, because a range over opaque ids is not what anyone means',
-  bond.sort === false,
-)
-
-ok(
-  'a column with no index is simply absent',
-  deriveSites([row({ site: 'kind' })]).get('phoneme')!.every(one => one.site !== 'secret'),
-)
-
-// two indexes on one column union their answers rather than the last one winning
-const both = deriveSites([
-  row({ site: 'symbol', kind: 'hash', sort: false }),
-  row({ site: 'symbol', kind: 'gin', sort: false, pattern: true }),
-]).get('phoneme')![0]!
-
-ok('two indexes on one column union their answers', both.hold.includes('is-within'))
-
-// ---- the tab-separated reader ----
-
-const rows = readRows('phoneme\tkind\tbtree\tt\tf\tf\nphoneme\tlanguage__id\tbtree\tt\tt\tf\n\n')
-
-ok('the reader takes the query output', rows.length === 2)
-ok('and reads the flags', rows[1]?.bond === true && rows[0]?.bond === false)
-
-// ---- the output is a catalog the compiler reads ----
-
 const text = writeCatalog(
   deriveSites([
     row({ site: 'kind', sort: false }),
@@ -103,11 +38,9 @@ const text = writeCatalog(
   ]),
 )
 
-ok('it writes a select and a filter per form', /select:phoneme/.test(text) && /filter:phoneme/.test(text))
-
 const back = readCatalog({ file: 'derived.tree', text: `host deck, <x>\n${text}` })
 
-ok('and the compiler reads what it wrote', back.ok, back.ok ? '' : back.diagnostics.map(d => d.message).join(' | '))
+ok('the compiler reads what it wrote', back.ok, back.ok ? '' : back.diagnostics.map(d => d.message).join(' | '))
 
 if (back.ok) {
   const filter = back.catalog.task.get('filter:phoneme')

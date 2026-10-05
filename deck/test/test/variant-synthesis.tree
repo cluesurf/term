@@ -1,0 +1,102 @@
+note <synthesis over sum types: a handler per variant, from behavior alone>
+
+# Ported from deck/test/code/demo-variant.ts (self-hosting, 2026-10-04). A tagged signed number: pos(x) is +x, neg(x)
+# is -x, zero is 0, and to-value recovers the signed value, so the neg handler must compute 0 - x. Then an option:
+# some(x) unwraps to x and none to 0. Handlers of up to 4 nodes, proved over |x| <= 6.
+
+load ../code/variant-synthesis
+  find tagged
+  find variant
+  find synthesize-variant
+  find run-variant
+  find show-variant
+
+load @term/base/list
+  find list
+
+task variant-of
+  take tag, like text
+  take arity, like number
+  like variant
+
+  back
+    make variant
+      bind tag, tag
+      bind arity, arity
+
+task tagged-of
+  take tag, like text
+  take payload, like list, like number
+  like tagged
+
+  back
+    make tagged
+      bind tag, tag
+      bind payload, payload
+
+task signed
+  like list, like variant
+
+  host out, make list
+  out/push(variant-of(<pos>, 1))
+  out/push(variant-of(<neg>, 1))
+  out/push(variant-of(<zero>, 0))
+
+  back out
+
+task option
+  like list, like variant
+
+  host out, make list
+  out/push(variant-of(<some>, 1))
+  out/push(variant-of(<none>, 0))
+
+  back out
+
+task to-value
+  take value, like tagged
+  take out, like number
+  like boolean
+
+  fork test, is-equal(value/tag, <pos>)
+    hold
+      back is-equal(out, get(value/payload, 0))
+  fork test, is-equal(value/tag, <neg>)
+    hold
+      back is-equal(out, subtract(0, get(value/payload, 0)))
+  fork test, is-equal(value/tag, <zero>)
+    hold
+      back is-equal(out, 0)
+
+  back false
+
+task unwrap-or-zero
+  take value, like tagged
+  take out, like number
+  like boolean
+
+  fork test, is-equal(value/tag, <some>)
+    hold
+      back is-equal(out, get(value/payload, 0))
+
+  back is-equal(out, 0)
+
+test <a handler is found for every variant of the signed number>
+  host found, synthesize-variant(signed(), to-value, 4, 6)
+  want hold, found/ok
+
+test <the dispatch is x, 0 - x and 0, as the demo printed it>
+  host found, synthesize-variant(signed(), to-value, 4, 6)
+  want hold, is-equal(show-variant(found/handlers, make list(<x>)), <  case pos: x\n  case neg: (0 - x)\n  case zero: 0>)
+
+test <pos 5 is 5, neg 5 is -5, zero is 0>
+  host found, synthesize-variant(signed(), to-value, 4, 6)
+  host none, make list
+  host five, run-variant(found/handlers, tagged-of(<pos>, make list(5)))
+  host minus, run-variant(found/handlers, tagged-of(<neg>, make list(5)))
+  host nothing, run-variant(found/handlers, tagged-of(<zero>, none))
+  want hold, and(and(is-equal(five, 5), is-equal(minus, -5)), is-equal(nothing, 0))
+
+test <unwrap-or-zero over an option: some is x, none is 0>
+  host found, synthesize-variant(option(), unwrap-or-zero, 4, 6)
+  want hold, and(found/ok, is-equal(show-variant(found/handlers, make list(<x>)), <  case some: x\n  case none: 0>))

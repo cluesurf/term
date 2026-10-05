@@ -924,6 +924,20 @@ export function elaborateReport(
   // so one surface name (e.g. `minus` on both `pole` and `spin`) lives in two enums without clashing. A use site picks
   // the owning enum from the expected type, or from the unique owner when only one enum has it. See the `record` case.
   const variantToEnum = new Map<string, string[]>()
+  // every form the SOURCE declares each case in, whether or not the kernel encoded the form: a form it skips (one it
+  // cannot encode soundly) is still the owner the surface checker gave a construction
+  const declaredOwners = new Map<string, Set<string>>()
+
+  for (const statement of program) {
+    if (statement.form === 'record-type') {
+      for (const variant of statement.variants) {
+        const owners = declaredOwners.get(variant.name) ?? new Set<string>()
+        owners.add(statement.name)
+        declaredOwners.set(variant.name, owners)
+      }
+    }
+  }
+
   const ctorKey = (enumName: string, variant: string): string =>
     `${enumName}__${variant}`
 
@@ -2283,8 +2297,27 @@ export function elaborateReport(
           // always quote back to a bare `const`).
           let enumName: string | undefined
 
+          // a shared name the surface checker already resolved (a qualified `make expression/integer`, or fields
+          // that fit one owner) keeps that owner, rather than the first the expected type converts with
+          const settled = node.type?.kind === 'named' && owners.includes(node.type.name) ? node.type.name : undefined
+
+          // the surface checker typed this construction as a form that declares the case but that the kernel did not
+          // encode (the engine AST's `expression`, whose `integer` the kernel sees only on `value`): verifying it
+          // against the owner the kernel does hold would check it against the wrong form, so decline, as an
+          // unresolved name does (the engine test port, 2026-10-04)
+          if (
+            !settled &&
+            node.type?.kind === 'named' &&
+            !owners.includes(node.type.name) &&
+            declaredOwners.get(node.name)?.has(node.type.name)
+          ) {
+            return null
+          }
+
           if (owners.length === 1) {
             enumName = owners[0]
+          } else if (settled) {
+            enumName = settled
           } else if (expected) {
             const want = quote(context.level, expected)
 

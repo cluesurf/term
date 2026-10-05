@@ -1,0 +1,79 @@
+note <the cubical path reduction engine: the circle's loop COMPUTES, so the recursor's path beta-rule holds by reduction>
+
+# Ported from test/check/cubical.ts (self-hosting, 2026-10-04). The headline equation is ap (circRec(b, l)) loop = l,
+# the recursor's action on the loop reducing to the target loop. Also the point beta-rule, the loop's endpoints, that
+# the loop is not trivial, cong on refl, and soundness: a different target gives a different result.
+
+load ../code/check/cubical
+  find cubical-term
+  find interval
+  find equal
+  find ap
+  find make-base
+  find make-loop
+  find make-constant
+  find make-circ-rec
+  find make-refl-path
+
+task applied-to
+  take fun, like cubical-term
+  take arg, like cubical-term
+  like cubical-term
+
+  back
+    make app
+      bind fun, fun
+      bind arg, arg
+
+task path-at
+  take path, like cubical-term
+  take at, like interval
+  like cubical-term
+
+  back
+    make papp
+      bind path, path
+      bind at, at
+
+# <i> loop@i, which is the loop by eta
+task loop-by-eta
+  like cubical-term
+
+  back
+    make plam
+      bind body
+        make loop-at
+          bind at
+            make ivar
+              bind index, 0
+
+test <point beta: circRec(b, loop) base is b>
+  host b, make-constant(<b>)
+  want hold, equal(applied-to(make-circ-rec(b, make-loop()), make-base()), b)
+
+test <PATH beta: ap (circRec(base, loop)) loop is loop, definitionally>
+  want hold, equal(ap(make-circ-rec(make-base(), make-loop()), make-loop()), make-loop())
+
+test <PATH beta: ap (circRec(base, refl base)) loop is refl base>
+  host recursor, make-circ-rec(make-base(), make-refl-path(make-base()))
+  want hold, equal(ap(recursor, make-loop()), make-refl-path(make-base()))
+
+test <soundness: ap (circRec(base, loop)) loop is not refl base>
+  want hold, not(equal(ap(make-circ-rec(make-base(), make-loop()), make-loop()), make-refl-path(make-base())))
+
+test <loop at i0 is base>
+  want hold, equal(path-at(make-loop(), make i0), make-base())
+
+test <loop at i1 is base>
+  want hold, equal(path-at(make-loop(), make i1), make-base())
+
+test <non-triviality: loop is not refl base>
+  want hold, not(equal(make-loop(), make-refl-path(make-base())))
+
+test <cong on refl is refl: ap (circRec(base, loop)) (refl base) is refl base>
+  host recursor, make-circ-rec(make-base(), make-loop())
+  want hold, equal(ap(recursor, make-refl-path(make-base())), make-refl-path(make-base()))
+
+test <PATH beta with a built path target: ap (circRec(base, <i> loop@i)) loop is loop>
+  host recursor, make-circ-rec(make-base(), loop-by-eta())
+  want hold, equal(ap(recursor, make-loop()), make-loop())

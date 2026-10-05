@@ -1,14 +1,34 @@
-note <Tests for running a subprocess to completion: exit code and captured output.>
+note <Tests for running a subprocess to completion: exit code and captured output, a command that exits with a failure, and one that cannot start, which raises `command-absence` on every backend.>
 
 load @term/base/code/process/run
   find run
   find run-result
+  find run-with-input
+  find command-absence
 
 load @term/base/code/list
   find list
 
 load @term/base/code/text
   find contains
+
+# the exit code a command ran to, or `absent <thing>` when it could not start
+task outcome
+  take command, like text
+  like text
+  mark unsafe
+    save result
+      call run
+        read command
+        make list
+    send back, <code {result/code}>
+  halt take
+    take problem
+    sift problem
+      case command-absence
+        send back, <absent {thing}>
+      case failure
+        send back, <failure>
 
 test <run echo exits with code zero>
   save argument-list
@@ -19,7 +39,6 @@ test <run echo exits with code zero>
     call run
       text <echo>
       read argument-list
-      wait true
   want hold
     call is-equal
       read result/code
@@ -34,8 +53,32 @@ test <run echo captures the output>
     call run
       text <echo>
       read argument-list
-      wait true
   want hold
     call contains
       read result/output
       text <hello>
+
+test <a command that runs and fails answers its code>
+  want hold
+    call is-equal
+      call outcome
+        text <false>
+      text <code 1>
+
+test <a command that is not there raises command-absence>
+  want hold
+    call is-equal
+      call outcome
+        text <term-no-such-command>
+      text <absent term-no-such-command>
+
+test <run-with-input hands the text to standard input>
+  save result
+    call run-with-input
+      text <cat>
+      make list
+      text <typed>
+  want hold
+    call is-equal
+      read result/output
+      text <typed>

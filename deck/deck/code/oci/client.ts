@@ -4,15 +4,15 @@ import path from 'path'
 
 import type { FetchConfig } from '../form'
 import { parseScope, resolveRegistry, rootScope } from '../name'
-import { getStoreRoot } from '../store'
+import { getBaseDir, getStoreRoot } from '../store'
 import { credentialsFor } from './auth'
 import { layoutObjectStore, layoutTransport } from './layout'
 import { isOciRegistry, parseOciRegistry, repositoryOf, type OciRegistryReference, type OciRepository } from './reference'
 import { httpTransport, type OciTransport } from './transport'
 
-/** The OCI image layout every install fills and every offline install reads: `~/.base/@cluesurf/term/store`. */
+/** The OCI image layout every install fills and every offline install reads: `~/.base/@cluesurf/term/base`. */
 export function storeDir(): string {
-  return process.env['TERM_STORE']?.trim() || path.join(getStoreRoot(), 'store')
+  return process.env['TERM_STORE']?.trim() || getBaseDir()
 }
 
 /** Where scope key pins are kept, beside the store. Not a cache: deleting it re-trusts every scope on first use. */

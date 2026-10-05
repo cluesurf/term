@@ -200,6 +200,18 @@ function withIncludes(
   })
 }
 
+// a TypeScript module with its prelude in front, as ONE file. The module declares each global it docks
+// (`declare const bit: any`, typescript.ts) so it typechecks on its own; where the prelude in front defines that global,
+// the declaration is dropped, or tsc reads two declarations of one name (TS2451) and the file `term make --emit node`
+// writes does not typecheck. esbuild never minded, since a `declare` erases. Found by the idiom gate on the first
+// program to raise an exception, whose code docks `bit` and `octets` (2026-10-05)
+export function joinTypeScriptPrelude(prelude: string, typescript: string): string {
+  const defined = new Set([...prelude.matchAll(/^(?:export )?(?:const|let|var|function|class) ([A-Za-z_$][\w$]*)/gm)].map(m => m[1]!))
+  const kept = typescript.replace(/^declare const ([A-Za-z_$][\w$]*): any\n/gm, (line, name: string) => (defined.has(name) ? '' : line))
+
+  return `${prelude}\n${kept}`
+}
+
 // build the native prelude for a target: the concatenation of every runtime-shim file the program's global docks
 // reference and that actually exists. Each shim is looked up next to the module that docks it (its origin file), with
 // the base.tree path as a fallback. `readRuntime(path)` returns the raw source for a runtime path, or undefined.

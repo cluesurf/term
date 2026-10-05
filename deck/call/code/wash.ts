@@ -24,7 +24,10 @@ const BOOT_DIRS = [
   'work',
 ]
 
-const TARGETS = ['deck', 'tail', 'boot', 'store']
+const TARGETS = ['deck', 'tail', 'boot', 'base']
+
+// the old spelling of a target, still read: `store` was `base` until 2026-10-04, with the folder it names
+const RENAMED: Record<string, string> = { store: 'base' }
 
 // remove each that exists under `root`, one `remove` item apiece, and say how many there were
 async function removeEach(root: string, dirs: string[], shown: (dir: string) => string): Promise<number> {
@@ -52,13 +55,19 @@ export async function callWash(input: {
   root: string
   target?: string
 }): Promise<void> {
-  openRun({ verb: 'wash', root: input.root, facts: input.target ? [input.target] : [] })
+  const target = input.target === undefined ? undefined : (RENAMED[input.target] ?? input.target)
 
-  // `deck` is the build output, the same as no target, `tail` the logs, `boot` what boot and cast write, `store` the
+  openRun({ verb: 'wash', root: input.root, facts: target ? [target] : [] })
+
+  if (input.target !== undefined && RENAMED[input.target]) {
+    report({ glyph: 'warning', verb: 'wash', subject: `term wash ${input.target} is term wash ${target} now` })
+  }
+
+  // `deck` is the build output, the same as no target, `tail` the logs, `boot` what boot and cast write, `base` the
   // machine-wide module cache. Any other word washed the build output
-  if (input.target !== undefined && !TARGETS.includes(input.target)) {
-    report({ glyph: 'failed', kind: 'problem', subject: `There is nothing named ${input.target} to wash` })
-    closeRun({ verdict: 'Nothing removed', next: 'term wash, or term wash deck, tail, boot or store', failure: 'usage' })
+  if (target !== undefined && !TARGETS.includes(target)) {
+    report({ glyph: 'failed', kind: 'problem', subject: `There is nothing named ${target} to wash` })
+    closeRun({ verdict: 'Nothing removed', next: 'term wash, or term wash deck, tail, boot or base', failure: 'usage' })
 
     return
   }
@@ -66,7 +75,7 @@ export async function callWash(input: {
   // the machine-wide cache of parsed modules, which every project shares and the next build of any of them fills
   // again. Not a project's, so it needs no deck.tree. The installed decks beside it (`blobs/`, `index.json`) are not
   // a cache: an offline install reads them, so they stay (guides: commands/wash, 2026-10-04)
-  if (input.target === 'store') {
+  if (target === 'base') {
     const home = cacheHome()
     const cleaned = await removeEach(home, ['mill'], dir => `${showPath(path.join(home, dir))}/`)
 

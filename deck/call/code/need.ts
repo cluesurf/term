@@ -11,14 +11,18 @@
 //   2  TERM_VERSION                                 every command that sees it
 //   3  the nearest deck.tree holding a `need`       its lock.tree's pin while the pin still satisfies it
 //   4  ~/.base/@cluesurf/term/need.tree             the user's default, from `term self pick`
-//   5  the newest version installed                 under ~/.base/@cluesurf/term/code/
+//   5  the front, bin/term                          the version `update`, `back` and the loader moved it to
+//      else the newest version installed            under ~/.base/@cluesurf/term/code/
 //   6  the running term itself                      a Homebrew or source copy, with nothing installed
+//
+// THE RUNNING COPY COUNTS AS INSTALLED in rules 3 to 5. A Homebrew `term` 2.6.6 in a project that needs 2.6.x runs
+// itself rather than handing over to an older 2.6.4 under code/, and on a tie it wins, because it costs no handoff.
 //
 // THE PARSER READS EVERY FILE. A `deck.tree`, a `lock.tree` and the default are read with `readTree`, never a pattern:
 // one parser for `.tree` (note/term/one-parser.md). A cheap test on the text decides only whether to parse at all: a
 // manifest with no line starting `need` cannot hold one, so most projects cost one file read.
 
-import { existsSync, readdirSync, readFileSync } from 'fs'
+import { existsSync, readdirSync, readFileSync, readlinkSync, statSync, writeFileSync } from 'fs'
 import nodePath from 'path'
 
 import { codeMatch, compareCode, parseCode, parseCodeHold, showCode } from '@term/deck/code/code'
@@ -34,6 +38,9 @@ export const TOOLCHAIN = '@term/code'
 const MIGHT_NEED = /^[ \t]*need[ \t]/m
 
 const VERSION = /^\d+\.\d+\.\d+$/
+
+// a version's `used` stamp is rewritten at most this often, so recording a use costs nothing per command
+const USED_EVERY_MS = 24 * 60 * 60 * 1000
 
 /** Where a request came from, in the order above. */
 export type NeedSource = 'flag' | 'env' | 'project' | 'default' | 'installed' | 'running'
@@ -117,6 +124,23 @@ export function installedVersions(home: string): string[] {
     .sort((a, b) => compareCode(parseCode(b), parseCode(a)))
 }
 
+/**
+ * The version the front (bin/term) points at, or undefined when there is no front under this home. A symlink read with
+ * `readlink`, or on Windows the one-line `bin\term.cmd` shim, which names its version's folder.
+ */
+export function frontOf(home: string): string | undefined {
+  try {
+    const text =
+      process.platform === 'win32'
+        ? readFileSync(nodePath.join(home, 'bin', 'term.cmd'), 'utf8')
+        : readlinkSync(nodePath.join(home, 'bin', 'term'))
+
+    return /code[\\/](\d+\.\d+\.\d+)[\\/]/.exec(text)?.[1]
+  } catch {
+    return undefined
+  }
+}
+
 /** The launcher of an installed version: `bin/term`, or `bin\term.cmd` on Windows. */
 export function launcherOf(input: { home: string; version: string }): string {
   return nodePath.join(input.home, 'code', input.version, 'term', 'bin', process.platform === 'win32' ? 'term.cmd' : 'term')
@@ -145,69 +169,89 @@ export function readRequest(world: NeedWorld): { request?: NeedRequest; argv: st
     return { ...project, argv: flag.argv }
   }
 
-  const defaultFile = nodePath.join(world.home, 'need.tree')
-  const fallback = needInFile({ file: defaultFile, under: 'root' })
-
-  if (fallback && 'refuse' in fallback) {
-    return { refuse: fallback.refuse, argv: flag.argv }
-  }
-
-  if (fallback) {
-    return { request: { ...fallback, source: 'default' }, argv: flag.argv }
-  }
-
-  return { argv: flag.argv }
+  return { ...defaultRequest(world.home), argv: flag.argv }
 }
 
 /** Decide, from the request and what is installed. No network: a version that is not here is a `load`. */
 export function chooseVersion(world: NeedWorld): { choice: NeedChoice; argv: string[] } {
   const read = readRequest(world)
-  const installed = installedVersions(world.home)
 
   if (read.refuse) {
     return { choice: { form: 'refuse', reason: read.refuse }, argv: read.argv }
   }
 
-  const request = read.request
+  return { choice: chooseFor({ request: read.request, home: world.home, running: world.running }), argv: read.argv }
+}
 
+/**
+ * What one request runs, given what is here: rules 3 to 6 once the request is known. `term self list` and `wash` ask
+ * it of the default, and `show` of every rule, so they can never disagree with dispatch.
+ */
+export function chooseFor(input: { request?: NeedRequest; home: string; running: string }): NeedChoice {
+  const { request, home, running } = input
+  const installed = installedVersions(home)
+  // what can run without a download: everything installed, and the running copy, which may not be under code/ (a
+  // Homebrew or source copy). Newest first, and on a tie the running copy, which costs no handoff
+  const here = [...new Set([...installed, running])].sort((a, b) => compareCode(parseCode(b), parseCode(a)))
+  const runOf = (version: string, by: 'pin' | 'installed' | 'running'): NeedChoice =>
+    version === running && !installed.includes(version)
+      ? { form: 'run', version, by: by === 'pin' ? 'pin' : 'running', ...(request ? { request } : {}) }
+      : { form: 'run', version, by, ...(request ? { request } : {}), launcher: launcherOf({ home, version }) }
+
+  // rule 5: the front, so `term self back` and `update` mean what they say and `term self load` switches nothing
   if (!request) {
-    const newest = installed[0]
+    const front = frontOf(home)
 
-    return {
-      choice: newest
-        ? { form: 'run', version: newest, by: 'installed', launcher: launcherOf({ home: world.home, version: newest }) }
-        : { form: 'run', version: world.running, by: 'running' },
-      argv: read.argv,
-    }
+    return runOf(front && here.includes(front) ? front : here[0]!, 'installed')
   }
 
   // a project's pin, while it still satisfies the request, is the exact version
-  if (request.pin && request.pin.name === TOOLCHAIN && codeMatch(request.pin.code, request.hold)) {
-    const version = showCode(request.pin.code)
+  if (pinHolds(request)) {
+    const version = showCode(request.pin!.code)
 
-    return {
-      choice: installed.includes(version)
-        ? { form: 'run', version, by: 'pin', request, launcher: launcherOf({ home: world.home, version }) }
-        : { form: 'load', version, hold: request.hold, expect: request.pin.hash, request },
-      argv: read.argv,
+    return here.includes(version)
+      ? runOf(version, 'pin')
+      : { form: 'load', version, hold: request.hold, expect: request.pin!.hash, request }
+  }
+
+  const match = here.find(version => codeMatch(parseCode(version), request.hold))
+
+  return match ? runOf(match, 'installed') : { form: 'load', hold: request.hold, request }
+}
+
+/** Does the request's lock.tree pin still satisfy it? A pin outside the range is stale, and `term load` re-pins it. */
+export function pinHolds(request: NeedRequest): boolean {
+  return !!request.pin && request.pin.name === TOOLCHAIN && codeMatch(request.pin.code, request.hold)
+}
+
+/** The user's default, `need.tree` under the home, written by `term self pick`. */
+export function defaultRequest(home: string): { request?: NeedRequest; refuse?: string } {
+  const found = needInFile({ file: nodePath.join(home, 'need.tree'), under: 'root' })
+
+  if (!found) {
+    return {}
+  }
+
+  return 'refuse' in found ? { refuse: found.refuse } : { request: { ...found, source: 'default' } }
+}
+
+/** Record that a command ran on a version today, so `term self wash` keeps it. At most one write a day, never a failure. */
+export function markUsed(input: { home: string; version: string }): void {
+  const file = nodePath.join(input.home, 'code', input.version, 'used')
+
+  try {
+    if (!existsSync(nodePath.join(input.home, 'code', input.version, 'install.tree'))) {
+      return
     }
-  }
 
-  const here = installed.find(version => codeMatch(parseCode(version), request.hold))
-
-  if (here) {
-    return {
-      choice: { form: 'run', version: here, by: 'installed', request, launcher: launcherOf({ home: world.home, version: here }) },
-      argv: read.argv,
+    if (existsSync(file) && Date.now() - statSync(file).mtimeMs < USED_EVERY_MS) {
+      return
     }
-  }
 
-  // the running copy answers too, when it is not under code/ (Homebrew, a source build) and it is in range
-  if (codeMatch(parseCode(world.running), request.hold)) {
-    return { choice: { form: 'run', version: world.running, by: 'running', request }, argv: read.argv }
+    writeFileSync(file, `${new Date().toISOString()}\n`)
+  } catch {
+    // a read-only home must never stop a command
   }
-
-  return { choice: { form: 'load', hold: request.hold, request }, argv: read.argv }
 }
 
 // A request from text: a range in the constraint syntax a `link` uses
@@ -221,8 +265,8 @@ function holdOf(input: { source: NeedSource; text: string; argv: string[] }): { 
   }
 }
 
-// The nearest deck.tree, walking up, whose `need` is set, with its directory's lock.tree pin
-function projectRequest(cwd: string): { request?: NeedRequest; refuse?: string } | undefined {
+/** The nearest deck.tree, walking up, whose `need` is set, with its directory's lock.tree pin. */
+export function projectRequest(cwd: string): { request?: NeedRequest; refuse?: string } | undefined {
   let dir = nodePath.resolve(cwd)
 
   while (true) {

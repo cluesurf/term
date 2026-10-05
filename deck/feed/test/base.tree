@@ -2,6 +2,10 @@
 
 load @term/base/list
   find push
+  find get
+
+load @term/base/boolean
+  find and
 
 load ../code/base
   find make-cursor
@@ -107,6 +111,49 @@ test <width 8 round trips without truncating, the case a 32-bit shift would brea
         make big
         make unsigned
       code 9007199254740991
+
+# the floor in `int-bytes` is what keeps a negative value in two's complement: -2 in eight bytes is seven 255s and
+# a 254. Byte 7 of a width-8 field needed 256^7, past 2^53, and raised `excess` on TypeScript until 2026-10-04
+test <a negative value in width 8 is its two's complement>
+  save writer
+    call make-writer
+  call write-int
+    read writer
+    code -2
+    code 8
+    make big
+  save bytes
+    call to-bytes(read writer)
+  want hold
+    call and
+      call is-equal
+        call get
+          read bytes
+          code 0
+        code 255
+      call is-equal
+        call get
+          read bytes
+          code 7
+        code 254
+
+# OpenType's LONGDATETIME, seconds since 1904: 2024-01-01 is 3,786,825,600, written in a `head` table's 8 bytes
+test <an OpenType date writes and reads back in width 8>
+  save writer
+    call make-writer
+  call write-int
+    read writer
+    code 3786825600
+    code 8
+    make big
+  want hold
+    call is-equal
+      call read-int
+        call make-cursor(call to-bytes(read writer))
+        code 8
+        make big
+        make signed
+      code 3786825600
 
 test <a cursor is at-end after reading every byte>
   save cursor

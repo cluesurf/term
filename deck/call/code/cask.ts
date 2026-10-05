@@ -250,7 +250,12 @@ export function buildProgram({
 
   const swift = emitSwift(result.program)
   const prelude = nativePrelude(result.program, 'swift', readRuntime, swift)
-  const source = ['import Foundation', prelude, swift, driver, ''].join('\n')
+  // a `boot` that can raise is `throws` in Swift, and the top-level line calling it must say `try`: it did not, and
+  // the windows cask stopped building once `file/read` raised `absence` (2026-10-04). An error reaching the top
+  // level ends the program with its message, which is what a raise nothing caught means
+  const throwing = /\bfunc boot\([^{]*\bthrows\b/.test(swift)
+  const line = throwing && !/^\s*try\b/.test(driver) ? `try ${driver}` : driver
+  const source = ['import Foundation', prelude, swift, line, ''].join('\n')
   const file = path.join(work, 'app.swift')
   mkdirSync(work, { recursive: true })
   writeFileSync(file, source)

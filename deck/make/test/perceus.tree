@@ -1,0 +1,198 @@
+note <Perceus and FBIP: precise dup and drop from last use, in-place reuse, and balanced ownership through control flow>
+
+# Ported from test/ir/perceus.ts (self-hosting, 2026-10-04). Each test lowers a small block and holds the instructions
+# shown, joined by ` | `, to what the TypeScript test held them to.
+
+load ../code/ir/perceus
+  find inst
+  find value
+  find perceus
+  find perceus-control
+  find perceus-control-heap
+  find show-inst
+
+load @term/base/list
+  find list
+
+task shown
+  take insts, like list, like inst
+  like text
+
+  host lines, make list
+  walk insts
+    take each
+    lines/push(show-inst(each))
+
+  back join(lines, < | >)
+
+task let-make
+  take name, like text
+  take ctor, like text
+  take args, like list, like text
+  like inst
+
+  back
+    make let
+      bind name, name
+      bind value
+        make make
+          bind ctor, ctor
+          bind args, args
+          bind reuse, <>
+
+task let-call
+  take name, like text
+  take fn, like text
+  take args, like list, like text
+  like inst
+
+  back
+    make let
+      bind name, name
+      bind value
+        make call
+          bind fn, fn
+          bind args, args
+
+task let-lit
+  take name, like text
+  like inst
+
+  back
+    make let
+      bind name, name
+      bind value, make lit
+
+task give
+  take name, like text
+  like inst
+
+  back
+    make return
+      bind name, name
+
+task if-of
+  take cond, like text
+  take then, like list, like inst
+  take otherwise, like list, like inst
+  like inst
+
+  back
+    make if
+      bind cond, cond
+      bind then, then
+      bind else, otherwise
+
+task while-of
+  take cond, like text
+  take body, like list, like inst
+  like inst
+
+  back
+    make while
+      bind cond, cond
+      bind body, body
+
+task match-of
+  take subject, like text
+  take arms, like list, like list, like inst
+  like inst
+
+  back
+    make match
+      bind subject, subject
+      bind arms, arms
+
+task insts
+  take first, like inst
+  like list, like inst
+
+  host out, make list
+  out/push(first)
+
+  back out
+
+task insts-2
+  take first, like inst
+  take second, like inst
+  like list, like inst
+
+  host out, make list
+  out/push(first)
+  out/push(second)
+
+  back out
+
+task insts-3
+  take first, like inst
+  take second, like inst
+  take third, like inst
+  like list, like inst
+
+  host out, make list
+  out/push(first)
+  out/push(second)
+  out/push(third)
+
+  back out
+
+test <used once: no dup>
+  host params, make list(<x>)
+  host body, insts-2(let-make(<a>, <box>, make list(<x>)), give(<a>))
+  want hold, is-equal(shown(perceus(params, body)), <let a = make box(x) | return a>)
+
+test <used twice: a dup at the first use>
+  host params, make list(<p>)
+  host body, insts-3(let-call(<q>, <use>, make list(<p>)), let-call(<r>, <combine>, make list(<q>, <p>)), give(<r>))
+  want hold, is-equal(shown(perceus(params, body)), <dup p | let q = use(p) | let r = combine(q, p) | return r>)
+
+test <a dead binding is dropped>
+  host params, make list(<x>, <y>, <z>)
+  host body, insts-3(let-make(<a>, <box>, make list(<x>)), let-make(<b>, <pair>, make list(<y>, <z>)), give(<b>))
+  want hold, is-equal(shown(perceus(params, body)), <let a = make box(x) | drop a | let b = make pair(y, z) | return b>)
+
+test <an unused parameter is dropped at entry>
+  host params, make list(<used>, <unused>)
+  want hold, is-equal(shown(perceus(params, insts(give(<used>)))), <drop unused | return used>)
+
+test <FBIP: a same-arity make reuses the dropped cell>
+  host params, make list(<list>, <head>)
+  host body, insts-3(let-make(<pair>, <cons>, make list(<list>, <head>)), let-make(<next>, <cons>, make list(<list>, <head>)), give(<next>))
+  want hold, is-equal(shown(perceus(params, body)), <dup list | dup head | let pair = make cons(list, head) | let next = make cons(list, head) reuse pair | return next>)
+
+test <if: a balanced drop in the branch that does not consume>
+  host params, make list(<x>)
+  host body, insts(if-of(<c>, insts(give(<x>)), insts-2(let-lit(<z>), give(<z>))))
+  want hold, is-equal(shown(perceus-control(params, body)), <if c \{ return x \} else \{ drop x; let z = lit; return z \}>)
+
+test <if: consumed on both branches, no extra drop>
+  host params, make list(<x>)
+  host body, insts(if-of(<c>, insts(give(<x>)), insts(give(<x>))))
+  want hold, is-equal(shown(perceus-control(params, body)), <if c \{ return x \} else \{ return x \}>)
+
+test <while: used in the body and dead after, a dup per turn and a drop after>
+  host params, make list(<x>)
+  host body, insts(while-of(<c>, insts(let-call(<t>, <use>, make list(<x>)))))
+  want hold, is-equal(shown(perceus-control(params, body)), <while c \{ dup x; let t = use(x); drop t \} | drop x>)
+
+test <while: used in the body and live after, a dup and no drop after>
+  host params, make list(<x>)
+  host body, insts-2(while-of(<c>, insts(let-call(<t>, <use>, make list(<x>)))), give(<x>))
+  want hold, is-equal(shown(perceus-control(params, body)), <while c \{ dup x; let t = use(x); drop t \} | return x>)
+
+test <while: a loop-local dead binding is dropped, and an untouched value passes through>
+  host params, make list(<x>)
+  host body, insts-2(while-of(<c>, insts(let-lit(<z>))), give(<x>))
+  want hold, is-equal(shown(perceus-control(params, body)), <while c \{ let z = lit; drop z \} | return x>)
+
+test <match: a drop in the arm that does not consume>
+  host params, make list(<x>)
+  host arms, make list(insts(give(<x>)), insts-2(let-lit(<z>), give(<z>)))
+  host body, insts(match-of(<s>, arms))
+  want hold, is-equal(shown(perceus-control(params, body)), <match s \{ return x | drop x; let z = lit; return z \}>)
+
+test <heap-aware: a copyable value gets no dup or drop>
+  host params, make list(<x>, <n>)
+  host heap, make list(<x>, <a>, <b>)
+  host body, insts-3(let-call(<a>, <f>, make list(<x>, <n>)), let-call(<b>, <g>, make list(<x>, <n>)), give(<b>))
+  want hold, is-equal(shown(perceus-control-heap(params, body, heap)), <dup x | let a = f(x, n) | drop a | let b = g(x, n) | return b>)

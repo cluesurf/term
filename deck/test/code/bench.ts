@@ -6,10 +6,14 @@
  * a real change is distinguishable from noise. A companion to `hunt`: one
  * finds correctness bugs, this finds performance ones.
  *
- * The point is not a single number but ANALYSIS: compare variants
- * (`compare`), watch for super-linear growth across sizes (`scaling`),
- * and turn the numbers into insights you can act on.
+ * The statistics, the scaling fit and the table are Term since 2026-10-04,
+ * deck/test/code/bench-report.tree. This keeps the timing (a caller's
+ * closure under the clock, warmed up, sync or awaited) and the optional
+ * `size` its callers read.
  */
+
+import { renderBench as renderReport, scaling as fitScaling, statsOf } from '@term/test/code/bench-report'
+import type { BenchResult as Report } from '@term/test/code/bench-report'
 
 const DEFAULT_ITERATIONS = 50
 const DEFAULT_WARMUP = 5
@@ -31,23 +35,14 @@ function now(): number {
   return performance.now()
 }
 
+function toReport(r: BenchResult): Report {
+  return { ...r, hasSize: r.size !== undefined, size: r.size ?? 0 }
+}
+
 function stats(name: string, samples: number[], size?: number): BenchResult {
-  const sorted = [...samples].sort((a, b) => a - b)
-  const n = sorted.length
-  const at = (q: number) => sorted[Math.min(n - 1, Math.floor(q * n))]!
-  const sum = sorted.reduce((a, b) => a + b, 0)
-  const median = at(0.5)
-  return {
-    name,
-    iterations: n,
-    min: sorted[0]!,
-    median,
-    mean: sum / n,
-    p95: at(0.95),
-    max: sorted[n - 1]!,
-    opsPerSec: median > 0 ? 1000 / median : Infinity,
-    size,
-  }
+  const { hasSize, ...report } = statsOf(name, samples, size !== undefined, size ?? 0)
+
+  return { ...report, size: hasSize ? report.size : undefined }
 }
 
 /** Time `run` over `iterations` (after `warmup` untimed runs). */
@@ -100,30 +95,13 @@ export async function benchAsync(input: {
  * quadratic. This is how you catch a super-linear pass before it bites.
  */
 export function scaling(results: BenchResult[]): { exponent: number; verdict: string } {
-  const pts = results.filter(r => r.size && r.size > 0 && r.median > 0)
-  if (pts.length < 2) return { exponent: NaN, verdict: 'need >= 2 sized points' }
-  // least-squares slope of log(time) vs log(size)
-  const xs = pts.map(p => Math.log(p.size!))
-  const ys = pts.map(p => Math.log(p.median))
-  const xbar = xs.reduce((a, b) => a + b, 0) / xs.length
-  const ybar = ys.reduce((a, b) => a + b, 0) / ys.length
-  let num = 0
-  let den = 0
-  for (let i = 0; i < xs.length; i++) {
-    num += (xs[i]! - xbar) * (ys[i]! - ybar)
-    den += (xs[i]! - xbar) ** 2
-  }
-  const k = den === 0 ? NaN : num / den
-  const verdict =
-    k < 1.3 ? 'linear (good)' : k < 1.7 ? 'super-linear (watch)' : k < 2.5 ? 'quadratic (fix)' : 'worse than quadratic (fix now)'
-  return { exponent: k, verdict }
+  return fitScaling(results.map(toReport))
 }
 
 /** Render a table of results. */
 export function renderBench(results: BenchResult[]): string {
-  const rows = results.map(r => {
-    const sz = r.size !== undefined ? `${r.size}`.padStart(8) : '       -'
-    return `  ${r.name.padEnd(34)} ${r.median.toFixed(3).padStart(9)}ms  p95 ${r.p95.toFixed(3).padStart(9)}ms  ${Math.round(r.opsPerSec).toString().padStart(9)}/s  size ${sz}`
-  })
-  return ['  benchmark                          median        p95        ops/sec     size', ...rows].join('\n')
+  return renderReport(results.map(toReport))
 }
+
+// the statistics alone, for a pairing against the original
+export { stats as statsOfSamples }
