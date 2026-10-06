@@ -29,7 +29,8 @@ function isHeapType(type?: Type): boolean {
   )
 }
 
-export type Lowered = { insts: Inst[]; heap: Set<string> }
+// the heap names are a list, each once, in the order first classified: what the Term port answers (ir/mir-lower.tree)
+export type Lowered = { insts: Inst[]; heap: string[] }
 
 export function lowerToMir(
   body: Statement[],
@@ -282,5 +283,7 @@ export function lowerToMir(
     return { op: 'if', cond, then, else: elseInsts }
   }
 
-  return { insts: lowerBlock(body), heap }
+  const insts = lowerBlock(body)
+
+  return { insts, heap: [...heap] }
 }

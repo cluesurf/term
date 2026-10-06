@@ -13,6 +13,11 @@
 load @term/base/list
   find list
   find get
+  find join
+
+load @term/base/hash
+  find hash
+  find get-or-default
 
 load @term/base/maybe
   find maybe
@@ -21,12 +26,14 @@ load ../parser/diagnostic
   find span
 
 load ./node
+  find binding
   find closure-param
   find dock-call
   find dock-component
   find dock-route
   find expression
   find expression-type
+  find with-type
   find field-value
   find form-extend
   find statement
@@ -60,6 +67,12 @@ form dictionary-needs
   mark shared
   link keys, like list, like text
 
+# the specializations made so far, each by its mangled name, in the order made
+form specializations
+  mark shared
+  link names, like list, like text
+  link tasks, like list, like statement
+
 # what a rewrite changes
 form rewrite-rule
   # a task named like a docked module, renamed with `suffix` (compile/dock-apart.tree): the task's definition, a
@@ -81,6 +94,28 @@ form rewrite-rule
     link params, like list, like dictionary-param
     link instances, like list, like text
     link needed, like dictionary-needs
+  # a call of a generic task becomes a call of its specialization at the argument types, made the first time it is
+  # needed, before the call's arguments are visited (ir/monomorphize.tree)
+  case specialize-calls
+    link generics, like list, like statement
+    link made, like specializations
+  # every expression's type, its generic names replaced by what they were bound to
+  case substitute-types
+    link names, like list, like text
+    link types, like list, like type
+  # a trait-method call on a concrete receiver becomes a call of the instance's task, by `<form>:<method>`
+  case resolve-trait-calls
+    link mask-methods, like list, like text
+    link keys, like list, like text
+    link tasks, like list, like text
+  # an inlined body's locals renamed and its parameters substituted (ir/inline-statements.tree): every `let` takes its
+  # new name, every arm binds its fields by theirs, a reference to a renamed local reads the new name, and one to a
+  # substituted parameter is a copy of the argument. A task, a builtin or a deferred name keeps its own
+  case rename-locals
+    link renamed, like hash, like text, like text
+    link substituted-names, like list, like text
+    link substituted, like list, like expression
+    link fields-of, like hash, like text, like list, like text
 
 # a whole program the caller may write without touching the one it was handed. Natively a value is already a copy
 bind copy-program
@@ -184,10 +219,11 @@ task rewrite-fields
   back out
 
 task rewrite-expression
-  take given, like expression
+  take value, like expression
   take rule, like rewrite-rule
   like expression
 
+  save given, rule-before(value, rule)
   sift given
     case template
       save parts-out, make list
@@ -607,6 +643,27 @@ task rule-expression
       back trait-call(given, method-masks, params)
     case dictionary-arguments
       back with-dictionaries(given, rule)
+    case substitute-types
+      back substituted-expression(given, names, types)
+    case resolve-trait-calls
+      back resolved-trait-call(given, mask-methods, keys, tasks)
+    case rename-locals
+      back renamed-local(given, rule)
+    miss
+      back given
+
+# what a rule does to one expression BEFORE the expressions inside it
+task rule-before
+  take given, like expression
+  take rule, like rewrite-rule
+  like expression
+  mark private
+
+  sift rule
+    case specialize-calls
+      back specialized-call(given, rule)
+    miss
+      back given
 
 # what a rule does to one statement, once its blocks are rewritten
 task rule-statement
@@ -625,6 +682,8 @@ task rule-statement
         miss
           back one
       back one
+    case rename-locals
+      back renamed-statement(one, rule)
     miss
       back one
 
@@ -935,3 +994,547 @@ task dictionary-argument
           back missing
     miss
       back missing
+
+# ---- monomorphization (ir/monomorphize.tree) ----
+
+# the generic names a declared type binds against a concrete one, the LAST binding of each kept, as monomorphize's
+# own matcher overwrote them
+task bind-generics
+  take written, like type
+  take given, like type
+  take generics, like list, like text
+  take found, like type-bindings
+  like void
+  mark private
+
+  sift written
+    case named
+      fork test, has-text(generics, name)
+        hold
+          save at, -1
+          walk found/names
+            take one
+            take index
+            fork test, is-equal(one, name)
+              hold
+                save at, index
+          fork test, is-below(at, 0)
+            hold
+              push(found/names, name)
+              push(found/types, given)
+            miss
+              save found/types/{at}, given
+    case array
+      save written-element, element
+      sift given
+        case array
+          bind-generics(written-element, element, generics, found)
+        miss
+          back
+    case map
+      save written-key, key
+      save written-value, value
+      sift given
+        case map
+          bind-generics(written-key, key, generics, found)
+          bind-generics(written-value, value, generics, found)
+        miss
+          back
+    case function
+      save written-params, params
+      save written-result, result
+      sift given
+        case function
+          walk written-params
+            take param
+            take at
+            fork test, is-below(at, params/length)
+              hold
+                bind-generics(param, get(params, at), generics, found)
+          bind-generics(written-result, result, generics, found)
+        miss
+          back
+    miss
+      back
+
+# a type with its generic names replaced
+task substitute-type
+  take one, like type
+  take names, like list, like text
+  take types, like list, like type
+  like type
+
+  sift one
+    case named
+      walk names
+        take bound
+        take at
+        fork test, is-equal(bound, name)
+          hold
+            back get(types, at)
+      back one
+    case array
+      save element-out, substitute-type(element, names, types)
+      back
+        make type/array
+          bind element, element-out
+    case map
+      save key-out, substitute-type(key, names, types)
+      save value-out, substitute-type(value, names, types)
+      back
+        make type/map
+          bind key, key-out
+          bind value, value-out
+    case function
+      save params-out, make list
+      walk params
+        take param
+        push(params-out, substitute-type(param, names, types))
+      save result-out, substitute-type(result, names, types)
+      save made
+        make type/function
+          bind params, params-out
+          bind result, result-out
+      fork test, is-above(effects/length, 0)
+        hold
+          # copied by a walk, never handed on, so a type left without effects keeps none
+          save effects-out, make list
+          walk effects
+            take effect
+            push(effects-out, effect)
+          save made
+            make type/function
+              bind params, params-out
+              bind result, result-out
+              bind effects, effects-out
+      back made
+    miss
+      back one
+
+task substitute-maybe-type
+  take given, like maybe, like type
+  take names, like list, like text
+  take types, like list, like type
+  like maybe, like type
+
+  sift given
+    case some
+      link one
+      save out, substitute-type(one, names, types)
+      back make(some, out)
+    case none
+      back make none
+
+task substituted-expression
+  take given, like expression
+  take names, like list, like text
+  take types, like list, like type
+  like expression
+  mark private
+
+  sift expression-type(given)
+    case some
+      link one
+      back with-type(given, substitute-type(one, names, types))
+    case none
+      back given
+
+# a type's part of a specialization's name
+task type-key
+  take given, like maybe, like type
+  like text
+
+  sift given
+    case some
+      link one
+      back known-type-key(one)
+    case none
+      back <unknown>
+
+task known-type-key
+  take one, like type
+  like text
+  mark private
+
+  sift one
+    case named
+      back name
+    case array
+      save inner, known-type-key(element)
+      back <array_{inner}>
+    case map
+      save key-part, known-type-key(key)
+      save value-part, known-type-key(value)
+      back <map_{key-part}_{value-part}>
+    case function
+      save parts, make list
+      walk params
+        take param
+        push(parts, known-type-key(param))
+      save joined, join(parts, <_>)
+      save result-part, known-type-key(result)
+      back <fn_{joined}_to_{result-part}>
+    miss
+      back one/kind
+
+# a whole task the caller may write without touching the one it was handed. Natively a value is already a copy
+bind copy-statement
+  take value, like statement
+  like statement
+  case node
+    text <structuredClone($value)>
+  case browser
+    text <structuredClone($value)>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+# a call of a generic task, the callee renamed to the specialization at its argument types, which is made, its own
+# calls specialized in turn, the first time it is named
+task specialized-call
+  take given, like expression
+  take rule, like rewrite-rule
+  like expression
+  mark private
+
+  sift rule
+    case specialize-calls
+      sift given
+        case call
+          save target, callee
+          save called, <>
+          sift target
+            case variable
+              save called, name
+            miss
+              back given
+          save found, -1
+          walk generics
+            take one
+            take at
+            sift one
+              case function
+                fork test, is-equal(name, called)
+                  hold
+                    save found, at
+              miss
+                turn next
+          fork test, is-below(found, 0)
+            hold
+              back given
+          save generic-task, get(generics, found)
+          save generic-names, make list
+          save param-types, make list
+          sift generic-task
+            case function
+              walk read(generics)
+                take generic
+                push(generic-names, generic/name)
+              walk params
+                take param
+                push(param-types, param/type)
+            miss
+              back given
+          save bound
+            make type-bindings
+              bind names, make list
+              bind types, make list
+          walk param-types
+            take declared
+            take at
+            fork test, is-below(at, args/length)
+              hold
+                sift declared
+                  case some
+                    link written
+                    sift expression-type(get(args, at))
+                      case some
+                        link actual
+                        bind-generics(written, actual, generic-names, bound)
+                      case none
+                        turn next
+                  case none
+                    turn next
+          save keys, make list
+          walk generic-names
+            take generic
+            save chosen, make none
+            walk bound/names
+              take bound-name
+              take at
+              fork test, is-equal(bound-name, generic)
+                hold
+                  save picked, get(bound/types, at)
+                  save chosen, make(some, picked)
+            push(keys, type-key(chosen))
+          save suffix, join(keys, <__>)
+          save mangled, <{called}__{suffix}>
+          fork test, not(has-text(made/names, mangled))
+            hold
+              make-specialization(generic-task, mangled, bound, rule)
+          sift target
+            case variable
+              save target/name, mangled
+              save given/callee, target
+            miss
+              back given
+          back given
+        miss
+          back given
+    miss
+      back given
+
+task make-specialization
+  take generic-task, like statement
+  take mangled, like text
+  take bound, like type-bindings
+  take rule, like rewrite-rule
+  like void
+  mark private
+
+  sift rule
+    case specialize-calls
+      save spec, copy-statement(generic-task)
+      sift spec
+        case function
+          save spec/name, mangled
+          save no-generics, make list
+          save spec/generics, no-generics
+          save params-out, make list
+          walk params
+            take param
+            sift param/type
+              case some
+                link written
+                save concrete, substitute-type(written, bound/names, bound/types)
+                save param/type, make(some, concrete)
+              case none
+                save nothing, 0
+            push(params-out, param)
+          save spec/params, params-out
+          sift result
+            case some
+              link written
+              save concrete-result, substitute-type(written, bound/names, bound/types)
+              save spec/result, make(some, concrete-result)
+            case none
+              save nothing, 0
+          # the body's expression types concrete too, so a trait-method call inside the spec sees the receiver's real
+          # type and resolves to its instance function
+          save types-rule
+            make substitute-types
+              bind names, bound/names
+              bind types, bound/types
+          save spec/body, rewrite-program(body, types-rule)
+          push(made/names, mangled)
+          push(made/tasks, spec)
+          save at, subtract(made/names/length, 1)
+          # a spec may call other generics
+          save spec/body, rewrite-program(spec/body, rule)
+          save made/tasks/{at}, spec
+        miss
+          back
+    miss
+      back
+
+# a trait-method call on a concrete receiver: a fresh callee naming the instance's task, never the callee renamed in
+# place, since an inlined body can share one callee object across several call sites
+task resolved-trait-call
+  take given, like expression
+  take mask-methods, like list, like text
+  take keys, like list, like text
+  take tasks, like list, like text
+  like expression
+  mark private
+
+  sift given
+    case call
+      save target, callee
+      sift target
+        case variable
+          save called, name
+          save callee-span, span
+          fork test, or(not(has-text(mask-methods, called)), is-equal(args/length, 0))
+            hold
+              back given
+          sift expression-type(get(args, 0))
+            case some
+              link received
+              sift received
+                case named
+                  save key, <{name}:{called}>
+                  save implemented, <>
+                  walk keys
+                    take one
+                    take at
+                    fork test, is-equal(one, key)
+                      hold
+                        save implemented, get(tasks, at)
+                  fork test, is-equal(implemented, <>)
+                    hold
+                      back given
+                  save fresh
+                    make expression/variable
+                      bind name, implemented
+                      bind span, callee-span
+                  save given/callee, fresh
+                  back given
+                miss
+                  back given
+            case none
+              back given
+        miss
+          back given
+    miss
+      back given
+
+# ---- an inlined body's locals (ir/inline-statements.tree) ----
+
+# an expression the caller may write without touching the one it was handed. Natively a value is already a copy
+bind copy-expression
+  take value, like expression
+  like expression
+  case node
+    text <structuredClone($value)>
+  case browser
+    text <structuredClone($value)>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+# a name bound outside every task's body: a task, a builtin, or one deferred to run time
+task binds-global
+  take binding, like maybe, like binding
+  like boolean
+  mark private
+
+  sift binding
+    case some
+      link bound
+      sift bound
+        case function
+          back true
+        case builtin
+          back true
+        case deferred
+          back true
+        miss
+          back false
+    case none
+      back false
+
+task renamed-local
+  take given, like expression
+  take rule, like rewrite-rule
+  like expression
+  mark private
+
+  sift rule
+    case rename-locals
+      sift given
+        case variable
+          fork test, binds-global(binding)
+            hold
+              back given
+          walk substituted-names
+            take one
+            take at
+            fork test, is-equal(one, name)
+              hold
+                back copy-expression(get(substituted, at))
+          fork test, renamed/has(name)
+            hold
+              save local-name, get-or-default(renamed, name, name)
+              save given/name, local-name
+              save bound, make binding/local
+              save given/binding, make(some, bound)
+          back given
+        miss
+          back given
+    miss
+      back given
+
+task renamed-statement
+  take one, like statement
+  take rule, like rewrite-rule
+  like statement
+  mark private
+
+  sift rule
+    case rename-locals
+      sift one
+        case let
+          fork test, renamed/has(name)
+            hold
+              save local-name, get-or-default(renamed, name, name)
+              save one/name, local-name
+          back one
+        case match
+          save cases-out, make list
+          walk cases
+            take arm
+            save fields, arm-fields(fields-of, subject, arm/label)
+            save given-binds, arm/binds
+            # the names the arm binds: its own, else every field by its name, in order
+            save chosen, fields
+            fork test, and(is-above(given-binds/length, 0), not(all-in(given-binds, fields)))
+              hold
+                save chosen, given-binds
+            save mapped, make list
+            walk chosen
+              take bound-name
+              push(mapped, get-or-default(renamed, bound-name, bound-name))
+            save arm/binds, mapped
+            push(cases-out, arm)
+          save one/cases, cases-out
+          back one
+        miss
+          back one
+    miss
+      back one
+
+# The fields of an arm of a match over `subject`: the case of the subject's own form, keyed `<form>/<case>`, as the
+# emitter reads them, else the case of that name declared last. Two forms may name a case alike (node.tree's `type` and
+# `expression` both have a `variable`), and by the name alone an inlined `sift t / case variable / back id` over a type
+# bound `name1` for the expression's `name`, which the emitter read as a rename of `id` (2026-10-05)
+task arm-fields
+  take fields-of, like hash, like text, like list, like text
+  take subject, like expression
+  take label, like text
+  like list, like text
+
+  save none-yet, make list
+  save subject-type, expression-type(subject)
+  sift subject-type
+    case some
+      link known
+      sift known
+        case named
+          save owned, <{name}/{label}>
+          fork test, fields-of/has(owned)
+            hold
+              back get-or-default(fields-of, owned, none-yet)
+        miss
+          back get-or-default(fields-of, label, none-yet)
+    miss
+      back get-or-default(fields-of, label, none-yet)
+  back get-or-default(fields-of, label, none-yet)
+
+task all-in
+  take values, like list, like text
+  take within, like list, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, not(has-text(within, one))
+      hold
+        back false
+  back true

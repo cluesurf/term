@@ -2,9 +2,10 @@
 // for an ARBITRARY well-founded recursion (gcd, mergesort -- where the recursive argument is not a syntactic subterm),
 // the sound, working technique is FUEL: any well-founded recursion is structural recursion on an upper bound of its
 // depth. `gcd-fuel` recurses structurally on `fuel` while reducing `a` by `sub a b`, so it is accepted by the existing
-// termination checker AND computes the right value. (The AUTOMATIC version -- the `Acc` accessibility predicate that
-// removes the manual fuel argument -- is the research-grade completion; it needs a dependent, indexed, higher-order
-// constructor.) Soundness control: a wrong gcd value is rejected. Run: npx tsx test/check/well-founded.ts
+// termination checker AND computes the right value. The `Acc` accessibility predicate that removes the manual fuel
+// argument runs in test/check/wfrec.ts, and seed.tree's relation/well-founded.tree proves every natural accessible and
+// well-founded induction with it (2026-10-05). Soundness control: a wrong gcd value is rejected.
+// Run: npx tsx test/check/well-founded.ts
 
 import { compile } from '@term/make/code/compile/compile'
 

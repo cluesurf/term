@@ -1,7 +1,7 @@
 
 # The page entry of the blog app inside a cask: open the database the cask keeps in its data directory, read the
 # posts, and mount the blog view on the document body with the repository as its store. `term make --target` calls
-# `boot` when the page loads. The database calls in ../back/post reach `@term/site/code/base/db`, which in the page
+# `boot` when the page loads. The database calls in ../back/post reach `@term/site/code/base/postgres`, which in the page
 # is the generated bridge shim, so each one is a message to the cask and runs there against SQLite.
 
 load ./blog

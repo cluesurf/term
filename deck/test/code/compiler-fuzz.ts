@@ -84,6 +84,16 @@ export type FuzzReport = {
   // distinct diagnostic codes observed (a coverage proxy)
   codesSeen: number[]
   corpusGrew: number
+  // per crash signature, the smallest program found that still raises it, shrunk from the smallest the fuzzer hit.
+  // Absent when the campaign did not get to shrinking (the watchdog fired while it shrank)
+  shrunk?: { signature: string; input: string; from: string }[]
+  // the inputs whose compile took longer than the budget, slowest first, each timed twice and its faster time kept
+  slow?: { input: string; ms: number }[]
+}
+
+// what a crash is known by: its message's first line. Two crashes of one signature are one defect
+export function signatureOf(error: string): string {
+  return error.split('\n')[0]!.slice(0, 100)
 }
 
 const INDENTS = ['', '  ', '    ', '      ', '\t']
@@ -172,12 +182,16 @@ export function fuzzCompiler(input: {
   // out-of-process watchdog kills the run and reads this file to recover
   // the exact input that hung the compiler.
   probeFile?: string
+  // a compile slower than this is reported in `slow`. Timed only after the corpus has been compiled once, so the
+  // first compile's start-up is not charged to an input, and an input over it is timed again and its faster time kept
+  perfBudgetMs?: number
 }): FuzzReport {
   const runs = input.runs ?? 2000
   const rng = makeRng(input.seed ?? 1)
   const corpus = [...input.corpus]
   const codesSeen = new Set<number>()
   const crashes: Crash[] = []
+  const slow: { input: string; ms: number }[] = []
   let corpusGrew = 0
 
   // seed the coverage set with the corpus itself
@@ -192,7 +206,20 @@ export function fuzzCompiler(input: {
     for (let m = 0; m < k; m++) text = mutate(text, corpus, rng)
 
     if (input.probeFile) writeFileSync(input.probeFile, text)
+    const started = performance.now()
     const result = tryCompile(text)
+    const took = performance.now() - started
+
+    if (input.perfBudgetMs !== undefined && took > input.perfBudgetMs) {
+      const again = performance.now()
+      tryCompile(text)
+      const ms = Math.min(took, performance.now() - again)
+
+      if (ms > input.perfBudgetMs) {
+        slow.push({ input: text, ms: Math.round(ms) })
+      }
+    }
+
     if ('crash' in result) {
       crashes.push({ input: text, error: result.crash, generation: i })
       continue
@@ -214,7 +241,92 @@ export function fuzzCompiler(input: {
     crashes,
     codesSeen: [...codesSeen].sort((a, b) => a - b),
     corpusGrew,
+    ...(input.perfBudgetMs !== undefined ? { slow: slow.sort((a, b) => b.ms - a.ms).slice(0, 5) } : {}),
   }
+}
+
+/**
+ * SHRINK A FAILING INPUT to a smaller one that `keeps` still holds of: delta debugging (Zeller's ddmin) over its
+ * lines, then the same over the words of each line that is left, until no single line and no single word can go.
+ * The words are what make a crash readable: a line down to `call f` says more than the twenty-word line it was.
+ *
+ * `keeps` is the whole judgment, which is what lets a test hold this to a failure it states exactly. For a crash it
+ * is "compiling this raises the same signature", never "raises anything": a shrink that slides to another crash
+ * reports a program that does not show the defect found. `limit` bounds the attempts, since each is a compile.
+ */
+export function shrinkInput(input: string, keeps: (text: string) => boolean, limit = 4000): string {
+  let tries = 0
+  const holds = (text: string): boolean => tries++ < limit && keeps(text)
+
+  // ddmin over the parts of a text joined by `join`: drop a chunk, keep the drop when it still fails, and halve the
+  // chunks when no chunk can go, down to single parts
+  const ddmin = (parts: string[], join: (parts: string[]) => string): string[] => {
+    let current = parts
+    let chunks = 2
+
+    while (current.length >= 2 && tries < limit) {
+      const size = Math.ceil(current.length / chunks)
+      let dropped = false
+
+      for (let start = 0; start < current.length; start += size) {
+        const rest = [...current.slice(0, start), ...current.slice(start + size)]
+
+        if (rest.length > 0 && holds(join(rest))) {
+          current = rest
+          chunks = Math.max(chunks - 1, 2)
+          dropped = true
+          break
+        }
+      }
+
+      if (!dropped) {
+        if (chunks >= current.length) {
+          break
+        }
+
+        chunks = Math.min(chunks * 2, current.length)
+      }
+    }
+
+    // a single part that still fails alone is as small as a list goes, but one part may be droppable entirely
+    if (current.length === 1 && holds(join([]))) {
+      return []
+    }
+
+    return current
+  }
+
+  let lines = ddmin(input.split('\n'), parts => parts.join('\n'))
+
+  // then each line's words, its indentation kept, since a line's depth is part of the program
+  for (let at = 0; at < lines.length && tries < limit; at++) {
+    const line = lines[at]!
+    const indent = line.match(/^\s*/)![0]
+    const words = line.slice(indent.length).split(/\s+/).filter(Boolean)
+
+    if (words.length < 2) {
+      continue
+    }
+
+    const kept = ddmin(words, parts => [...lines.slice(0, at), indent + parts.join(' '), ...lines.slice(at + 1)].join('\n'))
+    lines = [...lines.slice(0, at), indent + kept.join(' '), ...lines.slice(at + 1)]
+  }
+
+  return lines.join('\n')
+}
+
+/**
+ * Shrink a crash: the smallest program that still makes the compiler throw with the SAME signature. `probeFile`, when
+ * given, holds each candidate before it compiles, as the fuzz loop's does, so a candidate that hangs is reported by
+ * the watchdog as the hang it is.
+ */
+export function shrinkCrash(input: string, signature: string, probeFile?: string): string {
+  return shrinkInput(input, text => {
+    if (probeFile) writeFileSync(probeFile, text)
+    const result = tryCompile(text)
+
+    return 'crash' in result && signatureOf(result.crash) === signature
+  })
 }
 
 /**
@@ -229,7 +341,7 @@ export function fuzzCompiler(input: {
  * no report was written, and the run printed `no crashes, no hangs` having fuzzed nothing.
  */
 export function runFuzzCampaign(args: string[]): FuzzReport {
-  const [reportOut, probeFile, runsArg, seedArg, corpusFile] = args
+  const [reportOut, probeFile, runsArg, seedArg, corpusFile, budgetArg] = args
 
   if (!reportOut) {
     throw new Error('fuzz campaign: no report path given')
@@ -244,28 +356,34 @@ export function runFuzzCampaign(args: string[]): FuzzReport {
     runs: runsArg ? Number(runsArg) : 3000,
     seed: seedArg ? Number(seedArg) : 7,
     probeFile,
+    ...(budgetArg ? { perfBudgetMs: Number(budgetArg) } : {}),
   })
 
+  // the report as fuzzed, BEFORE shrinking: a shrink that hangs is killed by the watchdog, and what was found must
+  // survive it
   writeFileSync(reportOut, JSON.stringify(report))
+
+  // then each signature's smallest crash, shrunk to the smallest program that still raises it
+  const smallest = new Map<string, string>()
+
+  for (const crash of report.crashes) {
+    const signature = signatureOf(crash.error)
+    const known = smallest.get(signature)
+
+    if (known === undefined || crash.input.length < known.length) {
+      smallest.set(signature, crash.input)
+    }
+  }
+
+  report.shrunk = [...smallest].map(([signature, from]) => ({ signature, input: shrinkCrash(from, signature, probeFile), from }))
+  writeFileSync(reportOut, JSON.stringify(report))
+
   return report
 }
 
-/** Shrink a crashing input to a smaller one that still crashes (ddmin-lite). */
+/** Shrink a crashing input to the smallest program that still crashes the same way. */
 export function minimizeCrash(input: string): string {
-  let best = input
-  let changed = true
-  while (changed) {
-    changed = false
-    const ls = lines(best)
-    for (let i = 0; i < ls.length; i++) {
-      const candidate = ls.slice(0, i).concat(ls.slice(i + 1)).join('\n')
-      const r = tryCompile(candidate)
-      if ('crash' in r) {
-        best = candidate
-        changed = true
-        break
-      }
-    }
-  }
-  return best
+  const first = tryCompile(input)
+
+  return 'crash' in first ? shrinkCrash(input, signatureOf(first.crash)) : input
 }

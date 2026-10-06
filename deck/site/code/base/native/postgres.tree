@@ -1,7 +1,7 @@
 
-# The abstract database native module: the signatures the public `base/db` re-exports. The build rewrites this to the
-# target's impl (`native/node/db`, Postgres-backed; `native/swift/db` and `native/kotlin/db`, SQLite-backed; and in
-# a cask's page, the generated `native/webview/db`, which carries each call over the bridge) via the native-env
+# The abstract database native module: the signatures the public `base/postgres` re-exports. The build rewrites this to the
+# target's impl (`native/node/postgres`, Postgres-backed; `native/swift/postgres` and `native/kotlin/postgres`, SQLite-backed; and in
+# a cask's page, the generated `native/webview/postgres`, which carries each call over the bridge) via the native-env
 # mechanism. A `row` is an opaque result row. Every task is async, because inside a cask each one is a message
 # to the process that holds the database, and an API that is sync on one platform and async on another is two APIs.
 

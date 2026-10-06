@@ -140,6 +140,11 @@ function visitExpressions(
         break
       case 'member':
         expr(node.target)
+
+        if (node.index) {
+          expr(node.index)
+        }
+
         break
       case 'await':
         expr(node.expr)
@@ -163,6 +168,7 @@ function visitExpressions(
         break
       case 'record':
         node.fields.forEach(f => expr(f.value))
+        node.positional?.forEach(expr)
         break
       case 'conditional':
         node.branches.forEach(b => {
@@ -209,10 +215,25 @@ function visitExpressions(
         case 'while':
           expr(node.cond)
           stmts(node.body)
+          node.must?.forEach(expr)
+
+          if (node.down) {
+            expr(node.down)
+          }
+
           break
         case 'for-each':
           expr(node.iterable)
           stmts(node.body)
+          node.must?.forEach(expr)
+          break
+        case 'guard':
+          stmts(node.body)
+
+          if (node.catch) {
+            stmts(node.catch.body)
+          }
+
           break
         case 'if':
           node.branches.forEach(b => {

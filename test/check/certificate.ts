@@ -34,17 +34,17 @@ const five = linear({}, 5)
 const system = [atLeast(x, zero), atLeast(y, x), below(y, zero)]
 const found = refutation(system)
 
-ok('a refutation is found for an unsatisfiable system', found !== undefined)
+ok('a refutation is found for an unsatisfiable system', found.found)
 ok(
   'and it replays',
-  found !== undefined && checkRefutation(system, found),
+  found.found && checkRefutation(system, found.step),
   JSON.stringify(found),
 )
 
 // a satisfiable system: x >= 0, x <= 5
 ok(
   'no refutation is found for a satisfiable system',
-  refutation([atLeast(x, zero), atMost(x, five)]) === undefined,
+  !refutation([atLeast(x, zero), atMost(x, five)]).found,
 )
 
 // ---- tampering ----
@@ -100,7 +100,7 @@ const twoXisThree = [
 const parity = refutation(twoXisThree)
 ok(
   'an integer refutation (2x == 3) is found, and replays',
-  parity !== undefined && checkRefutation(twoXisThree, parity),
+  parity.found && checkRefutation(twoXisThree, parity.step),
   JSON.stringify(parity),
 )
 

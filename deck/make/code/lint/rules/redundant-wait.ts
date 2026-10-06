@@ -23,8 +23,8 @@ export const redundantWait: Rule = {
   fixable: true,
   check() {},
   checkSource(tree, context) {
-    const known = asyncNames(context.program)
-    const docks = asyncDocksOf(context.program)
+    const known = new Set(asyncNames(context.program))
+    const docks = new Set(asyncDocksOf(context.program))
     const bound = boundNames(context.program)
 
     for (const site of waitTrueSites(tree, context.source)) {

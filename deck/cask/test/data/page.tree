@@ -1,6 +1,6 @@
 
 # The page side of the data smoke of cask-0012: the database lives in the cask, and the page reaches it through the
-# generated bridge shim for `@term/site/code/base/db`. Opens a database in the cask's data directory, writes a row
+# generated bridge shim for `@term/site/code/base/postgres`. Opens a database in the cask's data directory, writes a row
 # with text parameters, reads it back with a number parameter, reads a field through the opaque row handle, and
 # leaves with 0 when the field holds the line the driver put in <bundle>/smoke.txt, 1 when it does not, 2 when the
 # row did not come back at all. Then it lets the row go and uses it again (native-dom-0029): the cask must refuse it,
@@ -12,7 +12,7 @@ load @term/cask/cask
   find data-path
   find exit
 
-load @term/site/base/db
+load @term/site/base/postgres
   find connect
   find query
   find run

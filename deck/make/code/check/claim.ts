@@ -99,7 +99,8 @@ function eachName(
 // them, and the checker then holds the two to each other like any other pair of declarations. Runs before the
 // type checker, so the body is checked against the claim rather than against nothing. Bend's `def f(x, y):`
 // with bare names and no return type is the same rule.
-export function fillClaims(program: Program): void {
+// The program it filled (in place, here) is the answer: the Term port hands it back, since a native value is a copy
+export function fillClaims(program: Program): Program {
   const claims = new Map<string, Statement & { form: 'function' }>()
 
   for (const statement of program) {
@@ -113,7 +114,7 @@ export function fillClaims(program: Program): void {
   }
 
   if (claims.size === 0) {
-    return
+    return program
   }
 
   for (const statement of program) {
@@ -147,21 +148,34 @@ export function fillClaims(program: Program): void {
       }
     })
   }
+
+  return program
 }
 
 // What the rest of the checker learned about the program's tasks, which a fill is held to. Absent only in callers
 // that check claims alone (tests of the open-claim rules), where the third rule is not asked.
+// Lists, each name once, as the Term port takes them (check/claim.tree); read through `sets` below
 export type ClaimEvidence = {
   // the tasks whose whole body the kernel checked as ONE TERM against the declared type (elaborate.ts
   // ElaborationReport.proven). Not `verified`, which also holds bodies checked statement by statement, where a body
   // with no return at all passes
-  verified: Set<string>
+  verified: string[]
   // the tasks shown to terminate (totality.ts terminatingFunctions)
-  terminating: Set<string>
+  terminating: string[]
   // the pure tasks (facts.ts pureFunctions)
-  pure: Set<string>
+  pure: string[]
   // why the kernel declined a task, when it did (elaborate.ts ElaborationReport.declined)
-  declined?: Map<string, string>
+  declined: { name: string; reason: string }[]
+}
+
+// the evidence as sets and a map, for lookups
+function sets(evidence: ClaimEvidence) {
+  return {
+    verified: new Set(evidence.verified),
+    terminating: new Set(evidence.terminating),
+    pure: new Set(evidence.pure),
+    declined: new Map(evidence.declined.map(d => [d.name, d.reason])),
+  }
 }
 
 // WHY A DEFINITION CANNOT CARRY A PROOF, or undefined when it can. A fill is checked against its claim with every
@@ -190,8 +204,9 @@ type FunctionStatement = Statement & { form: 'function' }
 
 export function groundingOf(
   program: Program,
-  evidence: ClaimEvidence,
+  given: ClaimEvidence,
 ): (name: string) => Ungrounded | undefined {
+  const evidence = sets(given)
   // every DEFINITION of a name: an ordinary task, a claim's fill, or a stub of either. A claim is not a definition,
   // it is the statement its fill is held to.
   const definitions = new Map<string, FunctionStatement[]>()
@@ -308,7 +323,7 @@ export function groundingOf(
 export function stampGrounded(
   program: Program,
   evidence: ClaimEvidence,
-): void {
+): Program {
   const grounding = groundingOf(program, evidence)
 
   for (const statement of program) {
@@ -326,12 +341,14 @@ export function stampGrounded(
       statement.grounded = true
     }
   }
+
+  return program
 }
 
 export function checkClaims(
   program: Program,
   file: string,
-  evidence?: ClaimEvidence,
+  given?: ClaimEvidence,
 ): ClaimReport {
   const diagnostics: Diagnostic[] = []
 
@@ -401,8 +418,9 @@ export function checkClaims(
   // rule 3: a fill is a proof only if the kernel checked it, it ends, and it is pure. A fill the kernel declined
   // proves nothing (its type may be gradual, or its body outside the fragment), a fill that may not end proves
   // anything, and a fill that touches the world is a different value on every run.
-  if (evidence) {
-    const grounding = groundingOf(program, evidence)
+  if (given) {
+    const grounding = groundingOf(program, given)
+    const evidence = sets(given)
 
     for (const statement of program) {
       if (

@@ -75,6 +75,43 @@ if (!built.ok) {
   ok('in the other case too', mod.hush!({ form: 'dot', size: 2 }).size === 3)
 }
 
+// an arm that declares a name its case has as a field (`save names, make list` under `case call`, beside the call's own
+// `names`) loads: the field local and the arm's own `let` were two `const`s of one name in one block
+{
+  const own = `load @term/base/list
+  find list
+
+form gather
+  case call
+    link names, like list, like text
+  case other
+
+task fresh-names
+  take one, like gather
+  like number
+
+  sift one
+    case call
+      save names, make list
+      push(names, <a>)
+      push(names, <b>)
+      back names/length
+    case other
+      back 0
+`
+  const built = compile({ file: 'arm-own.tree', text: own }, { resolve: withNativeEnv('node', stdlibResolver()!), library: true, leanOf: () => true } as never)
+
+  if (!built.ok) {
+    ok('an arm declaring a name its case has builds', false, built.diagnostics.map(d => d.message).join(' | '))
+  } else {
+    const dir = mkdtempSync(join(tmpdir(), 'term-arm-own-'))
+    const file = join(dir, 'module.mjs')
+    writeFileSync(file, transformSync(built.typescript, { loader: 'ts', format: 'esm' }).code)
+    const mod = (await import(pathToFileURL(file).href)) as Record<string, (...a: unknown[]) => any>
+    ok('an arm declaring a name its case has loads, and reads its own', mod.freshNames!({ form: 'call', names: ['x'] }) === 2)
+  }
+}
+
 console.log(`\narm-write: ${pass} pass, ${fail} fail`)
 
 if (fail > 0) {

@@ -1,0 +1,22 @@
+# The battery for a Rust program (device-layer-0014): /sys/class/power_supply on Linux, GetSystemPowerStatus on
+# Windows, pmset on a Mac. Conforms to ../battery. The runtime is runtime/native-battery.rs.
+
+dock load
+  load <global:native-battery>, name native-battery
+
+task read-battery
+  like text
+  send back
+    call native-battery/read
+
+# the answer now, once: a Rust program here is not told when it changes
+task follow-battery
+  take handler
+    like task
+      take value, like text
+  like task
+  call handler
+    call read-battery
+  send back
+    task drop
+      save skip, code 0

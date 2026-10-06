@@ -38,6 +38,8 @@ load @term/base/console
 load @term/base/file
   find read, name file-read
   find write, name file-write
+  find read-bytes, name file-read-bytes
+  find write-bytes, name file-write-bytes
   find append, name file-append
   find remove, name file-remove
   find copy, name file-copy
@@ -86,6 +88,10 @@ load @term/base/uuid
 load @term/base/maybe
   find maybe
   find unwrap
+
+load @term/base/bytes
+  find to-base64, name bytes-to-base64
+  find from-base64, name bytes-from-base64
 
 load @term/base/file/stat
   find path-info
@@ -137,6 +143,18 @@ task is-allowed
       call is-equal
         read command
         text <file_write>
+    hook hold
+      send back, true
+    hook test
+      call is-equal
+        read command
+        text <file_read_bytes>
+    hook hold
+      send back, true
+    hook test
+      call is-equal
+        read command
+        text <file_write_bytes>
     hook hold
       send back, true
     hook test
@@ -280,7 +298,7 @@ task run-command
     hook test
       call is-equal
         read command
-        text <file_append>
+        text <file_read_bytes>
     hook hold
       save field-12
         call get-field
@@ -289,17 +307,64 @@ task run-command
       save value-14
         call as-text
           read field-12
-      save field-15
+      save answer
+        call file-read-bytes
+          wait true
+          read value-14
+      save json-16
+        call from-text
+          call bytes-to-base64
+            read answer
+      send back, read json-16
+    hook test
+      call is-equal
+        read command
+        text <file_write_bytes>
+    hook hold
+      save field-17
+        call get-field
+          read arguments
+          text <path>
+      save value-19
+        call as-text
+          read field-17
+      save field-20
         call get-field
           read arguments
           text <data>
-      save value-17
+      save value-22
+        call bytes-from-base64
+          call as-text
+            read field-20
+      call file-write-bytes
+        wait true
+        read value-19
+        read value-22
+      send back
+        call make-null
+    hook test
+      call is-equal
+        read command
+        text <file_append>
+    hook hold
+      save field-23
+        call get-field
+          read arguments
+          text <path>
+      save value-25
         call as-text
-          read field-15
+          read field-23
+      save field-26
+        call get-field
+          read arguments
+          text <data>
+      save value-28
+        call as-text
+          read field-26
       call file-append
         wait true
-        read value-14
-        read value-17
+        read value-25
+        read value-28
       send back
         call make-null
     hook test
@@ -307,16 +372,16 @@ task run-command
         read command
         text <file_remove>
     hook hold
-      save field-18
+      save field-29
         call get-field
           read arguments
           text <path>
-      save value-20
+      save value-31
         call as-text
-          read field-18
+          read field-29
       call file-remove
         wait true
-        read value-20
+        read value-31
       send back
         call make-null
     hook test
@@ -324,24 +389,24 @@ task run-command
         read command
         text <file_copy>
     hook hold
-      save field-21
+      save field-32
         call get-field
           read arguments
           text <from>
-      save value-23
+      save value-34
         call as-text
-          read field-21
-      save field-24
+          read field-32
+      save field-35
         call get-field
           read arguments
           text <to>
-      save value-26
+      save value-37
         call as-text
-          read field-24
+          read field-35
       call file-copy
         wait true
-        read value-23
-        read value-26
+        read value-34
+        read value-37
       send back
         call make-null
     hook test
@@ -349,24 +414,24 @@ task run-command
         read command
         text <file_move>
     hook hold
-      save field-27
+      save field-38
         call get-field
           read arguments
           text <from>
-      save value-29
+      save value-40
         call as-text
-          read field-27
-      save field-30
+          read field-38
+      save field-41
         call get-field
           read arguments
           text <to>
-      save value-32
+      save value-43
         call as-text
-          read field-30
+          read field-41
       call file-move
         wait true
-        read value-29
-        read value-32
+        read value-40
+        read value-43
       send back
         call make-null
     hook test
@@ -374,64 +439,64 @@ task run-command
         read command
         text <file_test>
     hook hold
-      save field-33
+      save field-44
         call get-field
           read arguments
           text <path>
-      save value-35
+      save value-46
         call as-text
-          read field-33
+          read field-44
       save answer
         call file-test
           wait true
-          read value-35
-      save json-37
+          read value-46
+      save json-48
         call from-boolean
           read answer
-      send back, read json-37
+      send back, read json-48
     hook test
       call is-equal
         read command
         text <file_exists>
     hook hold
-      save field-38
+      save field-49
         call get-field
           read arguments
           text <path>
-      save value-40
+      save value-51
         call as-text
-          read field-38
+          read field-49
       save answer
         call file-exists
           wait true
-          read value-40
-      save json-42
+          read value-51
+      save json-53
         call from-boolean
           read answer
-      send back, read json-42
+      send back, read json-53
     hook test
       call is-equal
         read command
         text <file_stat>
     hook hold
-      save field-43
+      save field-54
         call get-field
           read arguments
           text <path>
-      save value-45
+      save value-56
         call as-text
-          read field-43
+          read field-54
       save answer
         call file-stat
           wait true
-          read value-45
-      save json-47
+          read value-56
+      save json-58
         call from-text
           call data-to-text
             call melt
               read answer
               like path-info
-      send back, read json-47
+      send back, read json-58
     hook test
       call is-equal
         read command
@@ -539,6 +604,66 @@ task out-of-scope
       call is-equal
         read command
         text <file_write>
+    hook hold
+      save data
+        text <>
+      save bundle
+        text <>
+      save home
+        text <>
+      save scoped-0
+        call as-text
+          call get-field
+            read arguments
+            text <path>
+      fork test
+        hook test
+          call is-equal
+            call in-scope
+              read scoped-0
+              read scope-file-write
+              text <path>
+              read data
+              read bundle
+              read home
+            false
+        hook hold
+          send back, read scoped-0
+      send back, text <>
+    hook test
+      call is-equal
+        read command
+        text <file_read_bytes>
+    hook hold
+      save data
+        text <>
+      save bundle
+        call bundle-path
+      save home
+        text <>
+      save scoped-0
+        call as-text
+          call get-field
+            read arguments
+            text <path>
+      fork test
+        hook test
+          call is-equal
+            call in-scope
+              read scoped-0
+              read scope-file-read
+              text <path>
+              read data
+              read bundle
+              read home
+            false
+        hook hold
+          send back, read scoped-0
+      send back, text <>
+    hook test
+      call is-equal
+        read command
+        text <file_write_bytes>
     hook hold
       save data
         text <>

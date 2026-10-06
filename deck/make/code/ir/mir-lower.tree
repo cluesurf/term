@@ -1,0 +1,435 @@
+# Lower a compiler function body (statements / expressions) into the Perceus MIR (ir/perceus.tree), in ANF
+# (administrative normal form: every compound expression is named by a `let` temp), and classify each binding as
+# heap-owned (reference-counted) or copyable. The MIR is a *liveness model* used only to place dup/drop -- it is never
+# executed (the real code is the backend's), so approximations (a loop condition modeled once, an opaque expression as
+# a plain value) are fine as long as heap creation and use are captured faithfully.
+#
+# Heap-owned: string / list (array) / map / record (named) / bytes. Copyable: number / float / boolean / unit. Only
+# heap bindings get dup/drop; `perceus-control-heap(params, insts, heap)` consumes the `heap` list this returns.
+#
+# Ported from ir/mir-lower.ts (self-hosting, 2026-10-05). The temps counted and the heap names classified are a
+# `mark shared` record every step adds to.
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+load ../compile/node
+  find binary-op
+  find closure-param
+  find expression
+  find expression-type
+  find statement
+  find statement-branch
+  find type
+  find unary-op
+  find to-text, name op-text
+
+load ./perceus
+  find inst
+  find value
+
+form lowered
+  link insts, like list, like inst
+  link heap, like list, like text
+
+form lowering-state
+  mark shared
+  link heap, like list, like text
+  link counter, like number
+
+# a parameter as the lowering reads it: its name and its type
+form mir-param
+  link name, like text
+  link type
+    like maybe, like type
+    need false
+
+task is-heap-type
+  take given, like maybe, like type
+  like boolean
+  mark private
+
+  sift given
+    case some
+      link one
+      sift one
+        case string
+          back true
+        case array
+          back true
+        case map
+          back true
+        case named
+          back true
+        case bytes
+          back true
+        miss
+          back false
+    case none
+      back false
+
+task add-heap
+  take state, like lowering-state
+  take name, like text
+  like void
+  mark private
+
+  walk state/heap
+    take one
+    fork test, is-equal(one, name)
+      hold
+        back
+  push(state/heap, name)
+
+task mark-heap
+  take state, like lowering-state
+  take name, like text
+  take given, like maybe, like type
+  like void
+  mark private
+
+  fork test, is-heap-type(given)
+    hold
+      add-heap(state, name)
+
+task fresh
+  take state, like lowering-state
+  like text
+  mark private
+
+  save count, state/counter
+  save state/counter, add(count, 1)
+  back <_t{count}>
+
+task let-of
+  take name, like text
+  take bound, like value
+  like inst
+  mark private
+
+  back
+    make inst/let
+      bind name, name
+      bind value, bound
+
+task literal-value
+  like value
+  mark private
+
+  back make value/lit
+
+task call-value
+  take fn, like text
+  take args, like list, like text
+  like value
+  mark private
+
+  back
+    make value/call
+      bind fn, fn
+      bind args, args
+
+task var-value
+  take name, like text
+  like value
+  mark private
+
+  back
+    make value/var
+      bind name, name
+
+task one-text
+  take first, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, first)
+  back out
+
+# flatten an expression to ANF: push its prefix `let`s into `out`, return the name that holds its value
+task flatten
+  take given, like expression
+  take out, like list, like inst
+  take state, like lowering-state
+  like flattened
+  mark private
+
+  save kind, expression-type(given)
+  sift given
+    case variable
+      back flattened-as(name, out)
+    case integer
+      back literal-of(kind, out, state)
+    case float
+      back literal-of(kind, out, state)
+    case boolean
+      back literal-of(kind, out, state)
+    case string
+      back literal-of(kind, out, state)
+    case null
+      back literal-of(kind, out, state)
+    case unit
+      back literal-of(kind, out, state)
+    case call
+      save fn, <call>
+      sift callee
+        case variable
+          save fn, name
+        miss
+          save nothing, 0
+      save arg-names, make list
+      save written, out
+      walk args
+        take arg
+        save step, flatten(arg, written, state)
+        save written, step/out
+        push(arg-names, step/name)
+      back temp-of(call-value(fn, arg-names), kind, written, state)
+    case binary
+      save left-step, flatten(left, out, state)
+      save right-step, flatten(right, left-step/out, state)
+      save arg-names, make list
+      push(arg-names, left-step/name)
+      push(arg-names, right-step/name)
+      back temp-of(call-value(op-text(op), arg-names), kind, right-step/out, state)
+    case unary
+      save step, flatten(operand, out, state)
+      back temp-of(call-value(op-text(op), one-text(step/name)), kind, step/out, state)
+    case record
+      save arg-names, make list
+      save written, out
+      walk fields
+        take field
+        save step, flatten(field/value, written, state)
+        save written, step/out
+        push(arg-names, step/name)
+      # a record is always heap
+      back always-heap(make-of(name, arg-names), written, state)
+    case array
+      save arg-names, make list
+      save written, out
+      walk items
+        take item
+        save step, flatten(item, written, state)
+        save written, step/out
+        push(arg-names, step/name)
+      # a list is always heap
+      back always-heap(make-of(<list>, arg-names), written, state)
+    case member
+      save step, flatten(target, out, state)
+      back temp-of(call-value(<member>, one-text(step/name)), kind, step/out, state)
+    case await
+      save step, flatten(expr, out, state)
+      back temp-of(call-value(<await>, one-text(step/name)), kind, step/out, state)
+    miss
+      # map / conditional / closure / template / hole: model as an opaque value, heap-classified by its type so a
+      # heap-producing form is still tracked even though its internal structure is not lowered here
+      back literal-of(kind, out, state)
+
+# the instructions a flatten wrote, and the name holding the value: a list handed in is a copy natively (D1), so the
+# list it wrote comes back with the name
+form flattened
+  link out, like list, like inst
+  link name, like text
+
+task flattened-as
+  take name, like text
+  take out, like list, like inst
+  like flattened
+  mark private
+
+  back
+    make flattened
+      bind out, out
+      bind name, name
+
+task literal-of
+  take kind, like maybe, like type
+  take out, like list, like inst
+  take state, like lowering-state
+  like flattened
+  mark private
+
+  # a string literal is heap; the numeric literals are not
+  back temp-of(literal-value(), kind, out, state)
+
+task temp-of
+  take bound, like value
+  take kind, like maybe, like type
+  take out, like list, like inst
+  take state, like lowering-state
+  like flattened
+  mark private
+
+  save t, fresh(state)
+  push(out, let-of(t, bound))
+  mark-heap(state, t, kind)
+  back flattened-as(t, out)
+
+task always-heap
+  take bound, like value
+  take out, like list, like inst
+  take state, like lowering-state
+  like flattened
+  mark private
+
+  save t, fresh(state)
+  push(out, let-of(t, bound))
+  add-heap(state, t)
+  back flattened-as(t, out)
+
+task make-of
+  take ctor, like text
+  take args, like list, like text
+  like value
+  mark private
+
+  back
+    make value/make
+      bind ctor, ctor
+      bind args, args
+      bind reuse, <>
+
+# lower a list of statements (a block)
+task lower-block
+  take statements, like list, like statement
+  take state, like lowering-state
+  like list, like inst
+  mark private
+
+  save out, make list
+  walk statements
+    take one
+    sift one
+      case let
+        save step, flatten(init, out, state)
+        save out, step/out
+        # preserve the source binding name; alias it to the flattened value
+        push(out, let-of(name, var-value(step/name)))
+        mark-heap(state, name, expression-type(init))
+      case return
+        sift value
+          case some
+            link given
+            save step, flatten(given, out, state)
+            save out, step/out
+            save returned
+              make inst/return
+                bind name, step/name
+            push(out, returned)
+          case none
+            save nothing, 0
+      case expression
+        # evaluated for effect; the result is discarded
+        save step, flatten(expr, out, state)
+        save out, step/out
+      case assign
+        # a reassignment consumes the new value; model it as a binding to the target name
+        save step, flatten(read(value), out, state)
+        save out, step/out
+        sift target
+          case variable
+            push(out, let-of(name, var-value(step/name)))
+            mark-heap(state, name, expression-type(read(value)))
+          miss
+            save nothing, 0
+      case if
+        save step, lower-if(branches, otherwise, out, state)
+        save out, step/out
+        push(out, step/made)
+      case while
+        # the condition is a copyable boolean; model it once (the MIR is a liveness model, not executed)
+        save step, flatten(cond, out, state)
+        save out, step/out
+        save looped
+          make inst/while
+            bind cond, step/name
+            bind body, lower-block(body, state)
+        push(out, looped)
+      case match
+        save step, flatten(subject, out, state)
+        save out, step/out
+        save arms, make list
+        walk cases
+          take arm
+          push(arms, lower-block(arm/body, state))
+        sift otherwise
+          case some
+            link other
+            push(arms, lower-block(other, state))
+          case none
+            save nothing, 0
+        save matched
+          make inst/match
+            bind subject, step/name
+            bind arms, arms
+        push(out, matched)
+      miss
+        # throw / hold / break / continue / exit / debug / function: no heap binding to track here
+        save nothing, 0
+  back out
+
+# an `if` lowered, and the instructions written before it
+form lowered-if
+  link out, like list, like inst
+  link made, like inst
+
+# an if/else-if chain lowers to nested two-way ifs. `out` receives the prefix lets for the first condition.
+task lower-if
+  take branches, like list, like statement-branch
+  take otherwise, like maybe, like list, like statement
+  take out, like list, like inst
+  take state, like lowering-state
+  like lowered-if
+  mark private
+
+  save head, get(branches, 0)
+  save step, flatten(head/cond, out, state)
+  save then, lower-block(head/body, state)
+  save else-insts, make list
+  fork test, is-above(branches/length, 1)
+    hold
+      save rest, branches/slice(1, branches/length)
+      save nested, make list
+      save inner, lower-if(rest, otherwise, nested, state)
+      save else-insts, inner/out
+      push(else-insts, inner/made)
+    miss
+      sift otherwise
+        case some
+          link other
+          save else-insts, lower-block(other, state)
+        case none
+          save nothing, 0
+  save made
+    make inst/if
+      bind cond, step/name
+      bind then, then
+      bind else, else-insts
+  back
+    make lowered-if
+      bind out, step/out
+      bind made, made
+
+task lower-to-mir
+  take body, like list, like statement
+  take params, like list, like mir-param
+  like lowered
+
+  save state
+    make lowering-state
+      bind heap, make list
+      bind counter, 0
+  # a heap-typed parameter is owned on entry and must be in the RC set
+  walk params
+    take param
+    mark-heap(state, param/name, param/type)
+  save insts, lower-block(body, state)
+  back
+    make lowered
+      bind insts, insts
+      bind heap, state/heap

@@ -85,12 +85,21 @@ export function checkRoundTrip(text: string): OracleViolation | null {
   return null
 }
 
-/** Compiling twice must give byte-identical output. */
-export function checkDeterministic(text: string, resolve: Resolve, file = 'o.tree'): OracleViolation | null {
+// a compile, and how long it took, handed to `timed` when given
+function compileTimed(text: string, resolve: Resolve, file: string, timed?: (ms: number) => void): ReturnType<typeof compile> {
+  const started = performance.now()
+  const result = compile({ file, text }, { resolve })
+  timed?.(performance.now() - started)
+
+  return result
+}
+
+/** Compiling twice must give byte-identical output. `timed` is handed each compile's time. */
+export function checkDeterministic(text: string, resolve: Resolve, file = 'o.tree', timed?: (ms: number) => void): OracleViolation | null {
   let a, b
   try {
-    a = compile({ file, text }, { resolve })
-    b = compile({ file, text }, { resolve })
+    a = compileTimed(text, resolve, file, timed)
+    b = compileTimed(text, resolve, file, timed)
   } catch (e) {
     return { oracle: 'crash', detail: `compile threw: ${msg(e)}`, input: text }
   }
@@ -116,10 +125,11 @@ export function backendEmit(
   text: string,
   resolve: Resolve,
   file = 'o.tree',
+  timed?: (ms: number) => void,
 ): { compiled: boolean; violations: OracleViolation[] } {
   let compiled
   try {
-    compiled = compile({ file, text }, { resolve })
+    compiled = compileTimed(text, resolve, file, timed)
   } catch (e) {
     return { compiled: false, violations: [{ oracle: 'crash', detail: `compile threw: ${msg(e)}`, input: text }] }
   }
@@ -227,15 +237,29 @@ export function auditCorpus(input: {
     }
 
     const t0 = performance.now()
+    // the FASTEST of the file's three compiles (one to emit, two for determinism) is what is held to the budget: the
+    // first pays for loading the file's imports, and a budget is about the compiler, not a cold cache. The budget
+    // was taken and never read until 2026-10-05
+    let fastest = Number.POSITIVE_INFINITY
+    const timed = (ms: number): void => {
+      fastest = Math.min(fastest, ms)
+    }
     // compile with the REAL file path so relative imports (load ../x)
     // resolve correctly - a fake name would misresolve and false-positive.
-    const emitted = backendEmit(text, input.resolve, file)
+    const emitted = backendEmit(text, input.resolve, file, timed)
     if (emitted.compiled) compiled++
+    const deterministic = checkDeterministic(text, input.resolve, file, timed)
+    const budget = input.perfBudgetMs
+    const perf: OracleViolation | null =
+      budget !== undefined && fastest > budget
+        ? { oracle: 'perf', detail: `compile took ${fastest.toFixed(0)}ms, the fastest of three (budget ${budget}ms)`, input: text }
+        : null
     for (const check of [
       checkRoundTrip(text),
-      checkDeterministic(text, input.resolve, file),
+      deterministic,
       ...emitted.violations,
       checkTolerant(text, input.parseTolerant),
+      perf,
     ]) {
       // two oracles that both compile see the same throw; report it once per file
       if (

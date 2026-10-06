@@ -196,6 +196,11 @@ export const HTML_TAGS = new Set<string>([
   'tspan',
 ])
 
+// whether a name is one of HTML_TAGS: what the checker asks, and what the Term port answers (compile/view-lower.tree)
+export function isHtmlTag(name: string): boolean {
+  return HTML_TAGS.has(name)
+}
+
 // build the program-wide component registry: name -> its input params (after
 // the leading `host`) and whether its body has a `slot`.
 function collectComponents(program: Program): Map<string, Component> {

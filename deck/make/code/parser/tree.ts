@@ -324,6 +324,17 @@ function buildTree(
           }
 
           here.nodes.push(node)
+        } else if (here.kind === 'interpolation' && !here.group) {
+          // `<{123}>`: a whole number alone in braces in a text literal is its value, a group holding the number
+          const node: IntegerNode = {
+            kind: 'integer',
+            value: event.value,
+            text: event.text,
+            span: event.span,
+          }
+          const group: GroupNode = { kind: 'group', nodes: [node] }
+          here.group = group
+          top().line.push(group)
         } else if (here.kind === 'root') {
           diagnostics.push(
             diagnose('invalid-nesting', {

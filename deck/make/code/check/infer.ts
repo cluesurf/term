@@ -28,6 +28,7 @@ import {
 import type { Scheme, Env } from '@term/make/code/check/scheme'
 import { makeExpect } from '@term/make/code/check/expect'
 import type {
+  DeclaredSignature,
   Expression,
   Program,
   Statement,
@@ -294,12 +295,12 @@ export function check(
     while (current.kind === 'named' && !seen.has(current.name)) {
       const base = throughAlias(current, transparentAlias)
 
-      if (!base) {
+      if (!base.found) {
         break
       }
 
       seen.add(current.name)
-      current = base
+      current = base.type
     }
 
     return current
@@ -381,6 +382,12 @@ export function check(
     }
   }
 
+  // `type`, or a task whose result is one at the end of its arrows: what a type family parameter is declared as
+  const namesAType = (type: Type | undefined): boolean =>
+    type?.kind === 'named'
+      ? type.name === 'type'
+      : type?.kind === 'function' && namesAType(type.result)
+
   const knownType = (name: string, own: Set<string>): boolean =>
     records.has(name) ||
     enums.has(name) ||
@@ -402,6 +409,9 @@ export function check(
 
     if (statement.form === 'function') {
       statement.generics.forEach(g => own.add(g.name))
+      // a parameter that IS a type, or a family of them (`take p / like task / take n, like natural / like type`,
+      // used as `like p / head / read n`), is a type this signature declares, which the kernel reads as one
+      statement.params.filter(p => namesAType(p.type)).forEach(p => own.add(p.name))
       statement.params.forEach(p => namedIn(p.type, names))
       namedIn(statement.result, names)
     } else if (statement.form === 'record-type') {
@@ -440,14 +450,27 @@ export function check(
   // so the dictionary-passing IR pass can thread the instance. So the single-owner dispatch guess below must NOT fire
   // for a trait method -- guessing the lone instance would wrongly hard-wire a generic call to one concrete type.
   const maskMethods = new Set<string>()
+  // each mask task's declared signature, by name. Two masks declaring one name with two signatures type neither
+  const maskTasks = new Map<string, DeclaredSignature>()
+  const maskClash = new Set<string>()
 
   for (const statement of program) {
     if (statement.form === 'mask') {
       for (const method of statement.methods) {
         maskMethods.add(method)
       }
+
+      for (const task of statement.tasks ?? []) {
+        if (maskTasks.has(task.name)) {
+          maskClash.add(task.name)
+        }
+
+        maskTasks.set(task.name, task.signature)
+      }
     }
   }
+
+  maskClash.forEach(name => maskTasks.delete(name))
 
   // function name -> its signature: generic variable ids, their names, their trait bounds, and param/result types
   const functions = new Map<string, Signature>()
@@ -576,6 +599,84 @@ export function check(
       positional: statement.params.map(() => false),
       optional: statement.params.map(p => p.optional === true),
     })
+  }
+
+  // EACH TASK A FORM WEARS FITS ITS MASK'S SIGNATURE. A mask kept its tasks' names alone until 2026-10-05, so a `score`
+  // taking two inputs where the mask declares one, or answering text where it declares a number, built: and the
+  // dictionary, the trait `impl` and every call through the mask then disagreed with the task that ran. The task takes
+  // as many inputs as the mask says, `self` first, and each one the mask types, and the result, unify with its own. A
+  // task the form leaves its type off takes the mask's, by the same unification
+  {
+    const masks = new Map<string, Extract<Statement, { form: 'mask' }>>()
+    const worn = new Map<string, string>()
+
+    for (const statement of program) {
+      if (statement.form === 'mask') {
+        masks.set(statement.name, statement)
+      } else if (statement.form === 'function' && statement.method) {
+        worn.set(`${statement.method.form}:${statement.method.name}`, statement.name)
+      }
+    }
+
+    const noGenerics = new Map<string, Type>()
+
+    for (const statement of program) {
+      if (statement.form !== 'instance') {
+        continue
+      }
+
+      for (const task of masks.get(statement.mask)?.tasks ?? []) {
+        const name = worn.get(`${statement.target}:${task.name}`)
+        const own = name !== undefined ? functions.get(name) : undefined
+
+        if (!own) {
+          continue
+        }
+
+        const where = { file: statement.span.file ?? file, span: statement.span }
+        const wanted = task.signature.params.length
+
+        if (own.params.length !== wanted) {
+          diagnostics.push(
+            diagnose('type-mismatch', {
+              ...where,
+              message: `"${statement.target}" wears "${statement.mask}", whose "${task.name}" takes ${wanted} input${wanted === 1 ? '' : 's'}, self first, and this "${task.name}" takes ${own.params.length}`,
+            }),
+          )
+          continue
+        }
+
+        task.signature.params.forEach((param, at) => {
+          if (at === 0 || !param.type) {
+            return
+          }
+
+          const declared = seedType(param.type, noGenerics)
+
+          if (!unify(declared, own.params[at]!)) {
+            diagnostics.push(
+              diagnose('type-mismatch', {
+                ...where,
+                message: `"${statement.target}" wears "${statement.mask}", whose "${task.name}" takes ${showType(declared)} as "${own.names[at]}", and this one takes ${showType(resolve(own.params[at]!))}`,
+              }),
+            )
+          }
+        })
+
+        if (task.signature.result) {
+          const declared = seedType(task.signature.result, noGenerics)
+
+          if (!unify(declared, own.result)) {
+            diagnostics.push(
+              diagnose('type-mismatch', {
+                ...where,
+                message: `"${statement.target}" wears "${statement.mask}", whose "${task.name}" answers ${showType(declared)}, and this one answers ${showType(resolve(own.result))}`,
+              }),
+            )
+          }
+        }
+      }
+    }
   }
 
   // receiver dispatch: a form's mangled method (`maybe_unwrap-or`) indexed by form name then bare method name, so a
@@ -1549,8 +1650,24 @@ export function check(
             calleeType.kind === 'unknown' ||
             calleeType.kind === 'variable'
           ) {
+            // a mask's task, called on a type that needs the mask: typed by the signature the mask declares, its
+            // arguments after `self` held to their declared types. It was the gradual unknown until 2026-10-05, so
+            // `multiply(score(x), 2)` was no integer product and every backend wrote it unchecked
+            const masked =
+              node.callee.form === 'variable' && !env.has(node.callee.name)
+                ? maskTasks.get(node.callee.name)
+                : undefined
+
+            if (masked && args.length === masked.params.length) {
+              masked.params.forEach((param, i) => {
+                if (i > 0 && param.type) {
+                  expect(args[i]!, param.type, node.args[i]!.span, 'argument')
+                }
+              })
+            }
+
             // gradual: an unknown callee, unless it is a native collection method whose result is known
-            type = nativeResult ?? unknownType()
+            type = nativeResult ?? masked?.result ?? unknownType()
           } else {
             diagnostics.push(
               diagnose('type-mismatch', {
@@ -1770,6 +1887,60 @@ export function check(
 
       case 'match': {
         const subjectType = resolve(inferExpression(node.subject, env))
+
+        // NARROWING AN `unknown`: each arm names a type the value is tested for at run time, and inside it the subject
+        // (when it is a name), or the arm's one `link`, has that type. Only the four types every backend can tell apart
+        // inside its dynamic value (`typeof` on TypeScript, `downcast_ref` on Rust, `as?` on Swift, `is` on Kotlin): a
+        // form is a plain object on TypeScript and carries no name to test. And a `miss`, since an `unknown` can hold
+        // anything. test/compile/unknown-narrow.ts
+        if (subjectType.kind === 'unknown' && node.cases.length > 0) {
+          const narrowed: Record<string, () => Type> = { number: numberType, float: floatType, text: stringType, boolean: booleanType }
+          const outside = node.cases.filter(branch => !narrowed[branch.label])
+
+          if (outside.length > 0) {
+            diagnostics.push(
+              diagnose('type-mismatch', {
+                file: currentFile,
+                span: node.span,
+                message: `a sift over an unknown tests what type its value is, and ${outside.map(b => `"${b.label}"`).join(', ')} is not one every backend can tell apart: number, float, text or boolean`,
+                hint: 'give the value a form with a case per kind it can be, and sift that',
+              }),
+            )
+          }
+
+          if (!node.otherwise) {
+            diagnostics.push(
+              diagnose('non-exhaustive', {
+                file: currentFile,
+                span: node.span,
+                message: 'a sift over an unknown needs a `miss`: the value can be any type, and an arm per type cannot cover them all',
+                hint: 'add a `miss` arm for every other value',
+              }),
+            )
+          }
+
+          node.typeArms = true
+
+          for (const branch of node.cases) {
+            const inner = new Map(env)
+            const type = narrowed[branch.label]?.() ?? unknownType()
+            const bound = branch.binds?.[0]
+
+            if (bound) {
+              inner.set(bound, { vars: [], type })
+            } else if (node.subject.form === 'variable') {
+              inner.set(node.subject.name, { vars: [], type })
+            }
+
+            checkBody(branch.body, inner, result)
+          }
+
+          if (node.otherwise) {
+            checkBody(node.otherwise, env, result)
+          }
+
+          break
+        }
 
         // a `fork case` over a caught exception: the labels are exception forms, each arm binds the shared fields and
         // the form's own props, and the arms must cover what the guarded body can raise (or carry an `otherwise`)

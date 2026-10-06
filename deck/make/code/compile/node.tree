@@ -478,6 +478,11 @@ form universal
   link name, like text
   link binders, like list, like text
   link expr, like expression
+  # each binder's type as written (`mark u, like a`), in the order of `binders`, so the kernel instantiates the
+  # hypothesis only at terms of that type (check/elaborate.ts universalInstances)
+  link types
+    like list, like declared-param
+    need false
 
 form method-of
   link form, like text
@@ -494,6 +499,13 @@ form declared-signature
   link result
     like maybe, like type
     need false
+
+# a task a mask declares: its parameters as written (`self` first, untyped) and its result, and whether the mask
+# gives it a body, which a form that wears the mask may leave out
+form mask-task
+  link name, like text
+  link signature, like declared-signature
+  link default, like boolean
 
 form type-index
   link name, like text
@@ -679,6 +691,12 @@ form statement
       need false
     # filled by the checker when the arms cover every variant
     link closed
+      like boolean
+      need false
+    # filled by the checker when the subject is an `unknown` and each arm names a type it is tested for at run time
+    # (`case number`, `case float`, `case text`, `case boolean`): the arm runs when the value IS that type, and inside it
+    # the subject, or the arm's one `link`, has that type
+    link type-arms
       like boolean
       need false
   case for-each
@@ -879,6 +897,9 @@ form statement
   case mask
     link name, like text
     link methods, like list, like text
+    link tasks
+      like list, like mask-task
+      need false
     link stub-export
       like text
       need false
@@ -1046,6 +1067,98 @@ task expression-type
       back type
     case hole
       back type
+
+# every expression's span, which every case carries
+task expression-span
+  take one, like expression
+  like span
+
+  sift one
+    case integer
+      back span
+    case float
+      back span
+    case boolean
+      back span
+    case string
+      back span
+    case template
+      back span
+    case unit
+      back span
+    case null
+      back span
+    case variable
+      back span
+    case binary
+      back span
+    case unary
+      back span
+    case call
+      back span
+    case array
+      back span
+    case map
+      back span
+    case record
+      back span
+    case member
+      back span
+    case await
+      back span
+    case closure
+      back span
+    case conditional
+      back span
+    case hole
+      back span
+
+# the expression with its type set, written where it stands, as a rewrite writes its case (ir/monomorphize.tree)
+task with-type
+  take one, like expression
+  take given, like type
+  like expression
+
+  sift one
+    case integer
+      save one/type, make(some, given)
+    case float
+      save one/type, make(some, given)
+    case boolean
+      save one/type, make(some, given)
+    case string
+      save one/type, make(some, given)
+    case template
+      save one/type, make(some, given)
+    case unit
+      save one/type, make(some, given)
+    case null
+      save one/type, make(some, given)
+    case variable
+      save one/type, make(some, given)
+    case binary
+      save one/type, make(some, given)
+    case unary
+      save one/type, make(some, given)
+    case call
+      save one/type, make(some, given)
+    case array
+      save one/type, make(some, given)
+    case map
+      save one/type, make(some, given)
+    case record
+      save one/type, make(some, given)
+    case member
+      save one/type, make(some, given)
+    case await
+      save one/type, make(some, given)
+    case closure
+      save one/type, make(some, given)
+    case conditional
+      save one/type, make(some, given)
+    case hole
+      save one/type, make(some, given)
+  back one
 
 # ---- the view (component) AST ----
 

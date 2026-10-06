@@ -24,6 +24,8 @@ const DECLARATIONS: Declaration[] = [
   { runtime: 'nativeNotification', android: ['android.permission.POST_NOTIFICATIONS'] },
   { runtime: 'nativeVibration', android: ['android.permission.VIBRATE'] },
   { runtime: 'nativeNetwork', android: ['android.permission.ACCESS_NETWORK_STATE'] },
+  // Face ID refuses an app with no usage string, and Android's BiometricPrompt one without USE_BIOMETRIC (device-layer-0021)
+  { runtime: 'nativeBiometric', android: ['android.permission.USE_BIOMETRIC'], apple: { key: 'NSFaceIDUsageDescription', text: 'Checks it is you when you ask it to.' } },
 ]
 
 const holds = (native: string, runtime: string): boolean => new RegExp(`\\b(object|enum) ${runtime}\\b`).test(native)

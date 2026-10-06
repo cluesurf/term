@@ -1,0 +1,163 @@
+# Monomorphization: specialize each generic function at the concrete types it is called with, then drop the
+# generic originals. The monomorphic targets (WGSL on the GPU, HVM) have no type parameters, so every call must resolve
+# to a concrete function. The instantiation is read off the (now fully resolved) argument types. The TypeScript, Rust,
+# Swift, and Kotlin backends keep generics natively, so this pass is optional and runs only ahead of the monomorphic
+# backends. See note/research/vibe/computation/plans/05-ir.md. Pure and browser-safe.
+#
+# Ported from ir/monomorphize.ts (self-hosting, 2026-10-05). Its three rewrites are compile/node-rewrite's
+# `specialize-calls` (before a call's arguments, so specializations are made in the order the original made them),
+# `substitute-types` and `resolve-trait-calls`.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load ../compile/node
+  find statement
+
+load ../compile/node-rewrite
+  find copy-statement
+  find rewrite-program
+  find rewrite-rule
+  find specializations
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+task is-generic
+  take one, like statement
+  like boolean
+  mark private
+
+  sift one
+    case function
+      back is-above(generics/length, 0)
+    miss
+      back false
+
+# every function's body with a rule applied
+task rewrite-bodies
+  take program, like list, like statement
+  take rule, like rewrite-rule
+  like list, like statement
+  mark private
+
+  save out, make list
+  walk program
+    take one
+    sift one
+      case function
+        save one/body, rewrite-program(body, rule)
+        push(out, one)
+      miss
+        push(out, one)
+  back out
+
+task monomorphize
+  take program, like list, like statement
+  like list, like statement
+
+  save generic-tasks, make list
+  walk program
+    take one
+    fork test, is-generic(one)
+      hold
+        push(generic-tasks, one)
+
+  # the monomorphic backends have no traits, so a trait-method call must resolve to the concrete instance's function.
+  # After specialization every receiver type is concrete, so a `measure(x)` with x: box becomes a call to `box_measure`.
+  # Built from the masks + the instance methods (each a `<target>_<method>` function tagged with `method`).
+  save mask-methods, make list
+  save keys, make list
+  save tasks, make list
+  walk program
+    take one
+    sift one
+      case mask
+        walk methods
+          take method
+          push(mask-methods, method)
+      case function
+        sift read(method)
+          case some
+            link of
+            push(keys, <{of/form}:{of/name}>)
+            push(tasks, name)
+          case none
+            turn next
+      miss
+        turn next
+  save resolve-rule
+    make resolve-trait-calls
+      bind mask-methods, mask-methods
+      bind keys, last-first(keys)
+      bind tasks, last-first(tasks)
+
+  fork test, is-equal(generic-tasks/length, 0)
+    hold
+      fork test, is-above(mask-methods/length, 0)
+        hold
+          back rewrite-bodies(program, resolve-rule)
+      back program
+
+  # a generic named twice: the last definition is the one specialized, as a map keyed by name kept it
+  save made
+    make specializations
+      bind names, make list
+      bind tasks, make list
+  save rule
+    make specialize-calls
+      bind generics, last-first(generic-tasks)
+      bind made, made
+
+  # non-generic functions are kept (with their generic calls rewritten); generic originals are dropped
+  save out, make list
+  walk program
+    take one
+    fork test, is-generic(one)
+      hold
+        turn next
+    save copy, copy-statement(one)
+    sift copy
+      case function
+        save copy/body, rewrite-program(body, rule)
+        push(out, copy)
+      miss
+        push(out, copy)
+  walk made/tasks
+    take spec
+    push(out, spec)
+
+  # with every function now monomorphic, resolve concrete trait-method calls to their instance implementations
+  fork test, is-above(mask-methods/length, 0)
+    hold
+      back rewrite-bodies(out, resolve-rule)
+  back out
+
+# a list reversed, so a search from its start finds the LAST of a name first, as a map set again keeps the last
+task last-first
+  take values, like list, like unknown
+  like list, like unknown
+  mark private
+
+  save out, make list
+  save at, subtract(values/length, 1)
+  walk test
+    hook test, is-minimum(at, 0)
+    hook hold
+      push(out, get(values, at))
+      save at, subtract(at, 1)
+  back out

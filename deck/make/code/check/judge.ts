@@ -1438,47 +1438,112 @@ function matchesHypothesis(
     return false
   }
 
-  // TRANSITIVE CLOSURE over hypothesis endpoints: each hypothesis `l == r` is an undirected edge, and two endpoints
-  // that are themselves convertible are the same node. `a` and `b` are equal under the hypotheses if some endpoint
-  // convertible to `a` reaches some endpoint convertible to `b` through that graph (a chain `a = .. = b`). This is the
-  // closure step that makes the hypothesis reasoning transitive (combined with the structural recursion in `convertMod`,
-  // which supplies congruence). Sound: every edge is a real equality, and transitivity of equality is valid. Bounded:
-  // the endpoint set is small (two per hypothesis) and the search visits each at most once.
-  const endpoints: Value[] = []
+  return congruent(level, a, b, hyps)
+}
 
-  for (const [l, r] of hyps) {
-    endpoints.push(l, r)
-  }
+// the most terms the congruence closure keeps (`congruent`). Past it the hypotheses are too many to close, and the goal
+// is left unproven rather than slow
+const CONGRUENCE_TERMS = 256
 
-  const reached = new Array<boolean>(endpoints.length).fill(false)
-  const queue: number[] = []
+// CONGRUENCE CLOSURE over the hypotheses (math-foundations-0004). The terms are `a`, `b`, both sides of every
+// hypothesis and every argument inside them, one node per term up to conversion. Each hypothesis joins its two sides,
+// and two applications of one head join when their arguments are joined, until nothing changes. So `f(x) == f(y)`
+// gives `g(f(x)) == g(f(y))`, and with `g(f(u)) == u` at x and y that gives `x == y`: what a left inverse needs.
+// Transitivity is the union, congruence the join. Sound: every join is a hypothesis or an application of equal things
+// to equal things. Complete for ground equations over the terms it holds, which is the classical decision procedure
+function congruent(level: number, a: Value, b: Value, hyps: [Value, Value][]): boolean {
+  const nodes: Value[] = []
+  // each node's head and arguments when it is an application (a stuck head with only applications on its spine)
+  const shape: ({ head: string; args: number[] } | undefined)[] = []
+  const parent: number[] = []
 
-  endpoints.forEach((endpoint, i) => {
-    if (convert(level, a, endpoint)) {
-      reached[i] = true
-      queue.push(i)
+  const nodeOf = (value: Value): number => {
+    const found = nodes.findIndex(node => convert(level, node, value))
+
+    if (found >= 0) {
+      return found
     }
-  })
 
-  while (queue.length > 0) {
-    const i = queue.shift()!
-    // the other end of the SAME hypothesis (endpoints are pushed in (l, r) pairs), plus any convertible endpoint
-    const partner = i % 2 === 0 ? i + 1 : i - 1
+    if (nodes.length >= CONGRUENCE_TERMS) {
+      throw new RangeError('congruence closure: too many terms')
+    }
 
-    for (let j = 0; j < endpoints.length; j++) {
-      if (
-        !reached[j] &&
-        (j === partner || convert(level, endpoints[i]!, endpoints[j]!))
-      ) {
-        reached[j] = true
-        queue.push(j)
+    const at = nodes.length
+    nodes.push(value)
+    parent.push(at)
+    shape.push(undefined)
+
+    const forced = force(value)
+
+    if ((forced.v === 'neutral' || forced.v === 'rigid') && forced.spine.length > 0) {
+      if (forced.spine.every(elim => elim.e === 'app')) {
+        const head = forced.v === 'neutral' ? `#${forced.head}` : forced.name
+        shape[at] = { head, args: forced.spine.map(elim => nodeOf((elim as { e: 'app'; arg: Value }).arg)) }
       }
     }
+
+    return at
   }
 
-  return endpoints.some(
-    (endpoint, i) => reached[i] && convert(level, b, endpoint),
-  )
+  const find = (n: number): number => {
+    while (parent[n] !== n) {
+      parent[n] = parent[parent[n]!]!
+      n = parent[n]!
+    }
+
+    return n
+  }
+
+  const join = (x: number, y: number): boolean => {
+    const [rx, ry] = [find(x), find(y)]
+
+    if (rx === ry) {
+      return false
+    }
+
+    parent[rx] = ry
+
+    return true
+  }
+
+  try {
+    const [na, nb] = [nodeOf(a), nodeOf(b)]
+
+    for (const [l, r] of hyps) {
+      join(nodeOf(l), nodeOf(r))
+    }
+
+    let changed = true
+
+    while (changed && find(na) !== find(nb)) {
+      changed = false
+
+      for (let i = 0; i < nodes.length; i++) {
+        for (let j = i + 1; j < nodes.length; j++) {
+          const [si, sj] = [shape[i], shape[j]]
+
+          if (
+            si &&
+            sj &&
+            find(i) !== find(j) &&
+            si.head === sj.head &&
+            si.args.length === sj.args.length &&
+            si.args.every((arg, k) => find(arg) === find(sj.args[k]!))
+          ) {
+            changed = join(i, j) || changed
+          }
+        }
+      }
+    }
+
+    return find(na) === find(nb)
+  } catch (error) {
+    if (error instanceof RangeError) {
+      return false
+    }
+
+    throw error
+  }
 }
 
 function convertModSpine(
@@ -2043,6 +2108,15 @@ export function check(
 
   if (term.tag === 'lam') {
     if (expected.v !== 'pi') {
+      // a type that COMPUTES to a pi is one: a dependent match's branch is checked at its motive applied to the
+      // constructor (`matchType__natural Q b0 b1 (succ k)`), a stuck application of a defined eliminator until it is
+      // unfolded (math-foundations-0005). Sound: weak head normalization preserves conversion
+      const reduced = whnf(expected)
+
+      if (reduced.v === 'pi' || reduced.v === 'self') {
+        return check(context, term, reduced)
+      }
+
       throw new TypeError(
         'a function must be checked against a pi type',
       )

@@ -16,9 +16,11 @@
 // What crosses: text, boolean, number, decimal, nothing (void), an OPAQUE HANDLE (a form whose one field is a
 // private `handle`: the value stays in the cask under a tone-code id and the page holds the id), a RECORD by value
 // (native-dom-0019: a form declared in a module of its own, its fields scalars, lists or records, carried as host
-// data text through `melt` and `fill`, so a missing field is the named `data-mismatch`), and a LIST of any of those.
-// Bytes, and a record the module declares itself, do not cross yet; such a task is emitted as a raise naming the
-// reason, so the module still builds and the gap is visible rather than silent. Design: note/term/cask/readme.md.
+// data text through `melt` and `fill`, so a missing field is the named `data-mismatch`), BYTES (as base64 text, through
+// @term/base/bytes on both sides), and a LIST of any of those. A record the module declares itself, and a task that
+// takes a function, do not cross; such a task is emitted as a raise naming the reason, or run in the page where the page
+// has the module too, so the module still builds and the gap is visible rather than silent. Design:
+// note/term/cask/readme.md.
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join, relative } from 'node:path'
 import { parse } from '@term/make/code/parser/tree'
@@ -49,7 +51,7 @@ const CROSS_ANYWAY = new Set(['file', 'environment', 'process'])
 // subset of each (no torch, no haptics, no battery in WKWebView), and the cask's process reaches the platform's own API
 // through the toolkit host. Matched with their package and folder, so another package's `open` or `network` is not
 // caught. A task of one that cannot cross (a watcher, which takes a handler) stays in the page, on the browser host
-const DEVICE = new Set(['permission', 'camera', 'torch', 'location', 'clipboard', 'vibration', 'notification', 'open', 'battery', 'network', 'motion'])
+const DEVICE = new Set(['permission', 'camera', 'torch', 'location', 'clipboard', 'vibration', 'notification', 'open', 'battery', 'network', 'motion', 'secret', 'biometric'])
 
 // the env directories the page's own build can serve a module from: `webview` borrows `browser`, and the
 // javascript-wide impls serve every javascript env
@@ -60,6 +62,9 @@ const CASK_ENVS = ['swift', 'kotlin', 'rust']
 
 type Kind =
   | { kind: 'text' | 'boolean' | 'number' | 'decimal' | 'void' }
+  // bytes cross as base64 text, written and read with @term/base/bytes on both sides, so an image or a file's raw
+  // contents reach the cask and come back whole
+  | { kind: 'bytes' }
   // a value declared `like unknown` or `like dynamic`: it crosses AS its json, so a text, a number, a boolean or
   // null, which is what a database parameter is. A record here would arrive as a json object, not a Term record
   | { kind: 'dynamic' }
@@ -91,7 +96,7 @@ type Refused = { module: string; task: string; native: string; params: { name: s
 // a module with a native half, found through the page's closure
 type Module = {
   name: string
-  // the `load` path a program writes for the public module: `@term/site/base/db`
+  // the `load` path a program writes for the public module: `@term/site/base/postgres`
   importPath: string
   // the public module, the abstract module beside the env directories when it exists, and where the shim goes
   publicFile: string
@@ -235,6 +240,8 @@ function kindOf(type: Type | undefined, forms: Forms, seen: Set<string> = new Se
     case 'unknown':
     case 'dynamic':
       return { kind: 'dynamic' }
+    case 'bytes':
+      return { kind: 'bytes' }
     case 'variable':
       return { refuse: 'an element left to inference, so write its type' }
     default:
@@ -469,6 +476,13 @@ const commandOf = (signature: Signature): string => `${signature.module}_${signa
 // the name of the cask's table for a handle form: `row-handles`
 const tableOf = (form: string): string => `${form}-handles`
 
+// whether any parameter or result of these signatures carries bytes, directly or in a list: then both sides load the
+// base64 pair, under names no module's own task can take
+const holdsBytes = (kind: Kind): boolean => kind.kind === 'bytes' || (kind.kind === 'list' && holdsBytes(kind.item))
+const BYTES_LOADS = ['load @term/base/bytes', '  find to-base64, name bytes-to-base64', '  find from-base64, name bytes-from-base64', '']
+const bytesLoads = (signatures: Signature[]): string[] =>
+  signatures.some(one => holdsBytes(one.result) || one.params.some(param => holdsBytes(param.kind))) ? BYTES_LOADS : []
+
 function likeOf(kind: Kind): string[] {
   switch (kind.kind) {
     case 'text':
@@ -485,6 +499,8 @@ function likeOf(kind: Kind): string[] {
       return [`like ${kind.form}`]
     case 'dynamic':
       return ['like unknown']
+    case 'bytes':
+      return ['like bytes']
     case 'list':
       return ['like list', ...likeOf(kind.item).map(line => `  ${line}`)]
     case 'record':
@@ -492,7 +508,7 @@ function likeOf(kind: Kind): string[] {
   }
 }
 
-const INVOKE: Record<Exclude<Kind, { kind: 'list' | 'handle' | 'dynamic' | 'record' }>['kind'], string> = {
+const INVOKE: Record<Exclude<Kind, { kind: 'list' | 'handle' | 'dynamic' | 'record' | 'bytes' }>['kind'], string> = {
   text: 'invoke-text',
   boolean: 'invoke-boolean',
   number: 'invoke-number',
@@ -522,6 +538,8 @@ function pageToJson(kind: Kind, read: string, indent: string): { lines: string[]
       return { local, lines: [`${indent}save ${local}`, `${indent}  call make-null`] }
     case 'dynamic':
       return { local, lines: [`${indent}save ${local}`, `${indent}  read ${read}`] }
+    case 'bytes':
+      return { local, lines: [`${indent}save ${local}`, `${indent}  call from-text`, `${indent}    call bytes-to-base64`, `${indent}      read ${read}`] }
     case 'handle':
       // the page holds the id in the form's private field
       return { local, lines: [`${indent}save ${local}`, `${indent}  call from-text`, `${indent}    read ${read}/handle`] }
@@ -578,6 +596,8 @@ function pageFromJson(kind: Kind, read: string, indent: string): { lines: string
       return { local, lines: [`${indent}save ${local}`, `${indent}  call make-null`] }
     case 'dynamic':
       return { local, lines: [`${indent}save ${local}`, `${indent}  read ${read}`] }
+    case 'bytes':
+      return { local, lines: [`${indent}save ${local}`, `${indent}  call bytes-from-base64`, `${indent}    call as-text`, `${indent}      read ${read}`] }
     case 'handle':
       return {
         local,
@@ -868,6 +888,7 @@ function shimText(module: Module, carried: Signature[], refused: Refused[], term
     '  find list',
     '  find push',
     '',
+    ...bytesLoads(carried),
     ...recordLoads(recordForms(carried)),
   ]
 
@@ -917,7 +938,7 @@ function shimText(module: Module, carried: Signature[], refused: Refused[], term
 
     const result = signature.result
 
-    if (result.kind === 'list' || result.kind === 'handle' || result.kind === 'dynamic' || result.kind === 'record') {
+    if (result.kind === 'list' || result.kind === 'handle' || result.kind === 'dynamic' || result.kind === 'record' || result.kind === 'bytes') {
       lines.push('  save reply', '    call bridge/invoke', '      wait true', `      text <${commandOf(signature)}>`, '      read arguments')
       const value = pageFromJson(result, 'reply', '  ')
       lines.push(...value.lines, `  send back, read ${value.local}`)
@@ -1161,6 +1182,7 @@ function dispatchText(page: string, modules: Module[], all: Signature[], term: s
     '  find unwrap',
 
     '',
+    ...bytesLoads(signatures),
     ...recordLoads(recordForms(signatures)),
   )
 

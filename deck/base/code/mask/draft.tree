@@ -1,0 +1,13 @@
+# Shelved, 2026-10-05: every mask here was written before the current syntax, and most cannot be written in it.
+#
+# They lean on what a mask cannot say yet: a type parameter of the mask itself (`addition`'s `head output` and
+# `head other, base self`, the type an `add` answers and takes), `flex` parameters, and `free wave` results. Two
+# declared themselves with `suit` (`addition`, `allocation`), which wears a mask for a form and declares nothing, and
+# `subtraction` is a bare `wear`. Every file that wears one is shelved too (native/rust/mask/, native/rust/text.tree,
+# native/javascript/integer/), so nothing live was built on them.
+#
+# A mask in the current syntax lists its tasks with their types, and a task with a body is a default
+# (note/term/guides/types/masks.md, test/compile/mask-native.ts). One of these comes back by rewriting it so, with a
+# form that wears it and a test, and moving it out of this folder or deleting this file once all of them are.
+# The language gap is in note/term/stdlib-gaps.md, "Masks".
+mark draft

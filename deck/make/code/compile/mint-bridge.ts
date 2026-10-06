@@ -422,6 +422,14 @@ function textExpression(
       continue
     }
 
+    // `<{123}>`: a whole number alone in braces is its own digits, written into the text at compile time
+    const only = part.group.nodes.length === 1 ? part.group.nodes[0] : undefined
+
+    if (only?.kind === 'integer') {
+      parts.push(chunkPart(only.text))
+      continue
+    }
+
     // what the braces hold is read THROUGH THE GRAMMAR, the way the same words read on a line, so `{n/text()}` is
     // the method call there too. A single word holding a `/` was read as a bare path here first, and a method's
     // call was dropped in silence: `${n.text}`, "value undefined" (test/compile/interpolated-call.ts, 2026-10-04).
@@ -2598,6 +2606,11 @@ const FILE_MARKS = new Set(['draft', 'stable', 'unstable'])
 // the width aliases of `number` whose range a literal argument is held to (check/literals.ts)
 const WIDTH_WORDS = new Set(['u8', 'u16', 'u32', 'u64', 'i8', 'i16', 'i32', 'i64'])
 
+// the type parameter a mask's default task is generic over: the form wearing the mask, which its `self` is. One
+// letter, as `head t` is: a longer name is spelled two ways natively (Kotlin's `WEARER` parameter, `Wearer` where it
+// is used), and a default that writes `head w` of its own shadows it
+export const MASK_SELF = 'w'
+
 // the arms a `fork test` reads, by the word after `hook` (`conditionOf`)
 const FORK_TEST_ARMS = new Set(['test', 'hold', 'step', 'miss', 'else', 'fall'])
 
@@ -3625,15 +3638,63 @@ function topLevelOf(bridge: Bridge, value: Minted): Statement[] {
         return []
       }
 
+      const declared = formsAt(value, 'task').filter(task => wordAt(task, 'name') !== undefined)
+      const out: Statement[] = []
+
+      // a task with a body is a DEFAULT: one generic task over every form wearing the mask, `<mask>_<task>`, its
+      // `self` that form. A form that wears the mask and leaves the task out is given it by check/mask-defaults.ts,
+      // which calls this. Until 2026-10-05 the body was dropped and a call failed as not defined
+      const defaults = new Set<string>()
+      const outer = bridge.owner
+      const outerSelf = bridge.selfType
+      const outerParams = bridge.ownerParams
+      bridge.owner = name
+      bridge.selfType = { kind: 'named', name: MASK_SELF, args: [] }
+      bridge.ownerParams = [MASK_SELF]
+
+      for (const task of declared) {
+        if (bodySteps(bridge, task).length === 0) {
+          continue
+        }
+
+        const built = functionOf(bridge, task)
+
+        if (built?.form === 'function') {
+          const { method: _method, ...plain } = built
+          defaults.add(wordAt(task, 'name')!)
+          out.push({ ...plain, generics: plain.generics.map(g => (g.name === MASK_SELF ? { ...g, need: name } : g)) })
+        }
+      }
+
+      bridge.owner = outer
+      bridge.selfType = outerSelf
+      bridge.ownerParams = outerParams
+
       return [
         {
           form: 'mask',
           name,
-          methods: formsAt(value, 'task')
-            .map(task => wordAt(task, 'name') ?? '')
-            .filter(Boolean),
+          methods: declared.map(task => wordAt(task, 'name')!),
+          // each task's signature as written, so a call through a type that needs the mask is typed by it
+          tasks: declared.map(task => {
+            const result = typeOf(bridge, firstAt(task, 'like'))
+
+            return {
+              name: wordAt(task, 'name')!,
+              signature: {
+                params: formsAt(task, 'take').map(take => {
+                  const type = typeOf(bridge, firstAt(take, 'like'))
+
+                  return type ? { type } : {}
+                }),
+                ...(result ? { result } : {}),
+              },
+              default: defaults.has(wordAt(task, 'name')!),
+            }
+          }),
           span: spanOf(value),
         },
+        ...out,
       ]
     }
 
@@ -3645,23 +3706,48 @@ function topLevelOf(bridge: Bridge, value: Minted): Statement[] {
         return []
       }
 
-      return formsAt(value, 'wear').flatMap(worn => {
+      // and its bodies, lifted as functions over the target exactly as a `wear` under the form lifts them. Until
+      // 2026-10-05 only the instance was kept, so it named methods nothing defined: `"measure" is not defined`
+      const outer = bridge.owner
+      const outerSelf = bridge.selfType
+      const outerParams = bridge.ownerParams
+      bridge.owner = target
+      bridge.selfType = { kind: 'named', name: target, args: [] }
+      bridge.ownerParams = []
+
+      const out: Statement[] = []
+
+      for (const worn of formsAt(value, 'wear')) {
         const mask = wordAt(worn, 'name')
 
-        return mask === undefined
-          ? []
-          : [
-              {
-                form: 'instance' as const,
-                mask,
-                target,
-                methods: formsAt(worn, 'task')
-                  .map(task => wordAt(task, 'name') ?? '')
-                  .filter(Boolean),
-                span: spanOf(worn),
-              },
-            ]
-      })
+        if (mask === undefined) {
+          continue
+        }
+
+        out.push({
+          form: 'instance' as const,
+          mask,
+          target,
+          methods: formsAt(worn, 'task')
+            .map(task => wordAt(task, 'name') ?? '')
+            .filter(Boolean),
+          span: spanOf(worn),
+        })
+
+        for (const task of formsAt(worn, 'task')) {
+          const built = functionOf(bridge, task)
+
+          if (built) {
+            out.push(built)
+          }
+        }
+      }
+
+      bridge.owner = outer
+      bridge.selfType = outerSelf
+      bridge.ownerParams = outerParams
+
+      return out
     }
 
     case 'wear': {
@@ -4262,11 +4348,17 @@ function ruleOf(bridge: Bridge, value: Form): Statement[] {
     // `mark` inside a `have`: the hypothesis holds FOR EVERY value of these, so it is not a guard on the values in
     // hand but a statement the prover instantiates (check/holds.ts universalFacts)
     binders: formsAt(have, 'mark').map(mark => wordAt(mark, 'name') ?? ''),
+    // and each one's type, read the way a theorem's own `mark` is, so the kernel instantiates it only at terms of it
+    types: formsAt(have, 'mark').map(mark => {
+      const type = withHeadArgs(bridge, typeOf(bridge, firstAt(mark, 'like')), mark)
+
+      return type ? { type } : {}
+    }),
   }))
 
   const universals = hypotheses
     .filter(h => h.binders.length > 0 && h.expr)
-    .map(h => ({ name: h.name, binders: h.binders, expr: h.expr as Expression }))
+    .map(h => ({ name: h.name, binders: h.binders, expr: h.expr as Expression, types: h.types }))
 
   const witnesses = formsAt(value, 'find').map(find => ({
     name: wordAt(find, 'name') ?? '',

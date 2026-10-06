@@ -194,7 +194,8 @@ function zero(type: Type | undefined, span: unknown): Expression | undefined {
 
 // a few rounds, bottom up: a task that calls an inlinable one is inlined into after its callee was inlined into it.
 // Answers the program and every task some call to which was inlined
-export function inlineStatements(program: Program): { program: Program; inlined: Set<string> } {
+// the names inlined are a list, each once, in the order first inlined: what the Term port answers (ir/inline-statements.tree)
+export function inlineStatements(program: Program): { program: Program; inlined: string[] } {
   const inlined = new Set<string>()
   // the program's names, read once and only when something is inlined (`freshName`)
   const holder: { names?: Names } = {}
@@ -210,7 +211,7 @@ export function inlineStatements(program: Program): { program: Program; inlined:
     out = next
   }
 
-  return { program: out, inlined }
+  return { program: out, inlined: [...inlined] }
 }
 
 function inlineRound(program: Program, inlinedNames: Set<string>, holder: { names?: Names }): Program {
@@ -249,7 +250,11 @@ function inlineRound(program: Program, inlinedNames: Set<string>, holder: { name
 
   references(statements, false)
 
-  // each variant's fields in order, for an arm that reads them by their own names, and the reusable recursive forms
+  // each variant's fields in order, for an arm that reads them by their own names, and the reusable recursive forms.
+  // Keyed by `<form>/<case>` as well as by the case alone: two forms may name a case alike (node.tree's `type` and
+  // `expression` both have a `variable`), and by the name alone the one declared last answered, so an inlined
+  // `sift t / case variable / back id` over a type bound `name1` for the expression's `name`, which the emitter read
+  // as a rename of `id`, and wrote `a = id` with no `id` declared (check/substitution's port, 2026-10-05)
   const fieldsOf = new Map<string, string[]>()
   const recursive = new Set<string>()
 
@@ -257,6 +262,7 @@ function inlineRound(program: Program, inlinedNames: Set<string>, holder: { name
     if (node.form === 'record-type') {
       for (const v of node.variants) {
         fieldsOf.set(v.name, v.fields.map(f => f.name))
+        fieldsOf.set(`${node.name}/${v.name}`, v.fields.map(f => f.name))
       }
 
       const own = node.variants.some(v => v.fields.some(f => some(f.type, t => (t as Loose).kind === 'named' && t.name === node.name)))
@@ -276,6 +282,15 @@ function inlineRound(program: Program, inlinedNames: Set<string>, holder: { name
       return (type?.kind === 'named' && recursive.has(type.name as string)) || (node.form === 'record' && recursive.has(node.name as string))
     })
 
+  // the fields of an arm of a match over `subject`: the case of the subject's own form, as the emitter reads them,
+  // else the case of that name declared last
+  const armFields = (subject: unknown, label: string): string[] => {
+    const type = (subject as Loose | undefined)?.type as Loose | undefined
+    const owned = type?.kind === 'named' ? fieldsOf.get(`${type.name as string}/${label}`) : undefined
+
+    return owned ?? fieldsOf.get(label) ?? []
+  }
+
   // every name a body binds: its `let`s and the names its arms read their fields by
   const bindsOf = (body: Statement[]): Set<string> => {
     const names = new Set<string>()
@@ -283,7 +298,7 @@ function inlineRound(program: Program, inlinedNames: Set<string>, holder: { name
       if (node.form === 'let') names.add(node.name as string)
       if (node.form === 'match') {
         for (const c of node.cases as { label: string; binds?: string[] }[]) {
-          ;(c.binds && c.binds.length > 0 ? c.binds : (fieldsOf.get(c.label) ?? [])).forEach(b => names.add(b))
+          ;(c.binds && c.binds.length > 0 ? c.binds : armFields(node.subject, c.label)).forEach(b => names.add(b))
         }
       }
     })
@@ -397,7 +412,7 @@ function inlineRound(program: Program, inlinedNames: Set<string>, holder: { name
 
       if (node.form === 'match') {
         for (const c of node.cases as { label: string; binds?: string[] }[]) {
-          const fields = fieldsOf.get(c.label) ?? []
+          const fields = armFields(node.subject, c.label)
           // the names the arm binds: its own, else every field by its name, in order
           const names = c.binds && c.binds.length > 0 && !c.binds.every(b => fields.includes(b)) ? c.binds : fields
           c.binds = names.map(bind)

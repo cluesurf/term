@@ -1412,9 +1412,16 @@ function emitRustPass(
     // the box says what it is, `Rc<dyn Any>`: inside an async block nothing outside names the slot's type, so the
     // coercion the slot used to supply never happened, and the block answered `Rc<R>` (E0271, the boxed work of
     // `spawn` once it was asynchronous, test/compile/spawn-native.ts)
+    // a list or a hash boxed names its own type, since nothing outside the box does: an empty `make list` handed to an
+    // `unknown` was `Rc::new(vec![])`, whose element rustc cannot infer (E0282), and an element still unknown there is
+    // the boxed dynamic, as `rustType` renders it (test/compile/unknown-narrow.ts)
+    const collection = value.type?.kind === 'array' || value.type?.kind === 'map'
+
     return value.form === 'integer'
       ? `(std::rc::Rc::new((${rendered}) as i64) as std::rc::Rc<dyn std::any::Any>)`
-      : `(std::rc::Rc::new(${rendered}) as std::rc::Rc<dyn std::any::Any>)`
+      : collection
+        ? `(std::rc::Rc::<${rustType(value.type)}>::new(${rendered}) as std::rc::Rc<dyn std::any::Any>)`
+        : `(std::rc::Rc::new(${rendered}) as std::rc::Rc<dyn std::any::Any>)`
   }
 
   // the asynchronous tasks, for boxing one read as a value into the pinned-future closure a task slot holds
@@ -4329,6 +4336,30 @@ function emitRustPass(
       }
 
       case 'match': {
+        // an `unknown` narrowed by type: the boxed `Rc<dyn Any>` asked for each type by `downcast_ref`, the value
+        // copied out (a text cloned) under the subject's own name, or the arm's `link`. The box is what a number, a
+        // float, a text and a boolean are built as where an `unknown` is made: `i64`, `f64`, `String`, `bool`
+        if (node.typeArms) {
+          const held = `__at${d}`
+          const shadow = node.subject.form === 'variable' ? node.subject.name : undefined
+          const rust: Record<string, { type: string; out: string }> = {
+            number: { type: 'i64', out: '*__v' },
+            float: { type: 'f64', out: '*__v' },
+            text: { type: 'String', out: '__v.clone()' },
+            boolean: { type: 'bool', out: '*__v' },
+          }
+          const arms = node.cases.map(branch => {
+            const as = rust[branch.label]!
+            const name = branch.binds?.[0] ?? shadow
+            const bind = name ? `${pad(d + 2)}let ${mutOf(name)}${vname(name)} = ${as.out};\n` : ''
+
+            return `if let Some(__v) = ${held}.downcast_ref::<${as.type}>() {\n${bind}${block(branch.body, d + 2)}\n${pad(d + 1)}}`
+          })
+          const rest = node.otherwise ? ` else {\n${block(node.otherwise, d + 2)}\n${pad(d + 1)}}` : ''
+
+          return `{\n${pad(d + 1)}let ${held} = ${expr(node.subject)}.clone();\n${pad(d + 1)}${arms.join(' else ')}${rest}\n${pad(d)}}`
+        }
+
         // a match whose labels are only true/false is a match over a NATIVE bool (booleans lower to `bool` here, not
         // an ADT), so the arms are the literal patterns `true` / `false`, not enum variants. Rust's bool match with
         // both literal arms is exhaustive; an `otherwise` becomes the wildcard arm.

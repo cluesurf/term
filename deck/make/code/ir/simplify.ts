@@ -2411,14 +2411,18 @@ function inlineForwarders(
     countReferencesStatement(s, counts)
   }
 
-  // drop wrapper definitions whose calls were all inlined away (no remaining reference) and that are not public roots
+  // drop wrapper definitions whose calls were all inlined away (no remaining reference) and that are not public roots,
+  // nor what an instance implements a task with
+  const worn = instanceImplementations(program)
+
   return rewritten.filter(
     n =>
       !(
         n.form === 'function' &&
         forwarders.has(n.name) &&
         (counts.get(n.name) ?? 0) === 0 &&
-        !roots?.has(n.name)
+        !roots?.has(n.name) &&
+        !worn.has(n.name)
       ),
   )
 }
@@ -2453,14 +2457,42 @@ function dropUnusedHostGlobals(program: Program): Program {
   )
 }
 
+// the functions a mask instance implements its tasks with: a trait `impl` (or a dictionary) names each one, by the
+// form and the task rather than by the function's own name, so no reference count sees it. Every call to one may be
+// inlined away while the instance still needs it: a mask's default given to a form (check/mask-defaults.ts) is a
+// one-line forwarder, and its Rust `impl` lost the task when the forwarder went (2026-10-05)
+function instanceImplementations(program: Program): Set<string> {
+  const worn = new Set<string>()
+
+  for (const node of program) {
+    if (node.form === 'instance') {
+      for (const method of node.methods) {
+        worn.add(`${node.target}:${method}`)
+      }
+    }
+  }
+
+  const kept = new Set<string>()
+
+  for (const node of program) {
+    if (node.form === 'function' && node.method && worn.has(`${node.method.form}:${node.method.name}`)) {
+      kept.add(node.name)
+    }
+  }
+
+  return kept
+}
+
 // drop specializable functions (forwarders, convenience forms, verbs) that no longer have any reference after inlining
 // and specialization, so a fully-unwrapped verb leaves no dead definition behind. Iterate to a fixpoint: a function
-// used only by another now-dead function becomes dead next round. Entry roots are always kept.
+// used only by another now-dead function becomes dead next round. Entry roots are always kept, and so is a function
+// an instance implements a task with
 function dropDeadFunctions(
   program: Program,
   droppable: Set<string>,
   roots?: Set<string>,
 ): Program {
+  const worn = instanceImplementations(program)
   let current = program
 
   for (;;) {
@@ -2476,7 +2508,8 @@ function dropDeadFunctions(
           n.form === 'function' &&
           droppable.has(n.name) &&
           (counts.get(n.name) ?? 0) === 0 &&
-          !roots?.has(n.name)
+          !roots?.has(n.name) &&
+          !worn.has(n.name)
         ),
     )
 

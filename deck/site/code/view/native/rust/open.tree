@@ -1,0 +1,17 @@
+# Handing an address to the platform for a Rust program (device-layer-0014): xdg-open on Linux, the URL handler on
+# Windows, open on a Mac. A desktop has no share sheet. Conforms to ../open. The runtime is runtime/native-open.rs.
+
+dock load
+  load <global:native-open>, name native-open
+
+task hand-address
+  take address, like text
+  like text
+  send back
+    call native-open/address
+      read address
+
+task present-share
+  take text, like text
+  like text
+  send back, text <unavailable>

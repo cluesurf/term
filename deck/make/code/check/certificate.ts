@@ -183,10 +183,22 @@ function normalize(t: Tracked): Tracked {
 
 const MAX_ROWS = 4_000
 
-// find a refutation of the inputs and return its derivation, or undefined when none is found within the row bound.
-// Undefined never means "satisfiable": the caller has already decided that with refine.ts, and only asks for the
+// what the search answers: whether it found a refutation, and its derivation when it did (an input at -1 when not),
+// the shape the Term port answers (check/certificate.tree)
+export type Found = { found: boolean; step: Step }
+
+// find a refutation of the inputs and return its derivation, or `found: false` when none is found within the row bound.
+// Not found never means "satisfiable": the caller has already decided that with refine.ts, and only asks for the
 // derivation of a refutation it found.
 export function refutation(
+  inputs: { linear: Linear; strict: boolean }[],
+): Found {
+  const step = search(inputs)
+
+  return step ? { found: true, step } : { found: false, step: { by: 'input', at: -1 } }
+}
+
+function search(
   inputs: { linear: Linear; strict: boolean }[],
 ): Step | undefined {
   let rows: Tracked[] = tighten(inputs).map((row, at) =>

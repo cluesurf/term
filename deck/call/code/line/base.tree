@@ -831,6 +831,9 @@ hook hunt
   # Watchdog seconds per fuzz term
   take fuzz-timeout
     like number
+  # Milliseconds one compile may take before it is a finding (default 1000)
+  take budget
+    like number
   # Machine-readable output
   take json
     like boolean

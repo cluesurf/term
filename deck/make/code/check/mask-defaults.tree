@@ -1,0 +1,338 @@
+# A MASK'S DEFAULT TASKS, given to every form that wears the mask and leaves them out. A task with a body inside a
+# `mask` is minted once as a generic task over the wearing form, `<mask>_<task>` (compile/mint-bridge.ts). Here each
+# `wear` (or `suit`) that lacks one gets the method `<form>_<task>`, which calls it, and the instance lists it, so a
+# call on the form, a dictionary on TypeScript and an `impl` natively all find it the way they find a written one.
+#
+# Only an instance in a file this build emits is filled: a separate unit holds the stubs of its whole closure, and a
+# stub's instance was filled in its own unit, whose stub then carries the method. A task the form writes itself wins.
+#
+# Ported from check/mask-defaults.ts (self-hosting, 2026-10-05). The files this build emits come as a list, `scoped`
+# saying whether there is one, where the original took a predicate. The program is handed back, each filled instance
+# listing its new methods and the methods after every statement, where the original wrote both into the program.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find char-count
+  find char-at
+  find contains
+  find substring
+  find last-index-of
+  find ends-with
+
+load ../parser/diagnostic
+  find span
+
+load ../compile/node
+  find expression
+  find function-param
+  find generic-param
+  find mask-task
+  find method-of
+  find statement
+  find type
+
+load ../compile/node-rewrite
+  find copy-statement
+
+task fill-mask-defaults
+  take program, like list, like statement
+  # whether only the instances of some files are filled, and those files
+  take scoped, like boolean
+  take own, like list, like text
+  like list, like statement
+
+  save masks, make hash
+  save forms, make hash
+  save functions, make hash
+  walk program
+    take one
+    sift one
+      case mask
+        save masks/{name}, one
+      case record-type
+        save forms/{name}, one
+      case function
+        save key, unsuffixed(name)
+        save functions/{key}, one
+      miss
+        turn next
+
+  save out, make list
+  save added, make list
+  walk program
+    take one
+    sift one
+      case instance
+        fork test, and(scoped, not(owns(own, span)))
+          hold
+            push(out, one)
+            turn next
+        fork test, not(masks/has(mask))
+          hold
+            push(out, one)
+            turn next
+        save written, make list
+        walk methods
+          take method
+          push(written, method)
+        save declared, masks/get(mask)
+        walk tasks-of(declared)
+          take wanted
+          fork test, or(not(wanted/default), has-file(written, wanted/name))
+            hold
+              turn next
+          save task-name, wanted/name
+          save shared-name, <{mask}_{task-name}>
+          fork test, not(functions/has(shared-name))
+            hold
+              turn next
+          save shared, functions/get(shared-name)
+          save generics, form-params(forms, target)
+          push(added, default-method(shared, target, span, wanted, generics))
+          push(written, task-name)
+        save filled
+          make instance
+            bind mask, mask
+            bind target, target
+            bind methods, written
+            bind span, span
+        push(out, filled)
+      miss
+        push(out, one)
+  walk added
+    take one
+    push(out, one)
+  back out
+
+# a function's name without the suffixes the module scope and overloading give it: `__in<g>_<k>`, then any `__<n>`
+task unsuffixed
+  take name, like text
+  like text
+  mark private
+
+  save rest, name
+  save going, true
+  walk test
+    hook test, going
+    hook hold
+      save cut, last-index-of(rest, <__>)
+      save going, false
+      fork test, is-minimum(cut, 0)
+        hold
+          save digits, substring(rest, add(cut, 2), char-count(rest))
+          fork test, all-digits(digits)
+            hold
+              save rest, substring(rest, 0, cut)
+              save going, true
+  save at, last-index-of(rest, <__in>)
+  fork test, is-minimum(at, 0)
+    hold
+      save tail, substring(rest, add(at, 4), char-count(rest))
+      save bar, last-index-of(tail, <_>)
+      fork test, is-above(bar, 0)
+        hold
+          save before, substring(tail, 0, bar)
+          save after, substring(tail, add(bar, 1), char-count(tail))
+          fork test, and(all-digits(before), all-digits(after))
+            hold
+              save rest, substring(rest, 0, at)
+  back rest
+
+# one digit or more, and nothing else
+task all-digits
+  take value, like text
+  like boolean
+  mark private
+
+  fork test, is-equal(char-count(value), 0)
+    hold
+      back false
+  save count, char-count(value)
+  save at, 0
+  walk test
+    hook test, is-below(at, count)
+    hook hold
+      fork test, not(contains(<0123456789>, char-at(value, at)))
+        hold
+          back false
+      save at, add(at, 1)
+  back true
+
+task has-file
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+# whether a statement's file is one this build emits: one with no file is not
+task owns
+  take own, like list, like text
+  take at, like span
+  like boolean
+  mark private
+
+  sift at/file
+    case some
+      link file
+      back has-file(own, file)
+    miss
+      back false
+
+# a mask's tasks, read in place
+task tasks-of
+  take given, like statement
+  like list, like mask-task
+  mark private
+
+  save out, make list
+  sift given
+    case mask
+      walk tasks
+        take entry
+        push(out, entry)
+    miss
+      back out
+  back out
+
+# the type parameters of the form a wear names, none when the build has no such form
+task form-params
+  take forms, like hash, like text, like statement
+  take target, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  fork test, not(forms/has(target))
+    hold
+      back out
+  save found, forms/get(target)
+  sift found
+    case record-type
+      walk params
+        take param
+        push(out, param)
+    miss
+      back out
+  back out
+
+# the method `<form>_<task>` a wear is given: the shared task's parameters, `self` the form, calling it
+task default-method
+  take shared, like statement
+  take target-name, like text
+  take at, like span
+  take wanted, like mask-task
+  take generics, like list, like text
+  like statement
+  mark private
+
+  save task-name, wanted/name
+  save self-args, make list
+  save generic-params, make list
+  walk generics
+    take generic
+    push(self-args, named-type(generic))
+    save made-param
+      make generic-param
+        bind name, generic
+    push(generic-params, made-param)
+  save self
+    make type/named
+      bind name, target-name
+      bind args, self-args
+  # a copy, so the parameters written here are not the shared task's own
+  save copied, copy-statement(shared)
+  save callee-name, <>
+  save passed, make list
+  sift copied
+    case function
+      save callee-name, name
+      fork test, is-unequal(stub-export, <>)
+        hold
+          save callee-name, stub-export
+      walk params
+        take param
+        take index
+        fork test, is-equal(index, 0)
+          hold
+            save param/type, make(some, self)
+        save param/fallback, make none
+        push(passed, param)
+    miss
+      save callee-name, <>
+  save args, make list
+  walk passed
+    take param
+    push(args, variable-at(param/name, at))
+  save callee, variable-at(callee-name, at)
+  save invoked
+    make expression/call
+      bind callee, callee
+      bind args, args
+      bind span, at
+  save body, make list
+  save returned
+    make statement/return
+      bind value, make(some, invoked)
+      bind span, at
+  push(body, returned)
+  save method-made
+    make method-of
+      bind form, target-name
+      bind name, task-name
+  save made
+    make statement/function
+      bind name, <{target-name}_{task-name}>
+      bind params, passed
+      bind body, body
+      bind generics, generic-params
+      bind method, make(some, method-made)
+      bind span, at
+  save signature, wanted/signature
+  sift signature/result
+    case some
+      link result-type
+      save made
+        make statement/function
+          bind name, <{target-name}_{task-name}>
+          bind params, passed
+          bind body, body
+          bind result, make(some, result-type)
+          bind generics, generic-params
+          bind method, make(some, method-made)
+          bind span, at
+    miss
+      back made
+  back made
+
+task named-type
+  take name, like text
+  like type
+  mark private
+
+  back
+    make type/named
+      bind name, name
+
+task variable-at
+  take name, like text
+  take at, like span
+  like expression
+  mark private
+
+  back
+    make expression/variable
+      bind name, name
+      bind span, at

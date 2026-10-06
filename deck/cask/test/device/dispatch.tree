@@ -38,6 +38,8 @@ load @term/base/console
 load @term/base/file
   find read, name file-read
   find write, name file-write
+  find read-bytes, name file-read-bytes
+  find write-bytes, name file-write-bytes
   find append, name file-append
   find remove, name file-remove
   find copy, name file-copy
@@ -62,6 +64,11 @@ load @term/site/view/network
 load @term/site/view/permission
   find permission-status, name permission-permission-status
   find request-permission, name permission-request-permission
+
+load @term/site/view/secret
+  find save-secret, name secret-save-secret
+  find read-secret, name secret-read-secret
+  find remove-secret, name secret-remove-secret
 
 load @term/site/view/torch
   find torch-state, name torch-torch-state
@@ -110,6 +117,10 @@ load @term/base/uuid
 load @term/base/maybe
   find maybe
   find unwrap
+
+load @term/base/bytes
+  find to-base64, name bytes-to-base64
+  find from-base64, name bytes-from-base64
 
 load @term/base/file/stat
   find path-info
@@ -181,6 +192,18 @@ task is-allowed
       call is-equal
         read command
         text <file_write>
+    hook hold
+      send back, true
+    hook test
+      call is-equal
+        read command
+        text <file_read_bytes>
+    hook hold
+      send back, true
+    hook test
+      call is-equal
+        read command
+        text <file_write_bytes>
     hook hold
       send back, true
     hook test
@@ -259,6 +282,24 @@ task is-allowed
       call is-equal
         read command
         text <permission_request_permission>
+    hook hold
+      send back, true
+    hook test
+      call is-equal
+        read command
+        text <secret_save_secret>
+    hook hold
+      send back, true
+    hook test
+      call is-equal
+        read command
+        text <secret_read_secret>
+    hook hold
+      send back, true
+    hook test
+      call is-equal
+        read command
+        text <secret_remove_secret>
     hook hold
       send back, true
     hook test
@@ -378,7 +419,7 @@ task run-command
     hook test
       call is-equal
         read command
-        text <file_append>
+        text <file_read_bytes>
     hook hold
       save field-12
         call get-field
@@ -387,17 +428,64 @@ task run-command
       save value-14
         call as-text
           read field-12
-      save field-15
+      save answer
+        call file-read-bytes
+          wait true
+          read value-14
+      save json-16
+        call from-text
+          call bytes-to-base64
+            read answer
+      send back, read json-16
+    hook test
+      call is-equal
+        read command
+        text <file_write_bytes>
+    hook hold
+      save field-17
+        call get-field
+          read arguments
+          text <path>
+      save value-19
+        call as-text
+          read field-17
+      save field-20
         call get-field
           read arguments
           text <data>
-      save value-17
+      save value-22
+        call bytes-from-base64
+          call as-text
+            read field-20
+      call file-write-bytes
+        wait true
+        read value-19
+        read value-22
+      send back
+        call make-null
+    hook test
+      call is-equal
+        read command
+        text <file_append>
+    hook hold
+      save field-23
+        call get-field
+          read arguments
+          text <path>
+      save value-25
         call as-text
-          read field-15
+          read field-23
+      save field-26
+        call get-field
+          read arguments
+          text <data>
+      save value-28
+        call as-text
+          read field-26
       call file-append
         wait true
-        read value-14
-        read value-17
+        read value-25
+        read value-28
       send back
         call make-null
     hook test
@@ -405,16 +493,16 @@ task run-command
         read command
         text <file_remove>
     hook hold
-      save field-18
+      save field-29
         call get-field
           read arguments
           text <path>
-      save value-20
+      save value-31
         call as-text
-          read field-18
+          read field-29
       call file-remove
         wait true
-        read value-20
+        read value-31
       send back
         call make-null
     hook test
@@ -422,24 +510,24 @@ task run-command
         read command
         text <file_copy>
     hook hold
-      save field-21
+      save field-32
         call get-field
           read arguments
           text <from>
-      save value-23
+      save value-34
         call as-text
-          read field-21
-      save field-24
+          read field-32
+      save field-35
         call get-field
           read arguments
           text <to>
-      save value-26
+      save value-37
         call as-text
-          read field-24
+          read field-35
       call file-copy
         wait true
-        read value-23
-        read value-26
+        read value-34
+        read value-37
       send back
         call make-null
     hook test
@@ -447,24 +535,24 @@ task run-command
         read command
         text <file_move>
     hook hold
-      save field-27
+      save field-38
         call get-field
           read arguments
           text <from>
-      save value-29
+      save value-40
         call as-text
-          read field-27
-      save field-30
+          read field-38
+      save field-41
         call get-field
           read arguments
           text <to>
-      save value-32
+      save value-43
         call as-text
-          read field-30
+          read field-41
       call file-move
         wait true
-        read value-29
-        read value-32
+        read value-40
+        read value-43
       send back
         call make-null
     hook test
@@ -472,64 +560,64 @@ task run-command
         read command
         text <file_test>
     hook hold
-      save field-33
+      save field-44
         call get-field
           read arguments
           text <path>
-      save value-35
+      save value-46
         call as-text
-          read field-33
+          read field-44
       save answer
         call file-test
           wait true
-          read value-35
-      save json-37
+          read value-46
+      save json-48
         call from-boolean
           read answer
-      send back, read json-37
+      send back, read json-48
     hook test
       call is-equal
         read command
         text <file_exists>
     hook hold
-      save field-38
+      save field-49
         call get-field
           read arguments
           text <path>
-      save value-40
+      save value-51
         call as-text
-          read field-38
+          read field-49
       save answer
         call file-exists
           wait true
-          read value-40
-      save json-42
+          read value-51
+      save json-53
         call from-boolean
           read answer
-      send back, read json-42
+      send back, read json-53
     hook test
       call is-equal
         read command
         text <file_stat>
     hook hold
-      save field-43
+      save field-54
         call get-field
           read arguments
           text <path>
-      save value-45
+      save value-56
         call as-text
-          read field-43
+          read field-54
       save answer
         call file-stat
           wait true
-          read value-45
-      save json-47
+          read value-56
+      save json-58
         call from-text
           call data-to-text
             call melt
               read answer
               like path-info
-      send back, read json-47
+      send back, read json-58
     hook test
       call is-equal
         read command
@@ -540,10 +628,10 @@ task run-command
       save answer
         call device-answer
           read given
-      save json-49
+      save json-60
         call from-text
           read answer
-      send back, read json-49
+      send back, read json-60
     hook test
       call is-equal
         read command
@@ -554,32 +642,32 @@ task run-command
       save answer
         call device-answer
           read given
-      save json-51
+      save json-62
         call from-text
           read answer
-      send back, read json-51
+      send back, read json-62
     hook test
       call is-equal
         read command
         text <clipboard_write_clipboard>
     hook hold
-      save field-52
+      save field-63
         call get-field
           read arguments
           text <text>
-      save value-54
+      save value-65
         call as-text
-          read field-52
+          read field-63
       save given
         call clipboard-write-clipboard
-          read value-54
+          read value-65
       save answer
         call device-answer
           read given
-      save json-56
+      save json-67
         call from-text
           read answer
-      send back, read json-56
+      send back, read json-67
     hook test
       call is-equal
         read command
@@ -590,54 +678,119 @@ task run-command
       save answer
         call device-answer
           read given
-      save json-58
+      save json-69
         call from-text
           read answer
-      send back, read json-58
+      send back, read json-69
     hook test
       call is-equal
         read command
         text <permission_permission_status>
     hook hold
-      save field-59
+      save field-70
         call get-field
           read arguments
           text <name>
-      save value-61
+      save value-72
         call as-text
-          read field-59
+          read field-70
       save given
         call permission-permission-status
-          read value-61
+          read value-72
       save answer
         call device-answer
           read given
-      save json-63
+      save json-74
         call from-text
           read answer
-      send back, read json-63
+      send back, read json-74
     hook test
       call is-equal
         read command
         text <permission_request_permission>
     hook hold
-      save field-64
+      save field-75
         call get-field
           read arguments
           text <name>
-      save value-66
+      save value-77
         call as-text
-          read field-64
+          read field-75
       save given
         call permission-request-permission
-          read value-66
+          read value-77
       save answer
         call device-answer
           read given
-      save json-68
+      save json-79
         call from-text
           read answer
-      send back, read json-68
+      send back, read json-79
+    hook test
+      call is-equal
+        read command
+        text <secret_save_secret>
+    hook hold
+      save field-80
+        call get-field
+          read arguments
+          text <name>
+      save value-82
+        call as-text
+          read field-80
+      save field-83
+        call get-field
+          read arguments
+          text <value>
+      save value-85
+        call as-text
+          read field-83
+      save answer
+        call secret-save-secret
+          read value-82
+          read value-85
+      save json-87
+        call from-text
+          read answer
+      send back, read json-87
+    hook test
+      call is-equal
+        read command
+        text <secret_read_secret>
+    hook hold
+      save field-88
+        call get-field
+          read arguments
+          text <name>
+      save value-90
+        call as-text
+          read field-88
+      save answer
+        call secret-read-secret
+          read value-90
+      save json-92
+        call from-text
+          read answer
+      send back, read json-92
+    hook test
+      call is-equal
+        read command
+        text <secret_remove_secret>
+    hook hold
+      save field-93
+        call get-field
+          read arguments
+          text <name>
+      save value-95
+        call as-text
+          read field-93
+      save answer
+        call secret-remove-secret
+          read value-95
+      save json-97
+        call from-text
+          read answer
+      send back, read json-97
     hook test
       call is-equal
         read command
@@ -648,54 +801,54 @@ task run-command
       save answer
         call device-answer
           read given
-      save json-70
+      save json-99
         call from-text
           read answer
-      send back, read json-70
+      send back, read json-99
     hook test
       call is-equal
         read command
         text <torch_set_torch>
     hook hold
-      save field-71
+      save field-100
         call get-field
           read arguments
           text <state>
-      save value-73
+      save value-102
         call as-text
-          read field-71
+          read field-100
       save given
         call torch-set-torch
-          read value-73
+          read value-102
       save answer
         call device-answer
           read given
-      save json-75
+      save json-104
         call from-text
           read answer
-      send back, read json-75
+      send back, read json-104
     hook test
       call is-equal
         read command
         text <vibration_vibrate>
     hook hold
-      save field-76
+      save field-105
         call get-field
           read arguments
           text <kind>
-      save value-78
+      save value-107
         call as-text
-          read field-76
+          read field-105
       save given
         call vibration-vibrate
-          read value-78
+          read value-107
       save answer
         call device-answer
           read given
-      save json-80
+      save json-109
         call from-text
           read answer
-      send back, read json-80
+      send back, read json-109
     hook test
       call is-equal
         read command
@@ -755,7 +908,7 @@ task run-command
 
 # what the scope lets the page read through `file`
 host scope-file-read
-  text <$bundle/**>
+  text <$bundle/**\n$data/**>
 
 # what the scope lets the page write through `file`
 host scope-file-write
@@ -775,7 +928,8 @@ task out-of-scope
         text <file_read>
     hook hold
       save data
-        text <>
+        call data-path
+          text <Device>
       save bundle
         call bundle-path
       save home
@@ -803,6 +957,68 @@ task out-of-scope
       call is-equal
         read command
         text <file_write>
+    hook hold
+      save data
+        call data-path
+          text <Device>
+      save bundle
+        text <>
+      save home
+        text <>
+      save scoped-0
+        call as-text
+          call get-field
+            read arguments
+            text <path>
+      fork test
+        hook test
+          call is-equal
+            call in-scope
+              read scoped-0
+              read scope-file-write
+              text <path>
+              read data
+              read bundle
+              read home
+            false
+        hook hold
+          send back, read scoped-0
+      send back, text <>
+    hook test
+      call is-equal
+        read command
+        text <file_read_bytes>
+    hook hold
+      save data
+        call data-path
+          text <Device>
+      save bundle
+        call bundle-path
+      save home
+        text <>
+      save scoped-0
+        call as-text
+          call get-field
+            read arguments
+            text <path>
+      fork test
+        hook test
+          call is-equal
+            call in-scope
+              read scoped-0
+              read scope-file-read
+              text <path>
+              read data
+              read bundle
+              read home
+            false
+        hook hold
+          send back, read scoped-0
+      send back, text <>
+    hook test
+      call is-equal
+        read command
+        text <file_write_bytes>
     hook hold
       save data
         call data-path
@@ -996,7 +1212,8 @@ task out-of-scope
         text <file_test>
     hook hold
       save data
-        text <>
+        call data-path
+          text <Device>
       save bundle
         call bundle-path
       save home
@@ -1032,7 +1249,8 @@ task out-of-scope
         text <file_stat>
     hook hold
       save data
-        text <>
+        call data-path
+          text <Device>
       save bundle
         call bundle-path
       save home

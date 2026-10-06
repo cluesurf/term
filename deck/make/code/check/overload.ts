@@ -14,7 +14,7 @@ import { diagnose } from '@term/make/code/parser/diagnostic'
 import type { Diagnostic, Span } from '@term/make/code/parser/diagnostic'
 import type { ImportScope } from '@term/make/code/compile/load'
 import { nestLeanCalls } from '@term/make/code/check/lean-nest'
-import { HTML_TAGS } from '@term/make/code/compile/view-lower'
+import { isHtmlTag } from '@term/make/code/compile/view-lower'
 import { typeKey } from '@term/make/code/compile/type-text'
 
 // same-name, same-arity overloads: the first candidate's (mangled) name -> every candidate's name. Filled here,
@@ -724,7 +724,7 @@ function eachReference(
 
   // a component placed in a view (`view <name>`), unless it is a standard HTML tag, which is always the element
   // (view-lower.ts HTML_TAGS), or a `node <name>` forcing the element. Bound as a value: it has props, not an arity
-  if (record.form === 'element' && typeof record.name === 'string' && !record.forced && !HTML_TAGS.has(record.name)) {
+  if (record.form === 'element' && typeof record.name === 'string' && !record.forced && !isHtmlTag(record.name)) {
     visit(record as unknown as Extract<Expression, { form: 'variable' }>, undefined)
   }
 

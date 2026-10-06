@@ -357,6 +357,11 @@ task check-type-names
                 walk get(form-params, owner)
                   take param
                   push(type-params, param)
+            # a `suit` for a form the build does not have is refused once, at the suit, below: not once per task, at
+            # each task's `self`
+            fork test, not(has-text(known, of/form))
+              hold
+                turn next
           case none
             save owner, -1
 
@@ -418,6 +423,13 @@ task check-type-names
                   save at, task-span
           check-type(out, file, known, param-type, type-params, at, where)
         check-type(out, file, known, written-result, type-params, task-span, where)
+
+      # `suit <form>` wears a mask for a form declared apart from it, so the form must exist somewhere in the build
+      case instance
+        fork test, or(is-unequal(file-of(span), file), has-text(known, target))
+          hold
+            turn next
+        push(out/found, refusal(file, span, <`suit {target}` wears "{mask}" for the form "{target}", which this build does not have>, <declare `form {target}`, or load the file that does>))
 
       case record-type
         fork test, is-unequal(file-of(span), file)

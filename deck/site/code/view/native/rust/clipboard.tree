@@ -1,0 +1,18 @@
+# The clipboard for a Rust program (device-layer-0014): the platform's own clipboard tools (wl-copy and wl-paste,
+# xclip or xsel on Linux, PowerShell on Windows, pbcopy and pbpaste on a Mac). Conforms to ../clipboard. The runtime is
+# runtime/native-clipboard.rs.
+
+dock load
+  load <global:native-clipboard>, name native-clipboard
+
+task read-clipboard-text
+  like text
+  send back
+    call native-clipboard/read
+
+task write-clipboard-text
+  take text, like text
+  like text
+  send back
+    call native-clipboard/write
+      read text

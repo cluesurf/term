@@ -363,7 +363,7 @@ export function proves(
 
   const derivation = refutation(system)
 
-  if (derivation && checkRefutation(system, derivation)) {
+  if (derivation.found && checkRefutation(system, derivation.step)) {
     return true
   }
 

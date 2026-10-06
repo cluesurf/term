@@ -1,0 +1,262 @@
+# TRANSPARENT ALIASES: a form with nothing of its own but a `like`, which IS the type it names. `form assignment / like
+# task / take n, like natural / like flag` is a task from naturals to flags, called as one, and `form set / head a /
+# like task / take x, like a / like flag` is the same for every type `a`, so `like set natural` is a task from naturals.
+#
+# Two readers see through them, and both read them here so they cannot disagree: the checker when it unifies and calls
+# (check/infer.ts `unfoldAlias`) and the kernel when it reads a type (check/elaborate.ts `kernelTypeAt`).
+#
+# Ported from check/alias.ts (self-hosting, 2026-10-05). `through-alias` answers whether the type was an alias beside
+# what it stands for, where the original answered the type or undefined. A part of the alias's type that names no
+# parameter is handed back as it stands, and only what holds a replaced name is built anew.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load ../compile/node
+  find statement
+  find type
+
+form type-alias
+  # the type parameters, `head a`, in order
+  link params, like list, like text
+  link type, like type
+
+# what a use of an alias stands for: `found` false, and the type as written, when it is no alias
+form alias-found
+  link found, like boolean
+  link type, like type
+
+# every transparent alias the program declares, by name
+task transparent-aliases
+  take program, like list, like statement
+  like hash, like text, like type-alias
+
+  save aliases, make hash
+  walk program
+    take one
+    sift one
+      case record-type
+        sift alias
+          case some
+            link aliased
+            fork test, and(is-equal(fields/length, 0), and(is-equal(variants/length, 0), is-equal(indices/length, 0)))
+              hold
+                save aliases/{name}
+                  make type-alias
+                    bind params, params
+                    bind type, aliased
+          miss
+            turn next
+      miss
+        turn next
+  back aliases
+
+# the type a use of an alias stands for, its parameters replaced by the arguments written (`set natural`), or not
+# found when the type is no alias or is applied to the wrong number of arguments
+task through-alias
+  take given, like type
+  take aliases, like hash, like text, like type-alias
+  like alias-found
+
+  save missing
+    make alias-found
+      bind found, false
+      bind type, given
+  sift given
+    case named
+      fork test, is-above(value-args/length, 0)
+        hold
+          back missing
+      fork test, not(aliases/has(name))
+        hold
+          back missing
+      save alias, aliases/get(name)
+      save count, args/length
+      fork test, is-unequal(count, alias/params/length)
+        hold
+          back missing
+      fork test, is-equal(count, 0)
+        hold
+          back
+            make alias-found
+              bind found, true
+              bind type, alias/type
+      # each parameter's argument, copied by a walk so the type handed in is read and never written
+      save written, make list
+      walk args
+        take arg
+        push(written, arg)
+      save out, replaced(alias/type, alias/params, written)
+      back
+        make alias-found
+          bind found, true
+          bind type, out
+    miss
+      back missing
+
+# the argument a parameter stands for, or the type itself: the last parameter of the name wins, as a map built from
+# the parameters in order keeps the last
+task argument-of
+  take one, like type
+  take named, like text
+  take params, like list, like text
+  take written, like list, like type
+  like type
+  mark private
+
+  save out, one
+  walk params
+    take param
+    take at
+    fork test, is-equal(param, named)
+      hold
+        save out, get(written, at)
+  back out
+
+# does a type name a parameter, bare, anywhere in it
+task mentions
+  take one, like type
+  take names, like list, like text
+  like boolean
+  mark private
+
+  sift one
+    case named
+      fork test, is-above(args/length, 0)
+        hold
+          walk args
+            take arg
+            fork test, mentions(arg, names)
+              hold
+                back true
+          back false
+      walk names
+        take param
+        fork test, is-equal(param, name)
+          hold
+            back true
+      back false
+    case array
+      back mentions(element, names)
+    case map
+      back or(mentions(key, names), mentions(value, names))
+    case function
+      walk params
+        take param
+        fork test, mentions(param, names)
+          hold
+            back true
+      back mentions(result, names)
+    miss
+      back false
+
+# a type with each named parameter replaced by its argument, everywhere it stands
+task replaced
+  take one, like type
+  take names, like list, like text
+  take written, like list, like type
+  like type
+  mark private
+
+  fork test, not(mentions(one, names))
+    hold
+      back one
+  sift one
+    case named
+      fork test, is-equal(args/length, 0)
+        hold
+          back argument-of(one, name, names, written)
+      save args-out, make list
+      walk args
+        take arg
+        push(args-out, replaced(arg, names, written))
+      save made
+        make type/named
+          bind name, name
+          bind args, args-out
+      fork test, is-above(value-args/length, 0)
+        hold
+          # copied by a walk, never handed on, so a type left without them keeps none
+          save value-args-out, make list
+          walk value-args
+            take value-arg
+            push(value-args-out, value-arg)
+          save made
+            make type/named
+              bind name, name
+              bind args, args-out
+              bind value-args, value-args-out
+      back made
+    case array
+      save element-out, replaced(element, names, written)
+      back
+        make type/array
+          bind element, element-out
+    case map
+      save key-out, replaced(key, names, written)
+      save value-out, replaced(value, names, written)
+      back
+        make type/map
+          bind key, key-out
+          bind value, value-out
+    case function
+      save params-out, make list
+      walk params
+        take param
+        push(params-out, replaced(param, names, written))
+      back function-like(one, params-out, replaced(result, names, written))
+    miss
+      back one
+
+# a function type of new parameters and result, keeping the effects and parameter names of the one it replaces
+task function-like
+  take one, like type
+  take params-out, like list, like type
+  take result-out, like type
+  like type
+  mark private
+
+  sift one
+    case function
+      save effects-out, make list
+      walk effects
+        take effect
+        push(effects-out, effect)
+      save names-out, make list
+      walk param-names
+        take param-name
+        push(names-out, param-name)
+      save made
+        make type/function
+          bind params, params-out
+          bind result, result-out
+      fork test, and(is-above(effects-out/length, 0), is-above(names-out/length, 0))
+        hold
+          save made
+            make type/function
+              bind params, params-out
+              bind result, result-out
+              bind effects, effects-out
+              bind param-names, names-out
+          back made
+      fork test, is-above(effects-out/length, 0)
+        hold
+          save made
+            make type/function
+              bind params, params-out
+              bind result, result-out
+              bind effects, effects-out
+      fork test, is-above(names-out/length, 0)
+        hold
+          save made
+            make type/function
+              bind params, params-out
+              bind result, result-out
+              bind param-names, names-out
+      back made
+    miss
+      back one

@@ -68,7 +68,7 @@ import {
   nonNegativeDifference,
 } from '@term/make/code/check/ring'
 import { checkFold, checkFoldOrder } from '@term/make/code/check/induct'
-import { unfoldDefinitions } from '@term/make/code/check/unfold'
+import { substitute, unfoldDefinitions } from '@term/make/code/check/unfold'
 import {
   callsImpure,
   EVERYTHING,
@@ -502,7 +502,8 @@ function kernelTypeAt(
       // a TRANSPARENT ALIAS is the type it names: `form assignment / like task / take n, like natural / like flag`
       // types a mark that is then called as the task. Read as an opaque constant it was not callable in the kernel
       // A generic one is read with its arguments: `set natural` (check/alias.ts)
-      const alias = aliasesOpen.has(type.name) ? undefined : throughAlias(type, typeAliases)
+      const through = aliasesOpen.has(type.name) ? undefined : throughAlias(type, typeAliases)
+      const alias = through?.found ? through.type : undefined
 
       if (alias) {
         aliasesOpen.add(type.name)
@@ -2871,6 +2872,11 @@ export function elaborateReport(
         // headed position of a multi-index family (`lt m zero` discriminates on position 1, the `zero`). Found as the
         // first position where the subject index is constructor-headed and some variant's output head there differs.
         let discrimPos = 0
+        // a position where the subject index is constructor-headed and EVERY variant's output index is too, whether or
+        // not one differs. Matching there still teaches the branch something: `below m (succ p)` matched at `next k`,
+        // whose index is `succ k`, has k = p. The discriminator motive below says so, and is well-formed only when
+        // every variant's index there has a head to compute on (math-foundations-0005)
+        let headedPos: { pos: number; head: string } | undefined
 
         if (indexCount > 0) {
           const typeWitnessCount = subjectTypeArgs.length - indexCount
@@ -2889,6 +2895,7 @@ export function elaborateReport(
 
             const head = peeled.name
             const impossibleHere = new Set<string>()
+            let everyHeaded = true
 
             for (const variant of order) {
               const heads = variantIndexHeads.get(
@@ -2896,9 +2903,15 @@ export function elaborateReport(
               )
               const variantHead = heads?.[pos]
 
+              everyHeaded &&= variantHead !== undefined
+
               if (variantHead && variantHead !== head) {
                 impossibleHere.add(variant)
               }
+            }
+
+            if (everyHeaded && !headedPos) {
+              headedPos = { pos, head }
             }
 
             if (impossibleHere.size > 0) {
@@ -2919,6 +2932,15 @@ export function elaborateReport(
         const useInversion = [...impossible].some(
           v => !head.cases.find(c => c.label === v),
         )
+
+        // and with no branch impossible, a constructor-headed position still refines every branch, which is reachable
+        // and checked at the result with that index's constructor arguments set to its own (`p` to `k` above)
+        const refineAtHead = !useInversion && impossible.size === 0 && headedPos !== undefined
+
+        if (refineAtHead) {
+          discrimPos = headedPos!.pos
+          subjectIndexHead = headedPos!.head
+        }
 
         const branches: Term[] = []
 
@@ -3018,7 +3040,7 @@ export function elaborateReport(
 
           let motive: Term | null = lambdas(indexCount + 1, motiveBody)
 
-          if (useInversion) {
+          if (useInversion || refineAtHead) {
             // discriminate on the index TYPE at the pinned position (`discrimPos`): single-index uses position 0; a
             // multi-index family like `lt m zero` discriminates on the `zero` at position 1. The motive sends the
             // subject's head there to the result type and every other constructor to `Unit`, so impossible branches
@@ -3058,6 +3080,17 @@ export function elaborateReport(
                   const leafDepth =
                     context.level + motiveBinders + fieldCount
                   const refine = new Map<number, number>()
+
+                  // each OTHER index that is a variable goes to the motive's binder for it, as in the motive above, so
+                  // `below m (succ p)` matched at `next k` is checked with m set to k as well as p
+                  for (let t = 0; t < indexCount; t++) {
+                    const a = indexArguments[t]
+
+                    if (t !== discrimPos && a && a.tag === 'var') {
+                      const level = context.level - a.index - 1
+                      refine.set(leafDepth - level - 1, leafDepth - (context.level + t) - 1)
+                    }
+                  }
 
                   for (
                     let w = 0;
@@ -3118,6 +3151,30 @@ export function elaborateReport(
             ...indexArguments,
             subject,
           )
+        }
+
+        // A DEPENDENT MATCH on a plain form (math-foundations-0005). When the subject is a variable the result type
+        // mentions (`sift n` returning `accessible n`), each branch has the result at its own constructor (`accessible
+        // zero`, `accessible (succ prior)`), which the constant-motive eliminator cannot say. The large eliminator can:
+        // its motive is a function of the subject, `\x. accessible x`, and a result in Type0 sits in its Type1 by
+        // cumulativity. The indexed path above does the same for a family's indices. Sound: matchType__T is the form's
+        // dependent eliminator, declared only for a form whose fields carry no type, and the kernel checks each branch
+        // at the motive applied to its constructor
+        if (subject.tag === 'var' && context.globals.has(`matchType__${enumName}`)) {
+          const subjectLevel = context.level - subject.index - 1
+          const motiveDepth = context.level + 1
+          const written = quote(motiveDepth, resultValue)
+          const motiveBody = substituteVars(written, new Map([[motiveDepth - subjectLevel - 1, 0]]))
+
+          if (showTerm(motiveBody) !== showTerm(written)) {
+            return apply(
+              constant(`matchType__${enumName}`),
+              ...subjectTypeArgs,
+              { tag: 'lam', body: motiveBody },
+              ...branches,
+              subject,
+            )
+          }
         }
 
         const resultTerm = quote(context.level, resultValue)
@@ -3571,8 +3628,8 @@ export function elaborateReport(
       }
 
       // a statement that calls something impure may have written through any record or changed what a call
-      // answers, so every fact that reads a member or a call goes
-      if (callsImpure(statement, factsPure, factsFunctions, factsLocal)) {
+      // answers, so every fact that reads a member or a call goes. A rule's own task-typed marks are pure functions
+      if (callsImpure(statement, factsPure, factsFunctions, withoutRuleMarks(factsLocal))) {
         assumptions = assumptions.filter(
           ([left, right]) => !readsState(left) && !readsState(right),
         )
@@ -3587,7 +3644,7 @@ export function elaborateReport(
     pairs: [Expression, Expression][],
   ): [Expression, Expression][] {
     const changes =
-      callsImpure(body, factsPure, factsFunctions, factsLocal) ||
+      callsImpure(body, factsPure, factsFunctions, withoutRuleMarks(factsLocal)) ||
       containsMemberWrite(body)
 
     return changes
@@ -3655,7 +3712,9 @@ export function elaborateReport(
       !factsVolatile.has(name) &&
       !readNames(value).has(name) &&
       !readsAny(value, factsVolatile) &&
-      !callsImpure(value, factsPure, factsFunctions, factsLocal)
+      // a rule's own task-typed marks are functions in the mathematical sense, as at the hold (`checkHold`), so a
+      // witness `find x, s(z)` built from one is a definition the goal can use
+      !callsImpure(value, factsPure, factsFunctions, withoutRuleMarks(factsLocal))
     )
   }
 
@@ -4570,7 +4629,15 @@ export function elaborateReport(
   // Sound: every value of the form is one of its cases, so the choices cover every instance of the variables, and two
   // spellings of one value tried apart only add choices. A choice is set aside only when a hypothesis computes to two
   // different cases, never when one stays undecided. Bounded by TRUTH_TABLE_CHOICES
-  function truthTable(context: Context, left: Value, right: Value, hypotheses: [Value, Value][]): boolean {
+  function truthTable(
+    context: Context,
+    left: Value,
+    right: Value,
+    hypotheses: [Value, Value][],
+    // how many of the hypotheses were WRITTEN (the rest are instances of a universal one), so a counterexample names
+    // only the atoms a reader wrote down
+    stated = hypotheses.length,
+  ): boolean {
     const level = context.level
     const unfolded = new Set<string>()
     const terms = [left, right, ...hypotheses.flat()].map(value => normalTerm(level, value, unfolded))
@@ -4643,10 +4710,13 @@ export function elaborateReport(
       }
     }
 
+    terms.slice(0, 2 + 2 * stated).forEach(collect)
+
+    const written = new Set(atoms.keys())
+
     terms.forEach(collect)
 
     const list = [...atoms.entries()].map(([printed, atom]) => [printed, atom.cases] as const)
-    const choices = list.reduce((count, [, cases]) => count * cases.length, 1)
     const spelled = (c: Term): string => showTerm(normalTerm(level, evaluate(context.env, c), unfolded))
 
     // NO ATOMS: the two sides are what they are. Two different cases, with nothing assumed, is a false law
@@ -4667,10 +4737,6 @@ export function elaborateReport(
       return false
     }
 
-    if (choices > TRUTH_TABLE_CHOICES) {
-      return false
-    }
-
     const replace = (term: Term, choice: Map<string, Term>): Term => {
       const chosen = choice.get(showTerm(term))
 
@@ -4684,20 +4750,13 @@ export function elaborateReport(
     // each case as a normal form spells it, the goal's own and each atom's
     const caseNames = new Set([...goalCases, ...list.flatMap(([, cases]) => cases)].map(spelled))
     const [goalLeft, goalRight, ...given] = terms
+    const choice = new Map<string, Term>()
+    const value = (term: Term): Value => evaluate(context.env, replace(term, choice))
 
-    for (let n = 0; n < choices; n++) {
-      const choice = new Map<string, Term>()
-      let rest = n
-
-      for (const [printed, cases] of list) {
-        choice.set(printed, cases[rest % cases.length]!)
-        rest = Math.floor(rest / cases.length)
-      }
-
-      const value = (term: Term): Value => evaluate(context.env, replace(term, choice))
-
-      // a hypothesis is FALSE under this choice only when its two sides compute to two different cases
-      const refuted = given.some((term, i) => {
+    // a hypothesis is FALSE under the choice so far only when its two sides compute to two different cases. A case
+    // is computed for good: choosing more atoms cannot change it, so a refutation here holds for every way on
+    const refuted = (): boolean =>
+      given.some((term, i) => {
         if (i % 2 === 1) {
           return false
         }
@@ -4709,7 +4768,26 @@ export function elaborateReport(
         return x !== y && caseNames.has(x) && caseNames.has(y)
       })
 
-      if (!refuted && !areConvertible(level, value(goalLeft!), value(goalRight!))) {
+    // THE SEARCH. The atoms are chosen one at a time, the written ones first. A branch is closed as soon as some
+    // hypothesis is refuted, or the goal's sides already agree, because both stay so whatever is chosen after. A
+    // branch that reaches the last atom open is one where the goal fails. This decides exactly what trying every
+    // choice decides, and visits far fewer: a universal hypothesis's instances refute most branches a few atoms in.
+    // Bounded by TRUTH_TABLE_CHOICES branches visited, past which the goal is left undecided (not refuted)
+    let visited = 0
+    let exhausted = false
+
+    const holds = (at: number): boolean => {
+      if (++visited > TRUTH_TABLE_CHOICES) {
+        exhausted = true
+
+        return false
+      }
+
+      if (refuted() || areConvertible(level, value(goalLeft!), value(goalRight!))) {
+        return true
+      }
+
+      if (at === list.length) {
         // a COUNTEREXAMPLE, said only when it is one: every hypothesis shown to hold, and the sides two different cases
         const sides = [goalLeft!, goalRight!].map(t => showTerm(normalTerm(level, value(t), unfolded)))
         const held = given.every((term, i) => i % 2 === 1 || areConvertible(level, value(term), value(given[i + 1]!)))
@@ -4721,6 +4799,7 @@ export function elaborateReport(
             at: foldCase,
             given: given.length > 0,
             text: list
+              .filter(([printed]) => written.has(printed))
               .map(([printed]) => `${surfaceOf(atoms.get(printed)!.term, names)} is ${surfaceOf(choice.get(printed)!, names)}`)
               .join(', '),
           }
@@ -4728,9 +4807,23 @@ export function elaborateReport(
 
         return false
       }
+
+      const [printed, cases] = list[at]!
+
+      for (const one of cases) {
+        choice.set(printed, one)
+
+        if (!holds(at + 1)) {
+          return false
+        }
+      }
+
+      choice.delete(printed)
+
+      return true
     }
 
-    return true
+    return holds(0) && !exhausted
   }
 
   // AN INDUCTION CASE THAT IS ARITHMETIC. The kernel's integers are postulates (`add`, `sub`, `mul`, `neg`, literals
@@ -4985,6 +5078,39 @@ export function elaborateReport(
       }
     }
 
+    // AND ON THE NORMAL FORMS (math-foundations-0004). `quote` reads a call back as written, so the case side stays
+    // `finish(x, join(through(n, rest), q))`, which a generalized hypothesis `finish(x, join(rest, q)) == ...` meets
+    // only once it has computed to `finish(n, join(rest, q))`. normalTerm runs every call that can run and keeps the
+    // stuck ones folded, the case and the hypotheses alike, so the hypothesis fires at x := n. What is left may differ
+    // only in how truth values combine (`both` grouped two ways), which the truth table decides. Sound: a normal form
+    // is convertible to what it came from, and the rewriting and the table are the ones used above
+    const normalForms = (): boolean => {
+      // a generic call's erased type argument is a metavariable until the term is checked, and two elaborations of
+      // one call carry two of them. Inferring each side solves them, so the two spell the call alike
+      for (const side of [caseLeft, caseRight, ...generalIH.flatMap(rule => [evaluate(env, rule.lhs), evaluate(env, rule.rhs)])]) {
+        try {
+          if (context) {
+            infer(context, quote(level, side))
+          }
+        } catch {
+          // a side the kernel cannot type keeps its metavariables, and simply will not match
+        }
+      }
+
+      const opaque = new Set<string>()
+      const normal = (term: Term): Term => normalTerm(level, evaluate(env, term), opaque)
+      const normalRules = rewriteRules.map(rule =>
+        rule.binderCount === 0 ? { ...rule, lhs: normal(rule.lhs), rhs: normal(rule.rhs) } : rule,
+      )
+      const left = evaluate(env, rewriteWithLemmas(normalTerm(level, caseLeft, opaque), normalRules, 200))
+      const right = evaluate(env, rewriteWithLemmas(normalTerm(level, caseRight, opaque), normalRules, 200))
+
+      return (
+        dischargeModulo(level, left, right, hypotheses) ||
+        (context !== undefined && truthTable(context, left, right, hypotheses))
+      )
+    }
+
     return (
       dischargeModulo(
         level,
@@ -4993,6 +5119,7 @@ export function elaborateReport(
         hypotheses,
       ) ||
       (context !== undefined && truthTable(context, caseLeft, caseRight, hypotheses)) ||
+      (generalIH.length > 0 && normalForms()) ||
       ringCase(
         level,
         caseLeft,
@@ -5058,6 +5185,22 @@ export function elaborateReport(
       // below, where `typeHead` widens back to `Term`
       const typeHeadName = typeHead.name
 
+      // the subject's own type arguments (`path a` gives `a`), read back at a level. A constructor rebuilt in a case
+      // takes them as its erased witnesses, so the case value has the subject's type and the kernel can type what is
+      // built from it (math-foundations-0004). A closed placeholder there computed the same, and left every generic
+      // call over the case untypable, its type arguments unsolved
+      const witnessesAt = (level: number): Term[] => {
+        const spine: Term[] = []
+        let head = quote(level, typeValue)
+
+        while (head.tag === 'app') {
+          spine.unshift(head.arg)
+          head = head.fun
+        }
+
+        return spine.slice(0, typeFormerArity.get(typeHeadName) ?? 0)
+      }
+
       const variants = variantNames.get(typeHead.name)
 
       if (!variants || variants.length === 0) {
@@ -5093,12 +5236,11 @@ export function elaborateReport(
             env,
             apply(
               constant(ctorKey(recipe.enumName, recipe.variant)),
-              // a polymorphic datatype's constructor takes its erased type-parameter witnesses first; they are ignored
-              // by the constructor's reduction, so any closed type serves here as the induction rebuilds the value.
-              ...Array.from(
-                { length: typeFormerArity.get(recipe.enumName) ?? 0 },
-                () => TYPE0,
-              ),
+              // a polymorphic datatype's constructor takes its erased type-parameter witnesses first: the subject's
+              // own when it is the subject's type, else a closed placeholder, which the reduction ignores
+              ...(recipe.enumName === typeHeadName
+                ? witnessesAt(ctx.level)
+                : Array.from({ length: typeFormerArity.get(recipe.enumName) ?? 0 }, () => TYPE0)),
               ...recipe.fieldLevels.map(fl =>
                 variable(ctx.level - fl - 1),
               ),
@@ -5294,11 +5436,19 @@ export function elaborateReport(
         // each field's TYPE as a value in the frame where the preceding fields are bound; a recursive field's type
         // carries its own index (`rest : vecnat count`), read back below to refine the index in that field's hypothesis.
         const fieldTypeValues: Value[] = []
+        // a field's type is written in its constructor's frame: the fields before it, then the type's parameters
+        // (`next : a` in `path a`). So it is read with the subject's own type arguments in the parameter places. Read in
+        // the theorem's context instead, `a` was whatever name sat there (`q`), and nothing built from the field typed
+        const witnessValues = witnessesAt(context.level)
+          .map(term => evaluate(context.env, term))
+          .reverse()
+        const fieldValues: Value[] = []
 
         for (const field of fields) {
-          const fieldTypeValue = evaluate(inner.env, field.type)
+          const fieldTypeValue = evaluate([...fieldValues, ...witnessValues, ...context.env], field.type)
           fieldTypeValues.push(fieldTypeValue)
           inner = bind(inner, 'many', fieldTypeValue, field.name)
+          fieldValues.unshift(neutralVar(inner.level - 1))
         }
 
         // the constructor applied to its fresh field variables (field j sits at de Bruijn index k-1-j in `inner`)
@@ -5306,11 +5456,8 @@ export function elaborateReport(
           inner.env,
           apply(
             constant(ctorKey(typeHead.name, variant)),
-            // a polymorphic constructor takes its erased type-parameter witnesses first (ignored by its reduction)
-            ...Array.from(
-              { length: typeFormerArity.get(typeHead.name) ?? 0 },
-              () => TYPE0,
-            ),
+            // a polymorphic constructor takes its erased type-parameter witnesses first: the subject's own
+            ...witnessesAt(inner.level),
             ...fields.map((_, j) => variable(k - 1 - j)),
           ),
         )
@@ -5831,6 +5978,158 @@ export function elaborateReport(
     return undefined
   }
 
+  // whether a term is a number, or cannot be typed (which is read as a number, the reading that leaves it to the
+  // arithmetic provers as before)
+  function numericTerm(context: Context, term: Term): boolean {
+    try {
+      return areConvertible(context.level, infer(context, term).type, evaluate(context.env, number))
+    } catch {
+      return true
+    }
+  }
+
+  // THE UNIVERSAL HYPOTHESES OF A THEOREM, at the goal's own terms (math-foundations-0004). `have symmetric / mark u,
+  // like a / mark v, like a / is-equal r(u, v), r(v, u)` holds for every u and v, so it holds at every pair of the
+  // terms of type `a` that the goal and the path's guards name. Each such instance is an equation true on this path,
+  // and the truth table, the rewriting by `have` equations and the ring all use it as they use a guard. Sound: a term
+  // is a candidate for a binder only when the kernel types it at the binder's declared type, and an instance only when
+  // its two sides type alike. A universal over numbers is the hold checker's (check/holds.ts universalGoal), so it is
+  // left out here, and one whose instances would pass UNIVERSAL_INSTANCES is skipped whole
+  function universalInstances(
+    statement: Extract<Statement, { form: 'hold' }>,
+    scope: Scope,
+    context: Context,
+    assumptions: [Expression, Expression][],
+  ): [Expression, Expression][] {
+    const theorem = enclosingTheorem(program, statement)
+    const universals = theorem?.universals ?? []
+
+    if (universals.length === 0) {
+      return []
+    }
+
+    // every term the goal and the guards name, a variable, a call or a field read, never a callee
+    const named: Expression[] = []
+    const visit = (e: Expression): void => {
+      switch (e.form) {
+        case 'variable':
+        case 'member':
+          named.push(e)
+          break
+        case 'call':
+          named.push(e)
+          e.args.forEach(visit)
+          break
+        case 'binary':
+          visit(e.left)
+          visit(e.right)
+          break
+        case 'unary':
+          visit(e.operand)
+          break
+      }
+    }
+
+    visit(statement.expr)
+    assumptions.forEach(([l, r]) => {
+      visit(l)
+      visit(r)
+    })
+
+    // and the witnesses (`find x, s(t(z))`), whose parts the goal reaches through the witness's name
+    for (const step of theorem!.body) {
+      if (step.form === 'let' && !step.mutable) {
+        visit(step.init)
+      }
+    }
+
+    // each candidate once, by its kernel term, with its type
+    const candidates: { expression: Expression; type: Value }[] = []
+    const seen = new Set<string>()
+
+    for (const expression of named) {
+      try {
+        const term = expr(expression, scope, context)
+
+        if (!term || seen.has(showTerm(term))) {
+          continue
+        }
+
+        seen.add(showTerm(term))
+        candidates.push({ expression, type: infer(context, term).type })
+      } catch {
+        // a term the kernel cannot type is no candidate
+      }
+    }
+
+    const out: [Expression, Expression][] = []
+
+    for (const universal of universals) {
+      const sides = universal.expr.form === 'binary' && universal.expr.op === '==' ? universal.expr : undefined
+
+      if (!sides) {
+        continue
+      }
+
+      // the candidates of each binder: those the kernel types at its declared type
+      const perBinder = universal.binders.map((_, at) => {
+        const declared = universal.types?.[at]?.type
+        const binderType = declared
+          ? kernelTypeAt(declared, context.level, enclosingGenerics, namedTypes, scope, resolveIndexCtor)
+          : null
+
+        if (!binderType) {
+          return undefined
+        }
+
+        const typeValue = evaluate(context.env, binderType)
+
+        if (areConvertible(context.level, typeValue, evaluate(context.env, number))) {
+          return undefined
+        }
+
+        return candidates.filter(c => areConvertible(context.level, c.type, typeValue)).map(c => c.expression)
+      })
+
+      if (perBinder.some(list => list === undefined)) {
+        continue
+      }
+
+      const count = perBinder.reduce((total, list) => total * list!.length, 1)
+
+      if (count === 0 || count > UNIVERSAL_INSTANCES) {
+        continue
+      }
+
+      for (let n = 0; n < count; n++) {
+        const binding = new Map<string, Expression>()
+        let rest = n
+
+        universal.binders.forEach((binder, at) => {
+          const list = perBinder[at]!
+          binding.set(binder, list[rest % list.length]!)
+          rest = Math.floor(rest / list.length)
+        })
+
+        const left = substitute(sides.left, binding)
+        const right = substitute(sides.right, binding)
+
+        try {
+          const lt = expr(left, scope, context)
+          const rt = expr(right, scope, context)
+
+          if (lt && rt && areConvertible(context.level, infer(context, lt).type, infer(context, rt).type)) {
+            out.push([left, right])
+          }
+        } catch {
+          // an instance the kernel cannot type is left out
+        }
+      }
+    }
+
+    return out
+  }
+
   // `fold n` on a number in a theorem about functions: one of its marks is a function (directly or through an alias),
   // or its goal applies a task that takes one (`total(identity, n)`, a sum of a task passed by name)
   function numberFoldOverFunctions(program: Program, hold: Extract<Statement, { form: 'hold' }>): boolean {
@@ -5840,13 +6139,70 @@ export function elaborateReport(
     return (
       counter !== undefined &&
       (counter.refine === 'natural' || counter.type?.kind === 'number') &&
-      (fn!.params.some(p => isFunctionType(p.type)) || appliesHigherOrder(program, hold.expr))
+      (fn!.params.some(p => isFunctionType(p.type)) ||
+        appliesHigherOrder(program, hold.expr) ||
+        appliesRecursion(program, hold.expr))
     )
+  }
+
+  // does the expression apply a task whose body calls itself (`remainder(a, b)`): the hold checker reads such a
+  // task's own equations at the arguments the goal writes (check/holds.ts `recurrenceFacts`), which is what a numeric
+  // induction over it needs, and the kernel's own numeric induction does not (math-foundations-0007)
+  function appliesRecursion(program: Program, expr: Expression): boolean {
+    // a task whose body holds a call of its own name, found by walking every node of it
+    const callsItself = (s: Extract<Statement, { form: 'function' }>): boolean => {
+      const stack: unknown[] = [s.body]
+
+      while (stack.length > 0) {
+        const node = stack.pop()
+
+        if (node === null || typeof node !== 'object') {
+          continue
+        }
+
+        if (Array.isArray(node)) {
+          stack.push(...node)
+          continue
+        }
+
+        const record = node as Record<string, unknown>
+        const callee = record.callee as { form?: string; name?: string } | undefined
+
+        if (record.form === 'call' && callee?.form === 'variable' && callee.name === s.name) {
+          return true
+        }
+
+        stack.push(...Object.values(record))
+      }
+
+      return false
+    }
+
+    const recursive = new Set(
+      program.flatMap(s => (s.form === 'function' && !s.theorem && callsItself(s) ? [s.name] : [])),
+    )
+    let appliesOne = false
+
+    const visit = (e: Expression): void => {
+      if (e.form === 'call') {
+        appliesOne ||= e.callee.form === 'variable' && recursive.has(e.callee.name)
+        e.args.forEach(visit)
+      } else if (e.form === 'binary') {
+        visit(e.left)
+        visit(e.right)
+      } else if (e.form === 'unary') {
+        visit(e.operand)
+      }
+    }
+
+    visit(expr)
+
+    return appliesOne
   }
 
   // a task type, written as one or named through an alias
   function isFunctionType(type: Type | undefined): boolean {
-    return type?.kind === 'function' || (type !== undefined && throughAlias(type, typeAliases)?.kind === 'function')
+    return type?.kind === 'function' || (type !== undefined && throughAlias(type, typeAliases).type.kind === 'function')
   }
 
   // does the expression apply a task that takes a function (`total(f, n)`)
@@ -6035,6 +6391,9 @@ export function elaborateReport(
     assumptions: [Expression, Expression][] = [],
   ): void {
     const goal = statement.expr
+    // the theorem's universal hypotheses, at the terms this goal and its guards name, are equations true on this path
+    const instances = universalInstances(statement, scope, context, assumptions)
+    assumptions = [...assumptions, ...instances]
 
     // a goal that calls something two calls may disagree on is not the kernel's to decide: every task is a constant
     // in the signature, so `roll() == roll()` would be convertible by construction. Leave it to the linear prover,
@@ -6457,16 +6816,18 @@ export function elaborateReport(
     // linear prover is authoritative -- this is what stops the kernel from wrongly discharging a value-false
     // arithmetic claim like `add 3 3 == add 4 4` through its opaque view of number literals. A goal WITH an explicit
     // proof (`calm`/`cite`/...) is still validated by the kernel, so a bogus tactic is caught.
-    if (!hasProof && isLinearGoal(goal)) {
-      return
-    }
-
     const [left, right] = elaborateGoalSides(
       goal.left,
       goal.right,
       scope,
       context,
     )
+
+    // linear in SHAPE is not enough: `x == y` over an arbitrary type `a` is no arithmetic, and the linear prover cannot
+    // see the equations (a left inverse at x and y) that prove it. Only a goal over numbers is that prover's
+    if (!hasProof && isLinearGoal(goal) && (!left || numericTerm(context, left))) {
+      return
+    }
 
     if (!left || !right) {
       return
@@ -6477,17 +6838,21 @@ export function elaborateReport(
     // that break it, which is what a reader needs to fix it
     if (!hasProof && goal.op === '==') {
       try {
-        const given = assumptions.flatMap(([l, r]): [Value, Value][] => {
-          const lt = expr(l, scope, context)
-          const rt = expr(r, scope, context)
+        const values = (pairs: [Expression, Expression][]): [Value, Value][] =>
+          pairs.flatMap(([l, r]): [Value, Value][] => {
+            const lt = expr(l, scope, context)
+            const rt = expr(r, scope, context)
 
-          return lt && rt ? [[evaluate(context.env, lt), evaluate(context.env, rt)]] : []
-        })
+            return lt && rt ? [[evaluate(context.env, lt), evaluate(context.env, rt)]] : []
+          })
+        // the written guards first, then the universal instances (which a counterexample does not name)
+        const stated = values(assumptions.slice(0, assumptions.length - instances.length))
+        const given = [...stated, ...values(instances)]
 
         foldCase = undefined
         tableCounterexample = undefined
 
-        if (truthTable(context, evaluate(context.env, left), evaluate(context.env, right), given)) {
+        if (truthTable(context, evaluate(context.env, left), evaluate(context.env, right), given, stated.length)) {
           discharged.push(statement.span)
           recordLemmaRule(statement.name, goal, scope, context)
 
@@ -6504,6 +6869,21 @@ export function elaborateReport(
         }
 
         const found = tableCounterexample as { text: string; sides?: [string, string] } | undefined
+
+        // under a universal hypothesis the table saw it only at the goal's own terms, so its choice is a case the
+        // hypotheses do not rule out there, not a counterexample to them everywhere
+        if (found && !found.sides && (enclosingTheorem(program, statement)?.universals?.length ?? 0) > 0) {
+          diagnostics.push(
+            diagnose('invalid-proof', {
+              file,
+              span: statement.span,
+              message: `this rule does not follow from its hypotheses at the terms it names: they all hold where ${found.text}, and the goal does not`,
+              hint: 'a universal hypothesis is used only at the terms the goal and its guards name. State the term it is needed at, or change the statement',
+            }),
+          )
+
+          return
+        }
 
         if (found) {
           diagnostics.push(
@@ -6741,6 +7121,11 @@ export function elaborateReport(
   }
 
   const carried = carriedBodies(program)
+  // the claims stated here: a task of one of these names is its PROOF, and a kernel type error in it is a proof that
+  // does not prove its claim (`unverified-proof`, note/term/law-and-proof.md), not an ordinary mismatch
+  const claimNames = new Set(
+    program.flatMap(statement => (statement.form === 'function' && statement.claim ? [statement.name] : [])),
+  )
   // the stubs first, so every body of this unit, and every proof inside one, can reduce through them
   const stubsFirst = [
     ...program.filter(statement => statement.form === 'function' && statement.stub),
@@ -6894,11 +7279,18 @@ export function elaborateReport(
       })
 
       if (error instanceof TypeError) {
+        const proof = !statement.claim && claimNames.has(statement.name)
+
         diagnostics.push(
-          diagnose('type-mismatch', {
+          diagnose(proof ? 'unverified-proof' : 'type-mismatch', {
             file,
             span: statement.span,
-            message: `kernel: ${error.message}`,
+            message: proof
+              ? `the proof of \`${statement.name}\` does not check against its claim, so it proves nothing: ${error.message}`
+              : `kernel: ${error.message}`,
+            ...(proof
+              ? { hint: 'the type the claim states is printed over the type the proof builds. Change the proof, or the claim' }
+              : {}),
           }),
         )
       }
@@ -6930,8 +7322,13 @@ export function elaborateReport(
   return { diagnostics, verified, proven, declined, discharged }
 }
 
-// the most choices the truth table tries (`truthTable`): twelve flag atoms. Past it the goal is left to the other provers
-const TRUTH_TABLE_CHOICES = 4096
+// the most branches the truth table's search visits (`truthTable`): every choice of thirteen flag atoms with nothing
+// pruned, and far more once hypotheses prune. Past it the goal is left to the other provers, undecided
+const TRUTH_TABLE_CHOICES = 16384
+
+// the most instances of one universal hypothesis the kernel adds to a goal's path (`universalInstances`), the bound the
+// hold checker keeps for its own (check/holds.ts `instances`)
+const UNIVERSAL_INSTANCES = 512
 
 // the span of an expression the kernel builds for the ring from its own terms (`ringCase`), which no source wrote
 const NO_SPAN = { start: { line: 0, column: 0, offset: 0 }, end: { line: 0, column: 0, offset: 0 } }

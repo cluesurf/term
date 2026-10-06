@@ -1,6 +1,6 @@
 
 # The blog HTTP API: the full backend loop. Routes are matched by the uniform trie router; each handler queries Postgres
-# through the abstract `post` repository (which uses only `@term/site/code/base/db`, never the driver) and returns
+# through the abstract `post` repository (which uses only `@term/site/code/base/postgres`, never the driver) and returns
 # JSON. The transport is hono on node. This is userland: it imports the clean framework paths, no native modules.
 
 load ../back/post
@@ -10,7 +10,7 @@ load ../back/post
   find list-posts
   find get-post
 
-load @term/site/base/db
+load @term/site/base/postgres
   find run
 
 load @term/site/http/http

@@ -2974,6 +2974,24 @@ export function emitKotlin(
             )}) {\n${block(node.body, d + 1)}\n${pad(d)}}`
 
       case 'match': {
+        // an `unknown` narrowed by type: a `when` with an `is` pattern per arm over the subject held in a `val`, which
+        // Kotlin's smart cast then types inside the arm, bound under the subject's own name, or the arm's `link`.
+        // `run` gives the held value a scope of its own, and is inline, so a `return` in an arm returns from the task
+        if (node.typeArms) {
+          const held = `__at${d}`
+          const kotlinType: Record<string, string> = { number: 'Long', float: 'Double', text: 'String', boolean: 'Boolean' }
+          const shadow = node.subject.form === 'variable' ? node.subject.name : undefined
+          const arms = node.cases.map(b => {
+            const name = b.binds?.[0] ?? shadow
+            const bind = name ? `${pad(d + 3)}val ${camel(name)} = ${held}\n` : ''
+
+            return `${pad(d + 2)}is ${kotlinType[b.label]} -> {\n${bind}${block(b.body, d + 3)}\n${pad(d + 2)}}`
+          })
+          arms.push(`${pad(d + 2)}else -> {${node.otherwise ? `\n${block(node.otherwise, d + 3)}\n${pad(d + 2)}` : ''}}`)
+
+          return `run {\n${pad(d + 1)}val ${held}: Any? = ${expr(node.subject)}\n${pad(d + 1)}when (${held}) {\n${arms.join('\n')}\n${pad(d + 1)}}\n${pad(d)}}`
+        }
+
         // a match whose labels are only true/false is a match over a NATIVE Boolean (booleans lower to `Boolean`
         // here, not a sealed class), so the arms are the literal conditions `true` / `false`, not `is` patterns.
         // a fork case over a caught TermException: `when` on `form`, the record recovered from `base` by its form

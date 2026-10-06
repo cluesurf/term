@@ -19,7 +19,7 @@
 
 import type { Program, Statement } from '@term/make/code/compile/node'
 import type { ImportScope } from '@term/make/code/compile/load'
-import { HTML_TAGS } from '@term/make/code/compile/view-lower'
+import { isHtmlTag } from '@term/make/code/compile/view-lower'
 
 export type Namespace = 'value' | 'type'
 
@@ -131,7 +131,7 @@ function references(node: unknown, visit: (namespace: Namespace, name: string) =
     visit('value', record.name)
   }
 
-  if (record.form === 'element' && typeof record.name === 'string' && !HTML_TAGS.has(record.name) && !record.forced) {
+  if (record.form === 'element' && typeof record.name === 'string' && !isHtmlTag(record.name) && !record.forced) {
     visit('value', record.name)
   }
 

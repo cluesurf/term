@@ -171,8 +171,9 @@ function isRecursive(
   return false
 }
 
-// substitute each parameter by its argument, simultaneously (an argument is never re-substituted)
-function substitute(
+// substitute each parameter by its argument, simultaneously (an argument is never re-substituted). Also how the kernel
+// instantiates a universal hypothesis at a goal's terms (check/elaborate.ts universalInstances)
+export function substitute(
   e: Expression,
   binding: Map<string, Expression>,
 ): Expression {

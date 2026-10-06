@@ -11,8 +11,9 @@ import UIKit
 #endif
 
 enum nativeClipboard {
-    // the text on the clipboard now, or empty text when it holds none
-    static func read() -> String {
+    // the text on the clipboard now, or empty text when it holds none. Async in shape only, as the host tree awaits it
+    // (Android's read waits for focus): a synchronous one drew swiftc's "no async operations occur within await"
+    static func read() async -> String {
         #if canImport(AppKit)
         return NSPasteboard.general.string(forType: .string) ?? ""
         #else

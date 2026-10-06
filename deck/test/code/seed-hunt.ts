@@ -26,7 +26,7 @@ import { fileURLToPath } from 'node:url'
 import { parseTolerant } from '@term/make/code/parser/tree'
 import type { Resolver } from '@term/make/code/compile/load'
 import { auditCorpus, EMIT_BACKENDS, type CorpusAudit } from './compiler-oracles'
-import type { FuzzReport } from './compiler-fuzz'
+import { signatureOf, type FuzzReport } from './compiler-fuzz'
 
 /** How to start one fuzz campaign as a child: the campaign's own args are appended. */
 export type FuzzEntry = { command: string; args: string[] }
@@ -44,10 +44,13 @@ export type HuntResult = {
     // extra seed programs taken from the hunted files
     corpusAdded: number
   }
-  // one per distinct signature, with the smallest program that raised it, so a crash can be reproduced without
-  // fuzzing again
-  crashes: { total: number; found: { signature: string; input: string }[] }
+  // one per distinct signature, with the smallest program that raises it, so a crash can be reproduced without
+  // fuzzing again: SHRUNK by delta debugging in the campaign (compiler-fuzz.ts `shrinkCrash`), and `from` the
+  // mutated program the fuzzer hit, when the shrink got smaller
+  crashes: { total: number; found: { signature: string; input: string; from?: string }[] }
   hangs: { input: string }[]
+  // fuzzed inputs whose compile took longer than the budget, the slowest first
+  slow: { input: string; ms: number }[]
   // what did not run, in plain words. Non-empty fails the hunt.
   unrun: string[]
   findings: number
@@ -136,6 +139,8 @@ export function huntSeedCompiler(input: {
   const runs = input.runs ?? 3000
   const seeds = input.seeds ?? 4
   const fuzzTimeoutSec = input.fuzzTimeoutSec ?? 90
+  // one compile's budget, held on the corpus and on every fuzzed input
+  const perfBudgetMs = input.perfBudgetMs ?? 1000
   const unrun: string[] = []
 
   // ---- phase 1: corpus oracles ----
@@ -148,7 +153,7 @@ export function huntSeedCompiler(input: {
     readFile: readText,
     resolve,
     parseTolerant,
-    perfBudgetMs: input.perfBudgetMs ?? 1000,
+    perfBudgetMs,
   })
 
   if (corpus.files === 0) {
@@ -167,8 +172,10 @@ export function huntSeedCompiler(input: {
 
   // ---- phase 2: hang-safe fuzzing (child-process watchdog) ----
   const entry = input.fuzzEntry ?? sourceFuzzEntry()
-  const found = new Map<string, string>()
+  // per signature, the smallest program that raises it, and the mutated program it was shrunk from
+  const found = new Map<string, { input: string; from?: string }>()
   const hangs: { input: string }[] = []
+  const slow: { input: string; ms: number }[] = []
   let totalCrashes = 0
   let seedsRun = 0
   let fuzzRuns = 0
@@ -189,7 +196,7 @@ export function huntSeedCompiler(input: {
 
       const child = spawnSync(
         entry.command,
-        [...entry.args, reportOut, probeFile, String(runs), String(seed), corpusFile],
+        [...entry.args, reportOut, probeFile, String(runs), String(seed), corpusFile, String(perfBudgetMs)],
         { timeout: fuzzTimeoutSec * 1000, encoding: 'utf8', cwd: root },
       )
       const hung = child.error !== undefined && (child.error as NodeJS.ErrnoException).code === 'ETIMEDOUT'
@@ -205,6 +212,16 @@ export function huntSeedCompiler(input: {
             `fuzz seed ${seed}: the ${fuzzTimeoutSec}s watchdog fired before the campaign wrote its first input`,
           )
         }
+
+        // a campaign that finished fuzzing and hung while it SHRANK has written what it found first: keep it, unshrunk
+        const written = existsSync(reportOut) ? readReport(reportOut) : undefined
+
+        if (written) {
+          seedsRun++
+          fuzzRuns += written.runs
+          collect(written)
+        }
+
         continue
       }
 
@@ -237,15 +254,7 @@ export function huntSeedCompiler(input: {
 
       seedsRun++
       fuzzRuns += report.runs
-      totalCrashes += report.crashes.length
-      for (const c of report.crashes) {
-        const signature = c.error.split('\n')[0]!.slice(0, 100)
-        const smallest = found.get(signature)
-
-        if (smallest === undefined || c.input.length < smallest.length) {
-          found.set(signature, c.input)
-        }
-      }
+      collect(report)
     }
 
     if (seedsRun > 0 && fuzzRuns === 0) {
@@ -253,16 +262,51 @@ export function huntSeedCompiler(input: {
     }
   }
 
-  const findings = corpus.violations.length + found.size + hangs.length
+  const findings = corpus.violations.length + found.size + hangs.length + slow.length
   return {
     corpus,
     backends: EMIT_BACKENDS.map(b => b.name),
     fuzz: { seedsRun, seedsAsked: seeds, runs: fuzzRuns, corpusAdded: extraSeeds.length },
-    crashes: { total: totalCrashes, found: [...found].map(([signature, input]) => ({ signature, input })) },
+    crashes: { total: totalCrashes, found: [...found].map(([signature, one]) => ({ signature, ...one })) },
     hangs,
+    slow: slow.sort((a, b) => b.ms - a.ms),
     unrun,
     findings,
     ok: findings === 0 && unrun.length === 0,
+  }
+
+  // one campaign's report into the totals: its crashes by signature, the shrunk program where it has one and the
+  // smallest it hit where it does not, and its slow inputs
+  function collect(report: FuzzReport): void {
+    totalCrashes += report.crashes.length
+
+    for (const c of report.crashes) {
+      const signature = signatureOf(c.error)
+      const known = found.get(signature)
+
+      if (known === undefined || c.input.length < known.input.length) {
+        found.set(signature, { input: c.input })
+      }
+    }
+
+    for (const one of report.shrunk ?? []) {
+      const known = found.get(one.signature)
+
+      if (known === undefined || one.input.length < known.input.length) {
+        found.set(one.signature, one.input === one.from ? { input: one.input } : { input: one.input, from: one.from })
+      }
+    }
+
+    slow.push(...(report.slow ?? []))
+  }
+}
+
+// a campaign's report, or nothing when it is not one
+function readReport(file: string): FuzzReport | undefined {
+  try {
+    return JSON.parse(readFileSync(file, 'utf8')) as FuzzReport
+  } catch {
+    return undefined
   }
 }
 
@@ -303,12 +347,19 @@ export function renderHunt(result: HuntResult): string {
   if (result.crashes.found.length > 0) {
     out.push(`  ${result.crashes.total} crashes, ${result.crashes.found.length} distinct signature(s):`)
     for (const crash of result.crashes.found) {
-      out.push(`    - ${crash.signature}`)
+      out.push(`    - ${crash.signature}${crash.from !== undefined ? `  (shrunk from ${crash.from.split('\n').length} lines to ${crash.input.split('\n').length})` : ''}`)
       out.push(crash.input.split('\n').map(l => '      | ' + l).join('\n'))
     }
   }
-  if (result.hangs.length === 0 && result.crashes.found.length === 0) {
-    out.push(f.runs > 0 ? '  no crashes, no hangs' : '  NOTHING FUZZED')
+  if (result.slow.length > 0) {
+    out.push(`  ${result.slow.length} SLOW INPUT(S), over the compile budget:`)
+    for (const one of result.slow.slice(0, 5)) {
+      out.push(`    - ${one.ms}ms`)
+      out.push(one.input.split('\n').map(l => '      | ' + l).join('\n'))
+    }
+  }
+  if (result.hangs.length === 0 && result.crashes.found.length === 0 && result.slow.length === 0) {
+    out.push(f.runs > 0 ? '  no crashes, no hangs, none over the compile budget' : '  NOTHING FUZZED')
   }
 
   if (result.unrun.length > 0) {

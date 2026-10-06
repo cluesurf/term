@@ -33,6 +33,10 @@ load @term/base/list
   find list
   find push
 
+load @term/base/bytes
+  find to-base64, name bytes-to-base64
+  find from-base64, name bytes-from-base64
+
 load @term/base/file/stat
   find path-info
 
@@ -119,13 +123,11 @@ task write-file
     text <file_write>
     read arguments
 
-task append-file
+task read-file-bytes
   mark async
   take path
     like text
-  take data
-    like text
-  like void
+  like bytes
   save arguments
     call make-object
   save json-4
@@ -136,14 +138,73 @@ task append-file
       read arguments
       text <path>
       read json-4
-  save json-5
+  save reply
+    call bridge/invoke
+      wait true
+      text <file_read_bytes>
+      read arguments
+  save value-5
+    call bytes-from-base64
+      call as-text
+        read reply
+  send back, read value-5
+
+task write-file-bytes
+  mark async
+  take path
+    like text
+  take data
+    like bytes
+  like void
+  save arguments
+    call make-object
+  save json-6
+    call from-text
+      read path
+  save arguments
+    call set-field
+      read arguments
+      text <path>
+      read json-6
+  save json-7
+    call from-text
+      call bytes-to-base64
+        read data
+  save arguments
+    call set-field
+      read arguments
+      text <data>
+      read json-7
+  call bridge/invoke-void
+    wait true
+    text <file_write_bytes>
+    read arguments
+
+task append-file
+  mark async
+  take path
+    like text
+  take data
+    like text
+  like void
+  save arguments
+    call make-object
+  save json-8
+    call from-text
+      read path
+  save arguments
+    call set-field
+      read arguments
+      text <path>
+      read json-8
+  save json-9
     call from-text
       read data
   save arguments
     call set-field
       read arguments
       text <data>
-      read json-5
+      read json-9
   call bridge/invoke-void
     wait true
     text <file_append>
@@ -156,14 +217,14 @@ task remove-file
   like void
   save arguments
     call make-object
-  save json-6
+  save json-10
     call from-text
       read path
   save arguments
     call set-field
       read arguments
       text <path>
-      read json-6
+      read json-10
   call bridge/invoke-void
     wait true
     text <file_remove>
@@ -178,22 +239,22 @@ task copy-file
   like void
   save arguments
     call make-object
-  save json-7
+  save json-11
     call from-text
       read from
   save arguments
     call set-field
       read arguments
       text <from>
-      read json-7
-  save json-8
+      read json-11
+  save json-12
     call from-text
       read to
   save arguments
     call set-field
       read arguments
       text <to>
-      read json-8
+      read json-12
   call bridge/invoke-void
     wait true
     text <file_copy>
@@ -208,22 +269,22 @@ task move-file
   like void
   save arguments
     call make-object
-  save json-9
+  save json-13
     call from-text
       read from
   save arguments
     call set-field
       read arguments
       text <from>
-      read json-9
-  save json-10
+      read json-13
+  save json-14
     call from-text
       read to
   save arguments
     call set-field
       read arguments
       text <to>
-      read json-10
+      read json-14
   call bridge/invoke-void
     wait true
     text <file_move>
@@ -236,14 +297,14 @@ task file-exists
   like boolean
   save arguments
     call make-object
-  save json-11
+  save json-15
     call from-text
       read path
   save arguments
     call set-field
       read arguments
       text <path>
-      read json-11
+      read json-15
   send back
     call bridge/invoke-boolean
       wait true
@@ -257,14 +318,14 @@ task test
   like boolean
   save arguments
     call make-object
-  save json-12
+  save json-16
     call from-text
       read path
   save arguments
     call set-field
       read arguments
       text <path>
-      read json-12
+      read json-16
   send back
     call bridge/invoke-boolean
       wait true
@@ -278,38 +339,23 @@ task stat-file
   like path-info
   save arguments
     call make-object
-  save json-13
+  save json-17
     call from-text
       read path
   save arguments
     call set-field
       read arguments
       text <path>
-      read json-13
+      read json-17
   save reply
     call bridge/invoke
       wait true
       text <file_stat>
       read arguments
-  save value-14
+  save value-18
     call fill
       call data-from-text
         call as-text
           read reply
       like path-info
-  send back, read value-14
-
-# not carried: result is bytes
-task read-file-bytes
-  mark async
-  take path, like unknown
-  like unknown
-  halt <file/read-bytes does not cross the cask bridge yet: result is bytes>
-
-# not carried: parameter data is bytes
-task write-file-bytes
-  mark async
-  take path, like unknown
-  take data, like unknown
-  like unknown
-  halt <file/write-bytes does not cross the cask bridge yet: parameter data is bytes>
+  send back, read value-18

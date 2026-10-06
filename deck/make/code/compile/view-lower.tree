@@ -1,0 +1,848 @@
+# View lowering: rewrite every `view` (component) Statement into a plain `function` Statement whose body builds the DOM
+# through ordinary calls to the reactive-render runtime (`make-element` / `make-text` / `make-dynamic-text` /
+# `write-attribute` / `attach-event` / `append` / `show` / `render-each`, named in ./render-names.tree) plus component
+# calls. After this pass the program contains NO `view` statements, so every backend emits components for free as
+# ordinary functions: the composition logic lives here, once, instead of being reimplemented in each code generator.
+#
+# The view's attribute / prop / read values are already expressions (the mill produced them), so lowering only
+# assembles `let` / `expression` / `if` statements and `call` / `closure` expressions AROUND those existing nodes.
+#
+# Components compose two ways, both handled here:
+#   - a `view <name>` whose name is another component -> a call to that component's function, passing props by name
+#     and the children as a `() => view` thunk.
+#   - a `slot` inside a component -> the outlet that builds the caller's children thunk under its parent.
+#
+# Ported from compile/view-lower.ts (self-hosting, 2026-10-05). The statements a step builds are a `mark shared` list,
+# the counter naming each fresh node a `mark shared` record, and a handler written as a closure is a copy of it with
+# its new body, so the view it was read from is left as it was.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+
+load ../parser/diagnostic
+  find span
+
+load ./node
+  find closure-param
+  find expression
+  find function-param
+  find statement
+  find statement-branch
+  find type
+  find view-node
+
+load ./node-rewrite
+  find copy-expression
+
+load ./render-names
+  find render-names
+
+# the name a guarded event handler binds what it caught to, before handing it to the render runtime's `keep-raise`
+host handler-raise, <raised-in-handler>
+
+# Standard HTML/SVG tags that are ALWAYS rendered as elements, never treated as component calls even if a same-named
+# view exists. Kebab view names have no case to distinguish a component from a tag (unlike React's <Button> vs
+# <button>), and the component registry is program-wide, so without this a module defining `view span` would hijack
+# every `view span` everywhere. This is the curated set of structural / text / form primitives rendered raw inside
+# components. It deliberately EXCLUDES tags that make good component names and are rarely written raw (dialog, select,
+# progress, menu, meter, output, details, summary), so those remain available as components.
+host html-tag-words, <a abbr address area article aside audio b base bdi bdo blockquote body br button canvas caption cite code col colgroup data datalist dd del dfn div dl dt em embed fieldset figcaption figure footer form h1 h2 h3 h4 h5 h6 head header hgroup hr html i iframe img input ins kbd label legend li link main map mark meta nav object ol optgroup option p param picture pre q rp rt ruby s samp script section small source span strong style sub sup table tbody td template textarea tfoot th thead time title tr track u ul var video wbr svg path circle rect line polyline polygon g defs use symbol ellipse tspan>
+
+task is-html-tag
+  take name, like text
+  like boolean
+
+  walk split(html-tag-words, < >)
+    take one
+    fork test, is-equal(one, name)
+      hold
+        back true
+  back false
+
+# a component: its input params (after the leading `host`), their types, and whether its body has a `slot`
+form component
+  link name, like text
+  link params, like list, like text
+  link types, like list, like maybe, like type
+  link slotted, like boolean
+
+# what a view's lowering carries: the components, the view's own params, its span, and the count naming fresh nodes
+form lowering
+  mark shared
+  link components, like list, like component
+  link params, like list, like closure-param
+  link span, like span
+  link counter, like number
+
+# the statements one step builds, added to as it goes
+form built
+  mark shared
+  link items, like list, like statement
+
+task fresh
+  take state, like lowering
+  like text
+  mark private
+
+  save count, state/counter
+  save state/counter, add(count, 1)
+  back <view{count}>
+
+task component-of
+  take state, like lowering
+  take name, like text
+  like maybe, like component
+  mark private
+
+  save found, make none
+  walk state/components
+    take one
+    fork test, is-equal(one/name, name)
+      hold
+        save found, make(some, one)
+  back found
+
+task is-component
+  take state, like lowering
+  take name, like text
+  like boolean
+  mark private
+
+  sift component-of(state, name)
+    case some
+      back true
+    case none
+      back false
+
+task has-slot
+  take nodes, like list, like view-node
+  like boolean
+  mark private
+
+  walk nodes
+    take one
+    sift one
+      case slot
+        back true
+      case element
+        fork test, has-slot(children)
+          hold
+            back true
+      case fork
+        walk branches
+          take branch
+          fork test, has-slot(branch/body)
+            hold
+              back true
+        # copied by a walk, never handed on, so a fork left without one keeps none
+        save rest, make list
+        walk otherwise
+          take other
+          push(rest, other)
+        fork test, has-slot(rest)
+          hold
+            back true
+      case walk
+        fork test, has-slot(body)
+          hold
+            back true
+      miss
+        turn next
+  back false
+
+# the value a placement passes for a prop it leaves out: the prop type's own empty (``, 0, false), so a component's
+# optional props type on every backend, where a bare unit is only accepted by TypeScript. Anything else, or an untyped
+# prop, gets the unit
+task empty-for
+  take given, like maybe, like type
+  take at, like span
+  like expression
+  mark private
+
+  save named, <>
+  sift given
+    case some
+      link one
+      save named, one/kind
+      sift one
+        case named
+          save named, name
+        miss
+          save nothing, 0
+    case none
+      save nothing, 0
+  fork test, or(is-equal(named, <text>), is-equal(named, <string>))
+    hold
+      back
+        make expression/string
+          bind value, <>
+          bind span, at
+  fork test, or(is-equal(named, <number>), or(is-equal(named, <integer>), or(is-equal(named, <natural>), is-equal(named, <size>))))
+    hold
+      back
+        make expression/integer
+          bind value, 0
+          bind span, at
+  fork test, or(is-equal(named, <decimal>), is-equal(named, <float>))
+    hold
+      back
+        make expression/float
+          bind value, 0
+          bind span, at
+  fork test, is-equal(named, <boolean>)
+    hold
+      back
+        make expression/boolean
+          bind value, false
+          bind span, at
+  back
+    make expression/unit
+      bind span, at
+
+task variable-of
+  take name, like text
+  take at, like span
+  like expression
+  mark private
+
+  back
+    make expression/variable
+      bind name, name
+      bind span, at
+
+task text-of
+  take value, like text
+  take at, like span
+  like expression
+  mark private
+
+  back
+    make expression/string
+      bind value, value
+      bind span, at
+
+task call-of
+  take name, like text
+  take args, like list, like expression
+  take at, like span
+  like expression
+  mark private
+
+  back
+    make expression/call
+      bind callee, variable-of(name, at)
+      bind args, args
+      bind span, at
+
+task statement-of
+  take value, like expression
+  take at, like span
+  like statement
+  mark private
+
+  back
+    make statement/expression
+      bind expr, value
+      bind span, at
+
+task let-of
+  take name, like text
+  take init, like expression
+  take at, like span
+  like statement
+  mark private
+
+  back
+    make statement/let
+      bind name, name
+      bind init, init
+      bind mutable, false
+      bind span, at
+
+task return-of
+  take value, like expression
+  take at, like span
+  like statement
+  mark private
+
+  back
+    make statement/return
+      bind value, make(some, value)
+      bind span, at
+
+# `() => value`
+task getter
+  take value, like expression
+  take at, like span
+  like expression
+  mark private
+
+  save body, make list
+  push(body, return-of(value, at))
+  save no-params, make list
+  back
+    make expression/closure
+      bind params, no-params
+      bind body, body
+      bind span, at
+
+task three
+  take first, like expression
+  take second, like expression
+  take third, like expression
+  like list, like expression
+  mark private
+
+  save out, make list
+  push(out, first)
+  push(out, second)
+  push(out, third)
+  back out
+
+task four
+  take first, like expression
+  take second, like expression
+  take third, like expression
+  take fourth, like expression
+  like list, like expression
+  mark private
+
+  save out, three(first, second, third)
+  push(out, fourth)
+  back out
+
+task one-arg
+  take first, like expression
+  like list, like expression
+  mark private
+
+  save out, make list
+  push(out, first)
+  back out
+
+# an attribute set on an element. A literal value is set once (`attribute`); a dynamic value (a signal/prop read, call,
+# etc.) is kept in sync via an effect (`bind-attribute` with a getter), so `data-state` / `aria-*` / a signal-bound
+# `class` update reactively: the Solid model for attributes.
+task attribute-statement
+  take ref, like text
+  take name, like text
+  # not `value`: a text literal's own field of that name would hide it inside its arm
+  take given, like expression
+  take at, like span
+  like statement
+  mark private
+
+  save names, render-names()
+  sift given
+    case string
+      back statement-of(call-of(names/attribute, three(variable-of(ref, at), text-of(name, at), given), at), at)
+    miss
+      back statement-of(call-of(names/bind-attribute, three(variable-of(ref, at), text-of(name, at), getter(given, at)), at), at)
+
+# build a body list as a `(params) => view` thunk returning exactly one node. A single static node is returned
+# directly (no wrapper) so list/conditional reconciliation sees one node per item; anything else (0 or 2+ nodes, or a
+# component, which mounts into a container) goes under a `seed-fragment`. Used for slots, component children, and
+# fork / walk branch bodies.
+task fragment-thunk
+  take params, like list, like closure-param
+  take body, like list, like view-node
+  take state, like lowering
+  like expression
+  mark private
+
+  save at, state/span
+  save inner
+    make built
+      bind items, make list
+  save single, false
+  fork test, is-equal(body/length, 1)
+    hold
+      save only, get(body, 0)
+      sift only
+        case text
+          save single, true
+        case read
+          save single, true
+        case element
+          save single, or(not(is-component(state, name)), forced)
+        miss
+          save single, false
+  fork test, single
+    hold
+      save ref, build-node(get(body, 0), inner, state)
+      push(inner/items, return-of(variable-of(ref, at), at))
+    miss
+      save frag, fresh(state)
+      save names, render-names()
+      push(inner/items, let-of(frag, call-of(names/element, one-arg(text-of(<seed-fragment>, at)), at), at))
+      walk body
+        take child
+        attach(child, frag, inner, state)
+      push(inner/items, return-of(variable-of(frag, at), at))
+  back
+    make expression/closure
+      bind params, params
+      bind body, inner/items
+      bind span, at
+
+task thunk
+  take body, like list, like view-node
+  take state, like lowering
+  like expression
+  mark private
+
+  save no-params, make list
+  back fragment-thunk(no-params, body, state)
+
+task view-type
+  like type
+  mark private
+
+  back
+    make type/named
+      bind name, <view>
+
+# a component instance call: name(parent, ...propsByParamOrder, childrenThunk?)
+task component-call
+  take node, like view-node
+  take parent, like text
+  take state, like lowering
+  like expression
+  mark private
+
+  save at, state/span
+  sift node
+    case element
+      save args, one-arg(variable-of(parent, at))
+      sift component-of(state, name)
+        case some
+          link comp
+          walk comp/params
+            take param-name
+            take index
+            save given, make none
+            walk props
+              take prop
+              sift given
+                case none
+                  fork test, is-equal(prop/name, param-name)
+                    hold
+                      save found, prop/value
+                      save given, make(some, found)
+                case some
+                  save nothing, 0
+            sift given
+              case some
+                link value
+                push(args, value)
+              case none
+                push(args, empty-for(get(comp/types, index), at))
+          # the children build STRAIGHT INTO the parent the outlet hands them (`(into) => { ... }`), as a route's page
+          # builds into its layout's: never under a `seed-fragment` wrapper. The parameter is the view the outlet hands
+          # over, typed
+          fork test, comp/slotted
+            hold
+              fork test, is-above(children/length, 0)
+                hold
+                  save into, fresh(state)
+                  save inner
+                    make built
+                      bind items, make list
+                  walk children
+                    take child
+                    attach(child, into, inner, state)
+                  push(args, children-closure(into, inner/items, at))
+                miss
+                  # no children: a closure that builds nothing, never a unit, so the parameter keeps its one type
+                  save none-yet, make list
+                  push(args, children-closure(fresh(state), none-yet, at))
+          back call-of(name, args, at)
+        case none
+          back call-of(name, args, at)
+    miss
+      back variable-of(parent, at)
+
+task children-closure
+  take into, like text
+  take body, like list, like statement
+  take at, like span
+  like expression
+  mark private
+
+  save kind, view-type()
+  save param
+    make closure-param
+      bind name, into
+      bind type, make(some, kind)
+  save params, make list
+  push(params, param)
+  back
+    make expression/closure
+      bind params, params
+      bind body, body
+      bind span, at
+
+# build a node, appending its statements to `out`, returning the variable name of the built node (for nodes that
+# produce a single element/text).
+task build-node
+  take node, like view-node
+  take out, like built
+  take state, like lowering
+  like text
+  mark private
+
+  save at, state/span
+  save names, render-names()
+  # not `ref`: an element's own field of that name would hide it inside the element's arm
+  save made-ref, <>
+  sift node
+    case element
+      save made-ref, ref
+    miss
+      save nothing, 0
+  fork test, is-equal(made-ref, <>)
+    hold
+      save made-ref, fresh(state)
+
+  sift node
+    case text
+      push(out/items, let-of(made-ref, call-of(names/text, one-arg(text-of(value, at)), at), at))
+    case read
+      push(out/items, let-of(made-ref, call-of(names/dynamic, one-arg(getter(read(value), at)), at), at))
+    case element
+      fork test, and(is-component(state, name), not(forced))
+        hold
+          # a component where a single returnable node is required: mount it into a container we can return.
+          push(out/items, let-of(made-ref, call-of(names/element, one-arg(text-of(<seed-part>, at)), at), at))
+          push(out/items, statement-of(component-call(node, made-ref, state), at))
+          back made-ref
+      push(out/items, let-of(made-ref, call-of(names/element, one-arg(text-of(name, at)), at), at))
+      walk attributes
+        take attribute
+        # a handler is a function: a single expression is wrapped in one, and a body of several statements, which the
+        # mill already made a closure, is passed as it is. And every handler's body is GUARDED (swiftui-target-0003): a
+        # raise that escapes it goes to the render runtime's `keep-raise`, which keeps its note where a view can show
+        # it, and the app goes on
+        fork test, attribute/event
+          hold
+            push(out/items, statement-of(call-of(names/event, three(variable-of(made-ref, at), text-of(attribute/name, at), handler-of(attribute/value, state)), at), at))
+          miss
+            push(out/items, attribute-statement(made-ref, attribute/name, attribute/value, at))
+      # `bind <name>, <value>` on an HTML element is an attribute (on a component it is a prop, handled by
+      # component-call)
+      walk props
+        take prop
+        push(out/items, attribute-statement(made-ref, prop/name, prop/value, at))
+      walk children
+        take child
+        attach(child, made-ref, out, state)
+    miss
+      push(out/items, let-of(made-ref, call-of(names/text, one-arg(text-of(<>, at)), at), at))
+  back made-ref
+
+# an event handler, its body guarded
+task handler-of
+  take value, like expression
+  take state, like lowering
+  like expression
+  mark private
+
+  save at, state/span
+  save names, render-names()
+  # not `body`: a closure's own field of that name would hide it inside the closure's arm
+  save handled, make list
+  save no-params, make list
+  sift value
+    case closure
+      save handled, body
+    miss
+      push(handled, statement-of(value, at))
+  save raised
+    make expression/member
+      bind target, variable-of(handler-raise, at)
+      bind name, <note>
+      bind span, at
+  save kept, make list
+  push(kept, statement-of(call-of(names/raise, one-arg(raised), at), at))
+  save clause
+    make catch-clause
+      bind name, handler-raise
+      bind body, kept
+      bind span, at
+  save guarded
+    make statement/guard
+      bind body, handled
+      bind catch, make(some, clause)
+      bind span, at
+  save guarded-body, make list
+  push(guarded-body, guarded)
+  sift value
+    case closure
+      save copy, copy-expression(value)
+      sift copy
+        case closure
+          save copy/body, guarded-body
+          back copy
+        miss
+          back copy
+    miss
+      back
+        make expression/closure
+          bind params, no-params
+          bind body, guarded-body
+          bind span, at
+
+# the element type of a walk over a prop declared `like list, like item`, given to the item. Any other iterable leaves
+# the item to inference
+task element-of
+  take iterable, like expression
+  take state, like lowering
+  like maybe, like type
+  mark private
+
+  sift iterable
+    case variable
+      walk state/params
+        take param
+        fork test, is-equal(param/name, name)
+          hold
+            sift param/type
+              case some
+                link given
+                sift given
+                  case array
+                    sift element
+                      case variable
+                        back make none
+                      miss
+                        back make(some, element)
+                  case named
+                    fork test, and(is-equal(name, <list>), is-equal(args/length, 1))
+                      hold
+                        save first, get(args, 0)
+                        back make(some, first)
+                    back make none
+                  miss
+                    back make none
+              case none
+                back make none
+      back make none
+    miss
+      back make none
+
+# attach a node under `parent`: build + append, or lower control flow / slots / component calls (which mount
+# themselves).
+task attach
+  take node, like view-node
+  take parent, like text
+  take out, like built
+  take state, like lowering
+  like void
+  mark private
+
+  save at, state/span
+  save names, render-names()
+  sift node
+    case fork
+      # show(parent, () => cond, () => then, () => else)
+      save condition
+        make expression/boolean
+          bind value, false
+          bind span, at
+      save then-body, make list
+      fork test, is-above(branches/length, 0)
+        hold
+          save first, get(branches, 0)
+          save condition, first/cond
+          save then-body, first/body
+      save else-body, make list
+      walk otherwise
+        take other
+        push(else-body, other)
+      push(out/items, statement-of(call-of(names/show, four(variable-of(parent, at), getter(condition, at), thunk(then-body, state), thunk(else-body, state)), at), at))
+    case walk
+      # render-each(parent, () => iterable, (item) => view)
+      save item-param
+        make closure-param
+          bind name, item
+          bind type, element-of(iterable, state)
+      save item-params, make list
+      push(item-params, item-param)
+      save item-body, fragment-thunk(item-params, body, state)
+      push(out/items, statement-of(call-of(names/each, three(variable-of(parent, at), getter(iterable, at), item-body), at), at))
+    case slot
+      # the slot outlet renders the caller's children into `parent`: children(parent)
+      push(out/items, statement-of(call-of(<children>, one-arg(variable-of(parent, at)), at), at))
+    case save
+      push(out/items, let-of(name, read(value), at))
+    case element
+      fork test, and(is-component(state, name), not(forced))
+        hold
+          push(out/items, statement-of(component-call(node, parent, state), at))
+        miss
+          # not `ref`: the element's own field of that name is a local here
+          save built-ref, build-node(node, out, state)
+          push(out/items, statement-of(call-of(<append>, two(variable-of(parent, at), variable-of(built-ref, at)), at), at))
+    miss
+      save built-ref, build-node(node, out, state)
+      push(out/items, statement-of(call-of(<append>, two(variable-of(parent, at), variable-of(built-ref, at)), at), at))
+
+task two
+  take first, like expression
+  take second, like expression
+  like list, like expression
+  mark private
+
+  save out, make list
+  push(out, first)
+  push(out, second)
+  back out
+
+# lower one view into a function
+task lower-view
+  take definition, like statement
+  take components, like list, like component
+  like statement
+  mark private
+
+  sift definition
+    case view
+      save state
+        make lowering
+          bind components, components
+          bind params, params
+          bind span, span
+          bind counter, 0
+      save slotted, has-slot(body)
+      sift component-of(state, name)
+        case some
+          link comp
+          save slotted, comp/slotted
+        case none
+          save nothing, 0
+
+      # the function body: declare top-level `save`s first (so later nodes can read them), then attach each view node
+      # under `host`.
+      save host, <host>
+      fork test, is-above(params/length, 0)
+        hold
+          save first, get(params, 0)
+          save host, first/name
+      save out
+        make built
+          bind items, make list
+      walk body
+        take one
+        sift one
+          case save
+            # the view's span, never the save node's own, which this arm would read as `span`
+            push(out/items, let-of(name, read(value), state/span))
+          miss
+            turn next
+      walk body
+        take one
+        sift one
+          case save
+            turn next
+          miss
+            attach(one, host, out, state)
+
+      save function-params, make list
+      walk params
+        take param
+        save made
+          make function-param
+            bind name, param/name
+            bind type, param/type
+        push(function-params, made)
+      fork test, slotted
+        hold
+          # a task that builds into the view it is handed: typed, so a native backend emits a real function type
+          save kinds, make list
+          push(kinds, view-type())
+          save nothing-back, make type/unit
+          save children-type
+            make type/function
+              bind params, kinds
+              bind result, nothing-back
+          save children
+            make function-param
+              bind name, <children>
+              bind type, make(some, children-type)
+          push(function-params, children)
+
+      # a component builds into its host and returns nothing, so it says so
+      save unit-result, make type/unit
+      save no-generics, make list
+      back
+        make statement/function
+          bind name, name
+          bind params, function-params
+          bind body, out/items
+          bind result, make(some, unit-result)
+          bind generics, no-generics
+          bind span, span
+    miss
+      back definition
+
+# the pass: replace every view with its lowered function
+task lower-views
+  take program, like list, like statement
+  like list, like statement
+
+  # the program-wide component registry. A view named after an HTML tag is not a component (it would be unreachable
+  # as one anyway, since `view <tag>` renders the element), so `is-component` cleanly means "this is a component call"
+  save components, make list
+  walk program
+    take one
+    sift one
+      case view
+        fork test, not(is-html-tag(name))
+          hold
+            save param-names, make list
+            save param-types, make list
+            walk params
+              take param
+              take index
+              fork test, is-above(index, 0)
+                hold
+                  push(param-names, param/name)
+                  push(param-types, param/type)
+            save entry
+              make component
+                bind name, name
+                bind params, param-names
+                bind types, param-types
+                bind slotted, has-slot(body)
+            push(components, entry)
+      miss
+        turn next
+  fork test, is-equal(components/length, 0)
+    hold
+      back program
+
+  # the last definition of a name answers, as a map keyed by name kept it
+  save registry, make list
+  save at, subtract(components/length, 1)
+  walk test
+    hook test, is-minimum(at, 0)
+    hook hold
+      push(registry, get(components, at))
+      save at, subtract(at, 1)
+
+  save out, make list
+  walk program
+    take one
+    sift one
+      case view
+        push(out, lower-view(one, registry))
+      miss
+        push(out, one)
+  back out

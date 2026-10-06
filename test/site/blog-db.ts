@@ -1,4 +1,4 @@
-// Live Postgres persistence test: compile the posts repository (which uses only the abstract @cluesurf/site/code/base/db),
+// Live Postgres persistence test: compile the posts repository (which uses only the abstract @cluesurf/site/code/base/postgres),
 // prepend the Postgres runtime shim (what the native-env prelude does), bundle, and run it against the local Postgres.
 // Asserts the schema is created, posts persist, list returns them in order, and get-by-id reads one back.
 // Run: npx tsx test/site/blog-db.ts   (set DATABASE_URL to override the connection)

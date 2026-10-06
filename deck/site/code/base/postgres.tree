@@ -1,0 +1,6 @@
+# The platform-agnostic database API. Userland imports this clean path (never a driver or a `native/...` module). It
+# re-exports the abstract native module, which the build rewrites to the target's impl via the native-env mechanism:
+# `native/node/postgres` talks to Postgres, and `native/swift`, `native/kotlin` and `native/rust` keep their data in
+# SQLite. It was `base/db` until 2026-10-05.
+
+bear @term/site/base/native/{platform}/postgres

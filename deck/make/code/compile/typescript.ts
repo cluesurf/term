@@ -55,6 +55,51 @@ const RENDER = renderNames()
 const guardStart = (text: string): string =>
   /^[([`]/.test(text) ? `;${text}` : text
 
+// whether a local of a task's body may shadow one of its parameters: a `let`, a loop's item or index, a closure's
+// parameter, or a field an arm binds (every field of every case of the label, which over-asks and is safe). A tail call
+// rebinding the parameters there would write the local instead (`target = __tail0_0` beside `const target`, in
+// ir/inline-statements.tree's `root-name`, a TypeError on the first program it ran, 2026-10-05)
+function tailShadowed(fn: Extract<Statement, { form: 'function' }>): boolean {
+  const params = new Set(fn.params.map(p => toCamel(p.name)))
+  let shadowed = false
+
+  const visit = (node: unknown): void => {
+    if (shadowed || !node || typeof node !== 'object') return
+    if (Array.isArray(node)) return node.forEach(visit)
+    const record = node as Record<string, unknown>
+    const names: string[] = []
+
+    if (record.form === 'let') names.push(record.name as string)
+    if (record.form === 'for-each') names.push(record.item as string, ...(record.index ? [record.index as string] : []))
+    if (record.form === 'closure') names.push(...(record.params as { name: string }[]).map(p => p.name))
+
+    if (record.form === 'match') {
+      for (const arm of record.cases as { label: string; binds?: string[] }[]) {
+        names.push(...(arm.binds ?? []))
+
+        for (const fields of tsVariantFieldsByOwner.values()) {
+          names.push(...(fields.get(arm.label) ?? []).map(f => f.name))
+        }
+
+        names.push(...(tsVariantFields.get(arm.label) ?? []).map(f => f.name))
+      }
+    }
+
+    if (names.some(name => params.has(toCamel(name)))) {
+      shadowed = true
+      return
+    }
+
+    for (const [key, child] of Object.entries(record)) {
+      if (key !== 'span' && key !== 'type') visit(child)
+    }
+  }
+
+  visit(fn.body)
+
+  return shadowed
+}
+
 // whether an arm only READS the collection its local `name` holds: every use is a `walk` over it or its `length`. Such
 // a local of a left-out `need false` field takes the empty value with `??`, leaving the record as it was; any other use
 // (handed to a call, written through, captured) keeps `??=`, so a write through it lands in the record as it does
@@ -1698,7 +1743,7 @@ function makeEmitter(
   let reused: object | undefined
   let reuseCount = 0
   // the tasks that are loops (backend.ts, `tailTasks`), and while one is emitted, its parameters and tail returns
-  let tailing: { params: string[]; types: string[]; returns: WeakSet<object> } | undefined
+  let tailing: { params: string[]; types: string[]; returns: WeakSet<object>; held: boolean } | undefined
   let redeclared = new WeakSet<Statement>()
   let uncheckedInts = false
 
@@ -2885,7 +2930,8 @@ function makeEmitter(
           const k = reuseCount++
           // typed as the parameter, so a record literal keeps its tag (`form: "node"`, not `string`)
           const temps = node.value.args.map((a, i) => `const __tail${k}_${i}: ${tailing!.types[i]} = ${expression(a)}`)
-          const sets = tailing.params.map((name, i) => `${toCamel(name)} = __tail${k}_${i}`)
+          // a parameter a local of the body may shadow here is set through its holder (`tailShadowed`)
+          const sets = tailing.params.map((name, i) => `${tailing!.held ? `__next${toPascal(name)}` : toCamel(name)} = __tail${k}_${i}`)
 
           return [...temps, ...sets, 'continue'].join(`\n${pad(depth)}`)
         }
@@ -3046,6 +3092,33 @@ function makeEmitter(
 
       case 'match': {
         const raw = expression(node.subject)
+
+        // an `unknown` narrowed by type: `typeof`, and a `number` is a whole one (a JavaScript number is both). The
+        // subject is held once, and an arm's `link` names it
+        if (node.typeArms) {
+          const named = /^[A-Za-z_$][\w$]*$/.test(raw)
+          const held = named ? raw : `__at${depth}`
+          const tests: Record<string, string> = {
+            number: `typeof ${held} === "number" && Number.isInteger(${held})`,
+            float: `typeof ${held} === "number"`,
+            text: `typeof ${held} === "string"`,
+            boolean: `typeof ${held} === "boolean"`,
+          }
+          let chain = ''
+
+          node.cases.forEach((branch, i) => {
+            const link = branch.binds?.[0]
+            const lines = [
+              ...(link ? [`${pad(depth + 1)}const ${toCamel(link)} = ${held}`] : []),
+              ...branch.body.map(s => `${pad(depth + 1)}${guardStart(statement(s, depth + 1))}`),
+            ]
+            chain += `${i ? ' else ' : ''}if (${tests[branch.label] ?? 'false'}) {\n${lines.join('\n')}\n${pad(depth)}}`
+          })
+
+          chain += node.otherwise ? ` else ${block(node.otherwise, depth)}` : ''
+
+          return named ? chain : `;{\n${pad(depth + 1)}const ${held} = ${raw}\n${pad(depth + 1)}${chain}\n${pad(depth)}}`
+        }
         // a fork case over a caught exception (the checker filled `exceptionArms`): `form` is the discriminant,
         // the shared fields read off the carrier, the form's props off its `link`
         if (node.exceptionArms) {
@@ -3185,8 +3258,12 @@ function makeEmitter(
           // the ones the arm's program READS, as the exception arms ask: a `subject.field` read stays on the subject,
           // so nothing reaches a local except by its name, and an emitted `time.now()` is not a read of `time`
           const read = namesIn(branch.body)
+          // a name the arm declares itself (`save names, make list` under `case call`, beside the call's own `names`)
+          // is the arm's own: a field local of that name was a second `const` in one block, and the module did not
+          // load (check/pending.tree, ir/mir-lower.tree, 2026-10-05)
+          const declares = new Set(branch.body.flatMap(s => (s.form === 'let' ? [s.name] : [])))
           const locals = armLocals(fields, branch.binds ?? [])
-            .filter(({ local }) => read.has(local))
+            .filter(({ local }) => read.has(local) && !declares.has(local))
             .map(({ field, local }) => {
               // a `need false` maybe field binds as a maybe, and a plain one as its empty value where it was left out (D10)
               const declaredOne = declaredCase.find(f => f.name === field)
@@ -3414,13 +3491,18 @@ function makeEmitter(
         // `tailTasks`): JavaScript has no tail-call elimination, so each was a call per step
         const previousTails = tailing
         const tails = tailCalls.get(node.name)
-        tailing = tails ? { params: node.params.map(p => p.name), types: node.params.map(p => tsType(p.type)), returns: tails } : undefined
+        const held = tails ? tailShadowed(node) : false
+        tailing = tails ? { params: node.params.map(p => p.name), types: node.params.map(p => tsType(p.type)), returns: tails, held } : undefined
         const declared = cursors.names.map(name => `${'  '.repeat(depth + 1)}const __cursor${toPascal(name)}: number[] = [0, 0]\n`).join('')
+        // a tail loop whose parameters a local may shadow keeps each in a holder outside the loop, and rebinds the
+        // parameters from the holders at the top of every turn, where nothing shadows them
+        const holders = held ? node.params.map(p => `${'  '.repeat(depth + 1)}let __next${toPascal(p.name)} = ${toCamel(p.name)}\n`).join('') : ''
+        const rebind = held ? node.params.map(p => `${'  '.repeat(depth + 2)}${toCamel(p.name)} = __next${toPascal(p.name)}\n`).join('') : ''
         const body =
           node.body.length === 0 && node.result && node.result.kind !== 'unit'
             ? `{\n${'  '.repeat(depth + 1)}throw new Error(${JSON.stringify(`stub: ${node.name}`)})\n${'  '.repeat(depth)}}`
             : tails
-              ? `{\n${declared}${'  '.repeat(depth + 1)}while (true) ${block(node.body, depth + 1)}\n${'  '.repeat(depth)}}`
+              ? `{\n${declared}${holders}${'  '.repeat(depth + 1)}while (true) ${block(node.body, depth + 1).replace(/^\{\n/, `{\n${rebind}`)}\n${'  '.repeat(depth)}}`
               : block(node.body, depth).replace(/^\{\n/, `{\n${declared}`)
         tailing = previousTails
         const out = `${keyword} ${toCamel(

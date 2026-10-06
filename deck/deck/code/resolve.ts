@@ -90,31 +90,65 @@ function checkHolds(ctx: ResolveContext): void {
   }
 }
 
+// one link waiting to be resolved, and who asked for it: `deck.tree`, or the deck whose own link it is
+type Pending = { link: DeckLink; from: string }
+
+// what looking one link up found: the deck to record under its key, and its own links, which are resolved next
+type Found = { key: string; deck: ResolvedDeck; links: DeckLink[] }
+
+// THE WHOLE GRAPH, BREADTH FIRST, IN DECLARED ORDER. A deck several decks link to is resolved by whichever link is
+// reached first, so "first" must not depend on the network: until 2026-10-05 each link was resolved as its own
+// promise under `Promise.all`, and the deck whose registry answered first walked its links first and picked the
+// version. Now every link of one depth is LOOKED UP at once (the slow part, still concurrent), and the answers are
+// RECORDED in the order the links were declared: a shallower link before a deeper one, then the order of their
+// parents, then each parent's own order. One manifest and one lockfile resolve to one graph, however the registries
+// answer, and a failure is the first in that order, not the first to arrive
 async function resolveLinks(input: {
   links: DeckLink[]
   ctx: ResolveContext
-  // who asked for these links: `deck.tree`, or the deck whose own links they are
   from: string
 }): Promise<void> {
-  const tasks = input.links.map(link =>
-    resolveLink({ link, ctx: input.ctx, from: input.from }),
-  )
+  const { ctx } = input
+  let level: Pending[] = input.links.map(link => ({ link, from: input.from }))
 
-  await Promise.all(tasks)
+  while (level.length > 0) {
+    const fresh: Pending[] = []
+
+    for (const one of level) {
+      ctx.holds.set(one.link.name, [...(ctx.holds.get(one.link.name) ?? []), { hold: one.link.mark, from: one.from }])
+
+      if (!ctx.seen.has(one.link.name)) {
+        ctx.seen.add(one.link.name)
+        fresh.push(one)
+      }
+    }
+
+    const looked = await Promise.allSettled(fresh.map(one => lookUp({ link: one.link, ctx })))
+    const next: Pending[] = []
+
+    looked.forEach((answer, at) => {
+      if (answer.status === 'rejected') {
+        throw answer.reason
+      }
+
+      const found = answer.value
+
+      if (ctx.resolved.has(found.key)) {
+        return
+      }
+
+      ctx.resolved.set(found.key, found.deck)
+      next.push(...found.links.map(link => ({ link, from: fresh[at]!.link.name })))
+    })
+
+    level = next
+  }
 }
 
-async function resolveLink(input: {
-  link: DeckLink
-  ctx: ResolveContext
-  from: string
-}): Promise<void> {
+// One link looked up: a workspace deck first, then the lockfile, then its registry. Reads `ctx` and never writes it,
+// so the links of one depth can be looked up at once and recorded in order (`resolveLinks`)
+async function lookUp(input: { link: DeckLink; ctx: ResolveContext }): Promise<Found> {
   const { link, ctx } = input
-
-  ctx.holds.set(link.name, [...(ctx.holds.get(link.name) ?? []), { hold: link.mark, from: input.from }])
-
-  if (ctx.seen.has(link.name)) {return}
-
-  ctx.seen.add(link.name)
 
   // check workspace first
   const workspace = ctx.workspaces.get(link.name)
@@ -123,18 +157,19 @@ async function resolveLink(input: {
     const wsVersion = workspace.mark
 
     if (codeMatch(wsVersion, link.mark)) {
-      const key = `${link.name}@${showCode(wsVersion)}`
-      ctx.resolved.set(key, {
-        name: link.name,
-        code: wsVersion,
-        hash: '',
-        site: '',
-        link: new Map(workspace.link.map(l => [l.name, '*'])),
-        ...('dir' in workspace && typeof workspace.dir === 'string' ? { local: workspace.dir } : {}),
-      })
-      await resolveLinks({ links: workspace.link, ctx, from: link.name })
-
-      return
+      return {
+        key: `${link.name}@${showCode(wsVersion)}`,
+        deck: {
+          name: link.name,
+          code: wsVersion,
+          hash: '',
+          site: '',
+          // each link as the workspace declares it, which a later lock hit reads back as that range
+          link: new Map(workspace.link.map(l => [l.name, writeCodeHold({ hold: l.mark })])),
+          ...('dir' in workspace && typeof workspace.dir === 'string' ? { local: workspace.dir } : {}),
+        },
+        links: workspace.link,
+      }
     }
   }
 
@@ -146,37 +181,29 @@ async function resolveLink(input: {
   })
 
   if (locked) {
-    const key = `${link.name}@${showCode(locked.code)}`
-
-    if (!ctx.resolved.has(key)) {
-      ctx.resolved.set(key, {
+    return {
+      key: `${link.name}@${showCode(locked.code)}`,
+      deck: {
         name: locked.name,
         code: locked.code,
         hash: locked.hash,
         site: locked.site,
         ...(locked.key ? { key: locked.key } : {}),
         link: new Map(locked.link.map(l => [l.name, l.code])),
-      })
-
-      // resolve transitive deps from lockfile
-      const transLinks: DeckLink[] = locked.link.map(l => ({
-        name: l.name,
-        mark: { form: 'exact' as const, code: parseCode(l.code) },
-      }))
-
-      await resolveLinks({ links: transLinks, ctx, from: link.name })
+      },
+      // A locked deck's links are the RANGES it declares (`0.1.x`, `1.2.0..2.0.0`), as the registry gave them, so
+      // each is read as a range and finds its own lock entry. Read as an exact version, `0.1.x` was `0.1.0`: the
+      // entry locked at `0.1.3` no longer matched, the registry was asked for `0.1.0`, and a second `term load`
+      // rewrote the lock to it with no message. A band range did not parse at all (test/lock-transitive.test.ts)
+      links: locked.link.map(l => ({ name: l.name, mark: lockedHold(l.code) })),
     }
-
-    return
   }
 
   // a scope on an `oci://` registry resolves over its tag list and its signed configs
   const route = ociRouteOf({ name: link.name, config: ctx.config })
 
   if (route) {
-    await resolveOciLink({ link, ctx, route })
-
-    return
+    return lookUpOci({ link, ctx, route })
   }
 
   // fetch from registry
@@ -201,16 +228,10 @@ async function resolveLink(input: {
     )
   }
 
-  const key = `${link.name}@${codeStr}`
-
-  if (ctx.resolved.has(key)) {return}
-
   const depLinks = new Map<string, string>()
   const transLinks: DeckLink[] = []
 
-  for (const [depName, depConstraint] of Object.entries(
-    versionMeta.dependencies,
-  )) {
+  for (const [depName, depConstraint] of Object.entries(versionMeta.dependencies)) {
     depLinks.set(depName, depConstraint)
     transLinks.push({
       name: depName,
@@ -218,25 +239,35 @@ async function resolveLink(input: {
     })
   }
 
-  ctx.resolved.set(key, {
-    name: link.name,
-    code: best,
-    hash: versionMeta.integrity,
-    site: versionMeta.tarball,
-    link: depLinks,
-  })
-
-  await resolveLinks({ links: transLinks, ctx, from: link.name })
+  return {
+    key: `${link.name}@${codeStr}`,
+    deck: {
+      name: link.name,
+      code: best,
+      hash: versionMeta.integrity,
+      site: versionMeta.tarball,
+      link: depLinks,
+    },
+    links: transLinks,
+  }
 }
 
-// Resolve one link against an OCI registry: the tags are the versions, `pickBestCode` chooses as it does over npm's
+// a link a lockfile holds, read as the range it is. `*` is what a workspace deck's links were written as before they
+// carried their own ranges: any version
+function lockedHold(text: string): CodeHold {
+  return text.trim() === '*'
+    ? { form: 'band', base: parseCode('0.0.0'), head: parseCode(`${Number.MAX_SAFE_INTEGER}.0.0`) }
+    : parseCodeHold(text)
+}
+
+// Look one link up on an OCI registry: the tags are the versions, `pickBestCode` chooses as it does over npm's
 // `versions`, and the chosen version's manifest and config are read and VERIFIED before anything is recorded. The
 // links that get followed are the signed config's, never the tag list's or the manifest's.
-async function resolveOciLink(input: {
+async function lookUpOci(input: {
   link: DeckLink
   ctx: ResolveContext
   route: OciRoute
-}): Promise<void> {
+}): Promise<Found> {
   const { link, ctx, route } = input
   const host = route.registry.host
   const transport = transportFor({ host, offline: ctx.config.offline })
@@ -262,10 +293,6 @@ async function resolveOciLink(input: {
   }
 
   const codeStr = showCode(best)
-  const key = `${link.name}@${codeStr}`
-
-  if (ctx.resolved.has(key)) {return}
-
   const version = await readOciVersion({
     transport,
     repository: route.repository.name,
@@ -279,26 +306,24 @@ async function resolveOciLink(input: {
     warn: message => console.warn(`  ${message}`),
   })
 
-  ctx.resolved.set(key, {
-    name: link.name,
-    code: best,
-    hash: version.digest,
-    site: pinnedReference({
-      repository: route.repository,
-      digest: version.digest,
-    }),
-    key: version.config.key,
-    link: new Map(version.config.link.map(l => [l.deck, l.code])),
-  })
-
-  await resolveLinks({
+  return {
+    key: `${link.name}@${codeStr}`,
+    deck: {
+      name: link.name,
+      code: best,
+      hash: version.digest,
+      site: pinnedReference({
+        repository: route.repository,
+        digest: version.digest,
+      }),
+      key: version.config.key,
+      link: new Map(version.config.link.map(l => [l.deck, l.code])),
+    },
     links: version.config.link.map(l => ({
       name: l.deck,
       mark: parseCodeHold(l.code),
     })),
-    ctx,
-    from: link.name,
-  })
+  }
 }
 
 function findLockedVersion(input: {

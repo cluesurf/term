@@ -174,9 +174,9 @@ function labeled(name: string, rest: string): string {
   return outer === undefined ? `_ ${inner}: ${rest}` : outer === inner ? `${inner}: ${rest}` : `${outer} ${inner}: ${rest}`
 }
 
-// an input's `fall` default as Swift writes it, ` = 1`, so Swift calling a Term task may leave it out as TypeScript
-// and Kotlin callers may. Only a literal: a default that reads anything else is filled at each call by the checker,
-// as it always is inside Term, and Swift is given none rather than an expression it might read differently
+// an input's `fall` default when it is a literal, as Swift writes it, ` = 1`, so Swift calling a Term task may leave it
+// out as TypeScript and Kotlin callers may. Any other expression is written where it is emitted (`swiftDefault` in the
+// task's emission), where the program's raising and async tasks are known
 function defaultOf(fallback: Expression | undefined): string {
   switch (fallback?.form) {
     case 'integer':
@@ -507,6 +507,10 @@ const SWIFT_TAKEN = new Set([
 const SWIFT_HELPERS = {
   text: SWIFT_TEXT,
   number: SWIFT_NUMBER,
+  // the result of a call whose type the build cannot see (a native runtime's function), let go in statement position.
+  // `_ =` warns when the function answers Void and saying nothing warns when it answers a value; a generic parameter
+  // takes either in silence
+  discard: '@inline(__always) func termDiscard<T>(_ value: T) {}',
   // fire and forget (`tick f(x)`): the work starts NOW, on this thread, and runs to its first wait, as an async
   // function called on TypeScript does and a coroutine started on Kotlin does (`Task.immediate`, SE-0472). What is still
   // waiting then is counted, and `run-pending` (`__termDrain`) waits until none is. A `Task { }` started it later on
@@ -3051,6 +3055,13 @@ export function emitSwift(
           node.expr.type &&
           node.expr.type.kind !== 'unit'
         ) {
+          // a call into a native runtime, whose result type the build cannot see, may answer Void
+          if (node.expr.type.kind === 'unknown' || node.expr.type.kind === 'dynamic') {
+            needs.add('discard')
+
+            return `termDiscard(${rendered})`
+          }
+
           return `_ = ${rendered}`
         }
 
@@ -3217,6 +3228,23 @@ export function emitSwift(
         // a native `switch`: the compiler checks exhaustiveness, so no fallthrough-return is needed. Each variant's
         // fields bind to locals; field access on the subject inside the branch rewrites to those locals.
         const subject = expr(node.subject, bind)
+
+        // an `unknown` narrowed by type: a `switch` over the `Any` with a cast pattern per arm, binding the narrowed
+        // value under the subject's own name, or the arm's `link`
+        if (node.typeArms) {
+          const swiftType: Record<string, string> = { number: 'Int', float: 'Double', text: 'String', boolean: 'Bool' }
+          const shadow = node.subject.form === 'variable' ? node.subject.name : undefined
+          const arms = node.cases.map(b => {
+            const name = b.binds?.[0] ?? shadow
+            const pattern = name ? `let ${camel(name)} as ${swiftType[b.label]}` : `is ${swiftType[b.label]}`
+
+            return `${pad(d + 1)}case ${pattern}:\n${armBlock(b.body, d + 2, bind)}`
+          })
+          arms.push(`${pad(d + 1)}default:\n${node.otherwise ? block(node.otherwise, d + 2, bind) : `${pad(d + 2)}break`}`)
+
+          return `switch ${subject} {\n${arms.join('\n')}\n${pad(d)}}`
+        }
+
         // a fork case over a caught TermException: switch on `form`, the record recovered from `base` by its form
         if (node.exceptionArms) {
           const arms = node.cases.map(b => {
@@ -3438,6 +3466,60 @@ export function emitSwift(
         const escaping = escapingParams(node)
         // F1: a list parameter taken lent is a plain array, `inout` where the task writes it
         const lend = lendParams.get(node.name)
+        // AN INPUT'S `fall` AS SWIFT'S OWN DEFAULT, whatever it is, so Swift calling the task may leave the input out as
+        // a Term call may: a literal as written, and any other expression (`fall now()`) where Swift can evaluate it as
+        // a default. Swift refuses `try` and `await` in a default and evaluates it without the other arguments, so one
+        // that calls a raising or async task, calls through a value or a module, holds a closure, or reads another input
+        // gets none, and a Swift caller passes it. A Term call is filled by the checker either way
+        const inputNames = new Set(node.params.map(p => p.name))
+        const swiftDefault = (fallback: Expression | undefined): string => {
+          const literal = defaultOf(fallback)
+
+          if (literal || fallback === undefined) {
+            return literal
+          }
+
+          let fits = true
+          const visit = (value: unknown): void => {
+            if (!fits || value === null || typeof value !== 'object') {
+              return
+            }
+
+            if (Array.isArray(value)) {
+              value.forEach(visit)
+
+              return
+            }
+
+            const one = value as { form?: string; name?: string; callee?: { form?: string; name?: string } }
+
+            if (one.form === 'closure' || (one.form === 'variable' && one.name !== undefined && inputNames.has(one.name))) {
+              fits = false
+
+              return
+            }
+
+            if (one.form === 'call') {
+              const callee = one.callee
+
+              if (callee?.form !== 'variable' || callee.name === undefined || throwingFns.has(callee.name) || asyncFns.has(callee.name)) {
+                fits = false
+
+                return
+              }
+            }
+
+            for (const [key, child] of Object.entries(one)) {
+              if (key !== 'type' && key !== 'span') {
+                visit(child)
+              }
+            }
+          }
+
+          visit(fallback)
+
+          return fits ? ` = ${expr(fallback, new Map())}` : ''
+        }
         const params = node.params
           .map((p, i) => {
             const how = lend?.get(i)
@@ -3448,7 +3530,7 @@ export function emitSwift(
 
             return labeled(
               p.name,
-              `${p.type?.kind === 'function' && escaping.has(p.name) ? '@escaping ' : ''}${swiftType(p.type)}${defaultOf(p.fallback)}`,
+              `${p.type?.kind === 'function' && escaping.has(p.name) ? '@escaping ' : ''}${swiftType(p.type)}${swiftDefault(p.fallback)}`,
             )
           })
           .join(', ')
@@ -4040,7 +4122,9 @@ export function emitSwift(
   for (const name of sharedForms) {
     const swiftName = pascal(name)
 
-    if (!body.some(b => new RegExp(`^final class ${swiftName}\\b`).test(b))) {
+    // read through the unit marks (compile/unit-split.ts), which open each statement: tested against the marked text,
+    // no class matched, none got its conformance, and every form holding one failed `Equatable` (2026-10-05)
+    if (!body.some(b => new RegExp(`^final class ${swiftName}\\b`).test(unmarked(b)))) {
       continue
     }
 

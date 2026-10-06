@@ -136,7 +136,20 @@ export function checkTypeNames(program: Program, file: string): Diagnostic[] {
       continue
     }
 
-    if (s.form === 'function' && !s.stub) {
+    // `suit <form>` wears a mask for a form declared apart from it, so the form must exist somewhere in the build. Refused
+    // once, here, and its tasks not once each at their `self`
+    if (s.form === 'instance' && !known.has(s.target)) {
+      out.push(
+        diagnose('unknown-name', {
+          file,
+          span: s.span,
+          message: `\`suit ${s.target}\` wears "${s.mask}" for the form "${s.target}", which this build does not have`,
+          hint: `declare \`form ${s.target}\`, or load the file that does`,
+        }),
+      )
+    }
+
+    if (s.form === 'function' && !s.stub && !(s.method && !known.has(s.method.form))) {
       // a method sees its form's type parameters as well as its own
       const owner = s.method ? forms.get(s.method.form) : undefined
       const declared = s.declared ?? { params: s.params.map(p => ({ type: p.type })), result: s.result }

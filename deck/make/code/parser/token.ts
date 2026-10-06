@@ -121,7 +121,7 @@ const PATTERN: Record<TokenKind, RegExp> = {
   ['radix']: /0[xXbBoOuU]\w+/y,
   ['newline']: /\n/y,
   // a `{` opens an interpolation ONLY when an identifier follows (`{name}`); otherwise it is a literal brace. This lets
-  // a text string carry JSON (`<{"a":1}>`) or a regex quantifier (`<[0-9]{3}>`) without escaping, while `{name}`
+  // a text string carry JSON (`<{"a":1}>`) or a regex quantifier (`<[0-9]{3,5}>`) without escaping, while `{name}`
   // template / string interpolation still works.
   // A DOUBLE brace may be followed by whitespace, including a newline, before its content: `{{ foo }}` and a
   // `{{` that opens at the end of a line are interpolations holding a tree, which is what
@@ -161,6 +161,19 @@ const PATTERN: Record<TokenKind, RegExp> = {
     // `e` alongside `nrt`: `\e` is the escape character (0x1B), which is what every ANSI color sequence opens
     // with and the one thing a Term program needed to write terminal output without an npm package.
     /(?:\\[<>{}nrte\\]|\\(?![<>{}nrte\\])|\{+(?!\s*(?:[a-zA-Z_{]|$))|[^>{\\])+/y,
+}
+
+// IN A TEXT LITERAL A WHOLE NUMBER IN BRACES IS A VALUE: `<{123}>` is `123` and `<a {-7} b>` is `a -7 b`, as `{x}` is the
+// value of `x`. It printed the braces until 2026-10-05, with no message, since a `{` opened only before a letter. Only a
+// whole number and the `}` that closes it, and only here: a regex quantifier with a comma (`{3,5}`,
+// `{2,}`) and embedded JSON stay text, and in a path a literal index is still a plain segment (`x/0`, never `x/{0}`).
+// No `<...>` literal in the repository held `{<digits>}` when it changed (tmp/find-brace-digits.ts). A literal `{3}` is
+// written `\{3\}`, or in a raw literal `<<...>>`. token.tree holds the same rule
+const TEXT_PATTERN: Partial<Record<TokenKind, RegExp>> = {
+  // a brace run before a letter, as everywhere, or before a whole number and a `}`
+  ['open-brace']: /\{+(?=\s*(?:[a-zA-Z_]|$)|-?\d+\})/y,
+  // the chunk stops before either, and takes any other brace as text
+  ['chunk']: /(?:\\[<>{}nrte\\]|\\(?![<>{}nrte\\])|\{+(?!\s*(?:[a-zA-Z_{]|$)|-?\d+\})|[^>{\\])+/y,
 }
 
 // a raw literal's content as the chunk an ordinary literal would carry for the same text: the mill unescapes `\\`,
@@ -338,7 +351,7 @@ export function tokenize(source: {
       let matched = false
 
       for (const kind of MODE_MATCHERS[mode]) {
-        const pattern = PATTERN[kind]
+        const pattern = (mode === LexMode.Text ? TEXT_PATTERN[kind] : undefined) ?? PATTERN[kind]
         // sticky match anchored at the cursor
         pattern.lastIndex = pos
 

@@ -31,11 +31,11 @@ load @term/base/text
 load @term/base/console
   find log
 
-load @term/site/base/db
-  find connect, name db-connect
-  find query, name db-query
-  find run, name db-run
-  find field, name db-field
+load @term/site/base/postgres
+  find connect, name postgres-connect
+  find query, name postgres-query
+  find run, name postgres-run
+  find field, name postgres-field
   find row
 
 load @term/base/json
@@ -119,25 +119,25 @@ task is-allowed
     hook test
       call is-equal
         read command
-        text <db_connect>
+        text <postgres_connect>
     hook hold
       send back, true
     hook test
       call is-equal
         read command
-        text <db_query>
+        text <postgres_query>
     hook hold
       send back, true
     hook test
       call is-equal
         read command
-        text <db_run>
+        text <postgres_run>
     hook hold
       send back, true
     hook test
       call is-equal
         read command
-        text <db_field>
+        text <postgres_field>
     hook hold
       send back, true
     hook test
@@ -194,7 +194,7 @@ task run-command
     hook test
       call is-equal
         read command
-        text <db_connect>
+        text <postgres_connect>
     hook hold
       save field-1
         call get-field
@@ -203,7 +203,7 @@ task run-command
       save value-3
         call as-text
           read field-1
-      call db-connect
+      call postgres-connect
         wait true
         read value-3
       send back
@@ -211,7 +211,7 @@ task run-command
     hook test
       call is-equal
         read command
-        text <db_query>
+        text <postgres_query>
     hook hold
       save field-4
         call get-field
@@ -228,7 +228,7 @@ task run-command
         call items-of
           read field-7
       save answer
-        call db-query
+        call postgres-query
           wait true
           read value-6
           read value-9
@@ -254,7 +254,7 @@ task run-command
     hook test
       call is-equal
         read command
-        text <db_run>
+        text <postgres_run>
     hook hold
       save field-15
         call get-field
@@ -270,7 +270,7 @@ task run-command
       save value-20
         call items-of
           read field-18
-      call db-run
+      call postgres-run
         wait true
         read value-17
         read value-20
@@ -279,7 +279,7 @@ task run-command
     hook test
       call is-equal
         read command
-        text <db_field>
+        text <postgres_field>
     hook hold
       save field-22
         call get-field
@@ -303,7 +303,7 @@ task run-command
         call as-text
           read field-26
       save answer
-        call db-field
+        call postgres-field
           wait true
           read value-23
           read value-28

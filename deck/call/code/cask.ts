@@ -271,6 +271,7 @@ export function buildProgram({
   exe,
   work,
   target = 'macos',
+  identifier,
 }: {
   root: string
   entry: string
@@ -278,6 +279,8 @@ export function buildProgram({
   exe: string
   work: string
   target?: CaskTarget
+  // the app's bundle identifier, which an iOS simulator build carries in its entitlements (below)
+  identifier?: string
 }): { source: string; native: string } {
   // the platform's own env, not bare `swift`: its chain (the platform, apple, toolkit, swift) reaches the toolkit host
   // a device module answers through, so a page's camera or clipboard call is answered by the platform's API in the cask
@@ -324,7 +327,25 @@ export function buildProgram({
     // the iOS simulator SDK through xcrun. The stdlib's macOS package flags (swift-nio, Hummingbird) are not iOS
     // modules and are not passed; an app whose closure reaches them does not build for iOS yet
     const sdk = execFileSync('xcrun', ['-sdk', 'iphonesimulator', '--show-sdk-path'], { encoding: 'utf8' }).trim()
-    runTool('xcrun', ['-sdk', 'iphonesimulator', 'swiftc', '-target', IOS_SIMULATOR_TARGET, '-sdk', sdk, ...release, '-o', exe, file])
+    // The app's entitlements in the binary's __entitlements section, where the simulator reads them, as a simulator
+    // build Xcode makes with no team carries them: its identifier and its own keychain group, under a placeholder team
+    // prefix. Without them the simulator's Keychain refuses every secret (errSecMissingEntitlement, device-layer-0020).
+    // In the signature instead, the simulator refuses to launch the app
+    const section: string[] = []
+
+    if (identifier) {
+      const prefixed = `SIMULATOR0.${identifier}`
+      const entitlements = path.join(work, 'entitlements.plist')
+      writeFileSync(
+        entitlements,
+        `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict>` +
+          `<key>application-identifier</key><string>${prefixed}</string>` +
+          `<key>keychain-access-groups</key><array><string>${prefixed}</string></array></dict></plist>\n`,
+      )
+      section.push('-Xlinker', '-sectcreate', '-Xlinker', '__TEXT', '-Xlinker', '__entitlements', '-Xlinker', entitlements)
+    }
+
+    runTool('xcrun', ['-sdk', 'iphonesimulator', 'swiftc', '-target', IOS_SIMULATOR_TARGET, '-sdk', sdk, ...release, ...section, '-o', exe, file])
   } else {
     runTool('swiftc', [...swiftFlags(), ...release, '-o', exe, file])
   }
@@ -1142,6 +1163,7 @@ export async function makeCask(input: {
     exe: bundle.exe,
     work,
     target: input.target,
+    identifier,
   })
   report({ glyph: 'done', verb: 'build', subject: 'program', duration: Date.now() - programStarted, facts: [input.target] })
   // the usage strings its device capabilities need, now that the program is known, before the bundle is signed

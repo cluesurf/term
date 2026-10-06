@@ -1,0 +1,1627 @@
+# The statement-level inliner (note/term/codegen/passes.md, F6). The simplifier inlines a task that is one expression
+# (`smallBody`); this inlines a small task of STATEMENTS where its call is a statement of its own, the value of a `let`,
+# or an argument of such a call, so the caller holds the callee's work in one body. That is what lets a backend see an
+# unboxed node built again in the same task (Towers' `move-top`: `push-disk(piles, pop-disk(piles, from), to)`, the
+# popped node's box free to hold the pushed one) where across the call it could not.
+#
+# That reuse is the only thing it was measured to buy, and every backend's own compiler already inlines a small call
+# for speed, so it inlines only a task that opens or builds a node of a REUSABLE RECURSIVE FORM (a form that is not
+# generic, has a field-less case, and has a field of its own type: Towers' `stack`). Everything else keeps its call.
+#
+# A task is inlined when it is that, and small (at most 80 nodes), defined once, not generic, not async, not a method,
+# a stub, a claim, a theorem or a render-runtime helper the view lowering calls after this pass, never named except as
+# the callee of a direct call, calls itself nowhere, holds no closure, guard, loop or nested task, binds no name one of
+# its parameters has, writes no variable it does not bind, writes no field of a parameter that is not a list or a hash,
+# and returns only in tail position. Nothing is inlined INTO a task that calls itself. ir/inline-statements.ts, which
+# this was ported from, says each of these at length.
+#
+# Ported from ir/inline-statements.ts (self-hosting, 2026-10-05). Its reflection walks are compile/node-walk's
+# statements and expressions, its renaming compile/node-rewrite's `rename-locals` rule, its copies `copy-program`,
+# `copy-statement` and `copy-expression`, and the names it makes a `mark shared` record kept across its rounds.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/hash
+  find hash
+  find get-or-default
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find replace-all
+  find to-lower-case
+
+load ../parser/diagnostic
+  find span
+
+load ../compile/node
+  find assign-op
+  find binding
+  find expression
+  find expression-span
+  find expression-type
+  find statement
+  find type
+
+load ../compile/node-walk
+  find expressions-in
+  find statements-in
+
+load ../compile/node-rewrite
+  find copy-expression
+  find copy-program
+  find copy-statement
+  find rewrite-program
+  find rewrite-rule
+
+load ../compile/render-names
+  find render-names
+  find render-support
+
+form inline-result
+  link program, like list, like statement
+  link inlined, like list, like text
+
+# THE NAMES AN INLINING MAKES. Every name the callee binds gets a fresh one in the caller: its own spelling and a
+# number, `size-2`. Fresh by construction: the number is the first that makes a name no node in the program carries,
+# and every name made joins the set. A name made from one an earlier inlining made starts again from that one's
+# spelling (`size-2` inlined again is `size-5`, never `size-2-5`)
+form fresh-names
+  mark shared
+  link used, like hash, like text, like boolean
+  link made, like hash, like text, like text
+  link ready, like boolean
+
+# what one round knows, and what it did
+form inline-round
+  mark shared
+  link inlinable, like list, like statement
+  link recursive-tasks, like list, like text
+  link fields-of, like hash, like text, like list, like text
+  link names, like fresh-names
+  link inlined, like list, like text
+  link changed, like boolean
+
+# how a tail `return v` of an inlined body is handed back: evaluated for what it does, or assigned to the `let` the
+# call was the value of
+form tail-back
+  case effect
+  case assign-to
+    link variable, like expression
+    link span, like span
+
+# what an argument hoisted out of a call leaves: the statements to put before, and the call
+form hoisted
+  link before, like list, like statement
+  link call, like expression
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+# a name as every backend's spelling sees it: `size-2`, `size_2` and `size2` are one name to Swift's camel case
+task spelled
+  take name, like text
+  like text
+  mark private
+
+  back to-lower-case(replace-all(replace-all(name, <->, <>), <_>, <>))
+
+task use-name
+  take names, like fresh-names
+  take name, like text
+  like void
+  mark private
+
+  save key, spelled(name)
+  save names/used/{key}, true
+
+task fresh-name
+  take names, like fresh-names
+  take name, like text
+  like text
+  mark private
+
+  save base, get-or-default(names/made, name, name)
+  save k, 1
+  walk test
+    hook test, true
+    hook hold
+      save candidate, <{base}-{k}>
+      save written, spelled(candidate)
+      fork test, not(names/used/has(written))
+        hold
+          save names/used/{written}, true
+          save names/made/{candidate}, base
+          back candidate
+      save k, add(k, 1)
+  back base
+
+task is-literal
+  take value, like expression
+  like boolean
+  mark private
+
+  sift value
+    case integer
+      back true
+    case float
+      back true
+    case boolean
+      back true
+    case string
+      back true
+    miss
+      back false
+
+task is-plain
+  take value, like expression
+  like boolean
+  mark private
+
+  sift value
+    case variable
+      back true
+    miss
+      back is-literal(value)
+
+# ---- every name a node of the program carries ----
+
+task names-of
+  take program, like list, like statement
+  take seen, like fresh-names
+  like void
+  mark private
+
+  walk statements-in(program)
+    take one
+    statement-names(one, seen)
+  walk expressions-in(program)
+    take one
+    expression-names(one, seen)
+
+task type-names
+  take given, like maybe, like type
+  take seen, like fresh-names
+  like void
+  mark private
+
+  sift given
+    case some
+      link one
+      known-type-names(one, seen)
+    case none
+      back
+
+task known-type-names
+  take one, like type
+  take seen, like fresh-names
+  like void
+  mark private
+
+  sift one
+    case named
+      use-name(seen, name)
+      walk args
+        take arg
+        known-type-names(arg, seen)
+    case array
+      known-type-names(element, seen)
+    case map
+      known-type-names(key, seen)
+      known-type-names(value, seen)
+    case function
+      walk params
+        take param
+        known-type-names(param, seen)
+      known-type-names(result, seen)
+    miss
+      back
+
+task expression-names
+  take one, like expression
+  take seen, like fresh-names
+  like void
+  mark private
+
+  sift one
+    case variable
+      use-name(seen, name)
+    case member
+      use-name(seen, name)
+    case record
+      use-name(seen, name)
+      walk fields
+        take field
+        use-name(seen, field/name)
+    case closure
+      walk params
+        take param
+        use-name(seen, param/name)
+      type-names(result, seen)
+    case hole
+      use-name(seen, name)
+    case call
+      type-names(into, seen)
+    miss
+      back
+
+task statement-names
+  take one, like statement
+  take seen, like fresh-names
+  like void
+  mark private
+
+  sift one
+    case let
+      use-name(seen, name)
+    case for-each
+      use-name(seen, item)
+      fork test, is-unequal(index, <>)
+        hold
+          use-name(seen, index)
+    case match
+      walk cases
+        take arm
+        walk arm/binds
+          take bound
+          use-name(seen, bound)
+    case guard
+      sift catch
+        case some
+          link clause
+          use-name(seen, clause/name)
+        case none
+          back
+    case hold
+      fork test, is-unequal(name, <>)
+        hold
+          use-name(seen, name)
+    case function
+      use-name(seen, name)
+      walk params
+        take param
+        use-name(seen, param/name)
+      walk generics
+        take generic
+        use-name(seen, generic/name)
+      sift method
+        case some
+          link of
+          use-name(seen, of/name)
+        case none
+          save nothing, 0
+      walk universals
+        take universal
+        use-name(seen, universal/name)
+      type-names(result, seen)
+      sift declared
+        case some
+          link signature
+          type-names(signature/result, seen)
+        case none
+          back
+    case record-type
+      use-name(seen, name)
+      walk indices
+        take index
+        use-name(seen, index/name)
+      walk fields
+        take field
+        use-name(seen, field/name)
+      walk variants
+        take variant
+        use-name(seen, variant/name)
+        walk variant/fields
+          take field
+          use-name(seen, field/name)
+      type-names(alias, seen)
+      sift extend
+        case some
+          link extended
+          known-type-names(extended/base, seen)
+          walk extended/heads
+            take head
+            use-name(seen, head/name)
+            walk head/links
+              take head-link
+              use-name(seen, head-link/name)
+          walk extended/links
+            take extend-link
+            use-name(seen, extend-link/name)
+          walk extended/pins
+            take pin
+            use-name(seen, pin/name)
+        case none
+          save nothing, 0
+      walk pins
+        take pin
+        use-name(seen, pin/name)
+    case mask
+      use-name(seen, name)
+    case bind
+      use-name(seen, name)
+      walk params
+        take param
+        use-name(seen, param/name)
+      type-names(result, seen)
+    case view
+      use-name(seen, name)
+      walk params
+        take param
+        use-name(seen, param/name)
+    case roll
+      use-name(seen, name)
+    case tell
+      use-name(seen, name)
+    miss
+      back
+
+# ---- what the round reads ----
+
+# whether a type names the form `name` anywhere
+task names-form
+  take one, like type
+  take form-name, like text
+  like boolean
+  mark private
+
+  sift one
+    case named
+      fork test, is-equal(name, form-name)
+        hold
+          back true
+      walk args
+        take arg
+        fork test, names-form(arg, form-name)
+          hold
+            back true
+      back false
+    case array
+      back names-form(element, form-name)
+    case map
+      back or(names-form(key, form-name), names-form(value, form-name))
+    case function
+      walk params
+        take param
+        fork test, names-form(param, form-name)
+          hold
+            back true
+      back names-form(result, form-name)
+    miss
+      back false
+
+task named-type-in
+  take given, like maybe, like type
+  take forms, like list, like text
+  like boolean
+  mark private
+
+  sift given
+    case some
+      link one
+      sift one
+        case named
+          back has-text(forms, name)
+        miss
+          back false
+    case none
+      back false
+
+# whether a body opens or builds a node of a reusable recursive form
+task reuses
+  take body, like list, like statement
+  take recursive, like list, like text
+  like boolean
+  mark private
+
+  walk statements-in(body)
+    take one
+    sift one
+      case match
+        fork test, named-type-in(expression-type(subject), recursive)
+          hold
+            back true
+      miss
+        turn next
+  walk expressions-in(body)
+    take one
+    sift one
+      case record
+        fork test, or(named-type-in(type, recursive), has-text(recursive, name))
+          hold
+            back true
+      miss
+        turn next
+  back false
+
+task has-return
+  take body, like list, like statement
+  like boolean
+  mark private
+
+  walk statements-in(body)
+    take one
+    sift one
+      case return
+        back true
+      miss
+        turn next
+  back false
+
+task one-statement
+  take one, like statement
+  like list, like statement
+  mark private
+
+  save out, make list
+  push(out, one)
+  back out
+
+# the statement lists of an `if` or a `match`: each arm's body, and the otherwise
+task arm-bodies
+  take one, like statement
+  like list, like list, like statement
+  mark private
+
+  save out, make list
+  sift one
+    case if
+      walk branches
+        take branch
+        push(out, branch/body)
+      sift otherwise
+        case some
+          link other
+          push(out, other)
+        case none
+          back out
+    case match
+      walk cases
+        take arm
+        push(out, arm/body)
+      sift otherwise
+        case some
+          link other
+          push(out, other)
+        case none
+          back out
+    miss
+      back out
+  back out
+
+# whether every `return` in a statement list is in tail position: the last statement of the list, or inside a last
+# `if` or `match` whose bodies are themselves so
+task tail-only
+  take body, like list, like statement
+  like boolean
+  mark private
+
+  walk body
+    take one
+    take at
+    save last, is-equal(at, subtract(body/length, 1))
+    save branching, false
+    sift one
+      case return
+        fork test, not(last)
+          hold
+            back false
+        turn next
+      case if
+        save branching, true
+      case match
+        save branching, true
+      miss
+        save branching, false
+    fork test, branching
+      hold
+        walk arm-bodies(one)
+          take list-one
+          fork test, last
+            hold
+              fork test, not(tail-only(list-one))
+                hold
+                  back false
+            miss
+              fork test, has-return(list-one)
+                hold
+                  back false
+        turn next
+    fork test, has-return(one-statement(one))
+      hold
+        back false
+  back true
+
+task calls-itself
+  take body, like list, like statement
+  take own, like text
+  like boolean
+  mark private
+
+  walk expressions-in(body)
+    take one
+    sift one
+      case call
+        sift callee
+          case variable
+            fork test, is-equal(name, own)
+              hold
+                back true
+          miss
+            turn next
+      miss
+        turn next
+  back false
+
+task count-nodes
+  take body, like list, like statement
+  like number
+  mark private
+
+  save count, statements-in(body)/length
+  walk expressions-in(body)
+    take one
+    save count, add(count, 1)
+    sift one
+      case template
+        save count, add(count, parts/length)
+      miss
+        turn next
+  back count
+
+task holds-a-loop
+  take body, like list, like statement
+  like boolean
+  mark private
+
+  walk statements-in(body)
+    take one
+    sift one
+      case guard
+        back true
+      case while
+        back true
+      case for-each
+        back true
+      case function
+        back true
+      case view
+        back true
+      miss
+        turn next
+  walk expressions-in(body)
+    take one
+    sift one
+      case closure
+        back true
+      miss
+        turn next
+  back false
+
+# every name a body binds: its `let`s and the names its arms read their fields by
+task binds-of
+  take body, like list, like statement
+  take fields-of, like hash, like text, like list, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  walk statements-in(body)
+    take one
+    sift one
+      case let
+        push(out, name)
+      case match
+        # an arm's `binds` measured and walked where they stand, never read into a local, which would put a left-out
+        # list in the arm of the program this only reads
+        walk cases
+          take arm
+          fork test, is-above(arm/binds/length, 0)
+            hold
+              walk arm/binds
+                take bound
+                push(out, bound)
+            miss
+              walk arm-fields(fields-of, subject, arm/label)
+                take bound
+                push(out, bound)
+      miss
+        turn next
+  back out
+
+# the variable a write lands in, `xs` for `xs/{i}/count`, or `<>`; and whether the write is the variable itself
+task root-name
+  take target, like expression
+  like text
+  mark private
+
+  sift target
+    case variable
+      back name
+    case member
+      back root-name(read(target))
+    miss
+      back <>
+
+task is-variable
+  take value, like expression
+  like boolean
+  mark private
+
+  sift value
+    case variable
+      back true
+    miss
+      back false
+
+# whether every write in a body lands in a name it binds, or in a list or a hash it was handed
+task writes-own
+  take one, like statement
+  take binds, like list, like text
+  like boolean
+  mark private
+
+  sift one
+    case function
+      save task-params, params
+      walk statements-in(body)
+        take inner
+        sift inner
+          case assign
+            save root, root-name(target)
+            fork test, is-equal(root, <>)
+              hold
+                back false
+            fork test, has-text(binds, root)
+              hold
+                turn next
+            save found, false
+            save kind-ok, false
+            walk task-params
+              take param
+              fork test, is-equal(param/name, root)
+                hold
+                  save found, true
+                  sift param/type
+                    case some
+                      link written
+                      sift written
+                        case array
+                          save kind-ok, true
+                        case map
+                          save kind-ok, true
+                        miss
+                          save kind-ok, false
+                    case none
+                      save kind-ok, false
+            fork test, not(found)
+              hold
+                back false
+            # a whole parameter written is a `let` of its own; a field of one is written through, which only a list or
+            # a hash shares with the caller
+            fork test, and(not(is-variable(target)), not(kind-ok))
+              hold
+                back false
+          miss
+            turn next
+      back true
+    miss
+      back true
+
+# whether a task may be inlined at all
+task is-inlinable
+  take one, like statement
+  take defined, like hash, like text, like number
+  take named, like list, like text
+  take runtime, like list, like text
+  take recursive, like list, like text
+  take fields-of, like hash, like text, like list, like text
+  like boolean
+  mark private
+
+  sift one
+    case function
+      fork test, is-unequal(get-or-default(defined, name, 0), 1)
+        hold
+          back false
+      fork test, or(has-text(runtime, name), has-text(named, name))
+        hold
+          back false
+      fork test, is-equal(body/length, 0)
+        hold
+          back false
+      fork test, or(async, or(stub, or(claim, or(theorem, or(axiom, roam)))))
+        hold
+          back false
+      sift method
+        case some
+          back false
+        case none
+          save nothing, 0
+      fork test, is-above(generics/length, 0)
+        hold
+          back false
+      fork test, is-above(count-nodes(body), 80)
+        hold
+          back false
+      fork test, or(not(reuses(body, recursive)), not(tail-only(body)))
+        hold
+          back false
+      fork test, or(holds-a-loop(body), calls-itself(body, name))
+        hold
+          back false
+      save binds, binds-of(body, fields-of)
+      walk params
+        take param
+        fork test, has-text(binds, param/name)
+          hold
+            back false
+      back writes-own(one, binds)
+    miss
+      back false
+
+task runtime-names
+  like list, like text
+  mark private
+
+  save names, render-names()
+  save out, make list
+  push(out, names/element)
+  push(out, names/text)
+  push(out, names/dynamic)
+  push(out, names/attribute)
+  push(out, names/bind-attribute)
+  push(out, names/event)
+  push(out, names/show)
+  push(out, names/each)
+  push(out, names/each-keyed)
+  push(out, names/dynamic-view)
+  push(out, names/gate)
+  push(out, names/mount)
+  push(out, names/portal)
+  push(out, names/raise)
+  push(out, names/integers)
+  walk render-support()
+    take one
+    push(out, one)
+  back out
+
+# ---- the rewrite ----
+
+# a type's zero, for a result local declared before the body assigns it; only the scalars have one
+task zero-of
+  take given, like maybe, like type
+  take at, like span
+  like maybe, like expression
+  mark private
+
+  sift given
+    case some
+      link one
+      sift one
+        case number
+          save made
+            make expression/integer
+              bind value, 0
+              bind span, at
+              bind type, given
+          back make(some, made)
+        case float
+          save made
+            make expression/float
+              bind value, 0
+              bind span, at
+              bind type, given
+          back make(some, made)
+        case boolean
+          save made
+            make expression/boolean
+              bind value, false
+              bind span, at
+              bind type, given
+          back make(some, made)
+        case string
+          save made
+            make expression/string
+              bind value, <>
+              bind span, at
+              bind type, given
+          back make(some, made)
+        miss
+          back make none
+    case none
+      back make none
+
+task has-zero
+  take given, like maybe, like type
+  like boolean
+  mark private
+
+  save at
+    make span
+      bind start, origin()
+      bind end, origin()
+  sift zero-of(given, at)
+    case some
+      back true
+    case none
+      back false
+
+task origin
+  like position
+  mark private
+
+  back
+    make position
+      bind line, 0
+      bind column, 0
+
+# a call to an inlinable task, from a task that may take it
+task target-of
+  take value, like expression
+  take owner, like text
+  take round, like inline-round
+  like maybe, like statement
+  mark private
+
+  sift value
+    case call
+      sift callee
+        case variable
+          # the callee's name, before an arm over a task hides `name` with the task's own
+          save called, name
+          fork test, or(is-equal(called, owner), has-text(round/recursive-tasks, owner))
+            hold
+              back make none
+          walk round/inlinable
+            take one
+            sift one
+              case function
+                fork test, is-equal(name, called)
+                  hold
+                    save found, one
+                    back make(some, found)
+              miss
+                turn next
+          back make none
+        miss
+          back make none
+    miss
+      back make none
+
+task local-variable
+  take name, like text
+  take at, like span
+  take given, like maybe, like type
+  like expression
+  mark private
+
+  save bound, make binding/local
+  back
+    make expression/variable
+      bind name, name
+      bind binding, make(some, bound)
+      bind span, at
+      bind type, given
+
+# a call's arguments with any inlinable call among them taken out into a `let` first, when every argument before it is
+# a variable or a literal
+task hoist
+  take call, like expression
+  take owner, like text
+  take round, like inline-round
+  like hoisted
+  mark private
+
+  save before, make list
+  sift call
+    case call
+      save args-out, make list
+      save plain-before, true
+      walk args
+        take arg
+        save kept, arg
+        sift target-of(arg, owner, round)
+          case some
+            link callee
+            save arg-span, expression-span(arg)
+            save arg-type, expression-type(arg)
+            fork test, and(plain-before, has-zero(arg-type))
+              hold
+                save callee-name, task-name(callee)
+                save made-name, fresh-name(round/names, callee-name)
+                walk inline-let(made-name, arg, callee, owner, round)
+                  take one
+                  push(before, one)
+                save kept, local-variable(made-name, arg-span, arg-type)
+          case none
+            save nothing, 0
+        push(args-out, kept)
+        fork test, not(is-plain(arg))
+          hold
+            save plain-before, false
+      save call/args, args-out
+      back
+        make hoisted
+          bind before, before
+          bind call, call
+    miss
+      back
+        make hoisted
+          bind before, before
+          bind call, call
+
+task task-name
+  take one, like statement
+  like text
+  mark private
+
+  sift one
+    case function
+      back name
+    miss
+      back <>
+
+# `let name = callee(args)`: the result declared at its zero, then the body, each tail return assigning it
+task inline-let
+  take made-name, like text
+  take call, like expression
+  take callee, like statement
+  take owner, like text
+  take round, like inline-round
+  like list, like statement
+  mark private
+
+  save at, expression-span(call)
+  save call-type, expression-type(call)
+  save start, zero-of(call-type, at)
+  save out, make list
+  sift start
+    case some
+      link zero
+      save lifted, hoist(call, owner, round)
+      walk lifted/before
+        take one
+        push(out, one)
+      save declared
+        make statement/let
+          bind name, made-name
+          bind init, zero
+          bind mutable, true
+          bind span, at
+          bind type, call-type
+      push(out, declared)
+      save variable, local-variable(made-name, at, call-type)
+      save back-to
+        make assign-to
+          bind variable, variable
+          bind span, at
+      walk expand(callee, call-args(lifted/call), back-to, round)
+        take one
+        push(out, one)
+    case none
+      save nothing, 0
+  back out
+
+task call-args
+  take call, like expression
+  like list, like expression
+  mark private
+
+  sift call
+    case call
+      back args
+    miss
+      save none-yet, make list
+      back none-yet
+
+# a tail value evaluated for what it does: a variable or a literal does nothing, a construction or a field read is its
+# parts, and anything else stays
+task effect
+  take value, like expression
+  take at, like span
+  like list, like statement
+  mark private
+
+  save out, make list
+  fork test, is-plain(value)
+    hold
+      back out
+  sift value
+    case record
+      walk fields
+        take field
+        walk effect(field/value, at)
+          take one
+          push(out, one)
+      back out
+    case array
+      walk items
+        take item
+        walk effect(item, at)
+          take one
+          push(out, one)
+      back out
+    case map
+      walk entries
+        take entry
+        walk effect(entry/key, at)
+          take one
+          push(out, one)
+        walk effect(entry/value, at)
+          take one
+          push(out, one)
+      back out
+    case member
+      sift index
+        case none
+          sift expression-type(target)
+            case some
+              link held
+              sift held
+                case named
+                  back effect(target, at)
+                miss
+                  save nothing, 0
+            case none
+              save nothing, 0
+        case some
+          save nothing, 0
+    miss
+      save nothing, 0
+  save kept
+    make statement/expression
+      bind expr, value
+      bind span, at
+  push(out, kept)
+  back out
+
+task hand-back
+  take value, like expression
+  take at, like span
+  take back-to, like tail-back
+  like list, like statement
+  mark private
+
+  sift back-to
+    case effect
+      back effect(value, at)
+    case assign-to
+      save out, make list
+      save assigned
+        make statement/assign
+          bind target, copy-expression(variable)
+          bind op, make set
+          bind value, value
+          bind span, span
+      push(out, assigned)
+      back out
+
+# each tail return handed back
+task tails
+  take body, like list, like statement
+  take back-to, like tail-back
+  like list, like statement
+  mark private
+
+  save out, make list
+  walk body
+    take one
+    take at
+    fork test, is-below(at, subtract(body/length, 1))
+      hold
+        push(out, one)
+        turn next
+    sift one
+      case return
+        sift value
+          case some
+            link given
+            walk hand-back(given, span, back-to)
+              take handed
+              push(out, handed)
+          case none
+            save nothing, 0
+        turn next
+      case if
+        save branches-out, make list
+        walk branches
+          take branch
+          save branch/body, tails(branch/body, back-to)
+          push(branches-out, branch)
+        save one/branches, branches-out
+        sift otherwise
+          case some
+            link other
+            save other-out, tails(other, back-to)
+            save one/otherwise, make(some, other-out)
+          case none
+            save nothing, 0
+      case match
+        save cases-out, make list
+        walk cases
+          take arm
+          save arm/body, tails(arm/body, back-to)
+          push(cases-out, arm)
+        save one/cases, cases-out
+        sift otherwise
+          case some
+            link other
+            save other-out, tails(other, back-to)
+            save one/otherwise, make(some, other-out)
+          case none
+            save nothing, 0
+      miss
+        save nothing, 0
+    push(out, one)
+  back out
+
+# the callee's body with its parameters bound and its names renamed, and each tail return handed back
+task expand
+  take callee, like statement
+  take args, like list, like expression
+  take back-to, like tail-back
+  take round, like inline-round
+  like list, like statement
+  mark private
+
+  save out, make list
+  sift callee
+    case function
+      save copied, copy-program(body)
+      save renamed, make hash
+      save substituted-names, make list
+      save substituted, make list
+      save written, make list
+      walk statements-in(copied)
+        take one
+        sift one
+          case assign
+            sift target
+              case variable
+                push(written, name)
+              miss
+                turn next
+          miss
+            turn next
+
+      walk params
+        take param
+        take at
+        save arg, get(args, at)
+        save plain, is-literal(arg)
+        sift arg
+          case variable
+            save plain, not(binds-global-name(binding))
+          miss
+            save nothing, 0
+        save param-name, param/name
+        fork test, and(plain, not(has-text(written, param-name)))
+          hold
+            push(substituted-names, param-name)
+            push(substituted, arg)
+          miss
+            save made-name, fresh-name(round/names, param-name)
+            save renamed/{param-name}, made-name
+            save made
+              make statement/let
+                bind name, made-name
+                bind init, arg
+                bind mutable, has-text(written, param-name)
+                bind span, expression-span(arg)
+                bind type, param/type
+            push(out, made)
+
+      # every name the body binds, renamed, in the order met; an arm reading its fields by their own names given
+      # them renamed
+      walk statements-in(copied)
+        take one
+        sift one
+          case let
+            bind-name(renamed, round/names, name)
+          case match
+            walk cases
+              take arm
+              save none-yet, make list
+              save fields, get-or-default(round/fields-of, arm/label, none-yet)
+              save chosen, fields
+              save given-binds, arm/binds
+              fork test, and(is-above(given-binds/length, 0), not(all-in(given-binds, fields)))
+                hold
+                  save chosen, given-binds
+              walk chosen
+                take bound
+                bind-name(renamed, round/names, bound)
+          miss
+            turn next
+
+      save rule
+        make rename-locals
+          bind renamed, renamed
+          bind substituted-names, substituted-names
+          bind substituted, substituted
+          bind fields-of, round/fields-of
+      save rewritten, rewrite-program(copied, rule)
+      save round/changed, true
+      fork test, not(has-text(round/inlined, name))
+        hold
+          push(round/inlined, name)
+      walk tails(rewritten, back-to)
+        take one
+        push(out, one)
+    miss
+      save nothing, 0
+  back out
+
+task bind-name
+  take renamed, like hash, like text, like text
+  take names, like fresh-names
+  take name, like text
+  like void
+  mark private
+
+  fork test, not(renamed/has(name))
+    hold
+      save renamed/{name}, fresh-name(names, name)
+
+task all-in
+  take values, like list, like text
+  take within, like list, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, not(has-text(within, one))
+      hold
+        back false
+  back true
+
+task binds-global-name
+  take binding, like maybe, like binding
+  like boolean
+  mark private
+
+  sift binding
+    case some
+      link bound
+      sift bound
+        case function
+          back true
+        case builtin
+          back true
+        case deferred
+          back true
+        miss
+          back false
+    case none
+      back false
+
+task walk-maybe
+  take block, like maybe, like list, like statement
+  take owner, like text
+  take round, like inline-round
+  like maybe, like list, like statement
+  mark private
+
+  sift block
+    case some
+      link body
+      save walked, walk-body(body, owner, round)
+      back make(some, walked)
+    case none
+      back make none
+
+# a body, nested statement lists first, then each call that is a statement of its own and each `let` of a call
+task walk-body
+  take body, like list, like statement
+  take owner, like text
+  take round, like inline-round
+  like list, like statement
+  mark private
+
+  save out, make list
+  walk body
+    take one
+    sift one
+      case while
+        save one/body, walk-body(body, owner, round)
+      case for-each
+        save one/body, walk-body(body, owner, round)
+      case guard
+        save one/body, walk-body(body, owner, round)
+        sift catch
+          case some
+            link clause
+            save clause/body, walk-body(clause/body, owner, round)
+            save one/catch, make(some, clause)
+          case none
+            save nothing, 0
+      case function
+        save one/body, walk-body(body, owner, round)
+      case if
+        sift otherwise
+          case some
+            save one/otherwise, walk-maybe(otherwise, owner, round)
+          case none
+            save nothing, 0
+        save branches-out, make list
+        walk branches
+          take branch
+          save branch/body, walk-body(branch/body, owner, round)
+          push(branches-out, branch)
+        save one/branches, branches-out
+      case match
+        sift otherwise
+          case some
+            save one/otherwise, walk-maybe(otherwise, owner, round)
+          case none
+            save nothing, 0
+        save cases-out, make list
+        walk cases
+          take arm
+          save arm/body, walk-body(arm/body, owner, round)
+          push(cases-out, arm)
+        save one/cases, cases-out
+      miss
+        save nothing, 0
+
+    # a call that is a statement of its own
+    sift one
+      case expression
+        sift expr
+          case call
+            save lifted, hoist(expr, owner, round)
+            sift target-of(lifted/call, owner, round)
+              case some
+                link callee
+                walk lifted/before
+                  take before-one
+                  push(out, before-one)
+                save effect-back, make effect
+                walk expand(callee, call-args(lifted/call), effect-back, round)
+                  take expanded
+                  push(out, expanded)
+                turn next
+              case none
+                fork test, is-above(lifted/before/length, 0)
+                  hold
+                    walk lifted/before
+                      take before-one
+                      push(out, before-one)
+                    save one/expr, lifted/call
+                    push(out, one)
+                    turn next
+          miss
+            save nothing, 0
+      # `let x = f(...)` with a scalar result
+      case let
+        sift target-of(init, owner, round)
+          case some
+            link callee
+            fork test, has-zero(expression-type(init))
+              hold
+                walk inline-let(name, init, callee, owner, round)
+                  take let-one
+                  push(out, let-one)
+                turn next
+          case none
+            save nothing, 0
+      miss
+        save nothing, 0
+    push(out, one)
+  back out
+
+task inline-statements
+  take program, like list, like statement
+  like inline-result
+
+  save names
+    make fresh-names
+      bind used, make hash
+      bind made, make hash
+      bind ready, false
+  save inlined, make list
+  save out, program
+  save round-at, 0
+  walk test
+    hook test, is-below(round-at, 3)
+    hook hold
+      save next, inline-round-of(out, names, inlined)
+      fork test, not(next/changed)
+        hold
+          halt
+      save out, next/program
+      save round-at, add(round-at, 1)
+  back
+    make inline-result
+      bind program, out
+      bind inlined, inlined
+
+form round-result
+  link program, like list, like statement
+  link changed, like boolean
+
+task inline-round-of
+  take program, like list, like statement
+  take names, like fresh-names
+  take inlined, like list, like text
+  like round-result
+  mark private
+
+  save unchanged
+    make round-result
+      bind program, program
+      bind changed, false
+
+  save defined, make hash
+  save fns, make list
+  walk program
+    take one
+    sift one
+      case function
+        save defined/{name}, add(get-or-default(defined, name, 0), 1)
+        push(fns, one)
+      miss
+        turn next
+
+  # the names used other than as a direct call's callee: a task held as a value is never inlined
+  save seen, make hash
+  save as-callee, make hash
+  walk expressions-in(program)
+    take one
+    sift one
+      case variable
+        fork test, not(is-local(binding))
+          hold
+            save seen/{name}, add(get-or-default(seen, name, 0), 1)
+      case call
+        sift callee
+          case variable
+            fork test, not(is-local(binding))
+              hold
+                save as-callee/{name}, add(get-or-default(as-callee, name, 0), 1)
+          miss
+            turn next
+      miss
+        turn next
+  save named, make list
+  walk seen/keys()
+    take key
+    fork test, is-above(get-or-default(seen, key, 0), get-or-default(as-callee, key, 0))
+      hold
+        push(named, key)
+
+  # each variant's fields in order, for an arm that reads them by their own names, and the reusable recursive forms
+  save fields-of, make hash
+  save recursive, make list
+  walk program
+    take one
+    sift one
+      case record-type
+        save form-name, name
+        save own, false
+        save field-less, false
+        walk variants
+          take variant
+          save field-names, make list
+          walk variant/fields
+            take field
+            push(field-names, field/name)
+            fork test, names-form(field/type, form-name)
+              hold
+                save own, true
+          save fields-of/{variant/name}, field-names
+          # by the form as well: two forms may name a case alike (compile/node-rewrite.tree `arm-fields`)
+          save owned-key, <{form-name}/{variant/name}>
+          save fields-of/{owned-key}, field-names
+          fork test, is-equal(variant/fields/length, 0)
+            hold
+              save field-less, true
+        fork test, and(is-equal(params/length, 0), and(field-less, own))
+          hold
+            push(recursive, form-name)
+            walk variants
+              take variant
+              push(recursive, variant/name)
+      miss
+        turn next
+
+  save runtime, runtime-names()
+  save inlinable, make list
+  walk fns
+    take one
+    fork test, is-inlinable(one, defined, named, runtime, recursive, fields-of)
+      hold
+        push(inlinable, one)
+  fork test, is-equal(inlinable/length, 0)
+    hold
+      back unchanged
+
+  fork test, not(names/ready)
+    hold
+      names-of(program, names)
+      save names/ready, true
+
+  # the tasks that call themselves, which nothing is inlined into
+  save recursive-tasks, make list
+  walk fns
+    take one
+    sift one
+      case function
+        fork test, calls-itself(body, name)
+          hold
+            push(recursive-tasks, name)
+      miss
+        turn next
+
+  save round
+    make inline-round
+      bind inlinable, inlinable
+      bind recursive-tasks, recursive-tasks
+      bind fields-of, fields-of
+      bind names, names
+      bind inlined, inlined
+      bind changed, false
+
+  # every task is inlined into, the inlinable ones too (their callees first), the inlinable bodies read as they were at
+  # the round's start
+  save out, make list
+  walk program
+    take one
+    sift one
+      case function
+        save copy, copy-statement(one)
+        sift copy
+          case function
+            save copy/body, walk-body(body, name, round)
+            push(out, copy)
+          miss
+            push(out, copy)
+      miss
+        push(out, one)
+
+  fork test, not(round/changed)
+    hold
+      back unchanged
+  # the names inlined this round join the caller's list, which the round wrote to as it went
+  walk round/inlined
+    take one
+    fork test, not(has-text(inlined, one))
+      hold
+        push(inlined, one)
+  back
+    make round-result
+      bind program, out
+      bind changed, true
+
+task is-local
+  take binding, like maybe, like binding
+  like boolean
+  mark private
+
+  sift binding
+    case some
+      link bound
+      sift bound
+        case local
+          back true
+        case parameter
+          back true
+        miss
+          back false
+    case none
+      back false

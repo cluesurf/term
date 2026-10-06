@@ -32,23 +32,31 @@ export function transparentAliases(program: Program): Map<string, TypeAlias> {
   return aliases
 }
 
-// the type a use of an alias stands for, its parameters replaced by the arguments written (`set natural`), or
-// undefined when the type is no alias or is applied to the wrong number of arguments
-export function throughAlias(type: Type, aliases: ReadonlyMap<string, TypeAlias>): Type | undefined {
+// what a use of an alias stands for: `found` false, and the type as written, when it is no alias
+export type AliasFound = {
+  found: boolean
+  type: Type
+}
+
+// the type a use of an alias stands for, its parameters replaced by the arguments written (`set natural`), or not
+// found when the type is no alias or is applied to the wrong number of arguments
+export function throughAlias(type: Type, aliases: ReadonlyMap<string, TypeAlias>): AliasFound {
+  const missing = { found: false, type }
+
   if (type.kind !== 'named' || type.valueArgs?.length) {
-    return undefined
+    return missing
   }
 
   const alias = aliases.get(type.name)
   const args = type.args ?? []
 
   if (!alias || args.length !== alias.params.length) {
-    return undefined
+    return missing
   }
 
   const given = new Map(alias.params.map((param, at) => [param, args[at]!]))
 
-  return given.size === 0 ? alias.type : (replaced(alias.type, given) as Type)
+  return { found: true, type: given.size === 0 ? alias.type : (replaced(alias.type, given) as Type) }
 }
 
 // a type with each named parameter replaced by its argument, everywhere it stands

@@ -114,7 +114,7 @@ const MOVE = `task move-top
 // 1. Towers' move: pop taken out into a `let`, both bodies in the move, neither called
 const towers = inlineStatements(checked(`${STACK}\n${PUSH}\n${POP}\n${MOVE}`))
 ok('towers: move-top calls neither', callees(towers.program, 'move-top').length === 0, callees(towers.program, 'move-top').join(', '))
-ok('towers: both answered as inlined', towers.inlined.has('push-disk') && towers.inlined.has('pop-disk'), [...towers.inlined].join(', '))
+ok('towers: both answered as inlined', towers.inlined.includes('push-disk') && towers.inlined.includes('pop-disk'), [...towers.inlined].join(', '))
 
 const lets = nodes(towers.program, 'move-top', 'let').map(n => n.name as string)
 ok('towers: the popped size is a `let` named for its task', lets.includes('pop-disk-1'), lets.join(', '))
@@ -212,7 +212,7 @@ ok('dropped construction: the field that calls a task kept', callees(built.progr
 // 3. what must NOT be inlined, each the shape that is but for one thing
 const refuses = (label: string, text: string, callee: string, owner: string): void => {
   const out = inlineStatements(checked(text))
-  ok(`refuses ${label}`, callees(out.program, owner).includes(callee) && !out.inlined.has(callee), callees(out.program, owner).join(', '))
+  ok(`refuses ${label}`, callees(out.program, owner).includes(callee) && !out.inlined.includes(callee), callees(out.program, owner).join(', '))
 }
 
 // nothing is inlined INTO a task that calls itself: Towers' `move-disks` keeps calling `move-top`, into which pop and
@@ -252,7 +252,7 @@ const recursiveCaller = inlineStatements(
 )
 ok(
   'recursive caller: move-disks still calls move-top',
-  callees(recursiveCaller.program, 'move-disks').filter(c => c === 'move-top').length === 2 && !recursiveCaller.inlined.has('move-top'),
+  callees(recursiveCaller.program, 'move-disks').filter(c => c === 'move-top').length === 2 && !recursiveCaller.inlined.includes('move-top'),
   callees(recursiveCaller.program, 'move-disks').join(', '),
 )
 ok('recursive caller: move-top still inlines pop and push', callees(recursiveCaller.program, 'move-top').length === 0, callees(recursiveCaller.program, 'move-top').join(', '))

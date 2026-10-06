@@ -337,39 +337,48 @@
       ]
     },
     "strings": {
-      "begin": "\\<",
-      "beginCaptures": {
-        "0": {
-          "name": "entity.name.tag.tree"
-        }
-      },
-      "end": "\\>",
-      "endCaptures": {
-        "0": {
-          "name": "entity.name.tag.tree"
-        }
-      },
       "patterns": [
         {
-          "name": "constant.character.escape.tree",
-          "match": "\\\\[<>{}nrte\\\\]"
-        },
-        {
-          "include": "#codes"
-        },
-        {
-          "include": "#interpolations"
-        },
-        {
-          "include": "#strings"
-        },
-        {
+          "comment": "A RAW text literal, <<...>>: read exactly as written, no interpolation and no escape, to the >> ending the first run of > on its line (parser/token.ts). One color end to end, brackets included, because nothing inside it is structure: <<\\p{Lu}(?<=x)>> is a pattern, not a nested literal and a brace.",
           "name": "entity.name.tag.tree",
-          "match": "[^\\\\{<>]+"
+          "match": "<<.*?>{2,}"
         },
         {
-          "name": "entity.name.tag.tree",
-          "match": "[\\\\{]"
+          "begin": "\\<",
+          "beginCaptures": {
+            "0": {
+              "name": "entity.name.tag.tree"
+            }
+          },
+          "end": "\\>",
+          "endCaptures": {
+            "0": {
+              "name": "entity.name.tag.tree"
+            }
+          },
+          "patterns": [
+            {
+              "name": "constant.character.escape.tree",
+              "match": "\\\\[<>{}nrte\\\\]"
+            },
+            {
+              "include": "#codes"
+            },
+            {
+              "include": "#interpolations"
+            },
+            {
+              "include": "#strings"
+            },
+            {
+              "name": "entity.name.tag.tree",
+              "match": "[^\\\\{<>]+"
+            },
+            {
+              "name": "entity.name.tag.tree",
+              "match": "[\\\\{]"
+            }
+          ]
         }
       ]
     }

@@ -1,4 +1,4 @@
-// Postgres runtime shim (node). Wraps the `pg` driver in a flat namespace of total functions so the seed `native/node/db`
+// Postgres runtime shim (node). Wraps the `pg` driver in a flat namespace of total functions so the seed `native/node/postgres`
 // impl can dock it as `<global:postgres>` without ever expressing the `new Pool(...)` constructor or promise plumbing.
 // The build prepends this prelude; nothing in userland imports `pg`.
 //

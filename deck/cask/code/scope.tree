@@ -221,8 +221,8 @@ task folded
                 read names/length
                 code 0
             hook hold
-              save gone
-                call names/pop
+              # the name before is dropped, and nothing reads it: a value saved and never read is a warning natively
+              call names/pop
         hook miss
           call names/push
             read part

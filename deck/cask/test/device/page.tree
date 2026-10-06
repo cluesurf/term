@@ -14,6 +14,12 @@ load @term/cask/cask
 load @term/base/file
   find read
   find write
+  find read-bytes
+  find write-bytes
+
+load @term/base/bytes
+  find from-text, name bytes-of-text
+  find to-text, name text-of-bytes
 
 load @term/base/text
   find trim
@@ -42,6 +48,11 @@ load @term/site/view/torch
 
 load @term/site/view/permission
   find permission-status
+
+load @term/site/view/secret
+  find save-secret
+  find read-secret
+  find remove-secret
 
 task boot
   mark async
@@ -80,6 +91,17 @@ task boot
   save camera
     call permission-status
       text <camera>
+  # the vault, through the bridge: kept, read back, and removed, so nothing is left in it
+  save kept
+    call save-secret
+      text <term-device-cask>
+      read line
+  save fetched
+    call read-secret
+      text <term-device-cask>
+  save dropped
+    call remove-secret
+      text <term-device-cask>
   save heard
     call read-signal
       bind self, read watched
@@ -88,9 +110,18 @@ task boot
   save directory
     call data-path
       text <Device>
+  # bytes cross the bridge as base64 both ways: the line written as bytes, read back as bytes
+  call write-bytes
+    text <{directory}/line.bin>
+    call bytes-of-text
+      read line
+  save carried
+    call text-of-bytes
+      call read-bytes
+        text <{directory}/line.bin>
   call write
     text <{directory}/device.txt>
-    text <clipboard {wrote}|battery {battery}|network {network}|vibrate {played}|torch {torch}|camera {camera}|watch-network {heard}>
+    text <clipboard {wrote}|battery {battery}|network {network}|vibrate {played}|torch {torch}|camera {camera}|watch-network {heard}|bytes {carried}|secret {kept} {fetched} {dropped}>
   fork test
     hook test
       call is-equal

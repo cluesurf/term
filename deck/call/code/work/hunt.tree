@@ -41,12 +41,14 @@ form hunt-ask
   link runs, like number
   link seeds, like number
   link fuzzTimeoutSec, like number
+  link perfBudgetMs, like number
 
 task hunt
   take glob, like text
   take runs, like number
   take seeds, like number
   take fuzz-timeout, like number
+  take budget, like number
   take json-out, like boolean
 
   like void
@@ -63,6 +65,7 @@ task hunt
         bind runs, runs
         bind seeds, seeds
         bind fuzzTimeoutSec, fuzz-timeout
+        bind perfBudgetMs, budget
   fork test
     json-out
     hold

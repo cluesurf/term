@@ -380,7 +380,8 @@ task i
 
   // Until 2026-10-02 the stdlib's `equal` took `x` and `y` as FIELDS, a use wrote `like equal a x y`, and the checker
   // dropped the two extra type arguments, so the kernel proved "any x equals any y". `equal` is an indexed family now,
-  // and the kernel reads every type as written wherever the surface checker's seeding lost something.
+  // and the kernel reads every type as written wherever the surface checker's seeding lost something. A claim's proof
+  // the kernel refuses is `unverified-proof` since 2026-10-05 (it was `type-mismatch`, the name of any mistyped task)
   const EQUAL = `form equal
   head a
   head x, like a
@@ -413,7 +414,7 @@ task everything
     make equal/refl
       bind c, read x
 `,
-    refused('type-mismatch'),
+    refused('unverified-proof'),
   )
 
   expect(
@@ -443,7 +444,7 @@ task bogus
   take proof
   send back, read proof
 `,
-    refused('type-mismatch'),
+    refused('unverified-proof'),
   )
 
   expect(
@@ -506,7 +507,7 @@ task forged
   take px
   send back, read px
 `,
-    refused('type-mismatch'),
+    refused('unverified-proof'),
   )
 
   // ---- lists that change between turns ----

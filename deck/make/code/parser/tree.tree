@@ -508,6 +508,16 @@ task place-number
     case group-draft
       take-pending(b, number-draft)
       push(here/children, number-draft)
+    case hole-draft
+      # `<{123}>`: a whole number alone in braces in a text literal is its value, a group holding the number
+      sift here/group
+        case some
+          unexpected(b, one)
+        miss
+          save group, blank-draft(fresh-id(b), make(group-draft))
+          push(group/children, number-draft)
+          save here/group, make(some, group)
+          push(top(b)/line, group)
     case root-draft
       save input
         make diagnostic-input

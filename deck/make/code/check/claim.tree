@@ -1,0 +1,639 @@
+# The claim check: a `rule` states a claim, a `task` of the same name proves it, and between the two the name is
+# DECLARED and not DEFINED. This is the wall the law-and-proof gate stands on, and it is two rules:
+#
+#   1. a claim with no fill is refused (`open-claim`), unless the rule carries `mark open`, which leaves it
+#      deliberately open: counted and reported, never silently passed;
+#   2. code that RUNS may not call a claim nobody has filled (`open-claim-used`). An open claim is a promise, and
+#      a program cannot be built on one.
+#
+# The count of open claims is returned rather than printed, so the CLI can put it in the build line and a gate
+# can refuse on it. See note/term/project/law-proof-gate.md.
+#
+# Ported from check/claim.ts (self-hosting, 2026-10-05). A body's names are compile/node-walk's variables of it; the
+# evidence the checker gathered arrives as lists; `fill-claims` and `stamp-grounded` write the program's tasks where
+# they stand and hand the program back.
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/hash
+  find hash
+
+load @term/base/maybe
+  find maybe
+
+load ../parser/diagnostic
+  find diagnostic
+  find diagnose
+  find diagnostic-input
+  find span
+
+load ../compile/node
+  find binding
+  find expression
+  find function-param
+  find generic-param
+  find statement
+  find type
+
+load ../compile/node-walk
+  find expressions-in
+
+form claim-report
+  link diagnostics, like list, like diagnostic
+  # every claim the book states, filled or not
+  link claimed, like list, like text
+  # the claims still owing a proof, in declaration order. A non-empty list is what a gate refuses on.
+  link open, like list, like text
+
+form declined-task
+  link name, like text
+  link reason, like text
+
+# What the rest of the checker learned about the program's tasks, which a fill is held to: the tasks the kernel checked
+# as ONE TERM, the ones shown to terminate, the pure ones, and why the kernel declined a task when it did
+form claim-evidence
+  link verified, like list, like text
+  link terminating, like list, like text
+  link pure, like list, like text
+  link declined, like list, like declined-task
+
+# why a definition proves nothing: the definition that failed, the reason, and the call path from the fill to it
+form ungrounded
+  link name, like text
+  link reason, like text
+  link path, like list, like text
+
+form grounding
+  mark shared
+  link program, like list, like statement
+  link evidence, like claim-evidence
+  link done, like hash, like text, like boolean
+  link found, like hash, like text, like ungrounded
+  link walking, like list, like text
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+# a name bound inside a task: a parameter or a `save`, never the global a claim declares
+task is-local
+  take binding, like maybe, like binding
+  like boolean
+  mark private
+
+  sift binding
+    case some
+      link bound
+      sift bound
+        case parameter
+          back true
+        case local
+          back true
+        miss
+          back false
+    case none
+      back false
+
+# A FILL INHERITS ITS CLAIM'S SIGNATURE. The claim is where the type is written, so the proof states the name and the
+# parameters and nothing else. Only what the fill LEFT BLANK is taken: a fill that states its own generics, result or
+# parameter type keeps them. Runs before the type checker, so the body is checked against the claim.
+task fill-claims
+  take program, like list, like statement
+  like list, like statement
+
+  save claim-names, make list
+  save claims, make list
+  walk program
+    take one
+    sift one
+      case function
+        fork test, and(claim, not(has-text(claim-names, name)))
+          hold
+            push(claim-names, name)
+            push(claims, one)
+      miss
+        turn next
+  fork test, is-equal(claims/length, 0)
+    hold
+      back program
+
+  save out, make list
+  walk program
+    take one
+    sift one
+      case function
+        fork test, or(claim, stub)
+          hold
+            push(out, one)
+            turn next
+        save at, -1
+        walk claim-names
+          take claimed
+          take index
+          fork test, is-equal(claimed, name)
+            hold
+              save at, index
+        fork test, is-below(at, 0)
+          hold
+            push(out, one)
+            turn next
+        save written, fill-from(one, get(claims, at))
+        push(out, written)
+      miss
+        push(out, one)
+  back out
+
+task fill-from
+  take fill, like statement
+  take claim, like statement
+  like statement
+  mark private
+
+  save claim-generics, generics-of(claim)
+  save claim-result, result-of(claim)
+  save claim-params, params-of(claim)
+  sift fill
+    case function
+      fork test, and(is-equal(generics/length, 0), is-above(claim-generics/length, 0))
+        hold
+          save fill/generics, claim-generics
+      sift result
+        case none
+          sift claim-result
+            case some
+              link given
+              save fill/result, make(some, given)
+            case none
+              save nothing, 0
+        case some
+          save nothing, 0
+      save params-out, make list
+      walk params
+        take param
+        take at
+        sift param/type
+          case none
+            fork test, is-below(at, claim-params/length)
+              hold
+                save declared, get(claim-params, at)
+                sift declared/type
+                  case some
+                    link given
+                    save param/type, make(some, given)
+                  case none
+                    save nothing, 0
+          case some
+            save nothing, 0
+        push(params-out, param)
+      save fill/params, params-out
+      back fill
+    miss
+      back fill
+
+task generics-of
+  take one, like statement
+  like list, like generic-param
+  mark private
+
+  sift one
+    case function
+      back generics
+    miss
+      save none-yet, make list
+      back none-yet
+
+task result-of
+  take one, like statement
+  like maybe, like type
+  mark private
+
+  sift one
+    case function
+      back result
+    miss
+      back make none
+
+task params-of
+  take one, like statement
+  like list, like function-param
+  mark private
+
+  sift one
+    case function
+      back params
+    miss
+      save none-yet, make list
+      back none-yet
+
+# ---- grounding ----
+
+# WHY A DEFINITION CANNOT CARRY A PROOF, or none when it can. A fill proves its claim only if everything it reaches
+# proves its own signature in turn. A definition is GROUNDED when the kernel checked its whole body as one term, it
+# terminates, it is pure, and every task its body names is grounded. A cycle is assumed grounded while it is being
+# walked. A separate-compilation stub has no body here: its own unit stamped `grounded` on it, and an unstamped stub is
+# not grounded.
+task own-reason
+  take one, like statement
+  take evidence, like claim-evidence
+  like text
+  mark private
+
+  sift one
+    case function
+      fork test, stub
+        hold
+          fork test, grounded
+            hold
+              back <>
+          back <its unit recorded no kernel verdict for it>
+      fork test, not(has-text(evidence/pure, name))
+        hold
+          back <it calls something impure>
+      fork test, not(has-text(evidence/terminating, name))
+        hold
+          back <it is not shown to terminate>
+      fork test, not(has-text(evidence/verified, name))
+        hold
+          walk evidence/declined
+            take declined
+            fork test, is-equal(declined/name, name)
+              hold
+                save why, declined/reason
+                back <the kernel declined it: {why}>
+          back <the kernel did not check it as one term>
+      back <>
+    miss
+      back <>
+
+task definitions-of
+  take program, like list, like statement
+  take name, like text
+  like list, like statement
+  mark private
+
+  save out, make list
+  walk program
+    take one
+    sift one
+      case function
+        fork test, and(not(claim), is-equal(name, read(name)))
+          hold
+            push(out, one)
+      miss
+        turn next
+  back out
+
+task is-defined
+  take program, like list, like statement
+  take wanted, like text
+  like boolean
+  mark private
+
+  walk program
+    take one
+    sift one
+      case function
+        fork test, and(not(claim), is-equal(name, wanted))
+          hold
+            back true
+      miss
+        turn next
+  back false
+
+# the tasks a body names, each once, in the order first named
+task callees-of
+  take body, like list, like statement
+  take program, like list, like statement
+  like list, like text
+  mark private
+
+  save out, make list
+  walk expressions-in(body)
+    take one
+    sift one
+      case variable
+        fork test, and(not(is-local(binding)), and(not(has-text(out, name)), is-defined(program, name)))
+          hold
+            push(out, name)
+      miss
+        turn next
+  back out
+
+task ground
+  take state, like grounding
+  take name, like text
+  like maybe, like ungrounded
+
+  fork test, state/done/has(name)
+    hold
+      fork test, state/found/has(name)
+        hold
+          save known, state/found/get(name)
+          back make(some, known)
+      back make none
+  fork test, has-text(state/walking, name)
+    hold
+      back make none
+
+  # every DEFINITION of a name: an ordinary task, a claim's fill, or a stub of either. A claim is not a definition
+  save statements, definitions-by-name(state/program, name)
+  fork test, is-equal(statements/length, 0)
+    hold
+      # not a task of this program: a constructor, a type, or a primitive the kernel's base signature states
+      back make none
+
+  push(state/walking, name)
+  save outcome, make none
+  walk statements
+    take one
+    save reason, own-reason(one, state/evidence)
+    fork test, is-unequal(reason, <>)
+      hold
+        save path, make list
+        push(path, name)
+        save failed
+          make ungrounded
+            bind name, name
+            bind reason, reason
+            bind path, path
+        save outcome, make(some, failed)
+        halt
+    sift one
+      case function
+        walk callees-of(body, state/program)
+          take callee
+          sift ground(state, callee)
+            case some
+              link below
+              save path, make list
+              push(path, name)
+              walk below/path
+                take step
+                push(path, step)
+              save failed
+                make ungrounded
+                  bind name, below/name
+                  bind reason, below/reason
+                  bind path, path
+              save outcome, make(some, failed)
+              halt
+            case none
+              turn next
+      miss
+        turn next
+    sift outcome
+      case some
+        halt
+      case none
+        turn next
+
+  # leaving the walk
+  save still, make list
+  walk state/walking
+    take one
+    fork test, is-unequal(one, name)
+      hold
+        push(still, one)
+  save state/walking, still
+  save state/done/{name}, true
+  sift outcome
+    case some
+      link failed
+      save state/found/{name}, failed
+    case none
+      save nothing, 0
+  back outcome
+
+task definitions-by-name
+  take program, like list, like statement
+  take wanted, like text
+  like list, like statement
+  mark private
+
+  save out, make list
+  walk program
+    take one
+    sift one
+      case function
+        fork test, and(not(claim), is-equal(name, wanted))
+          hold
+            push(out, one)
+      miss
+        turn next
+  back out
+
+task fresh-grounding
+  take program, like list, like statement
+  take evidence, like claim-evidence
+  like grounding
+  mark private
+
+  back
+    make grounding
+      bind program, program
+      bind evidence, evidence
+      bind done, make hash
+      bind found, make hash
+      bind walking, make list
+
+# Record on every task of the program whether it is grounded, so a stub taken from this unit carries the verdict to a
+# dependent unit that sees only the signature. Runs once per compile, after the kernel and before the claim check.
+# A task not grounded is written `false` only where it said `true`: Term writes a field and cannot remove one
+task stamp-grounded
+  take program, like list, like statement
+  take evidence, like claim-evidence
+  like list, like statement
+
+  save state, fresh-grounding(program, evidence)
+  save out, make list
+  walk program
+    take one
+    sift one
+      case function
+        fork test, or(claim, stub)
+          hold
+            push(out, one)
+            turn next
+        sift ground(state, name)
+          case some
+            fork test, grounded
+              hold
+                save one/grounded, false
+          case none
+            save one/grounded, true
+        push(out, one)
+      miss
+        push(out, one)
+  back out
+
+task refusal
+  take kind, like diagnostic-name
+  take file, like text
+  take at, like span
+  take message, like text
+  take hint, like text
+  like diagnostic
+  mark private
+
+  save given-hint, make none
+  fork test, is-unequal(hint, <>)
+    hold
+      save given-hint, make(some, hint)
+  save input
+    make diagnostic-input
+      bind file, file
+      bind span, at
+      bind message, make(some, message)
+      bind hint, given-hint
+  back diagnose(kind, input)
+
+task check-claims
+  take program, like list, like statement
+  take file, like text
+  take evidence, like claim-evidence
+  like claim-report
+
+  save diagnostics, make list
+  # a claim declared twice is a duplicate like any other name; the first declaration owns the obligation
+  save claim-names, make list
+  save claim-open, make list
+  save claim-spans, make list
+  walk program
+    take one
+    sift one
+      case function
+        fork test, and(claim, not(has-text(claim-names, name)))
+          hold
+            push(claim-names, name)
+            push(claim-open, open)
+            push(claim-spans, span)
+      miss
+        turn next
+
+  save none-yet, make list
+  fork test, is-equal(claim-names/length, 0)
+    hold
+      back
+        make claim-report
+          bind diagnostics, diagnostics
+          bind claimed, none-yet
+          bind open, none-yet
+
+  # a fill is an ORDINARY function of the same name: it has a body and is not itself a claim. A stub does not fill
+  # anything, because a stub is a signature too.
+  save filled, make list
+  walk program
+    take one
+    sift one
+      case function
+        fork test, and(not(claim), and(not(stub), has-text(claim-names, name)))
+          hold
+            fork test, not(has-text(filled, name))
+              hold
+                push(filled, name)
+      miss
+        turn next
+
+  # rule 2: a call to an unfilled claim, from anywhere that runs. A LOCAL that happens to share the claim's spelling
+  # is not the claim
+  walk program
+    take one
+    sift one
+      case function
+        fork test, claim
+          hold
+            turn next
+        save task-span, span
+        walk expressions-in(body)
+          take inner
+          sift inner
+            case variable
+              fork test, and(has-text(claim-names, name), and(not(has-text(filled, name)), not(is-local(binding))))
+                hold
+                  save kind, make open-claim-used
+                  push(diagnostics, refusal(kind, file, span, <`{name}` is a claim with no proof, so it cannot be called>, <write `task {name}` whose body proves it>))
+            miss
+              turn next
+      miss
+        turn next
+
+  # rule 3: a fill is a proof only if the kernel checked it, it ends, and it is pure, and so is everything it reaches
+  save state, fresh-grounding(program, evidence)
+  walk program
+    take one
+    sift one
+      case function
+        fork test, or(claim, or(stub, not(has-text(claim-names, name))))
+          hold
+            turn next
+        fork test, not(has-text(evidence/pure, name))
+          hold
+            save kind, make impure-proof
+            push(diagnostics, refusal(kind, file, span, <the proof of `{name}` calls something impure>, <>))
+            turn next
+        fork test, not(has-text(evidence/terminating, name))
+          hold
+            save kind, make looping-proof
+            push(diagnostics, refusal(kind, file, span, <the proof of `{name}` is not shown to terminate, and a proof that never ends proves anything>, <>))
+            turn next
+        fork test, not(has-text(evidence/verified, name))
+          hold
+            save why, <>
+            walk evidence/declined
+              take declined
+              fork test, is-equal(declined/name, name)
+                hold
+                  save why, declined/reason
+            fork test, is-unequal(why, <>)
+              hold
+                save kind, make unverified-proof
+                push(diagnostics, refusal(kind, file, span, <the proof of `{name}` was not verified by the kernel ({why}), so it proves nothing>, <>))
+              miss
+                save kind, make unverified-proof
+                push(diagnostics, refusal(kind, file, span, <the proof of `{name}` was not verified by the kernel as one term, so it proves nothing>, <>))
+            turn next
+        # the fill itself passed, so anything wrong is in what it reaches
+        sift ground(state, name)
+          case some
+            link below
+            fork test, is-unequal(below/name, name)
+              hold
+                save shown-path, join(below/path, < -\> >)
+                save kind, make unverified-proof
+                push(diagnostics, refusal(kind, file, span, <the proof of `{name}` rests on `{below/name}` ({shown-path}), and {below/reason}, so it proves nothing>, <make the kernel check `{below/name}` as one term, or leave the claim unfilled with `mark open`>))
+          case none
+            save nothing, 0
+      miss
+        turn next
+
+  # rule 1: an unfilled claim is refused, unless it says out loud that it is open
+  save open-names, make list
+  walk claim-names
+    take claimed
+    take at
+    fork test, has-text(filled, claimed)
+      hold
+        turn next
+    push(open-names, claimed)
+    fork test, not(get(claim-open, at))
+      hold
+        save kind, make open-claim
+        push(diagnostics, refusal(kind, file, get(claim-spans, at), <`{claimed}` is stated but never proven>, <write `task {claimed}` whose body proves it, or add `mark open` to leave it open>))
+
+  back
+    make claim-report
+      bind diagnostics, diagnostics
+      bind claimed, claim-names
+      bind open, open-names

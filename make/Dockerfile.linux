@@ -14,13 +14,16 @@ ENV DEBIAN_FRONTEND=noninteractive \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-# the toolkit the cask draws with, the compiler, OpenSSL for the stdlib's http client, and a display that is not one
+# the toolkit the cask draws with, the compiler, OpenSSL for the stdlib's http client, a display that is not one, and
+# xclip, the X11 clipboard tool the device runtime writes and reads the clipboard with
+# (deck/site/code/view/native/rust/runtime/native-clipboard.rs), as a person's desktop has one
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       build-essential pkg-config ca-certificates curl \
       libgtk-4-dev libwebkitgtk-6.0-dev \
       libssl-dev \
       xvfb xauth dbus \
+      xclip \
  && rm -rf /var/lib/apt/lists/*
 
 # Rust, the stable toolchain, for every user of the image

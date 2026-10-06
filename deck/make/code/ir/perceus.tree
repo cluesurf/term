@@ -17,6 +17,9 @@
 
 load @term/base/list
   find list
+  # imported by name: in a program that also loads text/string.tree, which defines one, an unimported `contains` was
+  # refused as naming either (ir/mir-lower.tree, 2026-10-05)
+  find contains
 
 load @term/base/hash
   find hash

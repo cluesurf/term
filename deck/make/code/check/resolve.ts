@@ -71,6 +71,14 @@ export function buildGlobalScope(program: Program): Scope {
         kind: 'function',
         arity: statement.params.length,
       })
+    } else if (statement.form === 'mask') {
+      // a mask's task is callable by name on a type that needs the mask, whether or not any form wears it yet: the
+      // checker types it by the mask's signature and the instance is threaded in from each call site
+      for (const task of statement.tasks ?? []) {
+        if (!global.has(task.name)) {
+          global.set(task.name, { kind: 'function', arity: task.signature.params.length })
+        }
+      }
     } else if (statement.form === 'native') {
       // a native module alias (from `dock load`) is a defined name; member calls on it are the FFI
       global.set(statement.alias, { kind: 'deferred' })

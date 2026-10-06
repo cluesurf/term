@@ -145,10 +145,25 @@ function runIos(run: ToolkitRun): void {
   const bundle = assembleIosBundle({ out: join(run.dir, 'ios'), name: run.name, identifier: run.iosIdentifier, version: '0.0.2', native: file ? readFileSync(file, 'utf8') : '' })
   const sdk = execFileSync('xcrun', ['-sdk', 'iphonesimulator', '--show-sdk-path'], { encoding: 'utf8' }).trim()
 
-  if (!file || !builds(run, 'ios', 'xcrun', ['-sdk', 'iphonesimulator', 'swiftc', '-target', 'arm64-apple-ios17.0-simulator', '-sdk', sdk, '-o', bundle.exe, file])) {
+  // The app's entitlements, as a simulator build Xcode makes carries them with no team: its identifier and its own
+  // keychain group, under a placeholder team prefix, in the binary's __entitlements section, which is where the
+  // simulator reads them. Without them the simulator's Keychain refused every secret with errSecMissingEntitlement
+  // (-34018), answered `failed` (device-layer-0020). In the signature too, the simulator refused to launch the app
+  const prefixed = `SIMULATOR0.${run.iosIdentifier}`
+  const entitlements = join(run.dir, 'ios-entitlements.plist')
+  writeFileSync(
+    entitlements,
+    `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict>` +
+      `<key>application-identifier</key><string>${prefixed}</string>` +
+      `<key>keychain-access-groups</key><array><string>${prefixed}</string></array></dict></plist>\n`,
+  )
+  const section = ['-Xlinker', '-sectcreate', '-Xlinker', '__TEXT', '-Xlinker', '__entitlements', '-Xlinker', entitlements]
+
+  if (!file || !builds(run, 'ios', 'xcrun', ['-sdk', 'iphonesimulator', 'swiftc', '-target', 'arm64-apple-ios17.0-simulator', '-sdk', sdk, ...section, '-o', bundle.exe, file])) {
     return
   }
 
+  execFileSync('codesign', ['--force', '--sign', '-', bundle.app], { stdio: 'pipe' })
   spawnSync('xcrun', ['simctl', 'terminate', found.udid, run.iosIdentifier], { stdio: 'ignore' })
   spawnSync('xcrun', ['simctl', 'uninstall', found.udid, run.iosIdentifier], { stdio: 'ignore' })
   execFileSync('xcrun', ['simctl', 'install', found.udid, bundle.app], { stdio: 'pipe' })

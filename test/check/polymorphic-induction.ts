@@ -153,5 +153,113 @@ rule length-append
 `),
 )
 
+// a GENERIC path, whose laws need the induction hypothesis at another start (generalized over x) and are stated with a
+// generic call inside a generic call. The case value must carry the subject's own type argument and its fields read
+// their types with it (`next : a`), or nothing built from them types and the inner call's type argument stays unsolved
+// (math-foundations-0004, 2026-10-05). Lean, as code/relation/closure.tree is
+const PATHS = `form flag
+  case yes
+  case no
+
+task both
+  take a, like flag
+  take b, like flag
+  like flag
+  sift a
+    case yes
+      back b
+    case no
+      back make no
+
+form path
+  head a
+  case stop
+  case through
+    slot next, like a
+    slot rest, like path a
+
+task finish
+  head a
+  take x, like a
+  take p, like path a
+  like a
+  sift p
+    case stop
+      back x
+    case through
+      back finish(next, rest)
+
+task follows
+  head a
+  take r
+    like task
+      take x, like a
+      take y, like a
+      like flag
+  take x, like a
+  take p, like path a
+  like flag
+  sift p
+    case stop
+      back make yes
+    case through
+      back both(r(x, next), follows(r, next, rest))
+
+task join
+  head a
+  take p, like path a
+  take q, like path a
+  like path a
+  sift p
+    case stop
+      back q
+    case through
+      back make through(next, join(rest, q))
+`
+
+const leanCompiles = (source: string): boolean => compile({ file: 'p.tree', text: source }, { leanOf: () => true }).ok
+
+const MARKS = `  head a
+  mark r
+    like task
+      take x, like a
+      take y, like a
+      like flag
+  mark x, like a
+  mark p, like path a
+  mark q, like path a
+`
+
+ok(
+  'a generic path ends, after a join, where its second part ends from where the first does',
+  leanCompiles(`${PATHS}
+rule join-finishes
+  head a
+  mark x, like a
+  mark p, like path a
+  mark q, like path a
+  show hold, is-equal finish(x, join(p, q)), finish(finish(x, p), q)
+  fold p
+`),
+)
+
+ok(
+  'and follows r exactly when both parts do, the hypothesis taken at the next element',
+  leanCompiles(`${PATHS}
+rule join-follows
+${MARKS}  show hold, is-equal follows(r, x, join(p, q)), both(follows(r, x, p), follows(r, finish(x, p), q))
+  fold p
+`),
+)
+
+ok(
+  'SOUNDNESS: the second part does not start at x',
+  !leanCompiles(`${PATHS}
+rule join-follows-from-x
+${MARKS}  show hold, is-equal follows(r, x, join(p, q)), both(follows(r, x, p), follows(r, x, q))
+  fold p
+`),
+)
+
 console.log(`\npolymorphic induction: ${pass} pass, ${fail} fail`)
 process.exit(fail > 0 ? 1 : 0)

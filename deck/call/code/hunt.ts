@@ -62,6 +62,8 @@ export async function callHunt(input: {
   runs?: number
   seeds?: number
   fuzzTimeout?: number
+  // milliseconds one compile may take before it is a finding
+  budget?: number
   json?: boolean
 }): Promise<void> {
   const { root } = input
@@ -82,6 +84,7 @@ export async function callHunt(input: {
     runs: input.runs,
     seeds: input.seeds,
     fuzzTimeoutSec: input.fuzzTimeout,
+    ...(input.budget !== undefined ? { perfBudgetMs: input.budget } : {}),
     fuzzEntry: selfFuzzEntry(),
     // each file as the build reads it, so a test file is rewritten first, as `term test` rewrites it
     read: file => {
@@ -139,7 +142,7 @@ function reportHunt(result: HuntResult): void {
 
   const f = result.fuzz
   report({
-    glyph: f.runs === 0 || result.hangs.length > 0 || result.crashes.found.length > 0 ? 'failed' : 'done',
+    glyph: f.runs === 0 || result.hangs.length > 0 || result.crashes.found.length > 0 || result.slow.length > 0 ? 'failed' : 'done',
     verb: 'fuzz',
     subject: f.runs === 0 ? 'Nothing was fuzzed' : 'Structure-aware fuzzing under a watchdog',
     counts: [
@@ -147,13 +150,25 @@ function reportHunt(result: HuntResult): void {
       count(f.seedsRun, 'seeds', 'seed', f.seedsAsked),
       count(result.crashes.total, 'crashes', 'crash'),
       count(result.hangs.length, 'hangs', 'hang'),
+      count(result.slow.length, 'over budget'),
       count(f.corpusAdded, 'project files added', 'project file added'),
     ],
   })
 
-  // the signature, then the smallest program that raised it, so the crash can be reproduced from the report
+  // the signature, then the smallest program that raises it, shrunk, so the crash can be reproduced from the report
   for (const crash of result.crashes.found) {
-    report({ glyph: 'failed', kind: 'problem', verb: 'fuzz', subject: 'The compiler crashed', quote: [crash.signature, '', ...crash.input.split('\n')] })
+    report({
+      glyph: 'failed',
+      kind: 'problem',
+      verb: 'fuzz',
+      subject: 'The compiler crashed',
+      quote: [crash.signature, '', ...crash.input.split('\n')],
+      ...(crash.from !== undefined ? { facts: [`shrunk from ${crash.from.split('\n').length} lines to ${crash.input.split('\n').length}`] } : {}),
+    })
+  }
+
+  for (const one of result.slow) {
+    report({ glyph: 'failed', kind: 'problem', verb: 'fuzz', subject: 'The compiler took longer than the budget on this input', duration: one.ms, quote: one.input.split('\n') })
   }
 
   for (const hang of result.hangs) {

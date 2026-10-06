@@ -1534,6 +1534,10 @@ const cli = yargs(hideBin(process.argv))
           type: 'number',
           description: 'Watchdog seconds per fuzz term',
         })
+        .option('budget', {
+          type: 'number',
+          description: 'Milliseconds one compile may take before it is a finding (default 1000)',
+        })
         .option('json', {
           type: 'boolean',
           description: 'Machine-readable output',
@@ -1545,6 +1549,7 @@ const cli = yargs(hideBin(process.argv))
         runs: argv.runs,
         seeds: argv.seeds,
         fuzzTimeout: argv.fuzzTimeout,
+        budget: argv.budget,
         json: argv.json,
       })
     },

@@ -24,6 +24,7 @@ load @term/base/text
   find char-at
   find char-count
   find substring
+  find index-of
   find last-index-of
   find ends-with
   find starts-with
@@ -50,6 +51,15 @@ load ../parser/token
 
 load ../check/note-metadata
   find note-metadata-sites
+  find wait-true-sites
+
+load ../check/async-resolve
+  find async-names
+  find async-docks-of
+
+load ../compile/node-walk
+  find statements-in
+  find expressions-in
 
 load ../compile/expr-equal
   find expressions-equal
@@ -1671,6 +1681,7 @@ form ported-rule
   case note-metadata, text <note-metadata>
   case prefer-sift, text <prefer-sift>
   case prefer-single-brace, text <prefer-single-brace>
+  case redundant-wait, text <redundant-wait>
 
 # every rule here, in code order
 task ported-rules
@@ -1712,6 +1723,7 @@ task ported-rules
       make note-metadata
       make prefer-sift
       make prefer-single-brace
+      make redundant-wait
 
 # a rule's name, code, default severity and one-line documentation
 task meta-of
@@ -1787,6 +1799,8 @@ task meta-of
       back meta(<prefer-sift>, <L042>, <in a lean file, `fork case, x` is written `sift x`>, true)
     case prefer-single-brace
       back meta(<prefer-single-brace>, <L043>, <an interpolation is written `\{x\}`, not `\{\{x\}\}`>, true)
+    case redundant-wait
+      back meta(<redundant-wait>, <L054>, <`wait true` under a call to an async task is redundant: the call is awaited with nothing written>, true)
 
 task meta
   take name, like text
@@ -1923,6 +1937,8 @@ task check-source
   take tree, like root-node
   take source, like text
   take lean, like boolean
+  # the file's own program, milled alone, for a rule that asks what it declares
+  take program, like list, like statement
   like list, like rule-report
 
   sift rule
@@ -1932,6 +1948,8 @@ task check-source
       back prefer-sift(tree, source, lean)
     case prefer-single-brace
       back prefer-single-brace(source)
+    case redundant-wait
+      back redundant-wait(tree, source, program)
     miss
       back none-reported()
 
@@ -1947,8 +1965,101 @@ task reads-source
       back true
     case prefer-single-brace
       back true
+    case redundant-wait
+      back true
     miss
       back false
+
+# L054: `wait true` under a call to an async TASK says what the call already does. A call to an async task is awaited
+# with nothing written (note/term/plan/await-by-default-and-mark-metadata.md, section 1), so the marker is redundant
+# and the fix removes it: the whole line when it stands alone, `, wait true` when it closes a call's line.
+#
+# ONLY WHERE THE CALLEE IS KNOWN ASYNC. A call into a `dock load` module is not a task the build can see, and its
+# `wait true` is the only thing that awaits it, so it is not reported, unless the module's load line says
+# `mark async`, which awaits every call into it. Neither is a callee a parameter or a local shadows, nor a `wait true`
+# on a task DEFINITION (the older spelling of `mark async`, which says something).
+#
+# What this rule can know is what the file it is linting declares: the program it reads is the file's own, milled
+# alone. A call to an async task imported from elsewhere is not reported here. `pnpm term:await-migrate` removes
+# those across the repository, compiling each file with its imports and proving the output unchanged.
+task redundant-wait
+  take tree, like root-node
+  take source, like text
+  take program, like list, like statement
+  like list, like rule-report
+
+  save known, async-names(program)
+  save docks, async-docks-of(program)
+  save bound, bound-names(program)
+  save out, make list
+  walk wait-true-sites(tree, source)
+    take site
+    fork test, site/definition
+      hold
+        turn next
+    # a call into a `dock load` module marked `mark async` is awaited the same way (`fs-promise/read-file`)
+    save callee, site/callee
+    save module, <>
+    save slash, index-of(callee, </>)
+    fork test, is-minimum(slash, 0)
+      hold
+        save module, substring(callee, 0, slash)
+    save docked, and(is-unequal(module, <>), and(has-name(docks, module), not(has-name(bound, module))))
+    fork test, and(not(docked), or(not(has-name(known, callee)), has-name(bound, callee)))
+      hold
+        turn next
+    save message, <`wait true` is redundant: "{callee}" is async, so the call is awaited with nothing written>
+    fork test, docked
+      hold
+        save message, <`wait true` is redundant: "{module}" is docked `mark async`, so the call is awaited with nothing written>
+    save fix
+      make put
+        bind span, site/remove
+        bind text, <>
+    push(out, fixed-report(message, site/span, fix))
+  back out
+
+task has-name
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+# every parameter and local name in the program, any of which shadows a task of the same name where it is bound
+task bound-names
+  take program, like list, like statement
+  like list, like text
+  mark private
+
+  save out, make list
+  walk statements-in(program)
+    take one
+    sift one
+      case let
+        push(out, name)
+      case function
+        walk params
+          take param
+          push(out, param/name)
+      miss
+        turn next
+  walk expressions-in(program)
+    take one
+    sift one
+      case closure
+        walk params
+          take param
+          push(out, param/name)
+      miss
+        turn next
+  back out
 
 # L042: in a lean file, `fork case, <value>` is written `sift <value>`. The two mill to the same `fork-case` form and
 # emit the same code on every backend (test/compile/lean-second.ts), so the fix only respells the head.

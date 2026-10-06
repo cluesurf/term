@@ -1,0 +1,1116 @@
+# Async resolution: infer which functions are async from the call graph and await async calls by default. See
+# note/term/compiler/async-inference.md and note/term/plan/await-by-default-and-mark-metadata.md. A `tick f(x)` (the
+# call's `background` flag, also `wait false`) is neither awaited nor counted: it does not make its caller async. Runs
+# after type checking, before the effect check (so the inserted awaits satisfy the async/await discipline) and before
+# IR + emit. Shared by the build and editor paths via compileProgram, so the language server gets the same inference.
+#
+# Ported from check/async-resolve.ts (self-hosting, 2026-10-05). The async docks, module state there, are passed
+# along here. Each task is rewritten where it stands and the program is handed back. As in the original, of several
+# tasks of one name only the last is marked and rewritten, as a map keyed by name kept it.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load ../parser/diagnostic
+  find diagnostic
+  find diagnose
+  find diagnostic-input
+  find span
+
+load ../compile/node
+  find closure-param
+  find expression
+  find expression-type
+  find function-param
+  find statement
+  find type
+  find value-part
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+task add-text
+  take values, like list, like text
+  take value, like text
+  like list, like text
+  mark private
+
+  fork test, not(has-text(values, value))
+    hold
+      push(values, value)
+  back values
+
+# The `dock load` modules marked `mark async`: every function of one returns a promise, so a call into it is awaited
+# with no `wait` written, and makes its caller async, the same as a call to an async task
+task async-docks-of
+  take program, like list, like statement
+  like list, like text
+
+  save out, make list
+  walk program
+    take one
+    sift one
+      case native
+        fork test, async
+          hold
+            save out, add-text(out, alias)
+      miss
+        turn next
+  back out
+
+# the index of the last task of each name, in the order each name was first met: what a map keyed by name kept
+task task-indices
+  take program, like list, like statement
+  like list, like number
+  mark private
+
+  save names, make list
+  save at, make list
+  walk program
+    take one
+    take index
+    sift one
+      case function
+        save found, -1
+        walk names
+          take seen
+          take position
+          fork test, is-equal(seen, name)
+            hold
+              save found, position
+        fork test, is-below(found, 0)
+          hold
+            push(names, name)
+            push(at, index)
+          miss
+            save at/{found}, index
+      miss
+        turn next
+  back at
+
+task task-name
+  take one, like statement
+  like text
+  mark private
+
+  sift one
+    case function
+      back name
+    miss
+      back <>
+
+# ---- the read-only walks: every expression a statement holds, never inside a closure ----
+
+# whether an expression awaits, or calls an async task, not looking inside closures. `seek` is what is asked: an
+# await, or a call `calls-async` says waits
+form seek
+  case awaits
+  case calls
+    link set, like list, like text
+    link docks, like list, like text
+
+task expression-finds
+  take one, like expression
+  take seeking, like seek
+  like boolean
+  mark private
+
+  sift one
+    case closure
+      back false
+    case await
+      sift seeking
+        case awaits
+          back true
+        case calls
+          save nothing, 0
+    case call
+      sift seeking
+        case calls
+          fork test, calls-async(one, set, docks)
+            hold
+              back true
+        case awaits
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk children-of(one)
+    take child
+    fork test, expression-finds(child, seeking)
+      hold
+        back true
+  back false
+
+# the expressions the read-only walk visits inside one: the original's `walkExpr`
+task children-of
+  take one, like expression
+  like list, like expression
+  mark private
+
+  save out, make list
+  sift one
+    case call
+      push(out, callee)
+      walk args
+        take arg
+        push(out, arg)
+    case await
+      push(out, expr)
+    case template
+      walk parts
+        take part
+        sift part
+          case value
+            link inner
+            push(out, inner)
+          miss
+            turn next
+    case binary
+      push(out, left)
+      push(out, right)
+    case unary
+      push(out, operand)
+    case member
+      push(out, target)
+    case array
+      walk items
+        take item
+        push(out, item)
+    case map
+      walk entries
+        take entry
+        push(out, entry/key)
+        push(out, entry/value)
+    case record
+      walk fields
+        take field
+        push(out, field/value)
+    case conditional
+      walk branches
+        take branch
+        push(out, branch/cond)
+        push(out, branch/value)
+      sift otherwise
+        case some
+          link other
+          push(out, other)
+        case none
+          save nothing, 0
+    miss
+      save nothing, 0
+  back out
+
+task body-finds
+  take body, like list, like statement
+  take seeking, like seek
+  like boolean
+  mark private
+
+  walk body
+    take one
+    fork test, statement-finds(one, seeking)
+      hold
+        back true
+  back false
+
+task maybe-body-finds
+  take block, like maybe, like list, like statement
+  take seeking, like seek
+  like boolean
+  mark private
+
+  sift block
+    case some
+      link body
+      back body-finds(body, seeking)
+    case none
+      back false
+
+# the statements the read-only walk visits: the original's `walkStmt`
+task statement-finds
+  take one, like statement
+  take seeking, like seek
+  like boolean
+  mark private
+
+  sift one
+    case let
+      back expression-finds(init, seeking)
+    case assign
+      back or(expression-finds(target, seeking), expression-finds(read(value), seeking))
+    case expression
+      back expression-finds(expr, seeking)
+    case return
+      sift value
+        case some
+          link given
+          back expression-finds(given, seeking)
+        case none
+          back false
+    case throw
+      back expression-finds(read(value), seeking)
+    case hold
+      back expression-finds(expr, seeking)
+    case while
+      back or(expression-finds(cond, seeking), body-finds(body, seeking))
+    case guard
+      fork test, body-finds(body, seeking)
+        hold
+          back true
+      sift catch
+        case some
+          link clause
+          back body-finds(clause/body, seeking)
+        case none
+          back false
+    case for-each
+      back or(expression-finds(iterable, seeking), body-finds(body, seeking))
+    case if
+      walk branches
+        take branch
+        fork test, or(expression-finds(branch/cond, seeking), body-finds(branch/body, seeking))
+          hold
+            back true
+      back maybe-body-finds(otherwise, seeking)
+    case match
+      fork test, expression-finds(subject, seeking)
+        hold
+          back true
+      walk cases
+        take arm
+        fork test, body-finds(arm/body, seeking)
+          hold
+            back true
+      back maybe-body-finds(otherwise, seeking)
+    miss
+      back false
+
+task body-awaits
+  take body, like list, like statement
+  like boolean
+  mark private
+
+  save seeking, make awaits
+  back body-finds(body, seeking)
+
+task body-calls-async
+  take body, like list, like statement
+  take set, like list, like text
+  take docks, like list, like text
+  like boolean
+  mark private
+
+  save seeking
+    make calls
+      bind set, set
+      bind docks, docks
+  back body-finds(body, seeking)
+
+# whether a call waits: a call of a name the async set holds, or of anything else (a field, `each/propose`) whose type
+# is an async task, or a call into an async dock, however deep the member chain under the module, unless a local
+# shadows its name
+task calls-async
+  take one, like expression
+  take set, like list, like text
+  take docks, like list, like text
+  like boolean
+  mark private
+
+  sift one
+    case call
+      fork test, background
+        hold
+          back false
+      sift callee
+        case variable
+          back has-text(set, name)
+        miss
+          save nothing, 0
+      save root, root-of(callee)
+      fork test, and(is-unequal(root, <>), and(has-text(docks, root), has-text(set, root)))
+        hold
+          back true
+      back is-async-task(expression-type(callee))
+    miss
+      back false
+
+task root-of
+  take one, like expression
+  like text
+  mark private
+
+  sift one
+    case member
+      back root-of(target)
+    case variable
+      back name
+    miss
+      back <>
+
+task is-async-task
+  take given, like maybe, like type
+  like boolean
+  mark private
+
+  sift given
+    case some
+      link one
+      sift one
+        case function
+          # walked where it stands, never handed on, so a type left without effects keeps none
+          walk effects
+            take effect
+            fork test, is-equal(effect, <async>)
+              hold
+                back true
+          back false
+        miss
+          back false
+    case none
+      back false
+
+# ---- scope ----
+
+# every `let` a body binds, through nested statements and nested tasks, never inside a closure
+task lets-of
+  take body, like list, like statement
+  take out, like list, like text
+  like list, like text
+  mark private
+
+  save found, out
+  walk body
+    take one
+    sift one
+      case let
+        save found, add-text(found, name)
+      case while
+        save found, lets-of(body, found)
+      case for-each
+        save found, lets-of(body, found)
+      case guard
+        save found, lets-of(body, found)
+        sift catch
+          case some
+            link clause
+            save found, lets-of(clause/body, found)
+          case none
+            save nothing, 0
+      case if
+        walk branches
+          take branch
+          save found, lets-of(branch/body, found)
+        sift otherwise
+          case some
+            link other
+            save found, lets-of(other, found)
+          case none
+            save nothing, 0
+      case match
+        walk cases
+          take arm
+          save found, lets-of(arm/body, found)
+        sift otherwise
+          case some
+            link other
+            save found, lets-of(other, found)
+          case none
+            save nothing, 0
+      case function
+        save found, lets-of(body, found)
+      miss
+        turn next
+  back found
+
+# the async names a body can reach. A parameter or a local of the same name SHADOWS the global task, so a call to it is
+# a call to the value, never the task. A parameter typed as an async task is async itself
+task in-scope
+  take set, like list, like text
+  take names, like list, like text
+  take types, like list, like maybe, like type
+  take body, like list, like statement
+  like list, like text
+
+  save local, make list
+  walk names
+    take name
+    save local, add-text(local, name)
+  save local, lets-of(body, local)
+  save shadows, false
+  walk local
+    take name
+    fork test, has-text(set, name)
+      hold
+        save shadows, true
+  save scope, set
+  fork test, shadows
+    hold
+      save scope, make list
+      walk set
+        take name
+        fork test, not(has-text(local, name))
+          hold
+            push(scope, name)
+  save awaited, make list
+  walk names
+    take name
+    take at
+    fork test, is-async-task(get(types, at))
+      hold
+        push(awaited, name)
+  fork test, is-equal(awaited/length, 0)
+    hold
+      back scope
+  save out, make list
+  walk scope
+    take name
+    save out, add-text(out, name)
+  walk awaited
+    take name
+    save out, add-text(out, name)
+  back out
+
+task task-scope
+  take set, like list, like text
+  take one, like statement
+  like list, like text
+  mark private
+
+  sift one
+    case function
+      save names, make list
+      save types, make list
+      walk params
+        take param
+        push(names, param/name)
+        push(types, param/type)
+      back in-scope(set, names, types, body)
+    miss
+      back set
+
+task closure-scope
+  take set, like list, like text
+  take params, like list, like closure-param
+  take body, like list, like statement
+  like list, like text
+  mark private
+
+  save names, make list
+  save types, make list
+  walk params
+    take param
+    push(names, param/name)
+    push(types, param/type)
+  back in-scope(set, names, types, body)
+
+# the async tasks, marked or inferred: a task is async if it is marked or already awaits something, and an async dock is
+# async from the start; then, to a fixed point, a task that calls an async one in non-background position is async
+task async-set-of
+  take program, like list, like statement
+  take docks, like list, like text
+  like list, like text
+  mark private
+
+  save set, make list
+  walk docks
+    take dock
+    save set, add-text(set, dock)
+  save indices, task-indices(program)
+  walk indices
+    take at
+    sift get(program, at)
+      case function
+        fork test, or(async, body-awaits(body))
+          hold
+            save set, add-text(set, name)
+      miss
+        turn next
+  save changed, true
+  walk test
+    hook test, changed
+    hook hold
+      save changed, false
+      walk indices
+        take at
+        save one, get(program, at)
+        save named, task-name(one)
+        fork test, has-text(set, named)
+          hold
+            turn next
+        sift one
+          case function
+            fork test, body-calls-async(body, task-scope(set, one), docks)
+              hold
+                save set, add-text(set, named)
+                save changed, true
+          miss
+            turn next
+  back set
+
+# The tasks of a program that are async, marked or inferred, without changing the program: what `resolve-async` would
+# mark. The lint rule that finds a redundant `wait true` (L054) and the effect check read it.
+task async-names
+  take program, like list, like statement
+  like list, like text
+
+  back async-set-of(program, async-docks-of(program))
+
+# ---- the rewrite ----
+
+form rewriting
+  link set, like list, like text
+  link docks, like list, like text
+
+task rewrite-body
+  take body, like list, like statement
+  take scope, like rewriting
+  like list, like statement
+  mark private
+
+  save out, make list
+  walk body
+    take one
+    push(out, rewrite-statement(one, scope))
+  back out
+
+task rewrite-maybe-body
+  take block, like maybe, like list, like statement
+  take scope, like rewriting
+  like maybe, like list, like statement
+  mark private
+
+  sift block
+    case some
+      link body
+      save written, rewrite-body(body, scope)
+      back make(some, written)
+    case none
+      back make none
+
+# rewrite a statement, wrapping async calls in `await`
+task rewrite-statement
+  take one, like statement
+  take scope, like rewriting
+  like statement
+  mark private
+
+  sift one
+    case let
+      # `save pending, tick fetch(x)`: the value is the PENDING one, not the task's result, so the binding drops the
+      # result type the checker gave it and is left to the backend's inference
+      sift init
+        case call
+          sift callee
+            case variable
+              fork test, and(background, has-text(scope/set, name))
+                hold
+                  save one/type, make none
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
+      save one/init, rewrite-expression(init, scope)
+    case assign
+      save one/target, rewrite-expression(target, scope)
+      save one/value, rewrite-expression(read(value), scope)
+    case expression
+      save one/expr, rewrite-expression(expr, scope)
+    case return
+      sift value
+        case some
+          link given
+          save written, rewrite-expression(given, scope)
+          save one/value, make(some, written)
+        case none
+          save nothing, 0
+    case throw
+      save one/value, rewrite-expression(read(value), scope)
+    case hold
+      save one/expr, rewrite-expression(expr, scope)
+    case while
+      save one/cond, rewrite-expression(cond, scope)
+      save one/body, rewrite-body(body, scope)
+    case guard
+      save one/body, rewrite-body(body, scope)
+      sift catch
+        case some
+          link clause
+          save clause/body, rewrite-body(clause/body, scope)
+          save one/catch, make(some, clause)
+        case none
+          save nothing, 0
+    case for-each
+      save one/iterable, rewrite-expression(iterable, scope)
+      save one/body, rewrite-body(body, scope)
+    case if
+      save branches-out, make list
+      walk branches
+        take branch
+        save branch/cond, rewrite-expression(branch/cond, scope)
+        save branch/body, rewrite-body(branch/body, scope)
+        push(branches-out, branch)
+      save one/branches, branches-out
+      sift otherwise
+        case some
+          save one/otherwise, rewrite-maybe-body(otherwise, scope)
+        case none
+          save nothing, 0
+    case match
+      save one/subject, rewrite-expression(subject, scope)
+      save cases-out, make list
+      walk cases
+        take arm
+        save arm/body, rewrite-body(arm/body, scope)
+        push(cases-out, arm)
+      save one/cases, cases-out
+      sift otherwise
+        case some
+          save one/otherwise, rewrite-maybe-body(otherwise, scope)
+        case none
+          save nothing, 0
+    miss
+      save nothing, 0
+  back one
+
+# rewrite an expression, wrapping a default call to an async function in `await`; recurse into closures (a closure that
+# gains an await becomes async itself)
+task rewrite-expression
+  take given, like expression
+  take scope, like rewriting
+  like expression
+  mark private
+
+  sift given
+    case call
+      save waits, calls-async(given, scope/set, scope/docks)
+      save at, span
+      save given/callee, rewrite-expression(callee, scope)
+      save args-out, make list
+      walk args
+        take arg
+        push(args-out, rewrite-expression(arg, scope))
+      save given/args, args-out
+      fork test, waits
+        hold
+          back
+            make expression/await
+              bind expr, given
+              bind span, at
+      back given
+    case await
+      # collapse `await (await x)` to a single await: a call already wrapped by `wait true` would otherwise be
+      # re-wrapped here, and a doubled await is fatal on backends where the awaited value is a plain scalar
+      save inner, rewrite-expression(expr, scope)
+      sift inner
+        case await
+          back inner
+        miss
+          save given/expr, inner
+          back given
+    case binary
+      save given/left, rewrite-expression(left, scope)
+      save given/right, rewrite-expression(right, scope)
+    case unary
+      save given/operand, rewrite-expression(operand, scope)
+    case member
+      save given/target, rewrite-expression(target, scope)
+    case array
+      save items-out, make list
+      walk items
+        take item
+        push(items-out, rewrite-expression(item, scope))
+      save given/items, items-out
+    case template
+      save parts-out, make list
+      walk parts
+        take part
+        sift part
+          case value
+            link inner
+            push(parts-out, value-part(rewrite-expression(inner, scope)))
+          miss
+            push(parts-out, part)
+      save given/parts, parts-out
+    case map
+      save entries-out, make list
+      walk entries
+        take entry
+        save entry/key, rewrite-expression(entry/key, scope)
+        save entry/value, rewrite-expression(entry/value, scope)
+        push(entries-out, entry)
+      save given/entries, entries-out
+    case record
+      save fields-out, make list
+      walk fields
+        take field
+        save field/value, rewrite-expression(field/value, scope)
+        push(fields-out, field)
+      save given/fields, fields-out
+    case conditional
+      save branches-out, make list
+      walk branches
+        take branch
+        save branch/cond, rewrite-expression(branch/cond, scope)
+        save branch/value, rewrite-expression(branch/value, scope)
+        push(branches-out, branch)
+      save given/branches, branches-out
+      sift otherwise
+        case some
+          link other
+          save written, rewrite-expression(other, scope)
+          save given/otherwise, make(some, written)
+        case none
+          save nothing, 0
+    case closure
+      save inner
+        make rewriting
+          bind set, closure-scope(scope/set, params, body)
+          bind docks, scope/docks
+      save written, rewrite-body(body, inner)
+      save given/body, written
+      save given/async, or(async, body-awaits(written))
+    miss
+      save nothing, 0
+  back given
+
+# mark each async task, and wrap every default (non-background, not-yet-awaited) call to an async task in an `await`
+task resolve-async
+  take program, like list, like statement
+  like list, like statement
+
+  save docks, async-docks-of(program)
+  save set, async-set-of(program, docks)
+  save out, make list
+  save last, task-indices(program)
+  walk program
+    take one
+    take index
+    fork test, not(has-number(last, index))
+      hold
+        push(out, one)
+        turn next
+    sift one
+      case function
+        fork test, has-text(set, name)
+          hold
+            save one/async, true
+        save scope
+          make rewriting
+            bind set, task-scope(set, one)
+            bind docks, docks
+        save one/body, rewrite-body(body, scope)
+        push(out, one)
+      miss
+        push(out, one)
+  back out
+
+task has-number
+  take values, like list, like number
+  take value, like number
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+# An async task handed to a parameter typed as a task that is NOT async, and gives back a value. The callee calls it
+# without waiting and reads the pending value as the result. Runs after `resolve-async`, when every async task is
+# marked, inferred ones included. Only the tasks of `file` are read
+task check-async-arguments
+  take program, like list, like statement
+  take file, like text
+  like list, like diagnostic
+
+  save indices, task-indices(program)
+  save set, make list
+  walk indices
+    take at
+    sift get(program, at)
+      case function
+        fork test, async
+          hold
+            save set, add-text(set, name)
+      miss
+        turn next
+  save out, make list
+  walk indices
+    take at
+    save one, get(program, at)
+    sift one
+      case function
+        sift span/file
+          case some
+            link written
+            fork test, is-unequal(written, file)
+              hold
+                turn next
+          case none
+            turn next
+        save visible, task-scope(set, one)
+        save own, make list
+        walk params
+          take param
+          push(own, param/name)
+        walk body
+          take inner
+          check-statement(inner, program, indices, visible, own, file, out)
+      miss
+        turn next
+  back out
+
+form argument-check
+  mark shared
+  link found, like list, like diagnostic
+
+task check-statement
+  take one, like statement
+  take program, like list, like statement
+  take indices, like list, like number
+  take visible, like list, like text
+  take own, like list, like text
+  take file, like text
+  take out, like list, like diagnostic
+  like void
+  mark private
+
+  # an `if` is each branch's condition and then its body, in turn, then the otherwise
+  sift one
+    case if
+      walk branches
+        take branch
+        check-expression(branch/cond, program, indices, visible, own, file, out)
+        walk branch/body
+          take inner
+          check-statement(inner, program, indices, visible, own, file, out)
+      sift otherwise
+        case some
+          link other
+          walk other
+            take inner
+            check-statement(inner, program, indices, visible, own, file, out)
+        case none
+          back
+      back
+    miss
+      save nothing, 0
+  walk statement-expressions(one)
+    take value
+    check-expression(value, program, indices, visible, own, file, out)
+  walk statement-blocks(one)
+    take block
+    walk block
+      take inner
+      check-statement(inner, program, indices, visible, own, file, out)
+
+# the expressions a statement holds directly, and the statement lists under it: the original's `walkStmt`, in order
+task statement-expressions
+  take one, like statement
+  like list, like expression
+  mark private
+
+  save out, make list
+  sift one
+    case let
+      push(out, init)
+    case assign
+      push(out, target)
+      push(out, read(value))
+    case expression
+      push(out, expr)
+    case return
+      sift value
+        case some
+          link given
+          push(out, given)
+        case none
+          save nothing, 0
+    case throw
+      push(out, read(value))
+    case hold
+      push(out, expr)
+    case while
+      push(out, cond)
+    case for-each
+      push(out, iterable)
+    case match
+      push(out, subject)
+    miss
+      save nothing, 0
+  back out
+
+task statement-blocks
+  take one, like statement
+  like list, like list, like statement
+  mark private
+
+  save out, make list
+  sift one
+    case while
+      push(out, body)
+    case guard
+      push(out, body)
+      sift catch
+        case some
+          link clause
+          push(out, clause/body)
+        case none
+          save nothing, 0
+    case for-each
+      push(out, body)
+    case match
+      walk cases
+        take arm
+        push(out, arm/body)
+      sift otherwise
+        case some
+          link other
+          push(out, other)
+        case none
+          save nothing, 0
+    miss
+      save nothing, 0
+  back out
+
+task check-expression
+  take value, like expression
+  take program, like list, like statement
+  take indices, like list, like number
+  take visible, like list, like text
+  take own, like list, like text
+  take file, like text
+  take out, like list, like diagnostic
+  like void
+  mark private
+
+  sift value
+    case closure
+      walk body
+        take inner
+        check-statement(inner, program, indices, visible, own, file, out)
+      back
+    case call
+      # a parameter of the same name is the value, never the task
+      sift callee
+        case variable
+          fork test, not(has-text(own, name))
+            hold
+              check-arguments(name, args, program, indices, visible, file, out)
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  walk children-of(value)
+    take child
+    check-expression(child, program, indices, visible, own, file, out)
+
+task check-arguments
+  take called, like text
+  take args, like list, like expression
+  take program, like list, like statement
+  take indices, like list, like number
+  take visible, like list, like text
+  take file, like text
+  take out, like list, like diagnostic
+  like void
+  mark private
+
+  save callee-params, make list
+  save callee-generics, make list
+  walk indices
+    take at
+    sift get(program, at)
+      case function
+        fork test, is-equal(name, called)
+          hold
+            save callee-params, params
+            walk generics
+              take generic
+              push(callee-generics, generic/name)
+      miss
+        turn next
+
+  walk args
+    take arg
+    take i
+    fork test, is-minimum(i, callee-params/length)
+      hold
+        turn next
+    save param, get(callee-params, i)
+    save passed, false
+    save arg-name, <>
+    sift arg
+      case variable
+        save passed, has-text(visible, name)
+        save arg-name, name
+      case closure
+        save passed, async
+      miss
+        save nothing, 0
+    fork test, not(passed)
+      hold
+        turn next
+    sift param/type
+      case some
+        link written
+        sift written
+          case function
+            save waits, false
+            walk effects
+              take effect
+              fork test, is-equal(effect, <async>)
+                hold
+                  save waits, true
+            fork test, waits
+              hold
+                turn next
+            # a callback whose result is `void` is not refused, nor one whose result is the callee's own type parameter,
+            # or unknown: the callee then takes whatever the task gives back and hands it on
+            save open, false
+            sift result
+              case unit
+                turn next
+              case unknown
+                save open, true
+              case dynamic
+                save open, true
+              case named
+                save open, has-text(callee-generics, name)
+              miss
+                save nothing, 0
+            fork test, open
+              hold
+                turn next
+            save param-name, param/name
+            save message, <this task is async, and `{param-name}` of `{called}` takes a task that is not: it would be called without waiting>
+            fork test, is-unequal(arg-name, <>)
+              hold
+                save message, <`{arg-name}` is async, and `{param-name}` of `{called}` takes a task that is not: it would be called without waiting>
+            save input
+              make diagnostic-input
+                bind file, file
+                bind span, expression-span(arg)
+                bind message, make(some, message)
+            save kind, make async-argument
+            push(out, diagnose(kind, input))
+          miss
+            turn next
+      case none
+        turn next

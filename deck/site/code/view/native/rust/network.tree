@@ -1,0 +1,22 @@
+# The network for a Rust program (device-layer-0014): whether a route out exists, asked of a UDP socket that sends
+# nothing. Conforms to ../network. The runtime is runtime/native-network.rs.
+
+dock load
+  load <global:native-network>, name native-network
+
+task read-network
+  like text
+  send back
+    call native-network/read
+
+# the answer now, once: a Rust program here is not told when it changes
+task follow-network
+  take handler
+    like task
+      take value, like text
+  like task
+  call handler
+    call read-network
+  send back
+    task drop
+      save skip, code 0

@@ -1,0 +1,314 @@
+# The unification substitution: the mutable core of type inference, extracted as an atomic, testable component (the
+# first step of modularizing the checker out of one large closure). It owns the type-variable bindings, mints fresh
+# variables, follows bindings (union-find with path compression), runs the occurs check, and unifies two types.
+# `origin` records where a variable was solved, for hover / diagnostics. Pure of diagnostics: unifying answers a
+# boolean, the caller decides how to report a failure. See note/seed/plan/compilation-performance.md (Tier 2).
+#
+# Ported from check/substitution.ts (self-hosting, 2026-10-05). The class is a `mark shared` record, one reference
+# every step writes through (D1), and its methods are tasks over it. A unify that records where a variable was solved
+# is `unify-types-at`, with the span, where the original took the span as an optional argument.
+
+load @term/base/list
+  find list
+  find get
+
+load ../parser/diagnostic
+  find span
+  find position
+
+load ../compile/node
+  find type
+
+# where a variable was solved: the span and the type it unified to
+form solved
+  link span, like span
+  link type, like type
+
+form substitution
+  mark shared
+  link bindings, like hash, like number, like type
+  link next, like number
+  # where a variable was solved, for hover and "expected/found" diagnostics
+  link origin, like hash, like number, like solved
+
+task new-substitution
+  like substitution
+
+  back
+    make substitution
+      bind bindings, make hash
+      bind next, 0
+      bind origin, make hash
+
+# a brand-new, unbound type variable
+task fresh-type
+  take sub, like substitution
+  like type
+
+  save id, sub/next
+  save sub/next, add(id, 1)
+  back
+    make type/variable
+      bind id, id
+
+# a variable's id, or -1 for any other type
+task variable-id
+  take given, like type
+  like number
+  mark private
+
+  sift given
+    case variable
+      back id
+    miss
+      back -1
+
+# follow variable bindings to the current best type, compressing the path so later lookups are O(1)
+task resolve-type
+  take sub, like substitution
+  take given, like type
+  like type
+
+  save chain, make list
+  save current, given
+  save going, true
+  walk test
+    hook test, going
+    hook hold
+      save going, false
+      save bound, variable-id(current)
+      fork test, is-minimum(bound, 0)
+        hold
+          fork test, sub/bindings/has(bound)
+            hold
+              push(chain, bound)
+              save current, sub/bindings/get(bound)
+              save going, true
+  walk chain
+    take link-id
+    save sub/bindings/{link-id}, current
+  back current
+
+# does variable `id` appear within `type`? (prevents building an infinite type)
+task occurs-in
+  take sub, like substitution
+  take id, like number
+  take given, like type
+  like boolean
+
+  save t, resolve-type(sub, given)
+  sift t
+    case variable
+      link other
+      back is-equal(other, id)
+    case function
+      walk params
+        take param
+        fork test, occurs-in(sub, id, param)
+          hold
+            back true
+      back occurs-in(sub, id, result)
+    case array
+      back occurs-in(sub, id, element)
+    case map
+      back or(occurs-in(sub, id, key), occurs-in(sub, id, value))
+    case named
+      walk args
+        take arg
+        fork test, occurs-in(sub, id, arg)
+          hold
+            back true
+      back false
+    miss
+      back false
+
+# unify two types, binding variables as needed. Answers whether they are compatible. `unknown` is gradual (unifies
+# with anything), and so is `dynamic`: it is the host's `any` at the FFI boundary, where values are unchecked by
+# construction, so it is consistent with every type in both directions. Recurses structurally.
+task unify-types
+  take sub, like substitution
+  take a, like type
+  take b, like type
+  like boolean
+
+  back unify-with(sub, a, b, false, nowhere())
+
+# the same, recording `at` as where a variable this solves was solved, for diagnostics
+task unify-types-at
+  take sub, like substitution
+  take a, like type
+  take b, like type
+  take at, like span
+  like boolean
+
+  back unify-with(sub, a, b, true, at)
+
+task nowhere
+  like span
+  mark private
+
+  save start
+    make position
+      bind line, 0
+      bind column, 0
+  back
+    make span
+      bind start, start
+      bind end, start
+
+task is-loose
+  take given, like type
+  like boolean
+  mark private
+
+  back or(is-equal(given/kind, <unknown>), is-equal(given/kind, <dynamic>))
+
+task is-numeric
+  take given, like type
+  like boolean
+  mark private
+
+  back or(is-equal(given/kind, <number>), is-equal(given/kind, <float>))
+
+task unify-with
+  take sub, like substitution
+  take a, like type
+  take b, like type
+  take recorded, like boolean
+  take at, like span
+  like boolean
+  mark private
+
+  save x, resolve-type(sub, a)
+  save y, resolve-type(sub, b)
+  fork test, or(is-loose(x), is-loose(y))
+    hold
+      back true
+  # `number` and `float` unify, so arithmetic and comparison can mix a computed value with a fractional constant.
+  # They are not one type: `number` is `i64` on Rust, Swift and Kotlin and `float` is `f64`. The direction is held
+  # where a value meets the type it is wanted as (check/expect.ts): a whole number widens to a fraction, and a
+  # fraction where a whole number is wanted is refused.
+  fork test, and(is-numeric(x), is-numeric(y))
+    hold
+      back true
+  save x-id, variable-id(x)
+  save y-id, variable-id(y)
+  fork test, is-minimum(x-id, 0)
+    hold
+      fork test, is-minimum(y-id, 0)
+        hold
+          fork test, is-equal(y-id, x-id)
+            hold
+              back true
+          # bind the younger variable to the older one: a callee's freshly instantiated metavariable must never solve
+          # an enclosing signature's generic, or later instantiations of that signature resolve through the stale
+          # binding and every call site shares one variable (the forwarding-bounded-generic bug)
+          fork test, is-above(y-id, x-id)
+            hold
+              save sub/bindings/{y-id}, x
+            miss
+              save sub/bindings/{x-id}, y
+          back true
+      back bind-variable(sub, x-id, y, recorded, at)
+  fork test, is-minimum(y-id, 0)
+    hold
+      back bind-variable(sub, y-id, x, recorded, at)
+  back unify-shapes(sub, x, y)
+
+task bind-variable
+  take sub, like substitution
+  take id, like number
+  take to, like type
+  take recorded, like boolean
+  take at, like span
+  like boolean
+  mark private
+
+  fork test, occurs-in(sub, id, to)
+    hold
+      back false
+  save sub/bindings/{id}, to
+  fork test, recorded
+    hold
+      save sub/origin/{id}
+        make solved
+          bind span, at
+          bind type, to
+  back true
+
+# two resolved types, neither a variable nor gradual
+task unify-shapes
+  take sub, like substitution
+  take x, like type
+  take y, like type
+  like boolean
+  mark private
+
+  sift x
+    case function
+      link x-params
+      link x-result
+      sift y
+        case function
+          link y-params
+          link y-result
+          fork test, is-unequal(x-params/length, y-params/length)
+            hold
+              back false
+          walk x-params
+            take param
+            take index
+            fork test, not(unify-types(sub, param, get(y-params, index)))
+              hold
+                back false
+          back unify-types(sub, x-result, y-result)
+        miss
+          back false
+    case array
+      link x-element
+      sift y
+        case array
+          link y-element
+          back unify-types(sub, x-element, y-element)
+        miss
+          back false
+    case map
+      link x-key
+      link x-value
+      sift y
+        case map
+          link y-key
+          link y-value
+          back and(unify-types(sub, x-key, y-key), unify-types(sub, x-value, y-value))
+        miss
+          back false
+    case named
+      link x-name
+      link x-args
+      sift y
+        case named
+          link y-name
+          link y-args
+          fork test, is-unequal(x-name, y-name)
+            hold
+              back false
+          # one side unparameterized: gradual
+          fork test, is-unequal(x-args/length, y-args/length)
+            hold
+              back true
+          # copied by a walk, so the type's own list is only read
+          save ys, make list
+          walk y-args
+            take y-arg
+            push(ys, y-arg)
+          walk x-args
+            take arg
+            take index
+            fork test, not(unify-types(sub, arg, get(ys, index)))
+              hold
+                back false
+          back true
+        miss
+          back false
+    miss
+      back is-equal(x/kind, y/kind)

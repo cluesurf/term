@@ -1,8 +1,8 @@
 
 # Posts: the data model plus a repository over the platform-agnostic database API. This is userland — it imports only
-# the abstract `@term/site/code/base/db` (query / run / field), never the Postgres driver or any native module.
+# the abstract `@term/site/code/base/postgres` (query / run / field), never the Postgres driver or any native module.
 
-load @term/site/base/db
+load @term/site/base/postgres
   find connect
   find query
   find run

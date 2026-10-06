@@ -1,0 +1,20 @@
+# Biometrics on the platform's own toolkit (device-layer-0021): LocalAuthentication on macOS and iOS, BiometricPrompt on
+# both Android hosts, none under Compose on the desktop. Conforms to ../biometric. The runtime is
+# native-biometric.swift, native-biometric.kt and compose/native-biometric.kt.
+
+dock load
+  load <global:native-biometric>, name native-biometric
+
+task read-biometric-kind
+  like text
+  send back
+    call native-biometric/kind
+
+# awaited: the platform's sheet answers when the person has looked or touched, or given up
+task ask-biometric
+  take reason, like text
+  like text
+  send back
+    call native-biometric/authenticate
+      wait true
+      read reason

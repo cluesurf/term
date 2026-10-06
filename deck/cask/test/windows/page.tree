@@ -6,7 +6,7 @@
 load @term/cask/cask
   find bundle-path
 
-load @term/site/base/db
+load @term/site/base/postgres
   find connect
   find query
   find run

@@ -109,7 +109,7 @@ task reads
     call dispatch-as
       read owner
       call message
-        text <db_field>
+        text <postgres_field>
         call set-field
           call set-field
             call make-object
@@ -151,7 +151,7 @@ task check
     call dispatch-as
       read first-key
       call message
-        text <db_connect>
+        text <postgres_connect>
         call set-field
           call make-object
           text <url>
@@ -161,21 +161,21 @@ task check
     call dispatch-as
       read first-key
       call message
-        text <db_run>
+        text <postgres_run>
         call statement
           text <CREATE TABLE IF NOT EXISTS note (id TEXT PRIMARY KEY, title TEXT NOT NULL)>
   save cleared
     call dispatch-as
       read first-key
       call message
-        text <db_run>
+        text <postgres_run>
         call statement
           text <DELETE FROM note>
   save written
     call dispatch-as
       read first-key
       call message
-        text <db_run>
+        text <postgres_run>
         call statement
           text <INSERT INTO note (id, title) VALUES ('one', '{{expected}}')>
   save rows
@@ -183,7 +183,7 @@ task check
       call dispatch-as
         read first-key
         call message
-          text <db_query>
+          text <postgres_query>
           call statement
             text <SELECT id, title FROM note>
   save row
@@ -242,7 +242,7 @@ task check
       call dispatch-as
         read second-key
         call message
-          text <db_query>
+          text <postgres_query>
           call statement
             text <SELECT id, title FROM note>
   save held/first-row, read row

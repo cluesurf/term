@@ -1,0 +1,11 @@
+# Biometrics where there are none to ask (device-layer-0021): the abstract module beside the env dirs, reached by every
+# env with none of its own (a browser, a desktop JVM, Rust, node, the memory host). Conforms to ../biometric.
+
+task read-biometric-kind
+  like text
+  send back, text <unavailable>
+
+task ask-biometric
+  take reason, like text
+  like text
+  send back, text <unavailable>

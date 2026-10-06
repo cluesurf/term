@@ -4,7 +4,7 @@
 // Pipeline: parse -> mill (mine/mint) -> resolve (fill name holes) -> check (types) -> emit.
 // See note/research/vibe/computation/plans/11-elaboration.md.
 
-import type { Diagnostic } from '@term/make/code/parser/diagnostic'
+import type { Diagnostic, Span } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
 import { parse } from '@term/make/code/parser/tree'
 import { groupsOf } from '@term/make/code/parser/narrow'
@@ -32,6 +32,7 @@ import {
 } from '@term/make/code/check/overload'
 import { extendForms } from '@term/make/code/check/extend'
 import { bindFormsByImport } from '@term/make/code/check/scope'
+import { fillMaskDefaults } from '@term/make/code/check/mask-defaults'
 import {
   checkPrivateFinds,
   checkPrivateReferences,
@@ -758,6 +759,9 @@ export function compileProgram(
     return { ok: false, diagnostics: formScope }
   }
 
+  // a mask's default tasks, given to each form this build emits that wears the mask and leaves them out
+  program = fillMaskDefaults(program, emitOnly !== undefined, [...(emitOnly ?? [])])
+
   // ROUTE TABLES LOWER HERE, before names are bound and checked (native-navigation-0002). The lowering used to run
   // inside the TypeScript emitter alone, after the checker, so Swift, Kotlin and Rust got no `route` and no `boot` (a
   // native app could not use a `hook` table), the dispatcher's parameters were never typed, and the helpers it calls
@@ -849,6 +853,16 @@ export function compileProgram(
 
   if (staleFinds.length && !describesHost) {
     return { ok: false, diagnostics: staleFinds }
+  }
+
+  // trait checking: coherence, instance completeness and trait-bound existence. BEFORE the duplicate tasks, because a
+  // form that wears one mask twice also defines each of its tasks twice, and that was all the build said: the
+  // `duplicate-instance` it is had no turn to be reported (test/check/traits.ts, 2026-10-05). It reads only masks,
+  // instances and bounds, so nothing below changes what it sees
+  const traitDiagnostics = checkTraits(program, file)
+
+  if (traitDiagnostics.length) {
+    return { ok: false, diagnostics: traitDiagnostics }
   }
 
   // one file defines a task once per parameter list (check/duplicates.ts)
@@ -956,7 +970,7 @@ export function compileProgram(
 
   // a claim's fill inherits the claim's signature, so a proof states the name and its parameters and the type is
   // written once, on the rule. Runs BEFORE the checker so the fill's body is checked against the claim. claim.ts.
-  fillClaims(program)
+  program = fillClaims(program)
 
   // the types as written, before the surface pass seeds them (lossily, on purpose), for the kernel. node.ts `declared`
   for (const statement of program) {
@@ -1013,7 +1027,7 @@ export function compileProgram(
   // a task written in place where an async task is taken is async itself, so each backend builds the function its slot
   // takes (check/async-slots.ts)
   asyncSlots(program)
-  resolveAsync(program)
+  program = resolveAsync(program)
 
   // the roll alone, for an entry already known to build: everything below only refuses or warns
   if (wantRoll === 'fast') {
@@ -1031,26 +1045,27 @@ export function compileProgram(
     ),
   )
 
-  // A KERNEL REFUSAL DOES NOT HIDE THE REST. The provers still run, and every goal the kernel neither proved nor refused
-  // is reported too: a file with one false law used to report only that one, every unproven goal beside it silent until
-  // it was fixed, and a control counting its refusals read seven where eight were refused (test/case/set, 2026-10-05)
-  if (elaboration.diagnostics.length) {
-    const answered = new Set([
-      ...kernelDischarged,
-      ...elaboration.diagnostics.map(d => `${d.span.start.line}:${d.span.start.column}`),
-    ])
-    const unanswered = checkHolds(program, file).filter(
-      d => d.severity === 'error' && !d.markers.some(m => answered.has(`${m.span.start.line}:${m.span.start.column}`)),
-    )
-
-    return { ok: false, diagnostics: [...elaboration.diagnostics, ...unanswered] }
+  // what the claim wall reads of every task (check/claim.ts): lists, each name once, as it takes them
+  const claimEvidence = {
+    verified: [...new Set(elaboration.proven)],
+    terminating: [...safeTerminating(program)],
+    pure: [...pureFunctions(program)],
+    declined: elaboration.declined.map(d => ({ name: d.name, reason: d.reason })),
   }
 
-  // trait checking: instance completeness and trait-bound existence
-  const traitDiagnostics = checkTraits(program, file)
+  // A KERNEL REFUSAL DOES NOT HIDE THE REST. The provers still run, and every goal the kernel neither proved nor refused
+  // is reported too: a file with one false law used to report only that one, every unproven goal beside it silent until
+  // it was fixed, and a control counting its refusals read seven where eight were refused (test/case/set, 2026-10-05).
+  // The claim wall too: a proof that loops beside one the kernel refused went unreported (relation/well-founded)
+  if (elaboration.diagnostics.length) {
+    const at = (span: Span): string => `${span.start.line}:${span.start.column}`
+    const answered = new Set([...kernelDischarged, ...elaboration.diagnostics.map(d => at(d.span))])
+    const unanswered = checkHolds(program, file).filter(
+      d => d.severity === 'error' && !d.markers.some(m => answered.has(at(m.span))),
+    )
+    const claimed = checkClaims(program, file, claimEvidence).diagnostics.filter(d => !answered.has(at(d.span)))
 
-  if (traitDiagnostics.length) {
-    return { ok: false, diagnostics: traitDiagnostics }
+    return { ok: false, diagnostics: [...elaboration.diagnostics, ...unanswered, ...claimed] }
   }
 
   // effect checking: async / await discipline (the surface slice of the effect system)
@@ -1069,16 +1084,9 @@ export function compileProgram(
   // the claim wall: a `rule` states a claim and a `task` of the same name proves it. An unfilled claim is refused,
   // and code that runs may not call one. `note open` leaves a claim deliberately open, counted here so the build
   // line and the gate can report it rather than pass it in silence. See check/claim.ts.
-  const claimEvidence = {
-    verified: new Set(elaboration.proven),
-    terminating: safeTerminating(program),
-    pure: pureFunctions(program),
-    declined: new Map(elaboration.declined.map(d => [d.name, d.reason])),
-  }
-
   // every task records whether it may carry a proof, so a stub taken from this unit tells a dependent unit, which
   // sees the signature only (check/claim.ts groundingOf)
-  stampGrounded(program, claimEvidence)
+  program = stampGrounded(program, claimEvidence)
 
   const claims = checkClaims(program, file, claimEvidence)
 

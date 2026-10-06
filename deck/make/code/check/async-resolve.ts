@@ -17,9 +17,11 @@ import { diagnose } from '@term/make/code/parser/diagnostic'
 
 type Fn = Extract<Statement, { form: 'function' }>
 
-export function resolveAsync(program: Program): void {
+// The program it rewrote (each task in place, here) is the answer: the Term port hands it back, since a native value is
+// a copy (check/async-resolve.tree)
+export function resolveAsync(program: Program): Program {
   const functions = functionsOf(program)
-  asyncDocks = asyncDocksOf(program)
+  asyncDocks = new Set(asyncDocksOf(program))
   const asyncSet = asyncSetOf(functions)
 
   // apply: mark each async function, and wrap every default (non-background, not-yet-awaited) call to an async function
@@ -33,6 +35,8 @@ export function resolveAsync(program: Program): void {
 
     fn.body = fn.body.map(s => stmt(s, visible))
   }
+
+  return program
 }
 
 // An async task handed to a parameter typed as a task that is NOT async, and gives back a value. The callee calls it
@@ -111,10 +115,11 @@ export function checkAsyncArguments(program: Program, file: string): Diagnostic[
 
 // The tasks of a program that are async, marked or inferred, without changing the program: what `resolveAsync`
 // would mark. The lint rule that finds a redundant `wait true` (L054) and the effect check read it.
-export function asyncNames(program: Program): Set<string> {
-  asyncDocks = asyncDocksOf(program)
+// a list, each name once, as the Term port answers it
+export function asyncNames(program: Program): string[] {
+  asyncDocks = new Set(asyncDocksOf(program))
 
-  return asyncSetOf(functionsOf(program))
+  return [...asyncSetOf(functionsOf(program))]
 }
 
 // The `dock load` modules marked `mark async`: every function of one returns a promise, so a call into it
@@ -123,8 +128,9 @@ export function asyncNames(program: Program): Set<string> {
 // 2026-10-05 the build could not be told, and every such call needed its own `wait`
 let asyncDocks = new Set<string>()
 
-export function asyncDocksOf(program: Program): Set<string> {
-  return new Set(program.flatMap(n => (n.form === 'native' && n.async ? [n.alias] : [])))
+// a list, each name once, as the Term port answers it
+export function asyncDocksOf(program: Program): string[] {
+  return [...new Set(program.flatMap(n => (n.form === 'native' && n.async ? [n.alias] : [])))]
 }
 
 function functionsOf(program: Program): Map<string, Fn> {

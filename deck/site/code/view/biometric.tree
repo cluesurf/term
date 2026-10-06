@@ -1,0 +1,28 @@
+# device-layer-0021.
+# Biometrics: asking the person to prove it is them with the face or the finger the device knows, through the
+# platform's own sheet: LocalAuthentication (Face ID, Touch ID) on iOS and macOS, BiometricPrompt on Android. A browser,
+# a desktop JVM and a Rust program have none to ask.
+#
+#   biometric-kind         the hardware: face, fingerprint, none (there is none), or unavailable (nothing here can
+#                          say). Whether anything is enrolled is authenticate's `not-enrolled`. Never shows anything
+#   authenticate(reason)   passed, failed (no match, or the person cancelled), not-enrolled, or unavailable. `reason`
+#                          is the line the platform's sheet shows
+#
+# A host with no such capability (the server, the memory host) answers `unavailable`. Every answer is text from the
+# closed set above, so an app compares strings and no platform enum ever reaches it.
+
+load ./native/{platform}/biometric
+  find read-biometric-kind
+  find ask-biometric
+
+task biometric-kind
+  like text
+  send back
+    call read-biometric-kind
+
+task authenticate
+  take reason, like text
+  like text
+  send back
+    call ask-biometric
+      read reason

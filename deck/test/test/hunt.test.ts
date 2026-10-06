@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { compile } from '@term/make/code/compile/compile'
-import { DEFAULT_FUZZ_CORPUS } from '@term/test/code/compiler-fuzz'
+import { DEFAULT_FUZZ_CORPUS, minimizeCrash, shrinkInput } from '@term/test/code/compiler-fuzz'
 import { huntSeedCompiler, renderHunt, type FuzzEntry } from '@term/test/code/seed-hunt'
 
 const none = () => undefined
@@ -169,6 +169,120 @@ describe('term hunt fails closed', () => {
     expect(result.fuzz.corpusAdded).toBe(1)
     expect(result.ok).toBe(true)
   }, 150_000)
+})
+
+// A crash is reported SHRUNK: the smallest program that still raises its signature, by delta debugging over lines and
+// then words (compiler-fuzz.ts `shrinkInput`). Until 2026-10-05 it was the shortest mutant the fuzzer happened to hit.
+// The failure here is stated exactly, so the shrink is held to an answer rather than to "smaller"
+describe('crashes are shrunk', () => {
+  // fails while some line holds the word `boom` and some line holds `anchor`
+  const fails = (text: string): boolean => {
+    const lines = text.split('\n')
+
+    return lines.some(line => line.trim().split(/\s+/).includes('boom')) && lines.some(line => line.includes('anchor'))
+  }
+  const input = ['task a', '  call x y boom z', '  save q', '    read r', 'anchor here now', '  back 1'].join('\n')
+
+  it('to the lines and words the failure needs, the indentation kept', () => {
+    expect(shrinkInput(input, fails)).toBe('  boom\nanchor')
+  })
+
+  it('to a program no single line or word can leave', () => {
+    const small = shrinkInput(input, fails)
+    const lines = small.split('\n')
+
+    lines.forEach((_, at) => expect(fails(lines.filter((__, other) => other !== at).join('\n'))).toBe(false))
+    lines.forEach((line, at) => {
+      const indent = line.match(/^\s*/)![0]
+      const words = line.trim().split(/\s+/)
+
+      words.forEach((_, drop) => {
+        const fewer = [...lines.slice(0, at), indent + words.filter((__, w) => w !== drop).join(' '), ...lines.slice(at + 1)]
+        expect(fails(fewer.join('\n'))).toBe(false)
+      })
+    })
+  })
+
+  it('within its attempt limit, answering what it reached', () => {
+    let calls = 0
+    const counted = (text: string): boolean => {
+      calls++
+      return fails(text)
+    }
+    const small = shrinkInput(input, counted, 3)
+
+    expect(calls).toBeLessThanOrEqual(3)
+    expect(fails(small)).toBe(true)
+  })
+
+  it('leaves a program that does not crash as it is', () => {
+    expect(minimizeCrash('task answer\n  like number\n  back 42\n')).toBe('task answer\n  like number\n  back 42\n')
+  })
+
+  it('and the hunt reports the shrunk program, saying what it was shrunk from', () => {
+    const { root, files } = project()
+    const result = huntSeedCompiler({
+      root, resolve: none, files, runs: 5, seeds: 1,
+      fuzzEntry: child(
+        "require('fs').writeFileSync(process.argv[1], JSON.stringify({runs: 5, crashes: [{input: 'a\\nx\\nb', error: 'TypeError: boom\\n  at y', generation: 0}], codesSeen: [], corpusGrew: 0, shrunk: [{signature: 'TypeError: boom', input: 'x', from: 'a\\nx\\nb'}]}))",
+      ),
+    })
+
+    expect(result.crashes.found).toEqual([{ signature: 'TypeError: boom', input: 'x', from: 'a\nx\nb' }])
+    expect(renderHunt(result)).toMatch(/TypeError: boom {2}\(shrunk from 3 lines to 1\)\n\s+\| x/)
+  })
+
+  it('and a campaign the watchdog stops while it shrinks keeps the crash it found, unshrunk, beside the hang', () => {
+    const { root, files } = project()
+    const result = huntSeedCompiler({
+      root, resolve: none, files, runs: 5, seeds: 1, fuzzTimeoutSec: 1,
+      fuzzEntry: child(
+        "const fs = require('fs'); fs.writeFileSync(process.argv[1], JSON.stringify({runs: 5, crashes: [{input: 'a\\nx', error: 'TypeError: boom', generation: 0}], codesSeen: [], corpusGrew: 0})); fs.writeFileSync(process.argv[2], 'x'); for (;;) {}",
+      ),
+    })
+
+    expect(result.hangs).toEqual([{ input: 'x' }])
+    expect(result.crashes.found).toEqual([{ signature: 'TypeError: boom', input: 'a\nx' }])
+    expect(result.fuzz.runs).toBe(5)
+    expect(result.findings).toBe(2)
+  })
+})
+
+// The compile budget is held: on the corpus, the fastest of each file's three compiles, and on every fuzzed input,
+// timed twice. `perfBudgetMs` was taken and never read until 2026-10-05
+describe('the compile budget', () => {
+  it('fails a corpus file whose every compile is over it', () => {
+    const { root, files } = project()
+    const result = huntSeedCompiler({ root, resolve: none, files, runs: 5, seeds: 1, perfBudgetMs: 0, fuzzEntry: writesReport })
+    const perf = result.corpus.violations.filter(v => v.violation.oracle === 'perf')
+
+    expect(perf).toHaveLength(1)
+    expect(perf[0]!.violation.detail).toMatch(/compile took \d+ms, the fastest of three \(budget 0ms\)/)
+    expect(result.ok).toBe(false)
+  })
+
+  it('passes it when the corpus compiles inside it', () => {
+    const { root, files } = project()
+    const result = huntSeedCompiler({ root, resolve: none, files, runs: 5, seeds: 1, perfBudgetMs: 60_000, fuzzEntry: writesReport })
+
+    expect(result.corpus.violations).toEqual([])
+    expect(result.ok).toBe(true)
+  })
+
+  it('hands it to each fuzz campaign, and a slow input it reports is a finding', () => {
+    const { root, files } = project()
+    // the budget is the sixth argument after `-e`, and this child reports it back as the slow input's time
+    const result = huntSeedCompiler({
+      root, resolve: none, files, runs: 5, seeds: 1, perfBudgetMs: 60_000,
+      fuzzEntry: child(
+        "require('fs').writeFileSync(process.argv[1], JSON.stringify({runs: 5, crashes: [], codesSeen: [], corpusGrew: 0, slow: [{input: 'slow one', ms: Number(process.argv[6]) + 1}]}))",
+      ),
+    })
+
+    expect(result.slow).toEqual([{ input: 'slow one', ms: 60_001 }])
+    expect(result.findings).toBe(1)
+    expect(renderHunt(result)).toMatch(/1 SLOW INPUT\(S\), over the compile budget:\n {4}- 60001ms\n\s+\| slow one/)
+  })
 })
 
 describe('the default fuzz corpus', () => {

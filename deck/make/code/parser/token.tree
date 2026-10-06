@@ -239,7 +239,7 @@ task tokenize
         save hit-size, 0
         walk kinds-of(mode, orders)
           take kind
-          save size, match-size(kind, runes, pos)
+          save size, match-size(kind, runes, pos, is-literal(mode))
           fork test, is-above(size, 0)
             hold
               save hit-kind, kind
@@ -378,6 +378,7 @@ task match-size
   take kind, like token-kind
   take runes, like list, like number
   take at, like number
+  take literal, like boolean
   like number
   mark private
 
@@ -399,7 +400,7 @@ task match-size
     case newline
       back one-if(rune-at(runes, at), 10)
     case open-brace
-      back open-brace-size(runes, at)
+      back open-brace-size(runes, at, literal)
     case open-paren
       back one-if(rune-at(runes, at), 40)
     case open-angle
@@ -411,7 +412,7 @@ task match-size
     case whole-number
       back integer-size(runes, at)
     case text-chunk
-      back chunk-size(runes, at)
+      back chunk-size(runes, at, literal)
 
 # `/, */`: a comma and the spaces after it
 task comma-size
@@ -486,16 +487,20 @@ task radix-size
   back subtract(end, at)
 
 # `/\{+(?=\s*(?:[a-zA-Z_]|$))/`: a `{` opens an interpolation ONLY when an identifier follows (`{name}`); otherwise it
-# is a literal brace. This lets a text string carry JSON (`<{"a":1}>`) or a regex quantifier (`<[0-9]{3}>`) without
+# is a literal brace. This lets a text string carry JSON (`<{"a":1}>`) or a regex quantifier (`<[0-9]{3,5}>`) without
 # escaping, while `{name}` template / string interpolation still works.
 #
 # A run of braces may be followed by whitespace, including the line's own newline, before its content: `{{ foo }}`
 # and a `{{` that opens at the end of a line are interpolations holding a tree. Only the braces are taken, so the
 # interpolation's depth is still the length of the match. A shorter run is always followed by a `{`, which the
-# lookahead refuses, so the whole run is the only try
+# lookahead refuses, so the whole run is the only try.
+#
+# In a text literal a run before a whole number and its `}` opens one too (`<{123}>` is the text `123`), as
+# `TEXT_PATTERN` in token.ts: `/\{+(?=\s*(?:[a-zA-Z_]|$)|-?\d+\})/`. A quantifier with a comma (`{3,5}`) stays text
 task open-brace-size
   take runes, like list, like number
   take at, like number
+  take literal, like boolean
   like number
   mark private
 
@@ -503,6 +508,9 @@ task open-brace-size
   fork test, is-equal(run, 0)
     hold
       back 0
+  fork test, and(literal, is-braced-number(runes, add(at, run)))
+    hold
+      back run
   save after, skip-spaces(runes, add(at, run))
   fork test, or(is-minimum(after, runes/length), or(is-letter-code(get(runes, after)), is-equal(get(runes, after), 95)))
     hold
@@ -607,10 +615,12 @@ task integer-size
 #
 # A run of braces followed by a letter opens an interpolation whole (`{x}` is depth one, `{{x}}` depth two), so the
 # chunk stops before a brace run that a letter follows. A shorter run is followed by a `{`, which the lookahead also
-# refuses, so the whole run is the only try
+# refuses, so the whole run is the only try. In a text literal it also stops before a run a whole number and its `}`
+# follow, which opens one there
 task chunk-size
   take runes, like list, like number
   take at, like number
+  take literal, like boolean
   like number
   mark private
 
@@ -634,6 +644,9 @@ task chunk-size
           fork test, or(is-minimum(after, runes/length), or(is-letter-code(get(runes, after)), or(is-equal(get(runes, after), 95), is-equal(get(runes, after), 123))))
             hold
               halt
+          fork test, and(literal, is-braced-number(runes, add(end, run)))
+            hold
+              halt
           save end, add(end, run)
           turn next
       fork test, is-equal(one, 62)
@@ -641,6 +654,17 @@ task chunk-size
           halt
       save end, add(end, 1)
   back subtract(end, at)
+
+# `/-?\d+\}/` at `at`: a whole number and the `}` closing it, what follows a brace run that opens on a number
+task is-braced-number
+  take runes, like list, like number
+  take at, like number
+  like boolean
+  mark private
+
+  save start, add(at, sign-of(runes, at))
+  save digits, digits-of(runes, start)
+  back and(is-above(digits, 0), is-equal(rune-at(runes, add(start, digits)), 125))
 
 # `/\{(\d+)\}/`: a brace holding only digits, its size or 0
 task braced-index

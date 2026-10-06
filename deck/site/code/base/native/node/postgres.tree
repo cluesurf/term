@@ -1,11 +1,11 @@
 
-# Node database impl: Postgres-backed, conforming to the abstract API in ../../db. Docks the `<global:postgres>` runtime
+# Node database impl: Postgres-backed, conforming to the abstract API in ../../postgres. Docks the `<global:postgres>` runtime
 # shim (which wraps the `pg` driver), so the driver and its connection plumbing never appear in userland.
 
 dock load
   load <global:postgres>, name postgres
 
-load ../db
+load ../postgres
   find row
 
 task connect

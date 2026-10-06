@@ -23,7 +23,7 @@
 // running this already holds those grants, and the share sheet, which would come up over their work.
 // DEVICE_ONLY=macos (or ios, android, compose, compose-android) runs one platform.
 // Run: npx tsx test/compile/device-features.ts
-import { execFileSync, spawnSync } from 'node:child_process'
+import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -55,6 +55,9 @@ const TITLE = `Term device ${process.pid}`
 // an address the emulator's phone app handles, read back from the activity manager
 const PHONE = '5550100'
 const STATUSES = ['granted', 'denied', 'not-determined', 'restricted', 'unavailable']
+// a secret and the name it is kept under, both unique to this run
+const SECRET_NAME = `term-device-${process.pid}`
+const SECRET = `term-secret-${process.pid}-${Date.now()}`
 
 const phone = (leg: Leg): boolean => leg === 'ios' || leg === 'android' || leg === 'compose-android'
 
@@ -82,6 +85,18 @@ function calls(leg: Leg): Call[] {
     ...only(leg !== 'compose', ['open', 'open-address', ['term-no-handler://nothing']]),
     ...only(phone(leg), ['share', 'share-text', ['shared by device-features']]),
     ['motion', 'read-motion', []],
+    // biometrics: the hardware everywhere, and the sheet itself where nobody's own face or finger would be asked
+    ['biometric-kind', 'biometric-kind', []],
+    ...only(leg !== 'macos', ['biometric', 'authenticate', ['Prove it is you']]),
+    // the vault: kept, read back, removed, gone, and a second removal finding nothing
+    ['secret-save', 'save-secret', [SECRET_NAME, SECRET]],
+    ['secret-read', 'read-secret', [SECRET_NAME]],
+    ['secret-remove', 'remove-secret', [SECRET_NAME]],
+    ['secret-again', 'read-secret', [SECRET_NAME]],
+    ['secret-remove-again', 'remove-secret', [SECRET_NAME]],
+    // and one kept past the run on Android, whose preferences file is then read as root: it must hold the secret only
+    // as ciphertext. Not on the Mac, where a kept item would be left in the person's login keychain
+    ...only(leg === 'android' || leg === 'compose-android', ['secret-kept', 'save-secret', [`${SECRET_NAME}-kept`, SECRET]]),
     ...only(leg !== 'macos' && leg !== 'compose', ['camera', 'take-photo', []]),
     // last, because it puts another app in front, and a camera does not open for an app in the background
     ...only(leg === 'android' || leg === 'compose-android', ['open-handled', 'open-address', [`tel:${PHONE}`]]),
@@ -139,6 +154,15 @@ load @term/site/code/view/motion
 load @term/site/code/view/camera
   find take-photo
 
+load @term/site/code/view/biometric
+  find biometric-kind
+  find authenticate
+
+load @term/site/code/view/secret
+  find save-secret
+  find read-secret
+  find remove-secret
+
 view board
   take host, like view
   view span
@@ -195,6 +219,20 @@ function prepare(leg: Leg, target: { udid?: string; serial?: string; identifier:
     }
 
     spawnSync('xcrun', ['simctl', 'location', target.udid, 'set', `${PLACE.latitude},${PLACE.longitude}`])
+
+    // a face enrolled, as Features > Face ID > Enrolled does, then a match signaled every second while the app's sheet
+    // waits, as Features > Face ID > Matching Face does, until this test has gone
+    const notify = (...args: string[]) => spawnSync('xcrun', ['simctl', 'spawn', target.udid!, 'notifyutil', ...args])
+    notify('-s', 'com.apple.BiometricKit.enrollmentChanged', '1')
+    notify('-p', 'com.apple.BiometricKit.enrollmentChanged')
+    const script = `
+      const { spawnSync } = require('node:child_process')
+      const alive = pid => { try { process.kill(pid, 0); return true } catch { return false } }
+      for (let turn = 0; turn < 120 && alive(${process.pid}); turn++) {
+        spawnSync('xcrun', ['simctl', 'spawn', ${JSON.stringify(target.udid)}, 'notifyutil', '-p', 'com.apple.BiometricKit_Sim.pearl.match'])
+        spawnSync('sleep', ['1'])
+      }`
+    spawn(process.execPath, ['-e', script], { detached: true, stdio: 'ignore' }).unref()
   }
 
   if ((leg === 'android' || leg === 'compose-android') && target.serial) {
@@ -315,6 +353,38 @@ function judge(leg: Leg, toolkit: string, output: string): void {
     ok(`${named}: the acceleration is the one the emulator was told`, said('motion') === ACCELERATION.join(' '), said('motion'))
   } else {
     ok(`${named}: no accelerometer here, said so`, said('motion') === 'unavailable', said('motion'))
+  }
+
+  // biometrics
+  if (android) {
+    ok(`${named}: the emulator has fingerprint hardware, and nothing enrolled`, said('biometric-kind') === 'fingerprint' && said('biometric') === 'not-enrolled', `${said('biometric-kind')} ${said('biometric')}`)
+  } else if (leg === 'compose') {
+    ok(`${named}: a desktop JVM has no biometric, said both ways`, said('biometric-kind') === 'unavailable' && said('biometric') === 'unavailable', `${said('biometric-kind')} ${said('biometric')}`)
+  } else if (leg === 'macos') {
+    ok(`${named}: the Mac names its hardware without asking anything`, ['fingerprint', 'none'].includes(said('biometric-kind')), said('biometric-kind'))
+  } else {
+    ok(`${named}: the simulator's face was enrolled and matched, so the sheet answers passed`, said('biometric-kind') === 'face' && said('biometric') === 'passed', `${said('biometric-kind')} ${said('biometric')}`)
+  }
+
+  // the vault
+  const vault = ['secret-save', 'secret-read', 'secret-remove', 'secret-again', 'secret-remove-again'].map(said)
+
+  if (leg === 'compose') {
+    ok(`${named}: a desktop JVM has no vault, and says so`, vault.join('|') === 'unavailable||unavailable||unavailable', vault.join('|'))
+  } else {
+    ok(`${named}: a secret is kept, read back, removed, gone, and a second removal finds nothing`, vault.join('|') === `saved|${SECRET}|removed||absent`, vault.join('|'))
+  }
+
+  if (leg === 'macos' && process.platform === 'darwin') {
+    // asked without -w, so the keychain answers whether the item is there and is never asked for its value
+    const left = spawnSync('security', ['find-generic-password', '-s', 'term', '-a', SECRET_NAME], { encoding: 'utf8' })
+    ok(`${named}: and the login keychain holds nothing under the name afterwards`, left.status !== 0, `${left.status} ${left.stdout.slice(0, 200)}`)
+  }
+
+  if (android) {
+    ok(`${named}: the kept secret saves`, said('secret-kept') === 'saved', said('secret-kept'))
+    const file = adb(serial, 'shell', 'su', '0', 'cat', `/data/data/${packages[leg] ?? '?'}/shared_prefs/term-secret.xml`).stdout ?? ''
+    ok(`${named}: and the app's preferences hold it, but only as ciphertext`, file.includes(`${SECRET_NAME}-kept`) && !file.includes(SECRET), file.slice(0, 300))
   }
 
   // camera

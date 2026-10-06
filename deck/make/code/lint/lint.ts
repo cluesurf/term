@@ -21,7 +21,6 @@ import { tellMissing, tellOfFailure, tellReveals } from '@term/make/code/lint/ru
 import { unhandledRaise } from '@term/make/code/lint/rules/unhandled-raise'
 import { dataGrammar } from '@term/make/code/lint/rules/data-grammar'
 import { lineLayout } from '@term/make/code/lint/rules/line-layout'
-import { redundantWait } from '@term/make/code/lint/rules/redundant-wait'
 import { parse } from '@term/make/code/parser/tree'
 import type { RootNode } from '@term/make/code/parser/tree'
 import * as ruleCheck from '@term/make/code/lint/rule-check'
@@ -53,7 +52,7 @@ export function portedRule(name: ruleCheck.PortedRule): Rule {
     },
     // only a rule that reads the concrete tree and the source has this, so the driver parses only when one is on
     ...(ruleCheck.readsSource(name)
-      ? { checkSource: (tree: RootNode, context: LintContext) => reportAll(ruleCheck.checkSource(name, tree, context.source, context.lean), context) }
+      ? { checkSource: (tree: RootNode, context: LintContext) => reportAll(ruleCheck.checkSource(name, tree, context.source, context.lean, context.program), context) }
       : {}),
   }
 }
@@ -116,7 +115,7 @@ export const RULES: Rule[] = [
   portedRule('prefer-single-brace'),
   lineLayout,
   portedRule('note-metadata'),
-  redundantWait,
+  portedRule('redundant-wait'),
   tellMissing,
   tellOfFailure,
   tellReveals,

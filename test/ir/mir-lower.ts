@@ -63,7 +63,7 @@ function main(): void {
     )
     ok(
       'record build: exactly the record binding is heap (the literal is copyable)',
-      heap.size === 1,
+      heap.length === 1,
       JSON.stringify([...heap]),
     )
 
@@ -90,7 +90,7 @@ function main(): void {
     const { insts, heap } = lowerToMir(body, params)
     ok(
       'heap param `b` is in the RC set',
-      heap.has('b'),
+      heap.includes('b'),
       JSON.stringify([...heap]),
     )
 
