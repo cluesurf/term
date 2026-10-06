@@ -1,0 +1,1070 @@
+# Elaboration, part nine: one `hold`, checked by the kernel. `calm miss` by no-confusion, a conjunction by an order
+# induction, the connectives leaf by leaf, `seek` (rewriting by every proven lemma, single steps to depth three),
+# function extensionality, `fold` (structural, simultaneous, deep, order, Peano), a sum-of-squares bound, a ring
+# identity (modulo the path's equations too), the truth table and the ring once the definitions run, record
+# extensionality, the path's equations as rewrites, a numeric literal disproof, and the explicit proof. A discharged
+# hold's span is recorded so the linear prover drops it, a named one becomes a citable lemma, and a false proof is an
+# `invalid-proof` error.
+#
+# Ported from check/elaborate.ts (self-hosting, 2026-10-06), whose closure `checkHold` this was. The decisions:
+#   - what the face still answers is one `hold-host`: check/facts.ts's `callsImpure` (the task's own names), the
+#     unfolding table it caches per program, `checkFold` / `checkFoldOrder` (induct.ts, the product prover's budget
+#     its module state), holds.ts's `isLinearGoal` (another session's), `etaPair` (a construction rebuilt by spread,
+#     its keys as the source had them) and `diagnose`, which builds a diagnostic from exactly the input the original
+#     wrote, a `hint` only where it wrote one
+#   - `seek` deduplicated the rewritten terms by `JSON.stringify`, key order and a lambda's name included: a host bind
+#   - each bare `catch` is an `attempt`, covering what its `try` covered
+#   - the report's diagnostics and discharged spans are the face's own lists, written in place
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find starts-with
+
+load ../compile/node
+  find expression
+  find statement
+  find proof
+  find span
+  find binary-op
+
+load ./judging
+  find judge-state
+  find kernel-term
+  find kernel-value
+  find context
+  find evaluate
+  find quote
+  find infer
+  find whnf
+  find are-convertible
+  find convertible-modulo
+  find show-term
+
+load ./ring
+  find equation, name ring-equation
+  find ring-equal
+  find ring-equal-modulo
+  find non-negative-difference
+
+load ./elaborating-data
+  find field-info
+  find constant
+  find apply-term
+
+load ./elaborating-rewrite
+  find rewrite-rule
+  find rewrite-once
+  find rewrite-with-lemmas
+
+load ./elaborating-cases
+  find case-state
+  find counterexample
+  find attempt-boolean
+  find equation-absurd
+  find truth-table
+  find ring-case
+
+load ./elaborating-terms
+  find term-state
+  find expr
+
+load ./elaborating-commands
+  find expression-pair
+
+load ./elaborating-proof
+  find lemma-state
+  find lemma
+  find lemma-rule
+  find check-proof
+
+load ./elaborating-theorems
+  find goal-sides
+  find elaborate-goal-sides
+  find enclosing-theorem
+  find in-universal-theorem
+  find number-fold-over-functions
+  find is-order-goal
+  find applies-higher-order
+  find rule-guards
+  find numeric-term
+  find universal-instances
+  find record-lemma-rule
+  find try-funext
+
+load ./elaborating-induction
+  find induction-state
+  find structural-induction
+  find multi-induction
+
+bind json-key
+  take term, like kernel-term
+  like text
+  case node
+    text <JSON.stringify($term)>
+  case browser
+    text <JSON.stringify($term)>
+  case rust
+    text <format!("\{:?\}", $term)>
+  case swift
+    text <String(describing: $term)>
+  case kotlin
+    text <$term.toString()>
+
+form hold-host
+  link calls-impure-expression
+    like task
+      take expression, like expression
+      like boolean
+  link unfold-definitions
+    like task
+      take expression, like expression
+      like expression
+  link check-fold
+    like task
+      take goal, like expression
+      take induct-var, like text
+      like boolean
+  link check-fold-order
+    like task
+      take goal, like expression
+      take induct-var, like text
+      take guards, like list, like expression
+      like boolean
+  link is-linear-goal
+    like task
+      take goal, like expression
+      like boolean
+  link eta-pair
+    like task
+      take left, like expression
+      take right, like expression
+      like expression-pair
+  # a diagnostic as the original's `diagnose(name, { file, span, message })` built it, with `hint` where it is not empty
+  link diagnose
+    like task
+      take name, like text
+      take span, like span
+      take message, like text
+      take hint, like text
+      like unknown
+  link calls-itself
+    like task
+      take statement, like statement
+      like boolean
+
+form hold-state
+  mark shared
+  link is, like induction-state
+  link host, like hold-host
+  link program, like list, like statement
+  link diagnostics, like list, like unknown
+  link discharged, like list, like span
+
+task no-value
+  like maybe, like kernel-value
+  mark private
+
+  back make none
+
+task no-values
+  like list, like kernel-value
+  mark private
+
+  back make list
+
+task hold-span
+  take statement, like statement
+  like span
+  mark private
+
+  sift statement
+    case hold
+      link span
+      back span
+    miss
+      halt <not a hold>
+
+task discharge
+  take hs, like hold-state
+  take statement, like statement
+  mark private
+
+  push(hs/discharged, hold-span(statement))
+
+task refuse
+  take hs, like hold-state
+  take statement, like statement
+  take message, like text
+  take hint, like text
+  mark private
+
+  push(hs/diagnostics, hs/host/diagnose(<invalid-proof>, hold-span(statement), message, hint))
+
+task hold-name
+  take statement, like statement
+  like text
+  mark private
+
+  sift statement
+    case hold
+      link name
+      fork test, filled(name)
+        hold
+          back name
+      back <>
+    miss
+      back <>
+
+bind filled
+  take value, like text
+  like boolean
+  case node
+    text <Boolean($value)>
+  case browser
+    text <Boolean($value)>
+  case rust
+    text <!$value.is_empty()>
+  case swift
+    text <!$value.isEmpty>
+  case kotlin
+    text <$value.isNotEmpty()>
+
+task first-step
+  take statement, like statement
+  like maybe, like proof
+  mark private
+
+  sift statement
+    case hold
+      link proof
+      walk proof
+        take step
+        back make(some, step)
+      back make none
+    miss
+      back make none
+
+task proof-of
+  take statement, like statement
+  like list, like proof
+  mark private
+
+  save out, make list
+  sift statement
+    case hold
+      link proof
+      walk proof
+        take step
+        push(out, step)
+    miss
+      back out
+  back out
+
+task ring-pairs
+  take hs, like hold-state
+  take pairs, like list, like expression-pair
+  take unfolded, like boolean
+  like list, like ring-equation
+  mark private
+
+  save out, make list
+  walk pairs
+    take pair
+    save left, pair/left
+    save right, pair/right
+    fork test, unfolded
+      hold
+        save left, hs/host/unfold-definitions(left)
+        save right, hs/host/unfold-definitions(right)
+    save eq
+      make ring-equation
+        bind left, left
+        bind right, right
+    push(out, eq)
+  back out
+
+# the name of the numeric-literal constant a value computes to, none when it is not one
+task numeric-literal-name
+  take st, like judge-state
+  take value, like kernel-value
+  like text
+  mark private
+
+  sift whnf(st, value)
+    case rigid
+      link name
+      link spine
+      fork test, and(is-equal(spine/length, 0), starts-with(name, <numberValue#>))
+        hold
+          back name
+      back <>
+    miss
+      back <>
+
+# a leaf of a connective goal: a ring identity, one modulo the path, or convertible sides
+task prove-connective
+  take hs, like hold-state
+  take claim, like expression
+  take scope, like hash, like text, like number
+  take ctx, like context
+  take assumptions, like list, like expression-pair
+  like boolean
+  mark private
+
+  save ts, hs/is/ts
+  save st, ts/st
+  sift claim
+    case binary
+      link op
+      link left
+      link right
+      sift op
+        case both
+          save l, prove-connective(hs, left, scope, ctx, assumptions)
+          save r, prove-connective(hs, right, scope, ctx, assumptions)
+          back and(l, r)
+        case either
+          save l, prove-connective(hs, left, scope, ctx, assumptions)
+          save r, prove-connective(hs, right, scope, ctx, assumptions)
+          back or(l, r)
+        case equal
+          fork test, ring-equal(left, right)
+            hold
+              back true
+          fork test, and(is-above(assumptions/length, 0), ring-equal-modulo(left, right, ring-pairs(hs, assumptions, false)))
+            hold
+              back true
+          save sides, elaborate-goal-sides(ts, left, right, scope, ctx)
+          sift sides/left
+            case some
+              link l
+              sift sides/right
+                case some
+                  link r
+                  save step
+                    task
+                      like boolean
+                      back are-convertible(st, ctx/level, evaluate(st, ctx/env, l), evaluate(st, ctx/env, r))
+                  back attempt-boolean(st, step)
+                case none
+                  back false
+            case none
+              back false
+        miss
+          back false
+    miss
+      back false
+
+# `seek`: from the left side, each proven lemma applied as ONE rewrite per step, to depth three, until a term converts
+# to the right side
+task seek
+  take hs, like hold-state
+  take l, like kernel-term
+  take r, like kernel-term
+  take ctx, like context
+  like boolean
+  mark private
+
+  save ts, hs/is/ts
+  save st, ts/st
+  save rules, make list
+  walk hs/is/ls/rules/keys()
+    take name
+    save stored, hs/is/ls/rules/get(name)
+    save rule
+      make rewrite-rule
+        bind binder-count, stored/binder-count
+        bind lhs, stored/lhs
+        bind rhs, stored/rhs
+        bind holes, make hash
+    push(rules, rule)
+  save rhs, evaluate(st, ctx/env, r)
+  save frontier, make list
+  push(frontier, quote(st, ctx/level, evaluate(st, ctx/env, l)))
+  save seen, make hash
+  save closed, false
+  save depth, 0
+  walk test
+    hook test, and(is-maximum(depth, 3), is-equal(closed, false))
+    hook hold
+      save next, make list
+      walk frontier
+        take term
+        fork test, are-convertible(st, ctx/level, evaluate(st, ctx/env, term), rhs)
+          hold
+            save closed, true
+            halt
+        walk rules
+          take rule
+          sift rewrite-once(term, rule)
+            case some
+              link rewritten
+              save key, json-key(rewritten)
+              fork test, is-equal(seen/has(key), false)
+                hold
+                  seen/set(key, true)
+                  push(next, rewritten)
+            case none
+              save key, <>
+      save kept, make list
+      walk next
+        take one
+        take i
+        fork test, is-below(i, 64)
+          hold
+            push(kept, one)
+      save frontier, kept
+      save depth, add(depth, 1)
+  back closed
+
+task fold-message
+  take found, like maybe, like counterexample
+  like text
+  mark private
+
+  sift found
+    case none
+      back <the induction did not establish the equality>
+    case some
+      link c
+      save where, <in one case>
+      sift c/at
+        case some
+          link at
+          fork test, filled(at)
+            hold
+              save where, <in the case `{at}`>
+        case none
+          save where, where
+      fork test, is-above(c/sides/length, 0)
+        hold
+          back <the induction did not establish the equality: it is FALSE {where}, where its two sides compute to {get(c/sides, 0)} and {get(c/sides, 1)}>
+      save tail, <>
+      fork test, c/given
+        hold
+          save tail, <, with every hypothesis of the case holding>
+      back <the induction did not establish the equality: it is FALSE {where}, where {c/text}{tail}>
+
+task value-pairs
+  take hs, like hold-state
+  take pairs, like list, like expression-pair
+  take scope, like hash, like text, like number
+  take ctx, like context
+  like list, like kernel-value
+  mark private
+
+  save ts, hs/is/ts
+  save st, ts/st
+  save out, make list
+  walk pairs
+    take pair
+    sift expr(ts, pair/left, scope, ctx, no-value())
+      case some
+        link lt
+        sift expr(ts, pair/right, scope, ctx, no-value())
+          case some
+            link rt
+            push(out, evaluate(st, ctx/env, lt))
+            push(out, evaluate(st, ctx/env, rt))
+          case none
+            save lt, lt
+      case none
+        save pair, pair
+  back out
+
+# A GOAL OVER TRUTH VALUES DECIDES ITSELF by its truth table, and an identity of the integers by the ring once the
+# definitions run; a false one is refused with the values that break it. Answers whether the hold is settled
+task decide-by-table
+  take hs, like hold-state
+  take statement, like statement
+  take left, like kernel-term
+  take right, like kernel-term
+  take scope, like hash, like text, like number
+  take ctx, like context
+  take written, like list, like expression-pair
+  take instances, like list, like expression-pair
+  like boolean
+  mark private
+
+  save is, hs/is
+  save ts, is/ts
+  save st, ts/st
+  save stated, value-pairs(hs, written, scope, ctx)
+  save given, make list
+  walk stated
+    take v
+    push(given, v)
+  walk value-pairs(hs, instances, scope, ctx)
+    take v
+    push(given, v)
+  reset-case-state(is/cs)
+  fork test, truth-table(st, ts/data, is/cs, ctx, evaluate(st, ctx/env, left), evaluate(st, ctx/env, right), given, divide-two(stated/length))
+    hold
+      discharge(hs, statement)
+      record-lemma-rule(ts, is/ls, hold-name(statement), hold-goal(statement), scope, ctx)
+      back true
+  fork test, ring-case(st, is/truncating, is/no-span, ctx/level, evaluate(st, ctx/env, left), evaluate(st, ctx/env, right), given, no-rules())
+    hold
+      discharge(hs, statement)
+      record-lemma-rule(ts, is/ls, hold-name(statement), hold-goal(statement), scope, ctx)
+      back true
+  sift found-counterexample(is/cs)
+    case some
+      link c
+      fork test, is-equal(c/sides/length, 0)
+        hold
+          save universal-count, 0
+          sift enclosing-theorem(hs/program, statement)
+            case some
+              link theorem
+              sift theorem
+                case function
+                  link universals
+                  walk universals
+                    take u
+                    save universal-count, add(universal-count, 1)
+                miss
+                  save universal-count, 0
+            case none
+              save universal-count, 0
+          fork test, is-above(universal-count, 0)
+            hold
+              refuse(hs, statement, <this rule does not follow from its hypotheses at the terms it names: they all hold where {c/text}, and the goal does not>, <a universal hypothesis is used only at the terms the goal and its guards name. State the term it is needed at, or change the statement>)
+              back true
+      fork test, is-above(c/sides/length, 0)
+        hold
+          refuse(hs, statement, <this rule is FALSE: its two sides compute to {get(c/sides, 0)} and {get(c/sides, 1)}, whatever its seats are>, <no proof step makes a false law true. Change the statement, and check the values named above by hand>)
+          back true
+      refuse(hs, statement, <this rule is FALSE where {c/text}>, <no proof step makes a false law true. Change the statement, and check the values named above by hand>)
+      back true
+    case none
+      back false
+
+# the counterexample as the truth table left it, read through a task so the reset before the table is not taken as
+# its value
+task found-counterexample
+  take cs, like case-state
+  like maybe, like counterexample
+
+  back cs/counterexample
+
+# no fold case and no counterexample yet, before the table or an induction runs
+task reset-case-state
+  take cs, like case-state
+
+  save cs/fold-case, make none
+  save cs/counterexample, make none
+
+task divide-two
+  take n, like number
+  like number
+  mark private
+
+  save q, 0
+  save r, n
+  walk test
+    hook test, is-minimum(r, 2)
+    hook hold
+      save r, subtract(r, 2)
+      save q, add(q, 1)
+  back q
+
+task no-rules
+  like list, like rewrite-rule
+  mark private
+
+  back make list
+
+task hold-goal
+  take statement, like statement
+  like expression
+  mark private
+
+  sift statement
+    case hold
+      link expr
+      back expr
+    miss
+      halt <not a hold>
+
+task head-name
+  take term, like kernel-term
+  like text
+  mark private
+
+  save head, term
+  walk test
+    hook test, is-app(head)
+    hook hold
+      sift head
+        case app
+          link fun
+          save head, fun
+        miss
+          halt
+  sift head
+    case const
+      link name
+      back name
+    miss
+      back <>
+
+task is-app
+  take term, like kernel-term
+  like boolean
+  mark private
+
+  sift term
+    case app
+      back true
+    miss
+      back false
+
+# the kernel's last word on an equality: record extensionality, the path's equations as rewrites, a numeric literal
+# disproof, the explicit proof. Any raise leaves it to the linear prover
+task settle
+  take hs, like hold-state
+  take statement, like statement
+  take goal, like expression
+  take left, like kernel-term
+  take right, like kernel-term
+  take scope, like hash, like text, like number
+  take ctx, like context
+  take assumptions, like list, like expression-pair
+  take has-proof, like boolean
+  like boolean
+  mark private
+
+  save is, hs/is
+  save ts, is/ts
+  save st, ts/st
+  save left-type, infer(st, ctx, left)/type
+  infer(st, ctx, right)
+  save left-value, evaluate(st, ctx/env, left)
+  save right-value, evaluate(st, ctx/env, right)
+  # RECORD EXTENSIONALITY: two values of a record type are equal when every projection agrees
+  save record-name, head-name(quote(st, ctx/level, left-type))
+  fork test, and(is-unequal(record-name, <>), ts/data/record-field-info/has(record-name))
+    hold
+      save infos, ts/data/record-field-info/get(record-name)
+      fork test, is-above(infos/length, 0)
+        hold
+          save agree, true
+          walk infos
+            take f
+            save projection, constant(<{record-name}__{f/name}>)
+            save l, evaluate(st, ctx/env, apply-term(projection, quote(st, ctx/level, left-value)))
+            save r, evaluate(st, ctx/env, apply-term(projection, quote(st, ctx/level, right-value)))
+            fork test, is-equal(are-convertible(st, ctx/level, l, r), false)
+              hold
+                save agree, false
+                halt
+          fork test, agree
+            hold
+              discharge(hs, statement)
+              record-lemma-rule(ts, is/ls, hold-name(statement), goal, scope, ctx)
+              back true
+  # the path's equations, as rewrites and as hypotheses
+  fork test, is-above(assumptions/length, 0)
+    hold
+      save hyps, make list
+      save rules, make list
+      walk assumptions
+        take a
+        sift expr(ts, a/left, scope, ctx, no-value())
+          case some
+            link lt
+            sift expr(ts, a/right, scope, ctx, no-value())
+              case some
+                link rt
+                save lv, evaluate(st, ctx/env, lt)
+                save rv, evaluate(st, ctx/env, rt)
+                save pair, make list
+                push(pair, lv)
+                push(pair, rv)
+                push(hyps, pair)
+                save rule
+                  make rewrite-rule
+                    bind binder-count, 0
+                    bind lhs, quote(st, ctx/level, lv)
+                    bind rhs, quote(st, ctx/level, rv)
+                    bind holes, make hash
+                push(rules, rule)
+              case none
+                save lt, lt
+          case none
+            save a, a
+      fork test, is-above(rules/length, 0)
+        hold
+          save l, evaluate(st, ctx/env, rewrite-with-lemmas(quote(st, ctx/level, left-value), rules, 200))
+          save r, evaluate(st, ctx/env, rewrite-with-lemmas(quote(st, ctx/level, right-value), rules, 200))
+          fork test, convertible-modulo(st, ctx/level, l, r, hyps)
+            hold
+              discharge(hs, statement)
+              back true
+  # definitional DISPROOF: two distinct numeric literals
+  fork test, is-equal(has-proof, false)
+    hold
+      save left-literal, numeric-literal-name(st, left-value)
+      save right-literal, numeric-literal-name(st, right-value)
+      fork test, and(and(is-unequal(left-literal, <>), is-unequal(right-literal, <>)), is-unequal(left-literal, right-literal))
+        hold
+          refuse(hs, statement, <this equality is false: the two sides compute to different numbers>, <>)
+          back true
+  save verdict, check-proof(st, is/ls, proof-of(statement), ctx/level, left-value, right-value)
+  fork test, is-equal(verdict, <ok>)
+    hold
+      discharge(hs, statement)
+      save name, hold-name(statement)
+      fork test, filled(name)
+        hold
+          save printed
+            make lemma
+              bind left, show-term(quote(st, ctx/level, left-value))
+              bind right, show-term(quote(st, ctx/level, right-value))
+          is/ls/lemmas/set(name, printed)
+          save rule
+            make lemma-rule
+              bind binder-count, ctx/level
+              bind lhs, quote(st, ctx/level, left-value)
+              bind rhs, quote(st, ctx/level, right-value)
+          is/ls/rules/set(name, rule)
+      back true
+  fork test, is-equal(verdict, <bad>)
+    hold
+      refuse(hs, statement, <this proof cites a lemma that does not exist>, <>)
+      back true
+  fork test, is-equal(verdict, <fail>)
+    hold
+      sift goal
+        case binary
+          link goal-op
+          link left-node
+          link right-node
+          save unfolded-left, hs/host/unfold-definitions(left-node)
+          save unfolded-right, hs/host/unfold-definitions(right-node)
+          save holds, ring-equal(unfolded-left, unfolded-right)
+          fork test, and(is-equal(holds, false), is-above(assumptions/length, 0))
+            hold
+              save holds, ring-equal-modulo(unfolded-left, unfolded-right, ring-pairs(hs, assumptions, true))
+          fork test, holds
+            hold
+              discharge(hs, statement)
+              record-lemma-rule(ts, is/ls, hold-name(statement), goal, scope, ctx)
+              back true
+          refuse(hs, statement, <this proof does not establish the equality>, <>)
+        miss
+          save goal, goal
+  back true
+
+# check one `hold` proof obligation by the KERNEL
+task check-hold
+  take hs, like hold-state
+  take statement, like statement
+  take scope, like hash, like text, like number
+  take ctx, like context
+  take given, like list, like expression-pair
+
+  save is, hs/is
+  save ts, is/ts
+  save st, ts/st
+  save host, hs/host
+  save program, hs/program
+  save goal, hold-goal(statement)
+  # the theorem's universal hypotheses at the terms this goal and its guards name are equations true on this path
+  save instances, universal-instances(ts, program, statement, scope, ctx, given)
+  save assumptions, make list
+  walk given
+    take a
+    push(assumptions, a)
+  walk instances
+    take a
+    push(assumptions, a)
+  # a goal calling something two calls may disagree on is not the kernel's to decide
+  fork test, host/calls-impure-expression(goal)
+    hold
+      back
+  save tactic, first-step(statement)
+  save head, <>
+  save arg, <>
+  save has-arg, false
+  save children, make list
+  sift tactic
+    case some
+      link step
+      save head, step/head
+      fork test, filled(step/arg)
+        hold
+          save arg, step/arg
+          save has-arg, true
+      save children, step/children
+    case none
+      save head, <>
+  # `calm miss`: a refutation by no-confusion
+  sift goal
+    case unary
+      link op
+      link operand
+      sift op
+        case not
+          sift operand
+            case binary
+              link inner-op
+              link left
+              link right
+              sift inner-op
+                case equal
+                  fork test, is-equal(head, <calm>)
+                    hold
+                      sift expr(ts, left, scope, ctx, no-value())
+                        case some
+                          link lt
+                          sift expr(ts, right, scope, ctx, no-value())
+                            case some
+                              link rt
+                              save step
+                                task
+                                  like boolean
+                                  save lv, evaluate(st, ctx/env, lt)
+                                  save rv, evaluate(st, ctx/env, rt)
+                                  fork test, equation-absurd(st, ts/data, ctx, lt, lv, rv)
+                                    hold
+                                      discharge(hs, statement)
+                                    miss
+                                      refuse(hs, statement, <calm miss needs the two sides to compute to distinct constructors>, <>)
+                                  back true
+                              attempt-boolean(st, step)
+                            case none
+                              save lt, lt
+                        case none
+                          save head, head
+                      back
+                miss
+                  save head, head
+            miss
+              save head, head
+        miss
+          save head, head
+    miss
+      save head, head
+  sift goal
+    case binary
+      link op
+      link left
+      link right
+      save is-fold, is-equal(head, <fold>)
+      fork test, and(is-fold, is-equal(is-order-goal(goal), false))
+        hold
+          fork test, or(in-universal-theorem(program, statement), number-fold-over-functions(ts, program, statement, host/calls-itself))
+            hold
+              back
+      sift op
+        case both
+          fork test, and(is-fold, has-arg)
+            hold
+              sift rule-guards(program, statement)
+                case some
+                  link guards
+                  fork test, host/check-fold-order(goal, arg, guards)
+                    hold
+                      discharge(hs, statement)
+                      back
+                case none
+                  save guards-none, true
+              refuse(hs, statement, <the induction did not establish the conjunction>, <>)
+              back
+          fork test, prove-connective(hs, goal, scope, ctx, assumptions)
+            hold
+              discharge(hs, statement)
+          back
+        case either
+          fork test, prove-connective(hs, goal, scope, ctx, assumptions)
+            hold
+              discharge(hs, statement)
+          back
+        miss
+          save op, op
+      save has-proof, is-above(proof-of(statement)/length, 0)
+      # `seek`: rewriting by every proven lemma
+      fork test, is-equal(head, <seek>)
+        hold
+          sift op
+            case equal
+              save sides, elaborate-goal-sides(ts, left, right, scope, ctx)
+              sift sides/left
+                case some
+                  link l
+                  sift sides/right
+                    case some
+                      link r
+                      save step
+                        task
+                          like boolean
+                          back seek(hs, l, r, ctx)
+                      fork test, attempt-boolean(st, step)
+                        hold
+                          discharge(hs, statement)
+                          record-lemma-rule(ts, is/ls, hold-name(statement), goal, scope, ctx)
+                          back
+                    case none
+                      save l, l
+                case none
+                  save head, head
+              refuse(hs, statement, <seek could not close the goal by rewriting with the known lemmas and computing>, <>)
+              back
+            miss
+              save head, head
+      fork test, and(and(is-equal(head, <melt>), has-arg), try-funext(ts, is/ls, goal, scope, ctx, arg))
+        hold
+          discharge(hs, statement)
+          back
+      fork test, and(is-fold, has-arg)
+        hold
+          reset-case-state(is/cs)
+          save cited, make list
+          save extra, make list
+          push(extra, arg)
+          walk children
+            take child
+            fork test, and(is-equal(child/head, <cite>), filled(child/arg))
+              hold
+                push(cited, child/arg)
+          walk children
+            take child
+            fork test, and(is-unequal(child/head, <cite>), is-equal(filled(child/arg), false))
+              hold
+                push(extra, child/head)
+          save by-induction, false
+          fork test, is-above(extra/length, 1)
+            hold
+              save by-induction, multi-induction(is, left, right, op, scope, ctx, extra, cited, assumptions, false)
+            miss
+              save by-induction, structural-induction(is, left, right, op, scope, ctx, arg, cited, assumptions)
+          save by-deep, false
+          fork test, is-equal(by-induction, false)
+            hold
+              save by-deep, multi-induction(is, left, right, op, scope, ctx, extra, cited, assumptions, true)
+          save guards, rule-guards(program, statement)
+          save by-order, false
+          fork test, and(is-equal(by-induction, false), is-equal(by-deep, false))
+            hold
+              sift guards
+                case some
+                  link guard-list
+                  save by-order, host/check-fold-order(goal, arg, guard-list)
+                case none
+                  save by-order, false
+          save proven, or(or(by-induction, by-deep), by-order)
+          fork test, is-equal(proven, false)
+            hold
+              save proven, host/check-fold(goal, arg)
+          fork test, proven
+            hold
+              discharge(hs, statement)
+              sift op
+                case equal
+                  record-lemma-rule(ts, is/ls, hold-name(statement), goal, scope, ctx)
+                miss
+                  save op, op
+            miss
+              save found, found-counterexample(is/cs)
+              save hint, <>
+              sift found
+                case some
+                  save hint, <no proof step makes a false case true. Change the case or the statement, and check the values named above by hand>
+                case none
+                  save hint, <>
+              refuse(hs, statement, fold-message(found), hint)
+          back
+      # non-negativity by a sum-of-squares certificate
+      fork test, is-equal(has-proof, false)
+        hold
+          save order-left, host/unfold-definitions(left)
+          save order-right, host/unfold-definitions(right)
+          sift op
+            case at-least
+              fork test, non-negative-difference(order-left, order-right)
+                hold
+                  discharge(hs, statement)
+                  back
+            case at-most
+              fork test, non-negative-difference(order-right, order-left)
+                hold
+                  discharge(hs, statement)
+                  back
+            miss
+              save op, op
+      sift op
+        case equal
+          save op, op
+        miss
+          back
+      # a commutative-ring identity, and one modulo the path's equations
+      save unfolded-left, host/unfold-definitions(left)
+      save unfolded-right, host/unfold-definitions(right)
+      save ring, host/eta-pair(unfolded-left, unfolded-right)
+      fork test, and(is-equal(has-proof, false), ring-equal(ring/left, ring/right))
+        hold
+          discharge(hs, statement)
+          record-lemma-rule(ts, is/ls, hold-name(statement), goal, scope, ctx)
+          back
+      fork test, and(is-above(assumptions/length, 0), ring-equal-modulo(ring/left, ring/right, ring-pairs(hs, assumptions, true)))
+        hold
+          discharge(hs, statement)
+          record-lemma-rule(ts, is/ls, hold-name(statement), goal, scope, ctx)
+          back
+      save sides, elaborate-goal-sides(ts, left, right, scope, ctx)
+      # linear in shape and over numbers: the linear prover's
+      fork test, and(is-equal(has-proof, false), host/is-linear-goal(goal))
+        hold
+          sift sides/left
+            case some
+              link l
+              fork test, numeric-term(ts, ctx, l)
+                hold
+                  back
+            case none
+              back
+      save lt, constant(<Unit>)
+      save rt, constant(<Unit>)
+      sift sides/left
+        case some
+          link found
+          save lt, found
+        case none
+          back
+      sift sides/right
+        case some
+          link found
+          save rt, found
+        case none
+          back
+      fork test, is-equal(has-proof, false)
+        hold
+          save written, make list
+          walk given
+            take a
+            push(written, a)
+          save step
+            task
+              like boolean
+              back decide-by-table(hs, statement, lt, rt, scope, ctx, written, instances)
+          fork test, attempt-boolean(st, step)
+            hold
+              back
+          fork test, applies-higher-order(ts, program, goal)
+            hold
+              back
+      save step
+        task
+          like boolean
+          back settle(hs, statement, goal, lt, rt, scope, ctx, assumptions, has-proof)
+      attempt-boolean(st, step)
+    miss
+      back

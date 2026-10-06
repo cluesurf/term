@@ -1,0 +1,47 @@
+
+load @term/base/text/number
+  find plain-decimal
+
+test <a whole number gains its point, and a decimal comes back as it went in>
+  want hold
+    call is-equal, call(plain-decimal, text(<42>)), text(<42.0>)
+  want hold
+    call is-equal, call(plain-decimal, text(<2.5>)), text(<2.5>)
+  want hold
+    call is-equal, call(plain-decimal, text(<-0.125>)), text(<-0.125>)
+  want hold
+    call is-equal, call(plain-decimal, text(<0>)), text(<0.0>)
+
+test <JavaScript's and Swift's exponent, large and small>
+  want hold
+    call is-equal, call(plain-decimal, text(<1e+21>)), text(<1000000000000000000000.0>)
+  want hold
+    call is-equal, call(plain-decimal, text(<1.5e-7>)), text(<0.00000015>)
+  want hold
+    call is-equal, call(plain-decimal, text(<-2.5e+3>)), text(<-2500.0>)
+
+test <Kotlin's exponent>
+  want hold
+    call is-equal, call(plain-decimal, text(<1.0E21>)), text(<1000000000000000000000.0>)
+  want hold
+    call is-equal, call(plain-decimal, text(<6.02E23>)), text(<602000000000000000000000.0>)
+
+test <the point moved to the front of the digits>
+  want hold
+    call is-equal, call(plain-decimal, text(<1.5e-1>)), text(<0.15>)
+  want hold
+    call is-equal, call(plain-decimal, text(<1e-9>)), text(<0.000000001>)
+
+test <three hundred places each way, and the digits never recomputed>
+  save large, call(plain-decimal, text(<1e+300>))
+  want hold
+    call is-equal, read(large/length), code(303)
+  save small, call(plain-decimal, text(<1e-300>))
+  want hold
+    call is-equal, read(small/length), code(302)
+
+test <NaN and the infinities come back as their text>
+  want hold
+    call is-equal, call(plain-decimal, text(<NaN>)), text(<NaN>)
+  want hold
+    call is-equal, call(plain-decimal, text(<-Infinity>)), text(<-Infinity>)

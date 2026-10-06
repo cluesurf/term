@@ -36,8 +36,8 @@ load @term/base/maybe
 load @term/base/text
   find split
 
-load @term/base/text/string
-  find repeat
+load @term/base/text/number
+  find plain-decimal
 
 load @term/base/text/unicode
   find to-runes
@@ -1182,73 +1182,10 @@ task number-literal
           save k, add(k, 1)
       back from-runes(out)
 
-  # the whole part, the fraction, and the exponent
-  save whole, make list
-  save fraction, make list
-  save exponent, 0
-  save negative, false
-  save part, 0
+  # an exponent moves the point, by the one rule every writer of a decimal shares
   walk runes
     take code
-    fork test, is-equal(code, 46)
-      hold
-        save part, 1
-        turn next
     fork test, or(is-equal(code, 101), is-equal(code, 69))
       hold
-        save part, 2
-        turn next
-    fork test, is-equal(part, 0)
-      hold
-        push(whole, code)
-        turn next
-    fork test, is-equal(part, 1)
-      hold
-        push(fraction, code)
-        turn next
-    fork test, is-equal(code, 45)
-      hold
-        save negative, true
-        turn next
-    fork test, is-digit(code)
-      hold
-        save exponent, add(multiply(exponent, 10), subtract(code, 48))
-
-  fork test, is-unequal(part, 2)
-    hold
-      back from-runes(runes)
-
-  fork test, negative
-    hold
-      save exponent, subtract(0, exponent)
-  save digits, make list
-  walk whole
-    take code
-    push(digits, code)
-  walk fraction
-    take code
-    push(digits, code)
-  save point, add(whole/length, exponent)
-  save all, from-runes(digits)
-
-  fork test, is-maximum(point, 0)
-    hold
-      back <0.{repeat(<0>, subtract(0, point))}{all}>
-  fork test, is-minimum(point, digits/length)
-    hold
-      back <{trim-zeros(<{all}{repeat(<0>, subtract(point, digits/length))}>)}.0>
-  back <{trim-zeros(from-runes(digits/slice(0, point)))}.{from-runes(digits/slice(point, digits/length))}>
-
-# the leading zeros of a whole part, keeping one: `007` is `7`, `000` is `0`
-task trim-zeros
-  take text, like text
-  like text
-  mark private
-
-  save runes, to-runes(text)
-  save at, 0
-  walk test
-    hook test, and(is-below(at, subtract(runes/length, 1)), is-equal(get(runes, at), 48))
-    hook hold
-      save at, add(at, 1)
-  back from-runes(runes/slice(at, runes/length))
+        back plain-decimal(from-runes(runes))
+  back from-runes(runes)

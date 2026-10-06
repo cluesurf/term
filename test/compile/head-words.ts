@@ -16,7 +16,7 @@
 // still to be decided. It may only shrink: a new head outside the list fails, and a KNOWN head that is gone fails too,
 // so the list cannot keep a name that no longer needs it. proof-by-default-0020.
 
-import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 // relative, because @term/deck is a published package with no path alias in this repo
 import { readTree } from '../../deck/deck/code/read'
@@ -153,6 +153,14 @@ function lineRules(form: Form, into: Set<string>): void {
 }
 
 function main(): void {
+  // The vocabulary is its own checkout, `hold/`, gitignored at the repository root. Without it there is nothing to
+  // hold a head to, and the gate SKIPS, saying why: a gate that cannot evaluate must never read as a pass, and a crash
+  // reading the file read as a defect in the grammars
+  if (!existsSync(TERMS)) {
+    console.log(`skip  needs ${relative(process.cwd(), TERMS)}, the vocabulary checkout (gitignored at the repository root)`)
+    return
+  }
+
   const allowed = new Set<string>(
     JSON.parse(readFileSync(TERMS, 'utf8')) as string[],
   )

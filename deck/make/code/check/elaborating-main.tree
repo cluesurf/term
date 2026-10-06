@@ -1,0 +1,412 @@
+# Elaboration, part ten: the loop over a program's tasks. Each task's kernel type peeled into its body's context (the
+# generic binders, then the parameters by name), its body elaborated as one pure term and checked (a pure, terminating
+# task then registered as a transparent definition), or else checked as commands; a separate-compilation stub only
+# for its carried body; and a task the kernel declines or refutes recorded with the reason. Then every top-level hold.
+#
+# Ported from check/elaborate.ts (self-hosting, 2026-10-06), the end of `elaborateReport`. The decisions:
+#   - a raise is classified as the original's `catch (error)` did: a `decline:` failure is `Decline` with its reason,
+#     `kernel-type:` the kernel's `TypeError`, anything else "the kernel failed on it" with its message, read by a host
+#     bind as `error instanceof Error ? error.message : String(error)` read it
+#   - what the face still sets per task is one host: the task's local and volatile names and the rule's marks
+#     (check/facts.ts walks, from a task with a stub's carried body spread over its own), and the trace a
+#     `TERM_KERNEL_TRACE` run prints
+#   - a stub's reports are dropped by truncating the face's own lists, in place, as `length =` did
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/text
+  find starts-with
+  find substring
+
+load @term/base/exception
+  find exception
+  find failure
+
+load ../compile/node
+  find statement
+  find span
+
+load ./judging
+  find judge-state
+  find kernel-term
+  find kernel-value
+  find context
+  find evaluate
+  find check
+  find bind-context
+  find close-over
+  find neutral-var
+  find define-constant
+
+load ./elaborating-terms
+  find term-state
+  find body
+
+load ./elaborating-commands
+  find command-host
+  find check-commands
+
+load ./elaborating-holds
+  find hold-state
+  find check-hold
+
+bind raise-message
+  take raised, like unknown
+  like text
+  case node
+    text <($raised instanceof Error ? $raised.message : String($raised))>
+  case browser
+    text <($raised instanceof Error ? $raised.message : String($raised))>
+  case rust
+    text <String::new()>
+  case swift
+    text <"">
+  case kotlin
+    text <"">
+
+bind truncate-list
+  take items, like list, like unknown
+  take count, like number
+  case node
+    text <($items.length = $count)>
+  case browser
+    text <($items.length = $count)>
+  case rust
+    text <()>
+  case swift
+    text <()>
+  case kotlin
+    text <Unit>
+
+form main-host
+  # the task about to be checked: its local and volatile names (from `body`), and its marks when it is a rule
+  link enter-task
+    like task
+      take statement, like statement
+      take stub, like boolean
+      like boolean
+  link leave-task
+    like task
+      like boolean
+  link trace
+    like task
+      take name, like text
+      take raised, like unknown
+      like boolean
+
+form main-state
+  mark shared
+  link ts, like term-state
+  link hs, like hold-state
+  link commands, like command-host
+  link host, like main-host
+  link base-context, like context
+  link terminating, like hash, like text, like boolean
+  link pure, like hash, like text, like boolean
+  link carried, like hash, like text, like boolean
+  link verified, like list, like text
+  link proven, like list, like text
+  link declined, like list, like declined-task
+
+form declined-task
+  link name, like text
+  link reason, like text
+
+# how a raise out of a task's check reads: its kind and its message
+form raised
+  link kind, like text
+  link message, like text
+
+task raised-of
+  take kind, like text
+  take message, like text
+  like raised
+  mark private
+
+  back
+    make raised
+      bind kind, kind
+      bind message, message
+
+task no-values
+  like list, like kernel-value
+  mark private
+
+  back make list
+
+task lambda-over
+  take term, like kernel-term
+  take count, like number
+  like kernel-term
+  mark private
+
+  save out, term
+  save i, 0
+  walk test
+    hook test, is-below(i, count)
+    hook hold
+      save out
+        make lam
+          bind body, out
+      save i, add(i, 1)
+  back out
+
+# check one task's body, answering how it went: `ok`, or the raise
+task check-task
+  take ms, like main-state
+  take statement, like statement
+  take stub, like boolean
+  take statements, like list, like statement
+  take scope, like hash, like text, like number
+  take ctx, like context
+  take result-value, like kernel-value
+  take name, like text
+  take arity, like number
+  like raised
+  mark private
+
+  save ts, ms/ts
+  save st, ts/st
+  fork
+    mark unsafe
+    sift body(ts, statements, scope, ctx, result-value)
+      case some
+        link term
+        fork test, stub
+          hold
+            fork test, and(ms/terminating/has(name), ms/pure/has(name))
+              hold
+                check(st, ctx, term, result-value)
+                define-constant(st, name, evaluate(st, no-values(), lambda-over(term, arity)))
+            back raised-of(<ok>, <>)
+        check(st, ctx, term, result-value)
+        fork test, and(ms/terminating/has(name), ms/pure/has(name))
+          hold
+            define-constant(st, name, evaluate(st, no-values(), lambda-over(term, arity)))
+        push(ms/proven, name)
+      case none
+        fork test, stub
+          hold
+            fork test, is-theorem(statement)
+              hold
+                check-commands(ts, ms/commands, statements, scope, ctx, result-value, make list)
+            back raised-of(<ok>, <>)
+        check-commands(ts, ms/commands, own-body(statement), scope, ctx, result-value, make list)
+    push(ms/verified, name)
+    back raised-of(<ok>, <>)
+  halt take
+    take problem
+    sift problem
+      case failure
+        link note
+        fork test, starts-with(note, <decline:>)
+          hold
+            back raised-of(<decline>, substring(note, 8, note/length))
+        fork test, starts-with(note, <kernel-type:>)
+          hold
+            back raised-of(<type>, substring(note, 12, note/length))
+        fork test, starts-with(note, <kernel-fault:>)
+          hold
+            back raised-of(<other>, substring(note, 13, note/length))
+        back raised-of(<other>, raise-message(problem))
+      miss
+        back raised-of(<other>, raise-message(problem))
+  back raised-of(<ok>, <>)
+
+task is-theorem
+  take statement, like statement
+  like boolean
+  mark private
+
+  sift statement
+    case function
+      link theorem
+      back is-equal(theorem, true)
+    miss
+      back false
+
+task own-body
+  take statement, like statement
+  like list, like statement
+  mark private
+
+  sift statement
+    case function
+      link body
+      back body
+    miss
+      back make list
+
+# every task checked by the kernel, the stubs first, then every top-level hold
+task check-program
+  take ms, like main-state
+  take program, like list, like statement
+  take file, like text
+
+  save ts, ms/ts
+  save st, ts/st
+  save data, ts/data
+  save claims, make hash
+  walk program
+    take one
+    sift one
+      case function
+        link name
+        link claim
+        fork test, is-equal(claim, true)
+          hold
+            claims/set(name, true)
+      miss
+        turn next
+  save ordered, make list
+  walk program
+    take one
+    sift one
+      case function
+        link stub
+        fork test, is-equal(stub, true)
+          hold
+            push(ordered, one)
+      miss
+        turn next
+  walk program
+    take one
+    sift one
+      case function
+        link stub
+        fork test, is-unequal(stub, true)
+          hold
+            push(ordered, one)
+      miss
+        push(ordered, one)
+  walk ordered
+    take statement
+    sift statement
+      case function
+        link name
+        link claim
+        link stub
+        link stub-body
+        link generics
+        link params
+        link body
+        link span
+        fork test, is-equal(claim, true)
+          hold
+            turn next
+        save is-stub, is-equal(stub, true)
+        fork test, and(is-stub, is-equal(ms/carried/has(name), false))
+          hold
+            turn next
+        save statements, body
+        fork test, is-stub
+          hold
+            save statements, make list
+            walk stub-body
+              take one
+              push(statements, one)
+        fork test, is-equal(data/representable/has(name), false)
+          hold
+            fork test, is-stub
+              hold
+                turn next
+            save why, <the signature>
+            fork test, data/unreadable/has(name)
+              hold
+                save why, data/unreadable/get(name)
+            save d
+              make declined-task
+                bind name, name
+                bind reason, <its signature names a type the kernel cannot read ({why})>
+            push(ms/declined, d)
+            turn next
+        # the task's kernel type peeled into its body's context: the generic binders, then the parameters by name
+        save ctx, ms/base-context
+        save scope, make hash
+        save no-env, make list
+        save remaining, evaluate(st, no-env, data/function-type/get(name))
+        save binder-levels, make list
+        walk generics
+          take g
+          sift remaining
+            case pi
+              link mult
+              link domain
+              link codomain
+              save witness, neutral-var(ctx/level)
+              push(binder-levels, ctx/level)
+              save ctx, bind-context(ctx, mult, domain, g/name)
+              save remaining, close-over(st, codomain, witness)
+            miss
+              halt
+        walk params
+          take parameter
+          sift remaining
+            case pi
+              link mult
+              link domain
+              link codomain
+              save witness, neutral-var(ctx/level)
+              scope/set(parameter/name, ctx/level)
+              save ctx, bind-context(ctx, mult, domain, parameter/name)
+              save remaining, close-over(st, codomain, witness)
+            miss
+              halt
+        save generic-names, make hash
+        walk generics
+          take g
+          take i
+          fork test, is-below(i, binder-levels/length)
+            hold
+              generic-names/set(g/name, get(binder-levels, i))
+        save ts/generic-levels, binder-levels
+        save ts/generics, generic-names
+        ms/host/enter-task(statement, is-stub)
+        save diagnostic-count, ms/hs/diagnostics/length
+        save discharged-count, ms/hs/discharged/length
+        save outcome, check-task(ms, statement, is-stub, statements, scope, ctx, remaining, name, add(generics/length, params/length))
+        fork test, and(is-unequal(outcome/kind, <ok>), is-equal(is-stub, false))
+          hold
+            fork test, is-unequal(outcome/kind, <decline>)
+              hold
+                ms/host/trace(name, outcome/message)
+            save reason, <the kernel failed on it: {outcome/message}>
+            fork test, is-equal(outcome/kind, <decline>)
+              hold
+                save reason, outcome/message
+            fork test, is-equal(outcome/kind, <type>)
+              hold
+                save reason, <a kernel type error: {outcome/message}>
+            save d
+              make declined-task
+                bind name, name
+                bind reason, reason
+            push(ms/declined, d)
+            fork test, is-equal(outcome/kind, <type>)
+              hold
+                fork test, claims/has(name)
+                  hold
+                    push(ms/hs/diagnostics, ms/hs/host/diagnose(<unverified-proof>, span, <the proof of `{name}` does not check against its claim, so it proves nothing: {outcome/message}>, <the type the claim states is printed over the type the proof builds. Change the proof, or the claim>))
+                  miss
+                    push(ms/hs/diagnostics, ms/hs/host/diagnose(<type-mismatch>, span, <kernel: {outcome/message}>, <>))
+        save ts/generic-levels, make list
+        save ts/generics, make hash
+        ms/host/leave-task()
+        fork test, is-stub
+          hold
+            truncate-list(ms/hs/diagnostics, diagnostic-count)
+            truncate-list(ms/hs/discharged, discharged-count)
+      miss
+        turn next
+  # the top-level holds, after every terminating task is a transparent definition
+  walk program
+    take statement
+    sift statement
+      case hold
+        save empty, make hash
+        save none, make list
+        check-hold(ms/hs, statement, empty, ms/base-context, none)
+      miss
+        turn next

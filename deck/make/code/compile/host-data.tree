@@ -35,6 +35,9 @@ load @term/base/text
 load @term/base/text/string
   find repeat
 
+load @term/base/text/number
+  find plain-decimal
+
 load ../parser/tree
   find node
   find root-node
@@ -163,8 +166,17 @@ bind number-text
   case kotlin
     text <$value.toString()>
 
-# a decimal keeps its point: `1.0` is not `1`
-bind decimal-text
+# A decimal as Term writes it: a point always (`1.0` is not `1`), and never an exponent. What the host prints for a
+# large or a small float (`1e+300` on JavaScript and Swift, `1.0E300` on Kotlin) is no Term literal, and a data file
+# holding one did not read back (test/compile/host-code-term.ts, 2026-10-06), so it goes through `plain-decimal`
+task decimal-text
+  take value, like float
+  like text
+
+  back plain-decimal(host-decimal-text(value))
+
+# the host's own text for a float, `.0` added to a whole one where the host leaves it off
+bind host-decimal-text
   take value, like float
   like text
   case node
@@ -1826,7 +1838,12 @@ task all-scalar
         back false
   back true
 
-# a run of words on lines at a pad, comma separated, wrapped at the width
+# A run of words on lines at a pad, comma separated, wrapped at the width.
+#
+# A BARE WORD ENDS ITS LINE. `true`, `false` and `void` are words to the parser, not literals, and a comma pops only
+# the one level a word opened, so what follows a word on its line nests UNDER it: `void, false` reads as `void` holding
+# `false`, which the data reader refuses. A literal (a number, a text) opens no level, so a run of those packs as
+# before (test/compile/host-code-term.ts found it, 2026-10-06)
 task wrap-words
   take words, like list, like text
   take pad, like text
@@ -1834,9 +1851,10 @@ task wrap-words
   mark private
 
   save line, pad
+  save after-word, false
   walk words
     take word
-    fork test, and(is-unequal(line, pad), is-above(add(add(utf16-length(line), 2), utf16-length(word)), host-width()))
+    fork test, and(is-unequal(line, pad), or(after-word, is-above(add(add(utf16-length(line), 2), utf16-length(word)), host-width())))
       hold
         push(out, line)
         save line, pad
@@ -1845,7 +1863,15 @@ task wrap-words
         save line, <{line}{word}>
       miss
         save line, <{line}, {word}>
+    save after-word, is-bare-word(word)
   push(out, line)
+
+task is-bare-word
+  take word, like text
+  like boolean
+  mark private
+
+  back or(is-equal(word, <true>), or(is-equal(word, <false>), is-equal(word, <void>)))
 
 task long-items
   take given, like list, like host-value

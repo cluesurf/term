@@ -30,6 +30,8 @@ import * as proofs from '@term/make/code/check/elaborating-proof'
 import * as commands from '@term/make/code/check/elaborating-commands'
 import * as theorems from '@term/make/code/check/elaborating-theorems'
 import * as induction from '@term/make/code/check/elaborating-induction'
+import * as holds from '@term/make/code/check/elaborating-holds'
+import * as main from '@term/make/code/check/elaborating-main'
 import type {
   Expression,
   Program,
@@ -97,20 +99,6 @@ import { integerText } from '@term/make/code/compile/type-text'
 const constant = (name: string): Term => ({ tag: 'const', name })
 const variable = (index: number): Term => ({ tag: 'var', index })
 const TYPE0: Term = { tag: 'type', level: litLevel(0) }
-const arrow = (domain: Term, codomain: Term): Term => ({
-  tag: 'pi',
-  mult: 'many',
-  domain,
-  codomain,
-})
-
-const erasedPi = (domain: Term, codomain: Term): Term => ({
-  tag: 'pi',
-  mult: 0,
-  domain,
-  codomain,
-})
-
 function apply(fun: Term, ...args: Term[]): Term {
   return args.reduce<Term>(
     (f, a) => ({ tag: 'app', fun: f, arg: a }),
@@ -129,18 +117,6 @@ function lambdas(count: number, body: Term): Term {
   return term
 }
 
-// the head constant name of a (possibly applied) type term: peel `apply(.. apply(constant(T), a) ..)` to `T`. Used to
-// recognise a polymorphic inductive type (`stack natural`) by its type former (`stack`) in the induction machinery.
-function headConstantName(term: Term): string | undefined {
-  let head = term
-
-  while (head.tag === 'app') {
-    head = head.fun
-  }
-
-  return head.tag === 'const' ? head.name : undefined
-}
-
 // does a term have a FREE de Bruijn variable below `depth`, an index that escapes all its binders? The safety gate on
 // a generated type: one that is not closed falls back to an opaque postulate. A null term is not closed
 function hasFreeVar(term: Term | null, depth = 0): boolean {
@@ -151,21 +127,6 @@ function hasFreeVar(term: Term | null, depth = 0): boolean {
 const number = constant('Number')
 const boolean = constant('Boolean')
 const BASE_SIGNATURE = elaborating.baseSignature() as { name: string; type: Term }[]
-
-// surface binary operators to their primitive constant name (== / != are polymorphic, handled separately)
-const OPERATOR: Record<string, string> = {
-  '+': 'add',
-  '-': 'sub',
-  '*': 'mul',
-  '/': 'div',
-  '%': 'mod',
-  '<': 'lt',
-  '<=': 'le',
-  '>': 'gt',
-  '>=': 'ge',
-  '&&': 'and',
-  '||': 'or',
-}
 
 // translate a surface type to a kernel type term at a given context depth (check/elaborating-data.tree
 // `kernel-type-at`), null where it has no kernel encoding. `owners` maps a variant to the forms encoding it, so an
@@ -218,7 +179,6 @@ function sameValueArgs(
 }
 
 
-const isUnit = (term: Term): boolean =>
   term.tag === 'const' && term.name === 'Unit'
 
 // thrown to abandon checking a construct the effect layer cannot represent yet (distinct from a real type error,
@@ -275,21 +235,6 @@ export type ElaborationReport = {
 const numberLiteralConstant = (value: string | number): string =>
   elaborating.numberLiteralConstant(String(value))
 
-
-// the name of a numeric-literal constant a value computes to, or undefined if it is not a closed numeric literal. Two
-// distinct such names denote two different numbers, so an equality between them is refutable (the numeric companion of
-// constructor-disjointness). Used to turn a provably-false numeric equality into a hard error rather than a soft warning.
-// `whnf` first unfolds any transparent task call (e.g. `order(tee)` reducing to `24`) so the literal it computes to is
-// seen, not its un-forced neutral application.
-function numericLiteralName(value: Value): string | undefined {
-  const head = whnf(value)
-
-  return head.v === 'rigid' &&
-    head.spine.length === 0 &&
-    head.name.startsWith('numberValue#')
-    ? head.name
-    : undefined
-}
 
 // deep-walk the program collecting every integer / float literal value, so each can be postulated in the signature
 // before checking (an unregistered constant is a type error in the kernel). A generic walk avoids hard-coding the
@@ -505,27 +450,6 @@ export function elaborateReport(
 
     return [left, right]
   }
-  // the case of the `fold` being closed, and the first COUNTEREXAMPLE the truth table found in one, which the fold's
-  // refusal names: in the case `modus-ponens`, evaluate(v, a) is yes and evaluate(v, b) is no. Both are `caseState`,
-  // which check/elaborating-cases.tree writes. `sides` when there was nothing to choose: the two sides computed to two
-  // different cases outright
-  const counterexampleOf = (): { at?: string; text: string; given: boolean; sides?: [string, string] } | undefined => {
-    const found = caseState.counterexample
-
-    if (found.form === 'none') {
-      return undefined
-    }
-
-    const { at, text, given, sides } = found.value
-
-    return {
-      at: at.form === 'some' ? at.value : undefined,
-      text,
-      given,
-      ...(sides.length > 0 ? { sides: [sides[0]!, sides[1]!] as [string, string] } : {}),
-    }
-  }
-
   const diagnostics: Diagnostic[] = []
   const verified: string[] = []
   const proven: string[] = []
@@ -539,9 +463,6 @@ export function elaborateReport(
     new Map(program.flatMap(s => (s.form === 'function' && s.theorem ? [[s.name, true] as const] : []))),
   )
   const lemmas = lemmaState.lemmas as Map<string, { left: string; right: string }>
-  const theoremNames = lemmaState.theorems
-  const lemmaRules = lemmaState.rules as unknown as Map<string, { binderCount: number; lhs: Term; rhs: Term }>
-
   // the program's types and data as the kernel reads them (check/elaborating-data.tree): the named types, each form's
   // encoding, the signature and each task's kernel type
   const elaborated = elaborating.elaborationDataOf(
@@ -596,17 +517,7 @@ export function elaborateReport(
   const representable = elaborated.representable
   const unreadable = elaborated.unreadable
 
-  const ctorKey = (enumName: string, variant: string): string =>
     `${enumName}__${variant}`
-
-  // an enum variant used inside an index expression (`zero`, `succ`) to its `enum__variant` kernel key, single-owner only
-  const resolveIndexCtor = (variant: string): string | null => {
-    const owners = variantToEnum.get(variant)
-
-    return owners && owners.length === 1
-      ? ctorKey(owners[0]!, variant)
-      : null
-  }
 
   // the context levels of the CURRENT function's erased generic binders, while its body elaborates, and the same
   // binders BY NAME: check/elaborating-terms.tree's `generic-levels` and `generics`, set below where a task's body
@@ -639,9 +550,6 @@ export function elaborateReport(
   }
 
   const TYPE0_VALUE = evaluate([], TYPE0)
-  const NUMBER_VALUE = evaluate([], number)
-  const BOOLEAN_VALUE = evaluate([], boolean)
-  const isUnitValue = (value: Value): boolean => isUnit(quote(0, value))
   type Scope = Map<string, number> // surface name -> the context level at which it was bound
 
   // a name in scope that the kernel did not bind (a match arm's field on the statement path): a KEY with no level, so
@@ -849,15 +757,6 @@ export function elaborateReport(
     return found
   }
 
-  // discharge `left == right` modulo a set of induction-hypothesis equalities, by the kernel. With no hypotheses this
-  // is plain definitional equality (the base case of an induction); otherwise the kernel may also equate two subterms
-  // by any hypothesis, the reasoning the type's eliminator licenses for the step.
-  function dischargeModulo(
-    level: number,
-    left: Value,
-    right: Value,
-    hypotheses: [Value, Value][],
-  ): boolean {
     return convertibleModulo(level, left, right, hypotheses)
   }
 
@@ -1233,964 +1132,95 @@ export function elaborateReport(
     )
   }
 
-  // check one `hold` proof obligation (an `a == b` claim plus an optional proof tree) by the KERNEL, in a given
-  // scope/context. Used both inside a function body and at the top level. Discharges when the sides are definitionally
-  // equal or an explicit proof tree (`calm`/`cite`/`turn`/`link`) closes it, recording the span so the linear prover
-  // drops it; a discharged named hold becomes a citable lemma. A false explicit proof is an `invalid-proof` error.
-  // Anything the kernel leaves open is handled by the linear prover (`checkHolds`), which now walks both function
-  // bodies AND top-level holds, so it is the single place that flags an unproven obligation.
+  // check one `hold` proof obligation by the KERNEL (check/elaborating-holds.tree). A discharged hold's span is
+  // recorded so the linear prover drops it, a named one becomes a citable lemma, a false explicit proof is an
+  // `invalid-proof` error. What it asks of this face is one host: the facts, the unfolding table, induct.ts's folds,
+  // holds.ts's `isLinearGoal`, `etaPair` (a spread), `diagnose` with exactly the input the original wrote, and
+  // `callsItself`
+  const holdState = {
+    is: inductionState,
+    host: {
+      callsImpureExpression: (expression: unknown) => impure(expression as Expression),
+      unfoldDefinitions: (expression: unknown) => unfoldDefinitions(expression as Expression, program),
+      checkFold: (goal: unknown, inductVar: string) => checkFold(program, goal as Expression, inductVar),
+      checkFoldOrder: (goal: unknown, inductVar: string, guards: unknown) =>
+        checkFoldOrder(program, goal as Expression, inductVar, guards as Expression[]),
+      isLinearGoal: (goal: unknown) => isLinearGoal(goal as Expression),
+      etaPair: (left: unknown, right: unknown) => {
+        const [l, r] = etaPair(left as Expression, right as Expression)
+
+        return { left: l, right: r }
+      },
+      diagnose: (name: string, span: unknown, message: string, hint: string) =>
+        diagnose(name as never, { file, span: span as Span, message, ...(hint ? { hint } : {}) }),
+      callsItself: (statement: unknown) => callsItself(statement as Extract<Statement, { form: 'function' }>),
+    },
+    program,
+    diagnostics,
+    discharged,
+  }
+
   function checkHold(
     statement: Extract<Statement, { form: 'hold' }>,
     scope: Scope,
     context: Context,
     assumptions: [Expression, Expression][] = [],
   ): void {
-    const goal = statement.expr
-    // the theorem's universal hypotheses, at the terms this goal and its guards name, are equations true on this path
-    const instances = universalInstances(statement, scope, context, assumptions)
-    assumptions = [...assumptions, ...instances]
-
-    // a goal that calls something two calls may disagree on is not the kernel's to decide: every task is a constant
-    // in the signature, so `roll() == roll()` would be convertible by construction. Leave it to the linear prover,
-    // which reports it as outside the fragment. See check/facts.ts.
-    if (callsImpure(goal, factsPure, factsFunctions, withoutRuleMarks(factsLocal))) {
-      return
-    }
-
-    // `calm miss`: a `show miss` over an equality is lowered by the mill to `! (a == b)`. Discharge it by definitional
-    // DISTINCTNESS (no confusion): if `a` and `b` reduce to different constructors of the same enum, the equality is
-    // impossible, so its negation holds by computation. This is the refutation companion of `calm hold`. Sound: it reuses
-    // `equationAbsurd`, the same constructor-disjointness check that closes impossible induction cases.
-    if (
-      goal.form === 'unary' &&
-      goal.op === '!' &&
-      goal.operand.form === 'binary' &&
-      goal.operand.op === '==' &&
-      statement.proof?.[0]?.head === 'calm'
-    ) {
-      const eq = goal.operand
-      const leftTerm = expr(eq.left, scope, context)
-      const rightTerm = expr(eq.right, scope, context)
-
-      if (leftTerm && rightTerm) {
-        try {
-          const lv = evaluate(context.env, leftTerm)
-          const rv = evaluate(context.env, rightTerm)
-
-          if (equationAbsurd(context, leftTerm, lv, rv)) {
-            discharged.push(statement.span)
-          } else {
-            diagnostics.push(
-              diagnose('invalid-proof', {
-                file,
-                span: statement.span,
-                message:
-                  'calm miss needs the two sides to compute to distinct constructors',
-              }),
-            )
-          }
-        } catch {
-          // leave to the linear prover / unproven reporting
-        }
-      }
-
-      return
-    }
-
-    if (goal.form !== 'binary') {
-      return
-    }
-
-    // boolean-connective goals: `meet and` lowers to `&&`, `meet or` to `||`. Discharge a conjunction by proving BOTH
-    // operands and a disjunction by proving ONE, recursively, with each equality leaf settled by convertibility or the
-    // ring normalizer (modulo the path hypotheses). Sound: a connective is discharged only when its leaves genuinely
-    // hold. On failure, fall through to the linear prover (unchanged behavior), so nothing true is newly rejected.
-    // a conjunction proved by `fold n`: Peano induction over order goals, whose hypothesis is the whole conjunction
-    // (induct.ts checkFoldOrder). A conjunction is how an induction carries a second fact through its step.
-    // a theorem with universal hypotheses is the hold checker's, its inductions too, and so is an induction on a number
-    // in a theorem about a function (`total(f, n)` by `fold n`): the hold checker reads the summed task's equations
-    // as such hypotheses (check/holds.ts `recurrenceFacts`), and the kernel's own induction has no use for `f`
-    // An ORDER goal stays here: induct.ts checkFoldOrder proves an inequality over a recursive task, which the hold
-    // checker's equations do not, and handing it over left test/check/fold-order.ts unproven
-    if (
-      statement.proof?.[0]?.head === 'fold' &&
-      !isOrderGoal(goal) &&
-      (inUniversalTheorem(program, statement) || numberFoldOverFunctions(program, statement))
-    ) {
-      return
-    }
-
-    if (goal.op === '&&' && statement.proof?.[0]?.head === 'fold' && statement.proof[0].arg) {
-      const guards = ruleGuards(program, statement)
-
-      if (guards !== null && checkFoldOrder(program, goal, statement.proof[0].arg, guards)) {
-        discharged.push(statement.span)
-      } else {
-        // a hard error, never left to the hold checker: an unchecked hold is not reported in a file that already has
-        // a kernel error, so a failed induction left there could pass unseen
-        diagnostics.push(
-          diagnose('invalid-proof', {
-            file,
-            span: statement.span,
-            message: 'the induction did not establish the conjunction',
-          }),
-        )
-      }
-
-      return
-    }
-
-    if (goal.op === '&&' || goal.op === '||') {
-      const proveConnective = (claim: Expression): boolean => {
-        if (
-          claim.form === 'binary' &&
-          (claim.op === '&&' || claim.op === '||')
-        ) {
-          const leftHolds = proveConnective(claim.left)
-          const rightHolds = proveConnective(claim.right)
-
-          return claim.op === '&&'
-            ? leftHolds && rightHolds
-            : leftHolds || rightHolds
-        }
-
-        if (claim.form === 'binary' && claim.op === '==') {
-          if (ringEqual(claim.left, claim.right)) {
-            return true
-          }
-
-          if (
-            assumptions.length > 0 &&
-            ringEqualModulo(claim.left, claim.right, assumptions.map(([left, right]) => ({ left, right })))
-          ) {
-            return true
-          }
-
-          const [l, r] = elaborateGoalSides(
-            claim.left,
-            claim.right,
-            scope,
-            context,
-          )
-
-          if (l && r) {
-            try {
-              return areConvertible(
-                context.level,
-                evaluate(context.env, l),
-                evaluate(context.env, r),
-              )
-            } catch {
-              return false
-            }
-          }
-        }
-
-        return false
-      }
-
-      if (proveConnective(goal)) {
-        discharged.push(statement.span)
-      }
-
-      return
-    }
-
-    const hasProof = (statement.proof?.length ?? 0) > 0
-    // explicit induction: `fold <var>` proves a universal `L(n) == R(n)` by Peano induction over a recursive function
-    // in the goal, discharged symbolically by the ring normalizer (no kernel computation). See induct.ts.
-    const tactic = statement.proof?.[0]
-
-    // FUNEXT: prove two FUNCTIONS equal (`is-equal f g`) by citing a pointwise lemma `mark x / is-equal (f x) (g x)`.
-    // Sound by the kernel's observational equality (Id at a function type IS the pointwise identity), so the pointwise
-    // proof IS the function-equality proof. Discharges a NON-definitional function equality (e.g. two recursive
-    // definitions of the same function) that `calm` cannot.
-    // `seek` / firstorder: discharge the goal by rewriting BOTH sides with EVERY proven lemma (the hint database is
-    // `lemmaRules`) to a fixed point, then checking convertibility (which also runs computation). Additive and SOUND --
-    // it only uses already-proven equalities and definitional reduction, so it can never prove a falsehood; it just
-    // automates "cite each lemma + calm" with a depth-bounded search, so the user need not name the lemmas. It was
-    // `auto` until 2026-10-02, a head outside hold/base/terms.json (proof-by-default-0021).
-    if (tactic?.head === 'seek' && goal.form === 'binary' && goal.op === '==') {
-      const rules = [...lemmaRules.values()]
-      const [l, r] = elaborateGoalSides(
-        goal.left,
-        goal.right,
-        scope,
-        context,
-      )
-
-      if (l && r) {
-        try {
-          // BACKTRACKING firstorder search: from the left side, apply each known lemma as a SINGLE rewrite (depth-
-          // bounded) and check whether the result is convertible to the right side (convertibility also runs
-          // computation, so it subsumes `calm`). A single rewrite per step avoids the non-termination of a symmetric
-          // lemma like commutativity (rewriting BOTH sides to a fixed point would oscillate). Sound: every step is a
-          // proven equality or a reduction, so a closed goal is genuinely true.
-          const rhs = evaluate(context.env, r)
-          const closes = (term: Term): boolean =>
-            areConvertible(
-              context.level,
-              evaluate(context.env, term),
-              rhs,
-            )
-
-          let frontier: Term[] = [
-            quote(context.level, evaluate(context.env, l)),
-          ]
-          const seen = new Set<string>()
-          let closed = false
-
-          for (let depth = 0; depth <= 3 && !closed; depth++) {
-            const next: Term[] = []
-
-            for (const term of frontier) {
-              if (closes(term)) {
-                closed = true
-                break
-              }
-
-              for (const rule of rules) {
-                const rewritten = rewriteOnce(term, rule)
-
-                if (rewritten) {
-                  const key = JSON.stringify(rewritten)
-
-                  if (!seen.has(key)) {
-                    seen.add(key)
-                    next.push(rewritten)
-                  }
-                }
-              }
-            }
-
-            frontier = next.slice(0, 64)
-          }
-
-          if (closed) {
-            discharged.push(statement.span)
-            recordLemmaRule(statement.name, goal, scope, context)
-            return
-          }
-        } catch {
-          // fall through to the diagnostic below
-        }
-      }
-
-      diagnostics.push(
-        diagnose('invalid-proof', {
-          file,
-          span: statement.span,
-          message:
-            'seek could not close the goal by rewriting with the known lemmas and computing',
-        }),
-      )
-
-      return
-    }
-
-    if (
-      tactic?.head === 'melt' &&
-      tactic.arg &&
-      tryFunext(goal, scope, context, tactic.arg)
-    ) {
-      discharged.push(statement.span)
-
-      return
-    }
-
-    if (tactic?.head === 'fold' && tactic.arg) {
-      caseState.foldCase = { form: 'none' }
-      caseState.counterexample = { form: 'none' }
-
-      // try structural induction over an inductive type first (it handles lists, trees, and the like, and proves the
-      // non-definitional arithmetic laws such as n + 0 == n); fall back to ring-level Peano induction for the numeric
-      // accumulator recurrences (closed-form sums) that the symbolic ring certificate decides. `cite <lemma>` children
-      // name previously proven universal equalities to chain into the induction.
-      const cited = tactic.children
-        .filter(child => child.head === 'cite' && child.arg)
-        .map(child => child.arg!)
-
-      // `fold a b ...`: the extra bare children (not `cite`) are additional induction variables for a SIMULTANEOUS
-      // induction over the product of their constructors (min / max / order comparisons recurse on several arguments).
-      const extraVars = tactic.children
-        .filter(child => child.head !== 'cite' && !child.arg)
-        .map(child => child.head)
-
-      const inductVars = [tactic.arg, ...extraVars]
-
-      const byInduction =
-        inductVars.length > 1
-          ? multiInduction(
-              goal,
-              scope,
-              context,
-              inductVars,
-              cited,
-              assumptions,
-            )
-          : structuralInduction(
-              goal,
-              scope,
-              context,
-              tactic.arg,
-              cited,
-              assumptions,
-            )
-
-      // when the split above leaves a record's fields standing as variables the goal cannot compute on, split those
-      // too, down to closed values (exhaustive over finite types, so sound). Tried only after the shallow attempt
-      // fails, so every proof that closed before closes the same way.
-      const byDeepSplit =
-        !byInduction &&
-        multiInduction(
-          goal,
-          scope,
-          context,
-          inductVars,
-          cited,
-          assumptions,
-          true,
-        )
-
-      // an ORDER goal (a comparison, or a conjunction of them) about a recursive function, by Peano induction with the
-      // product prover closing each case (induct.ts checkFoldOrder). Its hypotheses are the rule's `have` guards.
-      const guards = ruleGuards(program, statement)
-      const byOrder =
-        !byInduction &&
-        !byDeepSplit &&
-        guards !== null &&
-        checkFoldOrder(program, goal, tactic.arg, guards)
-
-      if (byInduction || byDeepSplit || byOrder || checkFold(program, goal, tactic.arg)) {
-        discharged.push(statement.span)
-
-        // only an equation is a rewrite: a proved inequality recorded as `lhs -> rhs` would rewrite one side into the other
-        if (goal.form === 'binary' && goal.op === '==') {
-          recordLemmaRule(statement.name, goal, scope, context)
-        }
-      } else {
-        // a counterexample the truth table found is the reason, and the most useful sentence the refusal can say
-        const found = counterexampleOf()
-        const where = found?.at ? `in the case \`${found.at}\`` : 'in one case'
-
-        diagnostics.push(
-          diagnose('invalid-proof', {
-            file,
-            span: statement.span,
-            message: !found
-              ? 'the induction did not establish the equality'
-              : found.sides
-                ? `the induction did not establish the equality: it is FALSE ${where}, where its two sides compute to ${found.sides[0]} and ${found.sides[1]}`
-                : `the induction did not establish the equality: it is FALSE ${where}, where ${found.text}${found.given ? ', with every hypothesis of the case holding' : ''}`,
-            ...(found
-              ? { hint: 'no proof step makes a false case true. Change the case or the statement, and check the values named above by hand' }
-              : {}),
-          }),
-        )
-      }
-
-      return
-    }
-
-    // non-negativity by a sum-of-squares certificate: `E >= F` (or `F <= E`) holds for ALL values when E - F is a sum
-    // of square monomials. This proves the non-linear inequality "every square is non-negative" and its kin (for any
-    // bound, not just zero) without induction. (The univariate real-arithmetic / Sturm route, and the inequality
-    // discharge in general, live in the linear prover `holds.ts`, which owns every comparison goal regardless of an
-    // attached `calm hold`.)
-    if (!hasProof) {
-      // a polynomial named as a task (a norm) is unfolded first, the same as for a ring identity (see unfold.ts)
-      const orderLeft = unfoldDefinitions(goal.left, program)
-      const orderRight = unfoldDefinitions(goal.right, program)
-
-      if (
-        goal.op === '>=' &&
-        nonNegativeDifference(orderLeft, orderRight)
-      ) {
-        discharged.push(statement.span)
-
-        return
-      }
-
-      if (
-        goal.op === '<=' &&
-        nonNegativeDifference(orderRight, orderLeft)
-      ) {
-        discharged.push(statement.span)
-
-        return
-      }
-    }
-
-    if (goal.op !== '==') {
-      return
-    }
-
-    // a commutative-ring identity (when no explicit proof is given): L and R normalize to the same polynomial, so the
-    // equality holds for ALL values of the variables. This discharges the non-linear algebraic universals (the
-    // multiplicative norm, the four-square and doubling identities) that the linear prover (degree one) and the
-    // kernel's opaque arithmetic cannot. Sound: a zero polynomial is identically zero over any commutative ring. With
-    // an explicit proof present, the kernel validates that proof instead, so a bogus tactic is still caught.
-    // the sides with every non-recursive single-expression task unfolded, so a polynomial defined once as a task
-    // (a norm, a product's coordinates) can be named in a ring identity rather than written out (see unfold.ts)
-    const [ringLeft, ringRight] = etaPair(unfoldDefinitions(goal.left, program), unfoldDefinitions(goal.right, program))
-
-    if (!hasProof && ringEqual(ringLeft, ringRight)) {
-      discharged.push(statement.span)
-      // a named ring identity becomes a citable lemma (and rewrite rule), so `cite` / `link` (calc chains) can use it,
-      // the same as an induction- or kernel-discharged hold. Sound: it is a proven universal equality.
-      recordLemmaRule(statement.name, goal, scope, context)
-
-      return
-    }
-
-    // a ring identity MODULO the path's equational hypotheses: `L - R` reduces to zero in the ideal the `have` equations
-    // generate, so the identity holds whenever the hypotheses do. This discharges CONDITIONAL algebraic identities that
-    // the kernel's literal-subterm hypothesis rewrite cannot thread through an AC-normalized polynomial (rational
-    // well-definedness, where `a*d = a'*b` forces a cross-multiplied sum identity). Sound over the integers (see
-    // `ringEqualModulo`), and only fires when the goal genuinely holds modulo the hypotheses, so a stated tactic that
-    // does no real work is never masking an unsound step.
-    if (
-      goal.op === '==' &&
-      assumptions.length > 0 &&
-      ringEqualModulo(
-        ringLeft,
-        ringRight,
-        assumptions.map(([l, r]) => ({ left: unfoldDefinitions(l, program), right: unfoldDefinitions(r, program) })),
-      )
-    ) {
-      discharged.push(statement.span)
-      recordLemmaRule(statement.name, goal, scope, context)
-
-      return
-    }
-
-    // the kernel handles the NON-linear (definitional / structural) fragment; the linear prover (checkHolds) owns the
-    // linear fragment. When a goal the linear prover can decide carries NO explicit proof tree, skip it here so the
-    // linear prover is authoritative -- this is what stops the kernel from wrongly discharging a value-false
-    // arithmetic claim like `add 3 3 == add 4 4` through its opaque view of number literals. A goal WITH an explicit
-    // proof (`calm`/`cite`/...) is still validated by the kernel, so a bogus tactic is caught.
-    const [left, right] = elaborateGoalSides(
-      goal.left,
-      goal.right,
-      scope,
-      context,
+    viaKernel(() =>
+      holds.checkHold(holdState as never, statement as never, scopeOf(scope), context as never, pairsFor(assumptions) as never),
     )
-
-    // linear in SHAPE is not enough: `x == y` over an arbitrary type `a` is no arithmetic, and the linear prover cannot
-    // see the equations (a left inverse at x and y) that prove it. Only a goal over numbers is that prover's
-    if (!hasProof && isLinearGoal(goal) && (!left || numericTerm(context, left))) {
-      return
-    }
-
-    if (!left || !right) {
-      return
-    }
-
-    // A GOAL OVER TRUTH VALUES DECIDES ITSELF, by its truth table, as a ring identity does by its normal form: a law
-    // of flags needs no step (`either(s(x), t(x)) == either(t(x), s(x))`). And a false one is refused with the values
-    // that break it, which is what a reader needs to fix it
-    if (!hasProof && goal.op === '==') {
-      try {
-        const values = (pairs: [Expression, Expression][]): [Value, Value][] =>
-          pairs.flatMap(([l, r]): [Value, Value][] => {
-            const lt = expr(l, scope, context)
-            const rt = expr(r, scope, context)
-
-            return lt && rt ? [[evaluate(context.env, lt), evaluate(context.env, rt)]] : []
-          })
-        // the written guards first, then the universal instances (which a counterexample does not name)
-        const stated = values(assumptions.slice(0, assumptions.length - instances.length))
-        const given = [...stated, ...values(instances)]
-
-        caseState.foldCase = { form: 'none' }
-        caseState.counterexample = { form: 'none' }
-
-        if (truthTable(context, evaluate(context.env, left), evaluate(context.env, right), given, stated.length)) {
-          discharged.push(statement.span)
-          recordLemmaRule(statement.name, goal, scope, context)
-
-          return
-        }
-
-        // and an identity of the integers once the definitions run: `count(one()) == 1` is `0 + 1 == 1`, which the
-        // kernel's postulated arithmetic cannot see and the ring does (`ringCase`), under the path's equations
-        if (ringCase(context.level, evaluate(context.env, left), evaluate(context.env, right), given)) {
-          discharged.push(statement.span)
-          recordLemmaRule(statement.name, goal, scope, context)
-
-          return
-        }
-
-        const found = counterexampleOf()
-
-        // under a universal hypothesis the table saw it only at the goal's own terms, so its choice is a case the
-        // hypotheses do not rule out there, not a counterexample to them everywhere
-        if (found && !found.sides && (enclosingTheorem(program, statement)?.universals?.length ?? 0) > 0) {
-          diagnostics.push(
-            diagnose('invalid-proof', {
-              file,
-              span: statement.span,
-              message: `this rule does not follow from its hypotheses at the terms it names: they all hold where ${found.text}, and the goal does not`,
-              hint: 'a universal hypothesis is used only at the terms the goal and its guards name. State the term it is needed at, or change the statement',
-            }),
-          )
-
-          return
-        }
-
-        if (found) {
-          diagnostics.push(
-            diagnose('invalid-proof', {
-              file,
-              span: statement.span,
-              message: found.sides
-                ? `this rule is FALSE: its two sides compute to ${found.sides[0]} and ${found.sides[1]}, whatever its seats are`
-                : `this rule is FALSE where ${found.text}`,
-              hint: 'no proof step makes a false law true. Change the statement, and check the values named above by hand',
-            }),
-          )
-
-          return
-        }
-      } catch {
-        // outside the table's reach: the paths below decide it
-      }
-    }
-
-    // and a goal over a recursion of a task that takes a function (`total(f, n + 1) == ...`), with no step, that the
-    // table did not decide, is the hold checker's: it reads the task's own equations (check/holds.ts
-    // `recurrenceFacts`). Conversion here unfolds the recursion on a symbolic counter, each unfolding stuck on its test
-    // and unfolded again inside its branches up to the fuel bound: seconds per goal, for what takes milliseconds there
-    if (!hasProof && appliesHigherOrder(program, goal)) {
-      return
-    }
-
-    try {
-      const leftType = infer(context, left).type
-      infer(context, right)
-
-      const leftValue = evaluate(context.env, left)
-      const rightValue = evaluate(context.env, right)
-
-      // RECORD EXTENSIONALITY (eta / surjective pairing): two values of a record type are equal iff their projections
-      // agree field by field. Since a projection reduces on a constructed record, this discharges `x == make r (x.f1)
-      // (x.f2)` and any record equality whose fields are convertible. Sound: a record IS determined by its fields. This
-      // uses the goal's type, which is available here at the hold level (the kernel's `convert` is untyped). A record
-      // equality whose fields differ does NOT match, so it stays correctly unproven.
-      if (goal.op === '==') {
-        const recordName = headConstantName(
-          quote(context.level, leftType),
-        )
-        const recordInfo = recordName
-          ? recordFieldInfo.get(recordName)
-          : undefined
-
-        if (recordInfo && recordInfo.length > 0) {
-          const project = (value: Value, field: string): Value =>
-            evaluate(
-              context.env,
-              apply(
-                constant(`${recordName}__${field}`),
-                quote(context.level, value),
-              ),
-            )
-
-          const allFieldsAgree = recordInfo.every(f =>
-            areConvertible(
-              context.level,
-              project(leftValue, f.name),
-              project(rightValue, f.name),
-            ),
-          )
-
-          if (allFieldsAgree) {
-            discharged.push(statement.span)
-            recordLemmaRule(statement.name, goal, scope, context)
-
-            return
-          }
-        }
-      }
-
-      // hypothesis-discharge (no induction): rewrite both sides by the path's `have` equations and check convertibility
-      // modulo them. This proves the congruence / substitution laws (`a == b -> f a == f b`, transitivity of equality)
-      // directly from their antecedents. Sound: an assumption is true on this path, so rewriting by it preserves truth.
-      if (assumptions.length > 0) {
-        const assumeHyps: [Value, Value][] = []
-        const assumeRules: {
-          binderCount: number
-          lhs: Term
-          rhs: Term
-        }[] = []
-
-        for (const [aLeft, aRight] of assumptions) {
-          const lt = expr(aLeft, scope, context)
-          const rt = expr(aRight, scope, context)
-
-          if (lt && rt) {
-            const lv = evaluate(context.env, lt)
-            const rv = evaluate(context.env, rt)
-            assumeHyps.push([lv, rv])
-            assumeRules.push({
-              binderCount: 0,
-              lhs: quote(context.level, lv),
-              rhs: quote(context.level, rv),
-            })
-          }
-        }
-
-        if (assumeRules.length > 0) {
-          const lRewritten = evaluate(
-            context.env,
-            rewriteWithLemmas(
-              quote(context.level, leftValue),
-              assumeRules,
-              200,
-            ),
-          )
-
-          const rRewritten = evaluate(
-            context.env,
-            rewriteWithLemmas(
-              quote(context.level, rightValue),
-              assumeRules,
-              200,
-            ),
-          )
-
-          if (
-            dischargeModulo(
-              context.level,
-              lRewritten,
-              rRewritten,
-              assumeHyps,
-            )
-          ) {
-            discharged.push(statement.span)
-
-            return
-          }
-        }
-      }
-
-      // definitional DISPROOF: with no explicit proof, if both sides compute to distinct numeric-literal constants the
-      // equality is provably false (each literal is its own constant), so reject it outright instead of leaving it as a
-      // soft unproven warning. This makes a false numeric claim the linear prover cannot reach -- e.g. one side is a task
-      // call the kernel reduces to a literal -- fail compilation like every other false claim.
-      if (!hasProof) {
-        const leftLiteral = numericLiteralName(leftValue)
-        const rightLiteral = numericLiteralName(rightValue)
-
-        if (
-          leftLiteral !== undefined &&
-          rightLiteral !== undefined &&
-          leftLiteral !== rightLiteral
-        ) {
-          diagnostics.push(
-            diagnose('invalid-proof', {
-              file,
-              span: statement.span,
-              message:
-                'this equality is false: the two sides compute to different numbers',
-            }),
-          )
-
-          return
-        }
-      }
-
-      const verdict = checkProof(
-        statement.proof,
-        context.level,
-        leftValue,
-        rightValue,
-      )
-
-      if (verdict === 'ok') {
-        discharged.push(statement.span)
-
-        if (statement.name) {
-          lemmas.set(statement.name, {
-            left: showTerm(quote(context.level, leftValue)),
-            right: showTerm(quote(context.level, rightValue)),
-          })
-          lemmaRules.set(statement.name, {
-            binderCount: context.level,
-            lhs: quote(context.level, leftValue),
-            rhs: quote(context.level, rightValue),
-          })
-        }
-      } else if (verdict === 'bad') {
-        // a dangling reference (citing a lemma that does not exist) is a hard error: the goal being otherwise
-        // provable cannot rescue a proof built on a name that names nothing
-        diagnostics.push(
-          diagnose('invalid-proof', {
-            file,
-            span: statement.span,
-            message: 'this proof cites a lemma that does not exist',
-          }),
-        )
-      } else if (verdict === 'fail') {
-        // a `calm` / explicit tactic that did not close by definitional equality still succeeds if the goal is a
-        // commutative-ring identity (`add a b == add b a`) or holds modulo the path hypotheses, so `calm hold`
-        // robustly discharges a linear / ring law the user need not rewrite as a bare hold. Sound: `ringEqual` and
-        // `ringEqualModulo` are decision procedures, firing only on genuine identities.
-        const unfoldedLeft = unfoldDefinitions(goal.left, program)
-        const unfoldedRight = unfoldDefinitions(goal.right, program)
-
-        if (
-          goal.op === '==' &&
-          (ringEqual(unfoldedLeft, unfoldedRight) ||
-            (assumptions.length > 0 &&
-              ringEqualModulo(
-                unfoldedLeft,
-                unfoldedRight,
-                assumptions.map(([l, r]) => ({ left: unfoldDefinitions(l, program), right: unfoldDefinitions(r, program) })),
-              )))
-        ) {
-          discharged.push(statement.span)
-          // register it as a citable lemma too, so a ring identity proven with `calm hold` is reusable like one proven
-          // as a bare hold (consistent lemma registration across all sound discharge paths).
-          recordLemmaRule(statement.name, goal, scope, context)
-        } else {
-          diagnostics.push(
-            diagnose('invalid-proof', {
-              file,
-              span: statement.span,
-              message: 'this proof does not establish the equality',
-            }),
-          )
-        }
-      }
-      // 'open': leave it to the linear prover (checkHolds)
-    } catch {
-      // the sides did not elaborate / type-check: leave it to the linear prover
-    }
   }
 
-  const carried = carriedBodies(program)
-  // the claims stated here: a task of one of these names is its PROOF, and a kernel type error in it is a proof that
-  // does not prove its claim (`unverified-proof`, note/term/law-and-proof.md), not an ordinary mismatch
-  const claimNames = new Set(
-    program.flatMap(statement => (statement.form === 'function' && statement.claim ? [statement.name] : [])),
-  )
-  // the stubs first, so every body of this unit, and every proof inside one, can reduce through them
-  const stubsFirst = [
-    ...program.filter(statement => statement.form === 'function' && statement.stub),
-    ...program.filter(statement => !(statement.form === 'function' && statement.stub)),
-  ]
+  // The loop over the tasks and the top-level holds is check/elaborating-main.tree. This face sets each task's fact
+  // names (`enter-task`: a stub's carried body spread over its own, as the original's `task` was) and prints the
+  // `TERM_KERNEL_TRACE` line; the stubs whose carried body this unit reaches stay here (a reflective walk)
+  const toSet = (names: Set<string>): Map<string, boolean> => new Map([...names].map(name => [name, true]))
+  const mainState = {
+    ts: termState,
+    hs: holdState,
+    commands: commandHost,
+    host: {
+      enterTask: (statement: unknown, stub: boolean) => {
+        const fn = statement as Extract<Statement, { form: 'function' }>
+        const task = stub ? { ...fn, body: fn.stubBody! } : fn
+        factsLocal = localNames(task)
+        factsVolatile = volatileNames(task.body)
+        ruleMarks = fn.theorem ? new Set(fn.params.map(param => param.name)) : new Set()
 
-  for (const statement of stubsFirst) {
-    if (statement.form !== 'function' || statement.claim) {
-      // a claim is a signature, not a body
-      continue
-    }
+        return true
+      },
+      leaveTask: () => {
+        factsLocal = new Set()
+        factsVolatile = new Set()
+        ruleMarks = new Set()
 
-    // A SEPARATE-COMPILATION STUB is elaborated only for its carried body (compile/stub.ts `stubBody`), and only when
-    // this unit reaches it, so a proof here can run a task defined in another file. Its signature is registered above,
-    // and its own unit verified the body and reported on it, so nothing about it is reported again here
-    const stub = statement.stub === true
-
-    if (stub && !carried.has(statement.name)) {
-      continue
-    }
-
-    const task = stub ? { ...statement, body: statement.stubBody! } : statement
-
-    if (!representable.has(statement.name)) {
-      if (stub) {
-        continue
-      }
-
-      declined.push({
-        name: statement.name,
-        reason: `its signature names a type the kernel cannot read (${unreadable.get(statement.name) ?? 'the signature'})`,
-      })
-      continue
-    }
-
-    // peel the function's kernel type pi-by-pi to build the body context: the leading generic binders, then the
-    // value parameters (named into scope), leaving the result type. This handles generics and dependency uniformly.
-    let context = baseContext
-
-    const scope: Scope = new Map()
-
-    let remaining: Value = evaluate(
-      [],
-      functionType.get(statement.name)!,
-    )
-
-    const genericLevels: number[] = []
-
-    for (let i = 0; i < statement.generics.length; i++) {
-      if (remaining.v !== 'pi') {
-        break
-      }
-
-      const witness = neutralVar(context.level)
-      genericLevels.push(context.level)
-      const domain = remaining.domain
-      const codomain = remaining.codomain
-      context = bind(context, remaining.mult, domain, statement.generics[i]!.name)
-      remaining = closeOver(codomain, witness)
-    }
-
-    for (const parameter of statement.params) {
-      if (remaining.v !== 'pi') {
-        break
-      }
-
-      const witness = neutralVar(context.level)
-      scope.set(parameter.name, context.level)
-
-      const domain = remaining.domain
-      const codomain = remaining.codomain
-      context = bind(context, remaining.mult, domain, parameter.name)
-      remaining = closeOver(codomain, witness)
-    }
-
-    const resultValue = remaining
-    // first try a pure term (proof-relevant); if the body is outside the pure fragment, type-check it as effectful
-    // commands. Either way the kernel is the authority for the expression types.
-    termState.genericLevels = genericLevels
-    termState.generics = new Map(
-      statement.generics
-        .slice(0, genericLevels.length)
-        .map((g, i) => [g.name, genericLevels[i]!]),
-    )
-    factsLocal = localNames(task)
-    factsVolatile = volatileNames(task.body)
-    ruleMarks = statement.theorem ? new Set(statement.params.map(param => param.name)) : new Set()
-
-    // a stub that is a RULE carries its `show hold` as its body, so a `cite` of it here finds it as a lemma. Checking
-    // it again registers the lemma and must report nothing: its own unit reported on it, and its spans are not ours
-    const reported = stub ? { diagnostics: diagnostics.length, discharged: discharged.length } : undefined
-
-    try {
-      // inside the try: a refusal raised while the term is BUILT (a type-returning match on a large form) is reported
-      // like one raised while it is checked, where it used to escape and end the compile
-      const term = body(task.body, scope, context, resultValue)
-
-      // a stub's body is only ever wanted as a definition to see through: one outside the pure fragment, or not shown
-      // to end, stays opaque, and is checked and reported nowhere but its own unit
-      if (stub) {
-        if (term && terminating.has(statement.name) && factsPure.has(statement.name)) {
-          check(context, term, resultValue)
-          defineConstant(statement.name, evaluate([], lambdaOver(term, statement.generics.length + statement.params.length)))
-        } else if (!term && statement.theorem) {
-          checkCommands(task.body, scope, context, resultValue)
+        return true
+      },
+      trace: (name: string, message: string) => {
+        // TERM_KERNEL_TRACE=1 prints where the kernel failed on a task, which the decline reason alone cannot say
+        if (typeof process !== 'undefined' && process.env?.TERM_KERNEL_TRACE) {
+          console.error(`kernel trace for ${name}:`, message)
         }
 
-        continue
-      }
-
-      if (term) {
-        check(context, term, resultValue)
-
-        // register a pure, termination-verified function as a transparent definition (delta), so the kernel can
-        // see through its calls. Termination is the gate: a function whose recursion is not verified stays opaque,
-        // so it can never make the checker loop (fuel-bounded delta is the additional backstop). Recursive
-        // verified functions are included.
-        // and purity is the second gate: an impure task's body is one run of it, not what every call answers
-        if (terminating.has(statement.name) && factsPure.has(statement.name)) {
-          defineConstant(statement.name, evaluate([], lambdaOver(term, statement.generics.length + statement.params.length)))
-        }
-
-        proven.push(statement.name)
-      } else {
-        checkCommands(statement.body, scope, context, resultValue)
-      }
-
-      verified.push(statement.name)
-    } catch (error) {
-      if (stub) {
-        continue
-      }
-
-      // TERM_KERNEL_TRACE=1 prints where the kernel failed on a task, which the decline reason alone cannot say
-      if (
-        typeof process !== 'undefined' &&
-        process.env?.TERM_KERNEL_TRACE &&
-        !(error instanceof Decline)
-      ) {
-        console.error(`kernel trace for ${statement.name}:`, error)
-      }
-
-      declined.push({
-        name: statement.name,
-        reason:
-          error instanceof Decline
-            ? error.reason
-            : error instanceof TypeError
-              ? `a kernel type error: ${error.message}`
-              : `the kernel failed on it: ${error instanceof Error ? error.message : String(error)}`,
-      })
-
-      if (error instanceof TypeError) {
-        const proof = !statement.claim && claimNames.has(statement.name)
-
-        diagnostics.push(
-          diagnose(proof ? 'unverified-proof' : 'type-mismatch', {
-            file,
-            span: statement.span,
-            message: proof
-              ? `the proof of \`${statement.name}\` does not check against its claim, so it proves nothing: ${error.message}`
-              : `kernel: ${error.message}`,
-            ...(proof
-              ? { hint: 'the type the claim states is printed over the type the proof builds. Change the proof, or the claim' }
-              : {}),
-          }),
-        )
-      }
-      // Decline (unrepresentable) or any other error: leave this function to the surface checker, no diagnostic
-    } finally {
-      termState.genericLevels = []
-      termState.generics = new Map()
-      factsLocal = new Set()
-      factsVolatile = new Set()
-      ruleMarks = new Set()
-
-      if (reported) {
-        diagnostics.length = reported.diagnostics
-        discharged.length = reported.discharged
-      }
-    }
+        return true
+      },
+    },
+    baseContext,
+    terminating: toSet(terminating),
+    pure: toSet(factsPure),
+    carried: toSet(carriedBodies(program)),
+    verified,
+    proven,
+    declined,
   }
 
-  // top-level proof obligations: a `hold` declared at module scope is kernel-checked here, AFTER the function loop has
-  // registered every terminating function as a transparent definition, so a definitional proof can reduce through
-  // them (e.g. `double 3` unfolds to `add 3 3`). Whatever the kernel leaves open is handled by the linear prover
-  // (`checkHolds`), which also walks top-level holds.
-  for (const statement of program) {
-    if (statement.form === 'hold') {
-      checkHold(statement, new Map(), baseContext)
-    }
-  }
+  viaKernel(() => main.checkProgram(mainState as never, program as never, file))
 
   return { diagnostics, verified, proven, declined, discharged }
 }
 
-// the most branches the truth table's search visits (`truthTable`): every choice of thirteen flag atoms with nothing
-// pruned, and far more once hypotheses prune. Past it the goal is left to the other provers, undecided
-const TRUTH_TABLE_CHOICES = 16384
-
-// the most instances of one universal hypothesis the kernel adds to a goal's path (`universalInstances`), the bound the
-// hold checker keeps for its own (check/holds.ts `instances`)
-const UNIVERSAL_INSTANCES = 512
-
 // the span of an expression the kernel builds for the ring from its own terms (`ringCase`), which no source wrote
 const NO_SPAN = { start: { line: 0, column: 0, offset: 0 }, end: { line: 0, column: 0, offset: 0 } }
-
-// a body under one lambda per generic and parameter: the closed term a transparent definition is registered as
-function lambdaOver(term: Term, count: number): Term {
-  let lambda = term
-
-  for (let i = 0; i < count; i++) {
-    lambda = { tag: 'lam', body: lambda }
-  }
-
-  return lambda
-}
 
 // THE STUBS WHOSE CARRIED BODY THIS UNIT REACHES: named by one of its own statements, or by a body reached so. A unit
 // reaches a few tasks of its dependency closure, so elaborating every carried body of the closure in every unit would

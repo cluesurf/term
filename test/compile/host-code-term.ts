@@ -86,7 +86,7 @@ function oracle(text: string): Data {
   const read = readDataText({ file: 'x.tree', text })
 
   if (!read.ok) {
-    throw new Error(read.diagnostics.map(d => d.message).join(' | '))
+    throw new Error(`${read.diagnostics.map(d => d.message).join(' | ')}, reading ${JSON.stringify(text)}`)
   }
 
   const expanded = expandData(read.data, 'x.tree')

@@ -682,6 +682,238 @@ task to-radix
       send back, text <-{{out}}>
   send back, read out
 
+# A number's text in Term's own spelling of a decimal: digits, a point and digits, and never an exponent. Every host
+# writes a large or a small float with one (JavaScript and Swift `1e+300`, Kotlin `1.0E300`), which is not a Term
+# literal, so a writer runs what the host printed through this. EXACT: the digits are moved past the point and never
+# recomputed, so `1e+300` is a one, three hundred zeros and `.0`, and `1.5E-7` is `0.00000015`. A whole number gains
+# `.0`, `2.5` comes back as it went in, and NaN and the infinities come back as their text.
+task plain-decimal
+  take shown, like text
+  like text
+  fork test
+    hook test
+      call or
+        call is-equal
+          read shown
+          text <NaN>
+        call or
+          call is-equal
+            read shown
+            text <Infinity>
+          call is-equal
+            read shown
+            text <-Infinity>
+    hook hold
+      send back, read shown
+  # the digits, how many stand before the point, and the exponent
+  save digits
+    make list
+  save point
+    call subtract
+      code 0
+      code 1
+  save exponent, code 0
+  save exponent-negative, false
+  save in-exponent, false
+  save negative, false
+  walk list
+    call to-runes
+      read shown
+    hook next
+      take site, name c
+      fork test
+        hook test
+          call or
+            call is-equal
+              read c
+              code 101
+            call is-equal
+              read c
+              code 69
+        hook hold
+          save in-exponent, true
+        hook test
+          call is-equal
+            read c
+            code 45
+        hook hold
+          fork test
+            hook test
+              read in-exponent
+            hook hold
+              save exponent-negative, true
+            hook miss
+              save negative, true
+        hook test
+          call is-equal
+            read c
+            code 46
+        hook hold
+          save point
+            call length
+              read digits
+        hook test
+          call and
+            call is-minimum
+              read c
+              code 48
+            call is-maximum
+              read c
+              code 57
+        hook hold
+          fork test
+            hook test
+              read in-exponent
+            hook hold
+              save exponent
+                call add
+                  call multiply
+                    read exponent
+                    code 10
+                  call subtract
+                    read c
+                    code 48
+            hook miss
+              call digits/push
+                call subtract
+                  read c
+                  code 48
+  fork test
+    hook test
+      call is-below
+        read point
+        code 0
+    hook hold
+      save point
+        call length
+          read digits
+  fork test
+    hook test
+      read exponent-negative
+    hook hold
+      save exponent
+        call subtract
+          code 0
+          read exponent
+  # where the point stands among the digits once the exponent has moved it
+  save shift
+    call add
+      read point
+      read exponent
+  save whole, text <>
+  save fraction, text <>
+  save started, false
+  save count
+    call length
+      read digits
+  # zeros the point moved past the digits, before them (a small number) or after them (a large one)
+  save before, code 0
+  save after, code 0
+  fork test
+    hook test
+      call is-below
+        read shift
+        code 0
+    hook hold
+      save before
+        call subtract
+          code 0
+          read shift
+    hook test
+      call is-above
+        read shift
+        read count
+    hook hold
+      save after
+        call subtract
+          read shift
+          read count
+  save k, code 0
+  walk test
+    down
+      call subtract
+        read before
+        read k
+    hook test
+      call is-below
+        read k
+        read before
+    hook step
+      save fraction, text <{{fraction}}0>
+      save k
+        call add
+          read k
+          code 1
+  save k, code 0
+  walk list, read digits
+    hook next
+      take site, name d
+      save written
+        call rune-to-text
+          call add
+            read d
+            code 48
+      fork test
+        hook test
+          call is-below
+            read k
+            read shift
+        hook hold
+          # no leading zeros in the whole part
+          fork test
+            hook test
+              call or
+                read started
+                call is-unequal
+                  read d
+                  code 0
+            hook hold
+              save started, true
+              save whole, text <{{whole}}{{written}}>
+        hook miss
+          save fraction, text <{{fraction}}{{written}}>
+      save k
+        call add
+          read k
+          code 1
+  save k, code 0
+  walk test
+    down
+      call subtract
+        read after
+        read k
+    hook test
+      call is-below
+        read k
+        read after
+    hook step
+      save whole, text <{{whole}}0>
+      save k
+        call add
+          read k
+          code 1
+  fork test
+    hook test
+      call is-equal
+        read whole
+        text <>
+    hook hold
+      save whole, text <0>
+  fork test
+    hook test
+      call is-equal
+        read fraction
+        text <>
+    hook hold
+      save fraction, text <0>
+  save sign, text <>
+  fork test
+    hook test
+      read negative
+    hook hold
+      save sign, text <->
+  send back, text <{{sign}}{{whole}}.{{fraction}}>
+
 # the float with exactly `places` digits after the point (0 to 100). It rounds the float's shortest decimal text, the
 # one `to-text` prints, half away from zero: `1.005` to two places is `1.01`, as it reads, on every backend. (The hosts
 # round the exact binary value and break ties three ways, so `1.005` gave `1.00` on some.) A result that rounds to zero

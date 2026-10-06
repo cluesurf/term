@@ -21,6 +21,9 @@ load @term/base/json
   find stringify
   find from-number
 
+load @term/base/text/number
+  find plain-decimal
+
 load ./base
   find data
   find data-entry
@@ -366,7 +369,10 @@ task entry-line
           read key
           call concat(text(<, >), call(scalar(read value)))
 
-# a run of scalars goes on one line, comma separated, wrapped at the width
+# A run of scalars goes on one line, comma separated, wrapped at the width. A flag or a blank ENDS its line: `true`,
+# `false` and `void` are words to the parser, and a comma pops only the level a word opened, so a value after one on
+# its line would nest under it (`void, false` is `void` holding `false`, which no reader takes). The compiler's
+# writer does the same (deck/make/code/compile/host-data.tree `wrap-words`), byte for byte
 task write-items
   mark private
   take list
@@ -385,6 +391,7 @@ task write-items
         call all-scalar(read list)
     hook hold
       save line, read prefix
+      save after-word, false
       walk list
         read list
         hook next
@@ -398,15 +405,17 @@ task write-items
                   call is-equal
                     read line
                     read prefix
-                call is-above
-                  call
-                    add
-                      read line/length
-                      call
-                        add
-                          code 2
-                          read word/length
-                  code 78
+                call or
+                  read after-word
+                  call is-above
+                    call
+                      add
+                        read line/length
+                        call
+                          add
+                            code 2
+                            read word/length
+                    code 78
             hook hold
               call push
                 read out
@@ -430,6 +439,8 @@ task write-items
                     concat
                       text <, >
                       read word
+          save after-word
+            call is-bare-word(read item)
       call push
         read out
         read line
@@ -516,6 +527,19 @@ task write-items
                 read prefix
                 call scalar read item
 
+# a flag or a blank: written as a word, which a comma after it on its line would nest under
+task is-bare-word
+  mark private
+  take item, like data
+  like boolean
+  fork case, read item
+    case flag
+      send back, true
+    case blank
+      send back, true
+    hook miss
+      send back, false
+
 task all-scalar
   mark private
   take list
@@ -586,38 +610,16 @@ task number-text
   send back
     call integer-text(read value)
 
-# a decimal that happens to be whole keeps a `.0`, so it reads back as a decimal
+# A decimal as Term writes it: a point always, so a whole one reads back as a decimal, and never an exponent, which
+# JSON gives a large or a small one (`1e+300`) and no Term reader takes. @term/base/text/number `plain-decimal`, as the
+# compiler's writer does (deck/make/code/compile/host-data.tree `decimal-text`), byte for byte
 task decimal-text
   mark private
   take value, like float
   like text
-  save shown
-    call stringify(call from-number(read value))
-  save index, code 0
-  walk test
-    hook test
-      call is-below
-        read index
-        read shown/length
-    hook hold
-      fork test
-        hook test
-          call is-equal
-            call
-              char-at
-                read shown
-                read index
-            text <.>
-        hook hold
-          send back, read shown
-      save index
-        call add
-          read index
-          code 1
   send back
-    call concat
-      read shown
-      text <.0>
+    call plain-decimal
+      call stringify(call from-number(read value))
 
 task escape
   take value, like text
