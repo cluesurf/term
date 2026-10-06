@@ -190,7 +190,7 @@ test <under --quiet the opening is left out, and the closing comes with no blank
   want hold
     is-equal
       kit-join(draw-run(opening, events, closing, kit-room(80), options, true))
-      <✓ make 1 target built\n  700 ms>
+      <✓ make 1 target built\n  700ms>
 
 task make-problem
   take path, like text

@@ -646,6 +646,20 @@ export function resolve(
           resolveStatement(statement)
         }
 
+        // A RULE'S "FOR EVERY" HYPOTHESES are expressions like the rest, with the rule's marks and their own binders in
+        // scope. They were never walked, so a lean label inside one stayed a label: `f(subtract(i, 1))` reached the
+        // provers as `f` given a property named `subtract`, and every law resting on it was left unproven
+        for (const universal of node.universals ?? []) {
+          stack.push(new Map())
+
+          for (const binder of universal.binders) {
+            declare(binder, { kind: 'parameter' })
+          }
+
+          resolveExpression(universal.expr)
+          stack.pop()
+        }
+
         stack.pop()
         break
       }

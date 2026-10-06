@@ -12,7 +12,6 @@ import { compileSeparate } from '@term/make/code/compile/separate'
 import { buildable, buildSession, entryShim, isWholeFile, unitSlug } from '@term/call/code/make'
 import type { BuildSession } from '@term/call/code/make'
 import { projectCache } from '@term/call/code/cache-store'
-import { entryRoll, rollKey } from '@term/call/code/roll'
 import type { CompileCache } from '@term/make/code/compile/cache'
 import { projectDeckOf } from '@term/call/code/deck-of'
 import { projectRoleOf, projectLeanOf } from '@term/call/code/role-of'
@@ -38,8 +37,9 @@ let cache: CompileCache | undefined
 let deckOf: DeckOf | undefined
 let roleOf: RoleOf | undefined
 let leanOf: ((file: string) => boolean) | undefined
-// the modules whose code this worker has sent the parent already
+// the modules whose code this worker has sent the parent already, and the units whose roll it has
 let sent = new Set<string>()
+let sentRolls = new Set<string>()
 
 function ready(at: string): void {
   if (root === at) {
@@ -48,6 +48,7 @@ function ready(at: string): void {
 
   root = at
   sent = new Set()
+  sentRolls = new Set()
   session = buildSession(at)
   // a few hundred milled modules in memory, not the default thousands: every worker of the pool holds its own
   cache = projectCache(at, VERSION, WORKER_MILLS)
@@ -105,18 +106,9 @@ parentPort?.on('message', (job: Job) => {
     const building = Date.now() - builtAt
     const rolledAt = Date.now()
 
-    // the entry's roll, kept where the roll pass after the build looks for it (call/code/roll.ts `projectRoll`). On a
-    // cold cache that pass was a whole-program build of every entry, on the main thread, after the units: here it is
-    // spread across the pool with them
-    if (job.entry && result.ok) {
-      cache!.output(rollKey(result.closureKey), () =>
-        // it built, so its roll is read off the typed program alone (compile's `rollFast`, task/term/roll-fast.ts)
-        entryRoll(
-          { file: job.file, text },
-          { resolve: session!.resolve, cache, parsed: session!.parsed, deckOf: deckOf!, roleOf: roleOf!, leanOf: leanOf!, rollFast: true },
-        ),
-      )
-    }
+    // no roll here: the project's roll is assembled from each unit's own roll and reach, which came back with the
+    // answer (call/code/roll.ts `projectRoll`). It was each entry's roll, a typing of its whole closure, 481 to 641 s
+    // of the workers' time on a cold @term/bind, and then each entry's shake, 372 s (2026-10-05)
 
     const spent = { building, rolling: Date.now() - rolledAt }
 
@@ -128,8 +120,12 @@ parentPort?.on('message', (job: Job) => {
       const fresh = new Map([...result.modules].filter(([file]) => !sent.has(file)))
       fresh.forEach((_, file) => sent.add(file))
 
+      // and each unit's roll once, as each module's code is
+      const rolls = result.rolls.filter(([label]) => !sentRolls.has(label))
+      rolls.forEach(([label]) => sentRolls.add(label))
+
       const shim = entryShim(job.root, job.file, result.exports, file => unitSlug(job.root, file, deckOf!))
-      parentPort!.postMessage({ file: job.file, result: { ...result, modules: fresh, exports: [], shim }, built: result.built.length, spent })
+      parentPort!.postMessage({ file: job.file, result: { ...result, modules: fresh, rolls, exports: [], shim }, built: result.built.length, spent })
 
       return
     }

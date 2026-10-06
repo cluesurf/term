@@ -27,9 +27,10 @@ import { compile } from '@term/make/code/compile/compile'
 import {
   EMIT_TARGETS,
   emitTarget,
+  emitTargetUnits,
   isEmitTarget,
 } from '@term/make/code/compile/emit-target'
-import type { EmitTarget } from '@term/make/code/compile/emit-target'
+import type { EmitTarget, UnitFiles } from '@term/make/code/compile/emit-target'
 import { projectResolver } from '@term/call/code/make'
 import { findProjectRoot } from '@term/call/code/boot'
 import { projectDeckOf } from '@term/call/code/deck-of'
@@ -52,7 +53,11 @@ export function emitProgram(input: {
   root: string
   file: string
   target: EmitTarget
-}): { ok: true; source: string } | { ok: false; errors: string[]; problems?: { diagnostic: Diagnostic; text?: string }[] } {
+  // a native target's program as one file per Term module beside a shared one (`emitTargetUnits`)
+  units?: boolean
+}):
+  | { ok: true; source: string; files?: UnitFiles }
+  | { ok: false; errors: string[]; problems?: { diagnostic: Diagnostic; text?: string }[] } {
   const file = path.resolve(input.root, input.file)
 
   if (!existsSync(file)) {
@@ -107,6 +112,12 @@ export function emitProgram(input: {
     }
   }
 
+  if (input.units && env !== 'node') {
+    const files = emitTargetUnits({ program: result.program, target: env, readRuntime })
+
+    return { ok: true, source: files.files.find(([name]) => name === files.main)?.[1] ?? '', files }
+  }
+
   return {
     ok: true,
     source: emitTarget({
@@ -123,6 +134,7 @@ export function callEmit(input: {
   file?: string
   target: string
   out?: string
+  units?: boolean
 }): void {
   // the project folder is the subject (section 3); the program and the backend are what this run is about, as facts
   openRun({ verb: 'make', root: input.root, facts: ['--emit', input.target, ...(input.file ? [input.file] : [])] })
@@ -138,11 +150,18 @@ export function callEmit(input: {
     process.exit(closeRun({ verdict: 'Nothing emitted', next: 'term make --emit <node|rust|swift|kotlin> <file.tree> [--out <path>]', failure: 'usage' }))
   }
 
+  // one file per module goes in a folder, and needs a native target
+  if (input.units && (input.target === 'node' || !input.out)) {
+    report({ glyph: 'failed', kind: 'problem', subject: '--units writes a native program to a folder, and needs rust, swift or kotlin and --out <folder>' })
+    process.exit(closeRun({ verdict: 'Nothing emitted', next: 'term make --emit rust <file.tree> --out <folder> --units', failure: 'usage' }))
+  }
+
   const started = Date.now()
   const emitted = emitProgram({
     root: input.root,
     file: input.file,
     target: input.target,
+    units: input.units,
   })
 
   // a check error refuses: every problem drawn, nothing written, exit 1
@@ -156,6 +175,36 @@ export function callEmit(input: {
     }
 
     process.exit(closeRun({ verdict: 'Refused, nothing written', counts: [count(emitted.errors.length, 'errors', 'error')] }))
+  }
+
+  // one file per module, each written only when its text changed, so a toolchain's incremental build redoes the module
+  // that was edited and no other (compile/unit-split.ts). `units.txt` names the files of this program, for a build
+  // that takes a list: a module no longer loaded leaves its file behind, which a glob would compile
+  if (emitted.files) {
+    const folder = path.resolve(input.root, input.out!)
+    mkdirSync(folder, { recursive: true })
+    let changed = 0
+
+    for (const [name, text] of [...emitted.files.files, ['units.txt', `${emitted.files.files.map(([one]) => one).join('\n')}\n`] as [string, string]]) {
+      const at = path.join(folder, name)
+
+      if (!existsSync(at) || readFileSync(at, 'utf8') !== text) {
+        writeFileSync(at, text)
+        changed++
+      }
+    }
+
+    report({
+      glyph: 'done',
+      verb: 'emit',
+      subject: input.target,
+      duration: Date.now() - started,
+      counts: [count(emitted.files.files.length, 'files', 'file'), count(changed, 'written', 'written')],
+      fields: [location(showPath(folder, input.root)), field('main', emitted.files.main)],
+    })
+    closeRun({ verdict: `Emitted ${input.target}` })
+
+    return
   }
 
   const source = emitted.source.endsWith('\n') ? emitted.source : `${emitted.source}\n`

@@ -90,6 +90,30 @@ function safeTerminating(program: Program): Set<string> {
     return new Set()
   }
 }
+
+// THE RULES THE KERNEL PROVED: each theorem whose goal, the `hold` named after it, the kernel discharged. Handed to the
+// arithmetic provers, so `cite count-of-plus` there rests on a law proved by `fold` as it rests on one they proved
+function provenByKernel(program: Program, discharged: Set<string>): Set<string> {
+  const out = new Set<string>()
+
+  const visit = (statements: Statement[], rule: string): void => {
+    for (const s of statements) {
+      if (s.form === 'hold' && s.name === rule && discharged.has(`${s.span.start.line}:${s.span.start.column}`)) {
+        out.add(rule)
+      } else if (s.form === 'if') {
+        s.branches.forEach(b => visit(b.body, rule))
+      }
+    }
+  }
+
+  for (const s of program) {
+    if (s.form === 'function' && s.theorem) {
+      visit(s.body, s.name)
+    }
+  }
+
+  return out
+}
 import { findUnused } from '@term/make/code/check/unused'
 import { pruneToReachable } from '@term/make/code/ir/prune'
 import { simplify } from '@term/make/code/ir/simplify'
@@ -836,11 +860,13 @@ export function compileProgram(
 
   // a ticked call used as a value is the pending job: `spawn` of the call, a `handle` of its answer (check/pending.ts).
   // Before overloads and names are bound, so the inserted `spawn` binds as a written one does
-  const pendingDiagnostics = pendingValues(program, file)
+  const pending = pendingValues(program, file)
 
-  if (pendingDiagnostics.length) {
-    return { ok: false, diagnostics: pendingDiagnostics }
+  if (pending.diagnostics.length) {
+    return { ok: false, diagnostics: pending.diagnostics }
   }
+
+  program = pending.program
 
   const ambiguities = disambiguateOverloads(program, scope, naming ?? file)
 
@@ -991,7 +1017,7 @@ export function compileProgram(
 
   // the roll alone, for an entry already known to build: everything below only refuses or warns
   if (wantRoll === 'fast') {
-    return { ok: true, program: [], typescript: '', warnings: [], roll: buildRoll(program, file, { deckOf }) }
+    return { ok: true, program: [], typescript: '', warnings: [], roll: buildRoll(program, file, { deckOf, ids: true }) }
   }
 
   // elaboration: lower the now-typed surface into the sound dependent kernel and let it verify. The kernel is the
@@ -999,15 +1025,26 @@ export function compileProgram(
   // It also discharges non-linear `hold` clauses by definitional equality (the kernel fallback for refinement).
   const elaboration = elaborateReport(program, file)
 
-  if (elaboration.diagnostics.length) {
-    return { ok: false, diagnostics: elaboration.diagnostics }
-  }
-
   const kernelDischarged = new Set(
     elaboration.discharged.map(
       s => `${s.start.line}:${s.start.column}`,
     ),
   )
+
+  // A KERNEL REFUSAL DOES NOT HIDE THE REST. The provers still run, and every goal the kernel neither proved nor refused
+  // is reported too: a file with one false law used to report only that one, every unproven goal beside it silent until
+  // it was fixed, and a control counting its refusals read seven where eight were refused (test/case/set, 2026-10-05)
+  if (elaboration.diagnostics.length) {
+    const answered = new Set([
+      ...kernelDischarged,
+      ...elaboration.diagnostics.map(d => `${d.span.start.line}:${d.span.start.column}`),
+    ])
+    const unanswered = checkHolds(program, file).filter(
+      d => d.severity === 'error' && !d.markers.some(m => answered.has(`${m.span.start.line}:${m.span.start.column}`)),
+    )
+
+    return { ok: false, diagnostics: [...elaboration.diagnostics, ...unanswered] }
+  }
 
   // trait checking: instance completeness and trait-bound existence
   const traitDiagnostics = checkTraits(program, file)
@@ -1062,8 +1099,11 @@ export function compileProgram(
   // callee's `must` follows its call, so the holds the programmer wrote may use both. Every other task (an import,
   // whose own file checks its contracts) is checked here, as written.
   const checked = lowerContracts(program, { file, tier0: true })
+  // the rules the kernel proved, which an arithmetic `cite` may rest on as it rests on one the provers proved
+  const kernelProven = provenByKernel(program, kernelDischarged)
   const holdDiagnostics = checkHolds(program, file, {
     skip: checked.lowered,
+    kernelProven,
   }).filter(undischarged)
 
   // contracts: every `have` / `must` / `down` lowered into holds in a copy of the program only the checker reads,
@@ -1101,6 +1141,7 @@ export function compileProgram(
 
   holdDiagnostics.push(
     ...checkHolds(checked.program, file, {
+      kernelProven,
       tally: obligations,
       // this file's own tasks, every hold in them: the programmer's and the checker's
       only: checked.lowered,
@@ -1200,10 +1241,15 @@ export function compileProgram(
     return { ok: false, diagnostics: supervisionDiagnostics }
   }
 
-  // the roll is built from the checked, un-simplified program, so every task is still there to be listed
+  // the roll is built from the checked, un-simplified program, so every task is still there to be listed. A separate
+  // unit lists its OWN definitions alone, each with its identity and its paths' ends, typed here once and kept with
+  // the unit: a project's roll is assembled from them (call/code/roll.ts `projectRoll`), where each entry used to type
+  // its whole closure again for its roll (note/term/plan/incremental-best-in-class.md, step 5)
   const roll = wantRoll
-    ? buildRoll(program, file, { deckOf })
-    : undefined
+    ? buildRoll(program, file, { deckOf, ids: true })
+    : emitOnly
+      ? buildRoll(program, file, { deckOf, own: emitOnly })
+      : undefined
 
   // what wakes the hive: every deck with its exceptions and tells, whether or not a roll was asked for. Cheap, and
   // only emitted when the program loads the stdlib hive.

@@ -8,6 +8,7 @@ import type {
   Span,
 } from '@term/make/code/parser/diagnostic'
 import { armLocals } from '@term/make/code/check/arm'
+import { throughAlias, transparentAliases } from '@term/make/code/check/alias'
 import { raiseSets } from '@term/make/code/check/effects'
 import { diagnose } from '@term/make/code/parser/diagnostic'
 import { isStringMethod, hostMethod } from '@term/make/code/compile/text-methods'
@@ -177,6 +178,8 @@ export function check(
   // engine/data/string's `rope` both have `leaf` and `branch`), and a match arm whose subject's form is known reads
   // that form's case, never the one declared last (the engine/value port, 2026-10-04)
   const caseFields = new Map<string, Map<string, Type>>()
+  // and the fields of each that a construction must give: every one but a `need false` one
+  const caseRequired = new Map<string, Set<string>>()
   // a form's generic parameter names, e.g. maybe -> ["t"], for parameterized named types (maybe<t>)
   const formGenerics = new Map<string, string[]>()
   // a form with cases -> the field its tag is read as: `form`, or the name its `mark tag, name kind` gives. A read of
@@ -253,6 +256,7 @@ export function check(
 
           variantFields.set(variant.name, own)
           caseFields.set(`${statement.name}/${variant.name}`, own)
+          caseRequired.set(`${statement.name}/${variant.name}`, new Set(variant.fields.filter(f => !f.optional).map(f => f.name)))
           variantFieldsByOwner.set(variant.name, [
             ...(variantFieldsByOwner.get(variant.name) ?? []),
             own,
@@ -278,33 +282,24 @@ export function check(
   // bind primitive alias (e.g. `g-luint = native-number`, `g-lclampf = native-number`) accepts the underlying value.
   // Built from the whole merged program. This is what lets a frontend pass a plain `number` where a binding declares a
   // `GLuint`, instead of every WebGL/DOM call rejecting primitives.
-  const transparentAlias = new Map<string, Type>()
+  // A generic one (`form set / head a / like task ...`) is read with its arguments, `set natural` (check/alias.ts).
+  const transparentAlias = transparentAliases(program)
 
-  for (const statement of program) {
-    if (
-      statement.form === 'record-type' &&
-      statement.alias &&
-      statement.fields.length === 0 &&
-      statement.variants.length === 0 &&
-      statement.params.length === 0
-    ) {
-      transparentAlias.set(statement.name, statement.alias)
-    }
-  }
-
-  // unfold a transparent alias to its base, following a chain (guarded against cycles). Unification only.
+  // unfold a transparent alias to its base, following a chain (guarded against cycles). Unification and calls.
   const unfoldAlias = (type: Type): Type => {
     let current = type
 
     const seen = new Set<string>()
 
-    while (
-      current.kind === 'named' &&
-      transparentAlias.has(current.name) &&
-      !seen.has(current.name)
-    ) {
+    while (current.kind === 'named' && !seen.has(current.name)) {
+      const base = throughAlias(current, transparentAlias)
+
+      if (!base) {
+        break
+      }
+
       seen.add(current.name)
-      current = transparentAlias.get(current.name)!
+      current = base
     }
 
     return current
@@ -876,13 +871,18 @@ export function check(
         // unifies with whatever the position expects; the kernel resolves the owning enum and verifies the fields.
         // Unless its FIELDS name one owner: `make leaf / bind items, ...` is engine/data/array's `vector` and not
         // string's `rope`, whose `leaf` has `text` and `length`. Typed leniently, the empty list inside never learned
-        // its element, and Swift spelled it `SeedList<Any>` (the engine/value port, 2026-10-04)
+        // its element, and Swift spelled it `SeedList<Any>` (the engine/value port, 2026-10-04).
+        // A case FITS when the fields given are its own and include every one it requires: a `need false` field may be
+        // left out. Asking for every field, `make variable / bind name / bind span` fitted neither node.tree's
+        // expression case (which also has `type`, `binding` and `alias`, all need false) nor the type's (`id`), stayed
+        // open, and was emitted as the type's case, `{ kind: "variable" }`, where an expression was built (2026-10-05)
         const owners = variantOwners.get(node.name) ?? []
         const given = node.fields.map(f => f.name)
         const fitting = owners.filter(owner => {
           const own = caseFields.get(`${owner}/${node.name}`)
+          const required = caseRequired.get(`${owner}/${node.name}`) ?? new Set<string>()
 
-          return own !== undefined && given.every(name => own.has(name)) && own.size === given.length
+          return own !== undefined && given.every(name => own.has(name)) && [...required].every(name => given.includes(name))
         })
         const chosen = qualifiedOwner ?? (owners.length > 1 && fitting.length === 1 ? fitting[0] : undefined)
 
@@ -1006,15 +1006,18 @@ export function check(
           narrowing.has(node.target.name)
         ) {
           const variant = narrowing.get(node.target.name)!
-          const field = variantFields.get(variant)?.get(node.name)
+          // inferred, not only looked up, so the target carries its type to the emitter, which reads the case's field
+          // through it (compile/typescript.ts `declaredFieldOf`): a D10 maybe written there holds the value inside
+          const subject = resolve(inferExpression(node.target, env))
+          // the case of the SUBJECT's form, as the arm's locals are read: two forms may name a case alike (node.tree's
+          // expression and view node both have `call`), and keyed by the label alone the one declared last answered,
+          // so `value/background` inside `case call` was refused as no field of the view node's case (2026-10-05)
+          const owner = subject.kind === 'named' && caseFields.has(`${subject.name}/${variant}`) ? subject.name : undefined
+          const field = (owner ? caseFields.get(`${owner}/${variant}`) : variantFields.get(variant))?.get(node.name)
 
           if (field) {
-            const subject = resolve(
-              env.get(node.target.name)?.type ?? unknownType(),
-            )
-
             const params =
-              formGenerics.get(variantEnum.get(variant) ?? '') ?? []
+              formGenerics.get(owner ?? variantEnum.get(variant) ?? '') ?? []
 
             const argMap = new Map<string, Type>()
 
@@ -1517,8 +1520,9 @@ export function check(
             }
           }
 
-          // calling a first-class function value (a local of function type, a parameter, etc.)
-          const calleeType = resolve(inferExpression(node.callee, env))
+          // calling a first-class function value (a local of function type, a parameter, etc.), its type read through a
+          // transparent alias: `mark v, like assignment` for `form assignment / like task / ...` is called as the task
+          const calleeType = unfoldAlias(resolve(inferExpression(node.callee, env)))
 
           if (calleeType.kind === 'function') {
             if (args.length !== calleeType.params.length) {

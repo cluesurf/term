@@ -1,4 +1,4 @@
-// The verbs that START SOMETHING and stay running: `work`, `feed`, and `zone`.
+// The verbs that START SOMETHING and stay running: `work`, `boot --env browser` (which was `feed`), and `zone`.
 //
 // These were the last verbs with no test, and the reason is that each one needs more than an exit code to say
 // anything. A server that starts, prints a cheerful line and answers nothing is indistinguishable from a working
@@ -9,7 +9,7 @@
 //   would pass on a daemon that returned an empty diagnostic list for everything, which is the failure a warm
 //   cache is most likely to have.
 //
-//   `feed` is the dev server. It has to SERVE the scaffolded app, not merely bind a port.
+//   `boot --env browser` is the dev server. It has to SERVE the scaffolded app, not merely bind a port.
 //
 //   `zone` is the secret console, and it is a Term app: running it BUILDS `deck/zone/code/line/base.tree` through
 //   the compiler and runs the result, so this exercises the whole boot path and not just an argument parser. With
@@ -148,15 +148,16 @@ ok(
   JSON.stringify(analysis?.broken).slice(0, 200),
 )
 
-// ---- feed: the dev server, and it must serve ----
+// ---- the browser development server, and it must serve ----
+// `term boot --env browser`, which was `term feed` until 2026-10-05
 
-const served = await serving<number>(['feed'], async port => {
+const served = await serving<number>(['boot', '--env', 'browser'], async port => {
   const answer = await fetch(`http://localhost:${port}/`)
 
   return answer.status
 })
 
-ok('`feed` starts and serves the scaffolded app', served !== undefined && served < 500, String(served))
+ok('`boot --env browser` starts and serves the scaffolded app', served !== undefined && served < 500, String(served))
 
 // ---- zone: the secret console, which is a Term app ----
 //

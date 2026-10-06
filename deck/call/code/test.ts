@@ -201,12 +201,16 @@ async function runControl(input: {
     }
   }
 
-  return refused.length === expected
+  // a GOAL refused, counted once however many diagnostics say so: a false law citing a rule it is not an instance of is
+  // refused at the `cite` and again as unproven, two diagnostics at one rule
+  const goals = new Set(refused.map(d => `${d.span?.file ?? ''}:${d.span?.start.line ?? ''}`)).size
+
+  return goals === expected
     ? { held: true, broken: false, fact: `${expected} of ${expected} refused`, others: [] }
     : {
         held: false,
         broken: false,
-        fact: `${refused.length} refused where its header expects ${expected}`,
+        fact: `${goals} refused where its header expects ${expected}`,
         others: [],
       }
 }

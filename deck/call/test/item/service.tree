@@ -117,7 +117,7 @@ test <identical items within 10 s collapse into the first, which gains ×n>
   save first, step/events/0
   want hold, is-equal(first/repeat, 3)
   want hold
-    contains(kit-draw(first, 80), <14:02:07.412 · api · 18 ms · HTTP 200 · ×3>)
+    contains(kit-draw(first, 80), <14:02:07.412 · api · 18ms · HTTP 200 · ×3>)
   want hold
     contains(write-json-event(first, -420, false, standard), <"facts":["×3"]>)
 

@@ -736,6 +736,11 @@ const cli = yargs(hideBin(process.argv))
           type: 'string',
           description: 'With --emit: the file to write (default standard output)',
         })
+        .option('units', {
+          type: 'boolean',
+          description:
+            'With --emit rust, swift or kotlin and --out <folder>: one file per Term module beside a shared one, each written only when it changed',
+        })
         .option('ride', {
           type: 'boolean',
           alias: 'watch',
@@ -812,6 +817,7 @@ const cli = yargs(hideBin(process.argv))
           file: argv.file,
           target: argv.emit,
           out: argv.out,
+          units: argv.units,
         })
 
         return

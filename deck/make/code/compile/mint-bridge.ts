@@ -4354,7 +4354,11 @@ function ruleOf(bridge: Bridge, value: Form): Statement[] {
       name,
       params,
       body,
-      generics: [],
+      // `head a` on a theorem: a law about every type `a`, as on a claim (`rule union-commutes / head a / mark s, like
+      // set a`). It was dropped, so the first mark naming `a` was refused as an unknown type
+      generics: formsAt(value, 'head').map(head => ({
+        name: wordAt(head, 'name') ?? '',
+      })),
       ...(goal && axiom ? { axiom: true } : {}),
       ...(goal && !axiom ? { theorem: true } : {}),
       ...(universals.length > 0 ? { universals } : {}),

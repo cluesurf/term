@@ -130,17 +130,17 @@ test <title line is the same whether the stream is filtered or not: the source i
 test <facts line: the clock, then the source, then the fixed order, a dim dot between>
   want hold
     is-equal kit-join(draw-facts-line(make-request(), kit-room(80), true))
-      <  14:02:07.412 · api:1 · 18 ms · HTTP 200 · 84 B · 2 tries · cached>
+      <  14:02:07.412 · api:1 · 18ms · HTTP 200 · 84 B · 2 tries · cached>
   # filtered to one source: the source is left out
   want hold
     is-equal kit-join(draw-facts-line(make-request(), kit-room(80), false))
-      <  14:02:07.412 · 18 ms · HTTP 200 · 84 B · 2 tries · cached>
+      <  14:02:07.412 · 18ms · HTTP 200 · 84 B · 2 tries · cached>
 
 test <facts line at 40 columns moves a fact that does not fit to the next line, whole, at the body column>
   save lines, draw-facts-line(make-request(), kit-room(40), true)
   want hold
     is-equal kit-join(lines)
-      <  14:02:07.412 · api:1 · 18 ms\n  HTTP 200 · 84 B · 2 tries · cached>
+      <  14:02:07.412 · api:1 · 18ms · HTTP 200\n  84 B · 2 tries · cached>
   want hold, kit-within(lines, 40)
 
 test <a fact too long for what is left of the line starts the next one whole, at the body column>
@@ -156,7 +156,7 @@ test <a fact too long for what is left of the line starts the next one whole, at
   ping/facts/push <credited to account xfxtrzsv-kzlktzwn-fvvskssm-bwnkmlmx>
   want hold
     is-equal kit-join(draw-facts-line(ping, kit-room(80), true))
-      <  19:45:44.560 · 1.20 s · published\n  credited to account xfxtrzsv-kzlktzwn-fvvskssm-bwnkmlmx>
+      <  19:45:44.560 · 1.20s · published\n  credited to account xfxtrzsv-kzlktzwn-fvvskssm-bwnkmlmx>
 
 test <fact: each fact is its own spans, in the standard's order, the source second>
   save facts, list-facts(make-request(), kit-room(80), true)
@@ -167,7 +167,7 @@ test <fact: each fact is its own spans, in the standard's order, the source seco
   save sixth, facts/5
   want hold, is-equal(spans-text(first/spans), <14:02:07.412>)
   want hold, is-equal(spans-text(second/spans), <api:1>)
-  want hold, is-equal(unglue-text(spans-text(third/spans)), <18 ms>)
+  want hold, is-equal(unglue-text(spans-text(third/spans)), <18ms>)
   want hold, is-equal(unglue-text(spans-text(sixth/spans)), <2 tries>)
 
 test <a quick step shows no clock, and a step with nothing else has no facts line>
@@ -179,7 +179,7 @@ test <a quick step shows no clock, and a step with nothing else has no facts lin
       clock(kit-clock(14, 42, 0, 5))
   save quick/duration, 410
   want hold
-    is-equal(kit-join(draw-facts-line(quick, kit-room(80), true)), <  410 ms>)
+    is-equal(kit-join(draw-facts-line(quick, kit-room(80), true)), <  410ms>)
   save bare
     make event
       glyph(<added>)
@@ -443,7 +443,7 @@ test <status footer: a rule, then one up item per source with its uptime>
   save drawn, draw-footer(ups, kit-room(40), true)
   want hold
     is-equal kit-join(drawn)
-      <────────────────────────────────────────\n✓ up :4001\n  14:02:11.300 · api:1 · up 6.00 s\n✓ up :4002\n  14:02:11.300 · api:2 · up 1.00 s\n  1 restart>
+      <────────────────────────────────────────\n✓ up :4001\n  14:02:11.300 · api:1 · up 6.00s\n✓ up :4002\n  14:02:11.300 · api:2 · up 1.00s\n  1 restart>
   want hold, kit-within(drawn, 40)
 
 test <item: title, facts and details together, at 40 and wide>
@@ -451,10 +451,10 @@ test <item: title, facts and details together, at 40 and wide>
   one/message/push <The response was served from the cache.>
   want hold
     is-equal kit-draw(one, 120)
-      <✓ GET /api/shapes/search?query=regular-hexagon&limit=50\n  14:02:07.412 · api:1 · 18 ms · HTTP 200 · 84 B · 2 tries · cached\n  The response was served from the cache.>
+      <✓ GET /api/shapes/search?query=regular-hexagon&limit=50\n  14:02:07.412 · api:1 · 18ms · HTTP 200 · 84 B · 2 tries · cached\n  The response was served from the cache.>
   want hold
     is-equal kit-draw(one, 40)
-      <✓ GET /api/shapes/search?\n  query=regular-hexagon&limit=50\n  14:02:07.412 · api:1 · 18 ms\n  HTTP 200 · 84 B · 2 tries · cached\n  The response was served from the\n    cache.>
+      <✓ GET /api/shapes/search?\n  query=regular-hexagon&limit=50\n  14:02:07.412 · api:1 · 18ms · HTTP 200\n  84 B · 2 tries · cached\n  The response was served from the\n    cache.>
 
 test <run: the opening, the events, the closing, with no blank line between (v3)>
   save opening
@@ -476,7 +476,7 @@ test <run: the opening, the events, the closing, with no blank line between (v3)
   save drawn, draw-run(opening, events, closing, kit-room(80), make-options(), true)
   want hold
     is-equal kit-join(drawn)
-      <● make ~/shape\n  term 2.5.22\n✓ build typescript\n  400 ms\n✓ make 1 target built\n  700 ms>
+      <● make ~/shape\n  term 2.5.22\n✓ build typescript\n  400ms\n✓ make 1 target built\n  700ms>
   save last, drawn/4
   save verdict, last/spans/4
   want hold, verdict/strong

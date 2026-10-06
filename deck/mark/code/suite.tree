@@ -928,7 +928,7 @@ task run-suite
       read floor
       code 2
   call log
-    text <floor: an empty process takes {{floor-text}} ms here. A median under {{floor-factor}} times that is dominated by process start>
+    text <floor: an empty process takes {{floor-text}}ms here. A median under {{floor-factor}} times that is dominated by process start>
   # the toolchains, and the architecture each one's programs run as. An emulated target is a warning outside a
   # headline session, and refused in one
   save native

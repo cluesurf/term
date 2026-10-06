@@ -1,0 +1,14 @@
+# device-layer-0013.
+# Whether this build answers the device modules (camera, location and the rest) with the platform's own API, or only
+# with their `unavailable` fallback. A cask's dispatcher asks it: a cask with no device host (Linux and Windows, built
+# for bare rust) tells its page so, and the page's WebView is asked instead, since it may have the capability itself.
+#
+#   has-device-host   true where the toolkit hosts are reached (macOS, iOS, Android), false everywhere else
+
+load ./native/{platform}/hosted
+  find has-device-host, name platform-has-device-host
+
+task has-device-host
+  like boolean
+  send back
+    call platform-has-device-host

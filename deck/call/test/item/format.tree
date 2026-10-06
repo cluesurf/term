@@ -54,23 +54,23 @@ task said-size
   back unglue-text(spans-text(format-size(bytes, make-standard())))
 
 test <a duration under a second is whole milliseconds>
-  want hold, is-equal(said-duration(4), <4 ms>)
-  want hold, is-equal(said-duration(410), <410 ms>)
-  want hold, is-equal(said-duration(0), <0 ms>)
+  want hold, is-equal(said-duration(4), <4ms>)
+  want hold, is-equal(said-duration(410), <410ms>)
+  want hold, is-equal(said-duration(0), <0ms>)
 
 test <the last millisecond figure is 999 ms and 1000 is 1.00 s>
-  want hold, is-equal(said-duration(999), <999 ms>)
-  want hold, is-equal(said-duration(1000), <1.00 s>)
+  want hold, is-equal(said-duration(999), <999ms>)
+  want hold, is-equal(said-duration(1000), <1.00s>)
 
 test <seconds keep three significant figures>
-  want hold, is-equal(said-duration(2900), <2.90 s>)
-  want hold, is-equal(said-duration(9994), <9.99 s>)
-  want hold, is-equal(said-duration(9995), <10.0 s>)
-  want hold, is-equal(said-duration(24100), <24.1 s>)
+  want hold, is-equal(said-duration(2900), <2.90s>)
+  want hold, is-equal(said-duration(9994), <9.99s>)
+  want hold, is-equal(said-duration(9995), <10.0s>)
+  want hold, is-equal(said-duration(24100), <24.1s>)
 
 test <the last second figure is 59.9 s and 59.95 s is 1m 00s>
-  want hold, is-equal(said-duration(59900), <59.9 s>)
-  want hold, is-equal(said-duration(59949), <59.9 s>)
+  want hold, is-equal(said-duration(59900), <59.9s>)
+  want hold, is-equal(said-duration(59949), <59.9s>)
   want hold, is-equal(said-duration(59950), <1m 00s>)
   want hold, is-equal(said-duration(60000), <1m 00s>)
 
@@ -81,7 +81,7 @@ test <minutes carry zero-padded seconds and hours zero-padded minutes>
   want hold, is-equal(said-duration(36720000), <10h 12m>)
 
 test <a negative duration reads as zero, never as a negative figure>
-  want hold, is-equal(said-duration(-5), <0 ms>)
+  want hold, is-equal(said-duration(-5), <0ms>)
 
 test <sizes are decimal with one decimal under 100 of a unit>
   want hold, is-equal(said-size(84), <84 B>)
@@ -103,10 +103,10 @@ test <a size past the exact range is held to it, in the last unit>
   want hold, is-equal(said-size(9007199254740991), <9.0 PB>)
   want hold, is-equal(said-size(5000000000000000000), <9.0 PB>)
 
-test <a number and its unit are joined by a no-break space>
+test <a number and its unit are joined by a no-break space, and a duration's unit is attached (D44)>
   save glue, rune-to-text(160)
   save spoken, spans-text(format-duration(18, make-standard(), <text>))
-  want hold, contains(spoken, <18{glue}ms>)
+  want hold, is-equal(spoken, <18ms>)
   save sized, spans-text(format-size(12400, make-standard()))
   want hold, contains(sized, <12.4{glue}kB>)
   save counted, spans-text(format-tally(318, <requests>, <>, -1, make-standard()))
@@ -115,11 +115,11 @@ test <a number and its unit are joined by a no-break space>
 test <numbers bright and units dim, the whole over budget in the warning color>
   save spans, format-duration(18, make-standard(), <text>)
   save number, spans/0
-  save unit, spans/2
+  save unit, spans/1
   want hold, and(is-equal(number/role, <text>), is-equal(unit/role, <dim>))
   save over, format-duration(1800, make-standard(), <warning>)
   save over-number, over/0
-  save over-unit, over/2
+  save over-unit, over/1
   want hold
     and(is-equal(over-number/role, <warning>), is-equal(over-unit/role, <warning>))
 

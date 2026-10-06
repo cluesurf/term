@@ -44,7 +44,7 @@ test <a JSON line's time and duration become the clock and the duration, in the 
       false
       kit-room(80)
   want hold
-    is-equal(kit-draw(got/event, 80), <● cache warmed\n  4 ms\n  keys 1204>)
+    is-equal(kit-draw(got/event, 80), <● cache warmed\n  4ms\n  keys 1204>)
 
 test <a stack becomes quoted output, trimmed to its top frame and the user's>
   save got

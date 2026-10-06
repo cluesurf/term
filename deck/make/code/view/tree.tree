@@ -1,0 +1,397 @@
+# View / dock emit to Seed (.tree). Takes the compile AST the mill produced for a `zone` or `dock` and emits the
+# `.tree` source that calls the render runtime in site.tree (zone/render, zone/reactive, dom/dom). A `zone` becomes a
+# `task` that builds its view; a `dock` becomes a route descriptor. This is the canonical, backend-agnostic lowering:
+# the emitted `.tree` itself compiles to every target (the DOM work is delegated to native per env). Pure / browser-safe.
+#
+# Ported from view/tree.ts (self-hosting, 2026-10-05). The counter that names each fresh local is a `mark shared`
+# record, since every step of the emit takes the next name from it.
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/text/string
+  find repeat
+
+load @term/base/maybe
+  find maybe
+
+load ../compile/node
+  find binary-op
+  find closure-param
+  find dock-route
+  find expression
+  find statement
+  find type
+  find view-node
+
+# the names handed out so far
+form fresh-names
+  mark shared
+  link count, like number
+
+task pad
+  take depth, like number
+  like text
+  mark private
+
+  back repeat(<  >, depth)
+
+task fresh
+  take names, like fresh-names
+  take base, like text
+  like text
+  mark private
+
+  save names/count, add(names/count, 1)
+  save count, names/count
+  back <{base}-{count}>
+
+task op-name
+  take op, like binary-op
+  like text
+  mark private
+
+  sift op
+    case plus
+      back <add>
+    case minus
+      back <subtract>
+    case times
+      back <multiply>
+    case divide
+      back <divide>
+    case remainder
+      back <modulo>
+    case above
+      back <is-above>
+    case below
+      back <is-below>
+    case equal
+      back <is-equal>
+    case unequal
+      back <is-unequal>
+    case at-least
+      back <is-minimum>
+    case at-most
+      back <is-maximum>
+    case both
+      back <and>
+    case either
+      back <or>
+
+task type-name
+  take given, like maybe, like type
+  like text
+  mark private
+
+  sift given
+    case some
+      link one
+      sift one
+        case string
+          back <text>
+        case boolean
+          back <boolean>
+        case number
+          back <number>
+        case named
+          back name
+        miss
+          back <text>
+    case none
+      back <text>
+
+# a member chain back to a slash path: member(member(var a, b), c) -> a/b/c
+task member-path
+  take value, like expression
+  like text
+  mark private
+
+  sift value
+    case variable
+      back name
+    case member
+      save head, member-path(target)
+      back <{head}/{name}>
+    miss
+      back <self>
+
+task add-all
+  take out, like list, like text
+  take more, like list, like text
+  like list, like text
+  mark private
+
+  walk more
+    take line
+    push(out, line)
+  back out
+
+task one-line
+  take line, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, line)
+  back out
+
+# an expression to `.tree` value lines at the given depth
+task value-lines
+  take value, like expression
+  take depth, like number
+  like list, like text
+  mark private
+
+  save p, pad(depth)
+  sift value
+    case integer
+      back one-line(<{p}mark {value}>)
+    case float
+      back one-line(<{p}mark {value}>)
+    case boolean
+      back one-line(<{p}wave {value}>)
+    case string
+      back one-line(<{p}text \<{value}\>>)
+    case unit
+      back one-line(<{p}mark 0>)
+    case variable
+      back one-line(<{p}read {name}>)
+    case member
+      save path, member-path(value)
+      back one-line(<{p}read {path}>)
+    case binary
+      save named, op-name(op)
+      save out, one-line(<{p}call {named}>)
+      save out, add-all(out, value-lines(left, add(depth, 1)))
+      back add-all(out, value-lines(right, add(depth, 1)))
+    case call
+      save callee-name, <call>
+      sift callee
+        case variable
+          save callee-name, name
+        case member
+          save callee-name, member-path(callee)
+        miss
+          save callee-name, <call>
+      save out, one-line(<{p}call {callee-name}>)
+      walk args
+        take arg
+        save out, add-all(out, value-lines(arg, add(depth, 1)))
+      back out
+    case await
+      back value-lines(read(expr), depth)
+    miss
+      back one-line(<{p}mark 0>)
+
+# emit the `.tree` that builds one zone node and appends it under `host`
+task zone-node
+  take node, like view-node
+  take host, like text
+  take depth, like number
+  take names, like fresh-names
+  like list, like text
+  mark private
+
+  save out, make list
+  save p, pad(depth)
+  save p1, pad(add(depth, 1))
+  save p2, pad(add(depth, 2))
+  save p3, pad(add(depth, 3))
+  save p4, pad(add(depth, 4))
+  save p5, pad(add(depth, 5))
+  sift node
+    case element
+      save self, fresh(names, name)
+      push(out, <{p}save {self}>)
+      push(out, <{p1}call element>)
+      push(out, <{p2}bind tag, text \<{name}\>>)
+      walk attributes
+        take attribute
+        fork test, attribute/event
+          hold
+            save handler, fresh(names, <on>)
+            push(out, <{p}call event>)
+            push(out, <{p1}bind node, read {self}>)
+            push(out, <{p1}bind name, text \<{attribute/name}\>>)
+            push(out, <{p1}bind handler>)
+            push(out, <{p2}task {handler}>)
+            save out, add-all(out, value-lines(attribute/value, add(depth, 3)))
+          miss
+            push(out, <{p}call attribute>)
+            push(out, <{p1}bind node, read {self}>)
+            push(out, <{p1}bind name, text \<{attribute/name}\>>)
+            push(out, <{p1}bind value>)
+            save out, add-all(out, value-lines(attribute/value, add(depth, 2)))
+      walk children
+        take child
+        save out, add-all(out, zone-node(child, self, depth, names))
+      push(out, <{p}call append>)
+      push(out, <{p1}bind parent, read {host}>)
+      push(out, <{p1}bind child, read {self}>)
+      back out
+
+    case text
+      push(out, <{p}call append>)
+      push(out, <{p1}bind parent, read {host}>)
+      push(out, <{p1}bind child>)
+      push(out, <{p2}call text>)
+      push(out, <{p3}bind value, text \<{value}\>>)
+      back out
+
+    case read
+      save getter, fresh(names, <get>)
+      push(out, <{p}call append>)
+      push(out, <{p1}bind parent, read {host}>)
+      push(out, <{p1}bind child>)
+      push(out, <{p2}call dynamic>)
+      push(out, <{p3}bind get>)
+      push(out, <{p4}task {getter}>)
+      push(out, <{p5}send back>)
+      back add-all(out, value-lines(read(value), add(depth, 6)))
+
+    case save
+      push(out, <{p}save {name}>)
+      back add-all(out, value-lines(read(value), add(depth, 1)))
+
+    case slot
+      # the children outlet: append the passed-in children node
+      push(out, <{p}call append>)
+      push(out, <{p1}bind parent, read {host}>)
+      push(out, <{p1}bind child, read children>)
+      back out
+
+    case fork
+      save when, fresh(names, <when>)
+      save then, fresh(names, <then>)
+      save other, fresh(names, <else>)
+      push(out, <{p}call show>)
+      push(out, <{p1}bind host, read {host}>)
+      push(out, <{p1}bind when>)
+      push(out, <{p2}task {when}>)
+      push(out, <{p3}send back>)
+      fork test, is-above(branches/length, 0)
+        hold
+          save first, get(branches, 0)
+          save out, add-all(out, value-lines(first/cond, add(depth, 4)))
+          push(out, <{p1}bind then>)
+          push(out, <{p2}task {then}>)
+          save out, add-all(out, fragment(first/body, add(depth, 3), names))
+        miss
+          push(out, <{pad(add(depth, 4))}wave false>)
+          push(out, <{p1}bind then>)
+          push(out, <{p2}task {then}>)
+          save none-yet, make list
+          save out, add-all(out, fragment(none-yet, add(depth, 3), names))
+      push(out, <{p1}bind other>)
+      push(out, <{p2}task {other}>)
+      back add-all(out, fragment(otherwise, add(depth, 3), names))
+
+    case walk
+      save build, fresh(names, <build>)
+      push(out, <{p}call each>)
+      push(out, <{p1}bind host, read {host}>)
+      push(out, <{p1}bind items>)
+      save out, add-all(out, value-lines(iterable, add(depth, 2)))
+      push(out, <{p1}bind build>)
+      push(out, <{p2}task {build}>)
+      push(out, <{p3}take {item}, like node>)
+      back add-all(out, fragment(body, add(depth, 3), names))
+
+    miss
+      back out
+
+# build a list of nodes into a fresh container and return it (used where a single node must be returned)
+task fragment
+  take nodes, like list, like view-node
+  take depth, like number
+  take names, like fresh-names
+  like list, like text
+  mark private
+
+  save box, fresh(names, <box>)
+  save p, pad(depth)
+  save out, make list
+  push(out, <{p}save {box}>)
+  push(out, <{pad(add(depth, 1))}call element>)
+  push(out, <{pad(add(depth, 2))}bind tag, text \<span\>>)
+  walk nodes
+    take one
+    save out, add-all(out, zone-node(one, box, depth, names))
+  push(out, <{p}send back, read {box}>)
+  back out
+
+# emit a `zone` definition as a `task` that builds its view through the render runtime
+task emit-zone-tree
+  take zone, like statement
+  like text
+
+  sift zone
+    case view
+      save names
+        make fresh-names
+          bind count, 0
+      save out, make list
+      push(out, <task {name}>)
+      push(out, <  take host, like node>)
+      walk params
+        take param
+        save shown, type-name(param/type)
+        push(out, <  take {param/name}, like {shown}>)
+      walk body
+        take one
+        save out, add-all(out, zone-node(one, <host>, 1, names))
+      save joined, join(out, <\n>)
+      back <{joined}\n>
+    miss
+      back <>
+
+# emit a `dock` route as a descriptor record (path, methods/component/handlers) the router consumes
+task emit-dock-tree
+  take dock, like statement
+  like text
+
+  sift dock
+    case dock
+      save joined, join(route-lines(route, 0), <\n>)
+      back <{joined}\n>
+    miss
+      back <>
+
+task route-lines
+  take node, like dock-route
+  take depth, like number
+  like list, like text
+  mark private
+
+  save p, pad(depth)
+  save p1, pad(add(depth, 1))
+  save p2, pad(add(depth, 2))
+  save p3, pad(add(depth, 3))
+  save out, make list
+  push(out, <{p}make route>)
+  push(out, <{p1}bind path, text \<{node/path}\>>)
+  walk node/methods
+    take method
+    push(out, <{p1}bind method>)
+    push(out, <{p2}make handler>)
+    push(out, <{p3}bind verb, text \<{method/name}\>>)
+    walk method/calls
+      take one-call
+      push(out, <{p3}bind call, text \<{one-call/name}\>>)
+  walk node/calls
+    take one-call
+    push(out, <{p1}bind call, text \<{one-call/name}\>>)
+  sift node/component
+    case some
+      link component
+      push(out, <{p1}bind view, text \<{component/name}\>>)
+    case none
+      save nothing, 0
+  walk node/children
+    take child
+    push(out, <{p1}bind child>)
+    save out, add-all(out, route-lines(child, add(depth, 2)))
+  back out

@@ -172,14 +172,14 @@ test <the first object is the opening item and the last the closing, with the ru
   want hold, is-equal(value-of(lines/2, <glyph>), <failed>)
 
 test <--plain says each item as one sentence>
-  want hold, is-equal(speak-event(make-request(), kit-room(80)), <done: GET /shape (api:1), 18 ms, HTTP 200, 84 bytes>)
+  want hold, is-equal(speak-event(make-request(), kit-room(80)), <done: GET /shape (api:1), 18ms, HTTP 200, 84 bytes>)
   save one, make event, glyph(<failed>), verb(<check>), subject(plain-subject(<There is no task named multipy>))
   one/fields/push plain-field(<at>, <code/area.tree:14:12>)
   want hold, is-equal(speak-event(one, kit-room(80)), <failed: check There is no task named multipy. at code/area.tree:14:12>)
   save single, make-request()
   save single/source, <>
   save single/bytes, 1
-  want hold, is-equal(speak-event(single, kit-room(80)), <done: GET /shape, 18 ms, HTTP 200, 1 byte>)
+  want hold, is-equal(speak-event(single, kit-room(80)), <done: GET /shape, 18ms, HTTP 200, 1 byte>)
 
 test <--plain has no box drawing, bars or spinners: a progress item says its count>
   save one, make event, glyph(<running>), verb(<build>), subject(plain-subject(<rust>))

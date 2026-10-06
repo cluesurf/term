@@ -7,6 +7,7 @@
 
 import { armLocals } from '@term/make/code/check/arm'
 import { keepDocksApart } from '@term/make/code/compile/dock-apart'
+import { markUnit, unmarked } from '@term/make/code/compile/unit-split'
 import { provenIncrements } from '@term/make/code/ir/facts/range'
 import { provenArithmetic, type Proven } from '@term/make/code/compile/proven'
 import { boundedLoops, listKey } from '@term/make/code/ir/facts/bounds'
@@ -515,8 +516,10 @@ const KOTLIN_HELPERS = {
       '            override val context: kotlin.coroutines.CoroutineContext = kotlin.coroutines.EmptyCoroutineContext',
       '            override fun resumeWith(result: Result<T>) { outcome = result }',
       '        })',
+      '        // `kotlin.error`, qualified: a program that loads @term/base/log defines its own `error`, which answers Unit',
+      '        // and made `work` an Any that cannot be called (device-layer-0013, the Android cask)',
       '        while (outcome == null) {',
-      '            val work = queue.poll() ?: if (timers.get() == 0) error("defect: the program waits on work that nothing can finish") else queue.take()',
+      '            val work = queue.poll() ?: if (timers.get() == 0) kotlin.error("defect: the program waits on work that nothing can finish") else queue.take()',
       '            work()',
       '        }',
       '        return outcome!!.getOrThrow()',
@@ -588,7 +591,7 @@ export type WakeGroup = {
 
 export function emitKotlin(
   written: Program,
-  options?: { wake?: WakeGroup[] },
+  options?: { wake?: WakeGroup[]; units?: boolean },
 ): string {
   // a task named like a docked module is renamed, since Kotlin reads `log.writeInfo` on a function `log` (dock-apart.ts)
   const program = keepDocksApart(written)
@@ -3651,7 +3654,8 @@ export function emitKotlin(
           ),
       )
       .filter(keepStatement)
-      .map(n => stmt(n, 0))
+      // each marked with its module, so the program can be written one file per module (compile/unit-split.ts)
+      .map(n => markUnit(n.span.file, stmt(n, 0)))
       .filter(Boolean),
     ...kotlinFormWalk(fillSpecs, meltSpecs),
   ]
@@ -3683,7 +3687,7 @@ export function emitKotlin(
 
     if (fn) {
       uncheckedInts = true
-      body.push(stmt({ ...fn, name: `${name}-fast` }, 0))
+      body.push(markUnit(fn.span.file, stmt({ ...fn, name: `${name}-fast` }, 0)))
       uncheckedInts = false
     }
   }
@@ -3696,7 +3700,7 @@ export function emitKotlin(
     if (fn && task) {
       reusing = { param: fn.params[task.param]!.name, builds: task.builds, keep: task.keep?.field, carriers: task.carriers }
       // with a kept field, the copy answers that field alone
-      body.push(stmt({ ...fn, name: `${name}-reuse`, ...(task.keep ? { result: task.keep.type } : {}) }, 0))
+      body.push(markUnit(fn.span.file, stmt({ ...fn, name: `${name}-reuse`, ...(task.keep ? { result: task.keep.type } : {}) }, 0)))
       reusing = undefined
     }
   }
@@ -3743,7 +3747,10 @@ export function emitKotlin(
     wake.push(`fun wakeHive(): Unit {\n${calls}\n}`)
   }
 
-  return [...imports, ...prelude, ...body, ...wake].join('\n\n') + '\n'
+  const text = [...imports, ...prelude, ...body, ...wake].join('\n\n') + '\n'
+
+  // with `units`, each module's statements still marked, for the caller to write one file per module
+  return options?.units ? text : unmarked(text)
 }
 
 // The tasks emitted as `inline fun` (note/term/codegen/android.md, K3). A task that takes a function and only calls it

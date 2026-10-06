@@ -483,6 +483,9 @@ hook make
   # With --emit: the file to write (default standard output)
   take out
     like text
+  # With --emit rust, swift or kotlin and --out <folder>: one file per Term module beside a shared one, each written only when it changed
+  take units
+    like boolean
   task make
 
 # Type-check a file and report diagnostics (the verifier)

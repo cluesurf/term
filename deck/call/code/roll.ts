@@ -5,12 +5,12 @@
 import { readFileSync } from 'fs'
 import path from 'path'
 import { compile } from '@term/make/code/compile/compile'
+import { compileSeparate } from '@term/make/code/compile/separate'
 import type { Roll } from '@term/make/code/compile/roll'
 import { projectDeckOf } from '@term/call/code/deck-of'
 import { projectRoleOf, projectLeanOf } from '@term/call/code/role-of'
-import { makeRollMerger, showRoll } from '@term/make/code/compile/roll'
-import { buildable, buildResolver, findTreeFiles, projectResolver } from '@term/call/code/make'
-import { makeParseMemo } from '@term/make/code/compile/load'
+import { deckFromPath, makeRollMerger, showRoll } from '@term/make/code/compile/roll'
+import { buildable, buildSession, findTreeFiles, isWholeFile, unitSlug } from '@term/call/code/make'
 import type { BuildProblem } from '@term/call/code/make'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { projectCache } from '@term/call/code/cache-store'
@@ -18,36 +18,82 @@ import { closeRun, count, field, openRun, printData, report, reportProblems } fr
 
 export const ROLL_KINDS = ['deck', 'exception', 'task', 'dock', 'tell', 'kind', 'supervision']
 
-// the roll of every entry under `root` that is the project's own (not a linked dependency), merged. It prints
-// nothing: a file that does not compile is in `failed`, and its diagnostics in `problems` for the caller to report
-// (`term roll` draws them; `term make` has reported the same ones from its own build already)
+// THE ROLL OF THE BUILD: every definition of every module the project's entries load, each typed once in its own
+// unit's build (compile/roll.ts `own`) and kept with the unit, so a module's part changes only when the module does.
+// It prints nothing: a file that does not compile is in `failed`, and its diagnostics in `problems` for the caller to
+// report (`term roll` draws them; `term make` has reported the same ones from its own build already).
 //
-// `closures`, from the separate build just run (`compileProjectSeparate`), is each entry's closure key: every unit key
-// of everything it reaches, as one. An entry's roll is computed from its whole closure, so it is cached by that key, and
-// a warm pass is one cache read per entry with no walk at all (note/term/plan/incremental-best-in-class.md, step 8). An
-// entry the build did not key is compiled for its roll as before
-export function projectRoll(root: string, closures?: Map<string, string>): {
+// It was the merge of every entry's own roll, each read off the entry's program once shaken (ir/prune.ts), and that
+// made it a function of which entry reached what: the shake keeps a definition any name in kept code happens to
+// spell, a task's raises and its inferred types changed with what else the entry loaded, and the merge kept whichever
+// entry sorted first (task/term/roll-cover.ts found 17 names on zone two entries gave different entries). And it cost a
+// typing of every entry's closure: 481 to 641 s of a cold @term/bind's workers (2026-10-05). Now a unit's definition
+// has one entry, whoever loads it, and a definition is on the roll when its module is in the build.
+//
+// `rolls`, from the build just run (`compileProjectSeparate`), is each unit's roll by its label. Without it (`term
+// roll`, `term make --merged`) each entry is built from units here, from the cache when the build ran, writing nothing.
+// task/term/roll-units.ts holds the result to every entry's own roll: every entry it lists, the same where the entries
+// agree and one of their answers where they do not
+export function projectRoll(root: string, rolls?: Map<string, Roll>): {
   roll: Roll
   failed: string[]
   problems: BuildProblem[]
 } {
-  const link = path.join(root, 'link') + path.sep
-  // the same walk `term make` does for node: other platforms' native trees are not compiled here either
-  const files = findTreeFiles(root, [], 'node').filter(f => !f.startsWith(link))
-  // one answer per load for the whole pass, and one parse per module (call/code/make.ts `buildResolver`)
-  const resolve = buildResolver(projectResolver(root))
-  const parsed = makeParseMemo()
-  const cache = projectCache(root)
-  const deckOf = projectDeckOf()
-  // the role and lean readers, the same ones `term make` compiles with. The roll is a SECOND compile of every
-  // file, so without them a lean grammar that just built clean is read long-form here and every property head
-  // in it is reported as an unknown name, under the "Compiled N files" line (lean-0035, 2026-09-12).
-  const roleOf = projectRoleOf(root)
-  const leanOf = projectLeanOf(root)
-  // merged as each entry's roll is read, never all held at once (compile/roll.ts `makeRollMerger`)
-  const merger = makeRollMerger()
   const failed: string[] = []
   const problems: BuildProblem[] = []
+  // `TERM_ROLL_PROFILE=1` prints where the pass spent its time, to stderr
+  const profile = process.env.TERM_ROLL_PROFILE === '1'
+  const startedAt = Date.now()
+  const units = rolls ?? unitRolls(root, failed, problems)
+  const deckOf = projectDeckOf()
+  // merged one unit at a time, never all held at once (compile/roll.ts `makeRollMerger`)
+  const merger = makeRollMerger()
+  // each deck's files: every unit's, labelled by its files joined (compile/separate.ts)
+  const decks = new Map<string, string[]>()
+
+  for (const [label, roll] of units) {
+    // a copy: the merge joins paths in place, and the unit's roll is the session's, read again next build
+    merger.add(relativize(structuredClone(roll), root))
+
+    for (const file of label.split('+')) {
+      const host = deckOf(file)?.name ?? deckFromPath(file)
+      decks.set(host, [...(decks.get(host) ?? []), file])
+    }
+  }
+
+  merger.add({
+    deck: [...decks].map(([host, files]) => ({ host, kind: 'deck', name: host, site: '', file: files.length, __files: files })),
+    exception: [],
+    task: [],
+    dock: [],
+    tell: [],
+    kind: [],
+  })
+
+  const roll = merger.done()
+
+  if (profile) {
+    process.stderr.write(`roll pass: ${Date.now() - startedAt} ms over ${units.size} units\n`)
+  }
+
+  return { roll, failed, problems }
+}
+
+// every unit's roll of the project's entries, each entry built from units as `term make` builds it, writing nothing: the
+// cache answers every unit the last build built. An entry that does not build is in `failed` with its diagnostics
+function unitRolls(root: string, failed: string[], problems: BuildProblem[]): Map<string, Roll> {
+  const link = path.join(root, 'link') + path.sep
+  const files = findTreeFiles(root, [], 'node').filter(f => !f.startsWith(link))
+  const session = buildSession(root)
+  const cache = projectCache(root)
+  const deckOf = projectDeckOf()
+  // the role and lean readers, the same ones `term make` compiles with: a lean grammar read long-form reports every
+  // property head as an unknown name (lean-0035, 2026-09-12)
+  const roleOf = projectRoleOf(root)
+  const leanOf = projectLeanOf(root)
+  const rolls = new Map<string, Roll>()
+
+  session.turn(files)
 
   for (const file of files) {
     const unit = buildable(file, readFileSync(file, 'utf8'), roleOf(file))
@@ -57,12 +103,25 @@ export function projectRoll(root: string, closures?: Map<string, string>): {
       continue
     }
 
-    const key = closures?.get(file)
-    // an entry the build keyed is one that built, so its roll is read off the typed program alone (compile's `rollFast`)
-    const run = (): EntryRoll =>
-      entryRoll({ file, text: unit.text }, { resolve, cache, parsed, deckOf, roleOf, leanOf, rollFast: key !== undefined })
-    // a copy: `relativize` below writes into it, and a hit is the cache's own object
-    const result = key ? structuredClone(cache.output(rollKey(key), run)) : run()
+    // a file that is not a program (a grammar, a data file) has no tasks to list
+    if (isWholeFile(file, unit.text, roleOf(file))) {
+      continue
+    }
+
+    const result = compileSeparate(
+      { file, text: unit.text },
+      {
+        resolve: session.resolve,
+        cache,
+        modules: f => `./${unitSlug(root, f, deckOf)}`,
+        roleOf,
+        leanOf,
+        deckOf,
+        parsed: session.parsed,
+        units: session.units,
+        walked: session.walked,
+      },
+    )
 
     if (!result.ok) {
       failed.push(path.relative(root, file))
@@ -74,12 +133,14 @@ export function projectRoll(root: string, closures?: Map<string, string>): {
       continue
     }
 
-    if (result.roll) {
-      merger.add(relativize(result.roll, root))
+    for (const [label, roll] of result.rolls) {
+      rolls.set(label, roll)
     }
   }
 
-  return { roll: merger.done(), failed, problems }
+  session.close()
+
+  return rolls
 }
 
 // one entry's roll, and its diagnostics when it does not build: the whole-program compile the roll is read from, with

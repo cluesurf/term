@@ -532,6 +532,10 @@ type Pushed =
 async function publish(input: { version: string; built: Built[]; first: boolean }): Promise<void> {
   const route = releaseRoute({ package: PACKAGE })
   const root = path.resolve(TERM, '../../../..')
+  // the push's own item, before the child starts: whatever the child prints (zone's boot, a build that failed) nests
+  // under the item last printed, and without this that was the last platform's `✓ pack`, which read as the pack
+  // having failed while it showed green (2026-10-05)
+  output.report({ glyph: 'info', verb: 'push', subject: `${PACKAGE}@${input.version}`, facts: ['zone cluesurf'] })
   const child = spawn(path.join(root, 'deck/zone/bin/zone'), ['load', 'cluesurf', '--', 'pnpm', '-s', '--dir', TERM, 'exec', 'tsx', 'task/release.ts', '--push', input.version], {
     cwd: root,
     stdio: ['ignore', 'pipe', 'inherit'],
@@ -566,6 +570,7 @@ async function publish(input: { version: string; built: Built[]; first: boolean 
   const status = await new Promise<number | null>(resolve => child.on('close', code => resolve(code)))
 
   if (status !== 0 || !index) {
+    output.report({ glyph: 'failed', verb: 'push', subject: `${PACKAGE}@${input.version}`, ...(status ? { exit: status } : {}) })
     throw Object.assign(new Error(failed || `the push under zone exited ${status ?? 'on a signal'}`), { expected: true })
   }
 

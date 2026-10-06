@@ -388,6 +388,27 @@ export function optionalMaybe(field: { type: Type; optional?: boolean } | undefi
 }
 
 // the declared field `name` of a value of type `owner`: a struct's, else the one any case of a union declares
+// the case each match subject is narrowed to while its arm is emitted, by the subject's name: inside `sift one / case
+// return`, `one/value` is the `return` case's maybe, never the first case declaring a `value` (assign's, which is not
+// one), so a write of it holds the value inside the maybe (D10). check/pending.tree, 2026-10-05
+const armCases = new Map<string, string>()
+
+// the field `name` of a value of type `owner`, read through `target`: a narrowed subject's own case first
+function declaredFieldOf(target: Expression, name: string): { name: string; type: Type; optional?: boolean } | undefined {
+  const owner = target.type
+  const label = target.form === 'variable' ? armCases.get(target.name) : undefined
+
+  if (owner?.kind === 'named' && label !== undefined) {
+    const found = tsVariantFieldsByOwner.get(owner.name)?.get(label)?.find(f => f.name === name)
+
+    if (found) {
+      return found
+    }
+  }
+
+  return declaredField(owner, name)
+}
+
 function declaredField(owner: Type | undefined, name: string): { name: string; type: Type; optional?: boolean } | undefined {
   if (owner?.kind !== 'named') {
     return undefined
@@ -458,9 +479,10 @@ function variantCase(
 // The fields a construction left out, each set to its type's empty value, so the object literal satisfies the
 // interface (or the variant case) it is written for. A struct has done this since the native backends needed
 // it; a VARIANT did not, which is the disagreement between a construction and its own type that lean-0044
-// names. A `need false` field left out holds its type's empty value too, as it does on Rust, Swift and Kotlin: left
-// `undefined`, a left-out text read as "undefined" here and as the empty text there. One whose type has no empty value
-// (a form) stays out, optional in the emitted type.
+// names. A `need false` field left out stays OUT, as a TypeScript caller writes it (`f?: T`, D10): every Term read of
+// one supplies its type's empty value (`x.f ?? ""`), which is what the native field holds, so a left-out text never
+// reads as "undefined". Until 2026-10-05 this filled it and `inDeclaredOrder` did not, so one form made two shapes and
+// a port's `make expression/call` carried `names: []` where the TypeScript it replaced built none.
 function emptyFor(
   declared: { name: string; type: Type; optional?: boolean }[],
   given: { name: string }[],
@@ -472,7 +494,7 @@ function emptyFor(
   const names = new Set(given.map(f => f.name))
 
   return declared
-    .filter(f => !names.has(f.name) && (!f.optional || !tsEmptyOf(f.type).startsWith('undefined')))
+    .filter(f => !names.has(f.name) && !f.optional)
     .map(f => `${toMember(f.name)}: ${tsEmptyOf(f.type)}`)
 }
 
@@ -1646,10 +1668,13 @@ function makeEmitter(
   let hoisted = new Map<string, string>()
   // set while an assignment renders its target, so a `need false` maybe field there is written, not read (D10)
   let writingTarget = false
+  // set while a walk renders the list it walks: a `need false` list read only to be walked takes its empty value
+  // without being put in the record (`??`, not `??=`), since nothing is written through it there (onlyReads)
+  let walkedList = false
 
   // the value an assignment writes: a `need false` maybe field holds the value inside the maybe, or nothing (D10)
   const writtenValue = (target: Expression, value: Expression): string => {
-    if (target.form === 'member' && !target.index && optionalMaybe(declaredField(target.target.type, target.name))) {
+    if (target.form === 'member' && !target.index && optionalMaybe(declaredFieldOf(target.target, target.name))) {
       tsMaybeFieldUsed = true
 
       return `__termSome(${expression(value)})`
@@ -1717,6 +1742,11 @@ function makeEmitter(
     node: Expression,
     parentPrecedence = 0,
   ): string => {
+    // the walked-list flag is for the member it was set over, and no other expression keeps it
+    if (node.form !== 'member') {
+      walkedList = false
+    }
+
     switch (node.form) {
       case 'integer':
         return integerText(node)
@@ -2140,6 +2170,13 @@ function makeEmitter(
         // is this member the target an assignment writes? Only this one: what it is read through is read (D10)
         const writing = writingTarget
         writingTarget = false
+        const walked = walkedList
+        walkedList = false
+
+        // `x/f/length` only measures `f`: read without being put in the record, as a walk over it is
+        if (node.name === 'length' && !node.index && node.target.form === 'member') {
+          walkedList = true
+        }
 
         // a list reached through a path that this loop copy read once before it
         if (hoisted.size > 0 && node.index === undefined && node.type?.kind === 'array') {
@@ -2188,7 +2225,7 @@ function makeEmitter(
         }
 
         // a `need false` maybe field reads as a maybe (D10). Never under an assignment, which writes the field itself
-        const field = writing ? undefined : declaredField(node.target.type, node.name)
+        const field = writing ? undefined : declaredFieldOf(node.target, node.name)
 
         if (optionalMaybe(field)) {
           tsMaybeFieldUsed = true
@@ -2204,7 +2241,7 @@ function makeEmitter(
           const member = `${expression(node.target)}.${node.nick ?? toMember(node.name)}`
 
           if (!empty.startsWith('undefined')) {
-            return emptyStored(field.type) ? `(${member} ??= ${empty})` : `(${member} ?? ${empty})`
+            return emptyStored(field.type) && !walked ? `(${member} ??= ${empty})` : `(${member} ?? ${empty})`
           }
         }
 
@@ -2984,6 +3021,10 @@ function makeEmitter(
       case 'for-each': {
         // a named walk's label, on the `for` itself: inside the block below, since a `continue` may only name a loop
         const named = node.label ? `${toCamel(node.label)}: ` : ''
+        // the list walked, a field read only to be walked (walkedList)
+        walkedList = node.iterable.form === 'member'
+        const iterable = expression(node.iterable)
+        walkedList = false
 
         // a walk over a LIST that names its index is a counted loop: `entries()` made a `[i, x]` pair per turn, and
         // this allocates nothing. The length is read every turn, as the array iterator `for...of` uses does
@@ -2993,18 +3034,14 @@ function makeEmitter(
 
           // `;{`, as a held match's block opens: after a statement ending in a parenthesized value tsc reads `(...) {`
           // as an arrow function missing its `=>` (test/compile/held-block.ts)
-          return `;{ const ${walked} = ${expression(node.iterable)}; ${named}for (let ${toCamel(node.index)} = 0; ${toCamel(node.index)} < ${walked}.length; ${toCamel(node.index)}++) {\n${pad(depth + 1)}const ${toCamel(node.item)} = ${walked}[${toCamel(node.index)}]!${body.slice(1)} }`
+          return `;{ const ${walked} = ${iterable}; ${named}for (let ${toCamel(node.index)} = 0; ${toCamel(node.index)} < ${walked}.length; ${toCamel(node.index)}++) {\n${pad(depth + 1)}const ${toCamel(node.item)} = ${walked}[${toCamel(node.index)}]!${body.slice(1)} }`
         }
 
         // a walk that names its INDEX over anything else iterates the entries; one that does not keeps the plain `of`
         // loop. lean-0017
         return node.index
-          ? `${named}for (const [${toCamel(node.index)}, ${toCamel(node.item)}] of ${expression(
-              node.iterable,
-            )}.entries()) ${block(node.body, depth)}`
-          : `${named}for (const ${toCamel(node.item)} of ${expression(
-              node.iterable,
-            )}) ${block(node.body, depth)}`
+          ? `${named}for (const [${toCamel(node.index)}, ${toCamel(node.item)}] of ${iterable}.entries()) ${block(node.body, depth)}`
+          : `${named}for (const ${toCamel(node.item)} of ${iterable}) ${block(node.body, depth)}`
       }
 
       case 'match': {
@@ -3046,9 +3083,13 @@ function makeEmitter(
         const isName = /^[A-Za-z_$][\w$]*(\.[A-Za-z_$][\w$]*)*$/.test(raw)
         // a name is held too when an arm binds a field of the same name (`fork case, read value` over a variant with
         // a `value` field): `const value = value.value` reads the new binding before it exists
+        // The case is the SUBJECT's form's, as the arm locals below read it: by the label alone, node.tree's view node's
+        // `call` (with a `value` field) answered for the expression's, and `sift value / case call` held a needless
+        // alias, which then cost a write `value/background` its narrowing (2026-10-05)
         const root = raw.split('.')[0]
+        const ownerOf = node.subject.type?.kind === 'named' ? tsVariantFieldsByOwner.get(node.subject.type.name) : undefined
         const shadowed = node.cases.some(branch =>
-          armLocals((tsVariantFields.get(branch.label) ?? []).map(f => f.name), branch.binds ?? []).some(
+          armLocals((ownerOf?.get(branch.label) ?? tsVariantFields.get(branch.label) ?? []).map(f => f.name), branch.binds ?? []).some(
             ({ local }) => toCamel(local) === root,
           ),
         )
@@ -3165,12 +3206,29 @@ function makeEmitter(
               return `${pad(depth + 1)}const ${toCamel(local)} = ${subject}.${toMember(field)}`
             })
 
+          // the subject read through a path in this arm is narrowed to the case (armCases), restored after, since an arm
+          // may sit inside another over the same name
+          const narrowedName = held === undefined && node.subject.form === 'variable' ? node.subject.name : undefined
+          const outerCase = narrowedName !== undefined ? armCases.get(narrowedName) : undefined
+
+          if (narrowedName !== undefined) {
+            armCases.set(narrowedName, branch.label)
+          }
+
           const body =
             locals.length === 0
               ? block(branch.body, depth)
               : `{\n${locals.join('\n')}\n${branch.body
                   .map(s => `${pad(depth + 1)}${guardStart(statement(s, depth + 1))}`)
                   .join('\n')}\n${pad(depth)}}`
+
+          if (narrowedName !== undefined) {
+            if (outerCase === undefined) {
+              armCases.delete(narrowedName)
+            } else {
+              armCases.set(narrowedName, outerCase)
+            }
+          }
 
           // THE LAST ARM OF AN EXHAUSTIVE MATCH IS A PLAIN `else`, the way the boolean case above closes.
           // The checker sets `closed` when the arms cover every variant and there is no `otherwise`, and

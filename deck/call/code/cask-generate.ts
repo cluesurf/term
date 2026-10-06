@@ -45,6 +45,12 @@ const NEVER_CROSS = new Set(['json', 'float', 'uuid'])
 // `file`, an empty environment, a process that is a tab), and inside a cask the process is the truth
 const CROSS_ANYWAY = new Set(['file', 'environment', 'process'])
 
+// the device capabilities of `@term/site/view` (device-layer-0013), which cross for the same reason: a WebView offers a
+// subset of each (no torch, no haptics, no battery in WKWebView), and the cask's process reaches the platform's own API
+// through the toolkit host. Matched with their package and folder, so another package's `open` or `network` is not
+// caught. A task of one that cannot cross (a watcher, which takes a handler) stays in the page, on the browser host
+const DEVICE = new Set(['permission', 'camera', 'torch', 'location', 'clipboard', 'vibration', 'notification', 'open', 'battery', 'network', 'motion'])
+
 // the env directories the page's own build can serve a module from: `webview` borrows `browser`, and the
 // javascript-wide impls serve every javascript env
 const PAGE_ENVS = ['webview', 'browser', 'javascript', 'shared']
@@ -91,6 +97,9 @@ type Module = {
   publicFile: string
   abstractFile?: string
   shimFile: string
+  // the env beside the shim that also serves the module in the page, which a task that cannot cross forwards to
+  // rather than raising: a device module's watchers run on the browser host
+  pageEnv?: string
 }
 
 // ---- reading the program ----
@@ -414,8 +423,9 @@ function dockedModules(page: string, root: string): { modules: Module[]; orphans
     // a module with no native at all but an abstract module beside the env directories (`native/local.tree`) is
     // Term all the way down: every cask env resolves to it, so the cask serves it too
     const caskServes = CASK_ENVS.some(has) || existsSync(join(codeDir!, 'native', `${name}.tree`))
+    const device = packageName === 'site' && under === 'view' && DEVICE.has(name!)
 
-    if (!caskServes || (pageServes && !CROSS_ANYWAY.has(name!))) {
+    if (!caskServes || (pageServes && !CROSS_ANYWAY.has(name!) && !device)) {
       const served = PAGE_ENVS.find(env => env !== 'webview' && has(env))
 
       if (generated && served) {
@@ -434,6 +444,7 @@ function dockedModules(page: string, root: string): { modules: Module[]; orphans
       publicFile,
       abstractFile: existsSync(abstractFile) ? abstractFile : undefined,
       shimFile,
+      pageEnv: device && has('browser') ? 'browser' : undefined,
     })
   }
 
@@ -912,6 +923,28 @@ function shimText(module: Module, carried: Signature[], refused: Refused[], term
       lines.push(...value.lines, `  send back, read ${value.local}`)
     } else if (result.kind === 'void') {
       lines.push(`  call bridge/${INVOKE[result.kind]}`, '    wait true', `    text <${commandOf(signature)}>`, '    read arguments')
+    } else if (module.pageEnv && result.kind === 'text') {
+      // the cask's answer, unless it has none: a cask with no device host (Linux and Windows, built for bare rust)
+      // answers `unhosted` (its dispatcher's `device-answer`), and the WebView may have the capability itself
+      // (WebView2's clipboard, geolocation and camera), so the page's own host is asked then. A host's own
+      // `unavailable` (no torch on a Mac, no CAMERA declared on Android) is the answer, and is not asked again
+      lines.push(
+        '  save reply',
+        `    call bridge/${INVOKE[result.kind]}`,
+        '      wait true',
+        `      text <${commandOf(signature)}>`,
+        '      read arguments',
+        '  fork test',
+        '    hook test',
+        '      call is-equal',
+        '        read reply',
+        '        text <unhosted>',
+        '    hook hold',
+        '      send back',
+        `        call page-${signature.native}`,
+        ...signature.params.map(param => `          read ${param.name}`),
+        '  send back, read reply',
+      )
     } else {
       lines.push('  send back', `    call bridge/${INVOKE[result.kind]}`, '      wait true', `      text <${commandOf(signature)}>`, '      read arguments')
     }
@@ -919,7 +952,34 @@ function shimText(module: Module, carried: Signature[], refused: Refused[], term
     lines.push('')
   }
 
+  // where the page has the module too: a task that cannot cross runs there, and a text answer the cask has none for is
+  // asked of it, each through that env's own task
+  const asked = module.pageEnv
+    ? [...carried.filter(one => !isRelease(one) && one.result.kind === 'text').map(one => one.native), ...refused.map(one => one.native)]
+    : []
+
+  if (asked.length > 0) {
+    lines.splice(
+      lines.indexOf('dock load'),
+      0,
+      `load ../${module.pageEnv}/${module.name}`,
+      ...asked.map(native => `  find ${native}, name page-${native}`),
+      '',
+    )
+  }
+
   for (const one of refused) {
+    if (module.pageEnv) {
+      lines.push(`# not carried (${one.reason}): it runs in the page, on the ${module.pageEnv} host`, `task ${one.native}`)
+
+      for (const param of one.params) {
+        lines.push(`  take ${param.name}, like unknown`)
+      }
+
+      lines.push('  like unknown', '  send back', `    call page-${one.native}`, ...one.params.map(param => `      read ${param.name}`), '')
+      continue
+    }
+
     lines.push(`# not carried: ${one.reason}`, `task ${one.native}`, '  mark async')
 
     for (const param of one.params) {
@@ -1055,6 +1115,10 @@ function dispatchText(page: string, modules: Module[], all: Signature[], term: s
 
     lines.push(`load ${module.importPath}`)
 
+    if (module.pageEnv && !lines.includes('load @term/site/view/hosted')) {
+      lines.splice(lines.length - 1, 0, 'load @term/site/view/hosted', '  find has-device-host', '')
+    }
+
     for (const signature of own) {
       lines.push(`  find ${signature.task}, name ${module.name}-${signature.task}`)
     }
@@ -1118,6 +1182,33 @@ function dispatchText(page: string, modules: Module[], all: Signature[], term: s
   itemsOf = 'items-of'
   lines.push(...itemsOfText(itemsOf))
 
+  // a cask with no device host (built for bare rust) answers a device module with its `unavailable` fallback, which
+  // is not the platform's answer: the page is told `unhosted` instead, and asks its WebView (device-layer-0013)
+  if (signatures.some(signature => signature.result.kind === 'text' && modules.some(one => one.name === signature.module && one.pageEnv))) {
+    lines.push(
+      '# a device answer, or `unhosted` where this build has no device host and so only the fallback answered',
+      'task device-answer',
+      '  take given, like text',
+      '  like text',
+      '  fork test',
+      '    hook test',
+      '      call is-equal',
+      '        read given',
+      '        text <unavailable>',
+      '    hook hold',
+      '      fork test',
+      '        hook test',
+      '          call has-device-host',
+      '        hook hold',
+      '          save hosted, code 0',
+      '        hook miss',
+      '          send back',
+      '            text <unhosted>',
+      '  send back, read given',
+      '',
+    )
+  }
+
   lines.push('# the commands this app allows: what its page docks, and nothing else', 'task is-allowed', '  take command, like text', '  like boolean', '  fork test')
 
   for (const command of [...signatures.map(commandOf), ...CASK_COMMANDS]) {
@@ -1157,8 +1248,15 @@ function dispatchText(page: string, modules: Module[], all: Signature[], term: s
 
     const call = [`call ${signature.module}-${signature.task}`, ...(signature.async ? ['  wait true'] : []), ...argumentLocals.map(local => `  read ${local}`)]
 
+    // a device module's text answer goes through `device-answer`, which says `unhosted` for a build with no device host
+    const device = signature.result.kind === 'text' && modules.some(one => one.name === signature.module && one.pageEnv)
+
     if (signature.result.kind === 'void') {
       lines.push(...call.map(line => `      ${line}`), '      send back', '        call make-null')
+    } else if (device) {
+      lines.push('      save given', ...call.map(line => `        ${line}`), '      save answer', '        call device-answer', '          read given')
+      const json = caskToJson(signature.result, 'answer', '      ')
+      lines.push(...json.lines, `      send back, read ${json.local}`)
     } else {
       lines.push('      save answer', ...call.map(line => `        ${line}`))
       const json = caskToJson(signature.result, 'answer', '      ')

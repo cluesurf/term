@@ -1,7 +1,7 @@
 // Handing things to the platform on AppKit and UIKit (device-layer-0008), docked by ../open.tree as
 // `<global:native-open>`. An address goes to whatever app handles it (UIApplication.open, NSWorkspace.open); text goes
-// to the share sheet (UIActivityViewController, NSSharingServicePicker), shown from the app's window, which the toolkit
-// host keeps (`nativeView.window`).
+// to the share sheet (UIActivityViewController, NSSharingServicePicker), shown from the app's key window, asked of the
+// application rather than of a host, so a cask (a WebView app) links this as a toolkit app does (device-layer-0013).
 
 import Foundation
 
@@ -30,7 +30,8 @@ enum nativeOpen {
     @MainActor
     static func share(_ text: String) async -> String {
         #if canImport(UIKit)
-        guard let window = nativeView.window, let root = window.rootViewController else { return "unavailable" }
+        let windows = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.flatMap(\.windows)
+        guard let window = windows.first(where: \.isKeyWindow) ?? windows.first, let root = window.rootViewController else { return "unavailable" }
         let sheet = UIActivityViewController(activityItems: [text], applicationActivities: nil)
         // an iPad shows the sheet as a popover, which must say what it points at
         sheet.popoverPresentationController?.sourceView = window
@@ -38,7 +39,7 @@ enum nativeOpen {
         root.present(sheet, animated: true)
         return "shown"
         #else
-        guard let view = nativeView.window?.contentView else { return "unavailable" }
+        guard let view = (NSApp.keyWindow ?? NSApp.windows.first)?.contentView else { return "unavailable" }
         NSSharingServicePicker(items: [text]).show(relativeTo: .zero, of: view, preferredEdge: .minY)
         return "shown"
         #endif

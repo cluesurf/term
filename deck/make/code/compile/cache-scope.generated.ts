@@ -36,6 +36,7 @@ export const CACHE_SCOPE: Record<string, string[]> = {
   output: [
     'deck/call/code/cache-store.ts',
     'deck/call/code/home.ts',
+    'deck/make/code/check/alias.ts',
     'deck/make/code/check/arm.tree',
     'deck/make/code/check/async-resolve.ts',
     'deck/make/code/check/async-slots.ts',
@@ -171,6 +172,7 @@ export const CACHE_SCOPE: Record<string, string[]> = {
   unit: [
     'deck/call/code/cache-store.ts',
     'deck/call/code/home.ts',
+    'deck/make/code/check/alias.ts',
     'deck/make/code/check/arm.tree',
     'deck/make/code/check/async-resolve.ts',
     'deck/make/code/check/async-slots.ts',

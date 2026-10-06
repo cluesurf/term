@@ -122,6 +122,30 @@ task pong
       loan n
 `
 
+// a sum on a natural number: the miss arm of n == 0 is n >= 1 there, so n - 1 descends (check/totality.ts `sharpened`)
+function countDown(take: string, base: number): string {
+  return `task sum
+  take n, like ${take}
+  like number
+  fork test
+    hook test
+      call is-equal
+        loan n
+        code ${base}
+    hook hold
+      send back
+        code 0
+    hook miss
+      send back
+        call add
+          call sum
+            call subtract
+              loan n
+              code 1
+          loan n
+`
+}
+
 function main(): void {
   // ---- positivity ----
   // a self-reference to the left of an arrow (a parameter) is negative: rejected
@@ -197,6 +221,29 @@ function main(): void {
     'termination flags mutual recursion (via the call graph)',
     mutual.warnings.some(d => d.name === 'non-terminating'),
     JSON.stringify(mutual.warnings.map(d => d.message)),
+  )
+
+  const natural = checkTotality(frontEnd(countDown('natural-number', 0)), 't.tree')
+  ok(
+    'a natural number past n == 0 descends by n - 1',
+    natural.warnings.every(d => d.name !== 'non-terminating'),
+    JSON.stringify(natural.warnings.map(d => d.message)),
+  )
+
+  // n != 5 beside n >= 0 is not n >= 1: from 0 the recursion runs down forever
+  const pastFive = checkTotality(frontEnd(countDown('natural-number', 5)), 't.tree')
+  ok(
+    'but past n == 5 it does not: n = 0 is not 5 and runs down',
+    pastFive.warnings.some(d => d.name === 'non-terminating'),
+    JSON.stringify(pastFive.warnings.map(d => d.name)),
+  )
+
+  // and an integer past n == 0 may be negative
+  const integer = checkTotality(frontEnd(countDown('number', 0)), 't.tree')
+  ok(
+    'nor does an integer past n == 0, which may be negative',
+    integer.warnings.some(d => d.name === 'non-terminating'),
+    JSON.stringify(integer.warnings.map(d => d.name)),
   )
 
   console.log(`\ntotality: ${pass} pass, ${fail} fail`)

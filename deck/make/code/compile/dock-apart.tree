@@ -1,0 +1,89 @@
+# Keep a task apart from a docked module of the same name, for the backends where the two cannot share one.
+#
+# `native/<platform>/log.tree` docks its runtime module as `log` and calls `log/write-warn`, and `console` defines a
+# task `log`. Rust holds both (a module and a function live in different namespaces), and TypeScript emits the dock
+# under its import. Swift refuses `enum log` beside `func log` ("invalid redeclaration"), and Kotlin reads `log.writeInfo`
+# on the function `log`. So a program loading `console`'s `log` beside `log`'s `warn` built on node and Rust and failed
+# on Swift and Kotlin (guides: library/processes, 2026-10-04).
+#
+# The task is renamed, never the module: the module's name is its runtime shim's, fixed in the prelude. A reference is
+# renamed where it is a call's callee or the checker bound it to the task (`binding.kind` 'function'), so a dock
+# reference, always the target of a member, keeps its name.
+# `__task` cannot collide with a Term name, which never holds an underscore.
+#
+# Ported from compile/dock-apart.ts (self-hosting, 2026-10-05): the renaming is compile/node-rewrite's `rename-tasks`
+# rule, over a copy of the program, since the emitter that asks is handed the program every backend shares.
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+load ./node
+  find statement
+
+load ./node-rewrite
+  find rewrite-rule
+  find rewrite-program
+  find copy-program
+
+task keep-docks-apart
+  take program, like list, like statement
+  like list, like statement
+
+  save docks, make list
+  walk program
+    take one
+    sift one
+      case native
+        save is-type, false
+        sift kind
+          case some
+            link given
+            sift given
+              case type
+                save is-type, true
+              case module
+                save is-type, false
+          case none
+            save is-type, false
+        fork test, not(is-type)
+          hold
+            push(docks, alias)
+      miss
+        turn next
+
+  save clashing, make list
+  walk program
+    take one
+    sift one
+      case function
+        fork test, and(has-text(docks, name), not(has-text(clashing, name)))
+          hold
+            push(clashing, name)
+      miss
+        turn next
+
+  fork test, is-equal(clashing/length, 0)
+    hold
+      back program
+
+  save rule
+    make rename-tasks
+      bind names, clashing
+      bind suffix, <__task>
+  back rewrite-program(copy-program(program), rule)
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false

@@ -999,33 +999,65 @@ function quoteSpine(level: number, head: Term, spine: Elim[]): Term {
 // `evaluate(v, p)` for a variable `p`) stays a call, which is the smallest spelling of the same value. Every step is a
 // conversion, so the term is convertible to the value it came from, and a syntactic comparison of two of them is a
 // sound (if incomplete) equality
-export function normalTerm(level: number, value: Value, opaque: ReadonlySet<string>): Term {
-  const head = headNormal(value, opaque)
+export function normalTerm(level: number, value: Value, opaque: ReadonlySet<string>, depth = 0): Term {
+  // a backstop: past this nesting the value is quoted as it stands, a spelling still convertible to it
+  if (depth > NORMAL_DEPTH) {
+    return quote(level, value)
+  }
+
+  const head = headNormal(level, value, opaque)
 
   switch (head.v) {
     case 'rigid':
-      return normalSpine(level, { tag: 'const', name: head.name }, head.spine, opaque)
+      return normalSpine(level, { tag: 'const', name: head.name }, head.spine, opaque, depth)
     case 'neutral':
-      return normalSpine(level, { tag: 'var', index: level - head.head - 1 }, head.spine, opaque)
+      return normalSpine(level, { tag: 'var', index: level - head.head - 1 }, head.spine, opaque, depth)
     case 'lam':
-      return { tag: 'lam', body: normalTerm(level + 1, closeOver(head.body, neutralVar(level)), opaque) }
+      return { tag: 'lam', body: normalTerm(level + 1, closeOver(head.body, neutralVar(level)), opaque, depth + 1) }
     case 'pair':
-      return { tag: 'pair', first: normalTerm(level, head.first, opaque), second: normalTerm(level, head.second, opaque) }
+      return {
+        tag: 'pair',
+        first: normalTerm(level, head.first, opaque, depth + 1),
+        second: normalTerm(level, head.second, opaque, depth + 1),
+      }
     default:
       return quote(level, head)
   }
 }
 
-// unfold transparent heads until a constructor, an opaque call, or a call whose unfolding is stuck: a variable at the
-// head, or a match (the elaborator's `match__<form>`) left waiting on a value that is not known
-function headNormal(value: Value, opaque: ReadonlySet<string>): Value {
+// how deep `normalTerm` nests before it quotes what is left
+const NORMAL_DEPTH = 256
+
+// unfold transparent heads until a constructor, an opaque call, or a call whose unfolding is STUCK. Stuck is a match
+// waiting on a value that is not known, and it takes three shapes: a variable at the head, the elaborator's
+// `match__<form>` left applied, or (where a form is a self type) one of the call's own arguments applied to the
+// match's branches. In each the call itself is the better spelling
+function headNormal(level: number, value: Value, opaque: ReadonlySet<string>): Value {
   let current = force(value)
   let fuel = WHNF_FUEL
 
-  while (current.v === 'rigid' && definition.has(current.name) && !opaque.has(current.name) && fuel-- > 0) {
-    const next = force(unfoldRigid(current))
+  // a match, or the kernel's `cond` left standing: it computes on a literal test, so one still here waits on a value
+  // that is not known (`cond(n + 1 == 0, ...)`), and normalizing its branches would unfold the recursion forever
+  const isMatch = (v: Value): v is Extract<Value, { v: 'rigid' }> =>
+    v.v === 'rigid' && (v.name.startsWith('match__') || v.name === 'cond')
 
-    if (next.v === 'neutral' || next.v === 'flex' || (next.v === 'rigid' && next.name.startsWith('match__'))) {
+  while (current.v === 'rigid' && definition.has(current.name) && !opaque.has(current.name) && fuel-- > 0) {
+    let next = force(unfoldRigid(current))
+
+    // a match is a definition too: it computes on a constructor, and on anything else it is stuck
+    while (isMatch(next) && definition.has(next.name) && fuel-- > 0) {
+      next = force(unfoldRigid(next))
+    }
+
+    // and a definition whose value is a FUNCTION with nothing applied to it stays its name: `no` (a case is a lambda
+    // over the branches) and `union(s, t)` (a set) read as written, and unfold where they are applied
+    if (
+      next.v === 'flex' ||
+      next.v === 'lam' ||
+      (next.v === 'neutral' && appliedToABranch(next.spine)) ||
+      isMatch(next) ||
+      appliesAnArgument(level, current, next)
+    ) {
       return current
     }
 
@@ -1035,8 +1067,44 @@ function headNormal(value: Value, opaque: ReadonlySet<string>): Value {
   return current
 }
 
+// is `next` one of `call`'s arguments, applied to more: the shape of a match on that argument that could not compute.
+// Only an argument that is not a constructed value: a constructor is a lambda over the branches (a self type), so a
+// match applying `two(x, y)` to them goes on to compute
+function appliesAnArgument(
+  level: number,
+  call: Extract<Value, { v: 'rigid' }>,
+  next: Value,
+): boolean {
+  if (next.v !== 'rigid' || next.spine.length === 0) {
+    return false
+  }
+
+  const argumentsOf = new Set(
+    call.spine.flatMap(elim =>
+      elim.e === 'app' && whnf(elim.arg).v !== 'lam' ? [showTerm(quote(level, elim.arg))] : [],
+    ),
+  )
+
+  for (let k = 0; k < next.spine.length; k++) {
+    if (
+      appliedToABranch(next.spine.slice(k)) &&
+      argumentsOf.has(showTerm(quote(level, { ...next, spine: next.spine.slice(0, k) })))
+    ) {
+      return true
+    }
+  }
+
+  return false
+}
+
+// A MATCH APPLIES ITS SUBJECT TO A MOTIVE AND BRANCHES, and the motive is a function, so a spine holding a lambda is a
+// match left waiting. A variable applied to plain values is not: `s(x)` for a set `s` is the value, computed
+function appliedToABranch(spine: Elim[]): boolean {
+  return spine.some(elim => elim.e === 'app' && force(elim.arg).v === 'lam')
+}
+
 // a head under its applications, each argument normalized. Any other elimination is quoted as it stands
-function normalSpine(level: number, head: Term, spine: Elim[], opaque: ReadonlySet<string>): Term {
+function normalSpine(level: number, head: Term, spine: Elim[], opaque: ReadonlySet<string>, depth: number): Term {
   if (spine.some(elim => elim.e !== 'app')) {
     return quoteSpine(level, head, spine)
   }
@@ -1045,7 +1113,7 @@ function normalSpine(level: number, head: Term, spine: Elim[], opaque: ReadonlyS
 
   for (const elim of spine) {
     if (elim.e === 'app') {
-      term = { tag: 'app', fun: term, arg: normalTerm(level, elim.arg, opaque) }
+      term = { tag: 'app', fun: term, arg: normalTerm(level, elim.arg, opaque, depth + 1) }
     }
   }
 

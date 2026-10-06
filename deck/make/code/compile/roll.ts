@@ -39,6 +39,18 @@ export type RollOptions = {
   deckOf?: DeckOf
   // the project root, so a `site` under it is a path relative to it
   root?: string
+  // a separate unit's own files: only their definitions are listed, the rest being stubs another unit lists, and no
+  // deck is counted, since a deck's files are the build's (call/code/roll.ts `projectRoll`)
+  own?: Set<string>
+  // mark each entry with what a merge reads and then drops (`makeRollMerger`): `__def`, the definition's identity
+  // (`file:line:column`), `__ends`, the definition each raise path ends at, and a deck's `__files`. A roll that goes
+  // anywhere else, the hive's wake, carries none
+  ids?: boolean
+}
+
+// a definition's identity across builds: its file and where it starts, which no other definition shares
+export function definitionOf(s: Statement, file: string): string {
+  return `${s.span.file ?? file}:${s.span.start.line + 1}:${s.span.start.column + 1}`
 }
 
 // the deck a file belongs to, from its path, when nothing better is known
@@ -70,6 +82,16 @@ export function buildRoll(
   options?: RollOptions,
 ): Roll {
   const fileOf = (s: Statement): string => s.span.file ?? file
+
+  // whether a statement is listed here: every one, or a unit's own
+  const mine = (s: Statement): boolean => options?.own === undefined || options.own.has(fileOf(s))
+  const ids = options?.ids === true || options?.own !== undefined
+  // the file of an entry the shaker never removes (a route, a tell, a kind), which counts when its file is kept
+  const fileMark = (s: Statement): { __file?: string } => (ids ? { __file: fileOf(s) } : {})
+  // a type as written: a form two files define is split by file (`event-listener__in0_1`), which depends on what else
+  // the program holds, so the roll printed one parameter's type two ways
+  const typeText = (type: Parameters<typeof showType>[0]): string =>
+    showType(type).replace(/__in\d+_\d+\b/g, '').replace(/__\d+__\d+\b/g, '')
 
   const hostOf = (s: Statement): string =>
     options?.deckOf?.(fileOf(s))?.name ?? deckFromPath(fileOf(s))
@@ -127,8 +149,11 @@ export function buildRoll(
   for (const s of program) {
     if (s.form === 'roll') {
       kinds.set(s.name, s.like)
-      roll.kind.push({ host: hostOf(s), kind: 'kind', name: s.name, site: siteOf(s), like: s.like })
       roll[s.name] ??= []
+
+      if (mine(s)) {
+        roll.kind.push({ host: hostOf(s), kind: 'kind', name: s.name, site: siteOf(s), like: s.like, ...fileMark(s) })
+      }
     }
   }
 
@@ -144,8 +169,8 @@ export function buildRoll(
         s.init.form === 'record' ? s.init.name : s.type?.kind === 'named' ? s.type.name : undefined
       const kind = formName ? kindOfForm.get(formName) : undefined
 
-      if (kind) {
-        roll[kind]!.push({ host: hostOf(s), kind, name: s.name, site: siteOf(s), like: formName, ref: s.name })
+      if (kind && mine(s)) {
+        roll[kind]!.push({ host: hostOf(s), kind, name: s.name, site: siteOf(s), like: formName, ref: s.name, ...fileMark(s) })
       }
     }
   }
@@ -160,21 +185,22 @@ export function buildRoll(
     decks.set(host, files)
   }
 
-  for (const [host, files] of [...decks].sort((a, b) =>
-    a[0].localeCompare(b[0]),
-  )) {
+  // a unit counts no deck: a deck's files are the build's, counted where the units' rolls meet
+  for (const [host, files] of options?.own ? [] : [...decks].sort((a, b) => a[0].localeCompare(b[0]))) {
     roll.deck.push({
       host,
       kind: 'deck',
       name: host,
       site: '',
       file: files.size,
+      // the files themselves, so rolls merged count their union rather than whichever came first
+      ...(ids ? { __files: [...files].sort() } : {}),
     })
   }
 
   // exceptions
   for (const s of program) {
-    if (s.form !== 'record-type' || !exceptions.has(s.name)) {
+    if (s.form !== 'record-type' || !exceptions.has(s.name) || !mine(s)) {
       continue
     }
 
@@ -187,7 +213,7 @@ export function buildRoll(
 
     for (const f of props?.fields ?? []) {
       // an optional field as the source writes it, `need false`, not TypeScript's `?`
-      link[f.name] = showType(f.type) + (f.optional ? ', need false' : '')
+      link[f.name] = typeText(f.type) + (f.optional ? ', need false' : '')
     }
 
     const note = s.pins?.find(p => p.name === 'note')
@@ -201,6 +227,7 @@ export function buildRoll(
       chain,
       note: literal(note?.value),
       link,
+      ...(ids ? { __def: definitionOf(s, file) } : {}),
     })
   }
 
@@ -228,28 +255,56 @@ export function buildRoll(
     return chain
   }
 
+  // a task's name as written: a name two files define is split by file (`concat__in0_1`, check/overload.ts), and which
+  // file keeps the plain name depends on the entry the program was built for, so the roll printed one definition
+  // under two names and the merge kept both (task/term/roll-units.ts, 2026-10-05). The site tells them apart
+  // and the same for an arity overload (`add-event-listener__3__0`, check/overload.ts), the site again telling them apart
+  const written = (name: string): string => name.replace(/__in\d+_\d+$/, '').replace(/__\d+__\d+$/, '')
+
+  // each function by its name, so a path's last step names the definition it ends at
+  const functionsByName = new Map<string, Statement>()
+
   for (const s of program) {
-    if (s.form !== 'function' || s.stub || s.private) {
+    if (s.form === 'function') {
+      functionsByName.set(s.name, s)
+    }
+  }
+
+  // the definition each raise's path ends at: a unit's path stops at a stub, which is another unit's task, and the
+  // merge continues it with that task's own path
+  const endsOf = (name: string): Record<string, string> =>
+    Object.fromEntries(
+      raisesOf(name).flatMap(e => {
+        const last = pathOf(name, e).at(-1)
+        const statement = last === undefined ? undefined : functionsByName.get(last)
+
+        return statement ? [[e, definitionOf(statement, file)]] : []
+      }),
+    )
+
+  for (const s of program) {
+    if (s.form !== 'function' || s.stub || s.private || !mine(s)) {
       continue
     }
 
     roll.task.push({
       host: hostOf(s),
       kind: 'task',
-      name: s.method ? `${s.method.form}/${s.method.name}` : s.name,
+      name: s.method ? `${s.method.form}/${s.method.name}` : written(s.name),
       site: siteOf(s),
       take: s.params.map(p => ({
         name: p.name,
-        like: p.type ? showType(p.type) : 'unknown',
+        like: p.type ? typeText(p.type) : 'unknown',
         ...(p.optional ? { need: false } : {}),
         ...(p.positional ? { slot: true } : {}),
       })),
-      like: s.result ? showType(s.result) : 'unknown',
+      like: s.result ? typeText(s.result) : 'unknown',
       halt: raisesOf(s.name),
       ...(raisesOf(s.name).length
-        ? { path: Object.fromEntries(raisesOf(s.name).map(e => [e, pathOf(s.name, e)])) }
+        ? { path: Object.fromEntries(raisesOf(s.name).map(e => [e, pathOf(s.name, e).map(written)])) }
         : {}),
       ...(s.async ? { async: true } : {}),
+      ...(ids ? { __def: definitionOf(s, file), __ends: endsOf(s.name) } : {}),
     })
   }
 
@@ -284,6 +339,7 @@ export function buildRoll(
         name: path,
         site: siteOf(s),
         halt: routeRaises(route.calls),
+        ...fileMark(s),
       })
     }
 
@@ -294,6 +350,7 @@ export function buildRoll(
         name: `${method.name} ${path}`,
         site: siteOf(s),
         halt: routeRaises([...route.calls, ...method.calls]),
+        ...fileMark(s),
       })
     }
 
@@ -303,16 +360,20 @@ export function buildRoll(
   }
 
   for (const s of program) {
-    if (s.form === 'dock') {
+    if (s.form === 'dock' && mine(s)) {
       walkRoute(s, s.route, '')
     }
   }
 
-  roll.supervision = supervisionEntries(program, s => ({ host: hostOf(s), site: siteOf(s) }))
+  // a unit's own supervisors: each entry is told apart by the statement it came from
+  const mineSites = new Set(program.filter(mine).map(siteOf))
+  roll.supervision = supervisionEntries(program, s => ({ host: hostOf(s), site: siteOf(s), ...fileMark(s) })).filter(
+    entry => options?.own === undefined || mineSites.has(entry.site),
+  )
 
   // tells
   for (const s of program) {
-    if (s.form !== 'tell') {
+    if (s.form !== 'tell' || !mine(s)) {
       continue
     }
 
@@ -325,6 +386,7 @@ export function buildRoll(
       ...(s.hint ? { hint: s.hint } : {}),
       link: s.links,
       ...(s.alias ? { alias: s.alias } : {}),
+      ...fileMark(s),
     })
   }
 
@@ -500,6 +562,8 @@ export function makeRollMerger(): { add: (roll: Roll) => void; done: () => Roll 
     kind: [],
   }
   const seen = new Set<string>()
+  // each deck's files, so its count is their union
+  const deckFiles = new Map<string, Set<string>>()
 
   const add = (roll: Roll): void => {
     for (const kind of Object.keys(roll)) {
@@ -509,6 +573,12 @@ export function makeRollMerger(): { add: (roll: Roll) => void; done: () => Roll 
         // the site too: a name is scoped to its module, so two files' `task true-reads-and-writes-back` are two tasks,
         // and keyed by name alone the second was dropped from the merged roll (task/term/roll-cover.ts, 2026-10-05)
         const key = `${entry.host} ${entry.kind} ${entry.name} ${entry.site}`
+
+        if (kind === 'deck' && Array.isArray(entry.__files)) {
+          const files = deckFiles.get(entry.name) ?? new Set<string>()
+          entry.__files.forEach(f => files.add(f as string))
+          deckFiles.set(entry.name, files)
+        }
 
         if (seen.has(key)) {
           continue
@@ -521,10 +591,61 @@ export function makeRollMerger(): { add: (roll: Roll) => void; done: () => Roll 
   }
 
   const done = (): Roll => {
+    // a deck counts every file any roll saw of it
+    for (const deck of out.deck ?? []) {
+      const files = deckFiles.get(deck.name)
+
+      if (files) {
+        deck.file = files.size
+      }
+    }
+
+    // a path a unit ended at another unit's task continues with that task's own path, until it reaches the raise
+    // each task's paths as its own roll wrote them, read while the joined ones are written
+    const written = new Map(
+      (out.task ?? []).flatMap(task =>
+        typeof task.__def === 'string'
+          ? [[task.__def, { path: structuredClone((task.path ?? {}) as Record<string, string[]>), ends: (task.__ends ?? {}) as Record<string, string> }] as const]
+          : [],
+      ),
+    )
+
+    for (const task of out.task ?? []) {
+      const ends = task.__ends as Record<string, string> | undefined
+      const paths = task.path as Record<string, string[]> | undefined
+
+      for (const [exception, end] of Object.entries(ends ?? {})) {
+        let at = written.get(end)
+        const chain = paths?.[exception]
+
+        while (at !== undefined && chain !== undefined && chain.length < 64) {
+          const more = at.path[exception] ?? []
+
+          if (more.length === 0) {
+            break
+          }
+
+          chain.push(...more)
+          at = written.get(at.ends[exception] ?? '')
+        }
+      }
+    }
+
+    // what only a merge reads, gone before anything is written
+    for (const kind of Object.keys(out)) {
+      for (const entry of out[kind] ?? []) {
+        delete entry.__def
+        delete entry.__ends
+        delete entry.__files
+      }
+    }
+
+    // by host, name and site: two modules' definitions of one name kept the order the rolls came in, which a pool's
+    // differs from a single thread's, and the merged build's roll.json read differently from the separate one's
     for (const kind of Object.keys(out)) {
       out[kind]?.sort(
         (a, b) =>
-          a.host.localeCompare(b.host) || a.name.localeCompare(b.name),
+          a.host.localeCompare(b.host) || a.name.localeCompare(b.name) || a.site.localeCompare(b.site),
       )
     }
 

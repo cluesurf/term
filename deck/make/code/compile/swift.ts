@@ -8,6 +8,7 @@
 import { armLocals } from '@term/make/code/check/arm'
 import { raiseSets } from '@term/make/code/check/effects'
 import { keepDocksApart } from '@term/make/code/compile/dock-apart'
+import { markUnit, unmarked } from '@term/make/code/compile/unit-split'
 import { provenIncrements } from '@term/make/code/ir/facts/range'
 import { provenArithmetic, type Proven } from '@term/make/code/compile/proven'
 import { boundedLoops } from '@term/make/code/ir/facts/bounds'
@@ -1082,7 +1083,7 @@ export type WakeGroup = {
 
 export function emitSwift(
   written: Program,
-  options?: { wake?: WakeGroup[] },
+  options?: { wake?: WakeGroup[]; units?: boolean },
 ): string {
   // a task named like a docked module is renamed, since Swift refuses `enum log` beside `func log` (dock-apart.ts)
   const program = keepDocksApart(written)
@@ -3885,7 +3886,8 @@ export function emitSwift(
           ),
       )
       .filter(keepStatement)
-      .map(n => stmt(n, 0, new Map())),
+      // each marked with its module, so the program can be written one file per module (compile/unit-split.ts)
+      .map(n => markUnit(n.span.file, stmt(n, 0, new Map()))),
   ].filter(Boolean)
 
   // each task a guarded loop calls unchecked, once more with wrapping arithmetic (`aValueFast`), behind the bound the
@@ -3895,7 +3897,7 @@ export function emitSwift(
 
     if (fn) {
       uncheckedInts = true
-      body.push(stmt({ ...fn, name: `${name}-fast` }, 0, new Map()))
+      body.push(markUnit(fn.span.file, stmt({ ...fn, name: `${name}-fast` }, 0, new Map())))
       uncheckedInts = false
     }
   }
@@ -4009,7 +4011,9 @@ export function emitSwift(
         ? ` where ${node.params.map(p => `${p.toUpperCase()}: ${protocol}`).join(', ')}`
         : ''
 
-      conformances.push(`extension ${swiftName}: ${protocol}${where} {}`)
+      // in the form's own module: Swift synthesizes a conformance only in the file that declares the type, which is the
+      // form's own file once the program is written one file per module (compile/unit-split.ts)
+      conformances.push(markUnit(node.span.file, `extension ${swiftName}: ${protocol}${where} {}`))
 
       // a node class (`nodeClasses`) compares and hashes by its fields, as the case it holds did, so the enum's
       // synthesized conformance means what it meant
@@ -4019,9 +4023,12 @@ export function emitSwift(
         const fields = held.fields.map(f => camel(f.name))
 
         conformances.push(
-          protocol === 'Equatable'
-            ? `extension ${held.name}: Equatable { static func == (a: ${held.name}, b: ${held.name}) -> Bool { a === b || (${fields.map(f => `a.${f} == b.${f}`).join(' && ')}) } }`
-            : `extension ${held.name}: Hashable { func hash(into hasher: inout Hasher) { ${fields.map(f => `hasher.combine(${f})`).join('; ')} } }`,
+          markUnit(
+            node.span.file,
+            protocol === 'Equatable'
+              ? `extension ${held.name}: Equatable { static func == (a: ${held.name}, b: ${held.name}) -> Bool { a === b || (${fields.map(f => `a.${f} == b.${f}`).join(' && ')}) } }`
+              : `extension ${held.name}: Hashable { func hash(into hasher: inout Hasher) { ${fields.map(f => `hasher.combine(${f})`).join('; ')} } }`,
+          ),
         )
       }
     }
@@ -4106,7 +4113,10 @@ export function emitSwift(
     wake.push(`func wakeHive() -> Void {\n${calls}\n}`)
   }
 
-  return [...imports, ...prelude, ...body, ...swiftFormWalk(fillSpecs, meltSpecs), ...wake].join('\n\n') + '\n'
+  const text = [...imports, ...prelude, ...body, ...swiftFormWalk(fillSpecs, meltSpecs), ...wake].join('\n\n') + '\n'
+
+  // with `units`, each module's statements still marked, for the caller to write one file per module
+  return options?.units ? text : unmarked(text)
 }
 
 // does a function body contain a throw? (then its Swift signature needs `throws`)

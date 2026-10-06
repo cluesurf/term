@@ -46,6 +46,10 @@ import {
 import { hashText } from '@term/make/code/term/hash'
 import { checkGram, gramKey } from '@term/make/code/check/certificate'
 import { counterexample, printAssignment, printExpression } from '@term/make/code/check/explain'
+import { unfoldDefinitions } from '@term/make/code/check/unfold'
+import { ringEqualByEquations } from '@term/make/code/check/ring'
+import { throughAlias, transparentAliases } from '@term/make/code/check/alias'
+import type { TypeAlias } from '@term/make/code/check/alias'
 import type { SmallTask } from '@term/make/code/check/explain'
 import type { Fact } from '@term/make/code/check/product'
 import { budgetSpent, fromNumbers, openBudget, productProfile, productProves, workSpent } from '@term/make/code/check/product'
@@ -617,6 +621,15 @@ let numberFields = new Map<string, Set<string>>()
 // known. Each call becomes an atom keyed by the function and its argument's canonical polynomial (applicationKey), so
 // `x(n + 1)` and `x(1 + n)` are one atom and `x(n)` and `x(n + 1)` are two.
 let appliedFunctions = new Set<string>()
+// the program's pure tasks, whose calls are atoms (`applicationKey`)
+let pureTasks = new Set<string>()
+// the program's transparent aliases, so a mark typed `term` (a task from integers) is a function mark (check/alias.ts)
+let holdsAliases = new Map<string, TypeAlias>()
+
+// a task type, written as one or named through an alias
+function isFunctionType(type: Type | undefined): boolean {
+  return type?.kind === 'function' || (type !== undefined && throughAlias(type, holdsAliases)?.kind === 'function')
+}
 
 // the theorem's UNIVERSAL hypotheses (`have h / mark t / <proposition>`): each true for every value of its binders
 let universalHypotheses: { binders: string[]; expr: Expression }[] = []
@@ -631,11 +644,17 @@ let textParams = new Set<string>()
 // unlimited pass and carried into the pass limited to the file's own tasks (compile.ts runs them in that order), so a
 // file may cite a rule its imports proved.
 let theorems = new Map<string, Extract<Statement, { form: 'function' }>>()
+// the rules only the kernel proved: under an EQUATION goal its instance check already gave the verdict on citing one
+let kernelOnly = new Set<string>()
+// the program this pass walks, whose single-expression tasks a goal is unfolded through (check/unfold.ts)
+let holdsProgram: Program = []
 let provenTheorems = new Map<string, 'field' | 'integer'>()
 // the names the theorem being walked binds: its marks and its finds. A cited rule's marks are read BY NAME here
 let theoremScope = new Set<string>()
 // the program's tasks whose whole body is `back <expression>`, which the counterexample search runs (explain.ts)
 let smallTasks = new Map<string, SmallTask>()
+// the forms with cases, which `fold` splits: what a hint may tell a reader to fold over
+let casedForms = new Set<string>()
 
 // `TERM_PRODUCT_PROFILE=1`: each theorem goal prints its time and its share of the product search (product.ts)
 const PROFILE_GOALS = typeof process !== 'undefined' && Boolean(process.env?.TERM_PRODUCT_PROFILE)
@@ -908,8 +927,14 @@ function applicationVariables(key: string): Set<string> {
 
 // the key of an application, registered in `applications`, or undefined for any other expression or an argument outside
 // the polynomial fragment
+// A CALL OF ANY PURE TASK is an atom too, a function of its arguments, the same value wherever they are the same: a
+// recognized recurrence (`recurrenceFacts`), or `count(b)` in a fact a `cite` brought, which was otherwise dropped
 function applicationKey(expr: Expression): string | undefined {
-  if (expr.form !== 'call' || expr.callee.form !== 'variable' || !appliedFunctions.has(expr.callee.name)) {
+  if (
+    expr.form !== 'call' ||
+    expr.callee.form !== 'variable' ||
+    !(appliedFunctions.has(expr.callee.name) || recurrences.has(expr.callee.name) || pureTasks.has(expr.callee.name))
+  ) {
     return undefined
   }
 
@@ -1962,11 +1987,262 @@ function substituteName(e: Expression, name: string, repl: Expression): Expressi
   }
 }
 
+// ---- a recursive task's own equations, as universal facts ----
+//
+// A task defined by recursion on one natural-number parameter, `if p == 0 then B else S` with S calling the task again
+// at `p - 1` and every other argument passed unchanged, IS its two equations: `T(.., 0) = B` and, for every m >= 1,
+// `T(.., m) = S` at m. Read at the arguments a goal writes, they are facts an induction uses like any universal
+// hypothesis (`total(f, n + 1) = total(f, n) + f(n + 1)`), so a sum over a function mark proves by `fold n` with no
+// recurrence restated by hand. Sound: a task's defining equations hold of it, and a task of another shape is not read
+type Recurrence = { params: string[]; counter: number; base: Expression; step: Expression }
+
+let recurrences = new Map<string, Recurrence>()
+
+function recurrencesOf(program: Program): Map<string, Recurrence> {
+  const out = new Map<string, Recurrence>()
+
+  for (const s of program) {
+    if (s.form !== 'function' || s.theorem || s.claim) {
+      continue
+    }
+
+    const counter = s.params.findIndex(p => p.refine === 'natural')
+    const name = s.params[counter]?.name
+
+    if (counter < 0 || !name || s.params.filter(p => p.refine === 'natural').length !== 1) {
+      continue
+    }
+
+    const branches = recurrenceBranches(s.body, name)
+
+    if (branches && callsOnlyDown(branches.step, s.name, s.params.map(p => p.name), counter)) {
+      out.set(s.name, { params: s.params.map(p => p.name), counter, ...branches })
+    }
+  }
+
+  return out
+}
+
+// `if p == 0, back B, else back S`, written as a statement or as a value
+function recurrenceBranches(body: Statement[], p: string): { base: Expression; step: Expression } | undefined {
+  const atZero = (cond: Expression): boolean => {
+    const sides =
+      cond.form === 'binary' && cond.op === '=='
+        ? [cond.left, cond.right]
+        : cond.form === 'call' && cond.callee.form === 'variable' && cond.callee.name === 'is-equal' && cond.args.length === 2
+          ? cond.args
+          : undefined
+
+    return (
+      sides !== undefined &&
+      sides.some(x => x.form === 'variable' && x.name === p) &&
+      sides.some(x => x.form === 'integer' && Number(x.value) === 0)
+    )
+  }
+
+  const only = body.length === 1 ? body[0] : undefined
+
+  if (only?.form === 'if' && only.branches.length === 1 && atZero(only.branches[0]!.cond)) {
+    const base = only.branches[0]!.body
+    const step = only.otherwise
+
+    if (base.length === 1 && base[0]!.form === 'return' && base[0]!.value && step?.length === 1 && step[0]!.form === 'return' && step[0]!.value) {
+      return { base: base[0]!.value, step: step[0]!.value }
+    }
+  }
+
+  const value = only?.form === 'return' ? only.value : undefined
+
+  if (value?.form === 'conditional' && value.branches.length === 1 && value.otherwise && atZero(value.branches[0]!.cond)) {
+    return { base: value.branches[0]!.value, step: value.otherwise }
+  }
+
+  return undefined
+}
+
+// every call of the task inside its step passes the counter as `p - 1` and every other parameter as itself
+function callsOnlyDown(e: Expression, task: string, params: string[], counter: number): boolean {
+  let fine = true
+
+  const visit = (x: Expression): void => {
+    if (x.form === 'call') {
+      if (x.callee.form === 'variable' && x.callee.name === task) {
+        fine &&=
+          x.args.length === params.length &&
+          x.args.every((arg, i) => (i === counter ? oneBelow(arg, params[counter]!) : arg.form === 'variable' && arg.name === params[i]))
+      }
+
+      x.args.forEach(visit)
+    } else if (x.form === 'binary') {
+      visit(x.left)
+      visit(x.right)
+    } else if (x.form === 'unary') {
+      visit(x.operand)
+    }
+  }
+
+  visit(e)
+
+  return fine
+}
+
+// `p - 1`, written as the operator or as `subtract(p, 1)`
+function oneBelow(e: Expression, p: string): boolean {
+  const [left, right] =
+    e.form === 'binary' && e.op === '-'
+      ? [e.left, e.right]
+      : e.form === 'call' && e.callee.form === 'variable' && e.callee.name === 'subtract' && e.args.length === 2
+        ? [e.args[0]!, e.args[1]!]
+        : [undefined, undefined]
+
+  return left?.form === 'variable' && left.name === p && right?.form === 'integer' && Number(right.value) === 1
+}
+
+// the parameters replaced by the arguments, a callee among them (`f(n)` read at `h` is `h(n)`)
+function bound(e: Expression, given: Map<string, Expression>): Expression {
+  switch (e.form) {
+    case 'variable':
+      return given.get(e.name) ?? e
+    case 'binary':
+      return { ...e, left: bound(e.left, given), right: bound(e.right, given) }
+    case 'unary':
+      return { ...e, operand: bound(e.operand, given) }
+    case 'call':
+      return {
+        ...e,
+        callee: e.callee.form === 'variable' && given.get(e.callee.name)?.form === 'variable' ? given.get(e.callee.name)! : e.callee,
+        args: e.args.map(a => bound(a, given)),
+      }
+    default:
+      return e
+  }
+}
+
+// A CITED RULE WITH NO HYPOTHESES HOLDS AT EVERY VALUE OF ITS MARKS, so inside an induction it is a "for every" fact,
+// instantiated wherever the step needs it: Nicomachus's step needs Gauss at n and at n + 1, and a fact about n alone is
+// not one about n + 1. A natural-number mark is guarded (`m < 0 ||`), since the rule says nothing below zero. Only a rule
+// over numbers, proven above this one, with no `find` and no hypothesis of its own, is read this way
+function citedEverywhere(proof: { head: string; arg?: string }[]): { binders: string[]; expr: Expression }[] {
+  const out: { binders: string[]; expr: Expression }[] = []
+
+  for (const step of proof) {
+    const rule = step.head === 'cite' && step.arg ? theorems.get(step.arg) : undefined
+    const parts = rule && provenTheorems.has(step.arg!) ? theoremParts(rule) : undefined
+
+    if (!rule || !parts || parts.hypotheses.length > 0 || rule.universals?.length) {
+      continue
+    }
+
+    if (!rule.params.every(p => p.refine === 'natural' || p.type?.kind === 'number')) {
+      continue
+    }
+
+    const span = parts.goal.span
+    const guarded = rule.params
+      .filter(p => p.refine === 'natural')
+      .reduce<Expression>(
+        (expr, p) => ({
+          form: 'binary',
+          op: '||',
+          left: {
+            form: 'binary',
+            op: '<',
+            left: { form: 'variable', name: p.name, span },
+            right: { form: 'integer', value: 0, span },
+            span,
+          },
+          right: expr,
+          span,
+        }),
+        parts.goal,
+      )
+
+    out.push({ binders: rule.params.map(p => p.name), expr: guarded })
+  }
+
+  return out
+}
+
+// the universal hypotheses in force widened by `more` while `run` decides, and as they were afterwards
+function withUniversals<T>(more: { binders: string[]; expr: Expression }[], run: () => T): T {
+  const before = universalHypotheses
+
+  universalHypotheses = [...before, ...more]
+
+  try {
+    return run()
+  } finally {
+    universalHypotheses = before
+  }
+}
+
+// the equations of every recursive task the goal applies, at the arguments it applies them to: the base, and the step
+// for every m (guarded `m < 1 ||`, so it says nothing below the base)
+function recurrenceFacts(goal: Expression): { binders: string[]; expr: Expression }[] {
+  const out = new Map<string, { binders: string[]; expr: Expression }>()
+  const span = goal.span
+  const m = '__step'
+
+  const visit = (x: Expression): void => {
+    if (x.form === 'call') {
+      const r = x.callee.form === 'variable' ? recurrences.get(x.callee.name) : undefined
+
+      if (r && x.args.length === r.params.length) {
+        const at = (counter: Expression): { call: Expression; given: Map<string, Expression> } => {
+          const args = x.args.map((arg, i) => (i === r.counter ? counter : arg))
+
+          return { call: { ...x, args }, given: new Map(r.params.map((p, i) => [p, args[i]!])) }
+        }
+
+        const zero = at({ form: 'integer', value: 0, span })
+        const step = at({ form: 'variable', name: m, span })
+        const equal = (left: Expression, right: Expression): Expression => ({ form: 'binary', op: '==', left, right, span })
+        const below: Expression = {
+          form: 'binary',
+          op: '<',
+          left: { form: 'variable', name: m, span },
+          right: { form: 'integer', value: 1, span },
+          span,
+        }
+
+        // a task the sum is OF, passed by name (`total(identity, n)`), is read through its definition in the equations
+        const read = (body: Expression, given: Map<string, Expression>): Expression => unfoldDefinitions(bound(body, given), holdsProgram)
+
+        out.set(`${printExpression(zero.call)} base`, { binders: [], expr: equal(zero.call, read(r.base, zero.given)) })
+        out.set(`${printExpression(step.call)} step`, {
+          binders: [m],
+          expr: { form: 'binary', op: '||', left: below, right: equal(step.call, read(r.step, step.given)), span },
+        })
+      }
+
+      x.args.forEach(visit)
+    } else if (x.form === 'binary') {
+      visit(x.left)
+      visit(x.right)
+    } else if (x.form === 'unary') {
+      visit(x.operand)
+    }
+  }
+
+  visit(goal)
+
+  return [...out.values()]
+}
+
 // the arguments quantified functions are applied to, keyed canonically so one term is counted once
 function appliedArguments(e: Expression, into: Map<string, Expression>): void {
   if (e.form === 'call') {
-    if (e.callee.form === 'variable' && appliedFunctions.has(e.callee.name)) {
-      for (const arg of e.args) {
+    // a recursive task's counter is an index too: its equations (`recurrenceFacts`) are instantiated at it
+    const recurrence = e.callee.form === 'variable' ? recurrences.get(e.callee.name) : undefined
+    const indices =
+      e.callee.form === 'variable' && appliedFunctions.has(e.callee.name)
+        ? e.args
+        : recurrence
+          ? [e.args[recurrence.counter]!].filter(Boolean)
+          : []
+
+    if (indices.length > 0) {
+      for (const arg of indices) {
         const poly = expandPolynomial(arg)
 
         // an argument that is itself an application (`pt(n)` in `bigf(pt(n))`) is a value, not an index a binder
@@ -2026,39 +2302,46 @@ function instances(candidates: Expression[]): Expression[] {
 
 // the facts an instance contributes: a conjunction both sides, a disjunction its one disjunct the others are refuted
 // for, and a comparison its linear or polynomial facts
+// the one disjunct of `a || b || ...` the facts do not refute, when exactly one is left, else undefined
+function openDisjunct(e: Expression, available: Inequality[]): Expression | undefined {
+  const parts: Expression[] = []
+  const flatten = (x: Expression): void => {
+    if (x.form === 'binary' && x.op === '||') {
+      flatten(x.left)
+      flatten(x.right)
+    } else {
+      parts.push(x)
+    }
+  }
+
+  flatten(e)
+
+  // a disjunct is refuted when the facts prove its negation, over an ordered field (no integer rounding, which could
+  // refute `x(n) < 1` from `x(n) > 0` for a rational x)
+  const flip: Record<string, '<' | '<=' | '>' | '>=' | undefined> = { '<': '>=', '<=': '>', '>': '<=', '>=': '<' }
+  const open = parts.filter(part => {
+    if (part.form !== 'binary' || !flip[part.op]) {
+      return true
+    }
+
+    // linear first, then with products: `2 big m >= 1` from `big >= 1` and `m >= 1` needs big times m
+    const negation = { ...part, op: flip[part.op]! } as Expression
+
+    return !(productGoalLinear(negation, available) || productGoal(negation, available))
+  })
+
+  return open.length === 1 ? open[0] : undefined
+}
+
 function instanceFacts(e: Expression, available: Inequality[]): Inequality[] {
   if (e.form === 'binary' && e.op === '&&') {
     return [...instanceFacts(e.left, available), ...instanceFacts(e.right, available)]
   }
 
   if (e.form === 'binary' && e.op === '||') {
-    const parts: Expression[] = []
-    const flatten = (x: Expression): void => {
-      if (x.form === 'binary' && x.op === '||') {
-        flatten(x.left)
-        flatten(x.right)
-      } else {
-        parts.push(x)
-      }
-    }
+    const open = openDisjunct(e, available)
 
-    flatten(e)
-
-    // a disjunct is refuted when the facts prove its negation, over an ordered field (no integer rounding, which could
-    // refute `x(n) < 1` from `x(n) > 0` for a rational x)
-    const flip: Record<string, '<' | '<=' | '>' | '>=' | undefined> = { '<': '>=', '<=': '>', '>': '<=', '>=': '<' }
-    const open = parts.filter(part => {
-      if (part.form !== 'binary' || !flip[part.op]) {
-        return true
-      }
-
-      // linear first, then with products: `2 big m >= 1` from `big >= 1` and `m >= 1` needs big times m
-      const negation = { ...part, op: flip[part.op]! } as Expression
-
-      return !(productGoalLinear(negation, available) || productGoal(negation, available))
-    })
-
-    return open.length === 1 ? instanceFacts(open[0]!, available) : []
+    return open ? instanceFacts(open, available) : []
   }
 
   // the instance AS STATED: its linear facts, or else its polynomial ones. (Not orPolynomial, which gives a disjunct's
@@ -2067,6 +2350,84 @@ function instanceFacts(e: Expression, available: Inequality[]): Inequality[] {
   const linearFacts = assumptionInequalities(e, false, side)
 
   return linearFacts.length > 0 ? [...side, ...linearFacts] : polynomialFacts(e, false)
+}
+
+// AN EQUATION FROM EQUATIONS, by algebra rather than search: the instances' equations, a lone atom on one side
+// (`total(cube, n + 1) == total(cube, n) + (n + 1)^3`) substituted away first, and what is left reduced modulo the rest
+// (check/ring.ts `ringEqualModulo`). Each call is an atom of its own, named by its canonical key, so `f(n + 1 - 1)` and
+// `f(n)` are one. The product prover would search for the products of facts this finds by substitution: Nicomachus's
+// step took it 50 seconds. Sound: every equation used is an instance proved or assumed, and a substitution replaces an
+// atom by what an equation says it equals
+function ringFromEquations(goal: Expression, statements: Expression[], available: Inequality[]): boolean {
+  if (goal.form !== 'binary' || goal.op !== '==') {
+    return false
+  }
+
+  // a call as the atom its key names, or undefined when an argument is outside the polynomial fragment. The key itself
+  // spells `*` and `+`, so the ring sees a plain fresh name for it, one per key
+  const names = new Map<string, string>()
+  const atoms = new Set<string>()
+
+  const atomized = (e: Expression): Expression | undefined => {
+    switch (e.form) {
+      case 'call': {
+        const key = applicationKey(e)
+
+        if (!key) {
+          return undefined
+        }
+
+        if (!names.has(key)) {
+          names.set(key, `atom_${names.size}`)
+          atoms.add(names.get(key)!)
+        }
+
+        return { form: 'variable', name: names.get(key)!, span: e.span }
+      }
+      case 'binary': {
+        const left = atomized(e.left)
+        const right = atomized(e.right)
+
+        return left && right ? { ...e, left, right } : undefined
+      }
+      case 'unary': {
+        const operand = atomized(e.operand)
+
+        return operand ? { ...e, operand } : undefined
+      }
+      default:
+        return e
+    }
+  }
+
+  const equations: [Expression, Expression][] = []
+
+  const collect = (e: Expression): void => {
+    if (e.form === 'binary' && e.op === '&&') {
+      collect(e.left)
+      collect(e.right)
+    } else if (e.form === 'binary' && e.op === '||') {
+      const open = openDisjunct(e, available)
+
+      if (open) {
+        collect(open)
+      }
+    } else if (e.form === 'binary' && e.op === '==') {
+      const left = atomized(e.left)
+      const right = atomized(e.right)
+
+      if (left && right) {
+        equations.push([left, right])
+      }
+    }
+  }
+
+  statements.forEach(collect)
+
+  const left = atomized(goal.left)
+  const right = atomized(goal.right)
+
+  return left !== undefined && right !== undefined && ringEqualByEquations(left, right, equations, atoms)
 }
 
 function universalGoal(expr: Expression, available: Inequality[], seeds: Expression[] = []): boolean {
@@ -2112,9 +2473,15 @@ function universalGoal(expr: Expression, available: Inequality[], seeds: Express
     const made = instances(candidates)
     const facts = [...available]
 
+    // an equation the instances and the seeds (an induction's hypothesis) give by algebra, before any search
+    if (ringFromEquations(expr, [...made, ...seeds], available)) {
+      return true
+    }
+
     for (const instance of made) {
       facts.push(...instanceFacts(instance, available))
     }
+
 
 
     if (productGoalLinear(expr, facts) || productGoal(expr, facts) || productGoalBridged(expr, facts)) {
@@ -2712,10 +3079,27 @@ function linearlyProvable(expr: Expression, facts: Inequality[]): boolean {
   return productGoalLinear(expr, facts)
 }
 
+// AN ORDER FROM FACTS, for the kernel closing an induction case over its own atoms (check/elaborate.ts `orderCase`):
+// the goal and the facts are comparisons over variables, decided by the linear provers and then with products
+export function orderFollows(goal: Expression, facts: Expression[]): boolean {
+  const known: Inequality[] = []
+
+  for (const fact of facts) {
+    const side: Inequality[] = []
+    const stated = assumptionInequalities(fact, false, side)
+
+    known.push(...side, ...stated)
+  }
+
+  return linearlyProvable(goal, known) || goalProvable(goal, known) === true
+}
+
 // the rules this pass has proven so far, and how: the measurement behind "every certificate holds over any ordered
 // field", which is true of a rule marked `field` and not known of one marked `integer`
+// Not the rules the kernel proved, which this pass only knows of (`kernelOnly`): a stub records how its unit's provers
+// proved a rule, and a dependent reads a carried rule with no such record as the kernel's (compile/stub.ts)
 export function provenRules(): ReadonlyMap<string, 'field' | 'integer'> {
-  return provenTheorems
+  return new Map([...provenTheorems].filter(([name]) => !kernelOnly.has(name)))
 }
 
 // what a rule that did not hold was asked, `(goal: ..., given: ...)`, and, when small values of its marks satisfy every
@@ -2739,16 +3123,22 @@ function explainRule(
   ]
   const given = facts.length > 0 ? `, given: ${facts.join(', ')}` : ''
   const asked = ` (goal: ${printExpression(goal)}${given})`
-  // a mark whose type is a FORM: a goal about it usually stops at that unknown value, and `fold` on it is the next step
-  const formMark = rule.params.find(p => p.type?.kind === 'named')
+  // a mark whose type is a FORM WITH CASES: a goal about it usually stops at that unknown value, and `fold` on it is the
+  // next step. Not a mark typed by an alias of a task (an assignment), which has no cases to fold over
+  const formMark = rule.params.find(p => p.type?.kind === 'named' && casedForms.has(p.type.name))
   // a hypothesis FOR EVERY value is used at the terms the goal names, a bounded number of times. A goal that needs it
   // over and over, x(n) from x(0), needs induction on the count
   const countMark = rule.params.find(p => p.type?.kind === 'number' || p.refine === 'natural')
-  const hint = formMark
-    ? `a goal about \`${formMark.name}\`, a ${(formMark.type as { name: string }).name}, stops where its value is unknown. \`fold ${formMark.name}\` under the \`show\` proves it one case at a time (/guides/proofs/induction)`
-    : (rule.universals?.length ?? 0) > 0 && countMark
-      ? `a hypothesis for every value is used a few times, at the terms the goal names. If the goal needs it ${countMark.name} times over, \`fold ${countMark.name}\` under the \`show\` proves it by induction on ${countMark.name} (/guides/proofs/inequalities)`
-      : undefined
+  const cited = (rule.body.find(s => s.form === 'hold') as { proof?: { head: string; arg?: string }[] } | undefined)?.proof
+    ?.find(step => step.head === 'cite')?.arg
+  const formName = formMark ? (formMark.type as { name: string }).name : ''
+  const hint = cited
+    ? `\`cite ${cited}\` closes a goal that is an instance of it: each side must compute to one side of ${cited}, at some values of its marks. A law that holds only in some cases needs \`fold\` on the value it splits on (/guides/proofs/start)`
+    : formMark
+      ? `a goal about \`${formMark.name}\`, ${/^[aeiou]/.test(formName) ? 'an' : 'a'} ${formName}, stops where its value is unknown. \`fold ${formMark.name}\` under the \`show\` proves it one case at a time (/guides/proofs/induction)`
+      : (rule.universals?.length ?? 0) > 0 && countMark
+        ? `a hypothesis for every value is used a few times, at the terms the goal names. If the goal needs it ${countMark.name} times over, \`fold ${countMark.name}\` under the \`show\` proves it by induction on ${countMark.name} (/guides/proofs/inequalities)`
+        : undefined
 
   if (!parts || (rule.universals?.length ?? 0) > 0) {
     return { asked, ...(hint ? { hint } : {}) }
@@ -2779,6 +3169,8 @@ function citedFacts(
   available: Inequality[],
   walk: Walk,
   span: Expression['span'],
+  // an equation the kernel alone proved, cited under an equation: its verdict stands, and this pass only says so
+  kernelVerdict = false,
 ): Inequality[] {
   const refuse = (why: string): Inequality[] => {
     walk.diagnostics.push(diagnose('unproven', { file: walk.file, span, message: `cite ${name}: ${why}` }))
@@ -2793,6 +3185,16 @@ function citedFacts(
   if (rule?.stub && !rule.stubBody) {
     return refuse(
       'it was compiled separately, and this build holds only its signature, not its hypotheses and goal. Build the two files together to cite it',
+    )
+  }
+
+  // an EQUATION the kernel proved (by `fold`, `calm`, or a cite of its own) is one the kernel rewrites with: it already
+  // tried this goal as an instance of it. This pass cannot tell that rule from one that failed, so it says both
+  const cited = rule && (!how || kernelVerdict) ? theoremParts(rule)?.goal : undefined
+
+  if (cited?.form === 'binary' && cited.op === '==') {
+    return refuse(
+      'the arithmetic provers did not prove it above this one, and if the kernel proved it, this goal is not an instance of it: no one rewrite by it, at any values of its marks, makes the two sides the same',
     )
   }
 
@@ -2817,7 +3219,7 @@ function citedFacts(
   }
 
   for (const mark of rule.params) {
-    const here = mark.type?.kind === 'function' ? appliedFunctions.has(mark.name) : theoremScope.has(mark.name)
+    const here = isFunctionType(mark.type) ? appliedFunctions.has(mark.name) : theoremScope.has(mark.name)
 
     if (!here) {
       return refuse(
@@ -2848,7 +3250,16 @@ function citedFacts(
       span,
     }))
 
-  for (const [at, hypothesis] of [...naturals, ...parts.hypotheses].entries()) {
+  // A MARK THE CITING RULE BINDS BY `find` is the found value, written into the cited rule: `find n, b` makes the instance
+  // `count(b) >= 0`, where an equation `n == b` beside `count(n) >= 0` left two atoms no fact connected
+  const found = new Map(
+    (theorems.get(walk.task ?? '')?.body ?? []).flatMap(s =>
+      s.form === 'let' && !s.mutable && rule.params.some(mark => mark.name === s.name) ? [[s.name, s.init] as const] : [],
+    ),
+  )
+  const atFound = (e: Expression): Expression => [...found].reduce((x, [name, value]) => substituteName(x, name, value), e)
+
+  for (const [at, hypothesis] of [...naturals, ...parts.hypotheses].map(atFound).entries()) {
     if (!linearlyProvable(hypothesis, available) && goalProvable(hypothesis, available) !== true) {
       return refuse(
         at < naturals.length
@@ -2858,7 +3269,7 @@ function citedFacts(
     }
   }
 
-  return instanceFacts(parts.goal, available)
+  return instanceFacts(atFound(parts.goal), available)
 }
 
 // decide whether a goal is provable from the assumptions, handling the propositional structure: a DISJUNCTION
@@ -3156,7 +3567,22 @@ function bindingEqualities(
   return [atMost(lhs, rhs), atLeast(lhs, rhs)]
 }
 
-export function checkHolds(
+// THE PROVERS' TABLES OF ONE PROGRAM LIVE ONLY WHILE ITS HOLDS ARE CHECKED. The pure tasks, the recurrences, the aliases
+// and the program itself decide what an atom is, and the kernel asks `isLinearGoal` before this pass runs: left set,
+// they answered the next program's kernel with the last program's tasks, so a goal's verdict depended on what had been
+// built before it in the same process (a false set law was accepted after a true one, test/check/truth-table.ts)
+export function checkHolds(...args: Parameters<typeof checkProgramHolds>): Diagnostic[] {
+  try {
+    return checkProgramHolds(...args)
+  } finally {
+    holdsProgram = []
+    pureTasks = new Set()
+    recurrences = new Map()
+    holdsAliases = new Map()
+  }
+}
+
+function checkProgramHolds(
   program: Program,
   file: string,
   options: {
@@ -3172,6 +3598,9 @@ export function checkHolds(
     // and the length-keeping ones, and the ones that hand back a list they made
     keeping?: Set<string>
     returning?: Set<string>
+    // the rules the kernel proved (compile/compile.ts `provenByKernel`): a `cite` may rest on them. Read as proven with
+    // integer reasoning, which claims the least
+    kernelProven?: Set<string>
   } = {},
 ): Diagnostic[] {
   const diagnostics: Diagnostic[] = []
@@ -3201,6 +3630,11 @@ export function checkHolds(
         : [],
     ),
   )
+  holdsProgram = program
+  pureTasks = pure
+  holdsAliases = transparentAliases(program)
+  recurrences = recurrencesOf(program)
+  casedForms = new Set(program.flatMap(s => (s.form === 'record-type' && s.variants.length > 0 ? [s.name] : [])))
   smallTasks = new Map(
     program.flatMap(s =>
       s.form === 'function' && !s.theorem && s.body.length === 1 && s.body[0]!.form === 'return' && s.body[0]!.value
@@ -3214,13 +3648,29 @@ export function checkHolds(
     provenTheorems = new Map()
   }
 
-  // and how its own unit proved it, which it carries as a fact (`proven-field`, `proven-integer`)
+  // reset with the proven table it qualifies: the pass limited to the file's own tasks keeps both
+  if (!options.only) {
+    kernelOnly = new Set()
+  }
+
+  for (const name of options.kernelProven ?? []) {
+    if (!provenTheorems.has(name)) {
+      provenTheorems.set(name, 'integer')
+      kernelOnly.add(name)
+    }
+  }
+
+  // and how its own unit proved it, which it carries as a fact (`proven-field`, `proven-integer`). A carried rule with
+  // neither was proven by the kernel there: a unit that refused it would not have built, and no stub would exist
   for (const s of program) {
     if (s.form === 'function' && s.theorem && s.stub && s.stubBody) {
       const how = s.stubFacts?.includes('proven-field') ? 'field' : s.stubFacts?.includes('proven-integer') ? 'integer' : undefined
 
       if (how) {
         provenTheorems.set(s.name, how)
+      } else if (!provenTheorems.has(s.name)) {
+        provenTheorems.set(s.name, 'integer')
+        kernelOnly.add(s.name)
       }
     }
   }
@@ -3245,7 +3695,7 @@ export function checkHolds(
 
       // and `back`, the value a `must` speaks of, as the declared result
       appliedFunctions = statement.theorem
-        ? new Set(statement.params.filter(p => p.type?.kind === 'function').map(p => p.name))
+        ? new Set(statement.params.filter(p => isFunctionType(p.type)).map(p => p.name))
         : new Set()
       universalHypotheses = statement.theorem ? (statement.universals ?? []) : []
       theoremScope = statement.theorem
@@ -4668,8 +5118,12 @@ function walkHolds(
         // (an impure call inside a masked value is not a reason: impureOutsideMasks)
         // `fold n` in a theorem with universal hypotheses: induction over n here, each case decided the way such a
         // goal is (universalInduction). The kernel pass leaves these to this one
+        // and in any theorem whose goal applies a recursive task, whose equations it then has as such hypotheses
+        const recurrent = statement.proof?.[0]?.head === 'fold' ? recurrenceFacts(statement.expr) : []
         const induction =
-          universalHypotheses.length > 0 && statement.proof?.[0]?.head === 'fold' ? statement.proof[0].arg : undefined
+          (universalHypotheses.length > 0 || recurrent.length > 0) && statement.proof?.[0]?.head === 'fold'
+            ? statement.proof[0].arg
+            : undefined
 
         // `cite <rule>` under a theorem's goal: each cited rule's conclusion, its hypotheses proved here (citedFacts).
         // A cite of a name that is no rule is the kernel pass's to refuse
@@ -4681,8 +5135,13 @@ function walkHolds(
         openBudget(budget)
         let given = current
 
+        const equation = statement.expr.form === 'binary' && statement.expr.op === '=='
+
         for (const step of theorem ? statement.proof ?? [] : []) {
-          if (step.head === 'cite' && step.arg && theorems.has(step.arg)) {
+          // a rule only the kernel proved, cited under an equation, was the kernel's to use, as an instance of it
+          if (step.head === 'cite' && step.arg && equation && kernelOnly.has(step.arg)) {
+            given = [...given, ...citedFacts(step.arg, given, walk, statement.span, true)]
+          } else if (step.head === 'cite' && step.arg && theorems.has(step.arg)) {
             given = [...given, ...citedFacts(step.arg, given, walk, statement.span)]
           } else if (step.head === 'cite' && step.arg && !(statement.expr.form === 'binary' && statement.expr.op === '==')) {
             // the kernel pass reads a step only under an equality, where it refuses a name that names nothing. Under any
@@ -4701,11 +5160,39 @@ function walkHolds(
         const profiled = PROFILE_GOALS && theorem ? { at: Date.now(), ...productProfile } : undefined
 
         // a theorem's goal is asked the fast path first (linearlyProvable): a yes there is a yes, in milliseconds
-        const verdict = impureOutsideMasks(statement.expr, walk)
+        const impure = impureOutsideMasks(statement.expr, walk)
+        let verdict = impure
           ? null
           : induction
-            ? universalInduction(statement.expr, given, induction)
+            ? withUniversals([...recurrent, ...(theorem ? citedEverywhere(statement.proof ?? []) : [])], () =>
+                universalInduction(statement.expr, given, induction),
+              )
             : (theorem && linearlyProvable(statement.expr, given)) || goalProvable(statement.expr, given)
+
+        // AND ONCE MORE THROUGH THE DEFINITIONS, when the goal names a task the provers read as an atom: Cauchy-Schwarz
+        // over `dot(u, v)` is false of three atoms and true of their coordinates (check/unfold.ts, which reads `u/x` as an
+        // atom of its own). Only asked when the goal as written was not proven, so every proof that held holds the same way
+        if (verdict !== true && !impure && !induction) {
+          const unfolded = unfoldDefinitions(statement.expr, holdsProgram)
+
+          if (printExpression(unfolded) !== printExpression(statement.expr)) {
+            const again = (theorem && linearlyProvable(unfolded, given)) || goalProvable(unfolded, given)
+
+            if (again === true) {
+              verdict = true
+            }
+          }
+        }
+
+        // and through the equations of the recursive tasks it applies, with no induction: one step of a sum,
+        // `total(f, n + 1) == total(f, n) + f(n + 1)`, is an instance of `total`'s own step equation
+        if (verdict !== true && !impure && !induction && theorem) {
+          const equations = recurrenceFacts(statement.expr)
+
+          if (equations.length > 0 && withUniversals(equations, () => universalGoal(statement.expr, given))) {
+            verdict = true
+          }
+        }
 
         if (profiled) {
           const spent = (key: keyof typeof productProfile): number => productProfile[key] - profiled[key]

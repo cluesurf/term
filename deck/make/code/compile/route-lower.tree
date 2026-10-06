@@ -1,0 +1,531 @@
+# The route-lowering pass: turns `hook` route statements (the routing DSL) into a runnable `route(host, path)`
+# dispatcher function. It is the routing counterpart of `view-lower`. Because the dom layer is env-abstracted (a
+# browser Element or an in-memory server node behind the same `view` API), ONE dispatcher works for both client and
+# server -- the only difference is the boot (browser mounts on document.body and listens for navigation; a server
+# renders per request). So the routing API is identical across environments; this pass is env-agnostic.
+#
+#   hook </login>            ->   function route(host, path) {
+#     zone login                     if (path == "/login") { login(host); return }
+#   hook </welcome>                  if (path == "/welcome") { welcome(host); return }
+#     zone welcome                 }
+#
+# A route's optional `seed title <...>` directive becomes a `set-title` call in its branch, so the document title
+# tracks the route. Component props (`bind id, read id`) pass through after `host`.
+#
+# Ported from compile/route-lower.ts (self-hosting, 2026-10-05). Every node it builds is fresh, and a directive's
+# value is handed on whole, never rebuilt. A case name two of node.tree's forms share is written with its form
+# (`make expression/call`, since a view node has a `call` case too). A program with no web route comes back as the
+# very list it was, which compile.ts asks of it.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+  find starts-with
+  find substring
+  find contains
+
+load ../parser/diagnostic
+  find span
+  find position
+
+load ./node
+  find closure-param
+  find dock-argument
+  find dock-component
+  find dock-route
+  find dock-send
+  find expression
+  find function-param
+  find statement
+  find statement-branch
+  find type
+
+# a web route is a `dock`/`hook` statement that renders a component, OR a resource route that proxies an asset (a
+# `proxy` directive, no component -- e.g. `hook </vibe.pdf> / seed proxy, text <url>`). Both dispatch through `route`.
+task is-web-route
+  take node, like statement
+  like boolean
+  mark private
+
+  sift node
+    case dock
+      sift route/component
+        case some
+          back true
+        case none
+          walk route/directives
+            take directive
+            fork test, and(is-equal(directive/name, <proxy>), has-value(directive))
+              hold
+                back true
+          back false
+    miss
+      back false
+
+task has-value
+  take directive, like dock-send
+  like boolean
+  mark private
+
+  sift directive/value
+    case some
+      back true
+    case none
+      back false
+
+# the directive named `name` with a value, if the route has one: the first, as `find` took it
+task directive-named
+  take route, like dock-route
+  take name, like text
+  like maybe, like expression
+  mark private
+
+  walk route/directives
+    take directive
+    fork test, is-equal(directive/name, name)
+      hold
+        sift directive/value
+          case some
+            link given
+            back make(some, given)
+          case none
+            turn next
+  back make none
+
+task variable
+  take name, like text
+  take at, like span
+  like expression
+  mark private
+
+  back
+    make expression/variable
+      bind name, name
+      bind span, at
+
+task text-value
+  take value, like text
+  take at, like span
+  like expression
+  mark private
+
+  back
+    make expression/string
+      bind value, value
+      bind span, at
+
+task number-value
+  take value, like number
+  take at, like span
+  like expression
+  mark private
+
+  back
+    make expression/integer
+      bind value, value
+      bind span, at
+
+task call-of
+  take name, like text
+  take args, like list, like expression
+  take at, like span
+  like expression
+  mark private
+
+  back
+    make expression/call
+      bind callee, variable(name, at)
+      bind args, args
+      bind span, at
+
+task expression-statement
+  take value, like expression
+  take at, like span
+  like statement
+  mark private
+
+  back
+    make statement/expression
+      bind expr, value
+      bind span, at
+
+task return-nothing
+  take at, like span
+  like statement
+  mark private
+
+  back
+    make statement/return
+      bind span, at
+
+task two
+  take first, like expression
+  take second, like expression
+  like list, like expression
+  mark private
+
+  save out, make list
+  push(out, first)
+  push(out, second)
+  back out
+
+task three
+  take first, like expression
+  take second, like expression
+  take third, like expression
+  like list, like expression
+  mark private
+
+  save out, two(first, second)
+  push(out, third)
+  back out
+
+task one-value
+  take first, like expression
+  like list, like expression
+  mark private
+
+  save out, make list
+  push(out, first)
+  back out
+
+# a pattern with `:name` segments matches through the navigation contract's `route-matches` (the route runtime,
+# view/route-runtime.tree); a plain path is compared as text. Until 2026-10-03 every path was compared as text, so
+# `hook /users/:id` matched only the literal `/users/:id` and never a user (native-navigation-0002)
+task condition
+  take path, like text
+  take at, like span
+  like expression
+  mark private
+
+  fork test, contains(path, </:>)
+    hold
+      back call-of(<route-matches>, two(text-value(path, at), variable(<path>, at)), at)
+  back
+    make expression/binary
+      bind op, make equal
+      bind left, variable(<path>, at)
+      bind right, text-value(path, at)
+      bind span, at
+
+# each `:name` segment of a pattern, a local of that name in its branch, so a prop reads it (`bind id, read id`)
+task parameters
+  take path, like text
+  take at, like span
+  like list, like statement
+  mark private
+
+  save out, make list
+  walk split(path, </>)
+    take segment
+    fork test, and(starts-with(segment, <:>), is-above(segment/length, 1))
+      hold
+        save name, substring(segment, 1)
+        save read-param, call-of(<route-param>, three(text-value(path, at), variable(<path>, at), text-value(name, at)), at)
+        save one
+          make statement/let
+            bind name, name
+            bind init, read-param
+            bind mutable, false
+            bind span, at
+        push(out, one)
+  back out
+
+# one `if (path == "<path>") { [set-title;] component(host, ...props); return }` per route
+task branch-of
+  take route, like dock-route
+  take at, like span
+  like statement-branch
+  mark private
+
+  save body, make list
+
+  # a resource route: `seed proxy, text <url>` and no component. Emit `set-proxy(url); return` -- on the server the
+  # host fetches the URL and streams the bytes (the page URL stays put); in the browser it does a full navigation.
+  save proxy, directive-named(route, <proxy>)
+  sift route/component
+    case none
+      sift proxy
+        case some
+          link url
+          push(body, expression-statement(call-of(<set-proxy>, one-value(url), at), at))
+          push(body, return-nothing(at))
+          back
+            make statement-branch
+              bind cond, condition(route/path, at)
+              bind body, body
+        case none
+          save nothing, 0
+    case some
+      save nothing, 0
+
+  save component, component-of(route)
+
+  # the path's parameters first, so the load and the props can read them
+  walk parameters(route/path, at)
+    take one
+    push(body, one)
+
+  # `seed load, read <task>`: the route's data, loaded where the program runs and passed to the props as `data`.
+  # Where the data itself lives is the data layer's own env choice (SQLite on a device, the bridge in a cask, the
+  # database behind a server), never the router's, so one table and one `load` serve every target
+  # (native-navigation-0002, note/term/project/native-navigation.md, "Where a route's load runs")
+  sift directive-named(route, <load>)
+    case some
+      link loader
+      save loaded
+        make expression/call
+          bind callee, loader
+          bind args, one-value(variable(<path>, at))
+          bind span, at
+      save data
+        make statement/let
+          bind name, <data>
+          bind init, loaded
+          bind mutable, false
+          bind span, at
+      push(body, data)
+    case none
+      save nothing, 0
+
+  # a route's `seed` directives become the page's SEO metadata, declared separately from the component (Remix-style):
+  # `title` sets the document title; `layout` (handled below) wraps the page; every other directive (`description`,
+  # `og:image`, `twitter:card`, ...) becomes a meta tag. On the server these render into the <head>; in the browser
+  # they update the live document on navigation.
+  save layout-name, layout-of(route)
+  walk route/directives
+    take directive
+    sift directive/value
+      case some
+        link given
+        fork test, or(is-equal(directive/name, <layout>), is-equal(directive/name, <load>))
+          hold
+            turn next
+        fork test, is-equal(directive/name, <title>)
+          hold
+            push(body, expression-statement(call-of(<set-title>, one-value(given), at), at))
+          miss
+            push(body, expression-statement(call-of(<set-meta>, two(text-value(directive/name, at), given), at), at))
+      case none
+        turn next
+
+  # the page's props, passed after the host
+  save props, make list
+  walk component/props
+    take prop
+    push(props, prop/value)
+
+  fork test, is-unequal(layout-name, <>)
+    hold
+      # wrap the page in its layout (a slotted zone): `layout(host, (slot) => page(slot, ...props))`. The layout renders
+      # its chrome with a `slot` outlet; the page builds straight into that outlet. This is the Remix / RR / Next shared
+      # layout, declared separately from the page via the route's `layout <name>` directive.
+      save page-args, one-value(variable(<slot>, at))
+      walk props
+        take prop
+        push(page-args, prop)
+      save page-body, make list
+      push(page-body, expression-statement(call-of(component/name, page-args, at), at))
+      save slot
+        make closure-param
+          bind name, <slot>
+      save thunk-params, make list
+      push(thunk-params, slot)
+      save page-thunk
+        make expression/closure
+          bind params, thunk-params
+          bind body, page-body
+          bind span, at
+      push(body, expression-statement(call-of(layout-name, two(variable(<host>, at), page-thunk), at), at))
+    miss
+      save page-args, one-value(variable(<host>, at))
+      walk props
+        take prop
+        push(page-args, prop)
+      push(body, expression-statement(call-of(component/name, page-args, at), at))
+
+  push(body, return-nothing(at))
+  back
+    make statement-branch
+      bind cond, condition(route/path, at)
+      bind body, body
+
+# the route's component: a web route without a proxy has one
+task component-of
+  take route, like dock-route
+  like dock-component
+  mark private
+
+  sift route/component
+    case some
+      link given
+      back given
+    case none
+      back
+        make dock-component
+          bind name, <>
+          bind props, make list
+
+# the layout a route names with a text, or `<>`
+task layout-of
+  take route, like dock-route
+  like text
+  mark private
+
+  walk route/directives
+    take directive
+    fork test, is-equal(directive/name, <layout>)
+      hold
+        sift directive/value
+          case some
+            link given
+            sift given
+              case string
+                back value
+              miss
+                turn next
+          case none
+            turn next
+  back <>
+
+task parameter
+  take name, like text
+  take kind, like type
+  like function-param
+  mark private
+
+  back
+    make function-param
+      bind name, name
+      bind type, make(some, kind)
+
+task lower-routes
+  take program, like list, like statement
+  take env, like text, fall <node>
+  like list, like statement
+
+  save routes, make list
+  walk program
+    take one
+    fork test, is-web-route(one)
+      hold
+        push(routes, one)
+  fork test, is-equal(routes/length, 0)
+    hold
+      back program
+
+  save first-route, get(routes, 0)
+  save at, route-span(first-route)
+
+  save branches, make list
+  walk routes
+    take one
+    sift one
+      case dock
+        push(branches, branch-of(route, at))
+      miss
+        turn next
+
+  # the types the dispatcher and the boot are checked at, so every backend emits them typed rather than inferred. Text
+  # and number are the primitive kinds; a `named` text was no type at all, and the checker now refuses it as unknown
+  save view-type
+    make type/named
+      bind name, <view>
+  save text-type, make type/string
+  save number-type, make type/number
+
+  # a path no hook matches is a page that is not there: 404, where every unknown path answered 200 with an empty page
+  # until 2026-10-04 (guides: applications/web/routes)
+  save missing, make list
+  push(missing, expression-statement(call-of(<set-status>, one-value(number-value(404, at)), at), at))
+  save dispatch
+    make statement/if
+      bind branches, branches
+      bind otherwise, make(some, missing)
+      bind span, at
+  save router-body, make list
+  push(router-body, dispatch)
+  save router-params, make list
+  push(router-params, parameter(<host>, view-type))
+  push(router-params, parameter(<path>, text-type))
+  save no-generics, make list
+  save router
+    make statement/function
+      bind name, <route>
+      bind params, router-params
+      bind body, router-body
+      bind generics, no-generics
+      bind span, at
+
+  # the boot: hand the dispatcher + port to the env-abstracted `host`. The browser `host` mounts on the body and
+  # listens for navigation; the node `host` starts an HTTP server that SSR-renders each request through the same
+  # `route`. One API, three impls -- the native-env mechanism picks which. Signature is `boot(url, port)` so `seed boot`
+  # (which calls `app.boot(url, port)`) runs the server entry directly.
+  #   function boot(url, port) { return host(route, port) }
+  # `boot` RETURNS whatever `host` returns: node/browser return nothing (harmless), but the Cloudflare host returns a
+  # Web fetch handler, which the emitted Worker entry re-exports as `export default`. So one boot serves every target.
+  save hosted, call-of(<host>, two(variable(<route>, at), variable(<port>, at)), at)
+  save handed
+    make statement/return
+      bind value, make(some, hosted)
+      bind span, at
+  save boot-body, make list
+  push(boot-body, handed)
+  save boot-params, make list
+  push(boot-params, parameter(<url>, text-type))
+  push(boot-params, parameter(<port>, number-type))
+  save boot-generics, make list
+  save boot
+    make statement/function
+      bind name, <boot>
+      bind params, boot-params
+      bind body, boot-body
+      bind generics, boot-generics
+      bind span, at
+
+  # drop the route statements; append the dispatcher and the boot
+  save out, make list
+  walk program
+    take one
+    fork test, not(is-web-route(one))
+      hold
+        push(out, one)
+  push(out, router)
+  push(out, boot)
+
+  # the browser build auto-runs the app on load (`boot("", 0)`); the node build leaves `boot` exported for `seed boot`
+  # to invoke with the real (url, port).
+  fork test, is-equal(env, <browser>)
+    hold
+      push(out, expression-statement(call-of(<boot>, two(text-value(<>, at), number-value(0, at)), at), at))
+
+  back out
+
+task route-span
+  take node, like statement
+  like span
+  mark private
+
+  sift node
+    case dock
+      back span
+    miss
+      back
+        make span
+          bind start, make-position()
+          bind end, make-position()
+
+task make-position
+  like position
+  mark private
+
+  back
+    make position
+      bind line, 0
+      bind column, 0

@@ -1,0 +1,29 @@
+# The cask side of the device smoke of device-layer-0013: open a window, load the device page, and answer what it posts
+# through the GENERATED dispatcher in ./dispatch.tree, which carries the device contracts to the platform's own API
+# through the toolkit host's runtimes. No window is shown: a test only talks over the bridge.
+
+load @term/cask/cask
+  find window
+  find open-window
+  find load-bundle
+  find on-message
+  find run
+
+load ./dispatch
+  find dispatch
+
+task boot
+  take bundle, like text
+  like void
+  save made
+    call open-window
+      text <Term device>
+      code 640
+      code 480
+  call on-message
+    read made
+    read dispatch
+  call load-bundle
+    read made
+    read bundle
+  call run

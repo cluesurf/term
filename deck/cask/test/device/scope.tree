@@ -1,0 +1,5 @@
+# What the device app may reach (app-scope, deck/call/code/scope.ts): the line its driver wrote in its bundle, and the
+# file in its data folder it writes its answers to. The device contracts are gated by the platform's own grants
+host file
+  list read, <$bundle/**>
+  list write, <$data/**>

@@ -1,0 +1,6 @@
+# The toolkit hosts answer every device module with the platform's own API (./camera, ./location and the rest), on
+# macOS, iOS and Android. Conforms to ../hosted.
+
+task has-device-host
+  like boolean
+  send back, true

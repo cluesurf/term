@@ -1,0 +1,622 @@
+# A program rewritten, every statement and expression in it, by a RULE: compile/node-walk's other half. node-walk
+# gathers what a pass reads; this hands back what a pass changes, so a pass that rewrites the program is a rule here
+# and not a walk of its own. Term hands a task no closure, so a rule is a case of `rewrite-rule`, and the walk asks it
+# of every expression after the expressions inside it, and of every statement after its blocks.
+#
+# Each node is changed where it stands, by a write to the case its arm matched, and every step hands back what it
+# wrote, so the answer is the program (D1). On TypeScript a write lands in the object it is written to, so a pass that
+# must leave its input alone (an emitter's, handed the program every backend shares) rewrites `copy-program` of it.
+# A `need false` list is written back only when it holds something, so a field left out stays out.
+#
+# Written for self-hosting, 2026-10-05, with compile/dock-apart.tree its first rule.
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+load ./node
+  find closure-param
+  find dock-call
+  find dock-component
+  find dock-route
+  find expression
+  find field-value
+  find form-extend
+  find statement
+  find view-node
+
+# what a rewrite changes
+form rewrite-rule
+  # a task named like a docked module, renamed with `suffix` (compile/dock-apart.tree): the task's definition, a
+  # call's callee, and a reference the checker bound to the task
+  case rename-tasks
+    link names, like list, like text
+    link suffix, like text
+
+# a whole program the caller may write without touching the one it was handed. Natively a value is already a copy
+bind copy-program
+  take value, like list, like statement
+  like list, like statement
+  case node
+    text <structuredClone($value)>
+  case browser
+    text <structuredClone($value)>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+# every statement of a program, rewritten
+task rewrite-program
+  take program, like list, like statement
+  take rule, like rewrite-rule
+  like list, like statement
+
+  back rewrite-block(program, rule)
+
+task rewrite-block
+  take block, like list, like statement
+  take rule, like rewrite-rule
+  like list, like statement
+  mark private
+
+  save out, make list
+  walk block
+    take one
+    push(out, rewrite-statement(one, rule))
+  back out
+
+task rewrite-maybe-block
+  take block, like maybe, like list, like statement
+  take rule, like rewrite-rule
+  like maybe, like list, like statement
+  mark private
+
+  sift block
+    case some
+      link body
+      save written, rewrite-block(body, rule)
+      back make(some, written)
+    case none
+      back make none
+
+task rewrite-list
+  take values, like list, like expression
+  take rule, like rewrite-rule
+  like list, like expression
+  mark private
+
+  save out, make list
+  walk values
+    take one
+    push(out, rewrite-expression(one, rule))
+  back out
+
+task rewrite-maybe
+  take value, like maybe, like expression
+  take rule, like rewrite-rule
+  like maybe, like expression
+  mark private
+
+  sift value
+    case some
+      link given
+      save written, rewrite-expression(given, rule)
+      back make(some, written)
+    case none
+      back make none
+
+task rewrite-fields
+  take fields, like list, like field-value
+  take rule, like rewrite-rule
+  like list, like field-value
+  mark private
+
+  save out, make list
+  walk fields
+    take field
+    save field/value, rewrite-expression(field/value, rule)
+    push(out, field)
+  back out
+
+task rewrite-expression
+  take given, like expression
+  take rule, like rewrite-rule
+  like expression
+
+  sift given
+    case template
+      save parts-out, make list
+      walk parts
+        take part
+        sift part
+          case value
+            link inner
+            save part/value, rewrite-expression(inner, rule)
+            push(parts-out, part)
+          miss
+            push(parts-out, part)
+      save given/parts, parts-out
+    case binary
+      save given/left, rewrite-expression(left, rule)
+      save given/right, rewrite-expression(right, rule)
+    case unary
+      save given/operand, rewrite-expression(operand, rule)
+    case call
+      save given/callee, rewrite-expression(callee, rule)
+      save given/args, rewrite-list(args, rule)
+    case array
+      save given/items, rewrite-list(items, rule)
+    case map
+      save entries-out, make list
+      walk entries
+        take entry
+        save entry/key, rewrite-expression(entry/key, rule)
+        save entry/value, rewrite-expression(entry/value, rule)
+        push(entries-out, entry)
+      save given/entries, entries-out
+    case record
+      save given/fields, rewrite-fields(fields, rule)
+      fork test, is-above(positional/length, 0)
+        hold
+          save positional-out, make list
+          walk positional
+            take one
+            push(positional-out, rewrite-expression(one, rule))
+          save given/positional, positional-out
+    case member
+      save given/target, rewrite-expression(target, rule)
+      sift index
+        case some
+          link at
+          save written-index, rewrite-expression(at, rule)
+          save given/index, make(some, written-index)
+        case none
+          save nothing, 0
+    case await
+      save given/expr, rewrite-expression(expr, rule)
+    case closure
+      save given/body, rewrite-block(body, rule)
+    case conditional
+      save branches-out, make list
+      walk branches
+        take branch
+        save branch/cond, rewrite-expression(branch/cond, rule)
+        save branch/value, rewrite-expression(branch/value, rule)
+        push(branches-out, branch)
+      save given/branches, branches-out
+      sift otherwise
+        case some
+          link other
+          save written-other, rewrite-expression(other, rule)
+          save given/otherwise, make(some, written-other)
+        case none
+          save nothing, 0
+    miss
+      save nothing, 0
+  back rule-expression(given, rule)
+
+task rewrite-statement
+  take one, like statement
+  take rule, like rewrite-rule
+  like statement
+
+  sift one
+    case let
+      save one/init, rewrite-expression(init, rule)
+    case assign
+      save one/target, rewrite-expression(target, rule)
+      save one/value, rewrite-expression(read(value), rule)
+    case expression
+      save one/expr, rewrite-expression(expr, rule)
+    case if
+      save branches-out, make list
+      walk branches
+        take branch
+        save branch/cond, rewrite-expression(branch/cond, rule)
+        save branch/body, rewrite-block(branch/body, rule)
+        push(branches-out, branch)
+      save one/branches, branches-out
+      sift otherwise
+        case some
+          save one/otherwise, rewrite-maybe-block(otherwise, rule)
+        case none
+          save nothing, 0
+    case while
+      save one/cond, rewrite-expression(cond, rule)
+      save one/body, rewrite-block(body, rule)
+      fork test, is-above(read(must)/length, 0)
+        hold
+          save must-out, make list
+          walk read(must)
+            take one-value
+            push(must-out, rewrite-expression(one-value, rule))
+          save one/must, must-out
+      sift down
+        case some
+          save one/down, rewrite-maybe(down, rule)
+        case none
+          save nothing, 0
+    case match
+      save one/subject, rewrite-expression(subject, rule)
+      save cases-out, make list
+      walk cases
+        take arm
+        save arm/body, rewrite-block(arm/body, rule)
+        push(cases-out, arm)
+      save one/cases, cases-out
+      sift otherwise
+        case some
+          save one/otherwise, rewrite-maybe-block(otherwise, rule)
+        case none
+          save nothing, 0
+    case for-each
+      save one/iterable, rewrite-expression(iterable, rule)
+      save one/body, rewrite-block(body, rule)
+      fork test, is-above(read(must)/length, 0)
+        hold
+          save must-out, make list
+          walk read(must)
+            take one-value
+            push(must-out, rewrite-expression(one-value, rule))
+          save one/must, must-out
+    case return
+      sift value
+        case some
+          link handed
+          save written-value, rewrite-expression(handed, rule)
+          save one/value, make(some, written-value)
+        case none
+          save nothing, 0
+    case throw
+      save one/value, rewrite-expression(read(value), rule)
+    case guard
+      save one/body, rewrite-block(body, rule)
+      sift catch
+        case some
+          link clause
+          save clause/body, rewrite-block(clause/body, rule)
+          save one/catch, make(some, clause)
+        case none
+          save nothing, 0
+    case hold
+      save one/expr, rewrite-expression(expr, rule)
+    case function
+      save params-out, make list
+      walk params
+        take param
+        sift param/fallback
+          case some
+            save param/fallback, rewrite-maybe(param/fallback, rule)
+          case none
+            save nothing, 0
+        push(params-out, param)
+      save one/params, params-out
+      save one/body, rewrite-block(body, rule)
+      fork test, is-above(universals/length, 0)
+        hold
+          save universals-out, make list
+          walk universals
+            take universal
+            save universal/expr, rewrite-expression(universal/expr, rule)
+            push(universals-out, universal)
+          save one/universals, universals-out
+      fork test, is-above(read(have)/length, 0)
+        hold
+          save have-out, make list
+          walk read(have)
+            take one-value
+            push(have-out, rewrite-expression(one-value, rule))
+          save one/have, have-out
+      fork test, is-above(read(must)/length, 0)
+        hold
+          save must-out, make list
+          walk read(must)
+            take one-value
+            push(must-out, rewrite-expression(one-value, rule))
+          save one/must, must-out
+      sift down
+        case some
+          save one/down, rewrite-maybe(down, rule)
+        case none
+          save nothing, 0
+      sift stub-shape
+        case some
+          link shape
+          save written-shape, rewrite-statement(shape, rule)
+          save one/stub-shape, make(some, written-shape)
+        case none
+          save nothing, 0
+    case record-type
+      save fields-out, make list
+      walk fields
+        take field
+        sift field/fallback
+          case some
+            save field/fallback, rewrite-maybe(field/fallback, rule)
+          case none
+            save nothing, 0
+        push(fields-out, field)
+      save one/fields, fields-out
+      save variants-out, make list
+      walk variants
+        take variant
+        fork test, is-above(variant/index-values/length, 0)
+          hold
+            save index-out, make list
+            walk variant/index-values
+              take one-value
+              push(index-out, rewrite-expression(one-value, rule))
+            save variant/index-values, index-out
+        push(variants-out, variant)
+      save one/variants, variants-out
+      sift extend
+        case some
+          link extended
+          save written-extend, rewrite-extend(extended, rule)
+          save one/extend, make(some, written-extend)
+        case none
+          save nothing, 0
+      fork test, is-above(pins/length, 0)
+        hold
+          save pins-out, make list
+          walk pins
+            take pin
+            save pin/value, rewrite-expression(pin/value, rule)
+            push(pins-out, pin)
+          save one/pins, pins-out
+    case view
+      save one/body, rewrite-views(body, rule)
+    case dock
+      save one/route, rewrite-route(route, rule)
+    miss
+      save nothing, 0
+  back rule-statement(one, rule)
+
+task rewrite-extend
+  take extended, like form-extend
+  take rule, like rewrite-rule
+  like form-extend
+  mark private
+
+  save links-out, make list
+  walk extended/links
+    take link-one
+    sift link-one/fallback
+      case some
+        save link-one/fallback, rewrite-maybe(link-one/fallback, rule)
+      case none
+        save nothing, 0
+    push(links-out, link-one)
+  save extended/links, links-out
+  save extended/pins, rewrite-fields(extended/pins, rule)
+  back extended
+
+task rewrite-views
+  take nodes, like list, like view-node
+  take rule, like rewrite-rule
+  like list, like view-node
+  mark private
+
+  save out, make list
+  walk nodes
+    take one
+    sift one
+      case element
+        save attributes-out, make list
+        walk attributes
+          take attribute
+          save attribute/value, rewrite-expression(attribute/value, rule)
+          push(attributes-out, attribute)
+        save one/attributes, attributes-out
+        save one/props, rewrite-fields(props, rule)
+        save one/children, rewrite-views(children, rule)
+      case read
+        save one/value, rewrite-expression(read(value), rule)
+      case fork
+        save branches-out, make list
+        walk branches
+          take branch
+          save branch/cond, rewrite-expression(branch/cond, rule)
+          save branch/body, rewrite-views(branch/body, rule)
+          push(branches-out, branch)
+        save one/branches, branches-out
+        fork test, is-above(otherwise/length, 0)
+          hold
+            save otherwise-out, make list
+            walk otherwise
+              take other
+              push(otherwise-out, other)
+            save one/otherwise, rewrite-views(otherwise-out, rule)
+      case walk
+        save one/iterable, rewrite-expression(iterable, rule)
+        save one/body, rewrite-views(body, rule)
+      case save
+        save one/value, rewrite-expression(read(value), rule)
+      case call
+        save one/value, rewrite-expression(read(value), rule)
+      miss
+        save nothing, 0
+    push(out, one)
+  back out
+
+task rewrite-calls
+  take calls, like list, like dock-call
+  take rule, like rewrite-rule
+  like list, like dock-call
+  mark private
+
+  save out, make list
+  walk calls
+    take one-call
+    save arguments-out, make list
+    walk one-call/args
+      take argument
+      save argument/value, rewrite-expression(argument/value, rule)
+      push(arguments-out, argument)
+    save one-call/args, arguments-out
+    push(out, one-call)
+  back out
+
+task rewrite-route
+  take route, like dock-route
+  take rule, like rewrite-rule
+  like dock-route
+  mark private
+
+  save methods-out, make list
+  walk route/methods
+    take method
+    save method/calls, rewrite-calls(method/calls, rule)
+    save sends-out, make list
+    walk method/sends
+      take send
+      sift send/value
+        case some
+          save send/value, rewrite-maybe(send/value, rule)
+        case none
+          save nothing, 0
+      push(sends-out, send)
+    save method/sends, sends-out
+    push(methods-out, method)
+  save route/methods, methods-out
+  save route/calls, rewrite-calls(route/calls, rule)
+  sift route/component
+    case some
+      link component
+      save props-out, make list
+      walk component/props
+        take prop
+        save prop/value, rewrite-expression(prop/value, rule)
+        push(props-out, prop)
+      save component/props, props-out
+      save route/component, make(some, component)
+    case none
+      save nothing, 0
+  save directives-out, make list
+  walk route/directives
+    take send
+    sift send/value
+      case some
+        save send/value, rewrite-maybe(send/value, rule)
+      case none
+        save nothing, 0
+    push(directives-out, send)
+  save route/directives, directives-out
+  save sends-out, make list
+  walk route/sends
+    take send
+    sift send/value
+      case some
+        save send/value, rewrite-maybe(send/value, rule)
+      case none
+        save nothing, 0
+    push(sends-out, send)
+  save route/sends, sends-out
+  save hooks-out, make list
+  walk route/hooks
+    take hook
+    save hook/calls, rewrite-calls(hook/calls, rule)
+    push(hooks-out, hook)
+  save route/hooks, hooks-out
+  save children-out, make list
+  walk route/children
+    take child
+    push(children-out, rewrite-route(child, rule))
+  save route/children, children-out
+  back route
+
+# ---- the rules ----
+
+# what a rule does to one expression, once the expressions inside it are rewritten
+task rule-expression
+  take given, like expression
+  take rule, like rewrite-rule
+  like expression
+  mark private
+
+  sift rule
+    case rename-tasks
+      save renamed, names
+      back rename-in-expression(given, renamed, suffix)
+
+# what a rule does to one statement, once its blocks are rewritten
+task rule-statement
+  take one, like statement
+  take rule, like rewrite-rule
+  like statement
+  mark private
+
+  sift rule
+    case rename-tasks
+      sift one
+        case function
+          fork test, has-text(names, name)
+            hold
+              save one/name, <{name}{suffix}>
+        miss
+          back one
+      back one
+
+# a reference the checker bound to a renamed task, and a call's callee of that name: a dock is reached only through a
+# member (`log/write-warn`), never called itself, and a callee does not always carry its binding
+task rename-in-expression
+  take given, like expression
+  # not `names`: a call's own field of that name would hide it inside the call's arm
+  take renamed, like list, like text
+  take suffix, like text
+  like expression
+  mark private
+
+  sift given
+    case variable
+      fork test, and(has-text(renamed, name), binds-task(binding))
+        hold
+          save given/name, <{name}{suffix}>
+      back given
+    case call
+      save target, callee
+      sift target
+        case variable
+          fork test, has-text(renamed, name)
+            hold
+              save target/name, <{name}{suffix}>
+              save given/callee, target
+        miss
+          back given
+      back given
+    miss
+      back given
+
+task binds-task
+  take binding, like maybe, like binding
+  like boolean
+  mark private
+
+  sift binding
+    case some
+      link bound
+      sift bound
+        case function
+          back true
+        miss
+          back false
+    case none
+      back false

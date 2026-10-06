@@ -1,6 +1,7 @@
-// `term feed` on the scaffold `term wake` writes (guides: commands/feed, 2026-10-04): the page calls the program's
-// `boot`, so its `log` reaches the browser console, and a port is checked before it is used. Until then nothing
-// called `boot`, the scaffold logged nothing, and a taken `-p` failed inside the server.
+// The browser development server on the scaffold `term wake` writes (guides: commands/boot, "In a browser"): the page
+// calls the program's `boot`, so its `log` reaches the browser console, and a port is checked before it is used. Until
+// 2026-10-04 nothing called `boot`, the scaffold logged nothing, and a taken `-p` failed inside the server. It was
+// `term feed` until 2026-10-05 and is `term boot --env browser` (development, the default) since
 //
 // Run: npx tsx test/call/feed.ts (after `pnpm run make:line`)
 
@@ -36,13 +37,16 @@ type Page = {
 }
 type Chromium = { launch: (o: { headless: boolean }) => Promise<{ newPage: () => Promise<Page>; close: () => Promise<void> }> }
 
+// the server's command line
+const SERVE = ['boot', '--env', 'browser']
+
 const project = mkdtempSync(join(tmpdir(), 'term-feed-'))
 mkdirSync(join(project, 'code'))
 writeFileSync(join(project, 'deck.tree'), 'deck hello\n  mark <0.0.1>\n  boot ./code/boot\n')
 writeFileSync(join(project, 'code/boot.tree'), 'load @term/base/console\n  find log\n\ntask boot\n  mark async\n  log <hello from term>\n')
 
 async function feed(args: string[]): Promise<{ child: ChildProcess; log: () => string }> {
-  const child = spawn('node', [LINE, 'feed', ...args], { cwd: project, env: { ...process.env, NO_COLOR: '1' } })
+  const child = spawn('node', [LINE, ...SERVE, ...args], { cwd: project, env: { ...process.env, NO_COLOR: '1' } })
   let log = ''
   child.stdout!.on('data', chunk => (log += String(chunk)))
   child.stderr!.on('data', chunk => (log += String(chunk)))
@@ -97,7 +101,7 @@ async function feed(args: string[]): Promise<{ child: ChildProcess; log: () => s
   await new Promise<void>(done => holder.listen(5392, () => done()))
 
   try {
-    const taken = spawnSync('node', [LINE, 'feed', '-p', '5392'], { cwd: project, encoding: 'utf8', timeout: 60_000, env: { ...process.env, NO_COLOR: '1' } })
+    const taken = spawnSync('node', [LINE, ...SERVE, '-p', '5392'], { cwd: project, encoding: 'utf8', timeout: 60_000, env: { ...process.env, NO_COLOR: '1' } })
     const said = `${taken.stdout}${taken.stderr}`
     ok('a `-p` that is taken is refused, naming `term halt -p`, exit 3', taken.status === 3 && /Port 5392 is in use/.test(said) && /term halt -p 5392/.test(said), `${taken.status} ${said}`)
   } finally {
@@ -125,14 +129,15 @@ async function feed(args: string[]): Promise<{ child: ChildProcess; log: () => s
 // the handler was added after `start`, so an interrupt during the first build met node's default: exit 130 and no
 // closing item (guides: commands/feed, 2026-10-05)
 {
-  const child = spawn('node', [LINE, 'feed', '-p', '5394'], { cwd: project, env: { ...process.env, NO_COLOR: '1' } })
+  const child = spawn('node', [LINE, ...SERVE, '-p', '5394'], { cwd: project, env: { ...process.env, NO_COLOR: '1' } })
   let log = ''
   child.stdout!.on('data', chunk => (log += String(chunk)))
   child.stderr!.on('data', chunk => (log += String(chunk)))
   const exited = new Promise<number | null>(done => child.once('exit', code => done(code)))
   const started = Date.now()
 
-  while (!/· feed/.test(log) && Date.now() - started < 30_000 && child.exitCode === null) {
+  // the opening item, `term 2.7.4 · development · browser`
+  while (!/· browser/.test(log) && Date.now() - started < 30_000 && child.exitCode === null) {
     await new Promise(done => setTimeout(done, 20))
   }
 

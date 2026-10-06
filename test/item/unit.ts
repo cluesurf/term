@@ -183,17 +183,17 @@ function size(bytes: number): string {
   return spansText(formatSize(bytes, STANDARD))
 }
 
-same('999 ms stays milliseconds', duration(999), '999 ms')
-same('1000 ms is 1.00 s', duration(1000), '1.00 s')
-same('4 ms', duration(4), '4 ms')
-same('2900 ms is 2.90 s', duration(2900), '2.90 s')
-same('24100 ms is 24.1 s', duration(24100), '24.1 s')
-same('59.9 s', duration(59900), '59.9 s')
+same('999 ms stays milliseconds, the unit attached (D44)', duration(999), '999ms')
+same('1000 ms is 1.00 s', duration(1000), '1.00s')
+same('4 ms', duration(4), '4ms')
+same('2900 ms is 2.90 s', duration(2900), '2.90s')
+same('24100 ms is 24.1 s', duration(24100), '24.1s')
+same('59.9 s', duration(59900), '59.9s')
 same('59.99 s rounds to a minute, not to 60.0 s', duration(59990), '1m 00s')
 same('60 s is 1m 00s', duration(60000), '1m 00s')
 same('2m 05s', duration(125000), '2m 05s')
 same('10h 12m', duration(36720000), '10h 12m')
-same('0 ms', duration(0), '0 ms')
+same('0 ms', duration(0), '0ms')
 same('84 B', size(84), '84 B')
 same('99.9 kB', size(99900), '99.9 kB')
 same('99.96 kB rounds to 100 kB, not 100.0 kB', size(99960), '100 kB')
@@ -477,7 +477,7 @@ same('the closing item carries the exit', closeSession(runOf(['failed']), ev({ s
 
 {
   const one = room(80)
-  same('a request as one sentence, the spec example', speakEvent(ev({ glyph: 'done', kind: 'request', verb: 'GET', subject: '/shape', clock: '14:02:07.412', duration: 18, http: 200, bytes: 84 }), one), 'done: GET /shape, 18 ms, HTTP 200, 84 bytes')
+  same('a request as one sentence, the spec example', speakEvent(ev({ glyph: 'done', kind: 'request', verb: 'GET', subject: '/shape', clock: '14:02:07.412', duration: 18, http: 200, bytes: 84 }), one), 'done: GET /shape, 18ms, HTTP 200, 84 bytes')
   const progress = speakEvent(ev({ glyph: 'running', kind: 'progress', verb: 'build', subject: 'rust', clock: '14:42:02.900', duration: 2900, done: 31, total: 46 }), one)
   ok('progress is a count, never a bar or a spinner', !/[━─◐◓◑◒]/.test(progress) && progress.includes('31 of 46'), `  ${progress}`)
   same('a size of 1 byte is singular', speakEvent(ev({ glyph: 'done', verb: 'write', subject: 'x', bytes: 1 }), one), 'done: write x, 1 byte')
@@ -649,7 +649,7 @@ function runChild(flags: string[], environment: Record<string, string> = {}) {
   // the source is the fact after the clock (section 6), and never a tag on the title
   ok('a JSON line is an item: level the glyph, logger the verb cut to 7 cells, msg the subject, tagged', /✗ databa… Connection lost\n {2}[\d:.]+ · server/.test(adapted.stderr), adapted.stderr)
   ok('its other keys are fields', /host +db1/.test(adapted.stderr), adapted.stderr)
-  ok('a logfmt line on stderr is an item too, with its duration', /▲ smtp slow to respond\n {2}[\d:.]+ · server · 3\.00 s/.test(adapted.stderr), adapted.stderr)
+  ok('a logfmt line on stderr is an item too, with its duration', /▲ smtp slow to respond\n {2}[\d:.]+ · server · 3\.00s/.test(adapted.stderr), adapted.stderr)
   ok('plain text is QUOTED under one `log` item named for the child, a `⇒` payload line', /● log server\n {2}⇒ listening on 4000/.test(adapted.stderr), adapted.stderr)
   same('nothing the child wrote reaches stdout', adapted.stdout, '')
 
@@ -710,7 +710,7 @@ function withStandard(change: (standard: Standard) => void): Room {
 {
   const shipped = { ...room(80), standard: makeStandard() }
   const clockOf = (event: Event): string => texts(drawItem(event, shipped, true))[1] ?? ''
-  same('a quick step shows no clock', clockOf(ev({ glyph: 'done', verb: 'build', subject: 'typescript', clock: '14:42:00.410', duration: 410 })), '  410 ms')
+  same('a quick step shows no clock', clockOf(ev({ glyph: 'done', verb: 'build', subject: 'typescript', clock: '14:42:00.410', duration: 410 })), '  410ms')
   same('a change with nothing else has no facts line at all', texts(drawItem(ev({ glyph: 'added', kind: 'change', verb: 'add', subject: 'deck.tree', clock: '14:42:00.410' }), shipped, true)).length, 1)
   ok('a step that took a second shows its clock', clockOf(ev({ glyph: 'done', verb: 'build', subject: 'rust', clock: '14:42:00.410', duration: 1000 })).includes('14:42:00.410'))
   ok('a request, a line of a live log, shows its clock', clockOf(ev({ glyph: 'done', kind: 'request', verb: 'GET', subject: '/', clock: '14:42:00.410', duration: 4 })).includes('14:42:00.410'))
@@ -726,7 +726,7 @@ function withStandard(change: (standard: Standard) => void): Room {
 
 {
   const event = ev({ glyph: 'done', verb: 'build', subject: 'typescript', clock: '14:42:00.410', duration: 410, tallies: [tally(46, 'files', '', 46)] })
-  same('the standard as written', texts(drawItem(event, room(80), true)), ['✓ build typescript', '  14:42:00.410 · 410 ms · 46/46 files'])
+  same('the standard as written', texts(drawItem(event, room(80), true)), ['✓ build typescript', '  14:42:00.410 · 410ms · 46/46 files'])
   same(
     'a wider verb column and body column move every line',
     texts(
@@ -739,7 +739,7 @@ function withStandard(change: (standard: Standard) => void): Room {
         true,
       ),
     ),
-    ['✓ build      typescript', '             14:42:00.410 · 410 ms · 46/46 files'],
+    ['✓ build      typescript', '             14:42:00.410 · 410ms · 46/46 files'],
   )
   same(
     'a different glyph for done',
@@ -749,12 +749,17 @@ function withStandard(change: (standard: Standard) => void): Room {
   same(
     'a different fact separator',
     texts(drawItem(event, withStandard(standard => void (standard.symbols.find(one => one.name === 'separator')!.unicode = '|')), true))[1],
-    '  14:42:00.410 | 410 ms | 46/46 files',
+    '  14:42:00.410 | 410ms | 46/46 files',
   )
   same(
     'a different duration unit',
     texts(drawItem(event, withStandard(standard => void (standard.durations.millisecondUnit = 'msec')), true))[1],
-    '  14:42:00.410 · 410 msec · 46/46 files',
+    '  14:42:00.410 · 410msec · 46/46 files',
+  )
+  same(
+    'a duration unit set apart again (unit-gap true)',
+    texts(drawItem(event, withStandard(standard => void (standard.durations.unitGap = true)), true))[1],
+    '  14:42:00.410 · 410 ms · 46/46 files',
   )
   const capped = withStandard(standard => void (standard.caps.problems = 2))
   same(
@@ -800,7 +805,7 @@ function withStandard(change: (standard: Standard) => void): Room {
   const wideToken = '漢'.repeat(50)
   fits('a token of wide characters with no break point', drawItem(ev({ glyph: 'done', verb: 'fetch', subject: wideToken, clock: '14:42:00.410' }), room(40), true), 40)
   same('an unknown glyph draws as info', texts(drawItem(ev({ glyph: 'sparkle', verb: 'x', subject: 'y' }), one, true))[0], '● x y')
-  same('an event with no clock draws no clock', texts(drawItem(ev({ glyph: 'done', verb: 'build', subject: 'x', duration: 410 }), one, true)), ['✓ build x', '  410 ms'])
+  same('an event with no clock draws no clock', texts(drawItem(ev({ glyph: 'done', verb: 'build', subject: 'x', duration: 410 }), one, true)), ['✓ build x', '  410ms'])
 }
 
 console.log(`\nitem/unit: ${pass} pass, ${fail} fail`)

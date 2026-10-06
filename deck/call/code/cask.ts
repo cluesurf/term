@@ -279,9 +279,13 @@ export function buildProgram({
   work: string
   target?: CaskTarget
 }): { source: string; native: string } {
+  // the platform's own env, not bare `swift`: its chain (the platform, apple, toolkit, swift) reaches the toolkit host
+  // a device module answers through, so a page's camera or clipboard call is answered by the platform's API in the cask
+  // as in a toolkit app (device-layer-0013). Under `swift` every device module resolved to its `unavailable` fallback
+  const env = target === 'ios' ? 'ios' : 'macos'
   const result = compile(
     { file: entry, text: readFileSync(entry, 'utf8') },
-    { resolve: projectResolver(root, 'swift'), env: 'swift' },
+    { resolve: projectResolver(root, env), env },
   )
 
   if (!result.ok) {
@@ -294,7 +298,7 @@ export function buildProgram({
   }
 
   const swift = emitSwift(result.program)
-  const prelude = nativePrelude(result.program, 'swift', readRuntime, swift)
+  const prelude = nativePrelude(result.program, env, readRuntime, swift)
   // a `boot` that can raise is `throws` in Swift, and the top-level line calling it must say `try`: it did not, and
   // the windows cask stopped building once `file/read` raised `absence` (2026-10-04). An error reaching the top
   // level ends the program with its message, which is what a raise nothing caught means
@@ -623,15 +627,16 @@ export function buildAndroidProgram({
   identifier,
   driver,
   work,
-  env = 'kotlin',
+  env = 'android',
 }: {
   root: string
   entry: string
   identifier: string
   driver: string
   work: string
-  // `android` for a program drawn in Android's own views (the toolkit view host, native-dom-0006), where the env
-  // chain reaches deck/site/code/dom/native/toolkit. The cask's own program is `kotlin`
+  // `android`, whose chain reaches the toolkit hosts: the toolkit view host for a program drawn in Android's own views
+  // (native-dom-0006), and for the cask's own program the device modules' hosts (device-layer-0013). Under bare
+  // `kotlin` a cask answered every device call with its `unavailable` fallback
   env?: 'kotlin' | 'android'
 }): { dex: string; native: string } {
   const tools = androidTools()
@@ -1016,7 +1021,7 @@ export function makeDmg({ app, name, out }: { app: string; name: string; out: st
 }
 
 // the env each target's cask program is compiled for, which decides how its `{platform}` loads resolve
-const CASK_PROGRAM_ENV: Record<CaskTarget, NativeEnv> = { macos: 'swift', ios: 'swift', android: 'android', windows: 'rust', linux: 'rust' }
+const CASK_PROGRAM_ENV: Record<CaskTarget, NativeEnv> = { macos: 'macos', ios: 'ios', android: 'android', windows: 'rust', linux: 'rust' }
 
 // the app's scope (deck/call/code/scope.ts): what its page reaches (and so what crosses the bridge) and what its cask
 // program reaches natively, each capability of it named in the app's scope.tree, or the build is refused

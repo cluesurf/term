@@ -115,7 +115,11 @@ task gather-expression
       walk fields
         take field
         gather-expression(field/value, out)
-      gather-list(positional, out)
+      # a `need false` list is walked where it is read, never handed on: a list only walked is read without being put
+      # in the record (compile/typescript.ts `onlyReads`), so the walk leaves the program as it found it
+      walk positional
+        take one
+        gather-expression(one, out)
     case member
       gather-expression(target, out)
       gather-maybe(index, out)
@@ -179,7 +183,9 @@ task gather-statement
     case while
       gather-expression(cond, out)
       gather-block(body, out)
-      gather-list(must, out)
+      walk read(must)
+        take one
+        gather-expression(one, out)
       gather-maybe(down, out)
     case match
       gather-expression(subject, out)
@@ -190,7 +196,9 @@ task gather-statement
     case for-each
       gather-expression(iterable, out)
       gather-block(body, out)
-      gather-list(must, out)
+      walk read(must)
+        take one
+        gather-expression(one, out)
     case return
       gather-maybe(read(value), out)
     case throw
@@ -213,8 +221,12 @@ task gather-statement
       walk universals
         take one
         gather-expression(one/expr, out)
-      gather-list(have, out)
-      gather-list(must, out)
+      walk read(have)
+        take one
+        gather-expression(one, out)
+      walk read(must)
+        take one
+        gather-expression(one, out)
       gather-maybe(down, out)
       sift stub-shape
         case some
@@ -228,7 +240,9 @@ task gather-statement
         gather-maybe(field/fallback, out)
       walk variants
         take variant
-        gather-list(variant/index-values, out)
+        walk variant/index-values
+          take one
+          gather-expression(one, out)
       gather-extend(extend, out)
       walk pins
         take pin

@@ -1,0 +1,562 @@
+# Every type a task or form names is a type the program has.
+#
+# The seeding pass reads a name it does not know as a hole, "infer it from usage rather than forcing a mismatch"
+# (check/type-seed.ts), so `take x, like widgett` built with no message and `x` took the type of its first call
+# (guides: types, types/annotations, types/inference, 2026-10-03). A misspelled type was a missing type, in silence.
+#
+# The seeder cannot report, since it has no span. This pass reads the declared types where they are written (each
+# task's parameters and result, each form's fields) and refuses a named type that is none of: a form, a mask, an
+# opaque `dock type`, a name the language gives (`list`, `hash`, `unknown`, `type`), or a type parameter its task
+# or form declares. It reads only the file being compiled, so a dependency is held to it where it is compiled itself.
+#
+# Ported from check/type-names.ts (self-hosting, 2026-10-05). Its search for constructions walked a body by
+# reflection; here it reads compile/node-walk's expressions.
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find ends-with
+  find substring
+
+load ../parser/diagnostic
+  find diagnostic
+  find diagnose
+  find diagnostic-input
+  find span
+
+load ../compile/node
+  find expression
+  find statement
+  find type
+  find declared-param
+  find declared-signature
+  find function-param
+  find form-field
+  find variant-field
+
+load ../compile/node-walk
+  find expressions-in
+
+# the names the seeder reads specially, and the language's own: the same list as `PRIMITIVE_TYPE_NAMES` in
+# check/infer.ts, whose warning this refusal hardens. A type argument (`like hash, like text, like number`) stays a
+# `named` type where a parameter's own `like text` is already the primitive, so the primitives must be here too
+task given-names
+  like list, like text
+  mark private
+
+  back split-words(<u8 u16 u32 u64 u128 i8 i16 i32 i64 i128 integer number decimal float f32 f64 dynamic json bytes buffer text boolean void unknown any unit list hash task string natural self type size>)
+
+task split-words
+  take words, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  save count, words/length
+  save start, 0
+  save at, 0
+  walk test
+    hook test, is-maximum(at, count)
+    hook hold
+      fork test, or(is-equal(at, count), is-equal(substring(words, at, add(at, 1)), < >))
+        hold
+          fork test, is-above(at, start)
+            hold
+              push(out, substring(words, start, at))
+          save start, add(at, 1)
+      save at, add(at, 1)
+  back out
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+task file-of
+  take at, like span
+  like text
+  mark private
+
+  sift at/file
+    case some
+      link written
+      back written
+    case none
+      back <>
+
+# every name a type names, in order
+task named-in
+  take given, like maybe, like type
+  take out, like list, like text
+  like list, like text
+  mark private
+
+  sift given
+    case some
+      link one
+      back named-in-type(one, out)
+    case none
+      back out
+
+task named-in-type
+  take one, like type
+  take out, like list, like text
+  like list, like text
+  mark private
+
+  save found, out
+  sift one
+    case named
+      push(found, name)
+      walk args
+        take arg
+        save found, named-in-type(arg, found)
+    case array
+      save found, named-in-type(element, found)
+    case map
+      save found, named-in-type(key, found)
+      save found, named-in-type(value, found)
+    case function
+      walk params
+        take param
+        save found, named-in-type(param, found)
+      save found, named-in-type(result, found)
+    miss
+      back found
+  back found
+
+# does a type name the form `name` anywhere without type arguments
+task bare-self
+  take one, like type
+  # not `name`: a named type's own field of that name would hide it inside the arm
+  take form-name, like text
+  like boolean
+  mark private
+
+  sift one
+    case named
+      fork test, and(is-equal(name, form-name), is-equal(args/length, 0))
+        hold
+          back true
+      walk args
+        take arg
+        fork test, bare-self(arg, form-name)
+          hold
+            back true
+      back false
+    case array
+      back bare-self(element, form-name)
+    case map
+      back or(bare-self(key, form-name), bare-self(value, form-name))
+    case function
+      walk params
+        take param
+        fork test, bare-self(param, form-name)
+          hold
+            back true
+      back bare-self(result, form-name)
+    miss
+      back false
+
+# whether a type is a task to `type`, the shape of a type family
+task is-family-type
+  take given, like maybe, like type
+  like boolean
+  mark private
+
+  sift given
+    case some
+      link one
+      sift one
+        case function
+          sift result
+            case named
+              back is-equal(name, <type>)
+            miss
+              back false
+        miss
+          back false
+    case none
+      back false
+
+task is-named-type
+  take given, like maybe, like type
+  like boolean
+  mark private
+
+  sift given
+    case some
+      link one
+      sift one
+        case named
+          back is-equal(name, <type>)
+        miss
+          back false
+    case none
+      back false
+
+# the refusals so far, and the places already refused: a name is refused once at a place
+form refusals
+  mark shared
+  link found, like list, like diagnostic
+  link keys, like list, like text
+
+task refuse
+  take out, like refusals
+  take file, like text
+  take name, like text
+  take at, like span
+  take where, like text
+  like void
+  mark private
+
+  save line, at/start/line
+  save column, at/start/column
+  save key, <{line}:{column}:{name}>
+  fork test, has-text(out/keys, key)
+    hold
+      back
+  push(out/keys, key)
+  push(out/found, refusal(file, at, <the type "{name}" is not defined ({where}). A misspelled type used to be read as no type at all>, <name a form, a mask, or a type parameter the task or form declares with `head`>))
+
+task refusal
+  take file, like text
+  take at, like span
+  take message, like text
+  take hint, like text
+  like diagnostic
+  mark private
+
+  save input
+    make diagnostic-input
+      bind file, file
+      bind span, at
+      bind message, make(some, message)
+      bind hint, make(some, hint)
+  save kind, make unknown-name
+  back diagnose(kind, input)
+
+task check-type
+  take out, like refusals
+  take file, like text
+  take known, like list, like text
+  take given, like maybe, like type
+  take generics, like list, like text
+  take at, like span
+  take where, like text
+  like void
+  mark private
+
+  save names, make list
+  save names, named-in(given, names)
+  walk names
+    take name
+    fork test, and(not(has-text(known, name)), not(has-text(generics, name)))
+      hold
+        refuse(out, file, name, at, where)
+
+task check-type-names
+  take program, like list, like statement
+  take file, like text
+  like list, like diagnostic
+
+  save known, given-names()
+  walk program
+    take one
+    sift one
+      case record-type
+        push(known, name)
+        walk variants
+          take variant
+          push(known, variant/name)
+      case mask
+        push(known, name)
+      # a task to `type` is a type family, and `like pos / head / read s` names it (test/check/container.ts)
+      case function
+        save written, result
+        sift declared
+          case some
+            link signature
+            sift signature/result
+              case some
+                link given
+                save written, make(some, given)
+              case none
+                save written, result
+          case none
+            save written, result
+        fork test, is-named-type(written)
+          hold
+            push(known, name)
+      # an opaque handle type (`dock type / load <Native>, name x`), and any other native declaration that names one
+      case native
+        fork test, is-unequal(alias, <>)
+          hold
+            push(known, alias)
+      miss
+        turn next
+
+  save out
+    make refusals
+      bind found, make list
+      bind keys, make list
+
+  # the forms by name, the last of a name winning, for a method's owner
+  save form-names, make list
+  save form-params, make list
+  walk program
+    take one
+    sift one
+      case record-type
+        push(form-names, name)
+        push(form-params, params)
+      miss
+        turn next
+
+  walk program
+    take one
+    sift one
+      case function
+        fork test, or(is-unequal(file-of(span), file), stub)
+          hold
+            turn next
+        save task-span, span
+        save task-params, params
+        # a method sees its form's type parameters as well as its own. Not `generics`: the task's own field of that
+        # name is what is read here
+        save type-params, make list
+        walk generics
+          take generic
+          push(type-params, generic/name)
+        sift method
+          case some
+            link of
+            save owner, -1
+            walk form-names
+              take seen
+              take index
+              fork test, is-equal(seen, of/form)
+                hold
+                  save owner, index
+            fork test, is-minimum(owner, 0)
+              hold
+                walk get(form-params, owner)
+                  take param
+                  push(type-params, param)
+          case none
+            save owner, -1
+
+        # the types as written: the declared signature, or the parameters' and the result's own
+        save written-params, make list
+        save written-result, result
+        sift declared
+          case some
+            link signature
+            walk signature/params
+              take param
+              push(written-params, param/type)
+            save written-result, signature/result
+          case none
+            walk task-params
+              take param
+              push(written-params, param/type)
+
+        # and a TYPE FAMILY is a parameter that is a task to `type`, used as a type (`take p / like task / ... / like
+        # type`, then `like p / head / read x`): the proof library's substitution and its convoy are built on one
+        walk task-params
+          take param
+          take index
+          save param-type, param/type
+          fork test, is-below(index, written-params/length)
+            hold
+              save from-signature, get(written-params, index)
+              sift from-signature
+                case some
+                  save param-type, from-signature
+                case none
+                  save param-type, param/type
+          fork test, is-family-type(param-type)
+            hold
+              push(type-params, param/name)
+
+        save shown, name
+        sift method
+          case some
+            link of
+            save shown, of/name
+          case none
+            save shown, name
+        save where, <in `{shown}`>
+
+        # each parameter at its own `take` line, the result at the task
+        walk written-params
+          take param-type
+          take index
+          save at, task-span
+          fork test, is-below(index, task-params/length)
+            hold
+              save param, get(task-params, index)
+              sift param/span
+                case some
+                  link given
+                  save at, given
+                case none
+                  save at, task-span
+          check-type(out, file, known, param-type, type-params, at, where)
+        check-type(out, file, known, written-result, type-params, task-span, where)
+
+      case record-type
+        fork test, is-unequal(file-of(span), file)
+          hold
+            turn next
+        save form-span, span
+        save form-name, name
+        save where, <in the form `{form-name}`>
+        # each field at its own `link` line
+        save any-bare, false
+        walk fields
+          take field
+          check-type(out, file, known, make(some, field/type), params, field-span(field/span, form-span), where)
+          fork test, bare-self(field/type, form-name)
+            hold
+              save any-bare, true
+        walk variants
+          take variant
+          walk variant/fields
+            take field
+            check-type(out, file, known, make(some, field/type), params, field-span(field/span, form-span), where)
+            fork test, bare-self(field/type, form-name)
+              hold
+                save any-bare, true
+
+        # a generic form that names ITSELF without its parameter: `link rest, like chain` in `form chain / head t`
+        # built, and each native backend filled the missing argument its own way, `i64` on Rust and `Any` on Swift and
+        # Kotlin, so the rest of a chain of text held numbers on Rust (guides: types/annotations, 2026-10-04)
+        fork test, and(is-above(params/length, 0), any-bare)
+          hold
+            push(out/found, self-without-parameters(file, form-span, form-name, params))
+      miss
+        turn next
+
+  # a CONSTRUCTION is held to the same rule: `make unit` (no such form) built a `{}` on TypeScript wherever the slot was
+  # `like unknown`, and only the native compilers refused it, as `Unit {}` naming nothing (the compile/memo port,
+  # 2026-10-04). A construction names a form, a case of one (`make red`, or `make light/red`), or the native empty
+  # `make hash` / `make list`. `make list(1, 2)` and its kin are the native collections too. `make void` is the
+  # language's empty value: `@term/base/void` declares the form, and the program carries it as the primitive
+  save constructible, make list
+  push(constructible, <hash>)
+  push(constructible, <list>)
+  push(constructible, <void>)
+  # a `make hash` reaches here as a record only when it has `bind` fields: the native map takes `save` entries and is
+  # built as a map by the mill. So a record `hash` is the program's own form or case, or a mistake
+  save own-hash, false
+  walk program
+    take one
+    sift one
+      case record-type
+        fork test, is-equal(name, <hash>)
+          hold
+            save own-hash, true
+        push(constructible, name)
+        # a form named like a case of another (`expression`, beside `statement`'s case `expression`) is renamed
+        # `expression__form` to keep the two kinds apart, and its qualified constructions are still written by the
+        # name the author gave it
+        save written, name
+        fork test, ends-with(name, <__form>)
+          hold
+            save written, substring(name, 0, subtract(name/length, 6))
+        walk variants
+          take variant
+          fork test, is-equal(variant/name, <hash>)
+            hold
+              save own-hash, true
+          push(constructible, variant/name)
+          push(constructible, <{name}/{variant/name}>)
+          push(constructible, <{written}/{variant/name}>)
+      miss
+        turn next
+
+  walk program
+    take one
+    sift one
+      case function
+        fork test, or(is-unequal(file-of(span), file), stub)
+          hold
+            turn next
+        save task-span, span
+        save shown, name
+        sift method
+          case some
+            link of
+            save shown, of/name
+          case none
+            save shown, name
+        walk expressions-in(body)
+          take expression
+          sift expression
+            case record
+              save made, name
+              fork test, and(is-equal(made, <hash>), not(own-hash))
+                hold
+                  push(out/found, refusal(file, span, <a `make hash` entry is a `save <key>, <value>` line, not a `bind` (in `{shown}`)>, <write each entry as `save <key>, <value>` under `make hash`>))
+                  turn next
+              fork test, not(has-text(constructible, made))
+                hold
+                  push(out/found, refusal(file, span, <`make {made}` names no form (in `{shown}`). It built an empty record on TypeScript and nothing on a native backend>, <name a form or one of its cases, or `make hash` / `make list`>))
+            miss
+              turn next
+      miss
+        turn next
+
+  back out/found
+
+task field-span
+  take given, like maybe, like span
+  take fallback, like span
+  like span
+  mark private
+
+  sift given
+    case some
+      link at
+      back at
+    case none
+      back fallback
+
+task self-without-parameters
+  take file, like text
+  take at, like span
+  take name, like text
+  take params, like list, like text
+  like diagnostic
+  mark private
+
+  save which, <parameters>
+  save their, <parameters>
+  fork test, is-equal(params/length, 1)
+    hold
+      save which, <parameter>
+      save their, <parameter>
+  save joined, join(params, < >)
+  save input
+    make diagnostic-input
+      bind file, file
+      bind span, at
+      bind message, make(some, <the form `{name}` names itself without its {which}: write `like {name} {joined}`>)
+      bind hint, make(some, <a generic form passes its own {their} on where it names itself, or each backend fills the gap differently>)
+  save kind, make type-mismatch
+  back diagnose(kind, input)

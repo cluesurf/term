@@ -29,6 +29,7 @@ import { collectModules, makeParseMemo } from '@term/make/code/compile/load'
 import type { ImportScope, ParseMemo, Resolver, WalkMemo } from '@term/make/code/compile/load'
 import { compileProgram, entryWarnings, graphTemplates, milledModule } from '@term/make/code/compile/compile'
 import type { ModuleEmit } from '@term/make/code/compile/modules'
+import type { Roll } from '@term/make/code/compile/roll'
 import { nameDefs, namesUsed, stubKnown, stubProgram, surfaceHash } from '@term/make/code/compile/stub'
 import type { NameDef } from '@term/make/code/compile/stub'
 import { namesPrinted, namesReachedIndexed } from '@term/make/code/compile/names'
@@ -78,6 +79,8 @@ export type SeparateResult =
       natives: Statement[]
       // every route and command the closure declares, each unit's own `dock` statements in dependency order
       docks: Statement[]
+      // each unit's roll of its own definitions, by the unit's label, every unit of the closure once
+      rolls: [string, Roll][]
       // with `keepProgram`: the entry unit's checked program, its stubs before its own statements, when that unit was
       // built this run (an editor's keystroke always builds it), and the stubs of every unit the entry reaches, typed,
       // which is every signature the closure offers
@@ -97,6 +100,9 @@ export type UnitBuild = {
   // the unit's own routes and commands (`dock` statements, checked): what a program built from units dispatches on
   // (call/code/boot.ts `commandRoutes`), which a stub does not carry
   docks?: Statement[]
+  // the roll of the unit's own definitions, each with its identity, typed here once (compile/roll.ts `own`): a
+  // project's roll is every unit's of the build (call/code/roll.ts `projectRoll`)
+  roll?: Roll
   warnings: Diagnostic[]
   openClaims?: string[]
   obligations?: Tally
@@ -337,6 +343,7 @@ export function compileSeparate(
   const closureKeys: string[] = []
   const natives: Statement[] = []
   const docks: Statement[] = []
+  const rolls: [string, Roll][] = []
   // `keepProgram`: the entry unit's checked program, and every unit's stubs
   let entryProgram: Program | undefined
   const surfaceProgram: Program = []
@@ -584,6 +591,7 @@ export function compileSeparate(
         interfaceHash: surfaceHash(surface, portable.out),
         defs: nameDefs(surface, portable.out),
         docks: (result.program ?? []).filter(s => s.form === 'dock' && own.has(s.span.file ?? '')),
+        ...(result.roll ? { roll: result.roll } : {}),
         warnings: result.warnings,
         // what the file states and owes, which compile() reports when it is the entry
         ...(checkedAs !== asImport && result.openClaims?.length ? { openClaims: result.openClaims } : {}),
@@ -604,7 +612,15 @@ export function compileSeparate(
       try {
         const value = JSON.parse(portable.in(stored.portable), reviveBigint) as Record<string, unknown>
 
-        if (Array.isArray(value.diagnostics) || (Array.isArray(value.files) && Array.isArray(value.stubs) && typeof value.interfaceHash === 'string')) {
+        // a unit's answer carries its roll since 2026-10-05 (step 5): one stored before is read as a miss and built
+        // again, or the project's roll would lack that unit's definitions
+        if (
+          Array.isArray(value.diagnostics) ||
+          (Array.isArray(value.files) &&
+            Array.isArray(value.stubs) &&
+            typeof value.interfaceHash === 'string' &&
+            typeof value.roll === 'object')
+        ) {
           return value as UnitBuild | { diagnostics: Diagnostic[] }
         }
       } catch {
@@ -668,6 +684,10 @@ export function compileSeparate(
 
     docks.push(...(cached.docks ?? []))
 
+    if (cached.roll) {
+      rolls.push([label, cached.roll])
+    }
+
     allWarnings.push(...cached.warnings)
 
     if (entry) {
@@ -711,6 +731,7 @@ export function compileSeparate(
     closureKey: hashFields(closureKeys),
     natives,
     docks,
+    rolls,
     ...(options.keepProgram ? { surface: surfaceProgram, ...(entryProgram ? { program: entryProgram } : {}) } : {}),
   }
 }

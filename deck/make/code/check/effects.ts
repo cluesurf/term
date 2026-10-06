@@ -920,6 +920,13 @@ export function raiseSets(
         nativeShims.add(name)
       }
 
+      // a task that raises `failure` once it is counted raises it here when this program counts it, as its own body's
+      // scan would: its stored set was closed over its own unit, which may not have held the form (`fails`,
+      // compile/stub.ts)
+      if (exceptions.has('failure') && statement.stubFacts?.includes('fails')) {
+        known.add('failure')
+      }
+
       raises.set(name, known)
       via.set(name, new Map([...known].map(d => [d, undefined])))
       calls.set(name, new Set())
@@ -988,7 +995,161 @@ export function raiseSets(
     }
   }
 
+  canonicalVia(calls, raises, via)
+
   return { raises, via, native: nativeShims }
+}
+
+// `via` CHOSEN BY RULE, NOT BY DISCOVERY. The fixed point recorded whichever callee brought an exception in first,
+// which depended on the order it visited the functions, so one task's path read differently in a program holding more
+// of them, and a unit's roll (its dependencies' stubs known from the start) could not equal the whole program's
+// (note/term/plan/incremental-best-in-class.md, step 5). The rule: a call that leaves the task's cycle and reaches the
+// exception comes first, in the order the body makes its calls; inside a cycle, the first callee strictly nearer a
+// raise. The path then never loops, and it is the same in a unit, where calls between units never form a cycle and a
+// stub calls nothing
+function canonicalVia(
+  calls: Map<string, Set<string>>,
+  raises: Map<string, Set<string>>,
+  via: Map<string, Map<string, string | undefined>>,
+): void {
+  const component = cyclesOf(calls)
+
+  // within each cycle, each member's distance to a raise of each exception: 0 for a direct raise or a call out of
+  // the cycle that raises it, else one more than the nearest member it calls
+  const distance = new Map<string, Map<string, number>>()
+  const members = new Map<number, string[]>()
+
+  for (const [name, at] of component) {
+    members.set(at, [...(members.get(at) ?? []), name])
+  }
+
+  for (const group of members.values()) {
+    for (const name of group) {
+      const own = new Map<string, number>()
+      const from = via.get(name)!
+
+      for (const exception of raises.get(name)!) {
+        // after the fixed point a callee is recorded for every raise but the task's own, so an unrecorded one is direct
+        const direct = from.has(exception) && from.get(exception) === undefined
+        const leaves = [...calls.get(name)!].some(c => component.get(c) !== component.get(name) && raises.get(c)?.has(exception))
+
+        if (direct || leaves) {
+          own.set(exception, 0)
+        }
+      }
+
+      distance.set(name, own)
+    }
+
+    // relax inside the cycle until nothing nears
+    let moved = true
+
+    while (moved) {
+      moved = false
+
+      for (const name of group) {
+        const own = distance.get(name)!
+
+        for (const exception of raises.get(name)!) {
+          for (const callee of calls.get(name)!) {
+            const near = component.get(callee) === component.get(name) ? distance.get(callee)?.get(exception) : undefined
+
+            if (near !== undefined && (own.get(exception) ?? Infinity) > near + 1) {
+              own.set(exception, near + 1)
+              moved = true
+            }
+          }
+        }
+      }
+    }
+  }
+
+  for (const [name, callees] of calls) {
+    const from = via.get(name)!
+    const own = distance.get(name)!
+
+    for (const exception of raises.get(name)!) {
+      // a direct raise stays direct
+      if (from.has(exception) && from.get(exception) === undefined) {
+        continue
+      }
+
+      const out = [...callees].find(c => component.get(c) !== component.get(name) && raises.get(c)?.has(exception))
+      const inside = [...callees].find(
+        c => component.get(c) === component.get(name) && (distance.get(c)?.get(exception) ?? Infinity) < (own.get(exception) ?? Infinity),
+      )
+      const chosen = out ?? inside
+
+      if (chosen !== undefined) {
+        from.set(exception, chosen)
+      }
+    }
+  }
+}
+
+// each function's strongly connected component over the calls, by Tarjan's algorithm, iteratively: a call chain
+// thousands deep would overflow a recursive walk
+function cyclesOf(calls: Map<string, Set<string>>): Map<string, number> {
+  const index = new Map<string, number>()
+  const low = new Map<string, number>()
+  const onStack = new Set<string>()
+  const stack: string[] = []
+  const component = new Map<string, number>()
+  let counter = 0
+  let groups = 0
+
+  for (const start of calls.keys()) {
+    if (index.has(start)) {
+      continue
+    }
+
+    const work: { name: string; next: string[] }[] = [{ name: start, next: [...calls.get(start)!].filter(c => calls.has(c)) }]
+    index.set(start, counter)
+    low.set(start, counter++)
+    stack.push(start)
+    onStack.add(start)
+
+    while (work.length > 0) {
+      const top = work[work.length - 1]!
+
+      if (top.next.length > 0) {
+        const callee = top.next.shift()!
+
+        if (!index.has(callee)) {
+          index.set(callee, counter)
+          low.set(callee, counter++)
+          stack.push(callee)
+          onStack.add(callee)
+          work.push({ name: callee, next: [...calls.get(callee)!].filter(c => calls.has(c)) })
+        } else if (onStack.has(callee)) {
+          low.set(top.name, Math.min(low.get(top.name)!, index.get(callee)!))
+        }
+
+        continue
+      }
+
+      work.pop()
+
+      if (work.length > 0) {
+        const parent = work[work.length - 1]!.name
+        low.set(parent, Math.min(low.get(parent)!, low.get(top.name)!))
+      }
+
+      if (low.get(top.name) === index.get(top.name)) {
+        let member: string
+
+        do {
+          member = stack.pop()!
+          onStack.delete(member)
+          component.set(member, groups)
+        } while (member !== top.name)
+
+        groups++
+      }
+    }
+  }
+
+  return component
 }
 
 // A task that declares `halt <form>` lines on its signature is held to them: every name must be an exception form,

@@ -1,0 +1,6 @@
+# The answer where no env has a device host: every device module resolves to its `unavailable` fallback here.
+# Conforms to ../hosted.
+
+task has-device-host
+  like boolean
+  send back, false

@@ -19,7 +19,6 @@
 import android.app.Activity
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -138,7 +137,8 @@ class CaskWindow(val title: String, val width: Long, val height: Long) {
 abstract class CaskActivity : Activity() {
     abstract fun program()
 
-    override fun onCreate(saved: Bundle?) {
+    // android.os.Bundle by its whole name: an import would take `Bundle` from the program's own `bundle` exception form
+    override fun onCreate(saved: android.os.Bundle?) {
         super.onCreate(saved)
         cask.activity = this
         program()
@@ -152,7 +152,21 @@ abstract class CaskActivity : Activity() {
         }
         super.onDestroy()
     }
+
+    // the platform's answer to a permission request goes to the Activity, and the permission runtime waits on it
+    @Suppress("OVERRIDE_DEPRECATION")
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        for (body in hostPermissionAnswers.toList()) body(requestCode)
+    }
 }
+
+// What the device runtimes (site/code/view/native/toolkit/runtime/*.kt) ask of the app they run in, the same two names
+// the toolkit and Compose hosts define, so a page's device calls answered in the cask link here too (device-layer-0013)
+fun hostActivity(): Activity? = cask.activity
+
+// called with the request code whenever the platform answers a permission request
+val hostPermissionAnswers = mutableListOf<(Int) -> Unit>()
 
 object cask {
     internal var pending: CaskWindow? = null

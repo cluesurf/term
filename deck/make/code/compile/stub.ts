@@ -37,6 +37,10 @@ export type StubKnown = {
   ends: Set<string>
   raises: Map<string, Set<string>>
   native: Set<string>
+  // the tasks that raise `failure` once `failure` is counted: a unit counts it only when it holds the form, so a task
+  // reaching a native shim through another unit lost it there, and a program that does count it lost it with it
+  // (check/effects.ts `raiseSets`, task/term/roll-units.ts)
+  fails: Set<string>
   // each rule the arithmetic provers proved in this unit, and how: over every ordered field, or with integer reasoning.
   // A dependent citing the rule reads it (check/holds.ts `citedFacts`), since a field-wide rule may cite only another
   proven: ReadonlyMap<string, 'field' | 'integer'>
@@ -53,6 +57,8 @@ export function stubKnown(program: Program): StubKnown {
   }
 
   const sets = raiseSets(program, exceptions)
+  const counted = raiseSets(program, new Set([...exceptions, 'failure']))
+  const fails = new Set([...counted.raises].flatMap(([name, raised]) => (raised.has('failure') ? [name] : [])))
   const clean = new Set<string>()
 
   for (const s of program) {
@@ -70,6 +76,7 @@ export function stubKnown(program: Program): StubKnown {
     ends: terminatingFunctions(program),
     raises: sets.raises,
     native: sets.native,
+    fails,
     // the proof pass of this unit ran just before (compile/separate.ts calls this after compiling the unit), so its
     // record is this unit's
     proven: new Map(provenRules()),
@@ -198,6 +205,7 @@ function factsOf(name: string, known: StubKnown): string[] {
     ['returns-fresh', known.returnsFresh],
     ['ends', known.ends],
     ['native', known.native],
+    ['fails', known.fails],
   ]
   const proven = known.proven.get(name)
 
@@ -207,6 +215,10 @@ function factsOf(name: string, known: StubKnown): string[] {
 // the stub of one checked program: its public, body-less surface, in original order
 export function stubProgram(program: Program, known?: StubKnown): Program {
   const out: Program = []
+  // A FILE THAT STATES RULES IS A THEORY, and the bodies of its definitions are part of what it says: a proof in another
+  // file computes `both(yes, a)` by running `both`. Any other file keeps a body edit from reaching its dependents (the
+  // early cutoff test/compile/separate.ts holds), so only a theory's definitions carry their bodies
+  const theory = program.some(statement => statement.form === 'function' && statement.theorem)
 
   for (const statement of program) {
     switch (statement.form) {
@@ -232,13 +244,14 @@ export function stubProgram(program: Program, known?: StubKnown): Program {
               }
             : {}),
           ...(known && only ? { stubShape: only } : {}),
-          // A PURE TASK SHOWN TO END CARRIES ITS WHOLE BODY, for the kernel alone (check/elaborate.ts). The kernel sees
-          // through a task by running its body, so without it a proof in another file could not compute `both(yes, a)`
-          // over an imported `both`: every rule of logic/boolean.tree in @term/seed failed separately and held merged.
-          // A RULE carries its body too, which is its `show hold`, so a `cite` of it from another file finds the lemma.
-          // It is part of the surface, so a body edit rebuilds the units naming it, which is what a proof that ran or
-          // cited the old body requires
+          // IN A THEORY, A PURE TASK SHOWN TO END CARRIES ITS WHOLE BODY, for the kernel alone (check/elaborate.ts). The
+          // kernel sees through a task by running its body, so without it a proof in another file could not compute
+          // `both(yes, a)` over an imported `both`: every rule of logic/boolean.tree in @term/seed failed separately and
+          // held merged. A RULE carries its body too, which is its `show hold`, so a `cite` of it from another file finds
+          // the lemma. It is part of the surface, so a body edit rebuilds the units naming it, which is what a proof that
+          // ran or cited the old body requires
           ...(known &&
+          theory &&
           !statement.claim &&
           statement.body.length > 0 &&
           (statement.theorem || (known.ends.has(statement.name) && known.clean.has(statement.name)))

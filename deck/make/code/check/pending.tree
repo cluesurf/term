@@ -1,0 +1,427 @@
+# A ticked call's VALUE is a job (deck/base/code/task.tree): `save work, tick fetch(x)` is `spawn` of that call, a
+# `handle` of what it answers, read back with `wait`. A tick as a statement is fire and forget and is left alone.
+#
+# Until 2026-10-05 the value had no type of its own: a `Promise` on TypeScript, the binding left to inference, and on
+# Rust, Swift and Kotlin the unit their fire-and-forget calls answer, so `save work, tick fetch(x)` built and handed on
+# nothing natively. A job is the pending value every backend already has, with `wait`, `wait-within`, `cancel` and
+# `alive`, and it starts the call at once and runs it to its first wait, exactly as a tick does. So the value is that.
+#
+# Runs before names are bound, so the inserted `spawn` binds as the program's own calls do. A program that ticks a
+# value and does not load the task module is refused, naming what to load.
+#
+# Ported from check/pending.ts (self-hosting, 2026-10-05), the first pass that REWRITES the program. Each node is
+# changed where it stands, by a write to the case its arm matched (`save given/args, ...` under `case call`), and every
+# step hands back what it wrote, so the rewritten program comes back as the answer: on TypeScript the writes land in the
+# program as the original's did, and natively, where a value is a copy, the answer is the program.
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+load ../parser/diagnostic
+  find diagnostic
+  find diagnose
+  find diagnostic-input
+  find span
+
+load ../compile/node
+  find closure-param
+  find expression
+  find statement
+  find type
+
+form pending-result
+  link program, like list, like statement
+  link diagnostics, like list, like diagnostic
+
+# what the walk carries: the program, for the tasks a ticked call may name, and the refusals so far
+form pending-walk
+  mark shared
+  link program, like list, like statement
+  link can-spawn, like boolean
+  link diagnostics, like list, like diagnostic
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+# whether a type names one of `generics`, which only the call's own inference can fill
+task mentions
+  take one, like type
+  take generics, like list, like text
+  like boolean
+  mark private
+
+  sift one
+    case named
+      fork test, has-text(generics, name)
+        hold
+          back true
+      walk args
+        take arg
+        fork test, mentions(arg, generics)
+          hold
+            back true
+      back false
+    case array
+      back mentions(element, generics)
+    case map
+      back or(mentions(key, generics), mentions(value, generics))
+    case function
+      walk params
+        take param
+        fork test, mentions(param, generics)
+          hold
+            back true
+      back mentions(result, generics)
+    miss
+      back false
+
+# what the ticked call answers, when it calls one task whose declared result is concrete: the closure says so, so
+# the job's `handle r` is pinned. A closure with no result is read as answering the unknown
+task answer-of
+  take callee, like expression
+  take state, like pending-walk
+  like maybe, like type
+  mark private
+
+  save called, <>
+  sift callee
+    case variable
+      save called, name
+    miss
+      back make none
+
+  save count, 0
+  save found, make none
+  save generic-names, make list
+  walk state/program
+    take one
+    sift one
+      case function
+        fork test, is-equal(name, called)
+          hold
+            save count, add(count, 1)
+            save found, result
+            save names, make list
+            walk generics
+              take generic
+              push(names, generic/name)
+            save generic-names, names
+      miss
+        turn next
+
+  fork test, is-unequal(count, 1)
+    hold
+      back make none
+  sift found
+    case some
+      link answer
+      fork test, mentions(answer, generic-names)
+        hold
+          back make none
+      back make(some, answer)
+    case none
+      back make none
+
+# `spawn(task / mark async / back <the call>)`
+task spawn-of
+  take started, like expression
+  take state, like pending-walk
+  like expression
+  mark private
+
+  sift started
+    case call
+      save at, span
+      save answer, answer-of(callee, state)
+      save started/background, false
+      save awaited
+        make expression/await
+          bind expr, started
+          bind span, at
+      # awaited as written: outside every task (a ticked `host`) nothing awaits a closure's calls for it, and inside
+      # one this is the await resolution would write
+      save handed
+        make statement/return
+          bind value, make(some, awaited)
+          bind span, at
+      save body, make list
+      push(body, handed)
+      save no-params, make list
+      save thunk
+        make expression/closure
+          bind params, no-params
+          bind body, body
+          bind result, answer
+          bind async, true
+          bind span, at
+      # not `args`: the arm's own field local of that name is declared already
+      save spawn-args, make list
+      push(spawn-args, thunk)
+      save spawn-name
+        make expression/variable
+          bind name, <spawn>
+          bind span, at
+      back
+        make expression/call
+          bind callee, spawn-name
+          bind args, spawn-args
+          bind span, at
+    miss
+      back started
+
+# the value at a position, the pending job where it is a tick
+task value-of
+  take given, like expression
+  take state, like pending-walk
+  like expression
+  mark private
+
+  save walked, walk-expression(given, state)
+  sift walked
+    case call
+      fork test, not(background)
+        hold
+          back walked
+      fork test, not(state/can-spawn)
+        hold
+          save input
+            make diagnostic-input
+              bind file, <>
+              bind span, span
+              bind message, make(some, <a ticked call used as a value is the pending job, a `handle` of its answer: load @term/base/task and find spawn>)
+              bind hint, make(some, <or tick it on a line of its own, where nothing waits for it>)
+          save kind, make unknown-name
+          push(state/diagnostics, diagnose(kind, input))
+          back walked
+      back spawn-of(walked, state)
+    miss
+      back walked
+
+task values-of
+  take given, like list, like expression
+  take state, like pending-walk
+  like list, like expression
+  mark private
+
+  save out, make list
+  walk given
+    take one
+    push(out, value-of(one, state))
+  back out
+
+task walk-expression
+  take given, like expression
+  take state, like pending-walk
+  like expression
+  mark private
+
+  sift given
+    case call
+      save given/args, values-of(args, state)
+      save given/callee, walk-expression(callee, state)
+      back given
+    case binary
+      save given/left, walk-expression(left, state)
+      save given/right, walk-expression(right, state)
+      back given
+    case unary
+      save given/operand, walk-expression(operand, state)
+      back given
+    case array
+      save given/items, values-of(items, state)
+      back given
+    case map
+      save written, make list
+      walk entries
+        take entry
+        save entry/value, value-of(entry/value, state)
+        push(written, entry)
+      save given/entries, written
+      back given
+    case record
+      save written, make list
+      walk fields
+        take field
+        save field/value, value-of(field/value, state)
+        push(written, field)
+      save given/fields, written
+      back given
+    case member
+      save given/target, walk-expression(target, state)
+      back given
+    case await
+      save given/expr, walk-expression(expr, state)
+      back given
+    case closure
+      save given/body, walk-body(body, state)
+      back given
+    case conditional
+      save written, make list
+      walk branches
+        take branch
+        save branch/cond, walk-expression(branch/cond, state)
+        save branch/value, walk-expression(branch/value, state)
+        push(written, branch)
+      save given/branches, written
+      sift otherwise
+        case some
+          link other
+          save walked-other, walk-expression(other, state)
+          save given/otherwise, make(some, walked-other)
+        case none
+          back given
+      back given
+    miss
+      back given
+
+task walk-body
+  take body, like list, like statement
+  take state, like pending-walk
+  like list, like statement
+  mark private
+
+  save out, make list
+  walk body
+    take one
+    push(out, walk-statement(one, state))
+  back out
+
+task walk-maybe-body
+  take block, like maybe, like list, like statement
+  take state, like pending-walk
+  like maybe, like list, like statement
+  mark private
+
+  sift block
+    case some
+      link body
+      save walked, walk-body(body, state)
+      back make(some, walked)
+    case none
+      back make none
+
+task walk-statement
+  take one, like statement
+  take state, like pending-walk
+  like statement
+  mark private
+
+  sift one
+    case let
+      save one/init, value-of(init, state)
+      back one
+    case assign
+      save one/value, value-of(read(value), state)
+      back one
+    case return
+      sift value
+        case some
+          link given
+          save handed, value-of(given, state)
+          save one/value, make(some, handed)
+        case none
+          back one
+      back one
+    # a tick on a line of its own is fire and forget: only what it is handed is looked at
+    case expression
+      save one/expr, walk-expression(expr, state)
+      back one
+    case if
+      save written, make list
+      walk branches
+        take branch
+        save branch/cond, walk-expression(branch/cond, state)
+        save branch/body, walk-body(branch/body, state)
+        push(written, branch)
+      save one/branches, written
+      sift otherwise
+        case some
+          save one/otherwise, walk-maybe-body(otherwise, state)
+        case none
+          back one
+      back one
+    case while
+      save one/cond, walk-expression(cond, state)
+      save one/body, walk-body(body, state)
+      back one
+    case for-each
+      save one/iterable, walk-expression(iterable, state)
+      save one/body, walk-body(body, state)
+      back one
+    case match
+      save one/subject, walk-expression(subject, state)
+      save written, make list
+      walk cases
+        take arm
+        save arm/body, walk-body(arm/body, state)
+        push(written, arm)
+      save one/cases, written
+      sift otherwise
+        case some
+          save one/otherwise, walk-maybe-body(otherwise, state)
+        case none
+          back one
+      back one
+    case guard
+      save one/body, walk-body(body, state)
+      sift catch
+        case some
+          link clause
+          save clause/body, walk-body(clause/body, state)
+          save one/catch, make(some, clause)
+        case none
+          back one
+      back one
+    case function
+      save one/body, walk-body(body, state)
+      back one
+    miss
+      back one
+
+task pending-values
+  take program, like list, like statement
+  take file, like text
+  like pending-result
+
+  save can-spawn, false
+  walk program
+    take one
+    sift one
+      case function
+        fork test, and(is-equal(name, <spawn>), is-equal(params/length, 1))
+          hold
+            save can-spawn, true
+      miss
+        turn next
+
+  save state
+    make pending-walk
+      bind program, program
+      bind can-spawn, can-spawn
+      bind diagnostics, make list
+  save rewritten, walk-body(program, state)
+
+  # each refusal names the file being compiled
+  save named, make list
+  walk state/diagnostics
+    take found
+    save found/file, file
+    push(named, found)
+
+  back
+    make pending-result
+      bind program, rewritten
+      bind diagnostics, named

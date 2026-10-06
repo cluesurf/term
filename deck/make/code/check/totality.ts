@@ -174,7 +174,7 @@ function strictlyDecreases(
   ) {
     const by = Number(arg.right.value)
     const n = linear({ [paramName]: 1 })
-    const facts = guardFacts(guards)
+    const facts = sharpened(guardFacts(guards), guards)
 
     if (arg.op === '-' && by > 0) {
       return proves(facts, atLeast(n, linear({}, by)))
@@ -285,6 +285,57 @@ function conditionFacts(cond: Expression, negated: boolean): Guard[] {
 
 function guardFacts(guards: Expression[]): Guard[] {
   return guards.flatMap(g => conditionFacts(g, false))
+}
+
+// A DISEQUALITY BESIDE A BOUND IS A TIGHTER BOUND, over the integers: `n != 0` where `n >= 0` is known gives `n >= 1`.
+// It is how the `miss` arm of `n == 0` on a natural number reads, the commonest recursion in the library (every sum of
+// number/sum.tree), whose `n - 1` was not seen to descend. A disequality says nothing by itself, so it is only read
+// against a bound the facts already prove at its constant
+function sharpened(facts: Guard[], guards: Expression[]): Guard[] {
+  const out = [...facts]
+
+  for (const guard of guards) {
+    const differs =
+      guard.form === 'binary' && guard.op === '!='
+        ? guard
+        : guard.form === 'unary' && guard.op === '!' && guard.operand.form === 'binary' && guard.operand.op === '=='
+          ? guard.operand
+          : undefined
+
+    if (differs?.form !== 'binary') {
+      continue
+    }
+
+    const left = linearOf(differs.left)
+    const right = linearOf(differs.right)
+
+    if (!left || !right) {
+      continue
+    }
+
+    const plus = (l: Linear, c: number): Linear => ({ terms: l.terms, constant: l.constant + c })
+
+    if (proves(out, atLeast(left, right))) {
+      out.push(atLeast(left, plus(right, 1)))
+    } else if (proves(out, atLeast(right, left))) {
+      out.push(atLeast(right, plus(left, 1)))
+    }
+  }
+
+  return out
+}
+
+// `n >= 0` for each natural-number parameter: the bound its type promises, which a descent on it may use
+function naturalGuards(statement: Extract<Statement, { form: 'function' }>): Expression[] {
+  return statement.params
+    .filter(p => p.refine === 'natural')
+    .map(p => ({
+      form: 'binary',
+      op: '>=',
+      left: { form: 'variable', name: p.name, span: statement.span },
+      right: { form: 'integer', value: 0, span: statement.span },
+      span: statement.span,
+    }))
 }
 
 // does an expression read the name?
@@ -453,11 +504,13 @@ function terminationVerdict(program: Program): Map<string, boolean> {
 
     let positions = new Set<number>(paramNames.map((_, i) => i))
 
+    const bounds = naturalGuards(statement)
+
     for (const { args, memberOf, guards } of selfCalls) {
       const decreasing = new Set<number>()
 
       for (let i = 0; i < paramNames.length && i < args.length; i++) {
-        if (strictlyDecreases(args[i]!, paramNames[i]!, memberOf, guards)) {
+        if (strictlyDecreases(args[i]!, paramNames[i]!, memberOf, [...bounds, ...guards])) {
           decreasing.add(i)
         }
       }

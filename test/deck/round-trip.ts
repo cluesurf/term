@@ -32,8 +32,9 @@ const TERM = join(HERE, '../..')
 // and took the only `sort` with it, and then 13 until zone left for the repository's deck/zone the same day and
 // took `cite`, `line`, `make`, `mark` and `text`, which no manifest still in the tree uses. Then 7 the same day
 // again: the version became `mark` (where it had been `code`) and `bear ./code`, the old spelling of the default
-// code root, left every manifest (note/term/plan/manifest-mark-and-code-root.md, `pnpm term:manifest-mark`).
-const CHECKED = 7
+// code root, left every manifest (note/term/plan/manifest-mark-and-code-root.md, `pnpm term:manifest-mark`). Then 8
+// on 2026-10-05, when the benchmark suite moved into deck/mark and brought its `line ./code/line`.
+const CHECKED = 8
 
 let pass = 0
 let fail = 0

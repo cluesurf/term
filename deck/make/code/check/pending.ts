@@ -32,7 +32,9 @@ function mentions(type: Type, generics: Set<string>): boolean {
   }
 }
 
-export function pendingValues(program: Program, file: string): Diagnostic[] {
+// the program it rewrote (in place, here) beside the refusals: the Term port hands the rewritten program back, since a
+// native value is a copy, and compile.ts takes it from the answer either way
+export function pendingValues(program: Program, file: string): { program: Program; diagnostics: Diagnostic[] } {
   const diagnostics: Diagnostic[] = []
   const canSpawn = program.some(n => n.form === 'function' && n.name === 'spawn' && n.params.length === 1)
   const tasks = new Map<string, Extract<Statement, { form: 'function' }>[]>()
@@ -217,5 +219,5 @@ export function pendingValues(program: Program, file: string): Diagnostic[] {
 
   walkBody(program)
 
-  return diagnostics
+  return { program, diagnostics }
 }

@@ -33,6 +33,15 @@ const VERSION = /^\d+\.\d+\.\d+$/
 // constant below it is read before it is set (the minified bundle makes it a `var`, so it reads `undefined`)
 const MARK = '# term (https://term.surf/load)'
 
+// the front's folder as a profile line names it, under `$HOME` or spelled out. Above `await main()` for MARK's reason:
+// below it, both read `undefined` in the bundle, and the profile edit failed on `PREVIOUS_FRONTS.filter` (2026-10-05)
+const FRONT_POSIX = `${HOME_POSIX}/${FRONT}`
+
+// its old names: `bin/` under the folder before it moved, and `bin/` under the moved folder before the front was
+// renamed `call/` (home.ts). Both still reach the front through the links the renames left, and are rewritten here so
+// the profile names the folder that exists
+const PREVIOUS_FRONTS = ['.base/@cluesurf/term/bin', `${HOME_POSIX}/bin`]
+
 await main()
 
 async function main(): Promise<void> {
@@ -202,14 +211,6 @@ function realOf(dir: string): string {
 
 // `moved`: a profile that named the front's folder by an old name, rewritten to the new one in place
 type Profile = { form: 'added' | 'there' | 'moved'; shown: string; line: string }
-
-// the front's folder as a profile line names it, under `$HOME` or spelled out
-const FRONT_POSIX = `${HOME_POSIX}/${FRONT}`
-
-// its old names: `bin/` under the folder before it moved, and `bin/` under the moved folder before the front was
-// renamed `call/` (home.ts). Both still reach the front through the links the renames left, and are rewritten here so
-// the profile names the folder that exists
-const PREVIOUS_FRONTS = ['.base/@cluesurf/term/bin', `${HOME_POSIX}/bin`]
 
 /**
  * Put bin on PATH for every NEW shell, the way rustup, bun and deno do: one marked line in the profile of the shell

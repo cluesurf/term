@@ -22,6 +22,7 @@ import { compile } from '@term/make/code/compile/compile'
 import { compileSeparate } from '@term/make/code/compile/separate'
 import type { UnitMemo } from '@term/make/code/compile/separate'
 import type { WalkMemo } from '@term/make/code/compile/load'
+import type { DockRoute } from '@term/make/code/compile/node'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import {
   projectResolver,
@@ -81,7 +82,18 @@ function nodeValue(group: GroupNode): string {
 // 9: the client bundle enters through a one-line import of the program, and its import map names only the externals
 // the bundle kept (2026-10-04)
 // 10: a program is built one unit at a time, and bundled from its modules and its entry's shim (2026-10-05)
-const BOOT_CACHE_EPOCH = '10'
+// 11: a units bundle's entry exports what the run calls, not the whole closure (call/code/unit-bundle.ts
+// `runtimeExports`), and a bundle written under 10 held every name (2026-10-05)
+const BOOT_CACHE_EPOCH = '11'
+
+// every task a command table calls: each route's own calls, its methods', and its subcommands'
+function routeCalls(routes: DockRoute[]): string[] {
+  return routes.flatMap(route => [
+    ...route.calls.map(call => call.name),
+    ...route.methods.flatMap(method => method.calls.map(call => call.name)),
+    ...routeCalls(route.children),
+  ])
+}
 
 // how one build makes its bundle: the routes a command-line program dispatches on, the key its bundle is cached by,
 // what goes in front of the bundle, and what the bundler is handed (written under `dir`, its entry returned)
@@ -905,8 +917,10 @@ export async function callBoot(input: {
           // the prelude is a module of the bundle, not a banner (call/code/unit-bundle.ts)
           banner: '',
           // the closure's modules beside one another, the prelude, and the entry's shim, under the boot cache's `host/`
+          // and every task a command calls, which a hook table names only in its routes, so its own module neither
+          // defines nor imports it: zone's commands are other files' tasks (`call`, `show`, `moor`)
           write: dir =>
-            writeUnitBundle({ dir, entry, modules, slug, exports: built.exports, prelude }),
+            writeUnitBundle({ dir, entry, modules, slug, exports: built.exports, prelude, keep: routeCalls(cliRoutes) }),
         }
       }
 

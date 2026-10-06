@@ -165,6 +165,36 @@ function walk(
   }
 }
 
+// the marks of every rule a rule's goal cites, which its own names of the same spelling instance
+function citedMarks(body: Statement[], program: Program): Set<string> {
+  const marks = new Set<string>()
+  const rules = new Map(program.flatMap(s => (s.form === 'function' && s.theorem ? [[s.name, s] as const] : [])))
+
+  const steps = (proof: { head: string; arg?: string; children?: { head: string; arg?: string }[] }[]): void => {
+    for (const step of proof) {
+      if (step.head === 'cite' && step.arg) {
+        rules.get(step.arg)?.params.forEach(p => marks.add(p.name))
+      }
+
+      steps(step.children ?? [])
+    }
+  }
+
+  const visit = (statements: Statement[]): void => {
+    for (const s of statements) {
+      if (s.form === 'hold') {
+        steps(s.proof ?? [])
+      } else if (s.form === 'if') {
+        s.branches.forEach(b => visit(b.body))
+      }
+    }
+  }
+
+  visit(body)
+
+  return marks
+}
+
 export function findUnused(
   program: Program,
   file: string,
@@ -192,6 +222,12 @@ export function findUnused(
     const declared = new Map<string, Statement>()
     const read = new Set<string>()
     walk(statement.body, declared, read)
+
+    // a RULE'S `find` named for a cited rule's mark is read by the citation, which instances that rule by name
+    // (`find n, b` beside `cite count-is-not-negative`): check/holds.ts `citedFacts`
+    if (statement.theorem) {
+      citedMarks(statement.body, program).forEach(name => read.add(name))
+    }
 
     for (const [name, decl] of declared) {
       if (!read.has(name)) {

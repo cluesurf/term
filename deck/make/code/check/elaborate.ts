@@ -21,6 +21,8 @@ import type {
 } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
 import { armLocals } from '@term/make/code/check/arm'
+import { throughAlias, transparentAliases } from '@term/make/code/check/alias'
+import type { TypeAlias } from '@term/make/code/check/alias'
 import type {
   Expression,
   Program,
@@ -53,13 +55,15 @@ import {
   quote,
   resetDefinitions,
   resetMetas,
+  showNamed,
   showTerm,
   whnf,
 } from '@term/make/code/check/judge'
 import { terminatingFunctions } from '@term/make/code/check/totality'
-import { isLinearGoal } from '@term/make/code/check/holds'
+import { isLinearGoal, orderFollows } from '@term/make/code/check/holds'
 import {
   ringEqual,
+  ringEqualByEquations,
   ringEqualModulo,
   nonNegativeDifference,
 } from '@term/make/code/check/ring'
@@ -427,6 +431,11 @@ function indexTermAt(
   }
 }
 
+// the program's transparent aliases (`form x, like <type>` with nothing of its own), set for each elaboration, and the
+// ones being read through right now, so an alias that names itself is read as the constant it is rather than forever
+let typeAliases = new Map<string, TypeAlias>()
+const aliasesOpen = new Set<string>()
+
 function kernelTypeAt(
   type: Type | undefined,
   depth: number,
@@ -488,6 +497,21 @@ function kernelTypeAt(
         }
 
         return family
+      }
+
+      // a TRANSPARENT ALIAS is the type it names: `form assignment / like task / take n, like natural / like flag`
+      // types a mark that is then called as the task. Read as an opaque constant it was not callable in the kernel
+      // A generic one is read with its arguments: `set natural` (check/alias.ts)
+      const alias = aliasesOpen.has(type.name) ? undefined : throughAlias(type, typeAliases)
+
+      if (alias) {
+        aliasesOpen.add(type.name)
+
+        try {
+          return kernelTypeAt(alias, depth, generics, known, valueScope, resolveCtor)
+        } finally {
+          aliasesOpen.delete(type.name)
+        }
       }
 
       if (!known.has(type.name)) {
@@ -902,6 +926,10 @@ export function elaborateReport(
   resetDefinitions()
   const program = kindsApart(written)
 
+  // transparent aliases, read through wherever the kernel reads a type (`kernelTypeAt`), as the checker reads them
+  // through when it unifies (check/infer.ts `unfoldAlias`)
+  typeAliases = transparentAliases(program)
+
   // How many arguments each function DECLARES, and how many it REQUIRES.
   //
   // A `need false` parameter may be left out at the call. The inference pass
@@ -948,6 +976,45 @@ export function elaborateReport(
   // to one is a value and not an effect: `v(n)` for an assignment `v`. A task's callback parameter is not, and stays
   // in `factsLocal`, where a call to it may do anything
   let ruleMarks = new Set<string>()
+  // the tasks with a `natural-number` parameter, whose subtraction truncates: never unfolded for the ring
+  const truncating = program.flatMap(s =>
+    s.form === 'function' && s.params.some(p => p.refine === 'natural') ? [s.name] : [],
+  )
+  const withoutRuleMarks = (locals: Set<string>): Set<string> => new Set([...locals].filter(name => !ruleMarks.has(name)))
+
+  // RECORD ETA, for the ring normalizer: a value of a form with no cases IS the construction of its fields. So when one
+  // side of an equation unfolds to `make vector-two(...)` and the other is a name, the name is read as
+  // `make vector-two(v/x, v/y)`, each field an unknown of its own, spelled as check/unfold.ts spells a field read
+  const etaPair = (left: Expression, right: Expression): [Expression, Expression] => {
+    const expand = (named: Expression, record: Extract<Expression, { form: 'record' }>): Expression => {
+      const fields = recordFields.get(record.name)
+
+      return fields && named.form === 'variable'
+        ? {
+            ...record,
+            fields: fields.map(field => ({
+              name: field,
+              value: { form: 'variable', name: `${named.name}/${field}`, span: record.span },
+            })),
+          }
+        : named
+    }
+
+    if (left.form === 'record' && right.form !== 'record') {
+      return [left, expand(right, left)]
+    }
+
+    if (right.form === 'record' && left.form !== 'record') {
+      return [expand(left, right), right]
+    }
+
+    return [left, right]
+  }
+  // the case of the `fold` being closed, and the first COUNTEREXAMPLE the truth table found in one, which the fold's
+  // refusal names: in the case `modus-ponens`, evaluate(v, a) is yes and evaluate(v, b) is no
+  let foldCase: string | undefined
+  // `sides` when there was nothing to choose: the two sides computed to two different cases outright
+  let tableCounterexample: { at?: string; text: string; given: boolean; sides?: [string, string] } | undefined
 
   const diagnostics: Diagnostic[] = []
   const verified: string[] = []
@@ -3345,11 +3412,12 @@ export function elaborateReport(
             // A condition that calls something impure is not a fact: evaluating it again could answer differently.
             const branchAssumptions = [...assumptions]
             const cond = branch.cond
+            // a rule's own task-typed marks are values (see `ruleMarks`), so a `have` about one is a fact
             const stableCond = !callsImpure(
               cond,
               factsPure,
               factsFunctions,
-              factsLocal,
+              withoutRuleMarks(factsLocal),
             )
 
             if (stableCond && cond.form === 'binary' && cond.op === '==') {
@@ -3919,10 +3987,6 @@ export function elaborateReport(
     const opaque = new Set([...constantsOf(rule.lhs), ...constantsOf(rule.rhs)])
     const sides = [normalTerm(level, left, opaque), normalTerm(level, right, opaque)] as const
     const printed = sides.map(showTerm)
-
-    if (process.env.TRACE_CITE) {
-      console.error('cite instance', printed, showTerm(rule.lhs), showTerm(rule.rhs), rule.binderCount, level)
-    }
 
     for (const directed of [rule, { ...rule, lhs: rule.rhs, rhs: rule.lhs }]) {
       for (const [from, to] of [[0, 1], [1, 0]] as const) {
@@ -4499,6 +4563,300 @@ export function elaborateReport(
     }
   }
 
+  // THE TRUTH TABLE (math-foundations-0017). A value of a form whose cases hold nothing (`flag`) is one of those cases,
+  // even when the kernel cannot compute which: `evaluate(v, p)` for a formula `p` it knows nothing about. So a goal built
+  // from such values (its ATOMS) by tasks that compute once the atoms are known is decided by trying every case for each
+  // atom: wherever the hypotheses are not shown false, the goal's two sides must compute to the same value.
+  // Sound: every value of the form is one of its cases, so the choices cover every instance of the variables, and two
+  // spellings of one value tried apart only add choices. A choice is set aside only when a hypothesis computes to two
+  // different cases, never when one stays undecided. Bounded by TRUTH_TABLE_CHOICES
+  function truthTable(context: Context, left: Value, right: Value, hypotheses: [Value, Value][]): boolean {
+    const level = context.level
+    const unfolded = new Set<string>()
+    const terms = [left, right, ...hypotheses.flat()].map(value => normalTerm(level, value, unfolded))
+
+    // the cases of a term's form, when every case of it holds nothing and the form takes no type
+    const casesOf = (term: Term): Term[] | undefined => {
+      try {
+        const type = quote(level, whnf(infer(context, term).type))
+
+        if (type.tag !== 'const' || (typeFormerArity.get(type.name) ?? 0) > 0) {
+          return undefined
+        }
+
+        const variants = variantNames.get(type.name)
+
+        if (!variants || variants.some(v => (variantFieldInfo.get(ctorKey(type.name, v)) ?? []).length > 0)) {
+          return undefined
+        }
+
+        return variants.map(v => constant(ctorKey(type.name, v)))
+      } catch {
+        return undefined
+      }
+    }
+
+    // only a goal that is itself a truth value: one type, asked once, keeps every other goal from paying for the table
+    const goalCases = casesOf(terms[0]!)
+
+    if (!goalCases) {
+      return false
+    }
+
+    // a value of such a form that is not already one of its cases, asked once per term
+    const opened = new Map<Term, Term[] | undefined>()
+
+    const open = (term: Term): Term[] | undefined => {
+      if (term.tag === 'lam') {
+        return undefined
+      }
+
+      if (!opened.has(term)) {
+        const cases = casesOf(term)
+        const printed = showTerm(term)
+
+        opened.set(term, cases && !cases.some(c => showTerm(c) === printed) ? cases : undefined)
+      }
+
+      return opened.get(term)
+    }
+
+    const openInside = (term: Term): boolean =>
+      term.tag === 'app' && [term.fun, term.arg].some(part => open(part) !== undefined || openInside(part))
+
+    // the atoms: open values with no open value inside them. One with an open value inside is an operation on atoms,
+    // which computes once they are chosen
+    const atoms = new Map<string, { term: Term; cases: Term[] }>()
+
+    const collect = (term: Term): void => {
+      if (term.tag === 'lam') {
+        return
+      }
+
+      const cases = open(term)
+
+      if (cases && !openInside(term)) {
+        atoms.set(showTerm(term), { term, cases })
+      } else if (term.tag === 'app') {
+        collect(term.fun)
+        collect(term.arg)
+      }
+    }
+
+    terms.forEach(collect)
+
+    const list = [...atoms.entries()].map(([printed, atom]) => [printed, atom.cases] as const)
+    const choices = list.reduce((count, [, cases]) => count * cases.length, 1)
+    const spelled = (c: Term): string => showTerm(normalTerm(level, evaluate(context.env, c), unfolded))
+
+    // NO ATOMS: the two sides are what they are. Two different cases, with nothing assumed, is a false law
+    if (list.length === 0) {
+      const [l, r] = [terms[0]!, terms[1]!].map(t => showTerm(t))
+      const known = new Set(goalCases.map(spelled))
+      const names = context.names.map((name, index) => name || `x${level - 1 - index}`)
+
+      if (hypotheses.length === 0 && l !== r && known.has(l!) && known.has(r!)) {
+        tableCounterexample ??= {
+          at: foldCase,
+          given: false,
+          text: '',
+          sides: [surfaceOf(terms[0]!, names), surfaceOf(terms[1]!, names)],
+        }
+      }
+
+      return false
+    }
+
+    if (choices > TRUTH_TABLE_CHOICES) {
+      return false
+    }
+
+    const replace = (term: Term, choice: Map<string, Term>): Term => {
+      const chosen = choice.get(showTerm(term))
+
+      if (chosen) {
+        return chosen
+      }
+
+      return term.tag === 'app' ? { tag: 'app', fun: replace(term.fun, choice), arg: replace(term.arg, choice) } : term
+    }
+
+    // each case as a normal form spells it, the goal's own and each atom's
+    const caseNames = new Set([...goalCases, ...list.flatMap(([, cases]) => cases)].map(spelled))
+    const [goalLeft, goalRight, ...given] = terms
+
+    for (let n = 0; n < choices; n++) {
+      const choice = new Map<string, Term>()
+      let rest = n
+
+      for (const [printed, cases] of list) {
+        choice.set(printed, cases[rest % cases.length]!)
+        rest = Math.floor(rest / cases.length)
+      }
+
+      const value = (term: Term): Value => evaluate(context.env, replace(term, choice))
+
+      // a hypothesis is FALSE under this choice only when its two sides compute to two different cases
+      const refuted = given.some((term, i) => {
+        if (i % 2 === 1) {
+          return false
+        }
+
+        const a = normalTerm(level, value(term), unfolded)
+        const b = normalTerm(level, value(given[i + 1]!), unfolded)
+        const [x, y] = [showTerm(a), showTerm(b)]
+
+        return x !== y && caseNames.has(x) && caseNames.has(y)
+      })
+
+      if (!refuted && !areConvertible(level, value(goalLeft!), value(goalRight!))) {
+        // a COUNTEREXAMPLE, said only when it is one: every hypothesis shown to hold, and the sides two different cases
+        const sides = [goalLeft!, goalRight!].map(t => showTerm(normalTerm(level, value(t), unfolded)))
+        const held = given.every((term, i) => i % 2 === 1 || areConvertible(level, value(term), value(given[i + 1]!)))
+
+        if (held && sides[0] !== sides[1] && caseNames.has(sides[0]!) && caseNames.has(sides[1]!)) {
+          const names = context.names.map((name, index) => name || `x${level - 1 - index}`)
+
+          tableCounterexample ??= {
+            at: foldCase,
+            given: given.length > 0,
+            text: list
+              .map(([printed]) => `${surfaceOf(atoms.get(printed)!.term, names)} is ${surfaceOf(choice.get(printed)!, names)}`)
+              .join(', '),
+          }
+        }
+
+        return false
+      }
+    }
+
+    return true
+  }
+
+  // AN INDUCTION CASE THAT IS ARITHMETIC. The kernel's integers are postulates (`add`, `sub`, `mul`, `neg`, literals
+  // `numberValue#n`), so it cannot see that `count(plus(p, b)) + 1 == (count(p) + 1) + count(b)` holds under the
+  // hypothesis `count(plus(p, b)) == count(p) + count(b)`: a ring identity modulo the hypothesis, in atoms it cannot
+  // compute. Every term outside the ring operations and the literals is an atom, one per spelling, and the shared
+  // substitution and ideal reduction decides the rest (check/ring.ts `ringEqualByEquations`). Sound: atoms spelled the
+  // same are the same term, the hypotheses hold in the case, and a ring identity holds of the integers
+  function ringCase(
+    level: number,
+    left: Value,
+    right: Value,
+    hypotheses: [Value, Value][],
+    // the cited rules, rewritten with in the normal forms, where their left sides show (`count(plus(b, times(p, b)))`)
+    rules: { binderCount: number; lhs: Term; rhs: Term }[] = [],
+  ): boolean {
+    const { read, atoms } = arithmeticReader(level, rules)
+
+    try {
+      const equations = hypotheses.map(([l, r]): [Expression, Expression] => [read(l), read(r)])
+
+      return ringEqualByEquations(read(left), read(right), equations, atoms)
+    } catch {
+      return false
+    }
+  }
+
+  // AN INDUCTION CASE THAT IS AN ORDER: `count(n) >= 0` by `fold n` asks, at `succ p`, `count(p) + 1 >= 0` from the
+  // hypothesis `count(p) >= 0`. Linear arithmetic over the same atoms (check/holds.ts `orderFollows`)
+  function orderCase(
+    level: number,
+    op: string,
+    left: Value,
+    right: Value,
+    // the induction hypotheses, each the goal's relation at a field, and the case's equations (its `have`s)
+    ordered: [Value, Value][],
+    equal: [Value, Value][],
+    rules: { binderCount: number; lhs: Term; rhs: Term }[] = [],
+  ): boolean {
+    const { read } = arithmeticReader(level, rules)
+    const relation = (l: Value, r: Value, as: string): Expression =>
+      ({ form: 'binary', op: as, left: read(l), right: read(r), span: NO_SPAN }) as Expression
+
+    try {
+      return orderFollows(relation(left, right, op), [
+        ...ordered.map(([l, r]) => relation(l, r, op)),
+        ...equal.map(([l, r]) => relation(l, r, '==')),
+      ])
+    } catch {
+      return false
+    }
+  }
+
+  // the kernel's terms as the ring's expressions: `add`, `sub`, `mul`, `neg` and integer literals are the ring, and every
+  // other term an atom, one per spelling, after the definitions are unfolded and the cited rules rewritten with.
+  // A TASK OVER `natural-number` STAYS FOLDED, an atom: its `subtract` stops at zero, so its body is not the polynomial it
+  // reads as (`monus(a, b) + b == a` is false at a = 0, b = 1), the rule check/unfold.ts keeps for the same reason
+  function arithmeticReader(
+    level: number,
+    rules: { binderCount: number; lhs: Term; rhs: Term }[],
+  ): { read: (value: Value) => Expression; atoms: Set<string> } {
+    const ring = new Set(['add', 'sub', 'mul', 'neg', ...truncating])
+    const atoms = new Map<string, string>()
+    const names = new Set<string>()
+    const span = NO_SPAN
+
+    const toExpression = (term: Term): Expression => {
+      const args: Term[] = []
+      let head = term
+
+      while (head.tag === 'app') {
+        args.unshift(head.arg)
+        head = head.fun
+      }
+
+      if (head.tag === 'const' && ring.has(head.name)) {
+        if (head.name === 'neg' && args.length === 1) {
+          return { form: 'binary', op: '-', left: { form: 'integer', value: 0, span }, right: toExpression(args[0]!), span }
+        }
+
+        if (head.name !== 'neg' && args.length === 2) {
+          const op = head.name === 'add' ? '+' : head.name === 'sub' ? '-' : '*'
+
+          return { form: 'binary', op, left: toExpression(args[0]!), right: toExpression(args[1]!), span }
+        }
+      }
+
+      if (head.tag === 'const' && args.length === 0 && head.name.startsWith('numberValue#')) {
+        const value = Number(head.name.slice('numberValue#'.length))
+
+        if (Number.isSafeInteger(value)) {
+          return { form: 'integer', value, span }
+        }
+      }
+
+      const printed = showTerm(term)
+
+      if (!atoms.has(printed)) {
+        atoms.set(printed, `atom_${atoms.size}`)
+        names.add(atoms.get(printed)!)
+      }
+
+      return { form: 'variable', name: atoms.get(printed)!, span }
+    }
+
+    return {
+      read: (value: Value): Expression => toExpression(rewriteWithLemmas(normalTerm(level, value, ring), rules, 64)),
+      atoms: names,
+    }
+  }
+
+  // a term as its source writes it: `evaluate(v, a)`, where `showNamed` prints `((evaluate v) a)`
+  function surfaceOf(term: Term, names: string[]): string {
+    const args: Term[] = []
+    let head = term
+
+    while (head.tag === 'app') {
+      args.unshift(head.arg)
+      head = head.fun
+    }
+
+    const name = showNamed(head, names)
+
+    return args.length === 0 ? name : `${name}(${args.map(arg => surfaceOf(arg, names)).join(', ')})`
+  }
+
   // close one induction case: given the two sides of the case goal and the hypotheses in force (the induction
   // hypotheses, the specialized path assumptions), discharge it. Cited lemmas are applied as directed rewrites; an
   // operator proven both commutative and associative is normalized modulo AC; the rest is convertibility modulo the
@@ -4518,6 +4876,8 @@ export function elaborateReport(
       rhs: Term
       holes: Set<number>
     }[] = [],
+    // the case's context, for the truth table to type its atoms
+    context?: Context,
   ): boolean {
     const acOperators = new Set<string>()
     const commutative = new Set<string>()
@@ -4625,11 +4985,21 @@ export function elaborateReport(
       }
     }
 
-    return dischargeModulo(
-      level,
-      evaluate(env, leftTermRewritten),
-      evaluate(env, rightTermRewritten),
-      hypotheses,
+    return (
+      dischargeModulo(
+        level,
+        evaluate(env, leftTermRewritten),
+        evaluate(env, rightTermRewritten),
+        hypotheses,
+      ) ||
+      (context !== undefined && truthTable(context, caseLeft, caseRight, hypotheses)) ||
+      ringCase(
+        level,
+        caseLeft,
+        caseRight,
+        hypotheses,
+        citedLemmas.flatMap(name => (lemmaRules.has(name) ? [lemmaRules.get(name)!] : [])),
+      )
     )
   }
 
@@ -4651,7 +5021,8 @@ export function elaborateReport(
     // added as ground rewrites + convertibility hypotheses, so an inductive implication can use its antecedent.
     assumptions: [Expression, Expression][] = [],
   ): boolean {
-    if (goal.op !== '==') {
+    // an equation, or an ORDER (`count(n) >= 0`), whose cases are closed over the integers (`orderCase`)
+    if (!['==', '<', '<=', '>', '>='].includes(goal.op)) {
       return false
     }
 
@@ -4759,6 +5130,9 @@ export function elaborateReport(
         }[] = [],
         ihLevel = -1,
         indexRefine?: { level: number; term: Term },
+        // for an ORDER goal, how many of `hyps` lead as induction hypotheses: the goal's relation at a field. The rest
+        // are equations (the case's `have`s)
+        ordered = 0,
       ): boolean => {
         const [lt, rt] = elaborateGoalSides(
           goal.left,
@@ -4777,17 +5151,20 @@ export function elaborateReport(
         // attempt). Once a field is split, the context grows and the indices no longer align, so it is dropped there.
         const gih = ctx.level === ihLevel ? generalIH : []
 
-        if (
-          closeCase(
-            ctx.level,
-            ctx.env,
-            evaluate(env, lt),
-            evaluate(env, rt),
-            hyps,
-            citedLemmas,
-            gih,
-          )
-        ) {
+        const closed =
+          goal.op === '=='
+            ? closeCase(ctx.level, ctx.env, evaluate(env, lt), evaluate(env, rt), hyps, citedLemmas, gih, ctx)
+            : orderCase(
+                ctx.level,
+                goal.op,
+                evaluate(env, lt),
+                evaluate(env, rt),
+                hyps.slice(0, ordered),
+                hyps.slice(ordered),
+                citedLemmas.flatMap(name => (lemmaRules.has(name) ? [lemmaRules.get(name)!] : [])),
+              )
+
+        if (closed) {
           return true
         }
 
@@ -4859,6 +5236,7 @@ export function elaborateReport(
                 [],
                 -1,
                 indexRefine,
+                ordered,
               )
             ) {
               allClosed = false
@@ -4903,6 +5281,8 @@ export function elaborateReport(
       }
 
       for (const variant of variants) {
+        foldCase = variant
+
         const fields =
           variantFieldInfo.get(ctorKey(typeHead.name, variant)) ?? []
 
@@ -5053,6 +5433,9 @@ export function elaborateReport(
           continue
         }
 
+        // the induction hypotheses lead, and for an order goal they are its relation, not equations
+        const ordered = hypotheses.length
+
         hypotheses.push(...assumptionPairs)
 
         // the inductive-typed fields of this constructor, which can be split further if the case does not reduce
@@ -5129,6 +5512,7 @@ export function elaborateReport(
             generalIH,
             inner.level,
             indexRefine,
+            ordered,
           )
         ) {
           return false
@@ -5331,6 +5715,8 @@ export function elaborateReport(
           caseRight,
           hypotheses,
           citedLemmas,
+          [],
+          ctx,
         )
       }
 
@@ -5418,6 +5804,75 @@ export function elaborateReport(
   // that shape, so no other code's conditions are ever read as hypotheses.
   // whether the hold is the goal of a theorem with universal hypotheses (`have h / mark t / ...`): the hold checker
   // proves those, induction included (holds.ts universalGoal, universalInduction), and this pass leaves them to it
+  // the theorem whose goal this hold is, by the shape the mill builds (its `have` guards around the goal)
+  function enclosingTheorem(program: Program, hold: Statement): Extract<Statement, { form: 'function' }> | undefined {
+    for (const fn of program) {
+      if (fn.form !== 'function' || !fn.theorem) {
+        continue
+      }
+
+      let body: Statement[] = fn.body.filter(s => !(s.form === 'let' && !s.mutable) && s.form !== 'return')
+
+      while (body.length === 1) {
+        const only = body[0]!
+
+        if (only === hold) {
+          return fn
+        }
+
+        if (only.form !== 'if' || only.branches.length !== 1 || only.otherwise) {
+          break
+        }
+
+        body = only.branches[0]!.body
+      }
+    }
+
+    return undefined
+  }
+
+  // `fold n` on a number in a theorem about functions: one of its marks is a function (directly or through an alias),
+  // or its goal applies a task that takes one (`total(identity, n)`, a sum of a task passed by name)
+  function numberFoldOverFunctions(program: Program, hold: Extract<Statement, { form: 'hold' }>): boolean {
+    const fn = enclosingTheorem(program, hold)
+    const counter = fn?.params.find(p => p.name === hold.proof?.[0]?.arg)
+
+    return (
+      counter !== undefined &&
+      (counter.refine === 'natural' || counter.type?.kind === 'number') &&
+      (fn!.params.some(p => isFunctionType(p.type)) || appliesHigherOrder(program, hold.expr))
+    )
+  }
+
+  // a task type, written as one or named through an alias
+  function isFunctionType(type: Type | undefined): boolean {
+    return type?.kind === 'function' || (type !== undefined && throughAlias(type, typeAliases)?.kind === 'function')
+  }
+
+  // does the expression apply a task that takes a function (`total(f, n)`)
+  function appliesHigherOrder(program: Program, expr: Expression): boolean {
+    const higherOrder = new Set(
+      program.flatMap(s => (s.form === 'function' && s.params.some(p => isFunctionType(p.type)) ? [s.name] : [])),
+    )
+    let appliesOne = false
+
+    const visit = (e: Expression): void => {
+      if (e.form === 'call') {
+        appliesOne ||= e.callee.form === 'variable' && higherOrder.has(e.callee.name)
+        e.args.forEach(visit)
+      } else if (e.form === 'binary') {
+        visit(e.left)
+        visit(e.right)
+      } else if (e.form === 'unary') {
+        visit(e.operand)
+      }
+    }
+
+    visit(expr)
+
+    return appliesOne
+  }
+
   function inUniversalTheorem(program: Program, hold: Statement): boolean {
     for (const fn of program) {
       if (fn.form !== 'function' || !fn.universals?.length) {
@@ -5584,7 +6039,7 @@ export function elaborateReport(
     // a goal that calls something two calls may disagree on is not the kernel's to decide: every task is a constant
     // in the signature, so `roll() == roll()` would be convertible by construction. Leave it to the linear prover,
     // which reports it as outside the fragment. See check/facts.ts.
-    if (callsImpure(goal, factsPure, factsFunctions, new Set([...factsLocal].filter(name => !ruleMarks.has(name))))) {
+    if (callsImpure(goal, factsPure, factsFunctions, withoutRuleMarks(factsLocal))) {
       return
     }
 
@@ -5638,8 +6093,13 @@ export function elaborateReport(
     // hold. On failure, fall through to the linear prover (unchanged behavior), so nothing true is newly rejected.
     // a conjunction proved by `fold n`: Peano induction over order goals, whose hypothesis is the whole conjunction
     // (induct.ts checkFoldOrder). A conjunction is how an induction carries a second fact through its step.
-    // a theorem with universal hypotheses is the hold checker's, its inductions too
-    if (statement.proof?.[0]?.head === 'fold' && inUniversalTheorem(program, statement)) {
+    // a theorem with universal hypotheses is the hold checker's, its inductions too, and so is an induction on a number
+    // in a theorem about a function (`total(f, n)` by `fold n`): the hold checker reads the summed task's equations
+    // as such hypotheses (check/holds.ts `recurrenceFacts`), and the kernel's own induction has no use for `f`
+    if (
+      statement.proof?.[0]?.head === 'fold' &&
+      (inUniversalTheorem(program, statement) || numberFoldOverFunctions(program, statement))
+    ) {
       return
     }
 
@@ -5822,6 +6282,9 @@ export function elaborateReport(
     }
 
     if (tactic?.head === 'fold' && tactic.arg) {
+      foldCase = undefined
+      tableCounterexample = undefined
+
       // try structural induction over an inductive type first (it handles lists, trees, and the like, and proves the
       // non-definitional arithmetic laws such as n + 0 == n); fall back to ring-level Peano induction for the numeric
       // accumulator recurrences (closed-form sums) that the symbolic ring certificate decides. `cite <lemma>` children
@@ -5889,11 +6352,22 @@ export function elaborateReport(
           recordLemmaRule(statement.name, goal, scope, context)
         }
       } else {
+        // a counterexample the truth table found is the reason, and the most useful sentence the refusal can say
+        const found = tableCounterexample as { at?: string; text: string; given: boolean; sides?: [string, string] } | undefined
+        const where = found?.at ? `in the case \`${found.at}\`` : 'in one case'
+
         diagnostics.push(
           diagnose('invalid-proof', {
             file,
             span: statement.span,
-            message: 'the induction did not establish the equality',
+            message: !found
+              ? 'the induction did not establish the equality'
+              : found.sides
+                ? `the induction did not establish the equality: it is FALSE ${where}, where its two sides compute to ${found.sides[0]} and ${found.sides[1]}`
+                : `the induction did not establish the equality: it is FALSE ${where}, where ${found.text}${found.given ? ', with every hypothesis of the case holding' : ''}`,
+            ...(found
+              ? { hint: 'no proof step makes a false case true. Change the case or the statement, and check the values named above by hand' }
+              : {}),
           }),
         )
       }
@@ -5941,8 +6415,7 @@ export function elaborateReport(
     // an explicit proof present, the kernel validates that proof instead, so a bogus tactic is still caught.
     // the sides with every non-recursive single-expression task unfolded, so a polynomial defined once as a task
     // (a norm, a product's coordinates) can be named in a ring identity rather than written out (see unfold.ts)
-    const ringLeft = unfoldDefinitions(goal.left, program)
-    const ringRight = unfoldDefinitions(goal.right, program)
+    const [ringLeft, ringRight] = etaPair(unfoldDefinitions(goal.left, program), unfoldDefinitions(goal.right, program))
 
     if (!hasProof && ringEqual(ringLeft, ringRight)) {
       discharged.push(statement.span)
@@ -5996,6 +6469,66 @@ export function elaborateReport(
     )
 
     if (!left || !right) {
+      return
+    }
+
+    // A GOAL OVER TRUTH VALUES DECIDES ITSELF, by its truth table, as a ring identity does by its normal form: a law
+    // of flags needs no step (`either(s(x), t(x)) == either(t(x), s(x))`). And a false one is refused with the values
+    // that break it, which is what a reader needs to fix it
+    if (!hasProof && goal.op === '==') {
+      try {
+        const given = assumptions.flatMap(([l, r]): [Value, Value][] => {
+          const lt = expr(l, scope, context)
+          const rt = expr(r, scope, context)
+
+          return lt && rt ? [[evaluate(context.env, lt), evaluate(context.env, rt)]] : []
+        })
+
+        foldCase = undefined
+        tableCounterexample = undefined
+
+        if (truthTable(context, evaluate(context.env, left), evaluate(context.env, right), given)) {
+          discharged.push(statement.span)
+          recordLemmaRule(statement.name, goal, scope, context)
+
+          return
+        }
+
+        // and an identity of the integers once the definitions run: `count(one()) == 1` is `0 + 1 == 1`, which the
+        // kernel's postulated arithmetic cannot see and the ring does (`ringCase`), under the path's equations
+        if (ringCase(context.level, evaluate(context.env, left), evaluate(context.env, right), given)) {
+          discharged.push(statement.span)
+          recordLemmaRule(statement.name, goal, scope, context)
+
+          return
+        }
+
+        const found = tableCounterexample as { text: string; sides?: [string, string] } | undefined
+
+        if (found) {
+          diagnostics.push(
+            diagnose('invalid-proof', {
+              file,
+              span: statement.span,
+              message: found.sides
+                ? `this rule is FALSE: its two sides compute to ${found.sides[0]} and ${found.sides[1]}, whatever its marks are`
+                : `this rule is FALSE where ${found.text}`,
+              hint: 'no proof step makes a false law true. Change the statement, and check the values named above by hand',
+            }),
+          )
+
+          return
+        }
+      } catch {
+        // outside the table's reach: the paths below decide it
+      }
+    }
+
+    // and a goal over a recursion of a task that takes a function (`total(f, n + 1) == ...`), with no step, that the
+    // table did not decide, is the hold checker's: it reads the task's own equations (check/holds.ts
+    // `recurrenceFacts`). Conversion here unfolds the recursion on a symbolic counter, each unfolding stuck on its test
+    // and unfolded again inside its branches up to the fuel bound: seconds per goal, for what takes milliseconds there
+    if (!hasProof && appliesHigherOrder(program, goal)) {
       return
     }
 
@@ -6236,10 +6769,6 @@ export function elaborateReport(
         continue
       }
 
-      if (process.env.TRACE_CITE) {
-        console.error('declined', statement.name, unreadable.get(statement.name))
-      }
-
       declined.push({
         name: statement.name,
         reason: `its signature names a type the kernel cannot read (${unreadable.get(statement.name) ?? 'the signature'})`,
@@ -6400,6 +6929,12 @@ export function elaborateReport(
 
   return { diagnostics, verified, proven, declined, discharged }
 }
+
+// the most choices the truth table tries (`truthTable`): twelve flag atoms. Past it the goal is left to the other provers
+const TRUTH_TABLE_CHOICES = 4096
+
+// the span of an expression the kernel builds for the ring from its own terms (`ringCase`), which no source wrote
+const NO_SPAN = { start: { line: 0, column: 0, offset: 0 }, end: { line: 0, column: 0, offset: 0 } }
 
 // a body under one lambda per generic and parameter: the closed term a transparent definition is registered as
 function lambdaOver(term: Term, count: number): Term {

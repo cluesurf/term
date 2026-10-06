@@ -95,14 +95,15 @@ try {
   b.child.kill()
 }
 
-// ---- bare `halt` stops the project's `term feed` too ----
-// a feed runs no `run.mjs`, so only `-p` stopped one (guides: commands/halt, commands/feed, 2026-10-05)
+// ---- bare `halt` stops the project's browser development server too ----
+// it runs no `run.mjs`, so only `-p` stopped one (guides: commands/halt, 2026-10-05). It was `term feed`, and is
+// `term boot --env browser` since the same day, which halt finds by its command line (call/code/halt.ts `services`)
 {
   const dir = mkdtempSync(join(tmpdir(), 'term-halt-feed-'))
   mkdirSync(join(dir, 'code'))
   writeFileSync(join(dir, 'deck.tree'), 'deck halt-feed\n  mark <0.0.1>\n  boot ./code/boot\n')
   writeFileSync(join(dir, 'code/boot.tree'), 'load @term/base/console\n  find log\n\ntask boot\n  mark async\n  log <fed>\n')
-  const feed = spawn('node', [LINE, 'feed', '-p', '4983'], { cwd: dir, env: { ...process.env, NO_COLOR: '1' } })
+  const feed = spawn('node', [LINE, 'boot', '--env', 'browser', '-p', '4983'], { cwd: dir, env: { ...process.env, NO_COLOR: '1' } })
   let log = ''
   feed.stdout!.on('data', chunk => (log += String(chunk)))
   feed.stderr!.on('data', chunk => (log += String(chunk)))
@@ -116,8 +117,8 @@ try {
   try {
     const halted = spawnSync('node', [LINE, 'halt'], { cwd: dir, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' } })
     const said = `${halted.stdout}${halted.stderr}`
-    ok('bare `term halt` in a project stops its `term feed`, naming it', halted.status === 0 && /term feed/.test(said), said)
-    ok('and the feed ends', (await within(exited, 15_000)) !== 'timeout', log.slice(-400))
+    ok('bare `term halt` in a project stops its browser server, naming it', halted.status === 0 && /stop term boot/.test(said), said)
+    ok('and the server ends', (await within(exited, 15_000)) !== 'timeout', log.slice(-400))
   } finally {
     feed.kill()
   }

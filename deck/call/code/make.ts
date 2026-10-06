@@ -27,7 +27,7 @@ import { projectCache, projectCacheDir } from '@term/call/code/cache-store'
 import { readable } from '@term/call/code/test-preprocess'
 import { isLockfileAt, isRoleFileAt, manifestNameOf } from '@term/call/code/manifest-name'
 import { projectDeckOf } from '@term/call/code/deck-of'
-import type { DeckOf } from '@term/make/code/compile/roll'
+import type { DeckOf, Roll } from '@term/make/code/compile/roll'
 import { projectRoleOf, projectLeanOf } from '@term/call/code/role-of'
 import { parse } from '@term/make/code/parser/tree'
 import {
@@ -399,6 +399,9 @@ export type BuildSession = {
   walked: WalkMemo
   // what each entry built to, the last time it built
   entries: Map<string, EntryOutcome>
+  // each unit's roll of its own definitions, by the unit's label, as the entries built this session last carried it.
+  // A replayed entry carries none, so the roll pass reads them here (call/code/roll.ts `projectRoll`)
+  rolls: Map<string, Roll>
   // starts a build of `files` and answers which files moved since the last one, of every module that build walked.
   // `undefined` when nothing may be replayed: the session's first build, or one that started it over
   turn: (files: string[]) => string[] | undefined
@@ -420,6 +423,7 @@ export function buildSession(root: string): BuildSession {
   let kept = keptResolver(projectResolver(root))
   const walked: WalkMemo = new Map()
   const entries = new Map<string, EntryOutcome>()
+  const rolls = new Map<string, Roll>()
   // each walked module's stamp as of the last build
   const stamps = new Map<string, string>()
   // the files that say how every module is read, rather than being one
@@ -432,6 +436,7 @@ export function buildSession(root: string): BuildSession {
     units: new Map(),
     walked,
     entries,
+    rolls,
     turn: files => {
       kept.turn()
 
@@ -454,6 +459,7 @@ export function buildSession(root: string): BuildSession {
       kept = keptResolver(projectResolver(root))
       walked.clear()
       entries.clear()
+      rolls.clear()
       stamps.clear()
 
       return undefined
@@ -1215,6 +1221,8 @@ export function compileProjectSeparate(
   reused: number
   // each built program entry's closure key, which the roll is cached by (call/code/roll.ts `projectRoll`)
   closures: Map<string, string>
+  // and each unit's roll of its own definitions, which the project's roll is assembled from
+  rolls: Map<string, Roll>
 } {
   const files = findTreeFiles(root, [], platform)
   const { resolve, parsed, units, walked } = session
@@ -1413,6 +1421,11 @@ export function compileProjectSeparate(
     })
     closures.set(file, result.closureKey)
 
+    // the roll of every unit the entry reaches, for the roll pass
+    for (const [label, roll] of result.rolls ?? []) {
+      session.rolls.set(label, roll)
+    }
+
     for (const [mfile, emit] of result.modules) {
       writeArtifact(
         path.join(root, 'host', '.unit', `${slug(mfile)}.ts`),
@@ -1450,7 +1463,30 @@ export function compileProjectSeparate(
     built,
     reused,
     closures,
+    rolls: liveRolls(session, closures),
   }
+}
+
+// the rolls of the units some entry still reaches: the session keeps every unit's roll it was handed, and in a watch an
+// edit that drops an import leaves that unit's roll behind, which no entry builds from any more. Every module's edges
+// are in the session's walk
+function liveRolls(session: BuildSession, closures: Map<string, string>): Map<string, Roll> {
+  const reached = new Set<string>()
+  const stack = [...closures.keys()]
+
+  while (stack.length > 0) {
+    const file = stack.pop()!
+
+    if (reached.has(file)) {
+      continue
+    }
+
+    reached.add(file)
+    stack.push(...(session.walked.get(file)?.edges ?? []))
+  }
+
+  // a unit is labelled by its files, joined (compile/separate.ts)
+  return new Map([...session.rolls].filter(([label]) => label.split('+').some(file => reached.has(file))))
 }
 
 // watch the project's .tree files and recompile incrementally on change (a shared cache reuses unchanged modules).
@@ -1656,8 +1692,9 @@ export async function callMake(input: {
       const started = Date.now()
       // the separate path's own counts, units built against units replayed from the cache
       let units: { built: number; reused: number } | undefined
-      // and each entry's closure key, which the roll below is cached by
+      // and each entry's closure key, which the roll below is cached by, and each unit's roll it is assembled from
       let closures: Map<string, string> | undefined
+      let rolls: Map<string, Roll> | undefined
 
       if (separate) {
         const session = buildSession(input.root)
@@ -1699,6 +1736,7 @@ export async function callMake(input: {
         result = built
         units = { built: built.built + pooled, reused: built.reused }
         closures = built.closures
+        rolls = built.rolls
 
         // one item per unit built, its reasons under it
         for (const [label, reasons] of explain?.reasons ?? []) {
@@ -1802,12 +1840,25 @@ export async function callMake(input: {
         })
       }
 
-      // the roll of the project's own entries, beside the output, for tools that are not Term. Every compile
-      // above is cached, so this costs the roll pass and nothing else. See code/compile/roll.ts.
+      // the roll of the build, beside the output, for tools that are not Term: every unit's own entries, which the
+      // separate build above handed over (call/code/roll.ts `projectRoll`). A merged build made none, so a big project's
+      // units are built across the pool for it, as the separate build's are: built one entry at a time on this thread,
+      // @term/bind's roll took 10 min 37 s of a 12 min 33 s merged build (2026-10-05)
       try {
         const { projectRoll } = await import('@term/call/code/roll')
         const rolledAt = Date.now()
-        const { roll } = projectRoll(input.root, closures)
+
+        if (rolls === undefined && fileCount >= 16 && cpus().length > 2) {
+          try {
+            const { compileUnitsParallel } = await import('@term/call/code/build-separate-parallel')
+            const pool = await compileUnitsParallel(input.root, findTreeFiles(input.root, [], 'node'), buildSession(input.root))
+            rolls = new Map([...pool.results.values()].flatMap(result => (result.ok ? result.rolls : [])))
+          } catch {
+            rolls = undefined
+          }
+        }
+
+        const { roll } = projectRoll(input.root, rolls)
         const fs = await import('fs')
         const rollPath = path.join(input.root, 'host', 'roll.json')
         const text = JSON.stringify(roll, null, 2) + '\n'

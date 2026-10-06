@@ -1,0 +1,104 @@
+# The page side of the device smoke of device-layer-0013: a WebView page calling the device contracts, each answered
+# by the cask's process through the generated bridge, where WKWebView alone has no battery, no haptics and a clipboard
+# that refuses a read nobody clicked for. The page puts the line the driver wrote in <bundle>/smoke.txt on the clipboard
+# and reads it back: it leaves with 0 when the line came back, 1 when it did not. Before that it writes every other
+# answer, one per line, to device.txt in the app's data folder, for the driver to judge against the platform: the
+# battery against `pmset`, the vibration, the network, the torch, a grant. The network watcher is the one call that
+# stays in the page (a handler does not cross), so its first answer is the WebView's own.
+
+load @term/cask/cask
+  find bundle-path
+  find data-path
+  find exit
+
+load @term/base/file
+  find read
+  find write
+
+load @term/base/text
+  find trim
+
+load @term/site/view/reactive
+  find make-signal
+  find read-signal
+  find write-signal
+
+load @term/site/view/clipboard
+  find read-clipboard
+  find write-clipboard
+
+load @term/site/view/battery
+  find battery-status
+
+load @term/site/view/network
+  find network-status
+  find watch-network
+
+load @term/site/view/vibration
+  find vibrate
+
+load @term/site/view/torch
+  find torch-state
+
+load @term/site/view/permission
+  find permission-status
+
+task boot
+  mark async
+  like void
+  # the watcher first: its first answer comes while the calls below cross
+  save watched
+    call make-signal
+      bind value, text <none>
+  save drop
+    call watch-network
+      task heard
+        take value, like text
+        call write-signal
+          bind self, read watched
+          bind value, read value
+  save bundle
+    call bundle-path
+  save line
+    call trim
+      call read
+        text <{bundle}/smoke.txt>
+  save wrote
+    call write-clipboard
+      read line
+  save held
+    call read-clipboard
+  save battery
+    call battery-status
+  save network
+    call network-status
+  save played
+    call vibrate
+      text <medium>
+  save torch
+    call torch-state
+  save camera
+    call permission-status
+      text <camera>
+  save heard
+    call read-signal
+      bind self, read watched
+  call drop
+  # the name the app's scope reads `$data` with (appIdentity, from the app's folder), or the write is refused
+  save directory
+    call data-path
+      text <Device>
+  call write
+    text <{directory}/device.txt>
+    text <clipboard {wrote}|battery {battery}|network {network}|vibrate {played}|torch {torch}|camera {camera}|watch-network {heard}>
+  fork test
+    hook test
+      call is-equal
+        read held
+        text <cask-device-ok>
+    hook hold
+      call exit
+        code 0
+    hook miss
+      call exit
+        code 1

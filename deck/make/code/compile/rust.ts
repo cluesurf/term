@@ -11,6 +11,7 @@ import type {
   Statement,
   Type,
 } from '@term/make/code/compile/node'
+import { markUnit, unmarked } from '@term/make/code/compile/unit-split'
 import {
   collectBinds,
   renderBind,
@@ -481,17 +482,20 @@ type CloneRecord = { forms: Set<string>; generic: boolean }
 // a clone of a `Box` tree copies all of it, and a program that shares structure (a persistent list's common tail)
 // would go quadratic. So a form is boxed only when nothing clones it, nor any form that holds it, and nothing
 // generic is cloned at all (generic code could be holding it). Anything unproven keeps `Rc`
-export function emitRust(program: Program, options?: { wake?: WakeGroup[] }): string {
+// with `units`, each module's statements stay marked, for the caller to write one file per module
+// (compile/unit-split.ts)
+export function emitRust(program: Program, options?: { wake?: WakeGroup[]; units?: boolean }): string {
+  const finish = (text: string): string => (options?.units ? text : unmarked(text))
   const record: CloneRecord = { forms: new Set(), generic: false }
   const first = emitRustPass(program, options, new Set(), record)
 
   if (record.generic) {
-    return first
+    return finish(first)
   }
 
   const boxed = boxableForms(program, record.forms)
 
-  return boxed.size ? emitRustPass(program, options, boxed, { forms: new Set(), generic: false }) : first
+  return finish(boxed.size ? emitRustPass(program, options, boxed, { forms: new Set(), generic: false }) : first)
 }
 
 // what the first pass recorded and which forms it boxes, for a test to assert (test/compile/rust-box.ts)
@@ -5459,8 +5463,10 @@ function emitRustPass(
     return true
   }
 
-  const body = [
-    ...hostStructDefs,
+  // each statement's text, beside the module it came from, which is marked on it once the passes below that read a
+  // text's start (`fn `) have run (compile/unit-split.ts)
+  const written = [
+    ...hostStructDefs.map(text => [text, undefined] as const),
     ...program
       .filter(n => n.form !== 'native')
       .filter(
@@ -5472,8 +5478,10 @@ function emitRustPass(
           ),
       )
       .filter(keepStatement)
-      .map(n => (n.form === 'let' ? moduleLet(n) : stmt(n, 0))),
-  ].filter(Boolean)
+      .map(n => [n.form === 'let' ? moduleLet(n) : stmt(n, 0), n.span.file] as const),
+  ].filter(([text]) => Boolean(text))
+  const body: string[] = written.map(([text]) => text)
+  const bodyFiles: (string | undefined)[] = written.map(([, file]) => file)
 
   // each task a guarded loop calls unchecked, once more with plain arithmetic and its proven non-negative divisions
   // unsigned (`a_value_fast`), behind the bound the guard proved its arguments inside (ir/facts/bounds.ts)
@@ -5483,6 +5491,7 @@ function emitRustPass(
     if (fn) {
       uncheckedInts = true
       body.push(stmt({ ...fn, name: `${name}-fast` }, 0))
+      bodyFiles.push(fn.span.file)
       uncheckedInts = false
     }
   }
@@ -6069,7 +6078,7 @@ fn __term_boxed<T, F: std::future::Future<Output = T> + 'static>(work: F) -> std
       at = end + 1
     }
   }
-  const localBody = body.map(text => {
+  const localBody = body.map((text, index) => {
     let out = text
     const spares: string[] = []
 
@@ -6103,7 +6112,8 @@ fn __term_boxed<T, F: std::future::Future<Output = T> + 'static>(work: F) -> std
       out = out.split('return std::result::Result::Err(term_fail(').join(`return std::result::Result::Err(term_fail_with(${held}, `)
     }
 
-    return out
+    // marked with its module now that nothing reads its start, so the program can be written one file per module
+    return markUnit(bodyFiles[index], out)
   })
   let assembled = localBody.join('\n\n')
 

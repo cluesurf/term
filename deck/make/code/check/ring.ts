@@ -204,6 +204,22 @@ function ringEqualExact(
   left: Expression,
   right: Expression,
 ): boolean {
+  // TWO CONSTRUCTIONS OF ONE FORM are equal exactly when their fields are, so a law about a matrix (`times(times(m, n),
+  // p) == times(m, times(n, p))`) is the ring identities of its entries, once the tasks are unfolded to constructions
+  if (left.form === 'record' && right.form === 'record') {
+    return (
+      left.name === right.name &&
+      !left.positional?.length &&
+      !right.positional?.length &&
+      left.fields.length === right.fields.length &&
+      left.fields.every(f => {
+        const other = right.fields.find(g => g.name === f.name)
+
+        return other !== undefined && ringEqualExact(f.value, other.value)
+      })
+    )
+  }
+
   const l = toPoly(left)
   const r = toPoly(right)
 
@@ -212,6 +228,62 @@ function ringEqualExact(
   }
 
   return addPoly(l, scalePoly(r, -1)).size === 0
+}
+
+// ---- an equation from equations: substitution, then ideal membership ----
+
+// L == R from EQUATIONS, by algebra rather than search. An equation with one side a lone ATOM (a variable in `atoms`)
+// that the other side does not mention, `t1 == t0 + 3`, is substituted away everywhere first, and whatever is left is
+// reduced modulo the remaining equations (`ringEqualModulo`). Two callers share it: the hold checker, whose atoms are
+// calls (check/holds.ts `ringFromEquations`), and the kernel closing an induction case, whose atoms are terms it cannot
+// compute (check/elaborate.ts `ringCase`). Sound: each substitution replaces an atom by what an equation says it is
+export function ringEqualByEquations(
+  left: Expression,
+  right: Expression,
+  equations: [Expression, Expression][],
+  atoms: ReadonlySet<string>,
+): boolean {
+  const mentions = (e: Expression, name: string): boolean =>
+    e.form === 'variable'
+      ? e.name === name
+      : e.form === 'binary'
+        ? mentions(e.left, name) || mentions(e.right, name)
+        : e.form === 'unary' && mentions(e.operand, name)
+
+  const replaced = (e: Expression, name: string, value: Expression): Expression =>
+    e.form === 'variable'
+      ? e.name === name
+        ? value
+        : e
+      : e.form === 'binary'
+        ? { ...e, left: replaced(e.left, name, value), right: replaced(e.right, name, value) }
+        : e.form === 'unary'
+          ? { ...e, operand: replaced(e.operand, name, value) }
+          : e
+
+  const defines = (side: Expression, other: Expression): boolean =>
+    side.form === 'variable' && atoms.has(side.name) && !mentions(other, side.name)
+
+  let rest = [...equations]
+  let l = left
+  let r = right
+
+  for (let round = 0; round < equations.length; round++) {
+    const at = rest.findIndex(([a, b]) => defines(a, b) || defines(b, a))
+
+    if (at < 0) {
+      break
+    }
+
+    const [a, b] = rest[at]!
+    const [name, value] = defines(a, b) ? [(a as { name: string }).name, b] : [(b as { name: string }).name, a]
+
+    rest = rest.filter((_, i) => i !== at).map(([x, y]) => [replaced(x, name, value), replaced(y, name, value)])
+    l = replaced(l, name, value)
+    r = replaced(r, name, value)
+  }
+
+  return ringEqual(l, r) || (rest.length > 0 && ringEqualModulo(l, r, rest))
 }
 
 // ---- ideal membership: prove L == R MODULO polynomial hypotheses (congruence over the ring) ----

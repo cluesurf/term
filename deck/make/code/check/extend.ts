@@ -718,6 +718,31 @@ export function extendForms(
     }
   }
 
+  // the value indices written in a type (`like derivation / head / make implication(a, b)`), wherever the type nests them
+  const walkIndices = (s: Statement, type: unknown): void => {
+    if (type === null || typeof type !== 'object') {
+      return
+    }
+
+    if (Array.isArray(type)) {
+      type.forEach(t => walkIndices(s, t))
+
+      return
+    }
+
+    const record = type as Record<string, unknown>
+
+    if (Array.isArray(record.valueArgs)) {
+      ;(record.valueArgs as Expression[]).forEach(value => walkExpression(s, value))
+    }
+
+    for (const [key, value] of Object.entries(record)) {
+      if (key !== 'valueArgs' && key !== 'span') {
+        walkIndices(s, value)
+      }
+    }
+  }
+
   const walkStatement = (s: Statement, node: Statement): void => {
     switch (node.form) {
       case 'let':
@@ -779,7 +804,19 @@ export function extendForms(
         node.otherwise?.forEach(x => walkStatement(s, x))
         break
       case 'function':
+        node.params.forEach(p => walkIndices(s, p.type))
+        walkIndices(s, node.result)
         node.body.forEach(x => walkStatement(s, x))
+        break
+      // an INDEXED family's values: each case's output index (`case axiom-k / head / make implication(a, b)`) and the
+      // indices in its fields' types, which are expressions like any other and fill their slots the same way
+      case 'record-type':
+        for (const variant of node.variants) {
+          variant.indexValues?.forEach(value => walkExpression(s, value))
+          variant.fields.forEach(f => walkIndices(s, f.type))
+        }
+
+        node.fields.forEach(f => walkIndices(s, f.type))
         break
       // a `mark unsafe` body and its `halt take` handler, where a raise is as ordinary as anywhere
       case 'guard':

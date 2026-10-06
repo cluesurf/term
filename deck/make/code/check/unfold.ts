@@ -42,6 +42,21 @@ function freeNames(e: Expression, into: Set<string>): void {
       e.args.forEach(a => freeNames(a, into))
 
       return
+    // `u/x` reads `u`, and a construction reads each value it is built from. Missed, a body over records read as
+    // closed, and its unfolding kept the callee's parameter names in the caller's goal
+    case 'member':
+      freeNames(e.target, into)
+
+      if (e.index) {
+        freeNames(e.index, into)
+      }
+
+      return
+    case 'record':
+      e.fields.forEach(f => freeNames(f.value, into))
+      e.positional?.forEach(p => freeNames(p, into))
+
+      return
     default:
       return
   }
@@ -65,6 +80,15 @@ function calledNames(e: Expression, into: Set<string>): void {
       }
 
       e.args.forEach(a => calledNames(a, into))
+
+      return
+    case 'member':
+      calledNames(e.target, into)
+
+      return
+    case 'record':
+      e.fields.forEach(f => calledNames(f.value, into))
+      e.positional?.forEach(p => calledNames(p, into))
 
       return
     default:
@@ -163,11 +187,56 @@ function substitute(
       }
     case 'unary':
       return { ...e, operand: substitute(e.operand, binding) }
+    // THE CALLEE TOO: a body that calls a parameter (`back s(x)` for a set `s`) is a call of the argument. Left as
+    // written it kept the callee's own name, so `has(union(s, t), x)` and `has(s, x)` both unfolded to `s(x)` and the
+    // ring proved a false set law (2026-10-05, test/check/record-ring.ts)
     case 'call':
-      return { ...e, args: e.args.map(a => substitute(a, binding)) }
+      return { ...e, callee: substitute(e.callee, binding), args: e.args.map(a => substitute(a, binding)) }
+    case 'member':
+      return { ...e, target: substitute(e.target, binding), ...(e.index ? { index: substitute(e.index, binding) } : {}) }
+    case 'record':
+      return {
+        ...e,
+        fields: e.fields.map(f => ({ ...f, value: substitute(f.value, binding) })),
+        ...(e.positional ? { positional: e.positional.map(p => substitute(p, binding)) } : {}),
+      }
     default:
       return e
   }
+}
+
+// A FIELD READ, as the ring reads it. Of a construction it is the field's value (`make pair(a, b)/left` is `a`). Of a
+// name it is an ATOM named by its path, `u/x`, which no name in a program can spell, so two reads of one field are one
+// atom and reads of two fields are two. Anything else is left as it is, outside the ring's fragment
+function readField(e: Extract<Expression, { form: 'member' }>): Expression {
+  if (e.index) {
+    return e
+  }
+
+  if (e.target.form === 'record') {
+    const field = e.target.fields.find(f => f.name === e.name)
+
+    return field ? field.value : e
+  }
+
+  const path = pathOf(e)
+
+  return path ? { form: 'variable', name: path, span: e.span } : e
+}
+
+// `u/x/y` as a path, when every link of it is a plain field read of a name
+function pathOf(e: Expression): string | undefined {
+  if (e.form === 'variable') {
+    return e.name
+  }
+
+  if (e.form === 'member' && !e.index) {
+    const target = pathOf(e.target)
+
+    return target ? `${target}/${e.name}` : undefined
+  }
+
+  return undefined
 }
 
 // the unfoldable, non-recursive tasks of a program, by name
@@ -225,6 +294,11 @@ export function unfoldDefinitions(
         }
       case 'unary':
         return { ...x, operand: walk(x.operand, depth) }
+      // a field read of what the walk unfolds: `times(m, n)/a` is the `a` of the record `times` builds
+      case 'member':
+        return readField({ ...x, target: walk(x.target, depth) })
+      case 'record':
+        return { ...x, fields: x.fields.map(f => ({ ...f, value: walk(f.value, depth) })) }
       case 'call': {
         const args = x.args.map(a => walk(a, depth))
         const entry =
