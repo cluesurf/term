@@ -1,0 +1,1938 @@
+# List indexes proven inside their list for a whole counted loop, once a guard written before the loop holds
+# (note/term/codegen/passes.md, P2; F3 ranges in note/term/codegen/shared.md). The emitter writes the loop twice: the
+# guard true runs a copy with no bounds checks, the guard false runs the original, checked, unchanged. So a run that
+# could reach outside a list takes the checked copy and stops exactly where it always did.
+#
+# The loop: `while (small < big)` where
+#   - `small` is a counter written exactly once in the loop, by a top-level `small = small + 1`
+#   - `big` is an integer literal, or a variable written never or exactly once, by a top-level `big = big - 1`
+#   - neither is written by any closure in the program
+#   - nothing in the body is a call, a closure or an await, but a call that reaches no list or takes its lists lent
+# While a turn's accesses run (before either step), small in [small0, big0 - 1] and big in [small0 + 1, big0]. An index
+# `small + c`, `big + c`, a body-local `let x = small + c` read as `x`, a name the loop never writes, or a literal, is
+# then inside known bounds, and the guard asks, per list, that the lowest is at least 0 and the highest below the list's
+# length. Every index into a list in the body must be one of those shapes, or the loop gets no guard. Beside it: the
+# calls the guard lets run an unchecked copy of a task whose integer arithmetic is safe below a bound, the bound itself
+# (`integer-bounds`, interval arithmetic), the divisions that bound proves unsigned, the types that hold no list, and
+# the tasks that reach no list. test/ir/facts/bounds.ts holds the shapes that must NOT get a guard.
+#
+# Ported from ir/facts/bounds.ts (self-hosting, 2026-10-06), which stays as the face: it makes the maps and sets the
+# emitters ask of by identity, builds the TypeScript shape of a guard, hands in the lent lists as a hash, and keeps the
+# list-free test's memo across the calls a caller makes of it (`list-freedom`, shared). Every reflective walk of the
+# original skipped `type` and `span`, as compile/node-reach.tree does when told to; a walk that stopped at a node, or
+# read a node's place among its statements, reads it from node-reach's pre-order shape (log.md, `ir/facts/steps`), and
+# the one that needed statements and expressions interleaved reads node-reach's `order`.
+
+load @term/base/list
+  find list
+  find contains
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/float
+  find to-decimal
+  find truncate
+
+load ../../compile/node
+  find expression
+  find expression-type
+  find function-param
+  find statement
+  find type
+
+load ../../compile/node-reach
+  find reached
+  find reach-statements
+  find reach-expression
+
+task skipped
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, <type>)
+  push(out, <span>)
+  back out
+
+task reach-body
+  take body, like list, like statement
+  like reached
+  mark private
+
+  back reach-statements(body, skipped())
+
+task reach-one
+  take value, like expression
+  like reached
+  mark private
+
+  back reach-expression(value, skipped())
+
+# how many nodes, expressions and statements, a reach holds
+task size-of
+  take seen, like reached
+  like number
+  mark private
+
+  back add(seen/expressions/length, seen/statements/length)
+
+task kind-of
+  take given, like maybe, like type
+  like text
+  mark private
+
+  sift given
+    case some
+      link known
+      back known/kind
+    case none
+      back <>
+
+task kind-of-expression
+  take value, like expression
+  like text
+  mark private
+
+  back kind-of(expression-type(value))
+
+task variable-name
+  take value, like expression
+  like text
+  mark private
+
+  sift value
+    case variable
+      back name
+    miss
+      back <>
+
+task integer-value
+  take value, like expression
+  like maybe, like float
+  mark private
+
+  sift value
+    case integer
+      link given
+      save as-float, to-decimal(given)
+      back make(some, as-float)
+    miss
+      back make none
+
+task is-one
+  take value, like expression
+  like boolean
+  mark private
+
+  sift integer-value(value)
+    case some
+      link given
+      back is-equal(given, 1.0)
+    case none
+      back false
+
+# the original's `/^\d+$/`: one or more ASCII digits and nothing else
+task is-digits
+  take value, like text
+  like boolean
+  mark private
+
+  fork test, is-equal(value, <>)
+    hold
+      back false
+  walk split(value, <>)
+    take char
+    fork test, not(contains(split(<0123456789>, <>), char))
+      hold
+        back false
+  back true
+
+# a number, a float, a flag or a text: a value that holds no list
+task scalar
+  take given, like maybe, like type
+  like boolean
+
+  sift given
+    case some
+      link known
+      sift known
+        case number
+          back true
+        case float
+          back true
+        case boolean
+          back true
+        case string
+          back true
+        case named
+          link type-name
+          back or(or(or(is-equal(type-name, <text>), is-equal(type-name, <boolean>)), or(is-equal(type-name, <number>), is-equal(type-name, <integer>))), is-equal(type-name, <float>))
+        miss
+          back false
+    case none
+      back false
+
+# ---- the key of a list a guard may name ----
+
+# a variable, or a path from one through fields and through slots at a literal or a variable index (`ps/{k}/xs`). The
+# same text for the same path wherever it is read, so an emitter asks it of the list it is indexing
+task list-key
+  take node, like expression
+  like maybe, like text
+
+  sift node
+    case variable
+      back make(some, name)
+    case member
+      link inner-target
+      link field
+      link slot
+      sift list-key(inner-target)
+        case none
+          back make none
+        case some
+          link inner
+          sift slot
+            case none
+              fork test, is-digits(field)
+                hold
+                  save key, <{inner}/\{{field}\}>
+                  back make(some, key)
+              save key, <{inner}/{field}>
+              back make(some, key)
+            case some
+              link at
+              sift at
+                case integer
+                  link at-value
+                  save key, <{inner}/\{{to-decimal(at-value)}\}>
+                  back make(some, key)
+                case variable
+                  link at-name
+                  save key, <{inner}/\{{at-name}\}>
+                  back make(some, key)
+                miss
+                  back make none
+    miss
+      back make none
+
+# ---- the types that hold no list ----
+
+# The types that cannot hold a list: a scalar, or a record or variant form every field of which is list-free (a
+# recursive form is list-free unless a field says otherwise). A list, a map, a function, an unknown or a type variable
+# never is. What the test has answered is kept between calls, as the original's closure kept it
+form list-freedom
+  mark shared
+  link forms, like hash, like text, like list, like type
+  link known, like hash, like text, like boolean
+
+task list-freedom-of
+  take program, like list, like statement
+  like list-freedom
+
+  save forms, make hash
+  walk program
+    take one
+    sift one
+      case record-type
+        fork test, is-equal(params/length, 0)
+          hold
+            save field-types, make list
+            walk fields
+              take field
+              push(field-types, field/type)
+            walk variants
+              take variant
+              walk variant/fields
+                take field
+                push(field-types, field/type)
+            save forms/{name}, field-types
+      miss
+        save nothing, 0
+  back
+    make list-freedom
+      bind forms, forms
+      bind known, make hash
+
+task is-list-free
+  take state, like list-freedom
+  take given, like maybe, like type
+  like boolean
+
+  fork test, scalar(given)
+    hold
+      back true
+  sift given
+    case some
+      link known-type
+      sift known-type
+        case named
+          link type-name
+          fork test, is-above(read(args)/length, 0)
+            hold
+              back false
+          fork test, not(state/forms/has(type-name))
+            hold
+              back false
+          fork test, state/known/has(type-name)
+            hold
+              back state/known/get(type-name)
+          # assumed free while its own fields are checked, so a recursive form does not refuse itself
+          save state/known/{type-name}, true
+          save answer, true
+          walk state/forms/get(type-name)
+            take field-type
+            save wrapped, make(some, field-type)
+            fork test, not(is-list-free(state, wrapped))
+              hold
+                save answer, false
+                halt
+          save state/known/{type-name}, answer
+          back answer
+        miss
+          back false
+    case none
+      back false
+
+# A call to a native module's function (`fmath.sqrt`, through a `dock load` the checker leaves deferred, which a local
+# or a task never is). It can hold none of the program's lists
+task native-call
+  take callee, like expression
+  like boolean
+
+  sift callee
+    case member
+      sift target
+        case variable
+          sift binding
+            case some
+              link bound
+              sift bound
+                case deferred
+                  back true
+                miss
+                  back false
+            case none
+              back false
+        miss
+          back false
+    miss
+      back false
+
+# ---- the tasks that reach no list ----
+
+# one step of a walk in node-reach's order: an expression or a statement
+form step
+  case at-expression
+    link node, like expression
+  case at-statement
+    link node, like statement
+
+task steps-of
+  take seen, like reached
+  like list, like step
+  mark private
+
+  save out, make list
+  save e, 0
+  save s, 0
+  walk seen/order
+    take is-expression
+    fork test, is-expression
+      hold
+        save one
+          make at-expression
+            bind node, get(seen/expressions, e)
+        push(out, one)
+        save e, add(e, 1)
+      miss
+        save one
+          make at-statement
+            bind node, get(seen/statements, s)
+        push(out, one)
+        save s, add(s, 1)
+  back out
+
+# Every parameter list-free, nothing in the body a closure, an await, a slot or length of a list, or a variable from
+# outside the task whose type could hold one, and every call to another such task (or a native binding) with list-free
+# arguments. The body is read in the original's order, a `let` making its name local from there on; a call's callee is
+# not read, but a text method's receiver is
+task clean
+  take one, like statement
+  take state, like list-freedom
+  take tasks, like hash, like text, like boolean
+  take pure, like hash, like text, like boolean
+  like boolean
+  mark private
+
+  save locals, make list
+  sift one
+    case function
+      walk params
+        take param
+        push(locals, param/name)
+    miss
+      save nothing, 0
+  save steps, steps-of(reach-body(task-body(one)))
+  save skips, make hash
+  save p, 0
+  walk test
+    hook test, is-below(p, steps/length)
+    hook hold
+      fork test, skips/has(p)
+        hold
+          save p, add(p, skips/get(p))
+          turn next
+      save here, p
+      save p, add(p, 1)
+      sift get(steps, here)
+        case at-statement
+          link node
+          sift node
+            case let
+              push(locals, name)
+            miss
+              save nothing, 0
+        case at-expression
+          link node
+          sift node
+            case closure
+              back false
+            case await
+              back false
+            case variable
+              fork test, and(and(not(contains(locals, name)), not(tasks/has(name))), not(is-list-free(state, type)))
+                hold
+                  back false
+            case member
+              fork test, is-equal(kind-of-expression(target), <array>)
+                hold
+                  back false
+            case call
+              save callee-name, variable-name(callee)
+              save known, and(is-unequal(callee-name, <>), or(not(tasks/has(callee-name)), pure/get-or-default(callee-name, false)))
+              # a method of a text (`line.char-code-at(i)`, what the stdlib's text tasks inline to) reaches no list
+              save text-method, false
+              save callee-size, size-of(reach-one(callee))
+              sift callee
+                case member
+                  link receiver
+                  fork test, is-equal(kind-of-expression(receiver), <string>)
+                    hold
+                      save text-method, true
+                      # the member itself and whatever follows its receiver are not read
+                      save receiver-size, size-of(reach-one(receiver))
+                      save skips/{p}, 1
+                      save rest, subtract(subtract(callee-size, 1), receiver-size)
+                      fork test, is-above(rest, 0)
+                        hold
+                          save rest-at, add(add(p, 1), receiver-size)
+                          save skips/{rest-at}, rest
+                miss
+                  save nothing, 0
+              fork test, not(text-method)
+                hold
+                  save skips/{p}, callee-size
+              fork test, and(and(not(known), not(native-call(callee))), not(text-method))
+                hold
+                  back false
+              walk args
+                take arg
+                fork test, not(is-list-free(state, expression-type(arg)))
+                  hold
+                    back false
+            miss
+              save nothing, 0
+  back true
+
+task scalar-tasks
+  take program, like list, like statement
+  like list, like text
+
+  save fns, make list
+  save tasks, make hash
+  walk program
+    take one
+    sift one
+      case function
+        push(fns, one)
+        save tasks/{name}, true
+      miss
+        save nothing, 0
+  save state, list-freedom-of(program)
+  save pure, make hash
+  save order, make list
+  walk fns
+    take one
+    sift one
+      case function
+        save free-params, true
+        walk params
+          take param
+          fork test, not(is-list-free(state, param/type))
+            hold
+              save free-params, false
+              halt
+        fork test, and(and(is-above(body/length, 0), not(async)), free-params)
+          hold
+            fork test, not(pure/has(name))
+              hold
+                push(order, name)
+            save pure/{name}, true
+      miss
+        save nothing, 0
+  save changed, true
+  walk test
+    hook test, changed
+    hook hold
+      save changed, false
+      walk fns
+        take one
+        save fn-name, function-name(one)
+        fork test, and(pure/get-or-default(fn-name, false), not(clean(one, state, tasks, pure)))
+          hold
+            save pure/{fn-name}, false
+            save changed, true
+  save out, make list
+  walk order
+    take name
+    fork test, pure/get-or-default(name, false)
+      hold
+        push(out, name)
+  back out
+
+task task-body
+  take one, like statement
+  like list, like statement
+  mark private
+
+  sift one
+    case function
+      back body
+    miss
+      back make list
+
+task function-name
+  take one, like statement
+  like text
+  mark private
+
+  sift one
+    case function
+      back name
+    miss
+      back <>
+
+# ---- integer bounds ----
+
+# a range of integer values, or a value nothing tracks (a float, a flag, a comparison)
+form range
+  case untracked
+  case bounded
+    link lo, like float
+    link hi, like float
+
+# the state of one body's interval arithmetic
+form interval-state
+  mark shared
+  link env, like hash, like text, like range
+  link lists, like list, like text
+  link untracked-names, like list, like text
+  link ok, like boolean
+  link collect, like boolean
+  link divisions, like list, like expression
+
+task is-slot
+  take state, like interval-state
+  take value, like expression
+  like boolean
+  mark private
+
+  sift value
+    case member
+      sift target
+        case variable
+          link list-name
+          back contains(state/lists, list-name)
+        miss
+          back false
+    miss
+      back false
+
+task floor-of
+  take value, like float
+  like float
+  mark private
+
+  back truncate(value)
+
+task minimum-of
+  take values, like list, like float
+  like float
+  mark private
+
+  save out, get(values, 0)
+  walk values
+    take one
+    fork test, is-below(one, out)
+      hold
+        save out, one
+  back out
+
+task maximum-of
+  take values, like list, like float
+  like float
+  mark private
+
+  save out, get(values, 0)
+  walk values
+    take one
+    fork test, is-above(one, out)
+      hold
+        save out, one
+  back out
+
+task range-of
+  take state, like interval-state
+  take value, like expression
+  like range
+  mark private
+
+  fork test, not(state/ok)
+    hold
+      back make untracked
+  sift value
+    case integer
+      link given
+      save at, to-decimal(given)
+      back
+        make bounded
+          bind lo, at
+          bind hi, at
+    case float
+      back make untracked
+    case boolean
+      back make untracked
+    case variable
+      fork test, contains(state/untracked-names, name)
+        hold
+          back make untracked
+      fork test, not(state/env/has(name))
+        hold
+          save state/ok, false
+          back make untracked
+      back state/env/get(name)
+    case unary
+      save inner, range-of(state, operand)
+      sift inner
+        case untracked
+          back inner
+        case bounded
+          sift op
+            case negate
+              back
+                make bounded
+                  bind lo, multiply(-1.0, hi)
+                  bind hi, multiply(-1.0, lo)
+            miss
+              back inner
+    case binary
+      save a, range-of(state, left)
+      save b, range-of(state, right)
+      fork test, not(and(is-equal(kind-of-expression(left), <number>), is-equal(kind-of-expression(right), <number>)))
+        hold
+          # a float operation, or a comparison: no check to remove, nothing to track
+          back make untracked
+      sift a
+        case untracked
+          save state/ok, false
+          back make untracked
+        case bounded
+          link a-lo
+          link a-hi
+          sift b
+            case untracked
+              save state/ok, false
+              back make untracked
+            case bounded
+              link b-lo
+              link b-hi
+              back binary-range(state, value, op, a-lo, a-hi, b-lo, b-hi)
+    case member
+      fork test, is-slot(state, value)
+        hold
+          sift index
+            case some
+              link at
+              range-of(state, at)
+            case none
+              save nothing, 0
+          back make untracked
+      save state/ok, false
+      back make untracked
+    case call
+      # its arguments are bounded like any operand; a call answering a float needs no range of its own. One answering
+      # an integer is not followed
+      walk args
+        take arg
+        range-of(state, arg)
+      fork test, is-unequal(kind-of(type), <float>)
+        hold
+          save state/ok, false
+      back make untracked
+    miss
+      save state/ok, false
+      back make untracked
+
+task binary-range
+  take state, like interval-state
+  take node, like expression
+  take op, like binary-op
+  take a-lo, like float
+  take a-hi, like float
+  take b-lo, like float
+  take b-hi, like float
+  like range
+  mark private
+
+  save lo, 0.0
+  save hi, 0.0
+  sift op
+    case plus
+      save lo, add(a-lo, b-lo)
+      save hi, add(a-hi, b-hi)
+    case minus
+      save lo, subtract(a-lo, b-hi)
+      save hi, subtract(a-hi, b-lo)
+    case times
+      save corners, make list
+      push(corners, multiply(a-lo, b-lo))
+      push(corners, multiply(a-lo, b-hi))
+      push(corners, multiply(a-hi, b-lo))
+      push(corners, multiply(a-hi, b-hi))
+      save lo, minimum-of(corners)
+      save hi, maximum-of(corners)
+    case divide
+      fork test, and(is-maximum(b-lo, 0.0), is-minimum(b-hi, 0.0))
+        hold
+          save state/ok, false
+          back make untracked
+      save corners, make list
+      push(corners, floor-of(divide(a-lo, b-lo)))
+      push(corners, floor-of(divide(a-lo, b-hi)))
+      push(corners, floor-of(divide(a-hi, b-lo)))
+      push(corners, floor-of(divide(a-hi, b-hi)))
+      save lo, minimum-of(corners)
+      save hi, maximum-of(corners)
+      fork test, and(and(state/collect, is-minimum(a-lo, 0.0)), is-above(b-lo, 0.0))
+        hold
+          push(state/divisions, node)
+    case remainder
+      fork test, and(is-maximum(b-lo, 0.0), is-minimum(b-hi, 0.0))
+        hold
+          save state/ok, false
+          back make untracked
+      save lo, a-lo
+      fork test, is-above(lo, 0.0)
+        hold
+          save lo, 0.0
+      save hi, a-hi
+      fork test, is-below(hi, 0.0)
+        hold
+          save hi, 0.0
+      fork test, and(and(state/collect, is-minimum(a-lo, 0.0)), is-above(b-lo, 0.0))
+        hold
+          push(state/divisions, node)
+    miss
+      # a comparison of two integers: a boolean
+      back make untracked
+  fork test, or(is-below(lo, -9007199254740991.0), is-above(hi, 9007199254740991.0))
+    hold
+      save state/ok, false
+  back
+    make bounded
+      bind lo, lo
+      bind hi, hi
+
+# whether every integer operation in the body stays inside the safe integers with each parameter in [0, limit), and the
+# divisions and remainders whose operands it proved non-negative
+form fitted
+  link ok, like boolean
+  link divisions, like list, like expression
+
+task fits
+  take one, like statement
+  take limit, like float
+  take collect, like boolean
+  like fitted
+  mark private
+
+  save state
+    make interval-state
+      bind env, make hash
+      bind lists, make list
+      bind untracked-names, make list
+      bind ok, true
+      bind collect, collect
+      bind divisions, make list
+  sift one
+    case function
+      walk params
+        take param
+        save kind, kind-of(param/type)
+        fork test, is-equal(kind, <number>)
+          hold
+            save state/env/{param/name}
+              make bounded
+                bind lo, 0.0
+                bind hi, subtract(limit, 1.0)
+        fork test, is-equal(kind, <array>)
+          hold
+            push(state/lists, param/name)
+        fork test, or(is-equal(kind, <boolean>), is-equal(kind, <float>))
+          hold
+            push(state/untracked-names, param/name)
+    miss
+      save nothing, 0
+  walk task-body(one)
+    take statement
+    sift statement
+      case let
+        save state/env/{name}, range-of(state, init)
+      case return
+        sift read(value)
+          case some
+            link given
+            range-of(state, given)
+          case none
+            back fitted-as(false, state)
+      case assign
+        fork test, and(is-set(op), is-slot(state, target))
+          hold
+            range-of(state, target)
+            range-of(state, read(value))
+          miss
+            back fitted-as(false, state)
+      miss
+        back fitted-as(false, state)
+  back fitted-as(state/ok, state)
+
+task fitted-as
+  take ok, like boolean
+  take state, like interval-state
+  like fitted
+  mark private
+
+  back
+    make fitted
+      bind ok, ok
+      bind divisions, state/divisions
+
+task is-set
+  take op, like assign-op
+  like boolean
+  mark private
+
+  sift op
+    case set
+      back true
+    miss
+      back false
+
+# the tasks whose integer arithmetic cannot leave the safe integers while every argument is in [0, L): each with the
+# largest such L, a power of two up to 2^31, in the program's order
+form integer-bound
+  link task, like text
+  link limit, like float
+
+task power-of-two
+  take power, like number
+  like float
+  mark private
+
+  save out, 1.0
+  save i, 0
+  walk test
+    hook test, is-below(i, power)
+    hook hold
+      save out, multiply(out, 2.0)
+      save i, add(i, 1)
+  back out
+
+task bounds-eligible
+  take one, like statement
+  like boolean
+  mark private
+
+  sift one
+    case function
+      fork test, async
+        hold
+          back false
+      save some-number, false
+      walk params
+        take param
+        save kind, kind-of(param/type)
+        fork test, is-equal(kind, <number>)
+          hold
+            save some-number, true
+        fork test, not(or(or(is-equal(kind, <number>), is-equal(kind, <array>)), or(is-equal(kind, <boolean>), is-equal(kind, <float>))))
+          hold
+            back false
+      back some-number
+    miss
+      back false
+
+task integer-bounds
+  take program, like list, like statement
+  like list, like integer-bound
+
+  save out, make list
+  save named, make list
+  walk program
+    take one
+    fork test, not(bounds-eligible(one))
+      hold
+        turn next
+    save power, 31
+    walk test
+      hook test, is-minimum(power, 1)
+      hook hold
+        save limit, power-of-two(power)
+        fork test, fits(one, limit, false)/ok
+          hold
+            save found
+              make integer-bound
+                bind task, function-name(one)
+                bind limit, limit
+            push(out, found)
+            halt
+        save power, subtract(power, 1)
+  back out
+
+# the integer `/` and `%` nodes of the bounded tasks whose both operands are proven non-negative (the divisor
+# positive) inside the bound: on Rust the task's unchecked copy divides them unsigned
+task unsigned-divisions
+  take program, like list, like statement
+  like list, like expression
+
+  save bounds, integer-bounds(program)
+  save out, make list
+  walk program
+    take one
+    save name, function-name(one)
+    fork test, is-equal(name, <>)
+      hold
+        turn next
+    save limit, -1.0
+    walk bounds
+      take bound
+      fork test, is-equal(bound/task, name)
+        hold
+          save limit, bound/limit
+    fork test, is-below(limit, 0.0)
+      hold
+        turn next
+    walk fits(one, limit, true)/divisions
+      take node
+      push(out, node)
+  back out
+
+# ---- the loop guards ----
+
+# one bound the guard checks: `base + offset` (base a variable's name, `<>` for a literal `offset`) compared with 0
+# (`low`) or with the list's length (`high`); `path` the node an emitter writes to read a path's list's length
+form bound-check
+  link list, like text
+  link base, like text
+  link offset, like float
+  link side, like text
+  link path, like maybe, like expression
+
+# a bound on a name the guard also reads, for the arguments of a call made unchecked: `name >= 0` or `name <= high`
+form limit
+  link name, like text
+  link low, like boolean
+  link high, like maybe, like float
+
+form loop-guard
+  link loop, like statement
+  link checks, like list, like bound-check
+  link fast, like list, like expression
+  link limits, like list, like limit
+
+# what a loop's guard reads: the loop's counter and its other side, the writes the body makes, and what it found
+form guard-state
+  mark shared
+  link small-name, like text
+  link big-name, like text
+  link big-value, like float
+  link first-step, like number
+  link closure-writes, like list, like text
+  link written, like hash, like text, like number
+  link alias-base, like hash, like text, like text
+  link alias-offset, like hash, like text, like float
+  link checks, like list, like bound-check
+  link refused, like boolean
+
+# the index a slot is read at: a literal, or an expression
+form slot-index
+  case literal-index
+    link value, like float
+  case read-index
+    link node, like expression
+
+task writes-of
+  take state, like guard-state
+  take name, like text
+  like number
+  mark private
+
+  back state/written/get-or-default(name, 0)
+
+# a name the loop never writes and no closure writes: its value at the guard is its value on every turn
+task invariant
+  take state, like guard-state
+  take value, like expression
+  like boolean
+  mark private
+
+  sift value
+    case variable
+      back and(and(is-equal(kind-of(type), <number>), is-equal(writes-of(state, name), 0)), not(contains(state/closure-writes, name)))
+    miss
+      back false
+
+task push-check
+  take state, like guard-state
+  take list-name, like text
+  take base, like text
+  take offset, like float
+  take side, like text
+  take path, like maybe, like expression
+  like void
+  mark private
+
+  save made
+    make bound-check
+      bind list, list-name
+      bind base, base
+      bind offset, offset
+      bind side, side
+      bind path, path
+  push(state/checks, made)
+
+task bound
+  take state, like guard-state
+  take list-name, like text
+  take index, like slot-index
+  take path, like maybe, like expression
+  like void
+  mark private
+
+  sift index
+    # literal: `xs/0`, or `xs/{3}`
+    case literal-index
+      push-check(state, list-name, <>, value, <low>, path)
+      push-check(state, list-name, <>, value, <high>, path)
+      back
+    case read-index
+      link read
+      sift read
+        case integer
+          link given
+          save offset, to-decimal(given)
+          push-check(state, list-name, <>, offset, <low>, path)
+          push-check(state, list-name, <>, offset, <high>, path)
+          back
+        miss
+          save nothing, 0
+      # a name the loop never writes: the guard reads it once, as every turn does
+      save read-name, variable-name(read)
+      fork test, and(and(invariant(state, read), is-unequal(read-name, state/small-name)), is-unequal(read-name, state/big-name))
+        hold
+          push-check(state, list-name, read-name, 0.0, <low>, path)
+          push-check(state, list-name, read-name, 0.0, <high>, path)
+          back
+      save base, <>
+      save offset, 0.0
+      fork test, is-equal(read-name, state/small-name)
+        hold
+          save base, <small>
+        miss
+          fork test, and(is-unequal(state/big-name, <>), is-equal(read-name, state/big-name))
+            hold
+              save base, <big>
+            miss
+              fork test, and(is-unequal(read-name, <>), state/alias-base/has(read-name))
+                hold
+                  save base, state/alias-base/get(read-name)
+                  save offset, state/alias-offset/get(read-name)
+                miss
+                  sift read
+                    case binary
+                      sift integer-value(right)
+                        case some
+                          link amount
+                          save sign, 0.0
+                          sift op
+                            case plus
+                              save sign, 1.0
+                            case minus
+                              save sign, -1.0
+                            miss
+                              save nothing, 0
+                          fork test, is-unequal(sign, 0.0)
+                            hold
+                              save left-name, variable-name(left)
+                              fork test, is-equal(left-name, state/small-name)
+                                hold
+                                  save base, <small>
+                                  save offset, multiply(sign, amount)
+                                miss
+                                  fork test, and(is-unequal(state/big-name, <>), is-equal(left-name, state/big-name))
+                                    hold
+                                      save base, <big>
+                                      save offset, multiply(sign, amount)
+                        case none
+                          save nothing, 0
+                    miss
+                      save nothing, 0
+      fork test, is-equal(base, <>)
+        hold
+          save state/refused, true
+          back
+      # small in [small0, big0 - 1], big in [small0 + 1, big0]: the lowest and highest each index can be
+      save low-offset, add(offset, 1.0)
+      save high-offset, offset
+      fork test, is-equal(base, <small>)
+        hold
+          save low-offset, offset
+          save high-offset, subtract(offset, 1.0)
+      push-check(state, list-name, state/small-name, low-offset, <low>, path)
+      fork test, is-unequal(state/big-name, <>)
+        hold
+          push-check(state, list-name, state/big-name, high-offset, <high>, path)
+        miss
+          push-check(state, list-name, <>, add(state/big-value, high-offset), <high>, path)
+
+# the key of a list reached through a path whose every part the loop holds still: a root it never writes, fields, and
+# slots at a literal or a name it never writes, each slot bounded in its own list FIRST
+task path-list
+  take state, like guard-state
+  take node, like expression
+  like maybe, like text
+  mark private
+
+  sift node
+    case variable
+      fork test, and(is-equal(writes-of(state, name), 0), not(contains(state/closure-writes, name)))
+        hold
+          back make(some, name)
+      back make none
+    case member
+      link path-target
+      link field
+      link slot
+      sift path-list(state, path-target)
+        case none
+          back make none
+        case some
+          link inner
+          save literal, false
+          sift slot
+            case none
+              save literal, is-digits(field)
+              fork test, not(literal)
+                hold
+                  save key, <{inner}/{field}>
+                  back make(some, key)
+            case some
+              link at
+              save nothing, 0
+          save index
+            make literal-index
+              bind value, 0.0
+          fork test, literal
+            hold
+              save index
+                make literal-index
+                  bind value, digits-value(field)
+            miss
+              sift slot
+                case some
+                  link at
+                  save index
+                    make read-index
+                      bind node, at
+                  sift integer-value(at)
+                    case some
+                      link given
+                      save nothing, 0
+                    case none
+                      save at-name, variable-name(at)
+                      fork test, not(and(and(invariant(state, at), is-unequal(at-name, state/small-name)), is-unequal(at-name, state/big-name)))
+                        hold
+                          back make none
+                case none
+                  save nothing, 0
+          save path, make none
+          sift path-target
+            case variable
+              save nothing, 0
+            miss
+              save path, make(some, path-target)
+          bound(state, inner, index, path)
+          back list-key(node)
+    miss
+      back make none
+
+task digits-value
+  take digits, like text
+  like float
+  mark private
+
+  save out, 0.0
+  walk split(digits, <>)
+    take char
+    save out, add(multiply(out, 10.0), to-decimal(char-code-at(char, 0)))
+    save out, subtract(out, 48.0)
+  back out
+
+task guard-of
+  take loop, like statement
+  take closure-writes, like list, like text
+  take pure, like hash, like text, like boolean
+  take bounded, like list, like integer-bound
+  take lent, like hash, like text, like list, like number
+  like maybe, like loop-guard
+  mark private
+
+  sift loop
+    case while
+      sift cond
+        case binary
+          link left
+          link right
+          link op
+          save small, left
+          save big, right
+          sift op
+            case below
+              save nothing, 0
+            case above
+              save small, right
+              save big, left
+            miss
+              back make none
+          back guard-of-sides(loop, cond, body, small, big, closure-writes, pure, lent, bounded)
+        miss
+          back make none
+    miss
+      back make none
+
+task opaque-in
+  take seen, like reached
+  take pure, like hash, like text, like boolean
+  take lent, like hash, like text, like list, like number
+  like boolean
+  mark private
+
+  walk seen/expressions
+    take node
+    sift node
+      case closure
+        back true
+      case await
+        back true
+      case call
+        save callee-name, variable-name(callee)
+        save all-scalar, true
+        walk args
+          take arg
+          fork test, not(scalar(expression-type(arg)))
+            hold
+              save all-scalar, false
+        # a call to a task that cannot reach a list, with only scalar arguments, changes no length
+        save reaches-no-list, and(or(and(is-unequal(callee-name, <>), pure/has(callee-name)), native-call(callee)), all-scalar)
+        # a call whose every list argument its callee takes lent may write those lists' slots, never their lengths
+        save takes-lent, false
+        fork test, and(is-unequal(callee-name, <>), lent/has(callee-name))
+          hold
+            save takes-lent, true
+            save at, 0
+            walk args
+              take arg
+              fork test, not(or(scalar(expression-type(arg)), contains(lent/get(callee-name), at)))
+                hold
+                  save takes-lent, false
+              save at, add(at, 1)
+        fork test, not(or(reaches-no-list, takes-lent))
+          hold
+            back true
+      miss
+        save nothing, 0
+  back false
+
+task count-write
+  take written, like hash, like text, like number
+  take name, like text
+  like void
+  mark private
+
+  save written/{name}, add(written/get-or-default(name, 0), 1)
+
+# a write: an assignment to a name, or a `let` of it (a second variable of that name, counted so the loop is refused)
+task written-name
+  take one, like statement
+  like text
+  mark private
+
+  sift one
+    case assign
+      back variable-name(target)
+    case let
+      back name
+    miss
+      back <>
+
+task guard-of-sides
+  take loop, like statement
+  take cond, like expression
+  take body, like list, like statement
+  take small, like expression
+  take big, like expression
+  take closure-writes, like list, like text
+  take pure, like hash, like text, like boolean
+  take lent, like hash, like text, like list, like number
+  take bounded, like list, like integer-bound
+  like maybe, like loop-guard
+  mark private
+
+  save small-name, variable-name(small)
+  fork test, or(or(is-equal(small-name, <>), is-unequal(kind-of-expression(small), <number>)), contains(closure-writes, small-name))
+    hold
+      back make none
+  save big-name, variable-name(big)
+  save big-value, 0.0
+  sift integer-value(big)
+    case some
+      link given
+      save big-value, given
+    case none
+      fork test, or(or(is-equal(big-name, <>), is-unequal(kind-of-expression(big), <number>)), contains(closure-writes, big-name))
+        hold
+          back make none
+  # nothing in the body may call, capture or wait: any of them could change a list's length or a counter unseen
+  fork test, or(opaque-in(reach-body(body), pure, lent), opaque-in(reach-one(cond), pure, lent))
+    hold
+      back make none
+  # every write to a name anywhere in the body, and where: a top-level statement's index, or -1 when nested
+  save written, make hash
+  save step-at, make hash
+  save step-node, make hash
+  save at, 0
+  walk body
+    take top
+    save first, true
+    walk reach-body-one(top)/statements
+      take node
+      save name, written-name(node)
+      fork test, is-unequal(name, <>)
+        hold
+          count-write(written, name)
+          save place, -1
+          fork test, first
+            hold
+              save place, at
+          save step-at/{name}, place
+          save step-node/{name}, node
+      save first, false
+    save at, add(at, 1)
+  # the counter's one write, a top-level `small = small + 1`
+  fork test, is-unequal(written/get-or-default(small-name, 0), 1)
+    hold
+      back make none
+  fork test, not(is-step-up(step-node/get(small-name), small-name))
+    hold
+      back make none
+  save first-step, step-at/get(small-name)
+  fork test, is-below(first-step, 0)
+    hold
+      back make none
+  # the big side's writes: none, or one top-level `big = big - 1`
+  fork test, is-unequal(big-name, <>)
+    hold
+      save big-writes, written/get-or-default(big-name, 0)
+      fork test, is-above(big-writes, 1)
+        hold
+          back make none
+      fork test, is-equal(big-writes, 1)
+        hold
+          save big-at, step-at/get(big-name)
+          fork test, or(is-below(big-at, 0), not(is-step-down(step-node/get(big-name), big-name)))
+            hold
+              back make none
+          fork test, is-below(big-at, first-step)
+            hold
+              save first-step, big-at
+  save state
+    make guard-state
+      bind small-name, small-name
+      bind big-name, big-name
+      bind big-value, big-value
+      bind first-step, first-step
+      bind closure-writes, closure-writes
+      bind written, written
+      bind alias-base, make hash
+      bind alias-offset, make hash
+      bind checks, make list
+      bind refused, false
+  # body-local aliases `let x = small + c` (or `big + c`, `- c`), never written again, read as indexes
+  save i, 0
+  walk test
+    hook test, is-below(i, first-step)
+    hook hold
+      sift get(body, i)
+        case let
+          link alias-name
+          link init
+          fork test, is-equal(written/get-or-default(alias-name, 0), 1)
+            hold
+              sift init
+                case binary
+                  sift integer-value(right)
+                    case some
+                      link amount
+                      save sign, 0.0
+                      sift op
+                        case plus
+                          save sign, 1.0
+                        case minus
+                          save sign, -1.0
+                        miss
+                          save nothing, 0
+                      fork test, is-unequal(sign, 0.0)
+                        hold
+                          save offset, multiply(sign, amount)
+                          save left-name, variable-name(left)
+                          fork test, is-equal(left-name, small-name)
+                            hold
+                              save state/alias-base/{alias-name}, <small>
+                              save state/alias-offset/{alias-name}, offset
+                            miss
+                              fork test, and(is-unequal(big-name, <>), is-equal(left-name, big-name))
+                                hold
+                                  save state/alias-base/{alias-name}, <big>
+                                  save state/alias-offset/{alias-name}, offset
+                    case none
+                      save nothing, 0
+                miss
+                  save nothing, 0
+        miss
+          save nothing, 0
+      save i, add(i, 1)
+  # every list index in the body, each turned into its two bounds, or the loop is refused
+  save at, 0
+  walk body
+    take top
+    uses-in(state, top, at)
+    fork test, state/refused
+      hold
+        back make none
+    save at, add(at, 1)
+  save has-path, false
+  walk state/checks
+    take check
+    sift check/path
+      case some
+        link held
+        save has-path, true
+      case none
+        save nothing, 0
+  fork test, and(has-path, rebinds-in(reach-body(body)))
+    hold
+      back make none
+  # the calls to a task whose integer arithmetic is safe below a bound, with every argument bounded here
+  save fast, make list
+  save limits, make list
+  save at, 0
+  walk body
+    take top
+    walk reach-body-one(top)/expressions
+      take node
+      fast-call(state, node, at, bounded, fast, limits)
+    save at, add(at, 1)
+  fork test, and(is-equal(state/checks/length, 0), is-equal(fast/length, 0))
+    hold
+      back make none
+  # per name, the strictest of each kind
+  save low-names, make list
+  save high-names, make list
+  save highs, make hash
+  walk limits
+    take one
+    fork test, one/low
+      hold
+        fork test, not(contains(low-names, one/name))
+          hold
+            push(low-names, one/name)
+    sift one/high
+      case some
+        link high
+        fork test, not(highs/has(one/name))
+          hold
+            push(high-names, one/name)
+            save highs/{one/name}, high
+          miss
+            fork test, is-below(high, highs/get(one/name))
+              hold
+                save highs/{one/name}, high
+      case none
+        save nothing, 0
+  save strictest, make list
+  walk low-names
+    take name
+    push(strictest, low-limit(name))
+  walk high-names
+    take name
+    push(strictest, high-limit(name, highs/get(name)))
+  # per list, base and side only the extreme bound: the lowest offset tested against 0 implies every higher one, and the
+  # highest tested against the length implies every lower one
+  save keys, make list
+  save extreme, make hash
+  walk state/checks
+    take check
+    save key, <{check/list}|{check/base}|{check/side}>
+    fork test, not(extreme/has(key))
+      hold
+        push(keys, key)
+        save extreme/{key}, check
+      miss
+        save held, extreme/get(key)
+        save more, is-above(check/offset, held/offset)
+        fork test, is-equal(check/side, <low>)
+          hold
+            save more, is-below(check/offset, held/offset)
+        fork test, more
+          hold
+            save extreme/{key}, check
+  save checks, make list
+  walk keys
+    take key
+    push(checks, extreme/get(key))
+  save guard
+    make loop-guard
+      bind loop, loop
+      bind checks, checks
+      bind fast, fast
+      bind limits, strictest
+  back make(some, guard)
+
+task low-limit
+  take name, like text
+  like limit
+  mark private
+
+  back
+    make limit
+      bind name, name
+      bind low, true
+      bind high, make none
+
+task high-limit
+  take name, like text
+  take high, like float
+  like limit
+  mark private
+
+  back
+    make limit
+      bind name, name
+      bind low, false
+      bind high, make(some, high)
+
+task reach-body-one
+  take top, like statement
+  like reached
+  mark private
+
+  save single, make list
+  push(single, top)
+  back reach-body(single)
+
+# `name = name + 1`, either order
+task is-step-up
+  take node, like statement
+  take name, like text
+  like boolean
+  mark private
+
+  sift node
+    case assign
+      fork test, not(is-set(op))
+        hold
+          back false
+      sift read(value)
+        case binary
+          sift op
+            case plus
+              back or(and(is-equal(variable-name(left), name), is-one(right)), and(is-one(left), is-equal(variable-name(right), name)))
+            miss
+              back false
+        miss
+          back false
+    miss
+      back false
+
+# `name = name - 1`
+task is-step-down
+  take node, like statement
+  take name, like text
+  like boolean
+  mark private
+
+  sift node
+    case assign
+      fork test, not(is-set(op))
+        hold
+          back false
+      sift read(value)
+        case binary
+          sift op
+            case minus
+              back and(is-equal(variable-name(left), name), is-one(right))
+            miss
+              back false
+        miss
+          back false
+    miss
+      back false
+
+# Every slot of a list in one top-level statement, a read or a write before either side steps, bounded; anything else
+# refuses the loop. A slot's list is not walked, only its index, which the walk's pre-order lets it skip to
+task uses-in
+  take state, like guard-state
+  take top, like statement
+  take at, like number
+  like void
+  mark private
+
+  save seen, reach-body-one(top)
+  save k, 0
+  walk test
+    hook test, is-below(k, seen/expressions/length)
+    hook hold
+      save node, get(seen/expressions, k)
+      save k, add(k, 1)
+      sift node
+        case member
+          link slot-target
+          link field
+          link slot
+          fork test, is-unequal(kind-of-expression(slot-target), <array>)
+            hold
+              turn next
+          save literal, false
+          sift slot
+            case none
+              save literal, is-digits(field)
+              fork test, not(literal)
+                hold
+                  turn next
+            case some
+              link given
+              save nothing, 0
+          fork test, is-minimum(at, state/first-step)
+            hold
+              save state/refused, true
+              back
+          save index
+            make literal-index
+              bind value, 0.0
+          fork test, literal
+            hold
+              save index
+                make literal-index
+                  bind value, digits-value(field)
+            miss
+              sift slot
+                case some
+                  link given
+                  save index
+                    make read-index
+                      bind node, given
+                case none
+                  save nothing, 0
+          sift slot-target
+            # a slot of a list the loop never rebinds
+            case variable
+              link list-name
+              fork test, is-above(writes-of(state, list-name), 0)
+                hold
+                  save state/refused, true
+                  back
+              save no-path, make none
+              bound(state, list-name, index, no-path)
+            miss
+              # a slot of a list reached through a path the loop holds still (`ps/{k}/xs/{i}`)
+              sift path-list(state, slot-target)
+                case none
+                  save state/refused, true
+                  back
+                case some
+                  link key
+                  save path, make(some, slot-target)
+                  bound(state, key, index, path)
+          fork test, state/refused
+            hold
+              back
+          # the slot's list is not walked: skip its run, the index follows
+          save k, add(k, size-of-expressions(reach-one(slot-target)))
+        miss
+          save nothing, 0
+
+task size-of-expressions
+  take seen, like reached
+  like number
+  mark private
+
+  back seen/expressions/length
+
+# whether a guarded list reached through a path could be a different list by a later turn: a field written, or a slot
+# written whose value is not a scalar, or a call handed anything but scalars
+task rebinds-in
+  take seen, like reached
+  like boolean
+  mark private
+
+  walk seen/statements
+    take node
+    sift node
+      case assign
+        sift target
+          case member
+            link written-target
+            link field
+            link slot
+            save is-slot, false
+            sift slot
+              case some
+                link given
+                save is-slot, true
+              case none
+                save is-slot, is-digits(field)
+            save target-type, type
+            sift target-type
+              case none
+                save target-type, expression-type(read(value))
+              case some
+                link known
+                save nothing, 0
+            fork test, or(not(is-slot), not(scalar(target-type)))
+              hold
+                back true
+          miss
+            save nothing, 0
+      miss
+        save nothing, 0
+  walk seen/expressions
+    take node
+    sift node
+      case call
+        walk args
+          take arg
+          fork test, not(scalar(expression-type(arg)))
+            hold
+              back true
+      miss
+        save nothing, 0
+  back false
+
+task bound-limit
+  take bounded, like list, like integer-bound
+  take name, like text
+  like float
+  mark private
+
+  save out, -1.0
+  walk bounded
+    take one
+    fork test, is-equal(one/task, name)
+      hold
+        save out, one/limit
+  back out
+
+task fast-call
+  take state, like guard-state
+  take node, like expression
+  take at, like number
+  take bounded, like list, like integer-bound
+  take fast, like list, like expression
+  take limits, like list, like limit
+  like void
+  mark private
+
+  sift node
+    case call
+      save callee-name, variable-name(callee)
+      fork test, is-equal(callee-name, <>)
+        hold
+          back
+      save limit, bound-limit(bounded, callee-name)
+      fork test, is-below(limit, 0.0)
+        hold
+          back
+      save mine, make list
+      walk args
+        take arg
+        fork test, not(argument-fits(state, arg, at, limit, mine))
+          hold
+            back
+      push(fast, node)
+      walk mine
+        take one
+        push(limits, one)
+    miss
+      back
+
+task argument-fits
+  take state, like guard-state
+  take arg, like expression
+  take at, like number
+  take limit, like float
+  take mine, like list, like limit
+  like boolean
+  mark private
+
+  sift arg
+    case integer
+      link given
+      save value, to-decimal(given)
+      back and(is-minimum(value, 0.0), is-below(value, limit))
+    case boolean
+      back true
+    case float
+      back true
+    case variable
+      # a list the task takes lent, or a flag or a decimal: no bound on it, read by the copy as by the original
+      save kind, kind-of(type)
+      fork test, or(or(is-equal(kind, <array>), is-equal(kind, <boolean>)), is-equal(kind, <float>))
+        hold
+          back true
+      fork test, is-equal(name, state/small-name)
+        hold
+          fork test, or(is-below(at, 0), is-minimum(at, state/first-step))
+            hold
+              back false
+          push(mine, low-limit(name))
+          fork test, is-unequal(state/big-name, <>)
+            hold
+              push(mine, high-limit(state/big-name, limit))
+              back true
+          back is-maximum(state/big-value, limit)
+      fork test, or(or(is-equal(name, state/big-name), is-above(writes-of(state, name), 0)), contains(state/closure-writes, name))
+        hold
+          back false
+      push(mine, low-limit(name))
+      push(mine, high-limit(name, subtract(limit, 1.0)))
+      back true
+    miss
+      back false
+
+# every variable name an assignment inside some closure writes
+task names-written-in-closures
+  take program, like list, like statement
+  like list, like text
+  mark private
+
+  save out, make list
+  save seen, reach-body(program)
+  walk seen/expressions
+    take one
+    sift one
+      case closure
+        walk reach-body(body)/statements
+          take inner
+          sift inner
+            case assign
+              save written, variable-name(target)
+              fork test, and(is-unequal(written, <>), not(contains(out, written)))
+                hold
+                  push(out, written)
+            miss
+              save nothing, 0
+      miss
+        save nothing, 0
+  back out
+
+task bounded-loops
+  take program, like list, like statement
+  take lent, like hash, like text, like list, like number
+  like list, like loop-guard
+
+  save closure-writes, names-written-in-closures(program)
+  save pure, make hash
+  walk scalar-tasks(program)
+    take name
+    save pure/{name}, true
+  # a task may run unchecked only where a call to it is one the guard allows: it reaches no list, or every list it
+  # takes it takes LENT, so it may write a list's slots but never its length
+  save tasks, make hash
+  walk program
+    take one
+    sift one
+      case function
+        save tasks/{name}, one
+      miss
+        save nothing, 0
+  save bounded, make list
+  walk integer-bounds(program)
+    take one
+    fork test, length-safe(one/task, pure, tasks, lent)
+      hold
+        push(bounded, one)
+  save out, make list
+  save seen, reach-body(program)
+  walk seen/statements
+    take one
+    sift one
+      case while
+        sift guard-of(one, closure-writes, pure, bounded, lent)
+          case some
+            link guard
+            push(out, guard)
+          case none
+            save nothing, 0
+      miss
+        save nothing, 0
+  back out
+
+task length-safe
+  take name, like text
+  take pure, like hash, like text, like boolean
+  take tasks, like hash, like text, like statement
+  take lent, like hash, like text, like list, like number
+  like boolean
+  mark private
+
+  fork test, pure/has(name)
+    hold
+      back true
+  fork test, not(tasks/has(name))
+    hold
+      back false
+  sift tasks/get(name)
+    case function
+      save at, 0
+      walk params
+        take param
+        fork test, and(is-equal(kind-of(param/type), <array>), not(and(lent/has(name), contains(lent/get-or-default(name, make list), at))))
+          hold
+            back false
+        save at, add(at, 1)
+      back true
+    miss
+      back false

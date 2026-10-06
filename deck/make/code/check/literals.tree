@@ -192,7 +192,12 @@ task check-widths
               sift callee
                 case variable
                   link called
-                  check-call(tasks, ranges, called, args, names, file, out)
+                  # a `need false` list, copied where it is read: handed to a call it was written into the call
+                  save arg-names, make list
+                  walk names
+                    take arg-name
+                    push(arg-names, arg-name)
+                  check-call(tasks, ranges, called, args, arg-names, file, out)
                 miss
                   turn next
             miss

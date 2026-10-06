@@ -52,6 +52,9 @@ form reached
   # a loop's label, a dock's take), as a pass that reads `obj.name` off whatever it meets reads them. An empty one is
   # left out: Term cannot tell it from an absent one, and no definition is named by it
   link names, like list, like text
+  # the expressions and statements in the one order they were reached, `true` for the next expression and `false` for
+  # the next statement, for a pass that reads them interleaved, as a reflective walk meets them
+  link order, like list, like boolean
 
 task new-reached
   take skip, like list, like text
@@ -66,6 +69,7 @@ task new-reached
       bind views, make list
       bind types, make list
       bind names, make list
+      bind order, make list
 
 # everything these statements hold, through every field but the ones named in `skip`
 task reach-statements
@@ -257,6 +261,7 @@ task reach-expression-in
   mark private
 
   push(out/expressions, node)
+  push(out/order, true)
   sift node
     case integer
       reach-own-type(out, type)
@@ -573,6 +578,7 @@ task reach-statement-in
   mark private
 
   push(out/statements, node)
+  push(out/order, false)
   sift node
     case let
       note-name(out, name)

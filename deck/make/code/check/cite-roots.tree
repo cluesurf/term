@@ -57,7 +57,12 @@ task cites-in
     take one
     sift one
       case hold
-        save into, cites-in-proof(proof, into)
+        # a `need false` list, copied where it is read: handed to a call it was written into the hold
+        save steps, make list
+        walk proof
+          take one-step
+          push(steps, one-step)
+        save into, cites-in-proof(steps, into)
       case if
         walk branches
           take branch

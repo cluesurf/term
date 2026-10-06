@@ -139,9 +139,9 @@ bind strip-contract
   take value, like statement
   like statement
   case node
-    text <((\{ have, must, down, ...rest \}) =\> structuredClone(rest))($value)>
+    text <((s) =\> (Reflect.deleteProperty(s, 'have'), Reflect.deleteProperty(s, 'must'), Reflect.deleteProperty(s, 'down'), s))(structuredClone($value))>
   case browser
-    text <((\{ have, must, down, ...rest \}) =\> structuredClone(rest))($value)>
+    text <((s) =\> (Reflect.deleteProperty(s, 'have'), Reflect.deleteProperty(s, 'must'), Reflect.deleteProperty(s, 'down'), s))(structuredClone($value))>
   case rust
     text <$value>
   case swift
@@ -154,9 +154,9 @@ bind strip-raises
   take value, like statement
   like statement
   case node
-    text <(\{ ...$value, raises: undefined \})>
+    text <Object.assign($value, \{ raises: undefined \})>
   case browser
-    text <(\{ ...$value, raises: undefined \})>
+    text <Object.assign($value, \{ raises: undefined \})>
   case rust
     text <$value>
   case swift
@@ -168,9 +168,9 @@ bind strip-raises
 bind keys-absent
   like boolean
   case node
-    text <true>
+    text <(typeof globalThis === 'object')>
   case browser
-    text <true>
+    text <(typeof globalThis === 'object')>
   case rust
     text <false>
   case swift

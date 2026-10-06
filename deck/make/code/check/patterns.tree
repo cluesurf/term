@@ -220,7 +220,12 @@ task check-patterns
       case record
         fork test, has-name(pattern-names, name)
           hold
-            save held, literal-of(positional, fields)
+            # a `need false` list, copied where it is read: handed to a call it was written into the record
+            save by-position, make list
+            walk positional
+              take one-value
+              push(by-position, one-value)
+            save held, literal-of(by-position, fields)
             sift held
               case some
                 link literal

@@ -168,7 +168,12 @@ task walk-views
         walk branches
           take branch
           walk-views(branch/body, scan)
-        walk-views(otherwise, scan)
+        # a `need false` list, copied where it is read: handed to a call it was written into the view node
+        save last, make list
+        walk otherwise
+          take inner
+          push(last, inner)
+        walk-views(last, scan)
       case walk
         walk-views(body, scan)
       miss

@@ -287,7 +287,12 @@ task zone-node
           save out, add-all(out, fragment(none-yet, add(depth, 3), names))
       push(out, <{p1}bind other>)
       push(out, <{p2}task {other}>)
-      back add-all(out, fragment(otherwise, add(depth, 3), names))
+      # a `need false` list, copied where it is read: handed to a call it was written into the view node
+      save last, make list
+      walk otherwise
+        take inner
+        push(last, inner)
+      back add-all(out, fragment(last, add(depth, 3), names))
 
     case walk
       save build, fresh(names, <build>)

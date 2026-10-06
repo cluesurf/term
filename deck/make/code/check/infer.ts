@@ -1681,7 +1681,10 @@ function checkProgram(
               node.callee.target.type ??
                 inferExpression(node.callee.target, env),
             )
-            const op = node.callee.name
+            // camelCase, as the tables and the emitters spell a member: the name is still as written here, so
+            // `xs/index-of` reached this as `index-of`, and every two-word member below (`indexOf`, `charAt`) went
+            // unmatched, its result the gradual unknown, until 2026-10-06
+            const op = node.callee.name.replace(/-([a-z0-9])/g, (_, letter: string) => letter.toUpperCase())
 
             // THE ARGUMENT IS OF THE SLOT'S TYPE, whatever either is yet. This path pinned only a still-free slot
             // from a ground argument until 2026-10-05, on the belief that it had no occurs check: it has one, in

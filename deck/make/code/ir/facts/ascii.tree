@@ -1,0 +1,548 @@
+# F4, the first text fact (note/term/codegen/shared.md): which text expressions are ASCII. A Term text counts code
+# points (note/term/stdlib/semantics.md), so `char-at(s, i)` must walk `s` from its start on Rust (`chars().nth(i)`),
+# Swift and Kotlin (`offsetByCodePoints`): O(i) per read, O(n^2) over a loop. On ASCII text a code point is one byte
+# and one UTF-16 unit, so the same read is a direct index on every backend.
+#
+# A text expression is ASCII when it is
+#   - a literal with no character above 127
+#   - a template whose text parts are ASCII and whose other parts are numbers or flags (printed in ASCII)
+#   - `char-at`, `at`, `substring`, `slice`, `to-lower-case`, `to-upper-case`, a trim, or `repeat` of an ASCII text,
+#     and `concat` or a pad of two ASCII texts
+#   - a call to a task whose every `send back` is ASCII
+#   - a local every value of which is ASCII, or a parameter every call site passes ASCII
+# Solved optimistically for every local, parameter and task, and dropped until stable: a greatest fixed point, so the
+# order the walk drops them in changes nothing. A task never called, or used as a value, takes no fact for its
+# parameters: a caller the program cannot see may pass anything.
+#
+# Ported from ir/facts/text.ts (self-hosting, 2026-10-06), which stays as the face. The original answered a WeakSet of
+# the proven nodes, by identity; this answers the nodes themselves, the same objects on TypeScript, and the face makes
+# the set. Its reflective walk, every field but `type` and `span`, is compile/node-reach.tree's with those two skipped,
+# and a name used as a callee is told from one used as a value by counting both.
+
+load @term/base/list
+  find list
+  find contains
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+  find char-code-at
+
+load ../../compile/node
+  find expression
+  find expression-type
+  find statement
+  find type
+
+load ../../compile/node-reach
+  find reached
+  find reach-statements
+
+task skipped
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, <type>)
+  push(out, <span>)
+  back out
+
+task reach-body
+  take body, like list, like statement
+  like reached
+  mark private
+
+  back reach-statements(body, skipped())
+
+# no character above 127
+task is-ascii-text
+  take value, like text
+  like boolean
+  mark private
+
+  walk split(value, <>)
+    take char
+    fork test, is-above(char-code-at(char, 0), 127)
+      hold
+        back false
+  back true
+
+task is-text
+  take given, like maybe, like type
+  like boolean
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case string
+          back true
+        miss
+          back false
+    case none
+      back false
+
+task prints-ascii
+  take given, like maybe, like type
+  like boolean
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case number
+          back true
+        case float
+          back true
+        case boolean
+          back true
+        miss
+          back false
+    case none
+      back false
+
+# a string method by the name it is called with, its host spelling where the two differ
+task host-method
+  take name, like text
+  like text
+  mark private
+
+  fork test, is-equal(name, <char-at>)
+    hold
+      back <charAt>
+  fork test, is-equal(name, <to-lower-case>)
+    hold
+      back <toLowerCase>
+  fork test, is-equal(name, <to-upper-case>)
+    hold
+      back <toUpperCase>
+  fork test, is-equal(name, <trim-start>)
+    hold
+      back <trimStart>
+  fork test, is-equal(name, <trim-end>)
+    hold
+      back <trimEnd>
+  fork test, is-equal(name, <pad-start>)
+    hold
+      back <padStart>
+  fork test, is-equal(name, <pad-end>)
+    hold
+      back <padEnd>
+  back name
+
+# the string methods whose answer is ASCII when their receiver is
+task keeps
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, <charAt>)
+  push(out, <at>)
+  push(out, <substring>)
+  push(out, <slice>)
+  push(out, <toLowerCase>)
+  push(out, <toUpperCase>)
+  push(out, <trim>)
+  push(out, <trimStart>)
+  push(out, <trimEnd>)
+  push(out, <repeat>)
+  back out
+
+# and the ones that also need their text argument to be
+task joins
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, <concat>)
+  push(out, <padStart>)
+  push(out, <padEnd>)
+  back out
+
+# the facts being solved: the task results and parameters, and each task's locals, by its place among the tasks
+form solving
+  mark shared
+  link results, like hash, like text, like boolean
+  link params, like hash, like text, like list, like number
+  link locals, like list, like list, like text
+
+task ascii
+  take state, like solving
+  take value, like expression
+  take vars, like list, like text
+  like boolean
+  mark private
+
+  sift value
+    case string
+      link literal
+      back is-ascii-text(literal)
+    case template
+      walk parts
+        take part
+        sift part
+          case chunk
+            link chunk-text
+            fork test, not(is-ascii-text(chunk-text))
+              hold
+                back false
+          case value
+            link inner
+            fork test, not(or(prints-ascii(expression-type(inner)), ascii(state, inner, vars)))
+              hold
+                back false
+      back true
+    case variable
+      back contains(vars, name)
+    case conditional
+      walk branches
+        take branch
+        fork test, not(ascii(state, branch/value, vars))
+          hold
+            back false
+      sift otherwise
+        case some
+          link last
+          back ascii(state, last, vars)
+        case none
+          back true
+    case call
+      sift callee
+        case member
+          link receiver
+          link method
+          fork test, is-text(expression-type(receiver))
+            hold
+              save op, host-method(method)
+              fork test, contains(keeps(), op)
+                hold
+                  back ascii(state, receiver, vars)
+              fork test, contains(joins(), op)
+                hold
+                  fork test, not(ascii(state, receiver, vars))
+                    hold
+                      back false
+                  walk args
+                    take arg
+                    fork test, and(is-text(expression-type(arg)), not(ascii(state, arg, vars)))
+                      hold
+                        back false
+                  back true
+              back false
+          back false
+        case variable
+          link callee-name
+          back state/results/has(callee-name)
+        miss
+          back false
+    miss
+      back false
+
+# a name the task binds some other way (a walk's item, a closure's parameter, an arm's field) is never a fact
+task bound-otherwise
+  take body, like list, like statement
+  like list, like text
+  mark private
+
+  save out, make list
+  save seen, reach-body(body)
+  walk seen/statements
+    take one
+    sift one
+      case for-each
+        push(out, item)
+      case match
+        walk cases
+          take arm
+          walk arm/binds
+            take bound-name
+            push(out, bound-name)
+      miss
+        save nothing, 0
+  walk seen/expressions
+    take one
+    sift one
+      case closure
+        walk params
+          take param
+          push(out, param/name)
+      miss
+        save nothing, 0
+  back out
+
+task task-parts
+  take one, like statement
+  like list, like statement
+  mark private
+
+  sift one
+    case function
+      back body
+    miss
+      back make list
+
+# the ASCII names in scope in a task: its ASCII parameters and its ASCII locals, less any name bound another way
+task scope
+  take state, like solving
+  take one, like statement
+  take place, like number
+  like list, like text
+  mark private
+
+  save out, make list
+  sift one
+    case function
+      save mine, state/params/get-or-default(name, make list)
+      save at, 0
+      walk params
+        take param
+        fork test, contains(mine, at)
+          hold
+            push(out, param/name)
+        save at, add(at, 1)
+      walk get(state/locals, place)
+        take local
+        push(out, local)
+      save gone, bound-otherwise(body)
+      save kept, make list
+      walk out
+        take name
+        fork test, not(contains(gone, name))
+          hold
+            push(kept, name)
+      back kept
+    miss
+      back out
+
+task without-text
+  take values, like list, like text
+  take value, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  walk values
+    take one
+    fork test, is-unequal(one, value)
+      hold
+        push(out, one)
+  back out
+
+task without-number
+  take values, like list, like number
+  take value, like number
+  like list, like number
+  mark private
+
+  save out, make list
+  walk values
+    take one
+    fork test, is-unequal(one, value)
+      hold
+        push(out, one)
+  back out
+
+task count-name
+  take counts, like hash, like text, like number
+  take name, like text
+  like void
+  mark private
+
+  save counts/{name}, add(counts/get-or-default(name, 0), 1)
+
+task ascii-texts
+  take program, like list, like statement
+  like list, like expression
+
+  save fns, make list
+  save by-name, make hash
+  walk program
+    take one
+    sift one
+      case function
+        push(fns, one)
+        count-name(by-name, name)
+      miss
+        save nothing, 0
+  # a task named in callee position is called, and named anywhere else is used as a value
+  save named, make hash
+  save as-callee, make hash
+  save all, reach-statements(program, skipped())
+  walk all/expressions
+    take one
+    sift one
+      case variable
+        fork test, by-name/has(name)
+          hold
+            count-name(named, name)
+      case call
+        sift callee
+          case variable
+            link callee-name
+            fork test, by-name/has(callee-name)
+              hold
+                count-name(as-callee, callee-name)
+          miss
+            save nothing, 0
+      miss
+        save nothing, 0
+  # optimistic: every task's text parameters and text result ASCII, every text local ASCII
+  save state
+    make solving
+      bind results, make hash
+      bind params, make hash
+      bind locals, make list
+  walk fns
+    take one
+    sift one
+      case function
+        save called-count, as-callee/get-or-default(name, 0)
+        save unique, and(and(is-equal(by-name/get(name), 1), is-above(called-count, 0)), is-equal(named/get-or-default(name, 0), called-count))
+        save taken, make list
+        fork test, unique
+          hold
+            save at, 0
+            walk params
+              take param
+              fork test, is-text(param/type)
+                hold
+                  push(taken, at)
+              save at, add(at, 1)
+        save state/params/{name}, taken
+        fork test, is-text(result)
+          hold
+            save state/results/{name}, true
+        save names, make list
+        save seen, reach-body(body)
+        walk seen/statements
+          take node
+          sift node
+            case let
+              link let-name
+              link init
+              save given, type
+              sift given
+                case none
+                  save given, expression-type(init)
+                case some
+                  link known
+                  save nothing, 0
+              fork test, is-text(given)
+                hold
+                  push(names, let-name)
+            miss
+              save nothing, 0
+        push(state/locals, names)
+      miss
+        push(state/locals, make list)
+  save changed, true
+  walk test
+    hook test, changed
+    hook hold
+      save changed, false
+      save place, 0
+      walk fns
+        take one
+        save vars, scope(state, one, place)
+        fork test, settle(state, one, place, vars)
+          hold
+            save changed, true
+        save place, add(place, 1)
+  # every text-typed expression the solved facts prove ASCII
+  save found, make list
+  save place, 0
+  walk fns
+    take one
+    save vars, scope(state, one, place)
+    save seen, reach-body(task-parts(one))
+    walk seen/expressions
+      take node
+      fork test, and(is-text(expression-type(node)), ascii(state, node, vars))
+        hold
+          push(found, node)
+    save place, add(place, 1)
+  back found
+
+# one task's pass of the fixed point: drop every fact it shows false. Whether it dropped any
+task settle
+  take state, like solving
+  take one, like statement
+  take place, like number
+  take vars, like list, like text
+  like boolean
+  mark private
+
+  save changed, false
+  save task-name, <>
+  sift one
+    case function
+      save task-name, name
+    miss
+      save nothing, 0
+  save seen, reach-body(task-parts(one))
+  walk seen/statements
+    take node
+    sift node
+      # a local given a value that is not ASCII, by its `let` or any assignment
+      case let
+        link let-name
+        link init
+        fork test, and(contains(get(state/locals, place), let-name), not(ascii(state, init, vars)))
+          hold
+            save state/locals/{place}, without-text(get(state/locals, place), let-name)
+            save changed, true
+      case assign
+        sift target
+          case variable
+            link target-name
+            fork test, and(contains(get(state/locals, place), target-name), not(ascii(state, read(value), vars)))
+              hold
+                save state/locals/{place}, without-text(get(state/locals, place), target-name)
+                save changed, true
+          miss
+            save nothing, 0
+      # a task handing back something that is not ASCII
+      case return
+        fork test, state/results/has(task-name)
+          hold
+            save handed-ascii, false
+            sift read(value)
+              case some
+                link given
+                save handed-ascii, ascii(state, given, vars)
+              case none
+                save nothing, 0
+            fork test, not(handed-ascii)
+              hold
+                state/results/remove(task-name)
+                save changed, true
+      miss
+        save nothing, 0
+  # a parameter of a callee passed something that is not ASCII
+  walk seen/expressions
+    take node
+    sift node
+      case call
+        sift callee
+          case variable
+            link callee-name
+            fork test, state/params/has(callee-name)
+              hold
+                save at, 0
+                walk args
+                  take arg
+                  fork test, and(contains(state/params/get(callee-name), at), not(ascii(state, arg, vars)))
+                    hold
+                      save state/params/{callee-name}, without-number(state/params/get(callee-name), at)
+                      save changed, true
+                  save at, add(at, 1)
+          miss
+            save nothing, 0
+      miss
+        save nothing, 0
+  back changed

@@ -206,12 +206,11 @@ task utf16-before
       save at, add(at, 1)
   back is-below(a/length, b/length)
 
-# the original's comparator `(a, b) => (a < b ? -1 : 1)`, which never answers equal
+# the original's comparator `(a, b) => (a < b ? -1 : 1)`, which never answers equal: JavaScript's order of texts
 task utf16-order
   take left, like text
   take right, like text
   like ordering
-  mark private
 
   fork test, utf16-before(left, right)
     hold

@@ -2018,7 +2018,11 @@ task renamed-statement
           walk cases
             take arm
             save fields, arm-fields(fields-of, subject, arm/label)
-            save given-binds, arm/binds
+            # copied where it is read, so an arm with none is not written `binds: []` before the rule decides
+            save given-binds, make list
+            walk arm/binds
+              take bound-name
+              push(given-binds, bound-name)
             # the names the arm binds: its own, else every field by its name, in order
             save chosen, fields
             fork test, and(is-above(given-binds/length, 0), not(all-in(given-binds, fields)))
@@ -2530,11 +2534,19 @@ task bind-group
           link own
           save targets, make list
           save chosen, make none
+          # each `need false` list copied where it is read: handed to a call, it was written into the scope (`[]`)
+          save finds-read, make list
           fork test, aliased
             hold
-              save chosen, targets-of(read(own/aliases), alias-text)
+              walk read(own/aliases)
+                take one-find
+                push(finds-read, one-find)
+              save chosen, targets-of(finds-read, alias-text)
             miss
-              save chosen, targets-of(read(own/plain), group/name)
+              walk read(own/plain)
+                take one-find
+                push(finds-read, one-find)
+              save chosen, targets-of(finds-read, group/name)
           sift chosen
             case some
               link these

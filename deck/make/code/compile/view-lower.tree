@@ -625,9 +625,14 @@ task element-of
                       miss
                         back make(some, element)
                   case named
-                    fork test, and(is-equal(name, <list>), is-equal(args/length, 1))
+                    # a `need false` list, copied where it is read: handed to a call it was written into the type
+                    save type-args, make list
+                    walk args
+                      take type-arg
+                      push(type-args, type-arg)
+                    fork test, and(is-equal(name, <list>), is-equal(type-args/length, 1))
                       hold
-                        save first, get(args, 0)
+                        save first, get(type-args, 0)
                         back make(some, first)
                     back make none
                   miss

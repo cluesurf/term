@@ -311,7 +311,12 @@ task gather-views
           take branch
           gather-expression(branch/cond, out)
           gather-views(branch/body, out)
-        gather-views(otherwise, out)
+        # a `need false` list, walked where it is read: handed to a call it was written into the node (`otherwise: []`)
+        walk otherwise
+          take inner
+          save single, make list
+          push(single, inner)
+          gather-views(single, out)
       case walk
         gather-expression(iterable, out)
         gather-views(body, out)

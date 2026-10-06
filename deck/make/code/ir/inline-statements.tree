@@ -1238,7 +1238,11 @@ task expand
               take arm
               save fields, arm-fields(round/fields-of, subject, arm/label)
               save chosen, fields
-              save given-binds, arm/binds
+              # copied where it is read, so an arm with none is not written `binds: []` before the rule decides
+              save given-binds, make list
+              walk arm/binds
+                take bound-name
+                push(given-binds, bound-name)
               fork test, and(is-above(given-binds/length, 0), not(all-in(given-binds, fields)))
                 hold
                   save chosen, given-binds

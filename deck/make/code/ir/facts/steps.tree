@@ -1,0 +1,614 @@
+# Increments proven not to overflow (note/term/codegen/passes.md, P2, the first fact built).
+#
+# A counted loop `while (i < bound) { ...; i = i + 1 }` is what every `walk size` lowers to, and most index loops are
+# written that way. Its increment cannot overflow when nothing else writes `i`: at the increment `i` still holds the
+# value the condition tested, so `i < bound`, and `bound` is itself a number the backend represents, so `i + 1 <= bound`
+# is one too. What makes it sound, and what each check below is for:
+#   - the condition is a strict `<` with the counter on the small side (`<=` would allow `i == bound == MAX`)
+#   - the counter is written exactly once inside the loop, by `i = i + 1`, so it is the tested value
+#   - that write is not inside a nested loop or a closure, so it runs at most once per test of the condition
+#   - no closure anywhere in the program writes a variable of the counter's name
+#   - the counter is a `number`
+# The same holds on the other side: in `while (low < high)`, a single `high = high - 1` cannot go below the minimum. A
+# counter against an integer literal with a non-strict comparison steps toward it safely too. The step's own expression
+# read EARLIER in the body is proven, outside closures, because there the counter is still the tested value. `x % c` by
+# a nonzero integer literal cannot leave the range. And `x - c`, a small positive literal taken from a local every value
+# of which is not negative, cannot either. Every rule has a counterexample in test/ir/facts/range.ts that must NOT be
+# proven.
+#
+# Ported from ir/facts/range.ts (self-hosting, 2026-10-06), which stays as the face: the original answered a WeakSet of
+# nodes by identity, and this answers the nodes, the same objects on TypeScript. Its reflective walks skip `type` and
+# `span`, as compile/node-reach.tree does when told to. Two need to know where a node stands, and Term compares no
+# objects, so each reads it from the walk's shape: a write is NESTED when a loop or a closure holds it, so "one write,
+# not nested" is one write in all and that one among the writes reached through `if`, `match`, a guard and a nested
+# task's blocks alone; and node-reach's walk is pre-order, so what a closure holds is the run of nodes after it, as
+# long as the closure's own reach, which the reads before the step skip.
+
+load @term/base/list
+  find list
+  find contains
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load ../../compile/node
+  find expression
+  find expression-type
+  find statement
+  find type
+
+load ../../compile/node-reach
+  find reached
+  find reach-statements
+  find reach-expression
+
+task skipped
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, <type>)
+  push(out, <span>)
+  back out
+
+task is-number
+  take given, like maybe, like type
+  like boolean
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case number
+          back true
+        miss
+          back false
+    case none
+      back false
+
+task variable-name
+  take value, like expression
+  like text
+  mark private
+
+  sift value
+    case variable
+      back name
+    miss
+      back <>
+
+# an integer literal's value, or none
+task integer-value
+  take value, like expression
+  like maybe, like number
+  mark private
+
+  sift value
+    case integer
+      link given
+      back make(some, given)
+    miss
+      back make none
+
+# every variable name an assignment inside some closure writes
+task names-written-in-closures
+  take program, like list, like statement
+  like list, like text
+
+  save out, make list
+  save seen, reach-statements(program, skipped())
+  walk seen/expressions
+    take one
+    sift one
+      case closure
+        walk reach-statements(body, skipped())/statements
+          take inner
+          sift inner
+            case assign
+              sift target
+                case variable
+                  link written
+                  fork test, not(contains(out, written))
+                    hold
+                      push(out, written)
+                miss
+                  save nothing, 0
+            miss
+              save nothing, 0
+      miss
+        save nothing, 0
+  back out
+
+# is `e` the counter's step: `counter + 1` (either order) stepping up, `counter - 1` stepping down
+task is-step
+  take e, like expression
+  take counter, like text
+  take direction, like number
+  like boolean
+  mark private
+
+  sift e
+    case binary
+      save left-one, is-one(left)
+      save right-one, is-one(right)
+      save left-counter, is-equal(variable-name(left), counter)
+      save right-counter, is-equal(variable-name(right), counter)
+      fork test, is-equal(direction, 1)
+        hold
+          sift op
+            case plus
+              back or(and(left-counter, right-one), and(left-one, right-counter))
+            miss
+              back false
+      sift op
+        case minus
+          back and(left-counter, right-one)
+        miss
+          back false
+    miss
+      back false
+
+task is-one
+  take value, like expression
+  like boolean
+  mark private
+
+  sift integer-value(value)
+    case some
+      link given
+      back is-equal(given, 1)
+    case none
+      back false
+
+# a write to the counter: an assignment to it, or a `let` of its name (another variable, which leaves the loop
+# unproven rather than told apart)
+task writes-counter
+  take one, like statement
+  take counter, like text
+  like boolean
+  mark private
+
+  sift one
+    case assign
+      back is-equal(variable-name(target), counter)
+    case let
+      back is-equal(name, counter)
+    miss
+      back false
+
+# the writes to the counter reached without entering a loop or a closure: assignments only, since a `let` of the name
+# is never a flat write. `top` is where each sits among the loop body's own statements, -1 below them
+form flat-writes
+  mark shared
+  link found, like list, like statement
+  link top, like list, like number
+
+task flat-in
+  take out, like flat-writes
+  take block, like list, like statement
+  take counter, like text
+  take top, like boolean
+  like void
+  mark private
+
+  save at, 0
+  walk block
+    take one
+    sift one
+      case assign
+        fork test, is-equal(variable-name(target), counter)
+          hold
+            push(out/found, one)
+            save place, -1
+            fork test, top
+              hold
+                save place, at
+            push(out/top, place)
+      case if
+        walk branches
+          take branch
+          flat-in(out, branch/body, counter, false)
+        sift otherwise
+          case some
+            link last
+            flat-in(out, last, counter, false)
+          case none
+            save nothing, 0
+      case match
+        walk cases
+          take arm
+          flat-in(out, arm/body, counter, false)
+        sift otherwise
+          case some
+            link last
+            flat-in(out, last, counter, false)
+          case none
+            save nothing, 0
+      case guard
+        flat-in(out, body, counter, false)
+        sift catch
+          case some
+            link clause
+            flat-in(out, clause/body, counter, false)
+          case none
+            save nothing, 0
+      case function
+        flat-in(out, body, counter, false)
+        sift stub-shape
+          case some
+            link shape
+            save single, make list
+            push(single, shape)
+            flat-in(out, single, counter, false)
+          case none
+            save nothing, 0
+        save stub-statements, make list
+        walk stub-body
+          take inner
+          push(stub-statements, inner)
+        flat-in(out, stub-statements, counter, false)
+      miss
+        save nothing, 0
+    save at, add(at, 1)
+
+form found-steps
+  mark shared
+  link nodes, like list, like expression
+
+# one side of the condition as a counter stepping by `direction`: its step is proven, and so is the same expression read
+# anywhere in the loop body BEFORE the statement that steps it, outside a closure
+task counted
+  take out, like found-steps
+  take body, like list, like statement
+  take side, like expression
+  take direction, like number
+  take closure-writes, like list, like text
+  like void
+  mark private
+
+  save counter, variable-name(side)
+  fork test, or(contains(closure-writes, counter), not(is-number(expression-type(side))))
+    hold
+      back
+  save all, 0
+  walk reach-statements(body, skipped())/statements
+    take one
+    fork test, writes-counter(one, counter)
+      hold
+        save all, add(all, 1)
+  save flat
+    make flat-writes
+      bind found, make list
+      bind top, make list
+  flat-in(flat, body, counter, true)
+  fork test, or(is-unequal(all, 1), is-unequal(flat/found/length, 1))
+    hold
+      back
+  sift get(flat/found, 0)
+    case assign
+      link written
+      link op
+      fork test, not(and(is-set(op), is-step(read(value), counter, direction)))
+        hold
+          back
+      push(out/nodes, read(value))
+    miss
+      back
+  # the reads before the stepping statement, when that statement is one of the loop body's own
+  save at, get(flat/top, 0)
+  fork test, is-below(at, 0)
+    hold
+      back
+  save before, make list
+  save i, 0
+  walk test
+    hook test, is-below(i, at)
+    hook hold
+      push(before, get(body, i))
+      save i, add(i, 1)
+  save seen, reach-statements(before, skipped())
+  save k, 0
+  walk test
+    hook test, is-below(k, seen/expressions/length)
+    hook hold
+      save node, get(seen/expressions, k)
+      save k, add(k, 1)
+      sift node
+        case closure
+          # what the closure holds is the run after it, as long as its own reach less itself
+          save held, reach-expression(node, skipped())
+          save k, add(k, subtract(held/expressions/length, 1))
+        miss
+          fork test, is-step(node, counter, direction)
+            hold
+              push(out/nodes, node)
+
+task is-set
+  take op, like assign-op
+  like boolean
+  mark private
+
+  sift op
+    case set
+      back true
+    miss
+      back false
+
+task check-loop
+  take out, like found-steps
+  take loop, like statement
+  take closure-writes, like list, like text
+  like void
+  mark private
+
+  sift loop
+    case while
+      sift cond
+        case binary
+          link left
+          link right
+          link op
+          save safe, 9007199254740991
+          save non-strict, 0
+          sift op
+            case at-least
+              save non-strict, 1
+            case at-most
+              save non-strict, 2
+            miss
+              save nothing, 0
+          # a counter against an integer LITERAL with a non-strict comparison: the counter on the large side steps
+          # down, on the small side up
+          fork test, is-above(non-strict, 0)
+            hold
+              fork test, and(is-unequal(variable-name(left), <>), literal-in-range(right))
+                hold
+                  save direction, 1
+                  fork test, is-equal(non-strict, 1)
+                    hold
+                      save direction, -1
+                  counted(out, body, left, direction, closure-writes)
+                miss
+                  fork test, and(is-unequal(variable-name(right), <>), literal-in-range(left))
+                    hold
+                      save direction, -1
+                      fork test, is-equal(non-strict, 1)
+                        hold
+                          save direction, 1
+                      counted(out, body, right, direction, closure-writes)
+              back
+          # `small < big`, or `big > small`: the small side may step up by one and the big side down by one
+          save small, left
+          save big, right
+          sift op
+            case below
+              save nothing, 0
+            case above
+              save small, right
+              save big, left
+            miss
+              back
+          fork test, is-unequal(variable-name(small), <>)
+            hold
+              counted(out, body, small, 1, closure-writes)
+          fork test, is-unequal(variable-name(big), <>)
+            hold
+              counted(out, body, big, -1, closure-writes)
+        miss
+          back
+    miss
+      back
+
+# an integer literal whose size is below 2^53 - 1
+task literal-in-range
+  take value, like expression
+  like boolean
+  mark private
+
+  sift integer-value(value)
+    case some
+      link given
+      back and(is-below(given, 9007199254740991), is-above(given, -9007199254740991))
+    case none
+      back false
+
+task proven-increments
+  take program, like list, like statement
+  like list, like expression
+
+  save out
+    make found-steps
+      bind nodes, make list
+  save closure-writes, names-written-in-closures(program)
+  save seen, reach-statements(program, skipped())
+  walk seen/statements
+    take one
+    check-loop(out, one, closure-writes)
+  # `x % c` by a nonzero integer literal: the result is smaller than |c|, so it cannot leave the range
+  walk seen/expressions
+    take one
+    sift one
+      case binary
+        sift op
+          case remainder
+            sift integer-value(right)
+              case some
+                link divisor
+                fork test, and(is-unequal(divisor, 0), is-number(expression-type(left)))
+                  hold
+                    push(out/nodes, one)
+              case none
+                save nothing, 0
+          miss
+            save nothing, 0
+      miss
+        save nothing, 0
+  walk program
+    take one
+    sift one
+      case function
+        not-negative(out, one, closure-writes)
+      miss
+        save nothing, 0
+  back out/nodes
+
+# `x - c`, a positive integer literal taken from a local proven NOT NEGATIVE, cannot leave the range. A local is not
+# negative when every value it is given is: a literal at least 0, another such local, or a sum, product or `%` of such
+# values. Solved optimistically per task, dropped by any write that is not. Parameters are never proven, nor a name a
+# closure writes or something binds another way (a walk's item, a closure's parameter, an arm's field)
+form given-values
+  mark shared
+  link names, like list, like text
+  link values, like hash, like text, like list, like expression
+
+task not-negative
+  take out, like found-steps
+  take one, like statement
+  take closure-writes, like list, like text
+  like void
+  mark private
+
+  save writes
+    make given-values
+      bind names, make list
+      bind values, make hash
+  save excluded, make list
+  save subtractions, make list
+  sift one
+    case function
+      walk params
+        take param
+        push(excluded, param/name)
+      save seen, reach-statements(body, skipped())
+      walk seen/statements
+        take node
+        sift node
+          case let
+            link let-name
+            link init
+            give(writes, let-name, init)
+          case assign
+            sift target
+              case variable
+                link written
+                fork test, not(is-set(op))
+                  hold
+                    push(excluded, written)
+                give(writes, written, read(value))
+              miss
+                save nothing, 0
+          case for-each
+            push(excluded, item)
+          case match
+            walk cases
+              take arm
+              walk arm/binds
+                take bound-name
+                push(excluded, bound-name)
+          miss
+            save nothing, 0
+      walk seen/expressions
+        take node
+        sift node
+          case closure
+            walk params
+              take param
+              push(excluded, param/name)
+          case binary
+            sift op
+              case minus
+                sift integer-value(right)
+                  case some
+                    link amount
+                    fork test, and(and(and(is-above(amount, 0), is-maximum(amount, 4503599627370496)), is-unequal(variable-name(left), <>)), is-number(expression-type(left)))
+                      hold
+                        push(subtractions, node)
+                  case none
+                    save nothing, 0
+              miss
+                save nothing, 0
+          miss
+            save nothing, 0
+    miss
+      back
+  save holds, make list
+  walk writes/names
+    take name
+    fork test, and(not(contains(excluded, name)), not(contains(closure-writes, name)))
+      hold
+        push(holds, name)
+  save changed, true
+  walk test
+    hook test, changed
+    hook hold
+      save changed, false
+      save kept, make list
+      walk holds
+        take name
+        save every, true
+        walk writes/values/get(name)
+          take value
+          fork test, not(positive(value, holds))
+            hold
+              save every, false
+              halt
+        fork test, every
+          hold
+            push(kept, name)
+          miss
+            save changed, true
+      save holds, kept
+  walk subtractions
+    take node
+    sift node
+      case binary
+        fork test, contains(holds, variable-name(left))
+          hold
+            push(out/nodes, node)
+      miss
+        save nothing, 0
+
+task give
+  take writes, like given-values
+  take name, like text
+  take value, like expression
+  like void
+  mark private
+
+  fork test, not(writes/values/has(name))
+    hold
+      push(writes/names, name)
+      save writes/values/{name}, make list
+  push(writes/values/get(name), value)
+
+task positive
+  take e, like expression
+  take holds, like list, like text
+  like boolean
+  mark private
+
+  sift e
+    case integer
+      link given
+      back is-minimum(given, 0)
+    case variable
+      back contains(holds, name)
+    case binary
+      sift op
+        case plus
+          back and(positive(left, holds), positive(right, holds))
+        case times
+          back and(positive(left, holds), positive(right, holds))
+        case remainder
+          sift integer-value(right)
+            case some
+              link divisor
+              back and(positive(left, holds), is-above(divisor, 0))
+            case none
+              back false
+        miss
+          back false
+    miss
+      back false

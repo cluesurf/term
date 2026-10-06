@@ -18,7 +18,6 @@ import type {
   Rule,
 } from '@term/make/code/lint/rule'
 import { tellMissing, tellOfFailure, tellReveals } from '@term/make/code/lint/rules/tell-advice'
-import { unhandledRaise } from '@term/make/code/lint/rules/unhandled-raise'
 import { dataGrammar } from '@term/make/code/lint/rules/data-grammar'
 import { lineLayout } from '@term/make/code/lint/rules/line-layout'
 import { parse } from '@term/make/code/parser/tree'
@@ -42,6 +41,8 @@ export function portedRule(name: ruleCheck.PortedRule): Rule {
         referenced: [...context.referenced],
         duplicateLoads: [...context.duplicateLoads],
         reassigned: [...context.reassigned],
+        program: context.program,
+        raises: { filled: false, sets: new Map() },
       }) as ruleCheck.LintFacts
       const reports =
         target.kind === 'statement'
@@ -158,7 +159,7 @@ export const RULES: Rule[] = [
   tellMissing,
   tellOfFailure,
   tellReveals,
-  unhandledRaise,
+  portedRule('unhandled-raise'),
 ]
 
 export type LintConfig = {

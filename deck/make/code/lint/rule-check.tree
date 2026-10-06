@@ -57,6 +57,18 @@ load ../check/async-resolve
   find async-names
   find async-docks-of
 
+load ../check/effects
+  find raise-sets-of
+
+load ../check/extend
+  find exception-form
+
+load ../check/eliminate
+  find utf16-order
+
+load @term/base/list
+  find sort
+
 load ../compile/node-walk
   find statements-in
   find expressions-in
@@ -99,6 +111,15 @@ form lint-facts
   link duplicate-loads, like list, like text
   # every name a `save` writes after binding it (prefer-host-for-constant)
   link reassigned, like list, like text
+  # the whole program, and the exceptions each task can raise, computed the first time a rule asks (unhandled-raise)
+  link program, like list, like statement
+  link raises, like raise-cache
+
+# the raise sets of a lint call's program, filled on first use and shared by every node after
+form raise-cache
+  mark shared
+  link filled, like boolean
+  link sets, like hash, like text, like list, like text
 
 form rule-meta
   link name, like text
@@ -1682,6 +1703,7 @@ form ported-rule
   case prefer-sift, text <prefer-sift>
   case prefer-single-brace, text <prefer-single-brace>
   case redundant-wait, text <redundant-wait>
+  case unhandled-raise, text <unhandled-raise>
 
 # every rule here, in code order
 task ported-rules
@@ -1724,6 +1746,7 @@ task ported-rules
       make prefer-sift
       make prefer-single-brace
       make redundant-wait
+      make unhandled-raise
 
 # a rule's name, code, default severity and one-line documentation
 task meta-of
@@ -1801,6 +1824,8 @@ task meta-of
       back meta(<prefer-single-brace>, <L043>, <an interpolation is written `\{x\}`, not `\{\{x\}\}`>, true)
     case redundant-wait
       back meta(<redundant-wait>, <L054>, <`wait true` under a call to an async task is redundant: the call is awaited with nothing written>, true)
+    case unhandled-raise
+      back meta(<unhandled-raise>, <L041>, <a call to a task that can raise, outside a guard and without `halt kink`, passes the exception on without saying so>, false)
 
 task meta
   take name, like text
@@ -1866,6 +1891,8 @@ task check-statement
       back no-redundant-boolean(node)
     case no-empty-fork-case
       back no-empty-fork-case(node)
+    case unhandled-raise
+      back unhandled-raise(node, facts)
     miss
       back none-reported()
 
@@ -2278,4 +2305,220 @@ task prefer-single-brace
         push(out, fixed-report(<`\{\{{inner}\}\}` is written `\{{inner}\}`: one brace interpolates, and the compiler decides when it is filled>, at, fix))
       miss
         turn next
+  back out
+
+# ---- L041 ----
+
+# the exceptions each task of the lint call's program can raise, through its callees: computed the first time a node
+# asks, and kept for every node after (lint/rules/unhandled-raise.ts kept them in the call's memo)
+task raises-of
+  take facts, like lint-facts
+  like hash, like text, like list, like text
+  mark private
+
+  fork test, facts/raises/filled
+    hold
+      back facts/raises/sets
+  save marker, exception-form()
+  save exceptions, make list
+  walk facts/program
+    take one
+    sift one
+      case record-type
+        save is-exception, false
+        walk chain
+          take link-name
+          fork test, is-equal(link-name, marker)
+            hold
+              save is-exception, true
+        fork test, and(is-exception, not(has-text(exceptions, name)))
+          hold
+            push(exceptions, name)
+      miss
+        save nothing, 0
+  save sets, raise-sets-of(facts/program, exceptions)
+  save facts/raises/sets, sets/raises
+  save facts/raises/filled, true
+  back sets/raises
+
+# L041: a call to a task that can raise, outside any guard, with no `halt kink` under it, passes the callee's exception
+# on to the caller without saying so; `halt kink` says so, and a guard handles it. Advice, not an error, and a call whose
+# only exception is `failure` (a native shim's, which any foreign call can raise) is left alone. A closure runs later,
+# under whoever calls it, so its calls are judged there
+task unhandled-raise
+  take node, like statement
+  take facts, like lint-facts
+  like list, like rule-report
+
+  save out, make list
+  sift node
+    case function
+      raise-statements(out, body, false, raises-of(facts))
+    miss
+      save nothing, 0
+  back out
+
+task raise-statements
+  take out, like list, like rule-report
+  take body, like list, like statement
+  take guarded, like boolean
+  take sets, like hash, like text, like list, like text
+  like void
+  mark private
+
+  walk body
+    take one
+    sift one
+      case let
+        raise-expression(out, init, guarded, sets)
+      case assign
+        raise-expression(out, target, guarded, sets)
+        raise-expression(out, read(value), guarded, sets)
+      case expression
+        raise-expression(out, expr, guarded, sets)
+      case return
+        sift read(value)
+          case some
+            link given
+            raise-expression(out, given, guarded, sets)
+          case none
+            save nothing, 0
+      case throw
+        raise-expression(out, read(value), guarded, sets)
+      case hold
+        raise-expression(out, expr, guarded, sets)
+      case while
+        raise-expression(out, cond, guarded, sets)
+        raise-statements(out, body, guarded, sets)
+      case for-each
+        raise-expression(out, iterable, guarded, sets)
+        raise-statements(out, body, guarded, sets)
+      case if
+        walk branches
+          take branch
+          raise-expression(out, branch/cond, guarded, sets)
+          raise-statements(out, branch/body, guarded, sets)
+        sift otherwise
+          case some
+            link last
+            raise-statements(out, last, guarded, sets)
+          case none
+            save nothing, 0
+      case match
+        raise-expression(out, subject, guarded, sets)
+        walk cases
+          take arm
+          raise-statements(out, arm/body, guarded, sets)
+        sift otherwise
+          case some
+            link last
+            raise-statements(out, last, guarded, sets)
+          case none
+            save nothing, 0
+      case guard
+        # the body is handled by the handler, or by nothing (a guard with no handler catches everything)
+        raise-statements(out, body, true, sets)
+        sift catch
+          case some
+            link clause
+            raise-statements(out, clause/body, guarded, sets)
+          case none
+            save nothing, 0
+      miss
+        save nothing, 0
+
+task raise-expression
+  take out, like list, like rule-report
+  take node, like expression
+  take guarded, like boolean
+  take sets, like hash, like text, like list, like text
+  like void
+  mark private
+
+  sift node
+    case call
+      sift callee
+        case variable
+          link callee-name
+          fork test, and(not(guarded), not(propagate))
+            hold
+              fork test, sets/has(callee-name)
+                hold
+                  save named, make list
+                  walk sets/get(callee-name)
+                    take raised
+                    fork test, is-unequal(raised, <failure>)
+                      hold
+                        push(named, raised)
+                  fork test, is-above(named/length, 0)
+                    hold
+                      save listed, join-texts(sort(named, utf16-order), <, >)
+                      push(out, report(<"{callee-name}" can raise {listed}: handle it in a fork marked mark unsafe, with halt take after it, or pass it on with halt kink>, span))
+        miss
+          save nothing, 0
+      raise-expression(out, callee, guarded, sets)
+      walk args
+        take arg
+        raise-expression(out, arg, guarded, sets)
+    case binary
+      raise-expression(out, left, guarded, sets)
+      raise-expression(out, right, guarded, sets)
+    case unary
+      raise-expression(out, operand, guarded, sets)
+    case member
+      raise-expression(out, target, guarded, sets)
+    case await
+      raise-expression(out, expr, guarded, sets)
+    case array
+      walk items
+        take item
+        raise-expression(out, item, guarded, sets)
+    case map
+      walk entries
+        take entry
+        raise-expression(out, entry/key, guarded, sets)
+        raise-expression(out, entry/value, guarded, sets)
+    case record
+      walk fields
+        take field
+        raise-expression(out, field/value, guarded, sets)
+    case template
+      walk parts
+        take part
+        sift part
+          case value
+            link inner
+            raise-expression(out, inner, guarded, sets)
+          case chunk
+            turn next
+    case conditional
+      walk branches
+        take branch
+        raise-expression(out, branch/cond, guarded, sets)
+        raise-expression(out, branch/value, guarded, sets)
+      sift otherwise
+        case some
+          link last
+          raise-expression(out, last, guarded, sets)
+        case none
+          save nothing, 0
+    miss
+      save nothing, 0
+
+task join-texts
+  take values, like list, like text
+  take between, like text
+  like text
+  mark private
+
+  save out, <>
+  save first, true
+  walk values
+    take one
+    fork test, first
+      hold
+        save out, one
+        save first, false
+      miss
+        save out, <{out}{between}{one}>
   back out
