@@ -106,10 +106,11 @@ task length
     call octets-length
       read value
 
-# the older name of `length`
+# the older name of `length`, kept one release
 task count
   take value, like bytes
   like number
+  mark deprecated
   send back
     call octets-length
       read value

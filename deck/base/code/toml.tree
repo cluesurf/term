@@ -26,7 +26,7 @@ load @term/base/text/number
 
 load @term/base/list
   find list
-  find size
+  find length
   find get
 
 load @term/base/hash
@@ -135,7 +135,7 @@ task at-rune
           code 0
         call is-below
           read at
-          call size
+          call length
             read r
     hook hold
       send back
@@ -1356,9 +1356,9 @@ task fits-shape
   fork test
     hook test
       call is-below
-        call size
+        call length
           read token
-        call size
+        call length
           read shape
     hook hold
       send back, false
@@ -1406,7 +1406,7 @@ task read-date-time
     call to-runes
       read text
   save n
-    call size
+    call length
       read t
   save out, text <>
   save i, code 0
@@ -1592,7 +1592,7 @@ task read-date-time
   save out, text <{{out}}{{time}}>
   save j, code 8
   save m
-    call size
+    call length
       read rest
   fork test
     hook test
@@ -1719,7 +1719,7 @@ task read-date-time
                 code 45
             call and
               call is-equal
-                call size
+                call length
                   read offset
                 code 5
               call fits-shape
@@ -1754,7 +1754,7 @@ task replace-separator
     hook test
       call and
         call is-above
-          call size
+          call length
             read t
           code 10
         call is-equal
@@ -2328,7 +2328,7 @@ task read-value
         hook test
           call and
             call is-equal
-              call size
+              call length
                 read t
               code 10
             call and
@@ -2510,7 +2510,7 @@ task resolve-header
   save k, code 0
   save last
     call subtract
-      call size
+      call length
         read parts
       code 1
   walk list, read parts
@@ -2586,7 +2586,7 @@ task assign
   save k, code 0
   save last
     call subtract
-      call size
+      call length
         read parts
       code 1
   walk list, read parts
@@ -3234,7 +3234,7 @@ task write-key
       read name
   save bare
     call is-above
-      call size
+      call length
         read r
       code 0
   walk list, read r
@@ -3507,7 +3507,7 @@ task is-table-array
       fork test
         hook test
           call is-equal
-            call size
+            call length
               read items
             code 0
         hook hold

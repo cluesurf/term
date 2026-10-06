@@ -4,7 +4,7 @@ load @term/base/code/line/float/32/quaternion
   find quaternion
   find make-quaternion
   find conjugate
-  find length
+  find magnitude
   find normalize
   find from-axis-angle
   find slerp
@@ -40,10 +40,10 @@ test <conjugate negates the vector part>
       read q/x
       -1.0
 
-test <length of one-two-two-zero is three>
+test <magnitude of one-two-two-zero is three>
   want hold
     call is-equal
-      call length
+      call magnitude
         call make-quaternion
           1.0
           2.0

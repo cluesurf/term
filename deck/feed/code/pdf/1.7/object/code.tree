@@ -20,7 +20,7 @@ load @term/base/list
   find push
   find get
   find set
-  find size
+  find length
   find join
 
 load @term/base/text
@@ -431,7 +431,7 @@ task parse-pdf-hex-string
     call pdf-hex-string-digits(read cursor)
   call read-text-cursor read cursor
   save count
-    call size(read digits)
+    call length(read digits)
   save chars
     make list
   save index, code 0
@@ -838,7 +838,7 @@ task write-pdf-xref-table
     read lines
     text <xref>
   save count
-    call size(read table/entries)
+    call length(read table/entries)
   call push
     read lines
     text <{{table/start}} {{count}}>

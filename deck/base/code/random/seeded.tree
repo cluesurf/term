@@ -17,7 +17,7 @@ load @term/base/bit
 
 load @term/base/list
   find list
-  find size
+  find length
   find get
   find set
 
@@ -300,7 +300,7 @@ task shuffle
         read item
   save i
     call subtract
-      call size
+      call length
         read out
       code 1
   walk test
@@ -364,7 +364,7 @@ task pick
   fork test
     hook test
       call is-equal
-        call size
+        call length
           read items
         code 0
     hook hold

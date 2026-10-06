@@ -8,7 +8,7 @@ load @term/base/list
   find push
   find get
   find set
-  find size
+  find length
   find sort
 
 load ./lists
@@ -75,7 +75,7 @@ task median-sorted
       like decimal
   like decimal
   save n
-    call size
+    call length
       read sorted
   fork test
     hook test
@@ -133,7 +133,7 @@ task rank-at
   save at
     call divide
       call multiply
-        call size
+        call length
           read sorted
         read per-thousand
       code 1000
@@ -141,12 +141,12 @@ task rank-at
     hook test
       call is-minimum
         read at
-        call size
+        call length
           read sorted
     hook hold
       save at
         call subtract
-          call size
+          call length
             read sorted
           code 1
   send back
@@ -279,17 +279,17 @@ task ratio-interval
       like decimal
   like interval
   save count
-    call size
+    call length
       read term
   fork test
     hook test
       call is-below
-        call size
+        call length
           read base
         read count
     hook hold
       save count
-        call size
+        call length
           read base
   save cell
     call seeded
@@ -377,7 +377,7 @@ task geometric-mean
       call divide
         read total
         call to-decimal
-          call size
+          call length
             read values
 
 task smallest
@@ -403,7 +403,7 @@ task largest
     call get
       read sorted
       call subtract
-        call size
+        call length
           read sorted
         code 1
 
@@ -491,7 +491,7 @@ task trend-of
       like decimal
   like decimal
   save n
-    call size
+    call length
       read values
   save third
     call divide

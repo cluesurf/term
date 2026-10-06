@@ -9,7 +9,7 @@ load @term/base/text
 
 load @term/base/list
   find list
-  find size
+  find length
   find get
 
 load @term/base/native/{platform}/path
@@ -105,7 +105,7 @@ task path-segments
                 text <..>
             hook hold
               save count
-                call size
+                call length
                   read out
               fork test
                 hook test
@@ -249,7 +249,7 @@ task relative-path
     hook test
       call is-below
         read k
-        call size
+        call length
           read a
     hook step
       call out/push
@@ -263,7 +263,7 @@ task relative-path
     hook test
       call is-below
         read k
-        call size
+        call length
           read b
     hook step
       call out/push

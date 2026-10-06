@@ -37,7 +37,7 @@ load @term/base/text/unicode
 
 load @term/base/list
   find list
-  find size
+  find length
   find get
 
 load @term/base/maybe
@@ -297,7 +297,7 @@ task rewrite-matches
     call rune-slice
       read runes
       read at
-      call size
+      call length
         read runes
   send back, text <{out}{rest}>
 
@@ -329,7 +329,7 @@ task replace-matches
     call rune-slice
       read runes
       read at
-      call size
+      call length
         read runes
   send back, text <{out}{rest}>
 
@@ -354,7 +354,7 @@ task replace-first-match
         call rune-slice
           read runes
           read first/end
-          call size
+          call length
             read runes
       send back, text <{before}{replacement}{after}>
     case none
@@ -371,7 +371,7 @@ task split-at-matches
     call to-runes
       read input
   save n
-    call size
+    call length
       read runes
   save out
     make list

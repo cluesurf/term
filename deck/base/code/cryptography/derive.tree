@@ -116,7 +116,7 @@ task verify-password
     hook test
       call or
         call is-unequal
-          call size
+          call length
             read parts
           code 4
         call is-unequal

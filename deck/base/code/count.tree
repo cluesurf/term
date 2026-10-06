@@ -120,7 +120,7 @@ task read-or
     hook test
       call is-minimum
         read site
-        call size
+        call length
           read items
     hook hold
       send back, read fall

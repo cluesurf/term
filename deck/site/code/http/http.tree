@@ -8,7 +8,7 @@ load @term/base/maybe
   find unwrap-or
 
 load @term/base/list
-  find count
+  find length
   find list
   find push
   find get
@@ -172,7 +172,7 @@ task child-or-empty
   fork test
     hook test
       call is-above
-        call count
+        call length
           read slot
         code 0
     hook hold
@@ -248,7 +248,7 @@ task insert-route
     hook test
       call is-minimum
         read index
-        call count
+        call length
           read segments
     hook hold
       # every segment placed: the handler lives here
@@ -283,7 +283,7 @@ task insert-route
           call child-or-empty
             read node/wildcard
           read segments
-          call count
+          call length
             read segments
           read method
           read handle
@@ -425,7 +425,7 @@ task find-node
       fork test
         hook test
           call is-above
-            call count
+            call length
               read node/param
             code 0
         hook hold
@@ -446,7 +446,7 @@ task find-node
       fork test
         hook test
           call is-above
-            call count
+            call length
               read node/wildcard
             code 0
         hook hold

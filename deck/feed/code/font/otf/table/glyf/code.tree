@@ -16,7 +16,7 @@
 load @term/base/list
   find push
   find get
-  find size
+  find length
 
 load @term/base/boolean
   find and
@@ -103,7 +103,7 @@ task read-glyf-flags
     make list
   walk test
     hook test
-      call is-below(call(size(read result)), read point-count)
+      call is-below(call(length(read result)), read point-count)
     hook hold
       save flag
         call read-byte(read cursor)
@@ -127,7 +127,7 @@ task read-glyf-flags
                 call is-below
                   read copied
                   read repeat-count
-                call is-below(call(size(read result)), read point-count)
+                call is-below(call(length(read result)), read point-count)
             hook hold
               call push
                 read result
@@ -410,7 +410,7 @@ task glyf-end-points-from-contours
       save total
         call add
           read total
-          call size read contour
+          call length read contour
       call push
         read result
         read total
@@ -466,7 +466,7 @@ task write-otf-glyph-simple-bytes
     call make-writer
   call write-int
     read writer
-    call size read contours
+    call length read contours
     code 2
     make big
   call write-int
@@ -499,7 +499,7 @@ task write-otf-glyph-simple-bytes
         make big
   call write-int
     read writer
-    call size read instructions
+    call length read instructions
     code 2
     make big
   call write-bytes

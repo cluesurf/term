@@ -8,7 +8,7 @@ load @term/base/list
   find list
   find push
   find get
-  find size
+  find length
   find join
   find sort
   find set
@@ -219,7 +219,7 @@ task print-table
       walk size
         bind base, code 0
         bind head
-          call size
+          call length
             read row
         hook next
           take site, name at
@@ -274,7 +274,7 @@ task print-table
       walk size
         bind base, code 0
         bind head
-          call size
+          call length
             read row
         hook next
           take site, name at
@@ -408,7 +408,7 @@ task print-summary
       fork test
         hook test
           call is-equal
-            call size
+            call length
               read ratios
             code 0
         hook hold
@@ -421,7 +421,7 @@ task print-summary
             read ratios
           code 3
       save counted
-        call size
+        call length
           read ratios
       call log
         text <{{target}}: geometric mean of the wall ratios {{mean}}, over {{counted}} of {{total}} comparisons ({{dominated}} dominated by process start and {{emulated}} emulated, left out)>
@@ -431,7 +431,7 @@ task print-summary
       walk size
         bind base, code 0
         bind head
-          call size
+          call length
             read ranked
         hook next
           take site, name at

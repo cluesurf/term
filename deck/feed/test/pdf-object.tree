@@ -4,7 +4,7 @@
 load @term/base/list
   find get
   find push
-  find size
+  find length
 
 load @term/base/text
   find char-count

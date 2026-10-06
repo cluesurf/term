@@ -9,7 +9,7 @@ mark stable
 load @term/base/list
   find list
   find get
-  find size
+  find length
 
 load @term/base/stop
   find abandon
@@ -340,7 +340,7 @@ task pad-number
           read value
   save digits, text <{{magnitude}}>
   save count
-    call size
+    call length
       call to-runes
         read digits
   walk test
@@ -451,7 +451,7 @@ task abbreviate
           code 3
         call is-below
           read k
-          call size
+          call length
             read r
     hook step
       save letter
@@ -558,7 +558,7 @@ task get-rune
           code 0
         call is-below
           read at
-          call size
+          call length
             read runes
     hook hold
       send back
@@ -657,7 +657,7 @@ task format-pattern
     call to-runes
       read pattern
   save n
-    call size
+    call length
       read r
   save out, text <>
   save i, code 0

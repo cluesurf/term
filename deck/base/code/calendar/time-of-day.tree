@@ -20,7 +20,7 @@ load @term/base/text/unicode
   find to-runes
 
 load @term/base/list
-  find size
+  find length
 
 form time-of-day
   link hour, like number
@@ -36,7 +36,7 @@ task parse-time-of-day
     call to-runes
       read text
   save n
-    call size
+    call length
       read r
   save hour
     call time-range

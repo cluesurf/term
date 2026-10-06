@@ -6,7 +6,7 @@ load @term/base/boolean
 
 load @term/base/list
   find push
-  find size
+  find length
   find get
 
 load @term/base/text

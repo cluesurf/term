@@ -3,7 +3,7 @@
 
 load @term/base/list
   find push
-  find size
+  find length
   find get
   find set
 
@@ -136,7 +136,7 @@ task replace
     hook test
       call is-below
         read index
-        call size read out
+        call length read out
     hook hold
       save present
         call get
@@ -425,7 +425,7 @@ task pop-last
       like text
   fork test
     hook test
-      call is-above(call(size(read list)), code 0)
+      call is-above(call(length(read list)), code 0)
     hook hold
       call pop
         read list

@@ -11,7 +11,7 @@ load @term/base/bytes
   find to-text
   find from-hex
   find to-hex
-  find count
+  find length
 
 load @term/base/text
   find starts-with

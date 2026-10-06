@@ -92,17 +92,35 @@ task lean-labels
 
 # Rewrite the lean labels at `chosen` into positional nested calls, writing them into the call. Answers how many it
 # rewrote. The nested call's own property-shaped arguments become labels again, so its own arrangement decides them by
-# ITS signature, which is what makes the rule recursive.
+# ITS signature, which is what makes the rule recursive. Its TypeScript callers read the call they handed in, which is
+# the call written; a Term caller takes the call back from `lean-calls-nested`
 task nest-lean-calls
   take node, like expression
   take chosen, like list, like number
   like number
 
+  save done, lean-calls-nested(node, chosen)
+  back done/rewritten
+
+# the call with the lean labels at `chosen` nested, and how many were
+form nesting
+  link node, like expression
+  link rewritten, like number
+
+task lean-calls-nested
+  take node, like expression
+  take chosen, like list, like number
+  like nesting
+
+  save untouched
+    make nesting
+      bind node, node
+      bind rewritten, 0
   sift node
     case call
       fork test, not(any-lean(node))
         hold
-          back 0
+          back untouched
       # `''` is no label and no alias (compile/node.tree, `names`)
       save names-out, texts-of-names(node)
       fork test, is-equal(names-out/length, 0)
@@ -140,9 +158,12 @@ task nest-lean-calls
       fork test, is-above(aliases-out/length, 0)
         hold
           save node/lean-aliases, aliases-out
-      back rewritten
+      back
+        make nesting
+          bind node, node
+          bind rewritten, rewritten
     miss
-      back 0
+      back untouched
 
 # the label's array as a nested call of `called`, or the operator it folds to
 task nested

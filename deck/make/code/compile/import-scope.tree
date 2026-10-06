@@ -33,6 +33,11 @@ form file-scope
   link plain
     like list, like scope-find
     need false
+  # whether the scope kept a `plain` list at all: a bare name reaches only its plain finds where it did, every find of
+  # the name where it did not (check/disambiguate.tree)
+  link has-plain
+    like boolean
+    need false
 
 # files gathered so far, each once
 form file-set

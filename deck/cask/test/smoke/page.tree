@@ -70,7 +70,7 @@ task boot
   fork test
     hook test
       call is-equal
-        call count
+        call length
           read refused
         code 0
     hook hold
@@ -86,7 +86,7 @@ task boot
       fork test
         hook test
           call is-above
-            call count
+            call length
               read heard
             code 0
         hook hold

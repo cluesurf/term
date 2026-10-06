@@ -149,10 +149,11 @@ form quaternion
           read self
           read self
 
-  # the older name of `magnitude`
+  # the older name of `magnitude`, kept one release
   task length
     take self
     like decimal
+    mark deprecated
     back magnitude(self)
 
   task normalize

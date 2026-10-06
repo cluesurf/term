@@ -184,10 +184,11 @@ form bitset
       hook miss
         send back, false
 
-  # the older name of `length`
+  # the older name of `length`, kept one release
   task count
     take self
     like number
+    mark deprecated
     back length(self)
 
   # how many members it holds, the number of set bits. `length` on every collection (decisions-2026-10.md, D2)

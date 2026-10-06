@@ -7,7 +7,7 @@ mark unstable
 
 load @term/base/list
   find push
-  find size
+  find length
 
 # one entry on one kind. `base` holds the entry's own record (an exception's declaration, a tell, a route).
 form hive-entry
@@ -174,5 +174,5 @@ task hive-hear
 task hive-size
   like number
   send back
-    call size
+    call length
       read hive/deck

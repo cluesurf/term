@@ -28,7 +28,7 @@ load @term/base/text/unicode
   find rune-to-text
 
 load @term/base/list
-  find size
+  find length
   find get
 
 load @term/base/exception
@@ -63,7 +63,7 @@ task regex-rune-at
           code 0
         call is-below
           read at
-          call size
+          call length
             read runes
     hook hold
       send back
@@ -456,7 +456,7 @@ task canonical-pattern
     call to-runes
       read pattern
   save n
-    call size
+    call length
       read r
   save out, text <>
   save groups, code 0

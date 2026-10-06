@@ -38,7 +38,7 @@ task list-users
       bind status, code 200
       bind body
         call to-text
-          call users/count
+          read users/length
 
 # POST /users: the request body is the new user's name
 task make-user

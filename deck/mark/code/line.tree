@@ -18,7 +18,7 @@ load @term/base/console
 
 load @term/base/list
   find list
-  find size
+  find length
   find join
 
 load @term/base/text
@@ -109,7 +109,7 @@ task list-suite
       fork test
         hook test
           call is-equal
-            call size
+            call length
               read found/refused
             code 0
         hook hold

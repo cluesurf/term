@@ -2,7 +2,7 @@
 # number segment), `to-hash` gives a map's entries as a stdlib hash keyed by name.
 
 load @term/base/list
-  find size
+  find length
   find get
 
 load @term/base/text
@@ -84,7 +84,7 @@ task step
             hook test
               call is-below
                 read at
-                call size read list
+                call length read list
             hook hold
               send back
                 make some

@@ -6,7 +6,7 @@ load @term/base/boolean
 
 load @term/base/list
   find push
-  find size
+  find length
   find get
   find join
 
@@ -381,7 +381,7 @@ task write-items
   fork test
     hook test
       call and
-        call is-above(call(size(read list)), code 0)
+        call is-above(call(length(read list)), code 0)
         call all-scalar(read list)
     hook hold
       save line, read prefix

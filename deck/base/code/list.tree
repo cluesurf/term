@@ -30,10 +30,11 @@ form list
     like number
     send back, read self/length
 
-  # the older name of `length`
+  # the older name of `length`, kept one release
   task size
     take self
     like number
+    mark deprecated
     send back, read self/length
 
   task is-empty
@@ -324,10 +325,11 @@ form list
       call self/slice
         read count
 
-  # the older name of `length`
+  # the older name of `length`, kept one release. `count(xs, test)`, the matching items, keeps its name
   task count
     take self
     like number
+    mark deprecated
     send back, read self/length
 
   # take `count` items from the chosen side. The named take-first / take-last forms are the readable default; this verb

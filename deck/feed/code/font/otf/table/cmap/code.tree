@@ -10,7 +10,7 @@
 load @term/base/list
   find push
   find get
-  find size
+  find length
 
 load ../../../../base
   find feed-cursor
@@ -331,7 +331,7 @@ task write-otf-cmap-format-4-bytes
   like list
     like u8
   save seg-count
-    call size(read segments)
+    call length(read segments)
   save seg-count-x2
     call multiply
       read seg-count
@@ -343,7 +343,7 @@ task write-otf-cmap-format-4-bytes
         call multiply
           read seg-count
           code 8
-      call multiply(call(size(read glyph-id-array)), code 2)
+      call multiply(call(length(read glyph-id-array)), code 2)
   save search-power
     call otf-cmap-search-hint-power(read seg-count)
   save search-range
@@ -419,7 +419,7 @@ task write-otf-cmap-format-12-bytes
   like list
     like u8
   save num-groups
-    call size(read groups)
+    call length(read groups)
   save length
     call add
       code 16
@@ -487,7 +487,7 @@ task write-otf-cmap-table
   like list
     like u8
   save record-count
-    call size(read table/records)
+    call length(read table/records)
   save subtable-bytes-list
     make list
   walk list, read table/records
@@ -537,7 +537,7 @@ task write-otf-cmap-table
       save offset
         call add
           read offset
-          call size read subtable-bytes
+          call length read subtable-bytes
       save index
         call add
           read index

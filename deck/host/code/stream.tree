@@ -8,7 +8,7 @@ load @term/base/boolean
 
 load @term/base/list
   find push
-  find size
+  find length
   find get
   find set
   find contains
@@ -142,7 +142,7 @@ task kind-of
       link list
       fork test
         hook test
-          call is-equal(call(size(read list)), code 0)
+          call is-equal(call(length(read list)), code 0)
         hook hold
           send back, text <>
       send back, text <hash>
@@ -173,7 +173,7 @@ task put-tree
     hook test
       call is-below
         read index
-        call size read trees
+        call length read trees
     hook hold
       save present
         call get
@@ -300,7 +300,7 @@ task emit
     text <>
   fork test
     hook test
-      call is-above(call(size(read needed)), code 0)
+      call is-above(call(length(read needed)), code 0)
     hook hold
       save head
         call pack

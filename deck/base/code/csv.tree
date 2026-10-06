@@ -324,7 +324,7 @@ task last-row-live
         hook miss
           send back
             call is-above
-              call size
+              call length
                 read row
               code 0
 

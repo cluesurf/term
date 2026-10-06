@@ -17,7 +17,7 @@ load @term/base/text/unicode
   find to-runes
 
 load @term/base/list
-  find size
+  find length
 
 load @term/base/exception
   find mismatch
@@ -43,7 +43,7 @@ task json-rune-at
           code 0
         call is-below
           read at
-          call size
+          call length
             read runes
     hook hold
       send back, read runes/{at}
@@ -129,7 +129,7 @@ task json-skip-space
       read back
       read at
   save n
-    call size
+    call length
       read runes
   save i, read at
   walk test
@@ -246,7 +246,7 @@ task json-word
       read back
       read at
   save size-of-word
-    call size
+    call length
       read word
   save k, code 0
   walk test
@@ -307,7 +307,7 @@ task json-digits
         read at
         text <a digit is missing>
   save n
-    call size
+    call length
       read runes
   save i
     call add
@@ -676,7 +676,7 @@ task json-string
       read back
       read at
   save n
-    call size
+    call length
       read runes
   save i
     call add
@@ -777,7 +777,7 @@ task json-container
     hook hold
       save close, code 125
   save n
-    call size
+    call length
       read runes
   save i
     call json-skip-space
@@ -1052,7 +1052,7 @@ task check-json
     hook test
       call is-below
         read end
-        call size
+        call length
           read runes
     hook hold
       call refuse-json

@@ -5,7 +5,7 @@ load @term/base/code/line/float/32/vector-2
   find make-vector-2
   find dot
   find cross
-  find length
+  find magnitude
 
 test <add adds component-wise>
   save v
@@ -45,10 +45,10 @@ test <cross of x and y unit vectors is one>
           1.0
       1.0
 
-test <length of a three-four vector is five>
+test <magnitude of a three-four vector is five>
   want hold
     call is-equal
-      call length
+      call magnitude
         call make-vector-2
           3.0
           4.0

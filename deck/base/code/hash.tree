@@ -67,10 +67,11 @@ form hash
     like number
     send back, read self/size
 
-  # the older name of `length`
+  # the older name of `length`, kept one release
   task size
     take self
     like number
+    mark deprecated
     send back, read self/size
 
   task is-empty
@@ -95,10 +96,11 @@ form hash
     send back
       call self/values
 
-  # the older name of `length`
+  # the older name of `length`, kept one release
   task count
     take self
     like number
+    mark deprecated
     send back, read self/size
 
   # read a key, falling back to a default when it is absent

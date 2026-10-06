@@ -86,7 +86,7 @@ task boot
   fork test
     hook test
       call is-equal
-        call count
+        call length
           read rows
         code 1
     hook hold

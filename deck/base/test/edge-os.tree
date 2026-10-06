@@ -14,7 +14,7 @@ load @term/base/process/current
   find read
 
 load @term/base/list
-  find size
+  find length
   find contains
 
 load @term/base/text

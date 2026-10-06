@@ -30,7 +30,7 @@ load ./disk
 load @term/base/list
   find list
   find push
-  find size
+  find length
   find sort
   find join
 
@@ -366,7 +366,7 @@ task read-contract
       fork test
         hook test
           call is-equal
-            call size
+            call length
               read keys
             code 0
         hook hold
@@ -704,7 +704,7 @@ task read-contract
   fork test
     hook test
       call is-equal
-        call size
+        call length
           read refused
         code 0
     hook hold

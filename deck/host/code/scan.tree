@@ -19,7 +19,7 @@ load @term/base/text/string
 
 load @term/base/list
   find push
-  find size
+  find length
   find get
   find pop
 
@@ -74,7 +74,7 @@ task scan
     hook test
       call is-below
         read index
-        call size
+        call length
           read lines
     hook hold
       save raw
@@ -112,13 +112,13 @@ task scan
       # attach the line's groups under the nearest shallower line
       walk test
         hook test
-          call is-above(call(size(read stack)), code 0)
+          call is-above(call(length(read stack)), code 0)
         hook hold
           save top
             call get
               read stack
               call subtract
-                call size read stack
+                call length read stack
                 code 1
           fork test
             hook test
@@ -132,7 +132,7 @@ task scan
       fork test
         hook test
           call is-equal
-            call size
+            call length
               read stack
             code 0
         hook hold
@@ -148,7 +148,7 @@ task scan
             call get
               read stack
               call subtract
-                call size read stack
+                call length read stack
                 code 1
           walk list
             read nodes
@@ -161,7 +161,7 @@ task scan
       fork test
         hook test
           call is-above
-            call size
+            call length
               read nodes
             code 0
         hook hold
@@ -721,7 +721,7 @@ task scan-line
     hook test
       call is-below
         read position
-        call size
+        call length
           read tokens
     hook hold
       save token
@@ -935,7 +935,7 @@ task scan-item
         hook test
           call is-below
             read next
-            call size
+            call length
               read tokens
         hook hold
           save after
@@ -957,7 +957,7 @@ task scan-item
                       read closed
                     call is-below
                       read next
-                      call size
+                      call length
                         read tokens
                 hook hold
                   save inner

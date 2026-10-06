@@ -323,7 +323,7 @@ task net-size
   take graph, like net
   like number
 
-  back size(graph/nodes)
+  back length(graph/nodes)
 
 # every live node's id, in the order they were added
 task list-node-ids

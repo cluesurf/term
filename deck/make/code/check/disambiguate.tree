@@ -1,0 +1,902 @@
+# Arity overloading and module scope for tasks. Two functions may share a name if they take different numbers of
+# parameters (`to-string` and `to-string(radix)`): each overloaded definition is renamed `name__<arity>`, and every call
+# to it rewritten to the matching arity, before resolution and checking, purely structurally (a call's arity is its
+# argument count). Same-name same-arity definitions are not renamed, so a genuine duplicate is still reported by the
+# checker. Before that, a task, a component, a `host` value and a native binding that two files define are each bound
+# by what the referring file imported (bindByImport and its siblings, below).
+#
+# Ported from check/overload.ts (self-hosting, 2026-10-05), which stays as a face: it keeps `overloadGroups`, the
+# module state check/infer.ts and check/resolve.ts read, and fills it from what this answers. Its walks are one ordered
+# rewrite here, `rewrite-in`, over every field but `span`, `type`, `result`, `declared` and `generics` in the order
+# node.tree declares them, with a mode per pass: the reference passes (a call's callee bound with its arity, then only
+# its arguments; any other variable bound with none; a placed component bound as a value), and the call passes (lean
+# labels nested, a call before what is inside it; a method's sibling called by its bare name). Each decision and its
+# side effects (a refusal, a typed group) are taken in the order the original met them. The arity renaming keeps its
+# own explicit walk, as the original did. The names a statement binds are compile/node-reach.tree's.
+
+load @term/base/list
+  find list
+  find get
+  find join
+  find sort
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/ordering
+  find from-texts
+
+load @term/base/text
+  find index-of
+  find substring
+
+load ../parser/diagnostic
+  find diagnostic
+  find diagnose
+  find diagnostic-input
+  find marker
+  find span
+
+load ../compile/node
+  find closure-param
+  find dock-argument
+  find dock-call
+  find dock-route
+  find dock-send
+  find dock-take
+  find expression
+  find field-value
+  find function-param
+  find statement
+  find statement-span
+  find type
+  find view-node
+
+load ../compile/node-reach
+  find reached
+  find reach-statements
+  find reach-expression
+
+load ../compile/import-scope
+  find file-scope
+  find file-set
+  find gather-exported
+  find holds-file
+  find new-file-set
+  find scope-of
+  find targets-of
+
+load ../compile/view-lower
+  find is-html-tag
+
+load ../compile/type-text
+  find type-key
+
+load ./lean-nest
+  find lean-labels
+  find lean-calls-nested
+
+load ./private
+  find overload-group
+
+form disambiguated
+  link program, like list, like statement
+  link diagnostics, like list, like diagnostic
+  # same-name, same-arity overloads: a key, the first candidate's mangled name or a typed choice's own, and every
+  # candidate's name, in the order the original's map was filled
+  link groups, like list, like overload-group
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+task add-text
+  take values, like list, like text
+  take value, like text
+  like list, like text
+  mark private
+
+  fork test, not(has-text(values, value))
+    hold
+      push(values, value)
+  back values
+
+task file-of
+  take one, like statement
+  like text
+  mark private
+
+  save at, statement-span(one)
+  sift at/file
+    case some
+      link written
+      back written
+    case none
+      back <>
+
+# ---- the names a statement binds (the original's `boundIn`) ----
+
+# Every name bound inside a node: a let and a view's `save`, a walk's item and index, every parameter list's names
+# (a task's, a closure's, a component's, a binding's, a function type's named parameters), and a case arm's renamed
+# fields. Through every field but `span`, `type`, `result`, `declared` and `generics`, nested tasks included. A SET:
+# its order is never read
+task skipped-keys
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, <span>)
+  push(out, <type>)
+  push(out, <result>)
+  push(out, <declared>)
+  push(out, <generics>)
+  back out
+
+task bound-of
+  take reached, like reached
+  like list, like text
+  mark private
+
+  save out, make list
+  walk reached/statements
+    take one
+    sift one
+      case let
+        save out, add-text(out, name)
+      case for-each
+        save out, add-text(out, item)
+        fork test, is-unequal(index, <>)
+          hold
+            save out, add-text(out, index)
+      case function
+        walk params
+          take param
+          save out, add-text(out, param/name)
+      case bind
+        walk params
+          take param
+          save out, add-text(out, param/name)
+      case view
+        walk params
+          take param
+          save out, add-text(out, param/name)
+      case match
+        walk cases
+          take arm
+          walk arm/binds
+            take bound
+            save out, add-text(out, bound)
+      miss
+        save nothing, 0
+  walk reached/expressions
+    take one
+    sift one
+      case closure
+        walk params
+          take param
+          save out, add-text(out, param/name)
+      miss
+        save nothing, 0
+  walk reached/views
+    take one
+    sift one
+      case save
+        save out, add-text(out, name)
+      case walk
+        save out, add-text(out, item)
+      miss
+        save nothing, 0
+  walk reached/types
+    take one
+    sift one
+      case function
+        walk params
+          take param
+          sift param
+            case named
+              save out, add-text(out, name)
+            miss
+              save nothing, 0
+      miss
+        save nothing, 0
+  back out
+
+task bound-in-statement
+  take one, like statement
+  like list, like text
+  mark private
+
+  save single, make list
+  push(single, one)
+  back bound-of(reach-statements(single, skipped-keys()))
+
+task bound-in-expression
+  take one, like expression
+  like list, like text
+  mark private
+
+  back bound-of(reach-expression(one, skipped-keys()))
+
+# ---- the walk ----
+
+# a task two or more files define (or one file, beside another that defines the name some other way): its files in
+# sorted order, the program places of each file's definitions, each file's own name for it, its place among the groups
+form task-group
+  link name, like text
+  link index, like number
+  link files, like list, like text
+  link file-places, like list, like list, like number
+  link renamed, like list, like text
+  link elsewhere, like boolean
+
+# a native binding that shares its name with a task of another file, and the name it takes
+form native-apart
+  link name, like text
+  link place, like number
+  link file, like text
+  link renamed, like text
+
+form walk-state
+  mark shared
+  link program, like list, like statement
+  link mode, like text
+  # the file of the statement being walked, and the names a local binds in it
+  link file, like text
+  link local, like list, like text
+  link scopes, like list, like file-scope
+  # lean labels: each defined task's parameters by name, each binding's, and the forms and cases
+  link definition-names, like list, like text
+  link definition-params, like list, like list, like text
+  link bound-names, like list, like text
+  link bound-params, like list, like list, like text
+  link constructions, like list, like text
+  # a method's siblings: each method of its form by name, and the names defined at the top
+  link sibling-names, like list, like text
+  link sibling-places, like list, like number
+  link plain, like list, like text
+  # a value renamed apart: its name and its new one
+  link target-name, like text
+  link target-renamed, like text
+  # natives apart
+  link natives, like list, like native-apart
+  link task-names, like list, like text
+  link task-files, like list, like list, like text
+  link fields, like list, like text
+  # bound by import
+  link groups, like list, like task-group
+  link values, like list, like text
+  link diagnostics, like list, like diagnostic
+  link told, like list, like text
+  link overloads, like list, like overload-group
+  link typed-choices, like list, like text
+
+task new-walk-state
+  take program, like list, like statement
+  take scopes, like list, like file-scope
+  like walk-state
+  mark private
+
+  back
+    make walk-state
+      bind program, program
+      bind mode, <>
+      bind file, <>
+      bind local, make list
+      bind scopes, scopes
+      bind definition-names, make list
+      bind definition-params, make list
+      bind bound-names, make list
+      bind bound-params, make list
+      bind constructions, make list
+      bind sibling-names, make list
+      bind sibling-places, make list
+      bind plain, make list
+      bind target-name, <>
+      bind target-renamed, <>
+      bind natives, make list
+      bind task-names, make list
+      bind task-files, make list
+      bind fields, make list
+      bind groups, make list
+      bind values, make list
+      bind diagnostics, make list
+      bind told, make list
+      bind overloads, make list
+      bind typed-choices, make list
+
+task reference-mode
+  take state, like walk-state
+  like boolean
+  mark private
+
+  back or(or(is-equal(state/mode, <hosts>), is-equal(state/mode, <values>)), or(is-equal(state/mode, <natives>), is-equal(state/mode, <imports>)))
+
+task walk-block
+  take state, like walk-state
+  take body, like list, like statement
+  like list, like statement
+  mark private
+
+  save out, make list
+  walk body
+    take one
+    push(out, walk-statement(state, one))
+  back out
+
+task walk-list
+  take state, like walk-state
+  take values, like list, like expression
+  like list, like expression
+  mark private
+
+  save out, make list
+  walk values
+    take one
+    push(out, walk-expression(state, one))
+  back out
+
+task walk-maybe
+  take state, like walk-state
+  take given, like maybe, like expression
+  like maybe, like expression
+  mark private
+
+  sift given
+    case some
+      link inner
+      save written, walk-expression(state, inner)
+      back make(some, written)
+    case none
+      back make none
+
+task walk-field-values
+  take state, like walk-state
+  take values, like list, like field-value
+  like list, like field-value
+  mark private
+
+  save out, make list
+  walk values
+    take one
+    save one/value, walk-expression(state, one/value)
+    push(out, one)
+  back out
+
+# a reference the pass may bind: the name it takes, `<>` to leave it. `arity` is a call's argument count, `-1` for a
+# variable that is no callee, and a placed component (`variable` false) is bound as a value, with no arity
+task bound-name
+  take state, like walk-state
+  take name, like text
+  take arity, like number
+  take alias, like text
+  take at, like span
+  take variable, like boolean
+  like text
+  mark private
+
+  fork test, is-equal(state/mode, <hosts>)
+    hold
+      fork test, and(is-below(arity, 0), and(variable, is-equal(name, state/target-name)))
+        hold
+          back state/target-renamed
+      back <>
+  fork test, is-equal(state/mode, <values>)
+    hold
+      fork test, and(and(is-below(arity, 0), variable), and(is-equal(name, state/target-name), not(has-text(state/local, state/target-name))))
+        hold
+          back state/target-renamed
+      back <>
+  fork test, is-equal(state/mode, <natives>)
+    hold
+      back native-meant(state, name, arity, alias)
+  fork test, is-equal(state/mode, <imports>)
+    hold
+      back import-bound(state, name, arity, alias, at)
+  back <>
+
+task walk-expression
+  take state, like walk-state
+  take node, like expression
+  like expression
+  mark private
+
+  save node, before-calls(state, node)
+  save refs, reference-mode(state)
+  sift node
+    case variable
+      fork test, refs
+        hold
+          save renamed, bound-name(state, name, -1, alias, span, true)
+          fork test, is-unequal(renamed, <>)
+            hold
+              save node/name, renamed
+      back node
+    case call
+      sift callee
+        case variable
+          fork test, refs
+            hold
+              save called, callee
+              save renamed, bound-name(state, name, args/length, alias, span, true)
+              fork test, is-unequal(renamed, <>)
+                hold
+                  sift called
+                    case variable
+                      save called/name, renamed
+                    miss
+                      save nothing, 0
+                  save node/callee, called
+              save node/args, walk-list(state, args)
+              back node
+        miss
+          save nothing, 0
+      save node/callee, walk-expression(state, callee)
+      save node/args, walk-list(state, args)
+      sift into
+        case some
+          link target-type
+          save written, walk-type(state, target-type)
+          save node/into, make(some, written)
+        case none
+          save nothing, 0
+    case template
+      save parts-out, make list
+      walk parts
+        take part
+        sift part
+          case value
+            link inner
+            save part/value, walk-expression(state, inner)
+          miss
+            save nothing, 0
+        push(parts-out, part)
+      save node/parts, parts-out
+    case binary
+      save node/left, walk-expression(state, left)
+      save node/right, walk-expression(state, right)
+    case unary
+      save node/operand, walk-expression(state, operand)
+    case array
+      save node/items, walk-list(state, items)
+    case map
+      save entries-out, make list
+      walk entries
+        take entry
+        save entry/key, walk-expression(state, entry/key)
+        save entry/value, walk-expression(state, entry/value)
+        push(entries-out, entry)
+      save node/entries, entries-out
+    case record
+      save node/fields, walk-field-values(state, fields)
+      fork test, is-above(positional/length, 0)
+        hold
+          save positional-out, make list
+          walk positional
+            take one
+            push(positional-out, walk-expression(state, one))
+          save node/positional, positional-out
+    case member
+      save node/target, walk-expression(state, target)
+      sift index
+        case some
+          link at
+          save written, walk-expression(state, at)
+          save node/index, make(some, written)
+        case none
+          save nothing, 0
+    case await
+      save node/expr, walk-expression(state, expr)
+    case closure
+      save node/body, walk-block(state, body)
+    case conditional
+      save branches-out, make list
+      walk branches
+        take branch
+        save branch/cond, walk-expression(state, branch/cond)
+        save branch/value, walk-expression(state, branch/value)
+        push(branches-out, branch)
+      save node/branches, branches-out
+      sift otherwise
+        case some
+          link other
+          save written, walk-expression(state, other)
+          save node/otherwise, make(some, written)
+        case none
+          save nothing, 0
+    miss
+      save nothing, 0
+  back node
+
+# a function type's result is under `result`, which the walk does not enter
+task walk-type
+  take state, like walk-state
+  take given, like type
+  like type
+  mark private
+
+  sift given
+    case array
+      save given/element, walk-type(state, element)
+    case map
+      save given/key, walk-type(state, key)
+      save given/value, walk-type(state, value)
+    case named
+      fork test, is-above(args/length, 0)
+        hold
+          save args-out, make list
+          walk args
+            take arg
+            push(args-out, walk-type(state, arg))
+          save given/args, args-out
+      fork test, is-above(value-args/length, 0)
+        hold
+          save values-out, make list
+          walk value-args
+            take one
+            push(values-out, walk-expression(state, one))
+          save given/value-args, values-out
+    case function
+      save params-out, make list
+      walk params
+        take param
+        push(params-out, walk-type(state, param))
+      save given/params, params-out
+    miss
+      save nothing, 0
+  back given
+
+task walk-function-params
+  take state, like walk-state
+  take params, like list, like function-param
+  like list, like function-param
+  mark private
+
+  save out, make list
+  walk params
+    take param
+    sift param/fallback
+      case some
+        link given
+        save written, walk-expression(state, given)
+        save param/fallback, make(some, written)
+      case none
+        save nothing, 0
+    push(out, param)
+  back out
+
+task walk-statement
+  take state, like walk-state
+  take node, like statement
+  like statement
+  mark private
+
+  sift node
+    case let
+      save node/init, walk-expression(state, init)
+    case assign
+      save node/target, walk-expression(state, target)
+      save node/value, walk-expression(state, read(value))
+    case expression
+      save node/expr, walk-expression(state, expr)
+    case if
+      save branches-out, make list
+      walk branches
+        take branch
+        save branch/cond, walk-expression(state, branch/cond)
+        save branch/body, walk-block(state, branch/body)
+        push(branches-out, branch)
+      save node/branches, branches-out
+      sift otherwise
+        case some
+          link other
+          save written, walk-block(state, other)
+          save node/otherwise, make(some, written)
+        case none
+          save nothing, 0
+    case while
+      save node/cond, walk-expression(state, cond)
+      save node/body, walk-block(state, body)
+      fork test, is-above(read(must)/length, 0)
+        hold
+          save must-out, make list
+          walk read(must)
+            take one
+            push(must-out, walk-expression(state, one))
+          save node/must, must-out
+      save node/down, walk-maybe(state, down)
+    case match
+      save node/subject, walk-expression(state, subject)
+      save cases-out, make list
+      walk cases
+        take arm
+        save arm/body, walk-block(state, arm/body)
+        push(cases-out, arm)
+      save node/cases, cases-out
+      sift otherwise
+        case some
+          link other
+          save written, walk-block(state, other)
+          save node/otherwise, make(some, written)
+        case none
+          save nothing, 0
+    case for-each
+      save node/iterable, walk-expression(state, iterable)
+      save node/body, walk-block(state, body)
+      fork test, is-above(read(must)/length, 0)
+        hold
+          save must-out, make list
+          walk read(must)
+            take one
+            push(must-out, walk-expression(state, one))
+          save node/must, must-out
+    case return
+      sift read(value)
+        case some
+          link given
+          save written, walk-expression(state, given)
+          save node/value, make(some, written)
+        case none
+          save nothing, 0
+    case guard
+      save node/body, walk-block(state, body)
+      sift catch
+        case some
+          link clause
+          save clause/body, walk-block(state, clause/body)
+          save node/catch, make(some, clause)
+        case none
+          save nothing, 0
+    case throw
+      save node/value, walk-expression(state, read(value))
+    case hold
+      save node/expr, walk-expression(state, expr)
+    case function
+      save node/params, walk-function-params(state, params)
+      save node/body, walk-block(state, body)
+      sift stub-shape
+        case some
+          link shape
+          save written, walk-statement(state, shape)
+          save node/stub-shape, make(some, written)
+        case none
+          save nothing, 0
+      fork test, is-above(stub-body/length, 0)
+        hold
+          save stub-out, make list
+          walk stub-body
+            take inner
+            push(stub-out, walk-statement(state, inner))
+          save node/stub-body, stub-out
+      fork test, is-above(universals/length, 0)
+        hold
+          save universals-out, make list
+          walk universals
+            take universal
+            save universal/expr, walk-expression(state, universal/expr)
+            push(universals-out, universal)
+          save node/universals, universals-out
+      fork test, is-above(read(have)/length, 0)
+        hold
+          save have-out, make list
+          walk read(have)
+            take one
+            push(have-out, walk-expression(state, one))
+          save node/have, have-out
+      fork test, is-above(read(must)/length, 0)
+        hold
+          save must-out, make list
+          walk read(must)
+            take one
+            push(must-out, walk-expression(state, one))
+          save node/must, must-out
+      save node/down, walk-maybe(state, down)
+    case record-type
+      save fields-out, make list
+      walk fields
+        take field
+        sift field/fallback
+          case some
+            link given
+            save written, walk-expression(state, given)
+            save field/fallback, make(some, written)
+          case none
+            save nothing, 0
+        push(fields-out, field)
+      save node/fields, fields-out
+      save variants-out, make list
+      walk variants
+        take variant
+        fork test, is-above(variant/index-values/length, 0)
+          hold
+            save values-out, make list
+            walk variant/index-values
+              take one
+              push(values-out, walk-expression(state, one))
+            save variant/index-values, values-out
+        push(variants-out, variant)
+      save node/variants, variants-out
+      sift alias
+        case some
+          link alias-type
+          save written, walk-type(state, alias-type)
+          save node/alias, make(some, written)
+        case none
+          save nothing, 0
+      sift extend
+        case some
+          link extended
+          save extended/base, walk-type(state, extended/base)
+          save links-out, make list
+          walk extended/links
+            take link-one
+            sift link-one/fallback
+              case some
+                link given
+                save written, walk-expression(state, given)
+                save link-one/fallback, make(some, written)
+              case none
+                save nothing, 0
+            push(links-out, link-one)
+          save extended/links, links-out
+          save extended/pins, walk-field-values(state, extended/pins)
+          save node/extend, make(some, extended)
+        case none
+          save nothing, 0
+      fork test, is-above(pins/length, 0)
+        hold
+          save node/pins, walk-field-values(state, pins)
+    case view
+      save node/body, walk-views(state, body)
+    case dock
+      save node/route, walk-route(state, route)
+    miss
+      save nothing, 0
+  back node
+
+task walk-views
+  take state, like walk-state
+  take nodes, like list, like view-node
+  like list, like view-node
+  mark private
+
+  save out, make list
+  walk nodes
+    take one
+    push(out, walk-view(state, one))
+  back out
+
+task walk-view
+  take state, like walk-state
+  take one, like view-node
+  like view-node
+  mark private
+
+  sift one
+    case element
+      # a component placed in a view, unless it is a standard HTML tag or a `node <name>` forcing the element: bound as a
+      # value, since it has props and no arity
+      fork test, and(reference-mode(state), and(not(forced), not(is-html-tag(name))))
+        hold
+          save renamed, bound-name(state, name, -1, <>, span, false)
+          fork test, is-unequal(renamed, <>)
+            hold
+              save one/name, renamed
+      save attributes-out, make list
+      walk attributes
+        take attribute
+        save attribute/value, walk-expression(state, attribute/value)
+        push(attributes-out, attribute)
+      save one/attributes, attributes-out
+      save one/props, walk-field-values(state, props)
+      save one/children, walk-views(state, children)
+    case read
+      save one/value, walk-expression(state, read(value))
+    case fork
+      save branches-out, make list
+      walk branches
+        take branch
+        save branch/cond, walk-expression(state, branch/cond)
+        save branch/body, walk-views(state, branch/body)
+        push(branches-out, branch)
+      save one/branches, branches-out
+      fork test, is-above(otherwise/length, 0)
+        hold
+          save otherwise-out, make list
+          walk otherwise
+            take inner
+            push(otherwise-out, walk-view(state, inner))
+          save one/otherwise, otherwise-out
+    case walk
+      save one/iterable, walk-expression(state, iterable)
+      save one/body, walk-views(state, body)
+    case save
+      save one/value, walk-expression(state, read(value))
+    case call
+      save one/value, walk-expression(state, read(value))
+    miss
+      save nothing, 0
+  back one
+
+task walk-arguments
+  take state, like walk-state
+  take arguments, like list, like dock-argument
+  like list, like dock-argument
+  mark private
+
+  save out, make list
+  walk arguments
+    take one
+    save one/value, walk-expression(state, one/value)
+    push(out, one)
+  back out
+
+task walk-calls
+  take state, like walk-state
+  take calls, like list, like dock-call
+  like list, like dock-call
+  mark private
+
+  save out, make list
+  walk calls
+    take one-call
+    save one-call/args, walk-arguments(state, one-call/args)
+    push(out, one-call)
+  back out
+
+task walk-sends
+  take state, like walk-state
+  take sends, like list, like dock-send
+  like list, like dock-send
+  mark private
+
+  save out, make list
+  walk sends
+    take one
+    save one/value, walk-maybe(state, one/value)
+    push(out, one)
+  back out
+
+task walk-route
+  take state, like walk-state
+  take route, like dock-route
+  like dock-route
+  mark private
+
+  save methods-out, make list
+  walk route/methods
+    take method
+    save method/calls, walk-calls(state, method/calls)
+    save method/sends, walk-sends(state, method/sends)
+    push(methods-out, method)
+  save route/methods, methods-out
+  save route/calls, walk-calls(state, route/calls)
+  sift route/component
+    case some
+      link component
+      save component/props, walk-arguments(state, component/props)
+      save route/component, make(some, component)
+    case none
+      save nothing, 0
+  save route/directives, walk-sends(state, route/directives)
+  save route/sends, walk-sends(state, route/sends)
+  save hooks-out, make list
+  walk route/hooks
+    take one-hook
+    save one-hook/calls, walk-calls(state, one-hook/calls)
+    push(hooks-out, one-hook)
+  save route/hooks, hooks-out
+  save children-out, make list
+  walk route/children
+    take child
+    push(children-out, walk-route(state, child))
+  save route/children, children-out
+  back route

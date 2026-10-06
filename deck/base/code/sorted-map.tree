@@ -581,10 +581,11 @@ form sorted-map
     like number
     send back, call get(read(self/state), code(1))
 
-  # how many entries it holds: the older name of `length`
+  # how many entries it holds: the older name of `length`, kept one release
   task count
     take self
     like number
+    mark deprecated
     send back, call get(read(self/state), code(1))
 
   task is-empty

@@ -6,7 +6,7 @@ load @term/base/boolean
 
 load @term/base/list
   find push
-  find size
+  find length
   find get
 
 load @term/base/text/string
@@ -150,8 +150,8 @@ task read-raw
   fork test
     hook test
       call and
-        call is-above(call(size(read entries)), code 0)
-        call is-above(call(size(read items)), code 0)
+        call is-above(call(length(read entries)), code 0)
+        call is-above(call(length(read items)), code 0)
     hook hold
       halt data-defect
         bind rule, text <a file is a map of "host" entries or a list of "mesh" items, never both>
@@ -161,7 +161,7 @@ task read-raw
       bind list, read entries
   fork test
     hook test
-      call is-above(call(size(read items)), code 0)
+      call is-above(call(length(read items)), code 0)
     hook hold
       save root
         make array
@@ -266,7 +266,7 @@ task key-of
       link kids
       fork test
         hook test
-          call is-equal(call(size(read kids)), code 0)
+          call is-equal(call(length(read kids)), code 0)
         hook hold
           send back, text <>
       save first
@@ -285,7 +285,7 @@ task key-of
           link kids
           fork test
             hook test
-              call is-equal(call(size(read kids)), code 0)
+              call is-equal(call(length(read kids)), code 0)
             hook hold
               send back, read head
           send back, text <>
@@ -318,7 +318,7 @@ task rest-of
         hook test
           call is-below
             read index
-            call size read kids
+            call length read kids
         hook hold
           call push
             read out
@@ -364,7 +364,7 @@ task is-scalar
       link kids
       send back
         call and
-          call is-equal(call(size(read kids)), code 0)
+          call is-equal(call(length(read kids)), code 0)
           call or
             call is-equal
               read head
@@ -522,7 +522,7 @@ task read-entry
         call is-above
           read scalars
           code 0
-        call is-above(call(size(read blocks)), code 0)
+        call is-above(call(length(read blocks)), code 0)
     hook hold
       halt data-defect
         bind rule
@@ -814,7 +814,7 @@ task read-tree
       read root
   fork test
     hook test
-      call is-equal(call(size(read rest)), code 0)
+      call is-equal(call(length(read rest)), code 0)
     hook hold
       send back
         make data-tree
@@ -891,15 +891,15 @@ task check-keys
               call check-keys
                 read entry/base
             case text
-              call size(read seen)
+              call length(read seen)
             case number
-              call size(read seen)
+              call length(read seen)
             case decimal
-              call size(read seen)
+              call length(read seen)
             case flag
-              call size(read seen)
+              call length(read seen)
             case blank
-              call size(read seen)
+              call length(read seen)
           walk list
             read seen
             hook next
@@ -951,7 +951,7 @@ task not-value-rule
       link kids
       fork test
         hook test
-          call is-equal(call(size(read kids)), code 0)
+          call is-equal(call(length(read kids)), code 0)
         hook hold
           send back
             call concat
@@ -992,7 +992,7 @@ task key-is-word
       link kids
       fork test
         hook test
-          call is-equal(call(size(read kids)), code 0)
+          call is-equal(call(length(read kids)), code 0)
         hook hold
           send back, false
       save first
@@ -1006,7 +1006,7 @@ task key-is-word
           link head
           link kids
           send back
-            call is-equal(call(size(read kids)), code 0)
+            call is-equal(call(length(read kids)), code 0)
         case text
           send back, false
         case number

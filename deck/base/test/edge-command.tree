@@ -13,7 +13,7 @@ load @term/base/command
 
 load @term/base/list
   find list
-  find size
+  find length
   find get
   find join
 

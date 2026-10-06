@@ -12,7 +12,7 @@ load @term/base/list
   find push
   find get
   find set
-  find size
+  find length
   find concat
   find drop-first
   find slice
@@ -232,7 +232,7 @@ task ensure-feed-cursor-width
           call and
             call is-below
               call subtract
-                call size call get-cursor-bytes read cursor
+                call length call get-cursor-bytes read cursor
                 call get-cursor-position read cursor
               read width
             call
@@ -271,7 +271,7 @@ task remaining
     case none
   send back
     call subtract
-      call size call get-cursor-bytes read cursor
+      call length call get-cursor-bytes read cursor
       call get-cursor-position read cursor
 
 # `is-minimum` (position >= size), not `is-equal(remaining, 0)`: it works on a streaming cursor, where `remaining`
@@ -284,7 +284,7 @@ task at-end
   send back
     call is-minimum
       call get-cursor-position read cursor
-      call size call get-cursor-bytes read cursor
+      call length call get-cursor-bytes read cursor
 
 task peek-byte
   take cursor, like feed-cursor

@@ -201,7 +201,7 @@ load @term/base/text/unicode
   find rune-to-text
 
 load @term/base/list
-  find size
+  find length
   find get
 
 form number-mismatch
@@ -236,7 +236,7 @@ task number-rune-at
           code 0
         call is-below
           read at
-          call size
+          call length
             read runes
     hook hold
       send back
@@ -324,7 +324,7 @@ task parse-integer
     call to-runes
       read value
   save n
-    call size
+    call length
       read r
   save i, code 0
   save negative, false
@@ -475,7 +475,7 @@ task parse-float
     call to-runes
       read value
   save n
-    call size
+    call length
       read r
   save i, code 0
   fork test
@@ -724,7 +724,7 @@ task to-fixed
     call to-runes
       read shown
   save n
-    call size
+    call length
       read r
   save negative
     call is-equal
@@ -781,7 +781,7 @@ task to-fixed
             code 46
         hook hold
           save point
-            call size
+            call length
               read digits
         hook test
           call and
@@ -820,7 +820,7 @@ task to-fixed
         code 0
     hook hold
       save point
-        call size
+        call length
           read digits
   fork test
     hook test
@@ -854,7 +854,7 @@ task to-fixed
         hook test
           call is-below
             read k
-            call size
+            call length
               read digits
         hook hold
           call kept/push
@@ -876,7 +876,7 @@ task to-fixed
           code 0
         call is-below
           read keep
-          call size
+          call length
             read digits
     hook hold
       save next
@@ -892,7 +892,7 @@ task to-fixed
     hook hold
       save carry, true
       save j
-        call size
+        call length
           read kept
       walk test
         down, read j
@@ -954,7 +954,7 @@ task to-fixed
           code 1
   save whole-count
     call subtract
-      call size
+      call length
         read kept
       read places
   save whole, text <>

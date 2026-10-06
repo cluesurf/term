@@ -785,9 +785,10 @@ form statement
     link stub
       like boolean
       need false
-    # what a stub's body was shown to do, by its owning unit (compile/stub.ts)
+    # what a stub's body was shown to do, by its owning unit (compile/stub.ts). A maybe, because its presence says the
+    # stub stands for a task that HAD a body (check/disambiguate.tree `defines`), and an empty list of facts is not none
     link stub-facts
-      like list, like text
+      like maybe, like list, like text
       need false
     link stub-writes
       like list, like number
@@ -892,6 +893,10 @@ form statement
       need false
     link stub-export
       like text
+      need false
+    # `mark deprecated`: a use of the form from another file warns (check/deprecated.tree)
+    link deprecated
+      like boolean
       need false
     link span, like span
   # a trait: a named set of method signatures

@@ -7,7 +7,7 @@ mark stable
 
 load @term/base/list
   find list
-  find size
+  find length
   find get
 
 load @term/base/maybe
@@ -65,7 +65,7 @@ form queue
           call multiply
             read self/front
             code 2
-          call size
+          call length
             read self/items
       hook hold
         save rest
@@ -128,8 +128,9 @@ form queue
     like number
     send back, subtract(self/items/length, self/front)
 
-  # the older name of `length`
+  # the older name of `length`, kept one release
   task size
     take self
     like number
+    mark deprecated
     send back, subtract(self/items/length, self/front)

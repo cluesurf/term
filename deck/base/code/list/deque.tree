@@ -8,7 +8,7 @@ mark stable
 
 load @term/base/list
   find list
-  find size
+  find length
   find get
 
 load @term/base/maybe
@@ -325,10 +325,11 @@ form deque
     like number
     send back, read self/filled
 
-  # the older name of `length`
+  # the older name of `length`, kept one release
   task count
     take self
     like number
+    mark deprecated
     send back, read self/filled
 
   task is-empty

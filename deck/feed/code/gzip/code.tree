@@ -9,7 +9,7 @@ load @term/base/boolean
 
 load @term/base/list
   find push
-  find size
+  find length
   find join
 
 load @term/base/text
@@ -334,7 +334,7 @@ task write-gzip
       link value
       call write-int
         read writer
-        call size read value
+        call length read value
         code 2
         make little
       call write-bytes

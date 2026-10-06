@@ -5,7 +5,7 @@
 load @term/base/list
   find push
   find get
-  find size
+  find length
 
 load ../code/base
   find make-cursor
@@ -85,7 +85,7 @@ task first-contour-point-count
     case otf-glyph-simple
       link contours
       send back
-        call size
+        call length
           call get
             read contours
             code 0
@@ -98,7 +98,7 @@ test <write-otf-glyph then read-otf-glyph round trips a simple triangle's point 
   save bytes
     call write-otf-glyph(call sample-triangle-glyph)
   save reread
-    call read-otf-glyph(call(make-cursor(read bytes)), call(size(read bytes)))
+    call read-otf-glyph(call(make-cursor(read bytes)), call(length(read bytes)))
   want hold
     call is-equal
       call first-contour-point-count(read reread)
@@ -108,7 +108,7 @@ test <the triangle's third point round trips its exact coordinates>
   save bytes
     call write-otf-glyph(call sample-triangle-glyph)
   save reread
-    call read-otf-glyph(call(make-cursor(read bytes)), call(size(read bytes)))
+    call read-otf-glyph(call(make-cursor(read bytes)), call(length(read bytes)))
   save point
     call triangle-point
       read reread
@@ -150,7 +150,7 @@ test <a negative-coordinate point round trips through the signed short-vector de
   save reread
     call read-otf-glyph
       call make-cursor(call write-otf-glyph(read glyph))
-      call size(call write-otf-glyph(read glyph))
+      call length(call write-otf-glyph(read glyph))
   save point
     call triangle-point
       read reread
@@ -192,7 +192,7 @@ test <the second point's off-curve flag round trips>
   save reread
     call read-otf-glyph
       call make-cursor(call write-otf-glyph(read glyph))
-      call size(call write-otf-glyph(read glyph))
+      call length(call write-otf-glyph(read glyph))
   save point
     call triangle-point
       read reread

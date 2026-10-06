@@ -75,7 +75,8 @@ export type ImportScope = Map<
 export type ScopeFind = { name: string; targets: string[]; at?: Span }
 
 // a file's import scope as a Term pass takes it: each map a list, in the map's order
-export type FileScope = { file: string; finds: ScopeFind[]; bears: string[]; aliases?: ScopeFind[]; plain?: ScopeFind[] }
+// `hasPlain`: whether the scope kept a `plain` map at all, which check/overload reads apart from an empty one
+export type FileScope = { file: string; finds: ScopeFind[]; bears: string[]; aliases?: ScopeFind[]; plain?: ScopeFind[]; hasPlain?: boolean }
 
 // the import scope as the ported passes take it (check/private.tree, check/scope.tree), none for none
 export function scopeList(scope: ImportScope | undefined): FileScope[] {
@@ -90,7 +91,7 @@ export function scopeList(scope: ImportScope | undefined): FileScope[] {
     }),
     bears: own.bears,
     ...(own.aliases ? { aliases: entries(own.aliases) } : {}),
-    ...(own.plain ? { plain: entries(own.plain) } : {}),
+    ...(own.plain ? { plain: entries(own.plain), hasPlain: true } : {}),
   }))
 }
 

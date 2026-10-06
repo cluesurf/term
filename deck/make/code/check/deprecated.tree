@@ -82,6 +82,69 @@ task warn-deprecated
         turn next
 
   save out, make list
+
+  # A FORM MARKED DEPRECATED IS WARNED ABOUT WHERE ANOTHER FILE USES IT: a `make` of it, and a task's input or result
+  # typed by it (note/term/plan/decisions-2026-10.md, D13: `ordered-set` toward `set`)
+  save form-names, make list
+  save form-files, make list
+  walk program
+    take one
+    sift one
+      case record-type
+        fork test, deprecated
+          hold
+            push(form-names, name)
+            sift span/file
+              case some
+                link written
+                push(form-files, written)
+              case none
+                push(form-files, <>)
+      miss
+        turn next
+
+  fork test, is-above(form-names/length, 0)
+    hold
+      walk program
+        take one
+        sift one
+          case function
+            fork test, is-in-file(span, file)
+              hold
+                save task-span, span
+                save typed, make list
+                walk params
+                  take param
+                  sift param/type
+                    case some
+                      link given
+                      named-in(given, typed)
+                    case none
+                      turn next
+                sift result
+                  case some
+                    link given
+                    named-in(given, typed)
+                  miss
+                walk typed
+                  take used
+                  save defined, defined-in(form-names, form-files, used)
+                  fork test, and(is-unequal(defined, <none>), is-unequal(defined, file))
+                    hold
+                      push(out, warning(file, task-span, used))
+                walk expressions-in(body)
+                  take expression
+                  sift expression
+                    case record
+                      save defined, defined-in(form-names, form-files, name)
+                      fork test, and(is-unequal(defined, <none>), is-unequal(defined, file))
+                        hold
+                          push(out, warning(file, span, name))
+                    miss
+                      turn next
+          miss
+            turn next
+
   fork test, is-equal(deprecated-names/length, 0)
     hold
       back out
@@ -112,6 +175,31 @@ task warn-deprecated
       miss
         turn next
   back out
+
+# every form a type names, its arguments' included, into `into`
+task named-in
+  take given, like type
+  take into, like list, like text
+  mark private
+
+  sift given
+    case named
+      push(into, name)
+      walk args
+        take arg
+        named-in(arg, into)
+    case array
+      named-in(element, into)
+    case map
+      named-in(key, into)
+      named-in(value, into)
+    case function
+      walk params
+        take param
+        named-in(param, into)
+      named-in(result, into)
+    miss
+      back
 
 task warning
   take file, like text

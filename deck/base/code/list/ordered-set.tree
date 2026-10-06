@@ -4,8 +4,8 @@
 # Backed by the `hash`, which keeps insertion order on every backend (note/term/optimize/meaning.md, question 1), so
 # `insert`, `has` and `remove` are O(1) and `to-list` is in insertion order. Until 2026-10-05 it was a list searched
 # from the front on every `has` and `insert`, O(n) each. A value is compared as a hash compares a key: a record by its
-# fields, a list by its items. `set` is the same structure under the set algebra's names (union, intersect); this form
-# is the one to name where the order is the point. test/stdlib/ordered-collections.ts runs it on all four backends.
+# fields, a list by its items. `set` is the same structure under the set algebra's names (union, intersect), and since
+# 2026-10-05 it promises the order too, so this form is deprecated toward it. test/stdlib/ordered-collections.ts runs it on all four backends.
 
 mark stable
 
@@ -16,6 +16,9 @@ load @term/base/list
   find list
 
 form ordered-set
+  # `set` is this structure, and promises the same order (set.tree): a second name says nothing more, so this one is
+  # deprecated toward it for one release (note/term/plan/decisions-2026-10.md, D13)
+  mark deprecated
   head t
   # the values, as a hash's keys: `make ordered-set` is an empty set
   link items

@@ -10,7 +10,7 @@ load @term/base/boolean
 
 load @term/base/list
   find push
-  find size
+  find length
   find get
   find contains
 
@@ -158,7 +158,7 @@ task check-shape
           link present
           fork test
             hook test
-              call is-above(call(size(read items)), code 0)
+              call is-above(call(length(read items)), code 0)
             hook hold
               save index, code 0
               walk list

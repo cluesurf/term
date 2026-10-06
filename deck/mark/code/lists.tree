@@ -6,7 +6,7 @@ load @term/base/list
   find list
   find push
   find get
-  find size
+  find length
 
 # items `start` up to, not including, `end`
 task part-of

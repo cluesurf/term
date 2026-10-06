@@ -21,7 +21,7 @@ load @term/base/text
 
 load @term/base/list
   find list
-  find size
+  find length
   find get
   find contains
 
@@ -228,7 +228,7 @@ task flag-value-errors
     hook test
       call and
         call is-above
-          call size
+          call length
             read each/choices
           code 0
         call is-equal
@@ -255,7 +255,7 @@ task parse
   save errors
     make list
   save count
-    call size
+    call length
       read words
   save i, code 0
   save rest, false
@@ -582,7 +582,7 @@ task parse
         hook test
           call is-below
             read taken
-            call size
+            call length
               read positional
         hook hold
           call args/push
@@ -607,14 +607,14 @@ task parse
     hook test
       call is-below
         read taken
-        call size
+        call length
           read positional
     hook hold
       save given
-        call size
+        call length
           read positional
       save allowed
-        call size
+        call length
           read schema/arguments
       call errors/push
         text <{{given}} arguments were given and {{allowed}} are taken>
@@ -622,7 +622,7 @@ task parse
     make parsed-command
       bind ok
         call is-equal
-          call size
+          call length
             read errors
           code 0
       bind flags, read flags
@@ -657,7 +657,7 @@ task help
   fork test
     hook test
       call is-above
-        call size
+        call length
           read schema/flags
         code 0
     hook hold
@@ -676,7 +676,7 @@ task help
   fork test
     hook test
       call is-above
-        call size
+        call length
           read schema/flags
         code 0
     hook hold

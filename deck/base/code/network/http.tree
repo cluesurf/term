@@ -22,7 +22,7 @@ load @term/base/hash
 
 load @term/base/list
   find list
-  find size
+  find length
   find get
   find sort
 
@@ -66,7 +66,7 @@ task request
   fork test
     hook test
       call is-above
-        call size
+        call length
           read got
         code 0
     hook hold
@@ -90,7 +90,7 @@ task request
           read outcome
           text <ok>
         call is-below
-          call size
+          call length
             read got
           code 3
     hook hold
@@ -113,7 +113,7 @@ task request
   # the length read once for the measure; the writes in the body leave the prover unsure of every list's size, so
   # the list's own length is tested on each turn too
   save count
-    call size
+    call length
       read got
   save k, code 3
   walk test

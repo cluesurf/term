@@ -23,7 +23,7 @@ load @term/base/list
   find list
   find push
   find get
-  find size
+  find length
   find join
 
 load @term/base/text
@@ -299,7 +299,7 @@ task runner-version
         hook test
           call and
             call is-equal
-              call size
+              call length
                 read parts
               code 2
             call is-equal
@@ -504,7 +504,7 @@ task measurement-of
           read counted
           false
         call is-equal
-          call size
+          call length
             read samples
           code 0
     hook hold

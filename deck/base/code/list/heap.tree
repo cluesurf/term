@@ -280,10 +280,11 @@ form heap
     like number
     send back, read self/items/length
 
-  # the older name of `length`
+  # the older name of `length`, kept one release
   task count
     take self
     like number
+    mark deprecated
     send back, read self/items/length
 
   task is-empty

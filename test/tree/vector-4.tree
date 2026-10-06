@@ -4,7 +4,7 @@ load @term/base/code/line/float/32/vector-4
   find vector-4
   find make-vector-4
   find dot
-  find length
+  find magnitude
 
 test <add adds component-wise>
   save v
@@ -40,10 +40,10 @@ test <dot is the scalar product>
           4.0
       11.0
 
-test <length of the unit-sum vector is two>
+test <magnitude of the unit-sum vector is two>
   want hold
     call is-equal
-      call length
+      call magnitude
         call make-vector-4
           1.0
           1.0

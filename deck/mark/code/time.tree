@@ -11,7 +11,7 @@ load @term/base/list
   find list
   find push
   find get
-  find size
+  find length
 
 load @term/base/text
   find trim
@@ -116,7 +116,7 @@ task last-word
   fork test
     hook test
       call is-equal
-        call size
+        call length
           read words
         code 0
     hook hold
@@ -125,7 +125,7 @@ task last-word
     call get
       read words
       call subtract
-        call size
+        call length
           read words
         code 1
 
@@ -138,7 +138,7 @@ task first-word
   fork test
     hook test
       call is-equal
-        call size
+        call length
           read words
         code 0
     hook hold
@@ -230,7 +230,7 @@ task take-sample
           fork test
             hook test
               call is-equal
-                call size
+                call length
                   read parts
                 code 6
             hook hold

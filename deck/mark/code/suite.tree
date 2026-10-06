@@ -14,7 +14,7 @@ load @term/base/list
   find push
   find get
   find set
-  find size
+  find length
   find join
 
 load ./lists
@@ -130,7 +130,7 @@ task parent-of
     bind base, code 0
     bind head
       call subtract
-        call size
+        call length
           read parts
         code 1
     hook next
@@ -319,7 +319,7 @@ task run-rounds
       take site, name round
       save order
         call shuffled
-          call size
+          call length
             read group
           read cell
       walk list, read order
@@ -419,7 +419,7 @@ task print-cases
       fork test
         hook test
           call is-equal
-            call size
+            call length
               read walls
             code 0
         hook hold
@@ -491,7 +491,7 @@ task compare-group
   walk size
     bind base, code 0
     bind head
-      call size
+      call length
         read group
     hook next
       take site, name at
@@ -568,11 +568,11 @@ task compare-group
       save counted
         call and
           call is-above
-            call size
+            call length
               read term-counts
             code 0
           call is-above
-            call size
+            call length
               read base-counts
             code 0
       save counts, read wall
@@ -660,11 +660,11 @@ task regression-of
         read now/counted
         call and
           call is-above
-            call size
+            call length
               read before/term-instructions
             code 0
           call is-above
-            call size
+            call length
               read before/base-instructions
             code 0
     hook hold
@@ -813,7 +813,7 @@ task run-suite
   fork test
     hook test
       call is-equal
-        call size
+        call length
           read chosen
         code 0
     hook hold
@@ -834,7 +834,7 @@ task run-suite
       fork test
         hook test
           call is-above
-            call size
+            call length
               read found/refused
             code 0
         hook hold
@@ -1054,7 +1054,7 @@ task run-suite
       walk size
         bind base, code 0
         bind head
-          call size
+          call length
             read targets
         hook next
           take site, name target-at
@@ -1187,7 +1187,7 @@ task run-suite
               walk size
                 bind base, code 0
                 bind head
-                  call size
+                  call length
                     read running
                 hook next
                   take site, name at
@@ -1259,7 +1259,7 @@ task run-suite
   fork test
     hook test
       call is-equal
-        call size
+        call length
           read rows
         code 0
     hook hold
@@ -1394,7 +1394,7 @@ task run-suite
   fork test
     hook test
       call is-above
-        call size
+        call length
           read failures
         code 0
     hook hold

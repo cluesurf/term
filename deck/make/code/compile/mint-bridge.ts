@@ -5053,6 +5053,9 @@ function formOf(bridge: Bridge, value: Form): Statement[] {
       ...(tagOf(value) ? { tag: tagOf(value) } : {}),
       // `mark text` (D9): written only when present, so every other form builds the Program it always did
       ...(textual ? { text: true } : {}),
+      // `mark deprecated`: a use of the form from another file warns, as a call of a deprecated task does
+      // (check/deprecated.tree). Written only when present
+      ...(formsAt(value, 'mark').some(mark => wordAt(mark, 'kind') === 'deprecated') ? { deprecated: true } : {}),
       ...(alias ? { alias } : {}),
       ...(extend ? { extend } : {}),
       functionFree:

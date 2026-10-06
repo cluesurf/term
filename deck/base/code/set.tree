@@ -51,10 +51,11 @@ form set
     like number
     send back, read self/items/size
 
-  # the older name of `length`
+  # the older name of `length`, kept one release
   task size
     take self
     like number
+    mark deprecated
     send back, read self/items/size
 
   task is-empty
@@ -62,16 +63,17 @@ form set
     like boolean
     send back
       call is-equal
-        call size
+        call length
           read self/items
         code 0
 
-  # the older name of `length`
+  # the older name of `length`, kept one release
   task count
     take self
     like number
+    mark deprecated
     send back
-      call size
+      call length
         read self/items
 
   task to-list

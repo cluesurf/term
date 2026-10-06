@@ -13,7 +13,7 @@ load @term/base/text/unicode
   find to-runes
 
 load @term/base/list
-  find size
+  find length
   find get
 
 load @term/base/exception
@@ -53,7 +53,7 @@ task time-rune-at
           code 0
         call is-below
           read at
-          call size
+          call length
             read runes
     hook hold
       send back
@@ -291,7 +291,7 @@ task parse-rfc-3339
           call and
             call is-below
               read at
-              call size
+              call length
                 read r
             call and
               call is-minimum
@@ -450,7 +450,7 @@ task parse-rfc-3339
     hook test
       call is-below
         read at
-        call size
+        call length
           read r
     hook hold
       call refuse-time

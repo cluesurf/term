@@ -57,8 +57,9 @@ form stack
     like number
     send back, read self/items/length
 
-  # the older name of `length`
+  # the older name of `length`, kept one release
   task size
     take self
     like number
+    mark deprecated
     send back, read self/items/length
