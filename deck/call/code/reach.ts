@@ -9,6 +9,9 @@
 // the safe direction for a capability report: a name with several definitions in one module (an arity overload) reaches
 // what any of them reaches, and a method called on a value (`x/send()`) reaches what every method of that name does in
 // the modules the file loads, since which form the value has is the checker's to say.
+//
+// The search, those rules and the walk over a body are Term since 2026-10-06, call/code/reach-graph.tree. This face reads
+// and mills each file once, keeps it, and hands the port the module a file or a load is.
 
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
@@ -17,8 +20,8 @@ import type { Program, Statement } from '@term/make/code/compile/node'
 import { importFindsOf, makeParseMemo } from '@term/make/code/compile/load'
 import type { Resolver } from '@term/make/code/compile/load'
 import { withNativeEnv } from '@term/make/code/compile/native'
-import { forEachExpression } from '@term/flow/code/symbols'
 import { projectResolver } from '@term/call/code/make'
+import * as port from '@term/call/code/reach-graph'
 import { projectLeanOf, projectRoleOf } from '@term/call/code/role-of'
 
 type Task = Extract<Statement, { form: 'function' }>
@@ -116,120 +119,26 @@ export function reachGraph(root: string): ReachGraph {
     return source ? moduleOf(source.file, source.text) : undefined
   }
 
-  // the tasks a module answers for under `name`: its own, else what its `bear` chain passes on
-  const answering = (one: Module, name: string, depth = 0): { module: Module; tasks: Task[] }[] => {
-    const own = one.tasks.get(name)
+  // the search, the scope rules and the walk over each body are Term (call/code/reach-graph.tree). It asks this face
+  // for the modules, which are read and milled once here and kept
+  const asked = (importPath: string, from: string): port.Maybe<port.ReachModule> => {
+    const found = loaded(importPath, from)
 
-    if (own?.length) {
-      return [{ module: one, tasks: own }]
-    }
-
-    if (depth > 16) {
-      return []
-    }
-
-    return one.bears.flatMap(bear => {
-      const next = loaded(bear, one.file)
-
-      return next ? answering(next, name, depth + 1) : []
-    })
-  }
-
-  // where a call of `name` in a file lands: the file's own definition, else the one its `find` reached
-  const callees = (one: Module, name: string): { module: Module; tasks: Task[] }[] => {
-    const own = one.tasks.get(name)
-
-    if (own?.length) {
-      return [{ module: one, tasks: own }]
-    }
-
-    const find = one.finds.get(name)
-    const from = find ? loaded(find.path, one.file) : undefined
-
-    return from && find ? answering(from, find.real) : []
-  }
-
-  // where a method called on a value may land: a method of that name in the file or in any module it loads
-  const methodCallees = (one: Module, name: string): { module: Module; tasks: Task[] }[] => {
-    const found: { module: Module; tasks: Task[] }[] = []
-    const own = one.methods.get(name)
-
-    if (own?.length) {
-      found.push({ module: one, tasks: own })
-    }
-
-    for (const load of one.loads) {
-      const next = loaded(load, one.file)
-      const there = next?.methods.get(name)
-
-      if (next && there?.length) {
-        found.push({ module: next, tasks: there })
-      }
-    }
-
-    return found
+    return found ? { form: 'some', value: found } : { form: 'none' }
   }
 
   return {
     reachAt(file: string, line: number): string[] {
       const start = moduleOf(file)
 
-      if (!start) {
-        return []
-      }
-
-      const reached = new Set<string>()
-      const visited = new Set<string>()
-      const queue: { module: Module; task: Task }[] = [...start.tasks.values()]
-        .flat()
-        .filter(one => one.span.start.line + 1 === line)
-        .map(one => ({ module: start, task: one }))
-
-      while (queue.length) {
-        const { module, task: current } = queue.pop()!
-        const key = `${module.file}\0${current.name}\0${current.span.start.line}`
-
-        if (visited.has(key)) {
-          continue
-        }
-
-        visited.add(key)
-
-        const follow = (found: { module: Module; tasks: Task[] }[]): void => {
-          for (const each of found) {
-            for (const next of each.tasks) {
-              queue.push({ module: each.module, task: next })
-            }
-          }
-        }
-
-        forEachExpression([current], node => {
-          // a docked module named anywhere in the body: called, read off, or passed on
-          if (node.form === 'variable' && module.natives.has(node.name)) {
-            reached.add(module.natives.get(node.name)!)
-
-            return
-          }
-
-          if (node.form === 'call' && node.callee.form === 'variable' && !module.natives.has(node.callee.name)) {
-            follow(callees(module, node.callee.name))
-          } else if (node.form === 'call' && node.callee.form === 'member' && !(node.callee.target.form === 'variable' && module.natives.has(node.callee.target.name))) {
-            follow(methodCallees(module, node.callee.name))
-          } else if (node.form === 'variable') {
-            // a task passed as a value is a task that may be called
-            follow(callees(module, node.name))
-          }
-        })
-      }
-
-      return [...reached].sort()
+      return start ? port.reachAt(start, line, asked) : []
     },
   }
 }
 
 // the file a roll site names (`code/save.tree:12:1`), under the root it is relative to
 export function siteFile(root: string, site: string): { file: string; line: number } | undefined {
-  const match = /^(.*):(\d+):(\d+)$/.exec(site)
+  const parts = port.sitePartsOf(site)
 
-  return match ? { file: path.resolve(root, match[1]!), line: Number(match[2]) } : undefined
+  return parts.line !== '' ? { file: path.resolve(root, parts.file), line: Number(parts.line) } : undefined
 }

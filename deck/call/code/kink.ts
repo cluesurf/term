@@ -11,6 +11,7 @@ import { FIXABLE } from '@term/make/code/fix'
 import { lintCatalog } from '@term/make/code/lint/lint'
 import { MANIFEST_CATALOG } from '@term/call/code/lint'
 import { closeRun, field, openRun, printData, report } from '@term/call/code/output'
+import * as port from '@term/call/code/kink-find'
 
 export type Kink = {
   // `compiler` for a diagnostic the build reports, `lint` for a finding `term lint` reports
@@ -66,29 +67,29 @@ export function kinkCatalog(): Kink[] {
   return [...compiler, ...lint]
 }
 
-// the entry a query names: a name, a lint code, or a compiler code in any of the three spellings a run uses
+// an entry as the port reads it: a lint rule's code is its label, and an absent remedy or fix kind the empty text
+function portKink(kink: Kink): port.Kink {
+  return {
+    kind: kink.kind,
+    name: kink.name,
+    number: typeof kink.code === 'number' ? kink.code : -1,
+    label: kink.label,
+    severity: kink.severity,
+    says: kink.says,
+    remedy: kink.remedy ?? '',
+    fixable: kink.fixable,
+    fixes: kink.fixes ?? '',
+  }
+}
+
+// the entry a query names: a name, a lint code, or a compiler code in any of the three spellings a run uses. The
+// reading of the query is Term, call/code/kink-find.tree, and the entry it names is handed back as the catalog had it
 export function findKink(query: string): Kink | undefined {
   const all = kinkCatalog()
-  const asked = query.trim()
-  const byName = all.find(kink => kink.name === asked.toLowerCase())
+  const asked = all.map(portKink)
+  const found = port.findKink(query, asked)
 
-  if (byName) {
-    return byName
-  }
-
-  if (/^l\d+$/i.test(asked)) {
-    return all.find(kink => kink.kind === 'lint' && kink.code === asked.toUpperCase())
-  }
-
-  const number = /^0x[0-9a-f]+$/i.test(asked)
-    ? parseInt(asked.slice(2), 16)
-    : /^[0-9a-f]{4}$/i.test(asked)
-      ? parseInt(asked, 16)
-      : /^\d+$/.test(asked)
-        ? parseInt(asked, 10)
-        : undefined
-
-  return number === undefined ? undefined : all.find(kink => kink.kind === 'compiler' && kink.code === number)
+  return found.form === 'some' ? all[asked.indexOf(found.value)] : undefined
 }
 
 function asJson(kink: Kink): Record<string, unknown> {
@@ -105,21 +106,6 @@ function asJson(kink: Kink): Record<string, unknown> {
   }
 }
 
-// how a fix reaches the file
-function fixedBy(kink: Kink): string {
-  if (!kink.fixable) {
-    return 'by hand'
-  }
-
-  if (kink.kind === 'lint') {
-    return 'term lint --fix'
-  }
-
-  return kink.fixes === 'sure'
-    ? 'term scan --fix writes it, and an editor offers it as the preferred quick fix'
-    : 'offered, never written: term scan --back json lists the choices, and an editor offers each one'
-}
-
 export function showKink(input: { root: string; query?: string; json: boolean }): void {
   if (input.query === undefined) {
     const all = kinkCatalog()
@@ -127,7 +113,7 @@ export function showKink(input: { root: string; query?: string; json: boolean })
     printData(
       input.json
         ? `${JSON.stringify(all.map(asJson))}\n`
-        : all.map(kink => `${kink.label.padEnd(5)} ${kink.severity.padEnd(8)} ${kink.name}\n`).join(''),
+        : all.map(kink => port.listed(portKink(kink))).join(''),
     )
 
     return
@@ -158,12 +144,5 @@ export function showKink(input: { root: string; query?: string; json: boolean })
     return
   }
 
-  const lines = [
-    `${kink.name} ${kink.label}, ${kink.kind === 'compiler' ? 'compiler' : 'lint'} ${kink.severity}`,
-    `  says    ${kink.says}`,
-    ...(kink.remedy ? [`  remedy  ${kink.remedy}`] : []),
-    `  fixed   ${fixedBy(kink)}`,
-  ]
-
-  printData(`${lines.join('\n')}\n`)
+  printData(port.shown(portKink(kink)))
 }

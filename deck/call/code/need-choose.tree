@@ -1,0 +1,220 @@
+# Which `term` runs here, and why (note/term/plan/term-versions.md, "Resolution"): the decisions, once the files are
+# read. The order, first match wins: `+<range>` as the first argument, TERM_VERSION, the nearest deck.tree holding a
+# `need` (its lock.tree's pin while the pin still satisfies it), the user's default, the front, else the newest version
+# installed, else the running term itself.
+#
+# THE RUNNING COPY COUNTS AS INSTALLED. A Homebrew `term` 2.6.6 in a project that needs 2.6.x runs itself rather than
+# handing over to an older 2.6.4 under code/.
+#
+# Ported from deck/call/code/need.ts (self-hosting, 2026-10-06), which stays as the face: it reads the directories,
+# links and files, and builds the request and the choice in the shapes its callers know. Versions and ranges are
+# deck/deck/code/version.tree's.
+
+load @term/base/list
+  find list
+  find get
+  find sort
+  find contains
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/ordering
+  find ordering
+
+load @term/base/text
+  find split
+  find starts-with
+  find substring
+  find char-code-at
+
+load @term/deck/version
+  find code
+  find code-hold
+  find parse-code
+  find parse-code-hold
+  find show-code
+  find compare-code
+  find code-match
+
+# the one package a `need` may name today
+task toolchain
+  like text
+
+  back <@term/code>
+
+# a lock.tree's pin of the toolchain
+form need-pin
+  link name, like text
+  link code, like code
+  link hash, like text
+
+# what to do: run a version that is here, or load one first. `launched` is whether the version runs from its installed
+# payload, so the face names its launcher; the running copy has none. A load's `version` is the empty text for a range
+# the releases resolve, and `expect` the pin's index digest, or the empty text
+form need-choice
+  case run
+    link version, like text
+    link by, like text
+    link launched, like boolean
+  case load
+    link version, like text
+    link expect, like text
+
+# the `+<range>` argument: a first argument that is `+` and an ASCII digit and more, or the empty text when there is
+# none, in which case every argument stays
+task flag-of
+  take argv, like list, like text
+  like text
+
+  fork test, is-equal(argv/length, 0)
+    hold
+      back <>
+  save first, get(argv, 0)
+  fork test, not(starts-with(first, <+>))
+    hold
+      back <>
+  save second, char-code-at(first, 1)
+  fork test, and(is-minimum(second, 48), is-maximum(second, 57))
+    hold
+      back substring(first, 1)
+  back <>
+
+# a version folder's name: three runs of ASCII digits joined by dots
+task is-version
+  take name, like text
+  like boolean
+
+  save parts, split(name, <.>)
+  fork test, is-unequal(parts/length, 3)
+    hold
+      back false
+  walk parts
+    take part
+    save points, split(part, <>)
+    fork test, is-equal(points/length, 0)
+      hold
+        back false
+    walk points
+      take point
+      save value, char-code-at(point, 0)
+      fork test, not(and(is-minimum(value, 48), is-maximum(value, 57)))
+        hold
+          back false
+  back true
+
+task newest-order
+  take a, like text
+  take b, like text
+  like ordering
+  mark private
+
+  save order, compare-code(parse-code(b), parse-code(a))
+  fork test, is-below(order, 0)
+    hold
+      back make less
+  fork test, is-above(order, 0)
+    hold
+      back make greater
+  back make equal
+
+# versions newest first, two of one rank kept in the order they came
+task newest-first
+  take versions, like list, like text
+  like list, like text
+
+  back sort(versions, newest-order)
+
+# does a pin still satisfy the request? A pin outside the range is stale, and `term load` re-pins it
+task pin-holds
+  take pin, like maybe, like need-pin
+  take hold, like code-hold
+  like boolean
+
+  sift pin
+    case some
+      link found
+      back and(is-equal(found/name, toolchain()), code-match(found/code, hold))
+    case none
+      back false
+
+task run-of
+  take version, like text
+  take by, like text
+  take installed, like list, like text
+  take running, like text
+  like need-choice
+  mark private
+
+  fork test, and(is-equal(version, running), not(contains(installed, version)))
+    hold
+      save shown, <running>
+      fork test, is-equal(by, <pin>)
+        hold
+          save shown, <pin>
+      back
+        make run
+          bind version, version
+          bind by, shown
+          bind launched, false
+  back
+    make run
+      bind version, version
+      bind by, by
+      bind launched, true
+
+# What one request runs, given what is here: everything installed (newest first), and the running copy, which may not
+# be installed (a Homebrew or source copy). With no request, the front when it is here, else the newest
+task choose-for
+  take asked, like boolean
+  take hold, like code-hold
+  take pin, like maybe, like need-pin
+  take installed, like list, like text
+  take front, like text
+  take running, like text
+  like need-choice
+
+  save gathered, make list
+  walk installed
+    take one
+    fork test, not(contains(gathered, one))
+      hold
+        push(gathered, one)
+  fork test, not(contains(gathered, running))
+    hold
+      push(gathered, running)
+  save here, newest-first(gathered)
+
+  fork test, not(asked)
+    hold
+      fork test, and(is-unequal(front, <>), contains(here, front))
+        hold
+          back run-of(front, <installed>, installed, running)
+      back run-of(get(here, 0), <installed>, installed, running)
+
+  # a project's pin, while it still satisfies the request, is the exact version
+  sift pin
+    case some
+      link found
+      fork test, pin-holds(pin, hold)
+        hold
+          save version, show-code(found/code)
+          fork test, contains(here, version)
+            hold
+              back run-of(version, <pin>, installed, running)
+          back
+            make load
+              bind version, version
+              bind expect, found/hash
+    case none
+      save nothing, 0
+
+  walk here
+    take version
+    fork test, code-match(parse-code(version), hold)
+      hold
+        back run-of(version, <installed>, installed, running)
+  back
+    make load
+      bind version, <>
+      bind expect, <>

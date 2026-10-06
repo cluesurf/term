@@ -39,7 +39,23 @@ const DECKS: Record<string, string[]> = {
   flow: ['code'],
   scan: ['code'],
   test: ['code'],
-  call: ['code/work/item', 'code/browser'],
+  call: ['code/work/item', 'code/browser', 'code/*'],
+}
+
+// a subtree written `<dir>/*` takes the .tree files directly in that directory and none below it: `@term/call`'s own
+// modules ported to Term sit in `code/` beside their TypeScript faces, where `code/line` and `code/work` hold the console
+function shallow(dir: string, out: string[]): void {
+  if (!existsSync(dir) || existsSync(join(dir, 'draft.tree'))) {
+    return
+  }
+
+  for (const name of readdirSync(dir).sort()) {
+    const full = join(dir, name)
+
+    if (name.endsWith('.tree') && name !== 'draft.tree' && !lstatSync(full).isSymbolicLink() && lstatSync(full).isFile()) {
+      out.push(full)
+    }
+  }
 }
 
 const check = process.argv.includes('--check')
@@ -84,7 +100,11 @@ function main(): void {
     const files: string[] = []
 
     for (const subtree of subtrees) {
-      trees(join(root, subtree), files)
+      if (subtree.endsWith('/*')) {
+        shallow(join(root, subtree.slice(0, -2)), files)
+      } else {
+        trees(join(root, subtree), files)
+      }
     }
 
     if (files.length === 0) {

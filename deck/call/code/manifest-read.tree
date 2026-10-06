@@ -1,0 +1,256 @@
+# What a `deck.tree` declares, and whether a file is a lockfile or a role file, read with the real parser.
+#
+# There is ONE parser for `.tree` in this codebase. This used to be a regex anchored on a `deck` line, in two places,
+# which is a second, worse implementation of the grammar: it reads a `deck` line inside a comment or a text literal as
+# the declaration, it cannot see a name written with an interpolation, and it silently disagrees with the compiler
+# about what the file says.
+#
+# Ported from deck/call/code/manifest-name.ts (self-hosting, 2026-10-06), which stays as the face: it reads the files,
+# answers undefined where a read fails, and turns this module's `none` into undefined. Everything that reads a parsed
+# file is here.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/make/parser/tree
+  find node
+  find parse
+  find render-head
+
+load @term/make/parser/token
+  find token-source
+
+# the head word of a group, or none when its first node is not a name
+task head-name
+  take group, like node
+  like maybe, like text
+  mark private
+
+  sift group
+    case group
+      fork test, is-equal(nodes/length, 0)
+        hold
+          back make none
+      save first, get(nodes, 0)
+      sift first
+        case name
+          save rendered, render-head(first)
+          back make(some, rendered)
+        miss
+          back make none
+    miss
+      back make none
+
+task is-head
+  take group, like node
+  take wanted, like text
+  like boolean
+  mark private
+
+  sift head-name(group)
+    case some
+      link found
+      back is-equal(found, wanted)
+    case none
+      back false
+
+# the first ARGUMENT of a group: `deck @term/site` gives `@term/site`
+task argument-of
+  take group, like node
+  like maybe, like text
+  mark private
+
+  sift group
+    case group
+      fork test, is-below(nodes/length, 2)
+        hold
+          back make none
+      save second, get(nodes, 1)
+      sift second
+        case group
+          back head-name(second)
+        miss
+          back make none
+    miss
+      back make none
+
+# the groups among some nodes, in order
+task groups-of
+  take nodes, like list, like node
+  like list, like node
+  mark private
+
+  save out, make list
+  walk nodes
+    take one
+    sift one
+      case group
+        push(out, one)
+      miss
+        save nothing, 0
+  back out
+
+task parsed-nodes
+  take text, like text
+  take file, like text
+  like maybe, like list, like node
+  mark private
+
+  save source
+    make token-source
+      bind file, file
+      bind text, text
+  save parsed, parse(source)
+  fork test, not(parsed/ok)
+    hold
+      back make none
+  sift parsed/tree
+    case root
+      back make(some, nodes)
+
+# The first argument of a manifest's `<head>` statement (`deck @term/site` -> `@term/site`, `role ./roles` ->
+# `./roles`), or none when the manifest has none.
+#
+# A manifest head sits in one of TWO places, which is the whole reason this is not a one-liner: at the top level, or
+# as a CHILD of the `deck` statement, which is where `head`, `code`, `lock`, `bear` and `role` are written. The first
+# `deck` statement's children are searched first and the top level second, so the manifest's own block wins when both
+# spell a head.
+task manifest-value
+  take text, like text
+  take file, like text
+  take head, like text
+  like maybe, like text
+
+  sift parsed-nodes(text, file)
+    case none
+      back make none
+    case some
+      link top
+      save groups, groups-of(top)
+      save searched, make list
+      walk groups
+        take group
+        fork test, is-head(group, <deck>)
+          hold
+            sift group
+              case group
+                save at, 0
+                walk nodes
+                  take child
+                  fork test, is-above(at, 0)
+                    hold
+                      sift child
+                        case group
+                          push(searched, child)
+                        miss
+                          save nothing, 0
+                  save at, add(at, 1)
+              miss
+                save nothing, 0
+            halt
+      walk groups
+        take group
+        push(searched, group)
+      walk searched
+        take group
+        fork test, is-head(group, head)
+          hold
+            sift argument-of(group)
+              case some
+                link value
+                back make(some, value)
+              case none
+                save nothing, 0
+      back make none
+
+# The name a manifest declares: the argument of its TOP-LEVEL `deck` statement, `@scope/name` or a bare `name`. Only
+# the top level is read, never a `deck ./member` line nested under it, which named a monorepo's first member instead of
+# the package. A `deck` statement whose argument is not a name, or is an empty one, is passed over for the next.
+task manifest-name
+  take text, like text
+  take file, like text
+  like maybe, like text
+
+  sift parsed-nodes(text, file)
+    case none
+      back make none
+    case some
+      link top
+      walk top
+        take one
+        fork test, is-head(one, <deck>)
+          hold
+            sift argument-of(one)
+              case some
+                link name
+                fork test, is-unequal(name, <>)
+                  hold
+                    back make(some, name)
+              case none
+                save nothing, 0
+      back make none
+
+# Is this file a LOCKFILE (`lock <1>` and one `deck` entry per resolved package), as opposed to Term code? By content,
+# never by name: `lock <version>` is the head word `lock` carrying a TEXT, at the top level. A code module's `lock` is a
+# form or a task name, and a manifest's `lock mit` sits under `deck`.
+task is-lockfile-text
+  take text, like text
+  take file, like text
+  like boolean
+
+  sift parsed-nodes(text, file)
+    case none
+      back false
+    case some
+      link top
+      walk top
+        take one
+        fork test, is-head(one, <lock>)
+          hold
+            sift one
+              case group
+                fork test, is-above(nodes/length, 1)
+                  hold
+                    save second, get(nodes, 1)
+                    sift second
+                      case text
+                        back true
+                      miss
+                        save nothing, 0
+              miss
+                save nothing, 0
+      back false
+
+# Is this file a ROLE FILE (`role <name>` with `take` globs), as opposed to Term code? By content, never by name: a
+# top-level `role` with a `take` among its children past the first argument. A manifest writes `role ./base/role` as
+# a field, and that sits under `deck`, not at the top level.
+task is-role-file-text
+  take text, like text
+  take file, like text
+  like boolean
+
+  sift parsed-nodes(text, file)
+    case none
+      back false
+    case some
+      link top
+      walk top
+        take one
+        fork test, is-head(one, <role>)
+          hold
+            sift one
+              case group
+                save at, 0
+                walk nodes
+                  take child
+                  fork test, and(is-above(at, 1), is-head(child, <take>))
+                    hold
+                      back true
+                  save at, add(at, 1)
+              miss
+                save nothing, 0
+      back false

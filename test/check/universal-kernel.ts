@@ -224,7 +224,7 @@ rule injective
   head b
 ${FUNCTIONS}  seat x, like a
   seat y, like a
-  haveg-undoes-f
+  have g-undoes-f
     seat u, like a
     is-equal g(f(u)), u
   have same-image, is-equal f(x), f(y)
@@ -241,7 +241,7 @@ rule not-injective
   head b
 ${FUNCTIONS}  seat x, like a
   seat y, like a
-  havef-undoes-g
+  have f-undoes-g
     seat v, like b
     is-equal f(g(v)), v
   have same-image, is-equal f(x), f(y)

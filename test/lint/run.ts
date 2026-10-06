@@ -710,7 +710,7 @@ function main(): void {
     const passed = findings(`${STDLIB}\n${RAISER}\ntask use\n  like text\n  send back\n    call find\n      text <a>\n      halt kink\n`)
     ok('L041 leaves a call with halt kink alone', passed.filter(f => f.code === 'L041').length === 0, JSON.stringify(passed.filter(f => f.code === 'L041')))
 
-    const guarded = findings(`${STDLIB}\n${RAISER}\ntask use\n  like text\n  note unsafe\n    send back\n      call find\n        text <a>\n  halt take\n    take e\n    send back, read e/note\n`)
+    const guarded = findings(`${STDLIB}\n${RAISER}\ntask use\n  like text\n  fork\n    mark unsafe\n    send back\n      call find\n        text <a>\n  halt take\n    take e\n    send back, read e/note\n`)
     ok('L041 leaves a guarded call alone', guarded.filter(f => f.code === 'L041').length === 0, JSON.stringify(guarded.filter(f => f.code === 'L041')))
 
     const shim = findings(`${STDLIB}\ndock load\n  load <node:fs/promises>, name fs\n\ntask read-file\n  take path, like text\n  like text\n  send back\n    call fs/read-file\n      read path\n\ntask use\n  like text\n  send back\n    call read-file\n      text <a>\n`)

@@ -1,0 +1,464 @@
+# `term roll --diff <before>`: what a change did to what the project's tasks can DO. For every task, the native modules
+# it can reach and the exceptions it can raise, before and after, and for the build the exceptions and routes that came
+# or went. A reviewer of code they did not write reads this before the code: a task that gained `node:child_process`
+# is the line to look at.
+#
+# Ported from deck/call/code/roll-diff.ts (self-hosting, 2026-10-06), which stays as the face: it reads a roll from a
+# file or a git ref, adds each task's reach, and hands the two rolls here as `roll-lists`. A roll entry's `reach` is
+# `none` where the entry carries no list, which is how a roll written before tasks carried their reach is told apart.
+# The result is the shape the face's callers print, field for field and in the same order, so it goes back unchanged.
+
+load @term/base/list
+  find list
+  find sort
+  find contains
+
+load @term/base/maybe
+  find maybe
+
+load @term/make/check/eliminate
+  find utf16-order
+
+# one entry of a roll, with what the diff reads of it
+form roll-entry
+  link host, like text
+  link name, like text
+  link site, like text
+  link reach, like maybe, like list, like text
+  link halt, like list, like text
+  link async, like boolean
+
+# the three kinds of a roll the diff compares
+form roll-lists
+  link task, like list, like roll-entry
+  link exception, like list, like roll-entry
+  link dock, like list, like roll-entry
+
+form delta
+  link added, like list, like text
+  link removed, like list, like text
+
+form added-task
+  link name, like text
+  link site, like text
+  link reach, like list, like text
+  link halt, like list, like text
+
+form removed-task
+  link name, like text
+  link site, like text
+
+form async-change
+  link before, like boolean
+  link after, like boolean
+
+form changed-task
+  link name, like text
+  link site, like text
+  link reach, like delta
+  link halt, like delta
+  # present only when the task became async, or stopped being
+  link async
+    like async-change
+    need false
+
+form task-diff
+  link added, like list, like added-task
+  link removed, like list, like removed-task
+  link changed, like list, like changed-task
+
+form changed-route
+  link name, like text
+  link halt, like delta
+
+form route-diff
+  link added, like list, like text
+  link removed, like list, like text
+  link changed, like list, like changed-route
+
+form deck-tasks
+  link added, like number
+  link removed, like number
+  link changed, like number
+
+form deck-exceptions
+  link added, like number
+  link removed, like number
+
+form deck-diff
+  link host, like text
+  link tasks, like deck-tasks
+  link exceptions, like deck-exceptions
+
+form roll-diff
+  link before, like text
+  # the deck whose tasks are compared one by one: the project's own
+  link host, like text
+  link tasks, like task-diff
+  link exceptions, like delta
+  link routes, like route-diff
+  # every other deck of the build whose part changed, counted
+  link decks, like list, like deck-diff
+  # false when the earlier roll was written before tasks carried their reach, so only raises could be compared
+  link reach, like boolean
+
+# the entries of one kind by host and name, several of one name (an overload, a method on two forms) read as one
+task by-name
+  take entries, like list, like roll-entry
+  like hash, like text, like list, like roll-entry
+  mark private
+
+  save out, make hash
+  walk entries
+    take entry
+    save host, entry/host
+    save name, entry/name
+    save key, <{host} {name}>
+    fork test, out/has(key)
+      hold
+        save prior, out/get(key)
+        push(prior, entry)
+      miss
+        save fresh, make list
+        push(fresh, entry)
+        save out/{key}, fresh
+  back out
+
+# every value of one field over the entries, each once, in JavaScript's order of texts. An entry without a reach list
+# contributes nothing
+task union
+  take entries, like list, like roll-entry
+  take of-reach, like boolean
+  like list, like text
+  mark private
+
+  save seen, make hash
+  save out, make list
+  walk entries
+    take entry
+    save values, entry/halt
+    fork test, of-reach
+      hold
+        save values, make list
+        sift entry/reach
+          case some
+            link listed
+            save values, listed
+          case none
+            save nothing, 0
+    walk values
+      take one
+      fork test, not(seen/has(one))
+        hold
+          save seen/{one}, true
+          push(out, one)
+  back sort(out, utf16-order)
+
+task delta-of
+  take before, like list, like text
+  take after, like list, like text
+  like delta
+  mark private
+
+  save added, make list
+  walk after
+    take one
+    fork test, not(contains(before, one))
+      hold
+        push(added, one)
+  save removed, make list
+  walk before
+    take one
+    fork test, not(contains(after, one))
+      hold
+        push(removed, one)
+  back
+    make delta
+      bind added, added
+      bind removed, removed
+
+task is-empty-delta
+  take change, like delta
+  like boolean
+  mark private
+
+  back and(is-equal(change/added/length, 0), is-equal(change/removed/length, 0))
+
+task of-host
+  take entries, like list, like roll-entry
+  take host, like text
+  like list, like roll-entry
+  mark private
+
+  save out, make list
+  walk entries
+    take entry
+    fork test, is-equal(entry/host, host)
+      hold
+        push(out, entry)
+  back out
+
+task any-async
+  take entries, like list, like roll-entry
+  like boolean
+  mark private
+
+  walk entries
+    take entry
+    fork test, entry/async
+      hold
+        back true
+  back false
+
+# `host/name` of each exception, each once, in JavaScript's order of texts
+task exception-names
+  take entries, like list, like roll-entry
+  like list, like text
+  mark private
+
+  save seen, make hash
+  save out, make list
+  walk entries
+    take entry
+    save host, entry/host
+    save name, entry/name
+    save key, <{host}/{name}>
+    fork test, not(seen/has(key))
+      hold
+        save seen/{key}, true
+        push(out, key)
+  back sort(out, utf16-order)
+
+task first-name
+  take entries, like list, like roll-entry
+  like text
+  mark private
+
+  walk entries
+    take entry
+    back entry/name
+  back <>
+
+task first-site
+  take entries, like list, like roll-entry
+  like text
+  mark private
+
+  walk entries
+    take entry
+    back entry/site
+  back <>
+
+task diff-rolls
+  take before-name, like text
+  take before, like roll-lists
+  take after, like roll-lists
+  take host, like text
+  like roll-diff
+
+  save own-before, of-host(before/task, host)
+  # the reach is compared only when the earlier roll recorded it: a roll written before tasks carried it would read as
+  # every task gaining everything
+  save reach, is-equal(own-before/length, 0)
+  walk own-before
+    take entry
+    sift entry/reach
+      case some
+        link listed
+        save reach, true
+      case none
+        save nothing, 0
+  save was, by-name(own-before)
+  save now, by-name(of-host(after/task, host))
+  save added-tasks, make list
+  save removed-tasks, make list
+  save changed-tasks, make list
+
+  walk now/keys()
+    take key
+    save entries, now/get(key)
+    save name, first-name(entries)
+    save site, first-site(entries)
+    fork test, not(was/has(key))
+      hold
+        save made
+          make added-task
+            bind name, name
+            bind site, site
+            bind reach, union(entries, true)
+            bind halt, union(entries, false)
+        push(added-tasks, made)
+        turn next
+    save old, was/get(key)
+    save reach-delta
+      make delta
+        bind added, make list
+        bind removed, make list
+    fork test, reach
+      hold
+        save reach-delta, delta-of(union(old, true), union(entries, true))
+    save halt-delta, delta-of(union(old, false), union(entries, false))
+    save async-before, any-async(old)
+    save async-after, any-async(entries)
+    save async-moved, is-unequal(async-before, async-after)
+    fork test, or(or(not(is-empty-delta(reach-delta)), not(is-empty-delta(halt-delta))), async-moved)
+      hold
+        fork test, async-moved
+          hold
+            save moved
+              make async-change
+                bind before, async-before
+                bind after, async-after
+            save made
+              make changed-task
+                bind name, name
+                bind site, site
+                bind reach, reach-delta
+                bind halt, halt-delta
+                bind async, moved
+            push(changed-tasks, made)
+          miss
+            save made
+              make changed-task
+                bind name, name
+                bind site, site
+                bind reach, reach-delta
+                bind halt, halt-delta
+            push(changed-tasks, made)
+
+  walk was/keys()
+    take key
+    fork test, not(now/has(key))
+      hold
+        save entries, was/get(key)
+        save made
+          make removed-task
+            bind name, first-name(entries)
+            bind site, first-site(entries)
+        push(removed-tasks, made)
+
+  save routes-before, by-name(of-host(before/dock, host))
+  save routes-after, by-name(of-host(after/dock, host))
+
+  # every other deck, counted: what entered or left the build, and how many of its tasks changed what they raise
+  save hosts-seen, make hash
+  save hosts, make list
+  save every, make list
+  walk before/task
+    take entry
+    push(every, entry)
+  walk after/task
+    take entry
+    push(every, entry)
+  walk before/exception
+    take entry
+    push(every, entry)
+  walk after/exception
+    take entry
+    push(every, entry)
+  walk every
+    take entry
+    save other, entry/host
+    fork test, and(is-unequal(other, host), not(hosts-seen/has(other)))
+      hold
+        save hosts-seen/{other}, true
+        push(hosts, other)
+  save decks, make list
+  walk sort(hosts, utf16-order)
+    take other
+    save tasks-before, by-name(of-host(before/task, other))
+    save tasks-after, by-name(of-host(after/task, other))
+    save changed, 0
+    save added-count, 0
+    walk tasks-after/keys()
+      take key
+      fork test, tasks-before/has(key)
+        hold
+          save halt-change, delta-of(union(tasks-before/get(key), false), union(tasks-after/get(key), false))
+          fork test, not(is-empty-delta(halt-change))
+            hold
+              save changed, add(changed, 1)
+        miss
+          save added-count, add(added-count, 1)
+    save removed-count, 0
+    walk tasks-before/keys()
+      take key
+      fork test, not(tasks-after/has(key))
+        hold
+          save removed-count, add(removed-count, 1)
+    save exceptions, delta-of(exception-names(of-host(before/exception, other)), exception-names(of-host(after/exception, other)))
+    fork test, or(or(or(is-above(added-count, 0), is-above(removed-count, 0)), is-above(changed, 0)), not(is-empty-delta(exceptions)))
+      hold
+        save counted
+          make deck-diff
+            bind host, other
+            bind tasks
+              make deck-tasks
+                bind added, added-count
+                bind removed, removed-count
+                bind changed, changed
+            bind exceptions
+              make deck-exceptions
+                bind added, exceptions/added/length
+                bind removed, exceptions/removed/length
+        push(decks, counted)
+
+  save routes-added, make list
+  save routes-changed, make list
+  walk routes-after/keys()
+    take key
+    save entries, routes-after/get(key)
+    fork test, routes-before/has(key)
+      hold
+        save halt-change, delta-of(union(routes-before/get(key), false), union(entries, false))
+        fork test, not(is-empty-delta(halt-change))
+          hold
+            save made
+              make changed-route
+                bind name, first-name(entries)
+                bind halt, halt-change
+            push(routes-changed, made)
+      miss
+        push(routes-added, first-name(entries))
+  save routes-removed, make list
+  walk routes-before/keys()
+    take key
+    fork test, not(routes-after/has(key))
+      hold
+        push(routes-removed, first-name(routes-before/get(key)))
+
+  back
+    make roll-diff
+      bind before, before-name
+      bind host, host
+      bind tasks
+        make task-diff
+          bind added, added-tasks
+          bind removed, removed-tasks
+          bind changed, changed-tasks
+      bind exceptions, delta-of(exception-names(of-host(before/exception, host)), exception-names(of-host(after/exception, host)))
+      bind routes
+        make route-diff
+          bind added, routes-added
+          bind removed, routes-removed
+          bind changed, routes-changed
+      bind decks, decks
+      bind reach, reach
+
+# how many tasks gained a native module, which is what `--strict` fails on
+task reach-gains
+  take diff, like roll-diff
+  like number
+
+  save count, 0
+  walk diff/tasks/added
+    take one
+    fork test, is-above(one/reach/length, 0)
+      hold
+        save count, add(count, 1)
+  walk diff/tasks/changed
+    take one
+    fork test, is-above(one/reach/added/length, 0)
+      hold
+        save count, add(count, 1)
+  back count

@@ -4379,11 +4379,11 @@ function ruleOf(bridge: Bridge, value: Form): Statement[] {
     return [claimed]
   }
 
-  // BASELINE-TEMP refuseMarkBinders(bridge, value)
+  refuseMarkBinders(bridge, value)
 
   // `seat x, like natural-number` carries the n >= 0 bound the prover needs, and the refinement is read from
   // the type's NAME: `typeOf` maps it to the plain number type and the name is gone by then.
-  const params = formsAt(value, 'mark').map(seat => {
+  const params = formsAt(value, 'seat').map(seat => {
     const like = firstAt(seat, 'like')
     // `seat s, like stack / head nat` quantifies over a stack OF NATS, and the argument is a sibling of the
     // `like`, the same way a task parameter's is
@@ -4398,16 +4398,16 @@ function ruleOf(bridge: Bridge, value: Form): Statement[] {
   })
 
   const hypotheses = formsAt(value, 'have').map((have, at) => {
-    // BASELINE-TEMP refuseMarkBinders(bridge, have)
+    refuseMarkBinders(bridge, have)
 
     return {
       name: wordAt(have, 'name') ?? `claim_${at}`,
       expr: expressionOf(bridge, firstAt(have, 'seed')),
       // `seat` inside a `have`: the hypothesis holds FOR EVERY value of these, so it is not a guard on the values in
       // hand but a statement the prover instantiates (check/holds.ts universalFacts)
-      binders: formsAt(have, 'mark').map(seat => wordAt(seat, 'name') ?? ''),
+      binders: formsAt(have, 'seat').map(seat => wordAt(seat, 'name') ?? ''),
       // and each one's type, read the way a theorem's own `seat` is, so the kernel instantiates it only at terms of it
-      types: formsAt(have, 'mark').map(seat => {
+      types: formsAt(have, 'seat').map(seat => {
         const type = withHeadArgs(bridge, typeOf(bridge, firstAt(seat, 'like')), seat)
 
         return type ? { type } : {}

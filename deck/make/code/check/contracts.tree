@@ -1,0 +1,2297 @@
+# Contracts, lowered into `hold`s. A task's `have` / `must` / `down` and a walk's `must` / `down` are not code that
+# runs: they are claims about the code, and every one of them becomes an ordinary `hold` in a COPY of the program that
+# only the checker reads. The provers then discharge them exactly as they discharge a hold the programmer wrote, under
+# the same path facts (check/purity.tree). Nothing here reaches a backend, and the real program keeps its kernel
+# verification and its transparent definitions, which a body full of extra holds would lose.
+#
+# What each line becomes, in the copy:
+#
+#   task  have P      the body runs under `if P`, so every fact in it may assume P,
+#                     and at every call to the task, a hold of P with the arguments in place of the parameters ('need')
+#   task  must Q      at every `send back v`: `host back = v`, a hold of Q ('must'), `send back back`
+#   task  down m      at every call the task makes to itself: a hold that m, with the arguments in place, is below
+#                     m on entry, and that m is a natural number on entry ('down')
+#   walk  must I      a hold of I before the walk ('keep-entry'); the turn runs under `if I`; a hold of I at the
+#                     end of the turn, before every `turn next` and before every `halt` ('keep-turn'); and what
+#                     follows the walk runs under `if I`, and under the negated condition too when nothing breaks out
+#   walk  down m      at the top of a turn, a hold that m is a natural number, and its value kept; at the end of the
+#                     turn and before every `turn next`, a hold that m is below the kept value ('down')
+#
+# See note/term/proof-by-default/vocabulary.md for the words and readme.md for why it is a copy.
+#
+# Ported from check/contract.ts (self-hosting, 2026-10-06), which stays as the face: it reads the width switch
+# (check/width-range.ts) and hands it in, and it says whether a node carries a contract at all, since an absent list and
+# an empty one read alike here. The original walked nodes by their keys. The port walks them by their forms, in the
+# order the keys came: forward where the original visited, and backward where it popped a stack (`calls-in`). A task
+# is told apart by its POSITION in the copy, where the original compared objects, and what each task lifts is kept by
+# that position. The copy of a node with a field replaced is check/unfolding.tree's `shallow-copy`, and a whole copy is
+# `deep-copy` (`structuredClone` on TypeScript, the value itself natively, where a value is already a copy).
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/float
+  find to-number
+
+load @term/base/text/number
+  find host-parse-float
+
+load ../compile/node
+  find expression
+  find statement
+  find type
+  find value-branch
+  find field-value
+  find map-entry
+  find template-part
+  find statement-branch
+  find match-case
+  find catch-clause
+  find hold-origin
+  find expression-type
+  find expression-span
+  find with-type
+
+load ../parser/diagnostic
+  find span
+
+load ./purity
+  find subtree
+  find read-names
+
+load ./unfolding
+  find shallow-copy
+
+bind shallow-copy-statement
+  take value, like statement
+  like statement
+  case node
+    text <(\{ ...$value \})>
+  case browser
+    text <(\{ ...$value \})>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+bind shallow-copy-type
+  take value, like type
+  like type
+  case node
+    text <(\{ ...$value \})>
+  case browser
+    text <(\{ ...$value \})>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+bind shallow-copy-case
+  take value, like match-case
+  like match-case
+  case node
+    text <(\{ ...$value \})>
+  case browser
+    text <(\{ ...$value \})>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+# a copy sharing nothing with the node it was made from, as `structuredClone` made one
+bind deep-copy
+  take value, like statement
+  like statement
+  case node
+    text <structuredClone($value)>
+  case browser
+    text <structuredClone($value)>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+bind deep-copy-block
+  take value, like list, like statement
+  like list, like statement
+  case node
+    text <structuredClone($value)>
+  case browser
+    text <structuredClone($value)>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+# ---- the expressions this pass makes ----
+
+task variable-of
+  take name, like text
+  take at, like span
+  like expression
+  mark private
+
+  back
+    make expression/variable
+      bind name, name
+      bind span, at
+
+task integer-of
+  take value, like number
+  take at, like span
+  like expression
+  mark private
+
+  back
+    make expression/integer
+      bind value, value
+      bind span, at
+
+task hold-of
+  take claim, like expression
+  take origin, like hold-origin
+  take at, like span
+  like statement
+  mark private
+
+  back
+    make statement/hold
+      bind expr, claim
+      bind span, at
+      bind origin, make(some, origin)
+
+task not-of
+  take operand, like expression
+  take at, like span
+  like expression
+  mark private
+
+  save op, make not
+  back
+    make unary
+      bind op, op
+      bind operand, operand
+      bind span, at
+
+task binary-of
+  take op, like binary-op
+  take left, like expression
+  take right, like expression
+  take at, like span
+  like expression
+  mark private
+
+  back
+    make binary
+      bind op, op
+      bind left, left
+      bind right, right
+      bind span, at
+
+task below-of
+  take left, like expression
+  take right, like expression
+  take at, like span
+  like expression
+  mark private
+
+  save op, make below
+  back binary-of(op, left, right, at)
+
+task at-least-zero
+  take value, like expression
+  take at, like span
+  like expression
+  mark private
+
+  save op, make at-least
+  back binary-of(op, value, integer-of(0, at), at)
+
+task or-of
+  take left, like expression
+  take right, like expression
+  take at, like span
+  like expression
+  mark private
+
+  save op, make either
+  back binary-of(op, left, right, at)
+
+task and-of
+  take left, like expression
+  take right, like expression
+  take at, like span
+  like expression
+  mark private
+
+  save op, make both
+  back binary-of(op, left, right, at)
+
+task let-of
+  take name, like text
+  take init, like expression
+  take at, like span
+  like statement
+  mark private
+
+  back
+    make statement/let
+      bind name, name
+      bind init, init
+      bind mutable, false
+      bind span, at
+
+# run `body` under each condition in turn, as nested branches with no else: what the checker may assume there
+task under
+  take conditions, like list, like expression
+  take body, like list, like statement
+  take at, like span
+  like list, like statement
+
+  save out, body
+  save i, subtract(conditions/length, 1)
+  walk test
+    hook test, is-minimum(i, 0)
+    hook hold
+      save branches, make list
+      save branch
+        make statement-branch
+          bind cond, get(conditions, i)
+          bind body, out
+      push(branches, branch)
+      save wrapped
+        make statement/if
+          bind branches, branches
+          bind span, at
+      save out, make list
+      push(out, wrapped)
+      save i, subtract(i, 1)
+  back out
+
+task joined
+  take a, like list, like expression
+  take b, like list, like expression
+  like list, like expression
+  mark private
+
+  save out, make list
+  walk a
+    take one
+    push(out, one)
+  walk b
+    take one
+    push(out, one)
+  back out
+
+task with-one
+  take a, like list, like expression
+  take one, like expression
+  like list, like expression
+  mark private
+
+  save out, make list
+  walk a
+    take each
+    push(out, each)
+  push(out, one)
+  back out
+
+task append-all
+  take out, like list, like statement
+  take more, like list, like statement
+  like void
+  mark private
+
+  walk more
+    take one
+    push(out, one)
+
+# ---- names ----
+
+task names-read
+  take e, like expression
+  like list, like text
+  mark private
+
+  save parts, make list
+  save part
+    make in-expression
+      bind node, e
+  push(parts, part)
+  back read-names(parts)
+
+task has-name
+  take names, like list, like text
+  take wanted, like text
+  like boolean
+  mark private
+
+  walk names
+    take one
+    fork test, is-equal(one, wanted)
+      hold
+        back true
+  back false
+
+# ---- substitution ----
+
+# replace every read of a name by an expression, without entering a closure (whose parameters may shadow it). Every
+# node on the way is a copy, as the original's walk made one
+task substitute
+  take e, like expression
+  take bound, like hash, like text, like expression
+  like expression
+
+  sift e
+    case variable
+      fork test, bound/has(name)
+        hold
+          back bound/get(name)
+      back shallow-copy(e)
+    case closure
+      back e
+    case binary
+      save copy, shallow-copy(e)
+      sift copy
+        case binary
+          save copy/left, substitute(left, bound)
+          save copy/right, substitute(right, bound)
+        miss
+          save nothing, 0
+      back copy
+    case unary
+      save copy, shallow-copy(e)
+      sift copy
+        case unary
+          save copy/operand, substitute(operand, bound)
+        miss
+          save nothing, 0
+      back copy
+    case call
+      save copy, shallow-copy(e)
+      sift copy
+        case call
+          save new-args, make list
+          walk args
+            take arg
+            push(new-args, substitute(arg, bound))
+          save copy/callee, substitute(callee, bound)
+          save copy/args, new-args
+          sift into
+            case some
+              link made-into
+              save walked-into, substitute-type(made-into, bound)
+              save copy/into, make(some, walked-into)
+            case none
+              save nothing, 0
+        miss
+          save nothing, 0
+      back copy
+    case array
+      save copy, shallow-copy(e)
+      sift copy
+        case array
+          save new-items, make list
+          walk items
+            take item
+            push(new-items, substitute(item, bound))
+          save copy/items, new-items
+        miss
+          save nothing, 0
+      back copy
+    case map
+      save copy, shallow-copy(e)
+      sift copy
+        case map
+          save new-entries, make list
+          walk entries
+            take entry
+            save made
+              make map-entry
+                bind key, substitute(entry/key, bound)
+                bind value, substitute(entry/value, bound)
+            push(new-entries, made)
+          save copy/entries, new-entries
+        miss
+          save nothing, 0
+      back copy
+    case record
+      save copy, shallow-copy(e)
+      sift copy
+        case record
+          save new-fields, make list
+          walk fields
+            take field
+            save made
+              make field-value
+                bind name, field/name
+                bind value, substitute(field/value, bound)
+            push(new-fields, made)
+          save copy/fields, new-fields
+          save new-positional, make list
+          walk positional
+            take one
+            push(new-positional, substitute(one, bound))
+          fork test, is-above(new-positional/length, 0)
+            hold
+              save copy/positional, new-positional
+        miss
+          save nothing, 0
+      back copy
+    case member
+      save copy, shallow-copy(e)
+      save folded, false
+      save found, e
+      sift copy
+        case member
+          save walked-target, substitute(target, bound)
+          save copy/target, walked-target
+          sift index
+            case some
+              link at
+              save walked-index, substitute(at, bound)
+              save copy/index, make(some, walked-index)
+            case none
+              # a field read of a record built in place is the value bound to that field: a callee's `have` on
+              # `color/red`, handed `make rgb-color / bind red, code 255`, owes `255 >= 0`, which the provers read
+              sift walked-target
+                case record
+                  link record-name
+                  link record-fields
+                  walk record-fields
+                    take field
+                    fork test, and(not(folded), is-equal(field/name, name))
+                      hold
+                        save folded, true
+                        save found, field/value
+                miss
+                  save nothing, 0
+        miss
+          save nothing, 0
+      fork test, folded
+        hold
+          back found
+      back copy
+    case await
+      save copy, shallow-copy(e)
+      sift copy
+        case await
+          save copy/expr, substitute(expr, bound)
+        miss
+          save nothing, 0
+      back copy
+    case conditional
+      save copy, shallow-copy(e)
+      sift copy
+        case conditional
+          save new-branches, make list
+          walk branches
+            take branch
+            save made
+              make value-branch
+                bind cond, substitute(branch/cond, bound)
+                bind value, substitute(branch/value, bound)
+            push(new-branches, made)
+          save copy/branches, new-branches
+          sift otherwise
+            case some
+              link last
+              save walked-last, substitute(last, bound)
+              save copy/otherwise, make(some, walked-last)
+            case none
+              save nothing, 0
+        miss
+          save nothing, 0
+      back copy
+    case template
+      save copy, shallow-copy(e)
+      sift copy
+        case template
+          save new-parts, make list
+          walk parts
+            take part
+            push(new-parts, substitute-part(part, bound))
+          save copy/parts, new-parts
+        miss
+          save nothing, 0
+      back copy
+    miss
+      back shallow-copy(e)
+
+task substitute-part
+  take part, like template-part
+  take bound, like hash, like text, like expression
+  like template-part
+  mark private
+
+  sift part
+    case value
+      link inner
+      back value-part(substitute(inner, bound))
+    case chunk
+      link text-value
+      back chunk-part(text-value)
+
+load ../compile/node
+  find value-part
+  find chunk-part
+  find binary-op
+
+# a call's `into` type, walked as the original walked every key but `type`: a value index is an expression
+task substitute-type
+  take t, like type
+  take bound, like hash, like text, like expression
+  like type
+  mark private
+
+  save copy, shallow-copy-type(t)
+  sift copy
+    case named
+      save new-args, make list
+      walk args
+        take one
+        push(new-args, substitute-type(one, bound))
+      fork test, is-above(new-args/length, 0)
+        hold
+          save copy/args, new-args
+      save new-values, make list
+      walk value-args
+        take one
+        push(new-values, substitute(one, bound))
+      fork test, is-above(new-values/length, 0)
+        hold
+          save copy/value-args, new-values
+    case array
+      save copy/element, substitute-type(element, bound)
+    case map
+      save copy/key, substitute-type(key, bound)
+      save copy/value, substitute-type(value, bound)
+    case function
+      save new-params, make list
+      walk params
+        take one
+        push(new-params, substitute-type(one, bound))
+      save copy/params, new-params
+      save copy/result, substitute-type(result, bound)
+    miss
+      save nothing, 0
+  back copy
+
+# ---- every call an expression makes ----
+
+# without entering a closure (a closure's calls happen when it runs, not here), in the order the original's stack
+# popped them: a node before what it holds, what it holds last key first, and a list last item first
+task calls-in
+  take expressions, like list, like expression
+  like list, like expression
+  mark private
+
+  save out, make list
+  save i, subtract(expressions/length, 1)
+  walk test
+    hook test, is-minimum(i, 0)
+    hook hold
+      calls-walk(get(expressions, i), out)
+      save i, subtract(i, 1)
+  back out
+
+task calls-walk-list
+  take values, like list, like expression
+  take out, like list, like expression
+  like void
+  mark private
+
+  save i, subtract(values/length, 1)
+  walk test
+    hook test, is-minimum(i, 0)
+    hook hold
+      calls-walk(get(values, i), out)
+      save i, subtract(i, 1)
+
+task calls-walk
+  take node, like expression
+  take out, like list, like expression
+  like void
+  mark private
+
+  sift node
+    case closure
+      save nothing, 0
+    case call
+      push(out, node)
+      sift into
+        case some
+          link called-into
+          calls-walk-type(called-into, out)
+        case none
+          save nothing, 0
+      calls-walk-list(args, out)
+      calls-walk(callee, out)
+    case binary
+      calls-walk(right, out)
+      calls-walk(left, out)
+    case unary
+      calls-walk(operand, out)
+    case member
+      sift index
+        case some
+          link at
+          calls-walk(at, out)
+        case none
+          save nothing, 0
+      calls-walk(target, out)
+    case record
+      save given-positional, make list
+      walk positional
+        take one
+        push(given-positional, one)
+      calls-walk-list(given-positional, out)
+      save i, subtract(fields/length, 1)
+      walk test
+        hook test, is-minimum(i, 0)
+        hook hold
+          save field, get(fields, i)
+          calls-walk(field/value, out)
+          save i, subtract(i, 1)
+    case map
+      save i, subtract(entries/length, 1)
+      walk test
+        hook test, is-minimum(i, 0)
+        hook hold
+          save entry, get(entries, i)
+          calls-walk(entry/value, out)
+          calls-walk(entry/key, out)
+          save i, subtract(i, 1)
+    case array
+      calls-walk-list(items, out)
+    case conditional
+      sift otherwise
+        case some
+          link last
+          calls-walk(last, out)
+        case none
+          save nothing, 0
+      save i, subtract(branches/length, 1)
+      walk test
+        hook test, is-minimum(i, 0)
+        hook hold
+          save branch, get(branches, i)
+          calls-walk(branch/value, out)
+          calls-walk(branch/cond, out)
+          save i, subtract(i, 1)
+    case await
+      calls-walk(expr, out)
+    case template
+      save i, subtract(parts/length, 1)
+      walk test
+        hook test, is-minimum(i, 0)
+        hook hold
+          sift get(parts, i)
+            case value
+              link inner
+              calls-walk(inner, out)
+            case chunk
+              save nothing, 0
+          save i, subtract(i, 1)
+    miss
+      save nothing, 0
+
+task calls-walk-type
+  take t, like type
+  take out, like list, like expression
+  like void
+  mark private
+
+  sift t
+    case named
+      save values, make list
+      walk value-args
+        take one
+        push(values, one)
+      calls-walk-list(values, out)
+      save applied, make list
+      walk args
+        take one
+        push(applied, one)
+      save i, subtract(applied/length, 1)
+      walk test
+        hook test, is-minimum(i, 0)
+        hook hold
+          calls-walk-type(get(applied, i), out)
+          save i, subtract(i, 1)
+    case array
+      calls-walk-type(element, out)
+    case map
+      calls-walk-type(value, out)
+      calls-walk-type(key, out)
+    case function
+      calls-walk-type(result, out)
+      save i, subtract(params/length, 1)
+      walk test
+        hook test, is-minimum(i, 0)
+        hook hold
+          calls-walk-type(get(params, i), out)
+          save i, subtract(i, 1)
+    miss
+      save nothing, 0
+
+# ---- the lowering's state ----
+
+# what an accessor lifts onto its callers (lifted-of), one entry per obligation
+form lifted-one
+  link expr, like expression
+  link origin, like hold-origin
+
+# the program's tasks, and what each one lifts, made once per lowering and shared by every task's context: a task is
+# its position in the copy
+form contract-tasks
+  # one record every task's lowering writes through: the fresh names count on across the whole program, as the
+  # original's one counter did, and what an accessor lifts is worked out once
+  mark shared
+  link program, like list, like statement
+  link functions, like hash, like text, like number
+  link lifted, like hash, like number, like list, like lifted-one
+  # a counter for the names this pass makes up, which no source can spell (a `#` is not a name character)
+  link fresh, like number
+  # the width switch (check/width-range.ts), read by the face
+  link widths, like boolean
+
+form contract-context
+  link tasks, like contract-tasks
+  # the task whose body is being lowered
+  link current, like number
+  # the value of the task's `down` on entry, when it has one
+  link down-at-entry, like maybe, like text
+  # write tier-0 obligations for this task (only for the tasks of the file being compiled)
+  link tier0, like boolean
+
+task fresh-name
+  take tasks, like contract-tasks
+  take stem, like text
+  like text
+  mark private
+
+  save name, <{stem}#{tasks/fresh}>
+  save tasks/fresh, add(tasks/fresh, 1)
+  back name
+
+task function-at
+  take tasks, like contract-tasks
+  take at, like number
+  like statement
+  mark private
+
+  back get(tasks/program, at)
+
+# the position of the task a name calls, or -1
+task function-named
+  take tasks, like contract-tasks
+  take name, like text
+  like number
+  mark private
+
+  fork test, tasks/functions/has(name)
+    hold
+      back tasks/functions/get(name)
+  back -1
+
+# the arguments in place of the parameters, a parameter left without one left out
+task bound-of
+  take callee, like statement
+  take args, like list, like expression
+  like hash, like text, like expression
+  mark private
+
+  save out, make hash
+  sift callee
+    case function
+      save at, 0
+      walk params
+        take param
+        fork test, is-below(at, args/length)
+          hold
+            save out/{param/name}, get(args, at)
+        save at, add(at, 1)
+    miss
+      save nothing, 0
+  back out
+
+# ---- widths ----
+
+form width-bound
+  link value, like number
+  link digits, like text
+  # inside 2^53, so the provers can read it as a literal
+  link exact, like boolean
+
+form width-range
+  link low, like width-bound
+  link high, like width-bound
+
+task width-bound-of
+  take value, like number
+  take digits, like text
+  take exact, like boolean
+  like width-bound
+  mark private
+
+  back
+    make width-bound
+      bind value, value
+      bind digits, digits
+      bind exact, exact
+
+task range-of
+  take low, like width-bound
+  take high, like width-bound
+  like maybe, like width-range
+  mark private
+
+  save made
+    make width-range
+      bind low, low
+      bind high, high
+  back make(some, made)
+
+# the range of each width alias of `number` (check/width-range.ts WIDTHS). `u64` stops at the 64-bit signed limit, the
+# range a `number` has, and a bound past 2^53 is never owed, so its value is never read
+task width-range-of
+  take width, like text
+  like maybe, like width-range
+  mark private
+
+  fork test, is-equal(width, <u8>)
+    hold
+      back range-of(width-bound-of(0, <0>, true), width-bound-of(255, <255>, true))
+  fork test, is-equal(width, <u16>)
+    hold
+      back range-of(width-bound-of(0, <0>, true), width-bound-of(65535, <65535>, true))
+  fork test, is-equal(width, <u32>)
+    hold
+      back range-of(width-bound-of(0, <0>, true), width-bound-of(4294967295, <4294967295>, true))
+  fork test, is-equal(width, <u64>)
+    hold
+      back range-of(width-bound-of(0, <0>, true), width-bound-of(0, <9223372036854775807>, false))
+  fork test, is-equal(width, <i8>)
+    hold
+      back range-of(width-bound-of(-128, <-128>, true), width-bound-of(127, <127>, true))
+  fork test, is-equal(width, <i16>)
+    hold
+      back range-of(width-bound-of(-32768, <-32768>, true), width-bound-of(32767, <32767>, true))
+  fork test, is-equal(width, <i32>)
+    hold
+      back range-of(width-bound-of(-2147483648, <-2147483648>, true), width-bound-of(2147483647, <2147483647>, true))
+  fork test, is-equal(width, <i64>)
+    hold
+      back range-of(width-bound-of(0, <-9223372036854775808>, false), width-bound-of(0, <9223372036854775807>, false))
+  back make none
+
+task bound-literal
+  take bound, like width-bound
+  take at, like span
+  like expression
+  mark private
+
+  back
+    make expression/integer
+      bind value, bound/value
+      bind digits, bound/digits
+      bind span, at
+
+# `low <= value <= high` for a width, owed where its guards hold, or none for a name that is no width
+task width-hold
+  take value, like expression
+  take width, like text
+  take guards, like list, like expression
+  take at, like span
+  like maybe, like statement
+  mark private
+
+  sift width-range-of(width)
+    case none
+      back make none
+    case some
+      link range
+      save parts, make list
+      fork test, range/low/exact
+        hold
+          save at-least, make at-least
+          push(parts, binary-of(at-least, value, bound-literal(range/low, at), at))
+      fork test, range/high/exact
+        hold
+          save at-most, make at-most
+          push(parts, binary-of(at-most, value, bound-literal(range/high, at), at))
+      fork test, is-equal(parts/length, 0)
+        hold
+          back make none
+      save origin, make width
+      save made, hold-of(guarded(conjunction(parts, at), guards, at), origin, at)
+      back make(some, made)
+
+# the guards joined left to right, as `reduce` joined them
+task conjunction
+  take parts, like list, like expression
+  take at, like span
+  like expression
+  mark private
+
+  save all, get(parts, 0)
+  save i, 1
+  walk test
+    hook test, is-below(i, parts/length)
+    hook hold
+      save all, and-of(all, get(parts, i), at)
+      save i, add(i, 1)
+  back all
+
+# an obligation that is owed only where its guards hold: `!(g1 && g2) || claim`. The prover splits the disjunction,
+# assuming the guards while it proves the claim
+task guarded
+  take claim, like expression
+  take guards, like list, like expression
+  take at, like span
+  like expression
+  mark private
+
+  fork test, is-equal(guards/length, 0)
+    hold
+      back claim
+  back or-of(not-of(conjunction(guards, at), at), claim, at)
+
+# ---- tier 0 ----
+
+task is-array-typed
+  take e, like expression
+  like boolean
+  mark private
+
+  sift expression-type(e)
+    case some
+      link known
+      sift known
+        case array
+          back true
+        miss
+          back false
+    case none
+      back false
+
+task is-float-typed
+  take e, like expression
+  like boolean
+  mark private
+
+  sift expression-type(e)
+    case some
+      link known
+      sift known
+        case float
+          back true
+        miss
+          back false
+    case none
+      back false
+
+# `0 <= index < target/length`, under the guards the expression sits beneath
+task owes-index
+  take target, like expression
+  take index, like expression
+  take at, like span
+  take guards, like list, like expression
+  take out, like list, like statement
+  like void
+  mark private
+
+  save length
+    make member
+      bind target, target
+      bind name, <length>
+      bind span, at
+  save origin, make index
+  push(out, hold-of(guarded(and-of(at-least-zero(index, at), below-of(index, length, at), at), guards, at), origin, at))
+
+task all-digits
+  take value, like text
+  like boolean
+  mark private
+
+  fork test, is-equal(char-count(value), 0)
+    hold
+      back false
+  save digits, split(<0123456789>, <>)
+  save i, 0
+  walk test
+    hook test, is-below(i, char-count(value))
+    hook hold
+      fork test, not(has-text(digits, char-at(value, i)))
+        hold
+          back false
+      save i, add(i, 1)
+  back true
+
+load @term/base/text
+  find split
+  find char-at
+  find char-count
+
+task has-text
+  take values, like list, like text
+  take wanted, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, wanted)
+      hold
+        back true
+  back false
+
+# TIER 0: the failures every task is proven free of with nothing written. Each list read owes its index inside the
+# list, and each division owes a divisor other than zero. A read on the right of `&&` is owed only where the left
+# holds, on the right of `||` only where it does not, and in a conditional only in its own branch, because that is
+# where it runs. A closure's body runs later and is not walked here
+task obligations-in
+  take node, like expression
+  take guards, like list, like expression
+  take out, like list, like statement
+  take tasks, like contract-tasks
+  like void
+  mark private
+
+  sift node
+    case closure
+      save nothing, 0
+    case member
+      obligations-in(target, guards, out, tasks)
+      # `read xs/{i}` computes its index, and `read xs/0` writes a literal one as a plain segment
+      sift index
+        case some
+          link at
+          obligations-in(at, guards, out, tasks)
+          fork test, is-array-typed(target)
+            hold
+              owes-index(target, at, span, guards, out)
+        case none
+          fork test, all-digits(name)
+            hold
+              fork test, is-array-typed(target)
+                hold
+                  save literal, integer-of(to-number(host-parse-float(name)), span)
+                  owes-index(target, literal, span, guards, out)
+    case binary
+      obligations-in(left, guards, out, tasks)
+      sift op
+        case both
+          obligations-in(right, with-one(guards, left), out, tasks)
+        case either
+          obligations-in(right, with-one(guards, not-of(left, span)), out, tasks)
+        miss
+          obligations-in(right, guards, out, tasks)
+      save divides, false
+      sift op
+        case divide
+          save divides, true
+        case remainder
+          save divides, true
+        miss
+          save nothing, 0
+      fork test, and(divides, not(is-float-typed(node)))
+        hold
+          save unequal, make unequal
+          save nonzero, binary-of(unequal, right, integer-of(0, span), span)
+          save origin, make zero
+          push(out, hold-of(guarded(nonzero, guards, span), origin, span))
+    case conditional
+      save earlier, make list
+      walk branches
+        take branch
+        obligations-in(branch/cond, joined(guards, earlier), out, tasks)
+        obligations-in(branch/value, with-one(joined(guards, earlier), branch/cond), out, tasks)
+        push(earlier, not-of(branch/cond, span))
+      sift otherwise
+        case some
+          link last
+          obligations-in(last, joined(guards, earlier), out, tasks)
+        case none
+          save nothing, 0
+    case template
+      walk parts
+        take part
+        sift part
+          case value
+            link inner
+            obligations-in(inner, guards, out, tasks)
+          case chunk
+            save nothing, 0
+    case unary
+      obligations-in(operand, guards, out, tasks)
+    case array
+      walk items
+        take item
+        obligations-in(item, guards, out, tasks)
+    case map
+      walk entries
+        take entry
+        obligations-in(entry/key, guards, out, tasks)
+        obligations-in(entry/value, guards, out, tasks)
+    case record
+      walk fields
+        take field
+        obligations-in(field/value, guards, out, tasks)
+      walk positional
+        take one
+        obligations-in(one, guards, out, tasks)
+    case await
+      obligations-in(expr, guards, out, tasks)
+    case call
+      obligations-in(callee, guards, out, tasks)
+      walk args
+        take arg
+        obligations-in(arg, guards, out, tasks)
+      call-obligations(node, guards, out, tasks)
+    miss
+      save nothing, 0
+
+# what a call owes on top of its parts: `xs/get i`, `xs/at i` and `xs/set i, v` on a list are the same read or write
+# as `read xs/{i}`, and a call to an accessor owes what the accessor lifted, with the arguments in place, and a value
+# passed to a width-typed parameter is inside the width, under the switch
+task call-obligations
+  take node, like expression
+  take guards, like list, like expression
+  take out, like list, like statement
+  take tasks, like contract-tasks
+  like void
+  mark private
+
+  sift node
+    case call
+      link called
+      link given
+      link at
+      sift called
+        case member
+          link list-target
+          link method
+          link method-index
+          sift method-index
+            case none
+              save wanted-args, 1
+              fork test, is-equal(method, <set>)
+                hold
+                  save wanted-args, 2
+              fork test, or(or(is-equal(method, <get>), is-equal(method, <at>)), is-equal(method, <set>))
+                hold
+                  fork test, and(is-array-typed(list-target), is-equal(given/length, wanted-args))
+                    hold
+                      owes-index(list-target, get(given, 0), at, guards, out)
+            case some
+              save nothing, 0
+        case variable
+          link callee-name
+          save position, function-named(tasks, callee-name)
+          fork test, is-minimum(position, 0)
+            hold
+              save callee, function-at(tasks, position)
+              save bound, bound-of(callee, given)
+              walk lifted-of(position, tasks)
+                take one
+                push(out, hold-of(guarded(substitute(one/expr, bound), guards, at), one/origin, at))
+              fork test, tasks/widths
+                hold
+                  width-owed(callee, given, guards, out)
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+
+# a value passed to a width-typed parameter is inside the width. A literal is refused outright by check/literals.ts and
+# owes nothing here
+task width-owed
+  take callee, like statement
+  take given, like list, like expression
+  take guards, like list, like expression
+  take out, like list, like statement
+  like void
+  mark private
+
+  sift callee
+    case function
+      save at, 0
+      walk params
+        take param
+        fork test, is-below(at, given/length)
+          hold
+            save argument, get(given, at)
+            fork test, and(is-unequal(param/width, <>), not(is-integer-literal(argument)))
+              hold
+                sift width-hold(argument, param/width, guards, expression-span(argument))
+                  case some
+                    link owed
+                    push(out, owed)
+                  case none
+                    save nothing, 0
+        save at, add(at, 1)
+    miss
+      save nothing, 0
+
+task is-integer-literal
+  take e, like expression
+  like boolean
+  mark private
+
+  sift e
+    case integer
+      back true
+    miss
+      back false
+
+# AN ACCESSOR'S OBLIGATION IS ITS CALLER'S. A task whose whole body is one `send back` owes a list read or a division
+# over nothing but its parameters, which no fact inside it can settle: whether `index` is inside `self` is the caller's
+# to know. Such an obligation is LIFTED: the accessor assumes it, and every call owes it, with the arguments in place
+task lifted-of
+  take at, like number
+  take tasks, like contract-tasks
+  like list, like lifted-one
+  mark private
+
+  fork test, tasks/lifted/has(at)
+    hold
+      back tasks/lifted/get(at)
+  # set before the body is read, so an accessor that reaches itself lifts nothing rather than looping
+  save tasks/lifted/{at}, make list
+  save out, make list
+  save fn, function-at(tasks, at)
+  sift fn
+    case function
+      save stated, 0
+      walk have
+        take one
+        save stated, add(stated, 1)
+      fork test, and(is-equal(body/length, 1), is-equal(stated, 0))
+        hold
+          sift get(body, 0)
+            case return
+              sift value
+                case some
+                  link sent
+                  save holds, make list
+                  save no-guards, make list
+                  obligations-in(sent, no-guards, holds, tasks)
+                  walk holds
+                    take h
+                    sift h
+                      case hold
+                        link claim
+                        link claim-name
+                        link claim-proof
+                        link claim-span
+                        link claim-origin
+                        sift claim-origin
+                          case some
+                            link origin
+                            fork test, reads-only-params(claim, fn)
+                              hold
+                                save lifted
+                                  make lifted-one
+                                    bind expr, claim
+                                    bind origin, origin
+                                push(out, lifted)
+                          case none
+                            save nothing, 0
+                      miss
+                        save nothing, 0
+                case none
+                  save nothing, 0
+            miss
+              save nothing, 0
+    miss
+      save nothing, 0
+  save tasks/lifted/{at}, out
+  back out
+
+# does an expression read nothing but the task's parameters (and constants)
+task reads-only-params
+  take e, like expression
+  take fn, like statement
+  like boolean
+  mark private
+
+  save param-names, make list
+  sift fn
+    case function
+      walk params
+        take param
+        push(param-names, param/name)
+    miss
+      save nothing, 0
+  save names, names-read(e)
+  fork test, is-equal(names/length, 0)
+    hold
+      back false
+  walk names
+    take one
+    fork test, not(has-name(param-names, one))
+      hold
+        back false
+  back true
+
+# ---- what a statement owes ----
+
+# what a statement's own expressions owe before it runs: each callee's `have`, the measure of a self-call, and (when
+# tier 0 is on) every list read and division in them
+task owed-at
+  take expressions, like list, like expression
+  take context, like contract-context
+  take guards, like list, like expression
+  like list, like statement
+  mark private
+
+  save owed, owed-at-calls(expressions, context)
+  fork test, context/tier0
+    hold
+      save own, make list
+      walk expressions
+        take one
+        obligations-in(one, guards, own, context/tasks)
+      # an accessor's own obligations over its parameters are its callers' (lifted-of), so they are not owed here
+      save lifted, lifted-of(context/current, context/tasks)
+      save current, function-at(context/tasks, context/current)
+      walk own
+        take s
+        save kept, true
+        fork test, is-above(lifted/length, 0)
+          hold
+            sift s
+              case hold
+                link claim
+                fork test, reads-only-params(claim, current)
+                  hold
+                    save kept, false
+              miss
+                save nothing, 0
+        fork test, kept
+          hold
+            push(owed, s)
+  back owed
+
+# the holds a statement's own expressions owe at their calls: each callee's `have`, and the measure of a self-call
+task owed-at-calls
+  take expressions, like list, like expression
+  take context, like contract-context
+  like list, like statement
+  mark private
+
+  save owed, make list
+  walk calls-in(expressions)
+    take one
+    sift one
+      case call
+        link called
+        link given
+        link at
+        sift called
+          case variable
+            link callee-name
+            save position, function-named(context/tasks, callee-name)
+            fork test, is-minimum(position, 0)
+              hold
+                save callee, function-at(context/tasks, position)
+                save bound, bound-of(callee, given)
+                sift callee
+                  case function
+                    walk have
+                      take precondition
+                      save origin, make need
+                      push(owed, hold-of(substitute(precondition, bound), origin, at))
+                    fork test, is-equal(position, context/current)
+                      hold
+                        sift down
+                          case some
+                            link measure
+                            sift context/down-at-entry
+                              case some
+                                link kept
+                                save falls, below-of(substitute(measure, bound), variable-of(kept, at), at)
+                                save origin, make down
+                                push(owed, hold-of(falls, origin, at))
+                              case none
+                                save nothing, 0
+                          case none
+                            save nothing, 0
+                  miss
+                    save nothing, 0
+          miss
+            save nothing, 0
+      miss
+        save nothing, 0
+  back owed
+
+# the facts a bound or assignment `x = call f(args)` may assume afterwards: f's `must` lines, with `back` as x and
+# each parameter as its argument, each a `given` hold in line after it. Empty unless the value is exactly a call to a
+# task of the program that carries a `must`. An argument that reads x itself is the OLD x, which the write replaced, so
+# such a promise is about a value nothing names any more and is dropped
+task promised-by
+  take written, like text
+  take init, like expression
+  take at, like span
+  take context, like contract-context
+  like list, like statement
+  mark private
+
+  save out, make list
+  sift init
+    case call
+      link called
+      link given
+      sift called
+        case variable
+          link callee-name
+          save position, function-named(context/tasks, callee-name)
+          fork test, is-below(position, 0)
+            hold
+              back out
+          save callee, function-at(context/tasks, position)
+          sift callee
+            case function
+              save promises, make list
+              save written-promises, read must
+              walk written-promises
+                take one
+                push(promises, one)
+              fork test, is-equal(promises/length, 0)
+                hold
+                  back out
+              # `back` is the caller's name for the result, carrying the result's type so a field of it can be read
+              save bound, make hash
+              save back-of, variable-of(written, at)
+              sift expression-type(init)
+                case some
+                  link known
+                  save back-of, with-type(back-of, known)
+                case none
+                  save nothing, 0
+              save back-key, <back>
+              save bound/{back-key}, back-of
+              # the parameters whose argument reads the name being written: after the write, that argument means
+              # something else
+              save stale, make list
+              save i, 0
+              walk params
+                take param
+                fork test, is-below(i, given/length)
+                  hold
+                    save argument, get(given, i)
+                    save bound/{param/name}, argument
+                    fork test, has-name(names-read(argument), written)
+                      hold
+                        push(stale, param/name)
+                save i, add(i, 1)
+              walk promises
+                take promise
+                save dropped, false
+                walk names-read(promise)
+                  take name-read
+                  fork test, has-name(stale, name-read)
+                    hold
+                      save dropped, true
+                fork test, not(dropped)
+                  hold
+                    save origin, make given
+                    push(out, hold-of(substitute(promise, bound), origin, at))
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  back out
+
+# the measure a walk's condition implies: while `a < b` runs, `b - a` is a natural number, and so on for each
+# comparison. None for a condition of any other shape, including `true`
+task inferred-measure
+  take cond, like expression
+  like maybe, like expression
+  mark private
+
+  sift cond
+    case binary
+      link op-of
+      link left-of
+      link right-of
+      link at
+      save minus, make minus
+      save plus, make plus
+      sift op-of
+        # `a && b` holds only where a does, so a's measure is natural at the top of every turn
+        case both
+          sift inferred-measure(left-of)
+            case some
+              link found
+              back make(some, found)
+            case none
+              back inferred-measure(right-of)
+        case below
+          save made, binary-of(minus, right-of, left-of, at)
+          back make(some, made)
+        case at-most
+          save made, binary-of(plus, binary-of(minus, right-of, left-of, at), integer-of(1, at), at)
+          back make(some, made)
+        case above
+          save made, binary-of(minus, left-of, right-of, at)
+          back make(some, made)
+        case at-least
+          save made, binary-of(plus, binary-of(minus, left-of, right-of, at), integer-of(1, at), at)
+          back make(some, made)
+        miss
+          back make none
+    miss
+      back make none
+
+# a loop's end-of-turn obligations: the invariant again, and the measure below its value at the top of the turn
+form turn-measure
+  link down, like expression
+  link kept, like text
+  link origin, like hold-origin
+
+form turn
+  link invariants, like list, like expression
+  # a measure that must fall every turn: a written `down` (owed as 'down', a contract), or one inferred from the walk's
+  # condition (owed as 'ends', tier 0)
+  link measure, like maybe, like turn-measure
+  # what the condition owes when it is evaluated again for the next turn
+  link again, like list, like statement
+  link span, like span
+
+task end-of-turn
+  take given, like maybe, like turn
+  like list, like statement
+  mark private
+
+  save out, make list
+  sift given
+    case none
+      back out
+    case some
+      link one
+      walk one/invariants
+        take invariant
+        save origin, make keep-turn
+        push(out, hold-of(invariant, origin, one/span))
+      append-all(out, deep-copy-block(one/again))
+      sift one/measure
+        case some
+          link measure
+          save falls, below-of(measure/down, variable-of(measure/kept, one/span), one/span)
+          push(out, hold-of(falls, measure/origin, one/span))
+        case none
+          save nothing, 0
+  back out
+
+# does a body break out of THIS loop (a bare `halt`), not counting a break that belongs to a loop nested in it
+task breaks-out
+  take body, like list, like statement
+  like boolean
+  mark private
+
+  walk body
+    take one
+    sift one
+      case break
+        back true
+      case if
+        walk branches
+          take branch
+          fork test, breaks-out(branch/body)
+            hold
+              back true
+        sift otherwise
+          case some
+            link rest
+            fork test, breaks-out(rest)
+              hold
+                back true
+          case none
+            save nothing, 0
+      case match
+        walk cases
+          take arm
+          fork test, breaks-out(arm/body)
+            hold
+              back true
+        sift otherwise
+          case some
+            link rest
+            fork test, breaks-out(rest)
+              hold
+                back true
+          case none
+            save nothing, 0
+      case guard
+        fork test, breaks-out(body)
+          hold
+            back true
+        sift catch
+          case some
+            link handler
+            fork test, breaks-out(handler/body)
+              hold
+                back true
+          case none
+            save nothing, 0
+      miss
+        save nothing, 0
+  back false
+
+task one-of
+  take e, like expression
+  like list, like expression
+  mark private
+
+  save out, make list
+  push(out, e)
+  back out
+
+task two-of
+  take a, like expression
+  take b, like expression
+  like list, like expression
+  mark private
+
+  save out, make list
+  push(out, a)
+  push(out, b)
+  back out
+
+# lower one statement list. `turn` is the innermost enclosing loop's end-of-turn obligations, owed before every
+# `turn next`; a `halt` owes only the invariant, since a break ends the walk and the measure no longer matters
+task lower-list
+  take statements, like list, like statement
+  take context, like contract-context
+  take turn, like maybe, like turn
+  like list, like statement
+
+  save out, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, statements/length)
+    hook hold
+      save statement, get(statements, at)
+      save at, add(at, 1)
+      sift statement
+        # WHAT A CALLEE PROMISES. `save x, call f(...)` where f carries a `must`: what follows may assume it, with
+        # `back` read as x and f's parameters as the arguments
+        case let
+          link let-name
+          link let-init
+          link let-mutable
+          link let-span
+          append-all(out, owed-at(one-of(let-init), context, make list))
+          push(out, statement)
+          append-all(out, promised-by(let-name, let-init, let-span, context))
+        case assign
+          link assign-target
+          link assign-op
+          link assign-value
+          link assign-span
+          append-all(out, owed-at(two-of(assign-target, assign-value), context, make list))
+          push(out, statement)
+          sift assign-target
+            case variable
+              link target-name
+              sift assign-op
+                case set
+                  append-all(out, promised-by(target-name, assign-value, assign-span, context))
+                miss
+                  save nothing, 0
+            miss
+              save nothing, 0
+        # a call made for its effect promises what its callee's `must` says about the arguments afterwards. A `must`
+        # about `back` has no name to land on here and is dropped
+        case expression
+          link effect
+          link effect-span
+          append-all(out, owed-at(one-of(effect), context, make list))
+          push(out, statement)
+          walk promised-by(<back>, effect, effect-span, context)
+            take given
+            sift given
+              case hold
+                link given-claim
+                fork test, not(has-name(names-read(given-claim), <back>))
+                  hold
+                    push(out, given)
+              miss
+                push(out, given)
+        case throw
+          link thrown
+          append-all(out, owed-at(one-of(thrown), context, make list))
+          push(out, statement)
+        case return
+          link sent-back
+          link return-span
+          sift sent-back
+            case none
+              push(out, statement)
+            case some
+              link sent
+              append-all(out, owed-at(one-of(sent), context, make list))
+              save current, function-at(context/tasks, context/current)
+              save sent-width, <>
+              save sent-type, make none
+              save musts, make list
+              sift current
+                case function
+                  link result
+                  link result-width
+                  link must
+                  fork test, is-unequal(result-width, <>)
+                    hold
+                      save sent-width, result-width
+                  save sent-type, result
+                  save promises, read must
+                  walk promises
+                    take one
+                    push(musts, one)
+                miss
+                  save nothing, 0
+              # a width-typed result is owed where it is sent back, as a width-typed argument is at a call. A literal
+              # is held to it by check/literals.ts
+              fork test, and(and(context/tier0, context/tasks/widths), and(is-unequal(sent-width, <>), not(is-integer-literal(sent))))
+                hold
+                  save no-guards, make list
+                  sift width-hold(sent, sent-width, no-guards, expression-span(sent))
+                    case some
+                      link owed
+                      push(out, owed)
+                    case none
+                      save nothing, 0
+              fork test, is-equal(musts/length, 0)
+                hold
+                  push(out, statement)
+                miss
+                  # `back` names the value being returned, inside a `must`. It is bound once, so the value is
+                  # computed once
+                  save back-name, fresh-name(context/tasks, <back>)
+                  # typed as the value it names, so a `must` on a field of a returned record can read it
+                  save back-of, variable-of(back-name, return-span)
+                  sift expression-type(sent)
+                    case some
+                      link known
+                      save back-of, with-type(back-of, known)
+                    case none
+                      sift sent-type
+                        case some
+                          link declared
+                          save back-of, with-type(back-of, declared)
+                        case none
+                          save nothing, 0
+                  save bound, make hash
+                  save back-key, <back>
+                  save bound/{back-key}, back-of
+                  push(out, let-of(back-name, sent, return-span))
+                  walk musts
+                    take one
+                    save origin, make must
+                    push(out, hold-of(substitute(one, bound), origin, return-span))
+                  save sent-name, variable-of(back-name, return-span)
+                  save replaced, shallow-copy-statement(statement)
+                  sift replaced
+                    case return
+                      save replaced/value, make(some, sent-name)
+                    miss
+                      save nothing, 0
+                  push(out, replaced)
+        case continue
+          append-all(out, end-of-turn(turn))
+          push(out, statement)
+        case break
+          link break-label
+          link break-span
+          sift turn
+            case some
+              link inside
+              walk inside/invariants
+                take invariant
+                save origin, make keep-turn
+                push(out, hold-of(invariant, origin, break-span))
+            case none
+              save nothing, 0
+          push(out, statement)
+        case if
+          link if-branches
+          link if-otherwise
+          link if-span
+          # a later condition is evaluated only when every earlier one was false
+          save earlier, make list
+          save owed, make list
+          walk if-branches
+            take branch
+            append-all(owed, owed-at(one-of(branch/cond), context, joined(earlier, make list)))
+            push(earlier, not-of(branch/cond, if-span))
+          append-all(out, owed)
+          save copy, shallow-copy-statement(statement)
+          sift copy
+            case if
+              save new-branches, make list
+              walk if-branches
+                take branch
+                save made
+                  make statement-branch
+                    bind cond, branch/cond
+                    bind body, lower-list(branch/body, context, turn)
+                push(new-branches, made)
+              save copy/branches, new-branches
+              sift if-otherwise
+                case some
+                  link rest
+                  save lowered-rest, lower-list(rest, context, turn)
+                  save copy/otherwise, make(some, lowered-rest)
+                case none
+                  save nothing, 0
+            miss
+              save nothing, 0
+          push(out, copy)
+        case match
+          link match-subject
+          link match-cases
+          link match-otherwise
+          append-all(out, owed-at(one-of(match-subject), context, make list))
+          save copy, shallow-copy-statement(statement)
+          sift copy
+            case match
+              save new-cases, make list
+              walk match-cases
+                take arm
+                save made, shallow-copy-case(arm)
+                save made/body, lower-list(arm/body, context, turn)
+                push(new-cases, made)
+              save copy/cases, new-cases
+              sift match-otherwise
+                case some
+                  link rest
+                  save lowered-rest, lower-list(rest, context, turn)
+                  save copy/otherwise, make(some, lowered-rest)
+                case none
+                  save nothing, 0
+            miss
+              save nothing, 0
+          push(out, copy)
+        case guard
+          link guard-body
+          link guard-catch
+          save copy, shallow-copy-statement(statement)
+          sift copy
+            case guard
+              save copy/body, lower-list(guard-body, context, turn)
+              sift guard-catch
+                case some
+                  link handler
+                  save made
+                    make catch-clause
+                      bind name, handler/name
+                      bind body, lower-list(handler/body, context, turn)
+                      bind span, handler/span
+                  save copy/catch, make(some, made)
+                case none
+                  save nothing, 0
+            miss
+              save nothing, 0
+          push(out, copy)
+        case while
+          link while-cond
+          link while-body
+          link while-span
+          link while-must
+          link while-down
+          save rest, rest-of(statements, at)
+          save stated, make list
+          walk while-must
+            take one
+            push(stated, one)
+          save ended, lower-walk(statement, true, while-cond, while-body, while-span, stated, while-down, context, turn, out, rest)
+          fork test, ended
+            hold
+              back out
+        case for-each
+          link each-item
+          link each-index
+          link each-iterable
+          link each-body
+          link each-span
+          link each-must
+          save rest, rest-of(statements, at)
+          save no-down, make none
+          save stated, make list
+          walk each-must
+            take one
+            push(stated, one)
+          save ended, lower-walk(statement, false, each-iterable, each-body, each-span, stated, no-down, context, turn, out, rest)
+          fork test, ended
+            hold
+              back out
+        miss
+          push(out, statement)
+  back out
+
+task rest-of
+  take statements, like list, like statement
+  take from, like number
+  like list, like statement
+  mark private
+
+  save out, make list
+  save i, from
+  walk test
+    hook test, is-below(i, statements/length)
+    hook hold
+      push(out, get(statements, i))
+      save i, add(i, 1)
+  back out
+
+# a walk, lowered into `out`. `is-while` says which kind: a while's `walked` is its condition, a list walk's its
+# sequence. True when the rest of the list was lowered here too, under the walk's invariant
+task lower-walk
+  take statement, like statement
+  take is-while, like boolean
+  take walked, like expression
+  take body, like list, like statement
+  take at, like span
+  take stated, like list, like expression
+  take written, like maybe, like expression
+  take context, like contract-context
+  take turn, like maybe, like turn
+  take out, like list, like statement
+  take rest, like list, like statement
+  like boolean
+  mark private
+
+  save invariants, make list
+  walk stated
+    take one
+    push(invariants, one)
+  save roams, false
+  sift function-at(context/tasks, context/current)
+    case function
+      link fn-name
+      save roams, is-equal(roam, true)
+    miss
+      save nothing, 0
+  # TERMINATION BY DEFAULT: a `walk test` with no `down` of its own gets one inferred from its condition (`i < n`
+  # falls as `n - i`), owed as tier 0. A condition with no such shape owes an obligation nothing proves, so a walk
+  # nobody showed to end is counted rather than passed. A task marked `roam` runs forever on purpose
+  save has-written, false
+  sift written
+    case some
+      link w
+      save has-written, true
+    case none
+      save nothing, 0
+  save owes-end, and(and(is-while, not(has-written)), and(context/tier0, not(roams)))
+  save inferred, make none
+  fork test, owes-end
+    hold
+      save inferred, inferred-measure(walked)
+  save down, written
+  save measure-origin, make down
+  fork test, not(has-written)
+    hold
+      save down, inferred
+      save measure-origin, make ends
+  save kept, make none
+  sift down
+    case some
+      link d
+      save kept-name, fresh-name(context/tasks, <down>)
+      save kept, make(some, kept-name)
+    case none
+      save nothing, 0
+  fork test, owes-end
+    hold
+      sift inferred
+        case none
+          save never
+            make expression/boolean
+              bind value, false
+              bind span, at
+          save origin, make ends
+          push(out, hold-of(never, origin, at))
+        case some
+          link found
+          save nothing, 0
+  save owed, owed-at(one-of(walked), context, make list)
+  # a while's condition is evaluated again before every turn, so what it owes is owed again at the end of each one
+  # (a list walk's sequence is evaluated once)
+  save again, make list
+  fork test, is-while
+    hold
+      save again, owed
+  save inner, make none
+  save measure, make none
+  sift down
+    case some
+      link d
+      sift kept
+        case some
+          link k
+          save made
+            make turn-measure
+              bind down, d
+              bind kept, k
+              bind origin, measure-origin
+          save measure, make(some, made)
+        case none
+          save nothing, 0
+    case none
+      save nothing, 0
+  save has-down, false
+  sift down
+    case some
+      link d
+      save has-down, true
+    case none
+      save nothing, 0
+  fork test, or(or(is-above(invariants/length, 0), has-down), is-above(again/length, 0))
+    hold
+      save made
+        make turn
+          bind invariants, invariants
+          bind measure, measure
+          bind again, again
+          bind span, at
+      save inner, make(some, made)
+  # the turn: the measure is a natural number and is kept, then the body, then the end-of-turn holds
+  save turn-body, make list
+  sift down
+    case some
+      link d
+      sift kept
+        case some
+          link k
+          push(turn-body, hold-of(at-least-zero(d, at), measure-origin, at))
+          push(turn-body, let-of(k, d, at))
+        case none
+          save nothing, 0
+    case none
+      save nothing, 0
+  append-all(turn-body, lower-list(body, context, inner))
+  append-all(turn-body, end-of-turn(inner))
+  append-all(out, owed)
+  walk invariants
+    take invariant
+    save origin, make keep-entry
+    push(out, hold-of(invariant, origin, at))
+  save copy, shallow-copy-statement(statement)
+  save wrapped, under(invariants, turn-body, at)
+  sift copy
+    case while
+      save copy/body, wrapped
+    case for-each
+      save copy/body, wrapped
+    miss
+      save nothing, 0
+  push(out, copy)
+  # what follows a walk with an invariant may assume it, and the negated condition too when nothing breaks out early.
+  # The rest of the list is lowered inside that assumption
+  fork test, is-above(invariants/length, 0)
+    hold
+      save after, joined(invariants, make list)
+      fork test, and(is-while, not(breaks-out(body)))
+        hold
+          push(after, not-of(walked, at))
+      append-all(out, under(after, lower-list(rest, context, turn), at))
+      back true
+  back false
+
+# ---- the whole program ----
+
+form lowered-program
+  link program, like list, like statement
+  link lowered, like list, like text
+
+task same-file
+  take a, like maybe, like text
+  take b, like maybe, like text
+  like boolean
+  mark private
+
+  sift a
+    case none
+      sift b
+        case none
+          back true
+        case some
+          link other
+          back false
+    case some
+      link mine
+      sift b
+        case none
+          back false
+        case some
+          link other
+          back is-equal(mine, other)
+
+task own-task
+  take s, like statement
+  take stamped, like boolean
+  take file, like maybe, like text
+  like boolean
+  mark private
+
+  sift s
+    case function
+      fork test, or(is-equal(claim, true), is-equal(stub, true))
+        hold
+          back false
+      fork test, stamped
+        hold
+          back same-file(span/file, file)
+      back true
+    miss
+      back false
+
+# the checker's copy of a program, with every contract lowered into holds, and the tier-0 obligations of the tasks that
+# belong to `file` (when `tier0` is set) written in beside them
+task lower-contracts
+  take program, like list, like statement
+  take file, like maybe, like text
+  take tier0, like boolean
+  take widths, like boolean
+  like lowered-program
+
+  # every top-level node is stamped with the file it came from when modules merge. A task with no file was made by a
+  # pass and belongs to no file; only when NOTHING is stamped (a bare program) is every task the entry's own
+  save stamped, false
+  walk program
+    take s
+    sift s
+      case function
+        sift span/file
+          case some
+            link stamp
+            save stamped, true
+          case none
+            save nothing, 0
+      miss
+        save nothing, 0
+  # ONLY THIS FILE'S OWN TASKS are copied and lowered. Every other task is shared with the real program untouched
+  save copy, make list
+  save functions, make hash
+  save at, 0
+  walk program
+    take s
+    fork test, own-task(s, stamped, file)
+      hold
+        push(copy, deep-copy(s))
+      miss
+        push(copy, s)
+    sift s
+      case function
+        save functions/{name}, at
+      miss
+        save nothing, 0
+    save at, add(at, 1)
+  save tasks
+    make contract-tasks
+      bind program, copy
+      bind functions, functions
+      bind lifted, make hash
+      bind fresh, 0
+      bind widths, widths
+  save lowered, make list
+  save out, make list
+  save at, 0
+  walk copy
+    take s
+    save chosen, s
+    fork test, own-task(s, stamped, file)
+      hold
+        sift s
+          case function
+            fork test, not(has-name(lowered, name))
+              hold
+                push(lowered, name)
+            save context
+              make contract-context
+                bind tasks, tasks
+                bind current, at
+                bind down-at-entry, make none
+                bind tier0, tier0
+            save entry, make list
+            sift down
+              case some
+                link measure
+                save kept, fresh-name(tasks, <down>)
+                save context/down-at-entry, make(some, kept)
+                save origin, make down
+                push(entry, hold-of(at-least-zero(measure, span), origin, span))
+                push(entry, let-of(kept, measure, span))
+              case none
+                save nothing, 0
+            append-all(entry, lower-list(body, context, make none))
+            save conditions, make list
+            walk have
+              take one
+              push(conditions, one)
+            save chosen, shallow-copy-statement(s)
+            sift chosen
+              case function
+                save chosen/body, under(conditions, entry, span)
+              miss
+                save nothing, 0
+          miss
+            save nothing, 0
+    push(out, chosen)
+    save at, add(at, 1)
+  back
+    make lowered-program
+      bind program, out
+      bind lowered, lowered
+
+# does any task or walk in the program carry a contract (if not, there is nothing to lower and no copy to make).
+# `carries` says whether one node does, since an absent list and an empty one read alike here
+task has-contracts
+  take program, like list, like statement
+  take carries
+    like task
+      take node, like statement
+      like boolean
+  like boolean
+
+  save seen, reach-statements(program, make list)
+  walk seen/statements
+    take one
+    sift one
+      case function
+        fork test, carries(one)
+          hold
+            back true
+      case while
+        fork test, carries(one)
+          hold
+            back true
+      case for-each
+        fork test, carries(one)
+          hold
+            back true
+      miss
+        save nothing, 0
+  back false
+
+load ../compile/node-reach
+  find reach-statements

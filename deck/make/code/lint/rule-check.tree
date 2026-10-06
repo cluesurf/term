@@ -37,6 +37,7 @@ load ../parser/diagnostic
   find severity
 
 load ../compile/node
+  find dock-route
   find expression
   find statement
   find binary-op
@@ -62,6 +63,7 @@ load ../check/effects
 
 load ../check/extend
   find exception-form
+  find is-generic-exception
 
 load ../check/eliminate
   find utf16-order
@@ -114,6 +116,19 @@ form lint-facts
   # the whole program, and the exceptions each task can raise, computed the first time a rule asks (unhandled-raise)
   link program, like list, like statement
   link raises, like raise-cache
+  # the tell advice's view of the program, computed the first time a rule asks (tell-missing, tell-of-failure,
+  # tell-reveals)
+  link tells, like tell-cache
+
+# what the tell advice reads of a program: whether it makes decisions (declares a `tell` or a `dock`), each exception's
+# root among the seventeen, the exceptions its own tasks and routes can raise, and the bare names its tells name
+form tell-cache
+  mark shared
+  link filled, like boolean
+  link decides, like boolean
+  link root-of, like hash, like text, like text
+  link reachable, like hash, like text, like boolean
+  link told, like hash, like text, like boolean
 
 # the raise sets of a lint call's program, filled on first use and shared by every node after
 form raise-cache
@@ -1704,6 +1719,9 @@ form ported-rule
   case prefer-single-brace, text <prefer-single-brace>
   case redundant-wait, text <redundant-wait>
   case unhandled-raise, text <unhandled-raise>
+  case tell-missing, text <tell-missing>
+  case tell-of-failure, text <tell-of-failure>
+  case tell-reveals, text <tell-reveals>
 
 # every rule here, in code order
 task ported-rules
@@ -1746,6 +1764,9 @@ task ported-rules
       make prefer-sift
       make prefer-single-brace
       make redundant-wait
+      make tell-missing
+      make tell-of-failure
+      make tell-reveals
       make unhandled-raise
 
 # a rule's name, code, default severity and one-line documentation
@@ -1824,6 +1845,12 @@ task meta-of
       back meta(<prefer-single-brace>, <L043>, <an interpolation is written `\{x\}`, not `\{\{x\}\}`>, true)
     case redundant-wait
       back meta(<redundant-wait>, <L054>, <`wait true` under a call to an async task is redundant: the call is awaited with nothing written>, true)
+    case tell-missing
+      back meta(<tell-missing>, <L037>, <a reachable exception a caller could act on (under defect, omission, excess, shortage, mismatch, exclusion, absence, conflict or refusal) has no tell, so a customer sees only which of the seventeen it is>, false)
+    case tell-of-failure
+      back meta(<tell-of-failure>, <L038>, <a tell for an exception under failure, overload, outage or timeout: a server failure is never the caller's business>, false)
+    case tell-reveals
+      back meta(<tell-reveals>, <L039>, <a tell on anonymity or denial that carries a link: saying which resource confirms it exists>, false)
     case unhandled-raise
       back meta(<unhandled-raise>, <L041>, <a call to a task that can raise, outside a guard and without `halt kink`, passes the exception on without saying so>, false)
 
@@ -1893,6 +1920,12 @@ task check-statement
       back no-empty-fork-case(node)
     case unhandled-raise
       back unhandled-raise(node, facts)
+    case tell-missing
+      back tell-missing(node, facts)
+    case tell-of-failure
+      back tell-of-failure(node, facts)
+    case tell-reveals
+      back tell-reveals(node, facts)
     miss
       back none-reported()
 
@@ -2521,4 +2554,249 @@ task join-texts
         save first, false
       miss
         save out, <{out}{between}{one}>
+  back out
+
+# ---- L037 to L039, the tell advice ----
+#
+# The three `tell` conditions of note/term/hive/06-tell.md that are advice, not errors (the four errors are in
+# check/tell.tree). Each is about the SEVENTEEN: the generic exception an app's exception descends from decides what a
+# caller should be told, so the rules read the root of every exception's chain. They fire only in a program that makes
+# decisions: one that declares a `tell` or a `dock` route. A library module raises exceptions it never tells, and that
+# is not advice it needs. Ported from lint/rules/tell-advice.ts, whose facts were the lint call's memo.
+
+# the base of a record as written: `like exception` / `like excess`, before or after the chain was resolved
+task base-of-record
+  take one, like statement
+  like text
+  mark private
+
+  sift one
+    case record-type
+      save last, <>
+      walk chain
+        take link-name
+        save last, link-name
+      fork test, is-unequal(last, <>)
+        hold
+          back last
+      sift extend
+        case some
+          link extended
+          sift extended/base
+            case named
+              back name
+            miss
+              back <>
+        case none
+          back <>
+    miss
+      back <>
+
+# the first of the seventeen on the way up from `name` to `exception` (itself, when it is one of them), or `<>` where the
+# chain never reaches `exception`
+task climb
+  take records, like hash, like text, like statement
+  take name, like text
+  take seen, like list, like text
+  like text
+  mark private
+
+  fork test, has-text(seen, name)
+    hold
+      back <>
+  push(seen, name)
+  save marker, exception-form()
+  fork test, is-equal(name, marker)
+    hold
+      back marker
+  fork test, not(records/has(name))
+    hold
+      back <>
+  save base, base-of-record(records/get(name))
+  fork test, is-equal(base, <>)
+    hold
+      back <>
+  save above, climb(records, base, seen)
+  fork test, is-equal(above, <>)
+    hold
+      back <>
+  fork test, is-generic-exception(name)
+    hold
+      back name
+  back above
+
+task tells-of
+  take facts, like lint-facts
+  like tell-cache
+  mark private
+
+  save cache, facts/tells
+  fork test, cache/filled
+    hold
+      back cache
+  save records, make hash
+  save names, make list
+  walk facts/program
+    take one
+    sift one
+      case record-type
+        fork test, not(records/has(name))
+          hold
+            push(names, name)
+        save records/{name}, one
+      case tell
+        save cache/decides, true
+        save told-name, bare-name(name)
+        save cache/told/{told-name}, true
+      case dock
+        save cache/decides, true
+      miss
+        save nothing, 0
+  save marker, exception-form()
+  save exceptions, make list
+  walk names
+    take name
+    save seen, make list
+    save root, climb(records, name, seen)
+    fork test, and(is-unequal(root, <>), is-unequal(name, marker))
+      hold
+        save cache/root-of/{name}, root
+        push(exceptions, name)
+  save sets, raise-sets-of(facts/program, exceptions)
+  walk facts/program
+    take one
+    sift one
+      case function
+        mark-reachable(cache, sets/raises, name)
+      case dock
+        reachable-in-route(cache, sets/raises, route)
+      miss
+        save nothing, 0
+  save cache/filled, true
+  back cache
+
+task mark-reachable
+  take cache, like tell-cache
+  take raises, like hash, like text, like list, like text
+  take name, like text
+  like void
+  mark private
+
+  fork test, raises/has(name)
+    hold
+      walk raises/get(name)
+        take raised
+        save cache/reachable/{raised}, true
+
+task reachable-in-route
+  take cache, like tell-cache
+  take raises, like hash, like text, like list, like text
+  take route, like dock-route
+  like void
+  mark private
+
+  walk route/calls
+    take one-call
+    mark-reachable(cache, raises, one-call/name)
+  walk route/methods
+    take method
+    walk method/calls
+      take one-call
+      mark-reachable(cache, raises, one-call/name)
+  walk route/children
+    take child
+    reachable-in-route(cache, raises, child)
+
+# a tell's name after its last `/`
+task bare-name
+  take name, like text
+  like text
+  mark private
+
+  back substring(name, add(last-index-of(name, </>), 1), char-count(name))
+
+task tell-missing
+  take node, like statement
+  take facts, like lint-facts
+  like list, like rule-report
+
+  save out, make list
+  sift node
+    case record-type
+      save cache, tells-of(facts)
+      fork test, not(cache/decides)
+        hold
+          back out
+      fork test, not(cache/root-of/has(name))
+        hold
+          back out
+      save root, cache/root-of/get(name)
+      save fix-the-input, split(<defect omission excess shortage mismatch exclusion absence conflict refusal>, < >)
+      fork test, or(or(not(has-text(fix-the-input, root)), not(cache/reachable/has(name))), cache/told/has(name))
+        hold
+          back out
+      save article, <a>
+      fork test, has-text(split(<absence exclusion excess omission>, < >), root)
+        hold
+          save article, <an>
+      push(out, report(<"{name}" is {article} {root} a caller can act on, and nothing tells it; leaving it private is allowed, and is probably an oversight>, span))
+    miss
+      save nothing, 0
+  back out
+
+task tell-of-failure
+  take node, like statement
+  take facts, like lint-facts
+  like list, like rule-report
+
+  save out, make list
+  sift node
+    case tell
+      save cache, tells-of(facts)
+      save bare, bare-name(name)
+      fork test, not(cache/root-of/has(bare))
+        hold
+          back out
+      save root, cache/root-of/get(bare)
+      fork test, not(has-text(split(<failure overload outage timeout>, < >), root))
+        hold
+          back out
+      save article, <a>
+      fork test, or(is-equal(root, <outage>), is-equal(root, <overload>))
+        hold
+          save article, <an>
+      push(out, report(<"{name}" is {article} {root}: a server failure is never the caller's business, so this tell says more than it should>, span))
+    miss
+      save nothing, 0
+  back out
+
+task tell-reveals
+  take node, like statement
+  take facts, like lint-facts
+  like list, like rule-report
+
+  save out, make list
+  sift node
+    case tell
+      save cache, tells-of(facts)
+      save bare, bare-name(name)
+      fork test, not(cache/root-of/has(bare))
+        hold
+          back out
+      save root, cache/root-of/get(bare)
+      fork test, or(not(has-text(split(<anonymity denial>, < >), root)), is-equal(links/length, 0))
+        hold
+          back out
+      save article, <a>
+      fork test, is-equal(root, <anonymity>)
+        hold
+          save article, <an>
+      save quoted, make list
+      walk links
+        take one-link
+        push(quoted, <"{one-link}">)
+      save listed, join-texts(quoted, <, >)
+      push(out, report(<"{name}" is {article} {root} and its tell carries {listed}: saying which resource confirms it exists>, span))
+    miss
+      save nothing, 0
   back out

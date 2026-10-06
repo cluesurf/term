@@ -1,0 +1,209 @@
+# `term walk`, the REPL: how a block a person typed is read. A definition (a block opening with `task`, `form`, `load`
+# and the other heads that begin one) is added to the session, anything else is an expression, wrapped in a task so the
+# compiler can run it, and a blank block is nothing.
+#
+# Ported from deck/call/code/walk.ts (self-hosting, 2026-10-06), which stays as the face: it compiles, runs the emitted
+# module and prints. White space here is JavaScript's (every code point `\s` matches, which `trim` removes), as the
+# original read it with `trim`, `trimStart` and `/\s+/`.
+
+load @term/base/list
+  find list
+  find get
+  find join
+  find contains
+
+load @term/base/text
+  find split
+  find starts-with
+  find char-code-at
+
+load @term/make/parser/tree
+  find node
+  find parse
+  find render-head
+
+load @term/make/parser/token
+  find token-source
+
+load ./draft-mark
+  find is-space
+
+# what a block is
+form repl-input
+  case empty
+  # `name` is the definition's second word, the empty text when it has none
+  case definition
+    link text, like text
+    link name, like text
+  case expression
+    link wrapped, like text
+
+# the heads that begin a top-level definition
+task definition-heads
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, <task>)
+  push(out, <form>)
+  push(out, <load>)
+  push(out, <mask>)
+  push(out, <dock>)
+  push(out, <suit>)
+  push(out, <bear>)
+  push(out, <deck>)
+  push(out, <note>)
+  push(out, <hold>)
+  back out
+
+task points-of
+  take value, like text
+  like list, like text
+  mark private
+
+  back split(value, <>)
+
+task is-blank-point
+  take point, like text
+  like boolean
+  mark private
+
+  back is-space(char-code-at(point, 0))
+
+# the text without the white space it ends in, as `replace(/\s+$/, '')` leaves it
+task trim-end
+  take value, like text
+  like text
+
+  save points, points-of(value)
+  save end, points/length
+  walk test
+    hook test, and(is-above(end, 0), is-blank-point(get(points, subtract(end, 1))))
+    hook hold
+      save end, subtract(end, 1)
+  save kept, make list
+  save at, 0
+  walk test
+    hook test, is-below(at, end)
+    hook hold
+      push(kept, get(points, at))
+      save at, add(at, 1)
+  back join(kept, <>)
+
+# the text without the white space it starts with, as `trimStart` leaves it
+task trim-start
+  take value, like text
+  like text
+
+  save points, points-of(value)
+  save start, 0
+  walk test
+    hook test, and(is-below(start, points/length), is-blank-point(get(points, start)))
+    hook hold
+      save start, add(start, 1)
+  save kept, make list
+  save at, start
+  walk test
+    hook test, is-below(at, points/length)
+    hook hold
+      push(kept, get(points, at))
+      save at, add(at, 1)
+  back join(kept, <>)
+
+# is the text white space and nothing else, or nothing at all
+task is-blank
+  take value, like text
+  like boolean
+
+  walk points-of(value)
+    take point
+    fork test, not(is-blank-point(point))
+      hold
+        back false
+  back true
+
+# Does this line open a definition? Read with the parser, never matched: a line that does not parse is not a
+# definition rather than an error, and a head inside a text literal is not a head
+task is-definition
+  take line, like text
+  like boolean
+
+  save source
+    make token-source
+      bind file, <\<repl\>>
+      bind text, line
+  save parsed, parse(source)
+  fork test, not(parsed/ok)
+    hold
+      back false
+  sift parsed/tree
+    case root
+      walk nodes
+        take one
+        sift one
+          case group
+            fork test, is-equal(nodes/length, 0)
+              hold
+                back false
+            save head, get(nodes, 0)
+            sift head
+              case name
+                back contains(definition-heads(), render-head(head))
+              miss
+                back false
+          miss
+            save nothing, 0
+      back false
+
+# the second word of a text that starts with a word, as `split(/\s+/)[1] ?? ''` reads it: 0 in the first word, 1 in the
+# white space after it, 2 in the second word
+task second-word
+  take value, like text
+  like text
+  mark private
+
+  save word, make list
+  save state, 0
+  walk points-of(value)
+    take point
+    fork test, is-blank-point(point)
+      hold
+        fork test, is-equal(state, 0)
+          hold
+            save state, 1
+        fork test, is-equal(state, 2)
+          hold
+            back join(word, <>)
+      miss
+        fork test, is-equal(state, 1)
+          hold
+            save state, 2
+        fork test, is-equal(state, 2)
+          hold
+            push(word, point)
+  back join(word, <>)
+
+# one block, read
+task read-block
+  take block, like text
+  like repl-input
+
+  save trimmed, trim-end(block)
+  fork test, is-blank(trimmed)
+    hold
+      back make empty
+  save opened, trim-start(trimmed)
+  fork test, is-definition(opened)
+    hold
+      back
+        make definition
+          bind text, trimmed
+          bind name, second-word(opened)
+  save lines, make list
+  walk split(trimmed, <\n>)
+    take line
+    push(lines, <    {line}>)
+  save body, join(lines, <\n>)
+  back
+    make expression
+      bind wrapped, <task seed-repl-eval\n  send back\n{body}>

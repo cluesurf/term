@@ -9,65 +9,24 @@
 // A `deck.tree` is a MANIFEST when a top-level `deck` head carries an `@scope/name`. The stdlib also has a code
 // module called deck.tree (`form deck`, the manifest's own shape), which has no such statement and correctly reads
 // as undefined here.
+//
+// Every reading of a parsed file is Term since 2026-10-06, call/code/manifest-read.tree, with the reasons each rule is
+// what it is. This file reads the files, and answers undefined where the port answers none or a read fails.
 
 import { readFileSync } from 'node:fs'
-import { parse, renderHead } from '@term/make/code/parser/tree'
-import type { GroupNode } from '@term/make/code/parser/narrow'
+import * as port from '@term/call/code/manifest-read'
 
-function headName(group: GroupNode): string | undefined {
-  const first = group.nodes[0]
-
-  return first?.kind === 'name' ? renderHead(first) : undefined
-}
+const given = (value: port.Maybe<string>): string | undefined => (value.form === 'some' ? value.value : undefined)
 
 // the first argument of a manifest's `<head>` statement (`deck @term/site` -> `@term/site`, `role ./roles` ->
-// `./roles`), or undefined when the manifest has none.
-//
-// A manifest head sits in one of TWO places, which is the whole reason this is not a one-liner: at the top level
-// (`boot ./hook/blog` in deck/site/test/site/deck.tree), or as a CHILD of the `deck` statement, which is where
-// `head`, `code`, `lock`, `bear` and `role` are written. The regex this replaced was anchored `^\s*`, so it happened
-// to find both and nobody had to think about it; a reader that walked only the top level silently stopped finding
-// `role ./roles` and a project's role file went unread. test/compile/host-tools.ts holds that case.
+// `./roles`), or undefined when the manifest has none. It is found under the `deck` statement first, then at the top
+// level. test/compile/host-tools.ts holds the nested case
 export function manifestValue(
   text: string,
   file: string,
   head: string,
 ): string | undefined {
-  const parsed = parse({ file, text })
-
-  if (!parsed.ok) {
-    return undefined
-  }
-
-  const argumentOf = (group: GroupNode): string | undefined => {
-    const first = group.nodes[1]
-
-    return first?.kind === 'group' ? headName(first) : undefined
-  }
-
-  const groups = parsed.tree.nodes.filter(
-    (node): node is GroupNode => node.kind === 'group',
-  )
-
-  // the `deck` statement's children, then the top level, so the manifest's own block wins when both spell a head
-  const deck = groups.find(group => headName(group) === 'deck')
-  const nested = deck
-    ? deck.nodes
-        .slice(1)
-        .filter((node): node is GroupNode => node.kind === 'group')
-    : []
-
-  for (const group of [...nested, ...groups]) {
-    if (headName(group) === head) {
-      const value = argumentOf(group)
-
-      if (value !== undefined) {
-        return value
-      }
-    }
-  }
-
-  return undefined
+  return given(port.manifestValue(text, file, head))
 }
 
 // the same, read from a file. Unreadable or unparseable is undefined, the way a missing manifest is.
@@ -84,34 +43,11 @@ export function manifestValueOf(
 
 // the name a manifest declares: the argument of its TOP-LEVEL `deck` statement, `@scope/name` or a bare `name`.
 //
-// A `deck.tree` is a MANIFEST when it has that statement, whatever the name's shape. The manifest grammar
-// (deck/deck/code/grammar.ts, `mine deck-def`) reads a path word there and parseManifest takes `deck name` as an
-// unscoped package, so this is the same rule the package manager already used. The stdlib's own deck.tree is a code
-// module (`form deck`, the manifest's shape) with no `deck` statement, and still reads as undefined.
-//
 // It required an `@` until 2026-10-02, and that was the bug: `term wake hello` writes `deck hello`, so `term make`
 // did not see a manifest, compiled the scaffold's deck.tree as CODE into host/deck.ts, and reported "Compiled 2
-// files" for a project holding one. Only the top level is read, never a `deck ./member` line nested under it, which
-// manifestValue would find first and which named a monorepo's first member instead of the package.
+// files" for a project holding one.
 export function manifestName(text: string, file: string): string | undefined {
-  const parsed = parse({ file, text })
-
-  if (!parsed.ok) {
-    return undefined
-  }
-
-  for (const node of parsed.tree.nodes) {
-    if (node.kind === 'group' && headName(node) === 'deck') {
-      const first = node.nodes[1]
-      const name = first?.kind === 'group' ? headName(first) : undefined
-
-      if (name) {
-        return name
-      }
-    }
-  }
-
-  return undefined
+  return given(port.manifestName(text, file))
 }
 
 export function manifestNameOf(file: string): string | undefined {
@@ -126,56 +62,19 @@ export function manifestNameOf(file: string): string | undefined {
 //
 // The lockfile is written by `term save` / `term toss` / `term link` — anything that installs — and it is data,
 // not code. The build compiled it, and `lock <version>` is not a Term statement, so the first `term make` after
-// any dependency verb failed with `the name "lock" is not defined` on a file the user never wrote. A scaffolded
-// project would build, take one `term toss`, and stop building.
-//
-// BY CONTENT, never by name, for the third time in this file: `deck/base/code/task/lock.tree` is an ordinary Term
-// module (`form lock`, `task make`), so a filename test would take the stdlib out of the build the same way a
-// filename test for the manifest once did.
+// any dependency verb failed with `the name "lock" is not defined` on a file the user never wrote. BY CONTENT, never
+// by name: `deck/base/code/task/lock.tree` is an ordinary Term module.
 export function isLockfileText(text: string, file: string): boolean {
-  const parsed = parse({ file, text })
-
-  if (!parsed.ok) {
-    return false
-  }
-
-  // `lock <1>`: the head word `lock` carrying a TEXT version. A code module's `lock` is a form or a task name and
-  // never a statement head, and a manifest's `lock mit` sits under `deck` rather than at the top level.
-  return parsed.tree.nodes.some(
-    node =>
-      node.kind === 'group' &&
-      headName(node) === 'lock' &&
-      node.nodes[1]?.kind === 'text',
-  )
+  return port.isLockfileText(text, file)
 }
 
 // Is this file a ROLE FILE (`role <name>` with `take` globs), as opposed to Term code?
 //
 // A role file says which mill reads which file, and -- for `hook` -- whether a file's statements are CLI commands
-// or URL routes. It is configuration read by deck/deck/code/role.ts through the role mill, not a program: `role`
-// is not a code statement, so compiling one reports `the name "role" is not defined` on a file nobody wrote as
-// code. deck/base/role/base.tree carries `note draft` for exactly that reason, which shelves a LIVE file to
-// silence an error that should never have been raised.
-//
-// BY CONTENT, never by name, the same as the manifest and the lockfile: `role.tree` is a strong hint and nothing
-// more, and this package's own role file is `role/base.tree`.
+// or URL routes. It is configuration read by deck/deck/code/role.ts through the role mill, not a program. BY CONTENT,
+// never by name: `role.tree` is a strong hint and nothing more, and this package's own role file is `role/base.tree`.
 export function isRoleFileText(text: string, file: string): boolean {
-  const parsed = parse({ file, text })
-
-  if (!parsed.ok) {
-    return false
-  }
-
-  // `role <name>` with a `take` child. The head alone is not enough: a manifest writes `role ./base/role` as a
-  // field, and that sits under `deck`, not at the top level.
-  return parsed.tree.nodes.some(
-    node =>
-      node.kind === 'group' &&
-      headName(node) === 'role' &&
-      node.nodes
-        .slice(2)
-        .some(child => child.kind === 'group' && headName(child) === 'take'),
-  )
+  return port.isRoleFileText(text, file)
 }
 
 // the same, read from a file

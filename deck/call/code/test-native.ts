@@ -151,7 +151,8 @@ function reportText(load: string, names: string[]): string {
 
   for (const name of names) {
     lines.push(
-      '  mark unsafe',
+      '  fork',
+      '    mark unsafe',
       '    fork test',
       '      hook test',
       `        call ${name}`,

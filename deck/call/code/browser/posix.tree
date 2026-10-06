@@ -1,0 +1,201 @@
+# `path` for the browser compile: posix only, over the absolute paths of the in-memory snapshot (snapshot.tree). Each
+# task behaves as Node's posix `path` does for an absolute input.
+#
+# Ported from browser/path.ts (self-hosting, 2026-10-06). path.ts stays, because the bundle aliases `path` and
+# `node:path` to it, so it must be shaped like Node's module: a default export, `sep` and `delimiter`, and `join` and
+# `resolve` taking any number of paths, which it hands here as a list. Every task reads a path by its pieces between
+# slashes, so nothing counts positions.
+
+load @term/base/list
+  find list
+  find join
+  find get
+
+load @term/base/text
+  find split
+  find ends-with
+  find starts-with
+  find substring
+  find char-count
+
+# the pieces of a path, without the empty ones and the `.`s
+task pieces
+  take value, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  walk split(value, </>)
+    take part
+    fork test, and(is-unequal(part, <>), is-unequal(part, <.>))
+      hold
+        push(out, part)
+  back out
+
+task normalize
+  take value, like text
+  like text
+
+  save absolute, starts-with(value, </>)
+  save parts, make list
+  walk pieces(value)
+    take part
+    fork test, is-equal(part, <..>)
+      hold
+        save last, <>
+        fork test, is-above(parts/length, 0)
+          hold
+            save last, get-last(parts)
+        fork test, and(is-above(parts/length, 0), is-unequal(last, <..>))
+          hold
+            parts/pop()
+          miss
+            fork test, not(absolute)
+              hold
+                push(parts, <..>)
+        turn next
+    push(parts, part)
+  save body, join(parts, </>)
+  fork test, absolute
+    hold
+      back </{body}>
+  fork test, is-equal(body, <>)
+    hold
+      back <.>
+  back body
+
+task get-last
+  take parts, like list, like text
+  like text
+  mark private
+
+  save last, <>
+  walk parts
+    take part
+    save last, part
+  back last
+
+task join-paths
+  take paths, like list, like text
+  like text
+
+  save kept, make list
+  walk paths
+    take one
+    fork test, is-unequal(one, <>)
+      hold
+        push(kept, one)
+  save joined, join(kept, </>)
+  fork test, is-equal(joined, <>)
+    hold
+      back <.>
+  back normalize(joined)
+
+# the working directory of a worker is the root of the snapshot's filesystem
+task resolve-paths
+  take paths, like list, like text
+  like text
+
+  save out, <>
+  walk paths
+    take one
+    fork test, starts-with(one, </>)
+      hold
+        save out, one
+      miss
+        save out, <{out}/{one}>
+  fork test, starts-with(out, </>)
+    hold
+      back normalize(out)
+  back normalize(</{out}>)
+
+# a path without the slashes it ends in, as `replace(/\/+$/, '')` leaves it
+task without-trailing
+  take value, like text
+  like list, like text
+  mark private
+
+  save parts, split(value, </>)
+  walk test
+    hook test, and(is-above(parts/length, 1), is-equal(get-last(parts), <>))
+    hook hold
+      parts/pop()
+  back parts
+
+task dirname
+  take value, like text
+  like text
+
+  save parts, without-trailing(value)
+  fork test, is-equal(parts/length, 1)
+    hold
+      back <.>
+  parts/pop()
+  save before, join(parts, </>)
+  fork test, is-equal(before, <>)
+    hold
+      back </>
+  back before
+
+task basename
+  take value, like text
+  take extension, like text
+  like text
+
+  save base, get-last(without-trailing(value))
+  fork test, and(is-unequal(extension, <>), ends-with(base, extension))
+    hold
+      back substring(base, 0, subtract(char-count(base), char-count(extension)))
+  back base
+
+task extname
+  take value, like text
+  like text
+
+  save parts, split(get-last(without-trailing(value)), <.>)
+  fork test, is-equal(parts/length, 1)
+    hold
+      back <>
+  # the last dot at the start of the name, `.tree`, is no extension
+  fork test, and(is-equal(parts/length, 2), is-equal(get(parts, 0), <>))
+    hold
+      back <>
+  save last, get-last(parts)
+  back <.{last}>
+
+task is-absolute
+  take value, like text
+  like boolean
+
+  back starts-with(value, </>)
+
+task relative
+  take from, like text
+  take to, like text
+  like text
+
+  save one, make list
+  push(one, from)
+  save other, make list
+  push(other, to)
+  save a, pieces(resolve-paths(one))
+  save b, pieces(resolve-paths(other))
+  save same, 0
+  walk test
+    hook test, and(and(is-below(same, a/length), is-below(same, b/length)), is-equal(get(a, same), get(b, same)))
+    hook hold
+      save same, add(same, 1)
+  save out, make list
+  save at, same
+  walk test
+    hook test, is-below(at, a/length)
+    hook hold
+      push(out, <..>)
+      save at, add(at, 1)
+  save at, same
+  walk test
+    hook test, is-below(at, b/length)
+    hook hold
+      push(out, get(b, at))
+      save at, add(at, 1)
+  back join(out, </>)

@@ -17,39 +17,11 @@ export {
   linkResolver,
   siblingResolver,
 } from '@term/make/code/resolve'
-import { parse, renderHead } from '@term/make/code/parser/tree'
-import { groupsOf } from '@term/make/code/parser/narrow'
+import * as port from '@term/call/code/repl-read'
 
-// the keywords that begin a top-level definition; anything else typed at the prompt is an expression to evaluate
-const DEFINITION_HEADS = new Set([
-  'task', 'form', 'load', 'mask', 'dock', 'suit', 'bear', 'deck', 'note', 'hold',
-])
-
-// Does this line open a definition? Asked of the REPL's input, which is a fragment a person is still typing, so a
-// line that does not parse is simply not a definition rather than an error.
-//
-// Read with the parser rather than matched with a keyword-anchored regex. There is ONE parser for `.tree`
-// (note/term/one-parser.md): a regex says yes to `taskbar` only by luck of a word boundary, and yes to a `form` written
-// inside a text literal, and it would drift the moment the head set grew a two-word form.
-function isDefinition(line: string): boolean {
-  const parsed = parse({ file: '<repl>', text: line })
-
-  if (!parsed.ok) {
-    return false
-  }
-
-  const first = groupsOf(parsed.tree.nodes)[0]
-
-  if (!first) {
-    return false
-  }
-
-  const head = first.nodes[0]
-
-  return (
-    head?.kind === 'name' && DEFINITION_HEADS.has(renderHead(head))
-  )
-}
+// HOW A BLOCK IS READ is Term since 2026-10-06, call/code/repl-read.tree: which heads open a definition (read with the
+// parser, never matched: a line that does not parse is not a definition rather than an error), the trimming, the
+// definition's name and the task an expression is wrapped in. This file compiles, runs and prints.
 
 export type FeedResult =
   | { kind: 'definition'; text: string }
@@ -71,13 +43,15 @@ export class Repl {
   ) {}
 
   async feed(block: string): Promise<FeedResult> {
-    const trimmed = block.replace(/\s+$/, '')
+    const read = port.readBlock(block)
 
-    if (!trimmed.trim()) {
+    if (read.form === 'empty') {
       return { kind: 'empty' }
     }
 
-    if (isDefinition(trimmed.trimStart())) {
+    if (read.form === 'definition') {
+      const trimmed = read.text
+
       // a definition: accept it only if the program still compiles with it added
       const trial = [...this.definitions, trimmed].join('\n\n')
       const result = compile(
@@ -93,11 +67,11 @@ export class Repl {
         }
       }
 
-      const name = trimmed.trimStart().split(/\s+/)[1] ?? ''
+      const name = read.name
 
       // a `load` of a path nothing answers is refused, not `added`: it was accepted, and the first call to a name it
       // was to bring failed as an unknown name
-      if (trimmed.trimStart().startsWith('load ') && this.resolve && !this.resolve(name, this.file)) {
+      if (port.trimStart(trimmed).startsWith('load ') && this.resolve && !this.resolve(name, this.file)) {
         return { kind: 'error', text: `nothing answers load ${name}` }
       }
 
@@ -106,13 +80,8 @@ export class Repl {
       return { kind: 'definition', text: name }
     }
 
-    // an expression: wrap it as `task seed-repl-eval / send back / <expr>` and run the wrapper
-    const wrapped = `task seed-repl-eval\n  send back\n${trimmed
-      .split('\n')
-      .map(l => `    ${l}`)
-      .join('\n')}`
-
-    const full = [...this.definitions, wrapped].join('\n\n')
+    // an expression: wrapped as `task seed-repl-eval / send back / <expr>`, and the wrapper run
+    const full = [...this.definitions, read.wrapped].join('\n\n')
     const result = compile(
       { file: this.file, text: full },
       { resolve: this.resolve },
@@ -204,7 +173,7 @@ export async function callWalk(input: {
     const block = buffer.join('\n')
     buffer = []
 
-    if (!block.trim()) {
+    if (port.isBlank(block)) {
       return
     }
 
@@ -265,13 +234,13 @@ export async function callWalk(input: {
     // the listener runs for every piped line before a single queued job does, so the buffer held the entire input
     // by the time the first flush looked at it, and a definition swallowed the calls that came after it.
     queue(async () => {
-      if (line.trim() === '') {
+      if (port.isBlank(line)) {
         await flush()
       } else {
         buffer.push(line)
 
         // a single-line expression evaluates immediately; an indented block waits for a blank line
-        if (buffer.length === 1 && !isDefinition(line.trimStart())) {
+        if (buffer.length === 1 && !port.isDefinition(port.trimStart(line))) {
           await flush()
         }
       }

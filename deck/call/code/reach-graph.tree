@@ -1,0 +1,519 @@
+# WHAT A TASK CAN TOUCH: the native modules (`dock load <node:fs/promises>`) its calls reach, through every task it
+# calls, in its own deck and in every deck it loads. The roll says what a task can RAISE, and this says what it can DO,
+# so `term roll --diff` can report that a change gave a task the file system or the network.
+#
+# MODULE SCOPE decides where a call lands: the file's own definition of the name, else the definition in the module its
+# `find` came from (through that module's `bear` chain). Two things make it an OVER-approximation, which is the safe
+# direction for a capability report: a name with several definitions in one module reaches what any of them reaches,
+# and a method called on a value (`x/send()`) reaches what every method of that name does in the modules the file
+# loads, since which form the value has is the checker's to say.
+#
+# Ported from deck/call/code/reach.ts (self-hosting, 2026-10-06), which stays as the face: it reads and mills each
+# file once and keeps them, and answers the two questions this module asks of it, the module a file is and the module
+# a load reaches. The search, the scope rules and the walk over a body are here.
+
+load @term/base/list
+  find list
+  find get
+  find sort
+  find contains
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+  find char-code-at
+
+load @term/base/rune
+  find rune-to-text
+
+load @term/make/compile/node
+  find expression
+  find statement
+
+load @term/make/check/eliminate
+  find utf16-order
+
+# what a find names: the module path, and the name that module defines it under
+form find-target
+  link path, like text
+  link real, like text
+
+# one file as the graph reads it
+form reach-module
+  link file, like text
+  # its tasks by name, several for an overload
+  link tasks, like hash, like text, like list, like statement
+  # a method's own name to the tasks that define it, for a call on a value
+  link methods, like hash, like text, like list, like statement
+  # the native modules it docks, by alias
+  link natives, like hash, like text, like text
+  # a name as this file uses it, and where it came from
+  link finds, like hash, like text, like find-target
+  # the modules it passes on with `bear`, whose names it answers for
+  link bears, like list, like text
+  # every module it loads, where a method called on a value may be defined
+  link loads, like list, like text
+
+# tasks of one module that a call may land on
+form landing
+  link module, like reach-module
+  link tasks, like list, like statement
+
+# a task waiting to be walked, with the module it is defined in
+form pending
+  link module, like reach-module
+  link task, like statement
+
+# ---- every expression of a body, a parent before its parts, as flow/code/symbols.ts `forEachExpression` visits ----
+
+task expressions-in
+  take node, like expression
+  take out, like list, like expression
+  like void
+  mark private
+
+  push(out, node)
+  sift node
+    case call
+      expressions-in(callee, out)
+      walk args
+        take arg
+        expressions-in(arg, out)
+    case binary
+      expressions-in(left, out)
+      expressions-in(right, out)
+    case unary
+      expressions-in(operand, out)
+    case member
+      expressions-in(target, out)
+      sift index
+        case some
+          link at
+          expressions-in(at, out)
+        case none
+          save nothing, 0
+    case await
+      expressions-in(expr, out)
+    case array
+      walk items
+        take item
+        expressions-in(item, out)
+    case record
+      walk fields
+        take field
+        expressions-in(field/value, out)
+      # read where it stands, never handed to a call, which would write an empty list into a record that has none
+      walk positional
+        take one
+        expressions-in(one, out)
+    case map
+      walk entries
+        take entry
+        expressions-in(entry/key, out)
+        expressions-in(entry/value, out)
+    case template
+      walk parts
+        take part
+        sift part
+          case value
+            link inner
+            expressions-in(inner, out)
+          miss
+            save nothing, 0
+    case closure
+      statements-in(body, out)
+    case conditional
+      walk branches
+        take branch
+        expressions-in(branch/cond, out)
+        expressions-in(branch/value, out)
+      sift otherwise
+        case some
+          link last
+          expressions-in(last, out)
+        case none
+          save nothing, 0
+    miss
+      save nothing, 0
+
+task statements-in
+  take body, like list, like statement
+  take out, like list, like expression
+  like void
+  mark private
+
+  walk body
+    take one
+    sift one
+      case let
+        expressions-in(init, out)
+      case assign
+        expressions-in(target, out)
+        expressions-in(value, out)
+      case expression
+        expressions-in(expr, out)
+      case hold
+        expressions-in(expr, out)
+      case return
+        sift value
+          case some
+            link sent
+            expressions-in(sent, out)
+          case none
+            save nothing, 0
+      case throw
+        expressions-in(value, out)
+      case while
+        expressions-in(cond, out)
+        statements-in(body, out)
+      case for-each
+        expressions-in(iterable, out)
+        statements-in(body, out)
+      case if
+        walk branches
+          take branch
+          expressions-in(branch/cond, out)
+          statements-in(branch/body, out)
+        sift otherwise
+          case some
+            link rest
+            statements-in(rest, out)
+          case none
+            save nothing, 0
+      case match
+        expressions-in(subject, out)
+        walk cases
+          take arm
+          statements-in(arm/body, out)
+        sift otherwise
+          case some
+            link rest
+            statements-in(rest, out)
+          case none
+            save nothing, 0
+      case guard
+        statements-in(body, out)
+        sift catch
+          case some
+            link handler
+            statements-in(handler/body, out)
+          case none
+            save nothing, 0
+      case function
+        statements-in(body, out)
+      miss
+        save nothing, 0
+
+# ---- where a call lands ----
+
+task tasks-named
+  take table, like hash, like text, like list, like statement
+  take name, like text
+  like list, like statement
+  mark private
+
+  fork test, table/has(name)
+    hold
+      back table/get(name)
+  back make list
+
+task one-landing
+  take one, like reach-module
+  take tasks, like list, like statement
+  like list, like landing
+  mark private
+
+  save out, make list
+  save found
+    make landing
+      bind module, one
+      bind tasks, tasks
+  push(out, found)
+  back out
+
+# the tasks a module answers for under `name`: its own, else what its `bear` chain passes on, sixteen deep at most
+task answering
+  take one, like reach-module
+  take name, like text
+  take depth, like number
+  take loaded
+    like task
+      take path, like text
+      take from, like text
+      like maybe, like reach-module
+  like list, like landing
+  mark private
+
+  save own, tasks-named(one/tasks, name)
+  fork test, is-above(own/length, 0)
+    hold
+      back one-landing(one, own)
+  fork test, is-above(depth, 16)
+    hold
+      back make list
+  save out, make list
+  walk one/bears
+    take bear
+    sift loaded(bear, one/file)
+      case some
+        link next
+        walk answering(next, name, add(depth, 1), loaded)
+          take found
+          push(out, found)
+      case none
+        save nothing, 0
+  back out
+
+# where a call of `name` in a file lands: the file's own definition, else the one its `find` reached
+task callees
+  take one, like reach-module
+  take name, like text
+  take loaded
+    like task
+      take path, like text
+      take from, like text
+      like maybe, like reach-module
+  like list, like landing
+  mark private
+
+  save own, tasks-named(one/tasks, name)
+  fork test, is-above(own/length, 0)
+    hold
+      back one-landing(one, own)
+  fork test, not(one/finds/has(name))
+    hold
+      back make list
+  save target, one/finds/get(name)
+  sift loaded(target/path, one/file)
+    case some
+      link from
+      back answering(from, target/real, 0, loaded)
+    case none
+      back make list
+
+# where a method called on a value may land: a method of that name in the file or in any module it loads
+task method-callees
+  take one, like reach-module
+  take name, like text
+  take loaded
+    like task
+      take path, like text
+      take from, like text
+      like maybe, like reach-module
+  like list, like landing
+  mark private
+
+  save out, make list
+  save own, tasks-named(one/methods, name)
+  fork test, is-above(own/length, 0)
+    hold
+      save found
+        make landing
+          bind module, one
+          bind tasks, own
+      push(out, found)
+  walk one/loads
+    take load
+    sift loaded(load, one/file)
+      case some
+        link next
+        save there, tasks-named(next/methods, name)
+        fork test, is-above(there/length, 0)
+          hold
+            save found
+              make landing
+                bind module, next
+                bind tasks, there
+            push(out, found)
+      case none
+        save nothing, 0
+  back out
+
+task follow
+  take queue, like list, like pending
+  take found, like list, like landing
+  like void
+  mark private
+
+  walk found
+    take each
+    walk each/tasks
+      take next
+      save waiting
+        make pending
+          bind module, each/module
+          bind task, next
+      push(queue, waiting)
+
+task line-of
+  take task, like statement
+  like number
+  mark private
+
+  sift task
+    case function
+      back span/start/line
+    miss
+      back -1
+
+task name-of
+  take task, like statement
+  like text
+  mark private
+
+  sift task
+    case function
+      back name
+    miss
+      back <>
+
+# the native modules the task defined at a line of a file reaches (one-based, as a roll site counts), in JavaScript's
+# order of texts. A line no task starts on reaches nothing
+task reach-at
+  take start, like reach-module
+  take line, like number
+  take loaded
+    like task
+      take path, like text
+      take from, like text
+      like maybe, like reach-module
+  like list, like text
+
+  save reached, make list
+  save visited, make hash
+  save queue, make list
+  walk start/tasks/keys()
+    take key
+    walk start/tasks/get(key)
+      take one
+      fork test, is-equal(add(line-of(one), 1), line)
+        hold
+          save waiting
+            make pending
+              bind module, start
+              bind task, one
+          push(queue, waiting)
+
+  walk test
+    hook test, is-above(queue/length, 0)
+    hook hold
+      save current, queue/pop()
+      save module, current/module
+      save task, current/task
+      save file, module/file
+      save named, name-of(task)
+      save at, line-of(task)
+      save nul, rune-to-text(0)
+      save key, <{file}{nul}{named}{nul}{at}>
+      fork test, visited/has(key)
+        hold
+          turn next
+      save visited/{key}, true
+
+      save nodes, make list
+      save one-task, make list
+      push(one-task, task)
+      statements-in(one-task, nodes)
+      walk nodes
+        take node
+        sift node
+          case variable
+            fork test, module/natives/has(name)
+              hold
+                save native, module/natives/get(name)
+                fork test, not(contains(reached, native))
+                  hold
+                    push(reached, native)
+              miss
+                # a task passed as a value is a task that may be called
+                follow(queue, callees(module, name, loaded))
+          case call
+            sift callee
+              case variable
+                link callee-name
+                fork test, not(module/natives/has(callee-name))
+                  hold
+                    follow(queue, callees(module, callee-name, loaded))
+              case member
+                link member-target
+                link member-name
+                save native-target, false
+                sift member-target
+                  case variable
+                    link target-name
+                    save native-target, module/natives/has(target-name)
+                  miss
+                    save nothing, 0
+                fork test, not(native-target)
+                  hold
+                    follow(queue, method-callees(module, member-name, loaded))
+              miss
+                save nothing, 0
+          miss
+            save nothing, 0
+  back sort(reached, utf16-order)
+
+# the file and the line a roll site names (`code/save.tree:12:1`): everything before the last two `:<digits>`, which
+# may hold no line break, and the line's digits. Both empty when the site is not one
+form site-parts
+  link file, like text
+  link line, like text
+
+task all-digits
+  take value, like text
+  like boolean
+  mark private
+
+  save points, split(value, <>)
+  fork test, is-equal(points/length, 0)
+    hold
+      back false
+  walk points
+    take point
+    save code, char-code-at(point, 0)
+    fork test, not(and(is-minimum(code, 48), is-maximum(code, 57)))
+      hold
+        back false
+  back true
+
+task site-parts-of
+  take site, like text
+  like site-parts
+
+  save none
+    make site-parts
+      bind file, <>
+      bind line, <>
+  save pieces, split(site, <:>)
+  save count, pieces/length
+  fork test, is-below(count, 3)
+    hold
+      back none
+  save line, get(pieces, subtract(count, 2))
+  save column, get(pieces, subtract(count, 1))
+  fork test, not(and(all-digits(line), all-digits(column)))
+    hold
+      back none
+  save front, make list
+  save at, 0
+  walk pieces
+    take piece
+    fork test, is-below(at, subtract(count, 2))
+      hold
+        push(front, piece)
+    save at, add(at, 1)
+  save file, join(front, <:>)
+  # `.` matches no line feed, carriage return, U+2028 or U+2029
+  walk split(file, <>)
+    take point
+    save code, char-code-at(point, 0)
+    fork test, or(or(is-equal(code, 10), is-equal(code, 13)), or(is-equal(code, 8232), is-equal(code, 8233)))
+      hold
+        back none
+  back
+    make site-parts
+      bind file, file
+      bind line, line

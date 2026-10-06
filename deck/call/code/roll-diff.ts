@@ -13,6 +13,7 @@ import path from 'node:path'
 import type { Roll, RollEntry } from '@term/make/code/compile/roll'
 import { projectDeckOf } from '@term/call/code/deck-of'
 import { reachGraph, siteFile } from '@term/call/code/reach'
+import * as port from '@term/call/code/roll-delta'
 
 // every task of the project's own deck with the native modules it can reach, as `reach`, sorted. A dependency's task
 // is left as it is: what a deck the project loads can do is that deck's roll, and its tasks are reached through the
@@ -131,121 +132,29 @@ export function rollBefore(
   return { roll: old }
 }
 
-// the entries of one kind by host and name, several of one name (an overload, a method on two forms) read as one
-function byName(entries: RollEntry[]): Map<string, RollEntry[]> {
-  const out = new Map<string, RollEntry[]>()
-
-  for (const entry of entries) {
-    const key = `${entry.host} ${entry.name}`
-
-    out.set(key, [...(out.get(key) ?? []), entry])
-  }
-
-  return out
-}
-
-function union(entries: RollEntry[], field: 'reach' | 'halt'): string[] {
-  return [...new Set(entries.flatMap(entry => (Array.isArray(entry[field]) ? (entry[field] as string[]) : [])))].sort()
-}
-
-function delta(before: string[], after: string[]): { added: string[]; removed: string[] } {
-  return { added: after.filter(one => !before.includes(one)), removed: before.filter(one => !after.includes(one)) }
-}
-
-export function diffRolls(beforeName: string, before: Roll, after: Roll, host: string): RollDiff {
-  const own = (entries: RollEntry[]): RollEntry[] => entries.filter(entry => entry.host === host)
-  // the reach is compared only when the earlier roll recorded it: a roll written before tasks carried it would read as
-  // every task gaining everything
-  const reach = own(before.task).some(task => Array.isArray(task.reach)) || own(before.task).length === 0
-  const was = byName(own(before.task))
-  const now = byName(own(after.task))
-  const tasks: RollDiff['tasks'] = { added: [], removed: [], changed: [] }
-
-  for (const [key, entries] of now) {
-    const old = was.get(key)
-    const name = entries[0]!.name
-    const site = entries[0]!.site
-
-    if (!old) {
-      tasks.added.push({ name, site, reach: union(entries, 'reach'), halt: union(entries, 'halt') })
-      continue
-    }
-
-    const reachDelta = reach ? delta(union(old, 'reach'), union(entries, 'reach')) : { added: [], removed: [] }
-    const haltDelta = delta(union(old, 'halt'), union(entries, 'halt'))
-    const asyncBefore = old.some(entry => entry.async === true)
-    const asyncAfter = entries.some(entry => entry.async === true)
-
-    if (reachDelta.added.length || reachDelta.removed.length || haltDelta.added.length || haltDelta.removed.length || asyncBefore !== asyncAfter) {
-      tasks.changed.push({
-        name,
-        site,
-        reach: reachDelta,
-        halt: haltDelta,
-        ...(asyncBefore !== asyncAfter ? { async: { before: asyncBefore, after: asyncAfter } } : {}),
-      })
-    }
-  }
-
-  for (const [key, entries] of was) {
-    if (!now.has(key)) {
-      tasks.removed.push({ name: entries[0]!.name, site: entries[0]!.site })
-    }
-  }
-
-  const exceptionNames = (entries: RollEntry[]): string[] => [...new Set(entries.map(entry => `${entry.host}/${entry.name}`))].sort()
-  const routesBefore = byName(own(before.dock))
-  const routesAfter = byName(own(after.dock))
-
-  // every other deck, counted: what entered or left the build, and how many of its tasks changed what they raise
-  const decks: RollDiff['decks'] = []
-  const hosts = new Set([...before.task, ...after.task, ...before.exception, ...after.exception].map(entry => entry.host))
-
-  for (const other of [...hosts].filter(one => one !== host).sort()) {
-    const of = (entries: RollEntry[]): RollEntry[] => entries.filter(entry => entry.host === other)
-    const tasksBefore = byName(of(before.task))
-    const tasksAfter = byName(of(after.task))
-    const changed = [...tasksAfter].filter(([key, entries]) => {
-      const old = tasksBefore.get(key)
-      const halt = old ? delta(union(old, 'halt'), union(entries, 'halt')) : undefined
-
-      return halt !== undefined && (halt.added.length > 0 || halt.removed.length > 0)
-    }).length
-    const exceptions = delta(exceptionNames(of(before.exception)), exceptionNames(of(after.exception)))
-    const counts = {
-      host: other,
-      tasks: {
-        added: [...tasksAfter.keys()].filter(key => !tasksBefore.has(key)).length,
-        removed: [...tasksBefore.keys()].filter(key => !tasksAfter.has(key)).length,
-        changed,
-      },
-      exceptions: { added: exceptions.added.length, removed: exceptions.removed.length },
-    }
-
-    if (counts.tasks.added || counts.tasks.removed || counts.tasks.changed || counts.exceptions.added || counts.exceptions.removed) {
-      decks.push(counts)
-    }
-  }
-
+// a roll entry as the port reads it: a field that is not a list reads as none (`reach`) or empty (`halt`), and only a
+// literal `true` is async, as the comparison this replaced read them
+function entryOf(entry: RollEntry): port.RollEntry {
   return {
-    before: beforeName,
-    host,
-    tasks,
-    exceptions: delta(exceptionNames(own(before.exception)), exceptionNames(own(after.exception))),
-    routes: {
-      added: [...routesAfter.keys()].filter(key => !routesBefore.has(key)).map(key => routesAfter.get(key)![0]!.name),
-      removed: [...routesBefore.keys()].filter(key => !routesAfter.has(key)).map(key => routesBefore.get(key)![0]!.name),
-      changed: [...routesAfter]
-        .filter(([key]) => routesBefore.has(key))
-        .map(([key, entries]) => ({ name: entries[0]!.name, halt: delta(union(routesBefore.get(key)!, 'halt'), union(entries, 'halt')) }))
-        .filter(route => route.halt.added.length || route.halt.removed.length),
-    },
-    decks,
-    reach,
+    host: entry.host,
+    name: entry.name,
+    site: entry.site,
+    reach: Array.isArray(entry.reach) ? { form: 'some', value: entry.reach as string[] } : { form: 'none' },
+    halt: Array.isArray(entry.halt) ? (entry.halt as string[]) : [],
+    async: entry.async === true,
   }
+}
+
+function listsOf(roll: Roll): port.RollLists {
+  return { task: roll.task.map(entryOf), exception: roll.exception.map(entryOf), dock: roll.dock.map(entryOf) }
+}
+
+// the comparison itself is Term (call/code/roll-delta.tree), and its result is this shape field for field
+export function diffRolls(beforeName: string, before: Roll, after: Roll, host: string): RollDiff {
+  return port.diffRolls(beforeName, listsOf(before), listsOf(after), host)
 }
 
 // how many tasks gained a native module, which is what `--strict` fails on
 export function reachGains(diff: RollDiff): number {
-  return diff.tasks.added.filter(task => task.reach.length).length + diff.tasks.changed.filter(task => task.reach.added.length).length
+  return port.reachGains(diff)
 }

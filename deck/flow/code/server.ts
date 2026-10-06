@@ -190,7 +190,8 @@ const KEYWORDS = [
 
 // statement-starting keywords scaffold their construct when accepted (LSP snippet syntax, insertTextFormat 2). Each
 // is the shape the stdlib writes today: `walk list` binds its item under `hook next` as `take site, name <item>`, a
-// guard's handler is a `halt take` beside `mark unsafe`, and a contract word takes one expression beneath it.
+// guard is a `fork` whose first line is `mark unsafe`, with the `halt take` after it, and a contract word takes one
+// expression beneath it.
 const SNIPPETS: Record<string, string> = {
   task: 'task ${1:name}\n  take ${2:arg}, like ${3:type}\n  like ${4:type}\n  send back\n    $0',
   form: 'form ${1:name}\n  link ${2:field}, like ${3:type}',
@@ -222,10 +223,16 @@ const PHRASES: { label: string; insert: string; lean?: boolean; detail: string }
   { label: 'mark async', insert: 'mark async', detail: 'this task is asynchronous' },
   { label: 'tick', insert: 'tick ${1:task}(${2})', detail: 'starts an async task and does not wait for it' },
   { label: 'halt kink', insert: 'halt kink', detail: "pass the callee's exception on" },
+  // a guarded block is a `fork` with `mark unsafe` as its first line (2026-10-06), offered under either word
+  {
+    label: 'fork / mark unsafe',
+    insert: 'fork\n  mark unsafe\n  $1\nhalt take\n  take ${2:error}\n  $0',
+    detail: 'a guarded block and its handler',
+  },
   {
     label: 'mark unsafe',
-    insert: 'mark unsafe\n  $1\nhalt take\n  take ${2:error}\n  $0',
-    detail: 'a guarded body and its handler',
+    insert: 'fork\n  mark unsafe\n  $1\nhalt take\n  take ${2:error}\n  $0',
+    detail: 'a guarded block and its handler: a fork marked unsafe',
   },
   { label: 'mark private', insert: 'mark private', detail: 'visible only in this file' },
 ]

@@ -25,19 +25,45 @@
 import { existsSync, readdirSync, readFileSync, readlinkSync, statSync, writeFileSync } from 'fs'
 import nodePath from 'path'
 
-import { codeMatch, compareCode, parseCode, parseCodeHold, showCode } from '@term/deck/code/code'
+import { parseCode, parseCodeHold } from '@term/deck/code/code'
 import { formOf, readTree, valueOf, type Form } from '@term/deck/code/read'
-import type { CodeHold, LockNeed } from '@term/deck/code/form'
+import type { Code, CodeHold, LockNeed } from '@term/deck/code/form'
 
 import { frontDir, userHome } from '@term/call/code/home'
+import * as port from '@term/call/code/need-choose'
+
+// THE DECISIONS ARE TERM since 2026-10-06, call/code/need-choose.tree: the flag, which folders are versions, their
+// order, whether a pin holds, and the choice. This file reads the disk and keeps the shapes its callers know.
+
+const portCode = (code: Code): port.Code => ({
+  major: code.major,
+  minor: code.minor,
+  patch: code.patch,
+  prerelease: code.prerelease ?? '',
+  build: code.build ?? '',
+})
+
+function portHold(hold: CodeHold): port.CodeHold {
+  switch (hold.form) {
+    case 'exact':
+      return { form: 'exact', code: portCode(hold.code) }
+    case 'wild':
+      return { form: 'wild', major: hold.major, minor: hold.minor ?? -1, patch: hold.patch ?? -1 }
+    case 'band':
+      return { form: 'band', base: portCode(hold.base), head: portCode(hold.head) }
+    case 'test':
+      return { form: 'test', list: hold.list.map(portHold) }
+  }
+}
+
+const portPin = (pin: LockNeed | undefined): port.Maybe<port.NeedPin> =>
+  pin ? { form: 'some', value: { name: pin.name, code: portCode(pin.code), hash: pin.hash } } : { form: 'none' }
 
 /** The one package a `need` may name today. */
 export const TOOLCHAIN = '@term/code'
 
 /** A file's text could hold a `need` line. Only decides whether to parse; the parser decides what it says. */
 const MIGHT_NEED = /^[ \t]*need[ \t]/m
-
-const VERSION = /^\d+\.\d+\.\d+$/
 
 // a version's `used` stamp is rewritten at most this often, so recording a use costs nothing per command
 const USED_EVERY_MS = 24 * 60 * 60 * 1000
@@ -102,10 +128,10 @@ export function currentWorld(input: { argv: string[]; running: string }): NeedWo
  * argument that is not a `+` followed by a version is an ordinary argument and stays.
  */
 export function splitFlag(argv: string[]): { text?: string; argv: string[] } {
-  const first = argv[0]
+  const text = port.flagOf(argv)
 
-  if (first && first.startsWith('+') && /^\+\d/.test(first)) {
-    return { text: first.slice(1), argv: argv.slice(1) }
+  if (text !== '') {
+    return { text, argv: argv.slice(1) }
   }
 
   return { argv }
@@ -119,9 +145,7 @@ export function installedVersions(home: string): string[] {
     return []
   }
 
-  return readdirSync(code)
-    .filter(name => VERSION.test(name) && existsSync(nodePath.join(code, name, 'install.tree')))
-    .sort((a, b) => compareCode(parseCode(b), parseCode(a)))
+  return port.newestFirst(readdirSync(code).filter(name => port.isVersion(name) && existsSync(nodePath.join(code, name, 'install.tree'))))
 }
 
 /**
@@ -191,38 +215,29 @@ export function chooseVersion(world: NeedWorld): { choice: NeedChoice; argv: str
 export function chooseFor(input: { request?: NeedRequest; home: string; running: string }): NeedChoice {
   const { request, home, running } = input
   const installed = installedVersions(home)
-  // what can run without a download: everything installed, and the running copy, which may not be under code/ (a
-  // Homebrew or source copy). Newest first, and on a tie the running copy, which costs no handoff
-  const here = [...new Set([...installed, running])].sort((a, b) => compareCode(parseCode(b), parseCode(a)))
-  const runOf = (version: string, by: 'pin' | 'installed' | 'running'): NeedChoice =>
-    version === running && !installed.includes(version)
-      ? { form: 'run', version, by: by === 'pin' ? 'pin' : 'running', ...(request ? { request } : {}) }
-      : { form: 'run', version, by, ...(request ? { request } : {}), launcher: launcherOf({ home, version }) }
+  // rule 5 reads the front only when nothing asked, as it always did: a home without one costs no read
+  const front = request ? '' : (frontOf(home) ?? '')
+  // a request's hold stands in for nothing when there is none: the port reads it only for a request
+  const hold: CodeHold = request?.hold ?? { form: 'wild', major: 0 }
+  const choice = port.chooseFor(request !== undefined, portHold(hold), portPin(request?.pin), installed, front, running)
 
-  // rule 5: the front, so `term self back` and `update` mean what they say and `term self load` switches nothing
-  if (!request) {
-    const front = frontOf(home)
+  if (choice.form === 'run') {
+    const by = choice.by as 'pin' | 'installed' | 'running'
 
-    return runOf(front && here.includes(front) ? front : here[0]!, 'installed')
+    return choice.launched
+      ? { form: 'run', version: choice.version, by, ...(request ? { request } : {}), launcher: launcherOf({ home, version: choice.version }) }
+      : { form: 'run', version: choice.version, by, ...(request ? { request } : {}) }
   }
 
-  // a project's pin, while it still satisfies the request, is the exact version
-  if (pinHolds(request)) {
-    const version = showCode(request.pin!.code)
-
-    return here.includes(version)
-      ? runOf(version, 'pin')
-      : { form: 'load', version, hold: request.hold, expect: request.pin!.hash, request }
-  }
-
-  const match = here.find(version => codeMatch(parseCode(version), request.hold))
-
-  return match ? runOf(match, 'installed') : { form: 'load', hold: request.hold, request }
+  // a load is only ever for a request
+  return choice.version !== ''
+    ? { form: 'load', version: choice.version, hold: request!.hold, expect: choice.expect, request: request! }
+    : { form: 'load', hold: request!.hold, request: request! }
 }
 
 /** Does the request's lock.tree pin still satisfy it? A pin outside the range is stale, and `term load` re-pins it. */
 export function pinHolds(request: NeedRequest): boolean {
-  return !!request.pin && request.pin.name === TOOLCHAIN && codeMatch(request.pin.code, request.hold)
+  return port.pinHolds(portPin(request.pin), portHold(request.hold))
 }
 
 /** The user's default, `need.tree` under the home, written by `term self pick`. */
@@ -366,7 +381,7 @@ function pinInLock(file: string): LockNeed | undefined {
   const code = form ? valueOf(form, 'code') : undefined
   const hash = form ? valueOf(form, 'hash') : undefined
 
-  if (!form?.terms[0] || !code || !hash || !VERSION.test(code)) {
+  if (!form?.terms[0] || !code || !hash || !port.isVersion(code)) {
     return undefined
   }
 

@@ -1,93 +1,47 @@
 // `path` for the browser compile: posix only, over the absolute paths of the in-memory snapshot (./disk.ts). The
 // bundle aliases `path` and `node:path` here. Only what the compile path calls is spelled out, and each one behaves
 // as Node's posix `path` does for an absolute input.
+//
+// Every decision is Term since 2026-10-06, browser/posix.tree. This file is what makes it Node's module: `sep`,
+// `delimiter`, the default export, and `join` and `resolve` taking any number of paths.
+
+import * as port from '@term/call/code/browser/posix'
 
 export const sep = '/'
 
 export const delimiter = ':'
 
-function split(path: string): string[] {
-  return path.split('/').filter(part => part !== '' && part !== '.')
-}
-
 export function normalize(path: string): string {
-  const absolute = path.startsWith('/')
-  const parts: string[] = []
-
-  for (const part of split(path)) {
-    if (part === '..') {
-      if (parts.length > 0 && parts[parts.length - 1] !== '..') {
-        parts.pop()
-      } else if (!absolute) {
-        parts.push('..')
-      }
-
-      continue
-    }
-
-    parts.push(part)
-  }
-
-  const body = parts.join('/')
-
-  return absolute ? `/${body}` : body || '.'
+  return port.normalize(path)
 }
 
 export function join(...paths: string[]): string {
-  const joined = paths.filter(path => path !== '').join('/')
-
-  return joined === '' ? '.' : normalize(joined)
+  return port.joinPaths(paths)
 }
 
 // the working directory of a worker is the root of the snapshot's filesystem
 export function resolve(...paths: string[]): string {
-  let out = ''
-
-  for (const path of paths) {
-    out = path.startsWith('/') ? path : `${out}/${path}`
-  }
-
-  return normalize(out.startsWith('/') ? out : `/${out}`)
+  return port.resolvePaths(paths)
 }
 
 export function dirname(path: string): string {
-  const at = path.replace(/\/+$/, '').lastIndexOf('/')
-
-  if (at < 0) {
-    return '.'
-  }
-
-  return at === 0 ? '/' : path.slice(0, at)
+  return port.dirname(path)
 }
 
 export function basename(path: string, extension?: string): string {
-  const base = path.replace(/\/+$/, '').split('/').pop() ?? ''
-
-  return extension && base.endsWith(extension) ? base.slice(0, -extension.length) : base
+  return port.basename(path, extension ?? '')
 }
 
 export function extname(path: string): string {
-  const base = basename(path)
-  const at = base.lastIndexOf('.')
-
-  return at <= 0 ? '' : base.slice(at)
+  return port.extname(path)
 }
 
 export function isAbsolute(path: string): boolean {
-  return path.startsWith('/')
+  return port.isAbsolute(path)
 }
 
 export function relative(from: string, to: string): string {
-  const a = split(resolve(from))
-  const b = split(resolve(to))
-
-  let same = 0
-
-  while (same < a.length && same < b.length && a[same] === b[same]) {
-    same += 1
-  }
-
-  return [...a.slice(same).map(() => '..'), ...b.slice(same)].join('/')
+  return port.relative(from, to)
 }
 
 export const posix = {

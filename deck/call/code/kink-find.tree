@@ -1,0 +1,222 @@
+# `term show kink [name]`: what a diagnostic means and what resolves it, looked up by the name or code a run printed.
+#
+# Ported from deck/call/code/kink.ts (self-hosting, 2026-10-06), which stays as the face: it builds the catalog out of
+# the compiler's and the linter's own tables, which are TypeScript, and prints. The lookup and the words each entry is
+# shown in are here.
+#
+# A compiler code is printed in hexadecimal and padded (`0036`) and is a number in JSON (`54`), so a lookup reads four
+# digits as the printed form, `0x` as hexadecimal, and any other run of digits as the JSON number.
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+  find substring
+  find char-code-at
+  find to-lower-case
+  find to-upper-case
+  find pad-right
+
+load ./draft-mark
+  find is-space
+
+# one entry of the catalog
+form kink
+  # `compiler` for a diagnostic the build reports, `lint` for a finding `term lint` reports
+  link kind, like text
+  link name, like text
+  # the compiler's number, or -1 for a lint rule, whose code is its label
+  link number, like number
+  # the code as a run prints it: `0036`, `L019`
+  link label, like text
+  link severity, like text
+  link says, like text
+  # how to resolve it, where the catalog says, else the empty text
+  link remedy, like text
+  link fixable, like boolean
+  # for a compiler diagnostic that is fixable: `sure` or `guess`, else the empty text
+  link fixes, like text
+
+# JavaScript's `trim`: every code point `\s` matches, off both ends
+task trimmed
+  take value, like text
+  like text
+  mark private
+
+  save points, split(value, <>)
+  save start, 0
+  walk test
+    hook test, and(is-below(start, points/length), is-space(char-code-at(get(points, start), 0)))
+    hook hold
+      save start, add(start, 1)
+  save end, points/length
+  walk test
+    hook test, and(is-above(end, start), is-space(char-code-at(get(points, subtract(end, 1)), 0)))
+    hook hold
+      save end, subtract(end, 1)
+  save kept, make list
+  save at, start
+  walk test
+    hook test, is-below(at, end)
+    hook hold
+      push(kept, get(points, at))
+      save at, add(at, 1)
+  back join(kept, <>)
+
+# the value of one digit in a base, or -1 when it is no digit of that base (ASCII only, either case)
+task digit-of
+  take point, like number
+  take base, like number
+  like number
+  mark private
+
+  save value, -1
+  fork test, and(is-minimum(point, 48), is-maximum(point, 57))
+    hold
+      save value, subtract(point, 48)
+  fork test, and(is-minimum(point, 97), is-maximum(point, 102))
+    hold
+      save value, subtract(point, 87)
+  fork test, and(is-minimum(point, 65), is-maximum(point, 70))
+    hold
+      save value, subtract(point, 55)
+  fork test, is-below(value, base)
+    hold
+      back value
+  back -1
+
+# a whole run of digits of a base as its number, or -1 when the run is empty or holds anything else
+task digits-value
+  take points, like list, like text
+  take from, like number
+  take base, like number
+  like number
+  mark private
+
+  fork test, not(is-below(from, points/length))
+    hold
+      back -1
+  save value, 0
+  save at, from
+  walk test
+    hook test, is-below(at, points/length)
+    hook hold
+      save digit, digit-of(char-code-at(get(points, at), 0), base)
+      fork test, is-below(digit, 0)
+        hold
+          back -1
+      # no code reaches a trillion, so a longer run is held there rather than grown past what a number holds exactly:
+      # it still matches nothing, as JavaScript's `parseInt` of it does
+      fork test, is-below(value, 1000000000000)
+        hold
+          save value, add(multiply(value, base), digit)
+      save at, add(at, 1)
+  back value
+
+# the entry a query names: a name, a lint code (`L019`, either case), or a compiler code in any of the three spellings a
+# run uses
+task find-kink
+  take query, like text
+  take catalog, like list, like kink
+  like maybe, like kink
+
+  save asked, trimmed(query)
+  save lower, to-lower-case(asked)
+  walk catalog
+    take one
+    fork test, is-equal(one/name, lower)
+      hold
+        back make(some, one)
+
+  save points, split(asked, <>)
+  save count, points/length
+  # `l` and digits, `/^l\d+$/i`
+  fork test, and(is-above(count, 1), is-equal(to-lower-case(get(points, 0)), <l>))
+    hold
+      fork test, is-minimum(digits-value(points, 1, 10), 0)
+        hold
+          save code, to-upper-case(asked)
+          walk catalog
+            take one
+            fork test, and(is-equal(one/kind, <lint>), is-equal(one/label, code))
+              hold
+                back make(some, one)
+          back make none
+
+  save number, -1
+  fork test, and(is-above(count, 2), and(is-equal(get(points, 0), <0>), is-equal(to-lower-case(get(points, 1)), <x>)))
+    hold
+      save number, digits-value(points, 2, 16)
+    miss
+      fork test, is-equal(count, 4)
+        hold
+          save number, digits-value(points, 0, 16)
+      fork test, is-below(number, 0)
+        hold
+          save number, digits-value(points, 0, 10)
+  fork test, is-below(number, 0)
+    hold
+      back make none
+  walk catalog
+    take one
+    fork test, and(is-equal(one/kind, <compiler>), is-equal(one/number, number))
+      hold
+        back make(some, one)
+  back make none
+
+# how a fix reaches the file
+task fixed-by
+  take one, like kink
+  like text
+
+  fork test, not(one/fixable)
+    hold
+      back <by hand>
+  fork test, is-equal(one/kind, <lint>)
+    hold
+      back <term lint --fix>
+  fork test, is-equal(one/fixes, <sure>)
+    hold
+      back <term scan --fix writes it, and an editor offers it as the preferred quick fix>
+  back <offered, never written: term scan --back json lists the choices, and an editor offers each one>
+
+# one entry as `term show kink` lists it, a line of the catalog
+task listed
+  take one, like kink
+  like text
+
+  save label, pad-right(one/label, 5, < >)
+  save severity, pad-right(one/severity, 8, < >)
+  save name, one/name
+  back <{label} {severity} {name}\n>
+
+# one entry as `term show kink <name>` shows it
+task shown
+  take one, like kink
+  like text
+
+  save name, one/name
+  save label, one/label
+  save kind, <lint>
+  fork test, is-equal(one/kind, <compiler>)
+    hold
+      save kind, <compiler>
+  save severity, one/severity
+  save says, one/says
+  save lines, make list
+  push(lines, <{name} {label}, {kind} {severity}>)
+  push(lines, <  says    {says}>)
+  fork test, is-unequal(one/remedy, <>)
+    hold
+      save remedy, one/remedy
+      push(lines, <  remedy  {remedy}>)
+  save fixed, fixed-by(one)
+  push(lines, <  fixed   {fixed}>)
+  save body, join(lines, <\n>)
+  back <{body}\n>

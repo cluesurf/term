@@ -6,8 +6,13 @@
 #
 # `code/line/base.tree`, the command tree, is NOT listed. Its `hook` routes are read by the dispatcher and the
 # drift gate, and nothing in it has a head lean would drop. A file no rule matches keeps the content rule.
+#
+# `code/*.tree` are the CLI's own modules ported to Term, each beside the TypeScript face its callers still import
+# (note/term/self-host/log.md, "deck/call ports"). They are libraries, built by task/port-build.ts.
 
 role code
   mark lean
   take @/code/work/**/*.tree
   take @/test/item/**/*.tree
+  take @/code/*.tree
+  take @/code/browser/posix.tree

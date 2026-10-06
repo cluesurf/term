@@ -1,0 +1,219 @@
+# The declarations a platform requires before it grants a device capability (device-layer-0012), derived from the
+# capability runtimes a program's native half holds. An app declares exactly what it reaches: a camera permission is in
+# the manifest because the camera's runtime is in the program, and absent from every app that never touches it.
+#
+#   android   the manifest's <uses-permission> lines. A permission it does not declare can never be granted, neither by
+#             the person nor by `adb shell pm grant`
+#   apple     the Info.plist usage strings. iOS ends an app that asks for a privacy grant without the string, at the
+#             first request, with no prompt
+#
+# A runtime is told by its declaration, `object nativeCamera` in Kotlin and `enum nativeCamera` in Swift
+# (view/native/toolkit/runtime/native-*.kt and .swift): the word `object` or `enum`, one space, the runtime's name, each
+# a whole word. The permission module declares nothing on its own: asking for a capability's grant is meaningful only in
+# a program that has the capability.
+#
+# Ported from deck/call/code/device-declare.ts (self-hosting, 2026-10-06), which stays as the face its callers import.
+
+load @term/base/list
+  find list
+  find get
+  find sort
+  find contains
+
+load @term/base/text
+  find split
+  find char-code-at
+  find char-count
+
+load @term/make/check/eliminate
+  find utf16-order
+
+form declaration
+  link runtime, like text
+  link android, like list, like text
+  # the Info.plist key and its text, both the empty text where the platform asks for none
+  link apple-key, like text
+  link apple-text, like text
+
+form usage
+  link key, like text
+  link text, like text
+
+task declared
+  take runtime, like text
+  take android, like list, like text
+  take apple-key, like text
+  take apple-text, like text
+  like declaration
+  mark private
+
+  back
+    make declaration
+      bind runtime, runtime
+      bind android, android
+      bind apple-key, apple-key
+      bind apple-text, apple-text
+
+task one-of
+  take a, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, a)
+  back out
+
+task two-of
+  take a, like text
+  take b, like text
+  like list, like text
+  mark private
+
+  save out, one-of(a)
+  push(out, b)
+  back out
+
+task three-of
+  take a, like text
+  take b, like text
+  take c, like text
+  like list, like text
+  mark private
+
+  save out, two-of(a, b)
+  push(out, c)
+  back out
+
+task declarations
+  like list, like declaration
+  mark private
+
+  save none, make list
+  save out, make list
+  push(out, declared(<nativeCamera>, one-of(<android.permission.CAMERA>), <NSCameraUsageDescription>, <Takes the photos you ask for.>))
+  push(out, declared(<nativeMicrophone>, one-of(<android.permission.RECORD_AUDIO>), <NSMicrophoneUsageDescription>, <Records the sound you ask it to.>))
+  push(out, declared(<nativeContacts>, one-of(<android.permission.READ_CONTACTS>), <NSContactsUsageDescription>, <Finds the people you ask for.>))
+  # iOS 17 and macOS 14 read the full-access string; the build's minimum is those, so the older
+  # NSCalendarsUsageDescription is not needed
+  push(out, declared(<nativeCalendar>, two-of(<android.permission.READ_CALENDAR>, <android.permission.WRITE_CALENDAR>), <NSCalendarsFullAccessUsageDescription>, <Keeps and finds the events you ask it to.>))
+  # READ_MEDIA_IMAGES from Android 13, READ_EXTERNAL_STORAGE before it, and Android 14's choice of photos
+  push(out, declared(<nativePhotos>, three-of(<android.permission.READ_MEDIA_IMAGES>, <android.permission.READ_MEDIA_VISUAL_USER_SELECTED>, <android.permission.READ_EXTERNAL_STORAGE>), <NSPhotoLibraryUsageDescription>, <Shows and copies the photos you ask for.>))
+  push(out, declared(<nativeTorch>, none, <NSCameraUsageDescription>, <Turns on the camera light when you ask for it.>))
+  push(out, declared(<nativeLocation>, two-of(<android.permission.ACCESS_FINE_LOCATION>, <android.permission.ACCESS_COARSE_LOCATION>), <NSLocationWhenInUseUsageDescription>, <Reads where you are when you ask for it.>))
+  push(out, declared(<nativeNotification>, one-of(<android.permission.POST_NOTIFICATIONS>), <>, <>))
+  push(out, declared(<nativeVibration>, one-of(<android.permission.VIBRATE>), <>, <>))
+  push(out, declared(<nativeNetwork>, one-of(<android.permission.ACCESS_NETWORK_STATE>), <>, <>))
+  # Face ID refuses an app with no usage string, and Android's BiometricPrompt one without USE_BIOMETRIC
+  # (device-layer-0021)
+  push(out, declared(<nativeBiometric>, one-of(<android.permission.USE_BIOMETRIC>), <NSFaceIDUsageDescription>, <Checks it is you when you ask it to.>))
+  back out
+
+# a word character as `\w` reads one: an ASCII letter, digit or underscore
+task is-word
+  take point, like number
+  like boolean
+  mark private
+
+  back or(or(and(is-minimum(point, 48), is-maximum(point, 57)), and(is-minimum(point, 65), is-maximum(point, 90))), or(and(is-minimum(point, 97), is-maximum(point, 122)), is-equal(point, 95)))
+
+task last-point
+  take value, like text
+  like number
+  mark private
+
+  save count, char-count(value)
+  fork test, is-equal(count, 0)
+    hold
+      back -1
+  back char-code-at(value, subtract(count, 1))
+
+# is `<head> <name>` in the text as whole words, `\b(head) name\b`. An occurrence that overlaps the one before it starts
+# inside that one's name, so after a word character, and is never whole: reading the occurrences one after another
+# misses none that counts
+task holds-word
+  take native, like text
+  take needle, like text
+  like boolean
+  mark private
+
+  save pieces, split(native, needle)
+  save at, 0
+  walk test
+    hook test, is-below(add(at, 1), pieces/length)
+    hook hold
+      save before, get(pieces, at)
+      save after, get(pieces, add(at, 1))
+      # the code point before the occurrence: the end of the piece before it, the start of the text, or (an empty
+      # piece between two occurrences) the end of the previous one, which is a word character
+      save open, true
+      fork test, is-equal(before, <>)
+        hold
+          save open, is-equal(at, 0)
+        miss
+          save open, not(is-word(last-point(before)))
+      save close, or(is-equal(after, <>), not(is-word(char-code-at(after, 0))))
+      fork test, is-equal(after, <>)
+        hold
+          # an empty piece after it is the end of the text, or another occurrence starting with a word character
+          save close, is-equal(add(at, 2), pieces/length)
+      fork test, and(open, close)
+        hold
+          back true
+      save at, add(at, 1)
+  back false
+
+task holds
+  take native, like text
+  take runtime, like text
+  like boolean
+  mark private
+
+  back or(holds-word(native, <object {runtime}>), holds-word(native, <enum {runtime}>))
+
+# the Android permissions a program's native half needs, each once, in JavaScript's order of texts
+task android-permissions
+  take native, like text
+  like list, like text
+
+  save out, make list
+  walk declarations()
+    take one
+    fork test, holds(native, one/runtime)
+      hold
+        walk one/android
+          take permission
+          fork test, not(contains(out, permission))
+            hold
+              push(out, permission)
+  back sort(out, utf16-order)
+
+# the Info.plist usage strings a program's native half needs, by key, in the order first met. Two runtimes sharing a key
+# (the camera and its light) keep the first one's text
+task apple-usage
+  take native, like text
+  like list, like usage
+
+  save keys, make list
+  save out, make list
+  walk declarations()
+    take one
+    fork test, and(is-unequal(one/apple-key, <>), and(holds(native, one/runtime), not(contains(keys, one/apple-key))))
+      hold
+        push(keys, one/apple-key)
+        save found
+          make usage
+            bind key, one/apple-key
+            bind text, one/apple-text
+        push(out, found)
+  back out
+
+# the manifest lines for those permissions
+task permission-lines
+  take native, like text
+  like list, like text
+
+  save out, make list
+  walk android-permissions(native)
+    take permission
+    push(out, <  \<uses-permission android:name="{permission}" /\>>)
+  back out

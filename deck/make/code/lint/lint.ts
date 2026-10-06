@@ -17,7 +17,6 @@ import type {
   LintMemo,
   Rule,
 } from '@term/make/code/lint/rule'
-import { tellMissing, tellOfFailure, tellReveals } from '@term/make/code/lint/rules/tell-advice'
 import { dataGrammar } from '@term/make/code/lint/rules/data-grammar'
 import { lineLayout } from '@term/make/code/lint/rules/line-layout'
 import { parse } from '@term/make/code/parser/tree'
@@ -43,6 +42,7 @@ export function portedRule(name: ruleCheck.PortedRule): Rule {
         reassigned: [...context.reassigned],
         program: context.program,
         raises: { filled: false, sets: new Map() },
+        tells: { filled: false, decides: false, rootOf: new Map(), reachable: new Map(), told: new Map() },
       }) as ruleCheck.LintFacts
       const reports =
         target.kind === 'statement'
@@ -156,9 +156,9 @@ export const RULES: Rule[] = [
   lineLayout,
   portedRule('note-metadata'),
   portedRule('redundant-wait'),
-  tellMissing,
-  tellOfFailure,
-  tellReveals,
+  portedRule('tell-missing'),
+  portedRule('tell-of-failure'),
+  portedRule('tell-reveals'),
   portedRule('unhandled-raise'),
 ]
 

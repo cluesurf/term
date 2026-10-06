@@ -5,9 +5,11 @@
 // counts). It used to be found only in the first 2,000 characters, so a file whose leading comment ran longer shipped
 // as code with its marker unread (guides: language/notes, 2026-10-03). An indented `mark draft` belongs to the
 // definition it sits under, not to the file.
+//
+// The reading is Term since 2026-10-06, call/code/draft-mark.tree.
 
-const DRAFT = /^(mark|note) draft\s*$/m
+import { declaresDraft as declares } from '@term/call/code/draft-mark'
 
 export function declaresDraft(text: string): boolean {
-  return DRAFT.test(text)
+  return declares(text)
 }

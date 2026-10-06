@@ -1,0 +1,517 @@
+# Definitional unfolding for the ring prover. A goal like `norm(a, b) * norm(c, d) == norm(p, q)` names a task whose
+# body is one polynomial, but the ring normalizer only reads `+`, `-`, `*`, literals and variables, so a call is opaque
+# to it. This replaces each call to such a task with its body, the arguments substituted for the parameters (delta then
+# beta reduction), so the task can be defined once and used by name in any ring identity.
+#
+# Sound: a task that is not recursive and whose whole body is `send back <expression>` denotes exactly that expression
+# with its parameters bound to the arguments. Nothing else is unfolded, and a task with a `natural-number` parameter is
+# never unfolded, because its `subtract` truncates at zero. A task that recurses (directly or through another),
+# branches, has more than one statement, or reads a name that is not one of its parameters is left as a call.
+#
+# Ported from check/unfold.ts (self-hosting, 2026-10-06), which stays as the face: it keeps the table of the last
+# program asked about, module state. The original copied a node with a spread (`{ ...e, left }`), which keeps every
+# field as present or absent as it was; Term cannot tell an absent list from an empty one, so the copy is a bind
+# (`shallow-copy`, the spread on TypeScript and the value itself natively, where a value is already a copy), and the
+# fields that change are written onto it.
+
+load @term/base/list
+  find list
+  find contains
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load ../compile/node
+  find expression
+  find field-value
+  find statement
+
+# a copy of a node holding every field it holds, as the original's spread made one
+bind shallow-copy
+  take value, like expression
+  like expression
+  case node
+    text <(\{ ...$value \})>
+  case browser
+    text <(\{ ...$value \})>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+# the deepest chain of nested unfoldings followed, a backstop against a cycle the recursion test missed
+task unfold-depth-limit
+  like number
+  mark private
+
+  back 32
+
+task add-text
+  take values, like list, like text
+  take value, like text
+  like void
+  mark private
+
+  fork test, not(contains(values, value))
+    hold
+      push(values, value)
+
+# the names an expression reads, for the closed-body test
+task free-names
+  take e, like expression
+  take found-names, like list, like text
+  like void
+  mark private
+
+  sift e
+    case variable
+      add-text(found-names, name)
+    case binary
+      free-names(left, found-names)
+      free-names(right, found-names)
+    case unary
+      free-names(operand, found-names)
+    case call
+      # the callee is a function name, not a value the body reads
+      walk args
+        take arg
+        free-names(arg, found-names)
+    # `u/x` reads `u`, and a construction reads each value it is built from
+    case member
+      free-names(target, found-names)
+      sift index
+        case some
+          link at
+          free-names(at, found-names)
+        case none
+          save nothing, 0
+    case record
+      walk fields
+        take field
+        free-names(field/value, found-names)
+      walk positional
+        take one
+        free-names(one, found-names)
+    miss
+      save nothing, 0
+
+# the functions a body calls by name
+task called-names
+  take e, like expression
+  take found-names, like list, like text
+  like void
+  mark private
+
+  sift e
+    case binary
+      called-names(left, found-names)
+      called-names(right, found-names)
+    case unary
+      called-names(operand, found-names)
+    case call
+      sift callee
+        case variable
+          link callee-name
+          add-text(found-names, callee-name)
+        miss
+          save nothing, 0
+      walk args
+        take arg
+        called-names(arg, found-names)
+    case member
+      called-names(target, found-names)
+    case record
+      walk fields
+        take field
+        called-names(field/value, found-names)
+      walk positional
+        take one
+        called-names(one, found-names)
+    miss
+      save nothing, 0
+
+# a task that may be unfolded: its parameters and its one `send back <expression>`, whose free names are all parameters
+form unfold-entry
+  link name, like text
+  link params, like list, like text
+  link body, like expression
+
+task unfoldable-body
+  take fn, like statement
+  like maybe, like unfold-entry
+  mark private
+
+  sift fn
+    case function
+      # a claim declares a name without defining it. A separate-compilation stub carries its one statement as
+      # `stub-shape` when its body was one, which is all an unfolding reads
+      save statements, make list
+      fork test, stub
+        hold
+          sift stub-shape
+            case some
+              link shape
+              push(statements, shape)
+            case none
+              save nothing, 0
+        miss
+          walk body
+            take one
+            push(statements, one)
+      fork test, or(claim, is-unequal(statements/length, 1))
+        hold
+          back make none
+      save sent, make none
+      sift get(statements, 0)
+        case return
+          sift read(value)
+            case some
+              link given
+              save sent, make(some, given)
+            case none
+              back make none
+        miss
+          back make none
+      # a `natural-number` parameter means `subtract` in the body is truncated (monus), not the ring's minus
+      save names, make list
+      walk params
+        take param
+        sift param/refine
+          case some
+            link refinement
+            back make none
+          case none
+            push(names, param/name)
+      sift sent
+        case some
+          link value
+          save read-names, make list
+          free-names(value, read-names)
+          walk read-names
+            take one
+            fork test, not(contains(names, one))
+              hold
+                back make none
+          save entry
+            make unfold-entry
+              bind name, name
+              bind params, names
+              bind body, value
+          back make(some, entry)
+        case none
+          back make none
+    miss
+      back make none
+
+# does `name` reach itself through the call graph of unfoldable bodies (so unfolding it would not terminate)
+task is-recursive
+  take name, like text
+  take bodies, like hash, like text, like unfold-entry
+  like boolean
+  mark private
+
+  save seen, make list
+  save stack, make list
+  push(stack, name)
+  walk test
+    hook test, is-above(stack/length, 0)
+    hook hold
+      save current, stack/pop()
+      fork test, not(bodies/has(current))
+        hold
+          turn next
+      save called, make list
+      called-names(bodies/get(current)/body, called)
+      walk called
+        take next
+        fork test, is-equal(next, name)
+          hold
+            back true
+        fork test, not(contains(seen, next))
+          hold
+            push(seen, next)
+            push(stack, next)
+  back false
+
+# the unfoldable, non-recursive tasks of a program, by name
+task unfold-table
+  take program, like list, like statement
+  like hash, like text, like unfold-entry
+
+  save bodies, make hash
+  save names, make list
+  walk program
+    take one
+    sift unfoldable-body(one)
+      case some
+        link entry
+        fork test, not(bodies/has(entry/name))
+          hold
+            push(names, entry/name)
+        save bodies/{entry/name}, entry
+      case none
+        save nothing, 0
+  # each name tested against the table as it stands, a recursive one taken out before the next is tested, as the
+  # original deleted from its map while it walked it: of two tasks calling each other, the first is taken out and the
+  # second, which then reaches nothing, stays
+  walk names
+    take name
+    fork test, is-recursive(name, bodies)
+      hold
+        bodies/remove(name)
+  save out, make hash
+  walk names
+    take name
+    fork test, bodies/has(name)
+      hold
+        save out/{name}, bodies/get(name)
+  back out
+
+# substitute each parameter by its argument, simultaneously (an argument is never re-substituted). Also how the kernel
+# instantiates a universal hypothesis at a goal's terms (check/elaborate.ts universalInstances)
+task substitute
+  take e, like expression
+  take bound-to, like hash, like text, like expression
+  like expression
+
+  sift e
+    case variable
+      fork test, bound-to/has(name)
+        hold
+          back bound-to/get(name)
+      back e
+    case binary
+      save copy, shallow-copy(e)
+      sift copy
+        case binary
+          save copy/left, substitute(left, bound-to)
+          save copy/right, substitute(right, bound-to)
+        miss
+          save nothing, 0
+      back copy
+    case unary
+      save copy, shallow-copy(e)
+      sift copy
+        case unary
+          save copy/operand, substitute(operand, bound-to)
+        miss
+          save nothing, 0
+      back copy
+    # THE CALLEE TOO: a body that calls a parameter (`back s(x)` for a set `s`) is a call of the argument
+    case call
+      save copy, shallow-copy(e)
+      sift copy
+        case call
+          save new-args, make list
+          walk args
+            take arg
+            push(new-args, substitute(arg, bound-to))
+          save copy/callee, substitute(callee, bound-to)
+          save copy/args, new-args
+        miss
+          save nothing, 0
+      back copy
+    case member
+      save copy, shallow-copy(e)
+      sift copy
+        case member
+          save copy/target, substitute(target, bound-to)
+          sift index
+            case some
+              link at
+              save substituted, substitute(at, bound-to)
+              save copy/index, make(some, substituted)
+            case none
+              save nothing, 0
+        miss
+          save nothing, 0
+      back copy
+    case record
+      save copy, shallow-copy(e)
+      sift copy
+        case record
+          save new-fields, make list
+          walk fields
+            take field
+            save made
+              make field-value
+                bind name, field/name
+                bind value, substitute(field/value, bound-to)
+            push(new-fields, made)
+          save copy/fields, new-fields
+          # present, even empty, it is mapped; left out, it stays out
+          save new-positional, make list
+          walk positional
+            take one
+            push(new-positional, substitute(one, bound-to))
+          fork test, is-above(new-positional/length, 0)
+            hold
+              save copy/positional, new-positional
+        miss
+          save nothing, 0
+      back copy
+    miss
+      back e
+
+# `u/x/y` as a path, when every link of it is a plain field read of a name
+task path-of
+  take e, like expression
+  like maybe, like text
+  mark private
+
+  sift e
+    case variable
+      back make(some, name)
+    case member
+      sift index
+        case some
+          link at
+          back make none
+        case none
+          sift path-of(target)
+            case some
+              link inner
+              save path, <{inner}/{name}>
+              back make(some, path)
+            case none
+              back make none
+    miss
+      back make none
+
+# A FIELD READ, as the ring reads it. Of a construction it is the field's value (`make pair(a, b)/left` is `a`). Of a
+# name it is an ATOM named by its path, `u/x`, which no name in a program can spell. Anything else is left as it is
+task read-field
+  take e, like expression
+  like expression
+  mark private
+
+  sift e
+    case member
+      sift index
+        case some
+          link at
+          back e
+        case none
+          save nothing, 0
+      sift target
+        case record
+          link record-name
+          link record-fields
+          walk record-fields
+            take field
+            fork test, is-equal(field/name, name)
+              hold
+                back field/value
+          back e
+        miss
+          save nothing, 0
+      sift path-of(e)
+        case some
+          link path
+          back
+            make expression/variable
+              bind name, path
+              bind span, span
+        case none
+          back e
+    miss
+      back e
+
+# unfold every call to a non-recursive single-expression task, innermost arguments first
+task unfold-definitions
+  take e, like expression
+  take table, like hash, like text, like unfold-entry
+  like expression
+
+  back unfold-walk(e, table, 0)
+
+task unfold-walk
+  take x, like expression
+  take table, like hash, like text, like unfold-entry
+  take depth, like number
+  like expression
+  mark private
+
+  sift x
+    case binary
+      save copy, shallow-copy(x)
+      sift copy
+        case binary
+          save copy/left, unfold-walk(left, table, depth)
+          save copy/right, unfold-walk(right, table, depth)
+        miss
+          save nothing, 0
+      back copy
+    case unary
+      save copy, shallow-copy(x)
+      sift copy
+        case unary
+          save copy/operand, unfold-walk(operand, table, depth)
+        miss
+          save nothing, 0
+      back copy
+    # a field read of what the walk unfolds: `times(m, n)/a` is the `a` of the record `times` builds
+    case member
+      save copy, shallow-copy(x)
+      sift copy
+        case member
+          save copy/target, unfold-walk(target, table, depth)
+        miss
+          save nothing, 0
+      back read-field(copy)
+    case record
+      save copy, shallow-copy(x)
+      sift copy
+        case record
+          save new-fields, make list
+          walk fields
+            take field
+            save made
+              make field-value
+                bind name, field/name
+                bind value, unfold-walk(field/value, table, depth)
+            push(new-fields, made)
+          save copy/fields, new-fields
+        miss
+          save nothing, 0
+      back copy
+    case call
+      save new-args, make list
+      walk args
+        take arg
+        push(new-args, unfold-walk(arg, table, depth))
+      save found, false
+      save entry-name, <>
+      sift callee
+        case variable
+          link callee-name
+          fork test, table/has(callee-name)
+            hold
+              save found, true
+              save entry-name, callee-name
+        miss
+          save nothing, 0
+      fork test, found
+        hold
+          save entry, table/get(entry-name)
+          fork test, and(is-equal(entry/params/length, new-args/length), is-below(depth, unfold-depth-limit()))
+            hold
+              save bound-to, make hash
+              save i, 0
+              walk entry/params
+                take param
+                save bound-to/{param}, get(new-args, i)
+                save i, add(i, 1)
+              back unfold-walk(substitute(entry/body, bound-to), table, add(depth, 1))
+      save copy, shallow-copy(x)
+      sift copy
+        case call
+          save copy/args, new-args
+        miss
+          save nothing, 0
+      back copy
+    miss
+      back x

@@ -1,0 +1,1463 @@
+# NONLINEAR ARITHMETIC BY PRODUCTS OF HYPOTHESES: the step the linear prover cannot take, `y >= 0` and `x*x <= y*y`
+# give `x <= y`. It is the Positivstellensatz of degree two, the procedure Lean calls `nlinarith`:
+#
+#   1. the facts are polynomials known `>= 0`, `> 0` or `== 0`, and the goal's NEGATION is added as one more fact;
+#   2. every product of two facts is a fact too (a product of non-negatives is non-negative, of positives positive, and
+#      anything times zero is zero), and so is every square of a variable;
+#   3. each monomial is read as an unknown of its own, and a linear program looks for non-negative multipliers whose
+#      combination of the facts is IDENTICALLY a negative constant, or identically zero with a strict fact used.
+#
+# Either is impossible, so the facts cannot all hold, so the goal follows. The multipliers are the CERTIFICATE. The
+# search is an exact simplex over rationals, and what it returns is replayed by `replay`, which recomputes the
+# combination from the facts and shares nothing with the search but the polynomial arithmetic. A wrong search can cost
+# a proof and never forge one. There is NO integer tightening here: every step is valid in an ordered field.
+#
+# Ported from check/product.ts (self-hosting, 2026-10-06), which stays as the face: it converts the TypeScript bigint
+# rationals and polynomials to and from these, and holds the two pieces of module state, the work budget of the current
+# goal and the profile counters, as records this mutates (`work-budget`, `product-profile`). The rationals are the
+# stdlib's `big-integer`, a host bigint on TypeScript; their hexadecimal length (the budget's measure of work) and their
+# value as a float (the fast refusal's) are two binds of their own. Every order the original's maps, sets and sorts
+# gave is kept: a hash keeps the order its keys were first set in, and names sort by UTF-16 unit as `.sort()` sorts.
+
+load @term/base/list
+  find list
+  find contains
+  find get
+  find join
+  find sort
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+
+load @term/base/float
+  find absolute
+  find is-finite
+  find to-decimal
+
+load @term/base/rune
+  find rune-to-text
+
+load @term/base/integer/big
+  find big-integer
+  find big-handle
+  find big-from-number
+  find big-add
+  find big-subtract
+  find big-multiply
+  find big-divide
+  find big-remainder
+  find big-negate
+  find big-compare
+
+load ./eliminate
+  find utf16-order
+
+# ---- binds over the host bignum ----
+
+# the hexadecimal digits of a magnitude, as `toString(16).length` counts them
+bind bignum-hex-length
+  take value, like big-handle
+  like number
+  case node
+    text <($value \< 0n ? -$value : $value).toString(16).length>
+  case browser
+    text <($value \< 0n ? -$value : $value).toString(16).length>
+  case rust
+    text <((($value.downcast_ref::\<num_bigint::BigInt\>().unwrap().bits() + 3) / 4) as i64)>
+  case swift
+    text <(\{ () -\> Int64 in let l = termbig.big($value).limbs; if l.isEmpty \{ return 1 \}; return Int64((l.count - 1) * 8 + String(l[l.count - 1], radix: 16).count) \})()>
+  case kotlin
+    text <(((($value as java.math.BigInteger).abs().bitLength() + 3) / 4).toLong())>
+
+# the nearest double, as `Number(bigint)` reads it
+bind bignum-to-float
+  take value, like big-handle
+  like float
+  case node
+    text <Number($value)>
+  case browser
+    text <Number($value)>
+  case rust
+    text <$value.downcast_ref::\<num_bigint::BigInt\>().unwrap().to_string().parse::\<f64\>().unwrap()>
+  case swift
+    text <Double(termbig.text($value))!>
+  case kotlin
+    text <($value as java.math.BigInteger).toDouble()>
+
+# ---- exact rationals ----
+
+form rational
+  link n, like big-integer
+  link d, like big-integer
+
+task big-zero
+  like big-integer
+  mark private
+
+  back big-from-number(0)
+
+task big-one
+  like big-integer
+  mark private
+
+  back big-from-number(1)
+
+task big-sign
+  take value, like big-integer
+  like number
+  mark private
+
+  back big-compare(value, big-zero())
+
+task gcd
+  take first, like big-integer
+  take second, like big-integer
+  like big-integer
+  mark private
+
+  save a, first
+  fork test, is-below(big-sign(a), 0)
+    hold
+      save a, big-negate(a)
+  save b, second
+  fork test, is-below(big-sign(b), 0)
+    hold
+      save b, big-negate(b)
+  walk test
+    hook test, is-unequal(big-sign(b), 0)
+    hook hold
+      save next, big-remainder(a, b)
+      save a, b
+      save b, next
+  back a
+
+task rational-of
+  take numerator, like big-integer
+  take denominator, like big-integer
+  like rational
+
+  fork test, is-equal(big-sign(denominator), 0)
+    hold
+      halt <rational with denominator zero>
+  save n, numerator
+  save d, denominator
+  fork test, is-below(big-sign(d), 0)
+    hold
+      save n, big-negate(n)
+      save d, big-negate(d)
+  save g, gcd(n, d)
+  fork test, is-equal(big-sign(g), 0)
+    hold
+      save g, big-one()
+  back
+    make rational
+      bind n, big-divide(n, g)
+      bind d, big-divide(d, g)
+
+task whole
+  take value, like number
+  like rational
+  mark private
+
+  back rational-of(big-from-number(value), big-one())
+
+task zero
+  like rational
+  mark private
+
+  back whole(0)
+
+task one
+  like rational
+  mark private
+
+  back whole(1)
+
+task plus
+  take a, like rational
+  take b, like rational
+  like rational
+  mark private
+
+  back rational-of(big-add(big-multiply(a/n, b/d), big-multiply(b/n, a/d)), big-multiply(a/d, b/d))
+
+task minus
+  take a, like rational
+  take b, like rational
+  like rational
+  mark private
+
+  back rational-of(big-subtract(big-multiply(a/n, b/d), big-multiply(b/n, a/d)), big-multiply(a/d, b/d))
+
+task times
+  take a, like rational
+  take b, like rational
+  like rational
+  mark private
+
+  back rational-of(big-multiply(a/n, b/n), big-multiply(a/d, b/d))
+
+task over
+  take a, like rational
+  take b, like rational
+  like rational
+  mark private
+
+  back rational-of(big-multiply(a/n, b/d), big-multiply(a/d, b/n))
+
+task is-zero
+  take a, like rational
+  like boolean
+  mark private
+
+  back is-equal(big-sign(a/n), 0)
+
+task sign
+  take a, like rational
+  like number
+  mark private
+
+  back big-sign(a/n)
+
+task below
+  take a, like rational
+  take b, like rational
+  like boolean
+  mark private
+
+  back is-below(big-compare(big-multiply(a/n, b/d), big-multiply(b/n, a/d)), 0)
+
+# the bits of a magnitude, by its hexadecimal digits (four bits each): cheap, and only a measure of work
+task bit-length
+  take a, like big-integer
+  like number
+  mark private
+
+  fork test, is-equal(big-sign(a), 0)
+    hold
+      back 0
+  back multiply(bignum-hex-length(a/dock), 4)
+
+task value-of
+  take r, like rational
+  like float
+  mark private
+
+  back divide(bignum-to-float(r/n/dock), bignum-to-float(r/d/dock))
+
+# ---- polynomials: monomial key (variable names, sorted, joined by NUL, `<>` for the constant) -> rational ----
+
+task separator
+  like text
+  mark private
+
+  back rune-to-text(0)
+
+task vars-of
+  take key, like text
+  like list, like text
+  mark private
+
+  fork test, is-equal(key, <>)
+    hold
+      back make list
+  back split(key, separator())
+
+task join-keys
+  take a, like text
+  take b, like text
+  like text
+  mark private
+
+  save all, make list
+  walk vars-of(a)
+    take one
+    push(all, one)
+  walk vars-of(b)
+    take one
+    push(all, one)
+  back join(sort(all, utf16-order), separator())
+
+task clean
+  take a, like hash, like text, like rational
+  like hash, like text, like rational
+  mark private
+
+  save out, make hash
+  walk a/keys()
+    take key
+    save c, a/get(key)
+    fork test, not(is-zero(c))
+      hold
+        save out/{key}, c
+  back out
+
+task multiply-polynomials
+  take a, like hash, like text, like rational
+  take b, like hash, like text, like rational
+  like hash, like text, like rational
+
+  save out, make hash
+  walk a/keys()
+    take ka
+    walk b/keys()
+      take kb
+      save key, join-keys(ka, kb)
+      save before, zero()
+      fork test, out/has(key)
+        hold
+          save before, out/get(key)
+      save out/{key}, plus(before, times(a/get(ka), b/get(kb)))
+  back clean(out)
+
+task scaled
+  take a, like hash, like text, like rational
+  take k, like rational
+  like hash, like text, like rational
+  mark private
+
+  save out, make hash
+  walk a/keys()
+    take key
+    save out/{key}, times(a/get(key), k)
+  back clean(out)
+
+task sum
+  take a, like hash, like text, like rational
+  take b, like hash, like text, like rational
+  like hash, like text, like rational
+  mark private
+
+  save out, make hash
+  walk a/keys()
+    take key
+    save out/{key}, a/get(key)
+  walk b/keys()
+    take key
+    save before, zero()
+    fork test, out/has(key)
+      hold
+        save before, out/get(key)
+    save out/{key}, plus(before, b/get(key))
+  back clean(out)
+
+task degree
+  take a, like hash, like text, like rational
+  like number
+  mark private
+
+  save out, 0
+  walk a/keys()
+    take key
+    save count, vars-of(key)/length
+    fork test, is-above(count, out)
+      hold
+        save out, count
+  back out
+
+task monomial
+  take key, like text
+  like hash, like text, like rational
+  mark private
+
+  save out, make hash
+  save out/{key}, one()
+  back out
+
+# ---- facts, rows and the certificate ----
+
+form fact
+  link polynomial, like hash, like text, like rational
+  # `nonnegative`, `positive` or `zero`
+  link relation, like text
+
+# how a row was made, which is what `replay` rebuilds it from: a fact, alone, times a monomial (an EQUATION fact, still an
+# equation) or times the square of a variable (an INEQUALITY fact, which keeps its sign); a product of two or three
+# facts; or a square: `[v]` is v^2, `[v, w]` is (v - w)^2 and `[v, w, +]` is (v + w)^2, `w` `1` for the constant
+form row-from
+  case from-fact
+    link fact, like number
+    link times, like maybe, like text
+    link square, like maybe, like text
+  case from-facts
+    link facts, like list, like number
+  case from-square
+    link vars, like list, like text
+
+form row
+  link polynomial, like hash, like text, like rational
+  link relation, like text
+  link from, like row-from
+
+form certificate
+  link rows, like list, like row-from
+  link multipliers, like list, like rational
+
+task fact-at
+  take facts, like list, like fact
+  take at, like number
+  like maybe, like fact
+  mark private
+
+  fork test, or(is-below(at, 0), is-minimum(at, facts/length))
+    hold
+      back make none
+  save found, get(facts, at)
+  back make(some, found)
+
+task made-row
+  take polynomial, like hash, like text, like rational
+  take relation, like text
+  take from, like row-from
+  like maybe, like row
+  mark private
+
+  save made
+    make row
+      bind polynomial, polynomial
+      bind relation, relation
+      bind from, from
+  back make(some, made)
+
+task rebuild
+  take from, like row-from
+  take known, like list, like fact
+  like maybe, like row
+
+  sift from
+    case from-fact
+      sift fact-at(known, fact)
+        case none
+          back make none
+        case some
+          link found
+          save has-times, false
+          save times-text, <>
+          sift times
+            case some
+              link given
+              save has-times, true
+              save times-text, given
+            case none
+              save nothing, 0
+          sift square
+            case some
+              link square-var
+              fork test, has-times
+                hold
+                  back make none
+              save v, monomial(square-var)
+              # a positive fact times a square is only non-negative (the square may be zero)
+              save relation, <nonnegative>
+              fork test, is-equal(found/relation, <zero>)
+                hold
+                  save relation, <zero>
+              back made-row(multiply-polynomials(found/polynomial, multiply-polynomials(v, v)), relation, from)
+            case none
+              save nothing, 0
+          fork test, not(has-times)
+            hold
+              back made-row(found/polynomial, found/relation, from)
+          # only an equation may be multiplied by an arbitrary monomial: x >= 0 times -1 is not >= 0
+          fork test, is-unequal(found/relation, <zero>)
+            hold
+              back make none
+          back made-row(multiply-polynomials(found/polynomial, monomial(times-text)), <zero>, from)
+    case from-square
+      fork test, or(is-equal(vars/length, 0), is-above(vars/length, 3))
+        hold
+          back make none
+      save v, get(vars, 0)
+      fork test, is-equal(v, <>)
+        hold
+          back make none
+      fork test, is-equal(vars/length, 3)
+        hold
+          fork test, is-unequal(get(vars, 2), <+>)
+            hold
+              back make none
+      save base, monomial(v)
+      fork test, is-minimum(vars/length, 2)
+        hold
+          save w, get(vars, 1)
+          save w-key, w
+          fork test, is-equal(w, <1>)
+            hold
+              save w-key, <>
+          save coefficient, whole(-1)
+          fork test, and(is-equal(vars/length, 3), is-equal(get(vars, 2), <+>))
+            hold
+              save coefficient, one()
+          save base/{w-key}, coefficient
+      back made-row(multiply-polynomials(base, base), <nonnegative>, from)
+    case from-facts
+      fork test, or(is-below(facts/length, 2), is-above(facts/length, 3))
+        hold
+          back make none
+      save factors, make list
+      walk facts
+        take at
+        sift fact-at(known, at)
+          case some
+            link found
+            push(factors, found)
+          case none
+            back make none
+      back facts-product(factors, from)
+
+task facts-product
+  take factors, like list, like fact
+  take from, like row-from
+  like maybe, like row
+  mark private
+
+  # anything times zero is zero, positives multiply to a positive, and otherwise the product is non-negative
+  save any-zero, false
+  save all-positive, true
+  walk factors
+    take one
+    fork test, is-equal(one/relation, <zero>)
+      hold
+        save any-zero, true
+    fork test, is-unequal(one/relation, <positive>)
+      hold
+        save all-positive, false
+  save relation, <nonnegative>
+  fork test, all-positive
+    hold
+      save relation, <positive>
+  fork test, any-zero
+    hold
+      save relation, <zero>
+  save polynomial, get(factors, 0)/polynomial
+  save i, 1
+  walk test
+    hook test, is-below(i, factors/length)
+    hook hold
+      save polynomial, multiply-polynomials(polynomial, get(factors, i)/polynomial)
+      save i, add(i, 1)
+  back made-row(polynomial, relation, from)
+
+# THE CHECKER. The facts cannot all hold when the certificate's combination of them is identically a negative constant,
+# or identically zero with a positive multiplier on a strict row. Nothing from the search is trusted but the row recipes
+# and the multipliers, and both are checked here.
+task replay
+  take facts, like list, like fact
+  take given, like certificate
+  like boolean
+
+  fork test, is-unequal(given/rows/length, given/multipliers/length)
+    hold
+      back false
+  save total, make hash
+  save strict-used, false
+  save i, 0
+  walk given/rows
+    take from
+    save k, get(given/multipliers, i)
+    save i, add(i, 1)
+    sift rebuild(from, facts)
+      case none
+        back false
+      case some
+        link built
+        fork test, and(is-unequal(built/relation, <zero>), is-below(sign(k), 0))
+          hold
+            back false
+        fork test, and(is-equal(built/relation, <positive>), is-above(sign(k), 0))
+          hold
+            save strict-used, true
+        save total, sum(total, scaled(built/polynomial, k))
+  walk total/keys()
+    take key
+    fork test, is-unequal(key, <>)
+      hold
+        back false
+  save constant, zero()
+  fork test, total/has(<>)
+    hold
+      save constant, total/get(<>)
+  back or(is-below(sign(constant), 0), and(is-zero(constant), strict-used))
+
+# ---- the search ----
+
+task fact-row
+  take facts, like list, like fact
+  take from, like row-from
+  like row
+  mark private
+
+  sift rebuild(from, facts)
+    case some
+      link built
+      back built
+    case none
+      halt <a row the search builds always rebuilds>
+
+task add-text
+  take values, like list, like text
+  take value, like text
+  like void
+  mark private
+
+  fork test, not(contains(values, value))
+    hold
+      push(values, value)
+
+task from-fact-of
+  take at, like number
+  take times-text, like text
+  take square-text, like text
+  like row-from
+  mark private
+
+  save times-given, make none
+  fork test, is-unequal(times-text, <>)
+    hold
+      save times-given, make(some, times-text)
+  save square-given, make none
+  fork test, is-unequal(square-text, <>)
+    hold
+      save square-given, make(some, square-text)
+  back
+    make from-fact
+      bind fact, at
+      bind times, times-given
+      bind square, square-given
+
+task from-facts-of
+  take positions, like list, like number
+  like row-from
+  mark private
+
+  back
+    make from-facts
+      bind facts, positions
+
+task from-square-of
+  take names, like list, like text
+  like row-from
+  mark private
+
+  back
+    make from-square
+      bind vars, names
+
+task pair-of
+  take a, like number
+  take b, like number
+  like list, like number
+  mark private
+
+  save out, make list
+  push(out, a)
+  push(out, b)
+  back out
+
+task three-of
+  take a, like number
+  take b, like number
+  take c, like number
+  like list, like number
+  mark private
+
+  save out, make list
+  push(out, a)
+  push(out, b)
+  push(out, c)
+  back out
+
+task texts-of
+  take a, like text
+  take b, like text
+  take c, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  fork test, is-unequal(a, <>)
+    hold
+      push(out, a)
+  fork test, is-unequal(b, <>)
+    hold
+      push(out, b)
+  fork test, is-unequal(c, <>)
+    hold
+      push(out, c)
+  back out
+
+# the rows: every fact, every product of two facts, every product of the FOCUS (the negated goal) with two facts, and
+# the square of every variable they mention, and the rest below. The LINEAR mode: the facts combined with non-negative
+# multipliers and no products, except that an equation may be multiplied by each of `multipliers`
+task rows-of
+  take facts, like list, like fact
+  take focus, like number
+  take linear, like maybe, like list, like text
+  like list, like row
+  mark private
+
+  save rows, make list
+  save variables, make list
+  save i, 0
+  walk facts
+    take one
+    save made
+      make row
+        bind polynomial, one/polynomial
+        bind relation, one/relation
+        bind from, from-fact-of(i, <>, <>)
+    push(rows, made)
+    walk one/polynomial/keys()
+      take key
+      walk vars-of(key)
+        take v
+        add-text(variables, v)
+    save i, add(i, 1)
+  sift linear
+    case some
+      link multipliers-given
+      save multipliers, make list
+      walk multipliers-given
+        take name
+        add-text(multipliers, name)
+      save multipliers, sort(multipliers, utf16-order)
+      save i, 0
+      walk facts
+        take one
+        fork test, is-equal(one/relation, <zero>)
+          hold
+            walk multipliers
+              take v
+              push(rows, fact-row(facts, from-fact-of(i, v, <>)))
+        save i, add(i, 1)
+      back rows
+    case none
+      save nothing, 0
+  save i, 0
+  walk test
+    hook test, is-below(i, facts/length)
+    hook hold
+      save j, i
+      walk test
+        hook test, is-below(j, facts/length)
+        hook hold
+          sift rebuild(from-facts-of(pair-of(i, j)), facts)
+            case some
+              link built
+              fork test, is-above(built/polynomial/length, 0)
+                hold
+                  push(rows, built)
+            case none
+              save nothing, 0
+          save j, add(j, 1)
+      save i, add(i, 1)
+  fork test, and(is-minimum(focus, 0), is-below(focus, facts/length))
+    hold
+      save i, 0
+      walk test
+        hook test, is-below(i, facts/length)
+        hook hold
+          save j, i
+          walk test
+            hook test, is-below(j, facts/length)
+            hook hold
+              sift rebuild(from-facts-of(three-of(focus, i, j)), facts)
+                case some
+                  link built
+                  fork test, and(is-above(built/polynomial/length, 0), is-maximum(degree(built/polynomial), 6))
+                    hold
+                      push(rows, built)
+                case none
+                  save nothing, 0
+              save j, add(j, 1)
+          save i, add(i, 1)
+  save sorted, sort(variables, utf16-order)
+  walk sorted
+    take v
+    push(rows, fact-row(facts, from-square-of(texts-of(v, <>, <>))))
+  # every inequality times the square of every variable, so `m - a^2 >= 0` can be scaled by `v^2`
+  save i, 0
+  walk facts
+    take one
+    fork test, is-unequal(one/relation, <zero>)
+      hold
+        walk sorted
+          take v
+          sift rebuild(from-fact-of(i, <>, v), facts)
+            case some
+              link built
+              fork test, is-maximum(degree(built/polynomial), 6)
+                hold
+                  push(rows, built)
+            case none
+              save nothing, 0
+    save i, add(i, 1)
+  # every equation times every monomial of degree one or two, so an equation can be used inside a product
+  save monomials, make list
+  walk sorted
+    take v
+    push(monomials, v)
+  save a, 0
+  walk test
+    hook test, is-below(a, sorted/length)
+    hook hold
+      save b, a
+      walk test
+        hook test, is-below(b, sorted/length)
+        hook hold
+          push(monomials, join-keys(get(sorted, a), get(sorted, b)))
+          save b, add(b, 1)
+      save a, add(a, 1)
+  save i, 0
+  walk facts
+    take one
+    fork test, is-equal(one/relation, <zero>)
+      hold
+        walk monomials
+          take m
+          push(rows, fact-row(facts, from-fact-of(i, m, <>)))
+    save i, add(i, 1)
+  # the square of every variable plus or minus one, so `c^2 - c + 1 > 0` needs no hint
+  walk sorted
+    take v
+    push(rows, fact-row(facts, from-square-of(texts-of(v, <1>, <>))))
+    push(rows, fact-row(facts, from-square-of(texts-of(v, <1>, <+>))))
+  # and the square of every sum and difference of two of them, so `a^2 + b^2 >= 2 a b` needs no hint
+  save a, 0
+  walk test
+    hook test, is-below(a, sorted/length)
+    hook hold
+      save b, add(a, 1)
+      walk test
+        hook test, is-below(b, sorted/length)
+        hook hold
+          push(rows, fact-row(facts, from-square-of(texts-of(get(sorted, a), get(sorted, b), <>))))
+          push(rows, fact-row(facts, from-square-of(texts-of(get(sorted, a), get(sorted, b), <+>))))
+          save b, add(b, 1)
+      save a, add(a, 1)
+  back rows
+
+# the work budget of the current goal, in the cells and bits a search's pivots rewrite, and what is spent of it
+form work-budget
+  mark shared
+  link budget, like float
+  link spent, like float
+
+# where the time goes, counted when profiling: how many searches, how big, how many exact pivots, how many the
+# floating phase settled, and the milliseconds in building rows and in the exact search
+form product-profile
+  mark shared
+  link refutes, like float
+  link rows, like float
+  link cells, like float
+  link float-declined, like float
+  link exact-pivots, like float
+  link exact-work, like float
+  link build-ms, like float
+  link exact-ms, like float
+
+task infinity
+  like float
+  mark private
+
+  back divide(1.0, 0.0)
+
+# THE FAST REFUSAL. Phase one in floating point, run before the exact search: when it ends at an optimum whose sum of
+# artificials is clearly above zero, no x >= 0 solves A x = b, and the exact search is skipped. This can only DECLINE.
+task plainly-infeasible
+  take a, like list, like list, like rational
+  take b, like list, like rational
+  take work, like work-budget
+  like boolean
+  mark private
+
+  save m, a/length
+  save n, 0
+  fork test, is-above(m, 0)
+    hold
+      save n, get(a, 0)/length
+  save width, add(n, m)
+  save table, make list
+  save i, 0
+  walk test
+    hook test, is-below(i, m)
+    hook hold
+      save raw, make list
+      walk get(a, i)
+        take c
+        push(raw, value-of(c))
+      push(raw, value-of(get(b, i)))
+      # each row scaled to a largest entry of 1, so one tolerance serves every row
+      save scale, largest-magnitude(raw)
+      fork test, or(is-equal(scale, 0.0), is-unequal(scale, scale))
+        hold
+          save scale, 1.0
+      save flip, 1.0
+      fork test, is-below(get(raw, n), 0.0)
+        hold
+          save flip, -1.0
+      save row, make list
+      save j, 0
+      walk test
+        hook test, is-below(j, n)
+        hook hold
+          push(row, divide(multiply(flip, get(raw, j)), scale))
+          save j, add(j, 1)
+      save j, 0
+      walk test
+        hook test, is-below(j, m)
+        hook hold
+          save unit, 0.0
+          fork test, is-equal(i, j)
+            hold
+              save unit, 1.0
+          push(row, unit)
+          save j, add(j, 1)
+      push(row, divide(multiply(flip, get(raw, n)), scale))
+      walk row
+        take c
+        fork test, not(is-finite(c))
+          hold
+            back false
+      push(table, row)
+      save i, add(i, 1)
+  save basis, make list
+  save i, 0
+  walk test
+    hook test, is-below(i, m)
+    hook hold
+      push(basis, add(n, i))
+      save i, add(i, 1)
+  save cost, make list
+  save j, 0
+  walk test
+    hook test, is-maximum(j, width)
+    hook hold
+      save c, 0.0
+      fork test, and(is-minimum(j, n), is-below(j, width))
+        hold
+          save c, 1.0
+      push(cost, c)
+      save j, add(j, 1)
+  walk table
+    take row
+    save j, 0
+    walk test
+      hook test, is-maximum(j, width)
+      hook hold
+        save cost/{j}, subtract(get(cost, j), get(row, j))
+        save j, add(j, 1)
+  save epsilon, 0.000000001
+  save step, 0
+  walk test
+    hook test, is-below(step, 20000)
+    hook hold
+      save step, add(step, 1)
+      save enter, -1
+      save j, 0
+      walk test
+        hook test, and(is-below(j, width), is-below(enter, 0))
+        hook hold
+          fork test, is-below(get(cost, j), subtract(0.0, epsilon))
+            hold
+              save enter, j
+          save j, add(j, 1)
+      fork test, is-below(enter, 0)
+        hold
+          # optimal: -cost[width] is the least sum of artificials
+          back is-above(subtract(0.0, get(cost, width)), 0.000001)
+      save leave, -1
+      save best, infinity()
+      save i, 0
+      walk test
+        hook test, is-below(i, m)
+        hook hold
+          save c, get(get(table, i), enter)
+          fork test, is-above(c, epsilon)
+            hold
+              save ratio, divide(get(get(table, i), width), c)
+              save takes, is-below(ratio, subtract(best, epsilon))
+              fork test, and(not(takes), is-minimum(leave, 0))
+                hold
+                  save takes, and(is-maximum(absolute(subtract(ratio, best)), epsilon), is-below(get(basis, i), get(basis, leave)))
+              fork test, takes
+                hold
+                  save best, ratio
+                  save leave, i
+          save i, add(i, 1)
+      fork test, is-below(leave, 0)
+        hold
+          # unbounded in phase one cannot happen for a sum of non-negatives: a numerical fault, so no verdict
+          back false
+      save pivot, get(get(table, leave), enter)
+      save lead, make list
+      walk get(table, leave)
+        take c
+        push(lead, divide(c, pivot))
+      # only the columns the pivot row is not exactly zero in change, in any row
+      save live, make list
+      save j, 0
+      walk lead
+        take c
+        fork test, is-unequal(c, 0.0)
+          hold
+            push(live, j)
+        save j, add(j, 1)
+      save cells, to-float(multiply(m, live/length))
+      fork test, is-above(add(work/spent, cells), work/budget)
+        hold
+          save work/spent, work/budget
+          back false
+      save work/spent, add(work/spent, cells)
+      save table/{leave}, lead
+      save i, 0
+      walk test
+        hook test, is-below(i, m)
+        hook hold
+          save k, get(get(table, i), enter)
+          fork test, and(is-unequal(i, leave), is-unequal(k, 0.0))
+            hold
+              save row, get(table, i)
+              walk live
+                take col
+                save row/{col}, subtract(get(row, col), multiply(k, get(lead, col)))
+          save i, add(i, 1)
+      save k, get(cost, enter)
+      walk live
+        take col
+        save cost/{col}, subtract(get(cost, col), multiply(k, get(lead, col)))
+      save basis/{leave}, enter
+  back false
+
+task to-float
+  take value, like number
+  like float
+  mark private
+
+  back to-decimal(value)
+
+# `Math.max(...raw.map(Math.abs))`: a NaN anywhere makes it NaN
+task largest-magnitude
+  take values, like list, like float
+  like float
+  mark private
+
+  save out, subtract(0.0, infinity())
+  walk values
+    take one
+    fork test, is-unequal(one, one)
+      hold
+        back one
+    save size, absolute(one)
+    fork test, is-above(size, out)
+      hold
+        save out, size
+  back out
+
+# Phase one of the simplex, exact, with Bland's rule (so it cannot cycle): is there x >= 0 with A x = b? x, or none.
+# Every row of b is made non-negative first, and one artificial per row starts the basis.
+task feasible
+  take a, like list, like list, like rational
+  take b, like list, like rational
+  take work, like work-budget
+  take profile, like product-profile
+  take profiling, like boolean
+  like maybe, like list, like rational
+  mark private
+
+  fork test, plainly-infeasible(a, b, work)
+    hold
+      fork test, profiling
+        hold
+          save profile/float-declined, add(profile/float-declined, 1.0)
+      back make none
+  save m, a/length
+  save n, 0
+  fork test, is-above(m, 0)
+    hold
+      save n, get(a, 0)/length
+  save width, add(n, m)
+  save minus-one, whole(-1)
+  save table, make list
+  save i, 0
+  walk test
+    hook test, is-below(i, m)
+    hook hold
+      save flip, is-below(sign(get(b, i)), 0)
+      save row, make list
+      walk get(a, i)
+        take c
+        fork test, flip
+          hold
+            push(row, times(c, minus-one))
+          miss
+            push(row, c)
+      save j, 0
+      walk test
+        hook test, is-below(j, m)
+        hook hold
+          fork test, is-equal(i, j)
+            hold
+              push(row, one())
+            miss
+              push(row, zero())
+          save j, add(j, 1)
+      fork test, flip
+        hold
+          push(row, times(get(b, i), minus-one))
+        miss
+          push(row, get(b, i))
+      push(table, row)
+      save i, add(i, 1)
+  save basis, make list
+  save i, 0
+  walk test
+    hook test, is-below(i, m)
+    hook hold
+      push(basis, add(n, i))
+      save i, add(i, 1)
+  # the objective: minimize the sum of the artificials, carried as reduced costs and updated with each pivot
+  save reduced, make list
+  save j, 0
+  walk test
+    hook test, is-maximum(j, width)
+    hook hold
+      fork test, and(is-minimum(j, n), is-below(j, width))
+        hold
+          push(reduced, one())
+        miss
+          push(reduced, zero())
+      save j, add(j, 1)
+  walk table
+    take row
+    save j, 0
+    walk test
+      hook test, is-maximum(j, width)
+      hook hold
+        fork test, not(is-zero(get(row, j)))
+          hold
+            save reduced/{j}, minus(get(reduced, j), get(row, j))
+        save j, add(j, 1)
+  save step, 0
+  walk test
+    hook test, is-below(step, 5000)
+    hook hold
+      save step, add(step, 1)
+      # the budget: out of work, decline, and the caller reports that the search stopped
+      fork test, is-minimum(work/spent, work/budget)
+        hold
+          back make none
+      # Bland: the lowest-indexed column with a negative reduced cost enters
+      save enter, -1
+      save j, 0
+      walk test
+        hook test, and(is-below(j, width), is-below(enter, 0))
+        hook hold
+          fork test, is-below(sign(get(reduced, j)), 0)
+            hold
+              save enter, j
+          save j, add(j, 1)
+      fork test, is-below(enter, 0)
+        hold
+          halt
+      save leave, -1
+      save has-best, false
+      save best, zero()
+      save i, 0
+      walk test
+        hook test, is-below(i, m)
+        hook hold
+          save c, get(get(table, i), enter)
+          fork test, is-above(sign(c), 0)
+            hold
+              save ratio, over(get(get(table, i), width), c)
+              save takes, not(has-best)
+              fork test, has-best
+                hold
+                  save takes, or(below(ratio, best), and(not(below(best, ratio)), is-below(get(basis, i), get(basis, leave))))
+              fork test, takes
+                hold
+                  save best, ratio
+                  save has-best, true
+                  save leave, i
+          save i, add(i, 1)
+      fork test, is-below(leave, 0)
+        hold
+          back make none
+      save pivot, get(get(table, leave), enter)
+      save lead, make list
+      walk get(table, leave)
+        take c
+        fork test, is-zero(c)
+          hold
+            push(lead, c)
+          miss
+            push(lead, over(c, pivot))
+      save live, make list
+      save j, 0
+      walk lead
+        take c
+        fork test, not(is-zero(c))
+          hold
+            push(live, j)
+        save j, add(j, 1)
+      # THE WORK this pivot will cost, before it is paid: each other row rewritten in the live columns, at a price that
+      # grows with the size of the numbers there, so the pivot row's total bit length stands for it
+      save bits, 0
+      walk live
+        take col
+        save bits, add(bits, add(bit-length(get(lead, col)/n), bit-length(get(lead, col)/d)))
+      save cost-of-pivot, to-float(multiply(m, bits))
+      fork test, is-above(add(work/spent, cost-of-pivot), work/budget)
+        hold
+          save work/spent, work/budget
+          back make none
+      save work/spent, add(work/spent, cost-of-pivot)
+      save table/{leave}, lead
+      save i, 0
+      walk test
+        hook test, is-below(i, m)
+        hook hold
+          fork test, and(is-unequal(i, leave), not(is-zero(get(get(table, i), enter))))
+            hold
+              save k, get(get(table, i), enter)
+              save row, get(table, i)
+              walk live
+                take col
+                save row/{col}, minus(get(row, col), times(k, get(lead, col)))
+          save i, add(i, 1)
+      save k, get(reduced, enter)
+      fork test, not(is-zero(k))
+        hold
+          walk live
+            take col
+            save reduced/{col}, minus(get(reduced, col), times(k, get(lead, col)))
+      save basis/{leave}, enter
+      fork test, profiling
+        hold
+          save profile/exact-pivots, add(profile/exact-pivots, 1.0)
+          save profile/exact-work, add(profile/exact-work, cost-of-pivot)
+  save i, 0
+  walk test
+    hook test, is-below(i, m)
+    hook hold
+      fork test, and(is-minimum(get(basis, i), n), not(is-zero(get(get(table, i), width))))
+        hold
+          back make none
+      save i, add(i, 1)
+  save x, make list
+  save j, 0
+  walk test
+    hook test, is-below(j, n)
+    hook hold
+      push(x, zero())
+      save j, add(j, 1)
+  save i, 0
+  walk test
+    hook test, is-below(i, m)
+    hook hold
+      save column-at, get(basis, i)
+      fork test, is-below(column-at, n)
+        hold
+          save x/{column-at}, get(get(table, i), width)
+      save i, add(i, 1)
+  back make(some, x)
+
+# one column of the search: a row's multiplier, split in two for an equation row, whose multiplier is free
+form column
+  link row, like number
+  link k, like rational
+
+# search for a certificate that the facts are contradictory. Two shapes are tried: the combination is the constant -1,
+# or it is 0 with the strict rows' multipliers summing to 1. `focus` is -1 for none
+task refute
+  take facts, like list, like fact
+  take focus, like number
+  take linear, like maybe, like list, like text
+  take work, like work-budget
+  take profile, like product-profile
+  take profiling, like boolean
+  take now
+    like task
+      like float
+  like maybe, like certificate
+
+  save most, 14
+  sift linear
+    case some
+      link given
+      save most, 2000
+    case none
+      save nothing, 0
+  fork test, or(is-equal(facts/length, 0), is-above(facts/length, most))
+    hold
+      back make none
+  walk facts
+    take one
+    fork test, is-above(degree(one/polynomial), 4)
+      hold
+        back make none
+  fork test, is-minimum(work/spent, work/budget)
+    hold
+      back make none
+  save built-at, 0.0
+  fork test, profiling
+    hold
+      save built-at, now()
+  save rows, rows-of(facts, focus, linear)
+  save monomials, make list
+  push(monomials, <>)
+  walk rows
+    take row
+    walk row/polynomial/keys()
+      take key
+      add-text(monomials, key)
+  save keys, sort(monomials, utf16-order)
+  save minus-one, whole(-1)
+  save columns, make list
+  save i, 0
+  walk rows
+    take row
+    save plain
+      make column
+        bind row, i
+        bind k, one()
+    push(columns, plain)
+    fork test, is-equal(row/relation, <zero>)
+      hold
+        save negated
+          make column
+            bind row, i
+            bind k, minus-one
+        push(columns, negated)
+    save i, add(i, 1)
+  save matrix, make list
+  walk keys
+    take key
+    save line, make list
+    walk columns
+      take c
+      save poly, get(rows, c/row)/polynomial
+      save entry, zero()
+      fork test, poly/has(key)
+        hold
+          save entry, poly/get(key)
+      push(line, times(c/k, entry))
+    push(matrix, line)
+  # Σ = -1 identically
+  save first-b, make list
+  walk keys
+    take key
+    fork test, is-equal(key, <>)
+      hold
+        push(first-b, minus-one)
+      miss
+        push(first-b, zero())
+  # Σ = 0 identically, and the strict multipliers sum to 1
+  save second-a, make list
+  walk matrix
+    take line
+    push(second-a, line)
+  save strict-line, make list
+  walk columns
+    take c
+    fork test, is-equal(get(rows, c/row)/relation, <positive>)
+      hold
+        push(strict-line, one())
+      miss
+        push(strict-line, zero())
+  push(second-a, strict-line)
+  save second-b, make list
+  walk keys
+    take key
+    push(second-b, zero())
+  push(second-b, one())
+  fork test, profiling
+    hold
+      save profile/refutes, add(profile/refutes, 1.0)
+      save profile/rows, add(profile/rows, to-float(rows/length))
+      save profile/cells, add(profile/cells, to-float(multiply(keys/length, columns/length)))
+      save profile/build-ms, add(profile/build-ms, subtract(now(), built-at))
+  save attempts-a, make list
+  push(attempts-a, matrix)
+  push(attempts-a, second-a)
+  save attempts-b, make list
+  push(attempts-b, first-b)
+  push(attempts-b, second-b)
+  save attempt, 0
+  walk attempts-a
+    take a
+    save b, get(attempts-b, attempt)
+    save attempt, add(attempt, 1)
+    save searched-at, 0.0
+    fork test, profiling
+      hold
+        save searched-at, now()
+    save x, feasible(a, b, work, profile, profiling)
+    fork test, profiling
+      hold
+        save profile/exact-ms, add(profile/exact-ms, subtract(now(), searched-at))
+    sift x
+      case none
+        turn next
+      case some
+        link solution
+        save multipliers, make list
+        walk rows
+          take row
+          push(multipliers, zero())
+        save j, 0
+        walk columns
+          take c
+          save multipliers/{c/row}, plus(get(multipliers, c/row), times(c/k, get(solution, j)))
+          save j, add(j, 1)
+        save recipes, make list
+        walk rows
+          take row
+          push(recipes, row/from)
+        save found
+          make certificate
+            bind rows, recipes
+            bind multipliers, multipliers
+        fork test, replay(facts, found)
+          hold
+            back make(some, found)
+  back make none
+
+# does the goal follow from the facts? The goal is `polynomial >= 0` (or `> 0` when strict), so its negation is
+# `-polynomial > 0` (or `-polynomial >= 0`), added as one more fact to refute
+task product-proves
+  take facts, like list, like fact
+  take goal, like hash, like text, like rational
+  take strict, like boolean
+  take linear, like maybe, like list, like text
+  take work, like work-budget
+  take profile, like product-profile
+  take profiling, like boolean
+  take now
+    like task
+      like float
+  like boolean
+
+  save relation, <positive>
+  fork test, strict
+    hold
+      save relation, <nonnegative>
+  save negation
+    make fact
+      bind polynomial, scaled(goal, whole(-1))
+      bind relation, relation
+  save all, make list
+  walk facts
+    take one
+    push(all, one)
+  push(all, negation)
+  sift refute(all, facts/length, linear, work, profile, profiling, now)
+    case some
+      link found
+      back true
+    case none
+      back false

@@ -1,0 +1,1104 @@
+# Symbolic Peano induction, the `fold` tactic. Proves a goal `L(n) == R(n)` for ALL n by base case and inductive step,
+# using the recurrence of a single recursive function f that appears in the goal, entirely at the commutative-ring
+# level. It never asks the kernel to COMPUTE f; it reasons symbolically about f's recurrence. Sound: it is exactly Peano
+# induction, with the base and the step each discharged by the ring normalizer.
+#
+#   base : substitute n := 0 and f(0) := f's zero branch. Ring-check L(0) == R(0).
+#   step : substitute n := k+1 and f(k+1) := f's otherwise branch (whose recursive call f((k+1)-1) is f(k)). Abstract
+#          f(k) as a fresh variable S. With the induction hypothesis L(k) == R(k) (same S), the step holds when
+#          (L(k+1) - R(k+1)) equals (L(k) - R(k)) as polynomials. (The m = 1 certificate of ideal membership: sound, and
+#          complete for accumulator recurrences like sums.)
+#
+# And for ORDER goals, a comparison (or a conjunction of them) about f, proved for every integer n >= 0, each case
+# discharged by the product prover from facts: the rule's hypotheses, and in the step k >= 0 and the induction
+# hypothesis. The hypotheses may not mention n except as the bound `n >= 0` the induction ranges over.
+#
+# Ported from check/induct.ts (self-hosting, 2026-10-06), which stays as the face. The original replaced calls through
+# two callbacks, a test of the argument and a builder; every test is "ring-equal to this value", so it is the value, and
+# every builder is a fixed expression or f's body at the call's arguments, so it is a `replacement`. The product prover
+# is asked through the face (`proves`), which holds its work budget. A node copied with a spread is copied by
+# check/unfolding.tree's `shallow-copy`, so its fields stay as present or absent as they were.
+
+load @term/base/list
+  find list
+  find contains
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/integer/big
+  find big-integer
+  find make-big-integer
+  find big-from-number
+  find big-negate
+  find big-add
+  find big-subtract
+  find big-multiply
+  find big-compare
+
+load ../compile/node
+  find expression
+  find statement
+  find value-branch
+  find binary-op
+  find expression-span
+
+load ../parser/diagnostic
+  find span
+
+load ./ring
+  find ring-equal
+
+load ./unfolding
+  find shallow-copy
+
+load ./products
+  find fact
+  find rational
+  find rational-of
+  find multiply-polynomials
+
+task int-e
+  take value, like number
+  take at, like span
+  like expression
+  mark private
+
+  back
+    make expression/integer
+      bind value, value
+      bind span, at
+
+task var-e
+  take name, like text
+  take at, like span
+  like expression
+  mark private
+
+  back
+    make expression/variable
+      bind name, name
+      bind span, at
+
+task bin-e
+  take op, like binary-op
+  take left, like expression
+  take right, like expression
+  take at, like span
+  like expression
+  mark private
+
+  back
+    make binary
+      bind op, op
+      bind left, left
+      bind right, right
+      bind span, at
+
+# substitute a variable everywhere in an expression
+task subst
+  take e, like expression
+  take wanted, like text
+  take replacement, like expression
+  like expression
+  mark private
+
+  sift e
+    case variable
+      fork test, is-equal(name, wanted)
+        hold
+          back replacement
+      back e
+    case binary
+      save copy, shallow-copy(e)
+      sift copy
+        case binary
+          save copy/left, subst(left, wanted, replacement)
+          save copy/right, subst(right, wanted, replacement)
+        miss
+          save nothing, 0
+      back copy
+    case unary
+      save copy, shallow-copy(e)
+      sift copy
+        case unary
+          save copy/operand, subst(operand, wanted, replacement)
+        miss
+          save nothing, 0
+      back copy
+    case call
+      save copy, shallow-copy(e)
+      sift copy
+        case call
+          save new-args, make list
+          walk args
+            take arg
+            push(new-args, subst(arg, wanted, replacement))
+          save copy/callee, subst(callee, wanted, replacement)
+          save copy/args, new-args
+        miss
+          save nothing, 0
+      back copy
+    case conditional
+      save copy, shallow-copy(e)
+      sift copy
+        case conditional
+          save new-branches, make list
+          walk branches
+            take branch
+            save made
+              make value-branch
+                bind cond, subst(branch/cond, wanted, replacement)
+                bind value, subst(branch/value, wanted, replacement)
+            push(new-branches, made)
+          save copy/branches, new-branches
+          # written whole, as the original wrote `otherwise: e.otherwise ? ... : undefined`
+          sift otherwise
+            case some
+              link last
+              save replaced, subst(last, wanted, replacement)
+              save copy/otherwise, make(some, replaced)
+            case none
+              save copy/otherwise, make none
+        miss
+          save nothing, 0
+      back copy
+    miss
+      back e
+
+# what a matched call becomes: a fixed expression, or f's body at the call's arguments
+form replacement
+  case fixed
+    link value, like expression
+  case instantiated
+    link params, like list, like text
+    link body, like expression
+
+task replaced-by
+  take with, like replacement
+  take args, like list, like expression
+  like expression
+  mark private
+
+  sift with
+    case fixed
+      back value
+    case instantiated
+      # the body of f at given arguments: every parameter substituted, one after another
+      save out, body
+      save i, 0
+      walk params
+        take param
+        save out, subst(out, param, get(args, i))
+        save i, add(i, 1)
+      back out
+
+# replace every call `f(arg)` of one argument ring-equal to `at` with `with`
+task replace-call
+  take e, like expression
+  take fname, like text
+  take at, like expression
+  take with, like replacement
+  like expression
+  mark private
+
+  sift e
+    case call
+      save new-args, make list
+      walk args
+        take arg
+        push(new-args, replace-call(arg, fname, at, with))
+      sift callee
+        case variable
+          link callee-name
+          fork test, and(is-equal(callee-name, fname), is-equal(new-args/length, 1))
+            hold
+              fork test, ring-equal(get(new-args, 0), at)
+                hold
+                  back replaced-by(with, new-args)
+        miss
+          save nothing, 0
+      save copy, shallow-copy(e)
+      sift copy
+        case call
+          save copy/callee, replace-call(callee, fname, at, with)
+          save copy/args, new-args
+        miss
+          save nothing, 0
+      back copy
+    case binary
+      save copy, shallow-copy(e)
+      sift copy
+        case binary
+          save copy/left, replace-call(left, fname, at, with)
+          save copy/right, replace-call(right, fname, at, with)
+        miss
+          save nothing, 0
+      back copy
+    case unary
+      save copy, shallow-copy(e)
+      sift copy
+        case unary
+          save copy/operand, replace-call(operand, fname, at, with)
+        miss
+          save nothing, 0
+      back copy
+    case conditional
+      save copy, shallow-copy(e)
+      sift copy
+        case conditional
+          save new-branches, make list
+          walk branches
+            take branch
+            save made
+              make value-branch
+                bind cond, replace-call(branch/cond, fname, at, with)
+                bind value, replace-call(branch/value, fname, at, with)
+            push(new-branches, made)
+          save copy/branches, new-branches
+          sift otherwise
+            case some
+              link last
+              save replaced, replace-call(last, fname, at, with)
+              save copy/otherwise, make(some, replaced)
+            case none
+              save copy/otherwise, make none
+        miss
+          save nothing, 0
+      back copy
+    miss
+      back e
+
+task function-named
+  take program, like list, like statement
+  take fname, like text
+  like maybe, like statement
+  mark private
+
+  walk program
+    take one
+    sift one
+      case function
+        fork test, is-equal(name, fname)
+          hold
+            back make(some, one)
+      miss
+        save nothing, 0
+  back make none
+
+# `param == 0`: the zero test of a recurrence
+task zero-test-of
+  take cond, like expression
+  like text
+  mark private
+
+  sift cond
+    case binary
+      sift op
+        case equal
+          save tested, <>
+          sift left
+            case variable
+              link left-name
+              save tested, left-name
+            miss
+              back <>
+          sift right
+            case integer
+              link right-value
+              fork test, is-equal(right-value, 0)
+                hold
+                  back tested
+            miss
+              save nothing, 0
+          back <>
+        miss
+          back <>
+    miss
+      back <>
+
+# the recurrence of a simple base-at-zero recursive function: a single parameter, body `send back (conditional)`, a
+# branch `param == 0 -> zero` and an `otherwise` that recurses on `param - 1`
+form simple-recurrence
+  link param, like text
+  link zero, like expression
+  link otherwise, like expression
+
+task recurrence
+  take program, like list, like statement
+  take fname, like text
+  like maybe, like simple-recurrence
+  mark private
+
+  sift function-named(program, fname)
+    case none
+      back make none
+    case some
+      link fn
+      sift fn
+        case function
+          fork test, or(is-unequal(params/length, 1), is-unequal(body/length, 1))
+            hold
+              back make none
+          save first, get(params, 0)
+          save param, first/name
+          save sent-back, get(body, 0)
+          sift sent-back
+            case return
+              sift value
+                case some
+                  link sent
+                  sift sent
+                    case conditional
+                      sift otherwise
+                        case none
+                          back make none
+                        case some
+                          link last
+                          walk branches
+                            take branch
+                            fork test, is-equal(zero-test-of(branch/cond), param)
+                              hold
+                                save found
+                                  make simple-recurrence
+                                    bind param, param
+                                    bind zero, branch/value
+                                    bind otherwise, last
+                                back make(some, found)
+                          back make none
+                    miss
+                      back make none
+                case none
+                  back make none
+            miss
+              back make none
+        miss
+          back make none
+
+# the first recursive function (with a usable recurrence) whose call appears in the goal
+task goal-function
+  take e, like expression
+  take program, like list, like statement
+  like text
+  mark private
+
+  sift e
+    case call
+      sift callee
+        case variable
+          link callee-name
+          sift recurrence(program, callee-name)
+            case some
+              link found
+              back callee-name
+            case none
+              save nothing, 0
+        miss
+          save nothing, 0
+      walk args
+        take arg
+        save inner, goal-function(arg, program)
+        fork test, is-unequal(inner, <>)
+          hold
+            back inner
+      back <>
+    case binary
+      save inner, goal-function(left, program)
+      fork test, is-unequal(inner, <>)
+        hold
+          back inner
+      back goal-function(right, program)
+    miss
+      back <>
+
+task fixed-of
+  take value, like expression
+  like replacement
+  mark private
+
+  back
+    make fixed
+      bind value, value
+
+# prove `goal` (an `==` expression) by induction on `induct-var`: true iff both the base case and the step are
+# discharged by the ring normalizer
+task check-fold
+  take program, like list, like statement
+  take goal, like expression
+  take induct-var, like text
+  like boolean
+
+  sift goal
+    case binary
+      sift op
+        case equal
+          save nothing, 0
+        miss
+          back false
+      save at, span
+      save fname, goal-function(goal, program)
+      fork test, is-equal(fname, <>)
+        hold
+          back false
+      sift recurrence(program, fname)
+        case none
+          back false
+        case some
+          link rec
+          # base: n := 0, f(0) := zero
+          save zero-e, int-e(0, at)
+          save goal-zero, subst(goal, induct-var, zero-e)
+          save base, replace-call(goal-zero, fname, zero-e, fixed-of(rec/zero))
+          sift base
+            case binary
+              link base-op
+              link base-left
+              link base-right
+              fork test, not(ring-equal(base-left, base-right))
+                hold
+                  back false
+            miss
+              back false
+          # step: n := k+1, f(k+1) := otherwise[param := k+1], f(k) abstracted as S in the step and the hypothesis
+          save add-op, make plus
+          save k-plus-1, bin-e(add-op, var-e(induct-var, at), int-e(1, at), at)
+          save expansion, subst(rec/otherwise, rec/param, k-plus-1)
+          save goal-step, subst(goal, induct-var, k-plus-1)
+          save expanded, replace-call(goal-step, fname, k-plus-1, fixed-of(expansion))
+          save hypothesis-var, var-e(<__induction_hypothesis>, at)
+          save k-var, var-e(induct-var, at)
+          save step-goal, replace-call(expanded, fname, k-var, fixed-of(hypothesis-var))
+          save ih, replace-call(goal, fname, k-var, fixed-of(hypothesis-var))
+          sift step-goal
+            case binary
+              link step-op
+              link step-left
+              link step-right
+              sift ih
+                case binary
+                  link ih-op
+                  link ih-left
+                  link ih-right
+                  save take-op, make minus
+                  back ring-equal(bin-e(take-op, step-left, step-right, at), bin-e(take-op, ih-left, ih-right, at))
+                miss
+                  back false
+            miss
+              back false
+    miss
+      back false
+
+# ---- induction for ORDER goals ----
+
+# a base-at-zero recursive function of any number of parameters: body `send back (conditional)` with ONE branch
+# `p == 0 -> zero` on one parameter p (the counter), and an `otherwise`
+form recurrence-of-many
+  link counter, like number
+  link params, like list, like text
+  link zero, like expression
+  link otherwise, like expression
+
+task recurrence-of
+  take program, like list, like statement
+  take fname, like text
+  like maybe, like recurrence-of-many
+  mark private
+
+  sift function-named(program, fname)
+    case none
+      back make none
+    case some
+      link fn
+      sift fn
+        case function
+          fork test, or(is-equal(params/length, 0), is-unequal(body/length, 1))
+            hold
+              back make none
+          save names, make list
+          walk params
+            take param
+            push(names, param/name)
+          save sent-back, get(body, 0)
+          sift sent-back
+            case return
+              sift value
+                case some
+                  link sent
+                  sift sent
+                    case conditional
+                      sift otherwise
+                        case none
+                          back make none
+                        case some
+                          link last
+                          walk branches
+                            take branch
+                            save tested, zero-test-of(branch/cond)
+                            fork test, and(and(is-unequal(tested, <>), contains(names, tested)), is-equal(branches/length, 1))
+                              hold
+                                save found
+                                  make recurrence-of-many
+                                    bind counter, index-in(names, tested)
+                                    bind params, names
+                                    bind zero, branch/value
+                                    bind otherwise, last
+                                back make(some, found)
+                          back make none
+                    miss
+                      back make none
+                case none
+                  back make none
+            miss
+              back make none
+        miss
+          back make none
+
+task index-in
+  take names, like list, like text
+  take wanted, like text
+  like number
+  mark private
+
+  save at, 0
+  walk names
+    take one
+    fork test, is-equal(one, wanted)
+      hold
+        back at
+    save at, add(at, 1)
+  back -1
+
+# replace every call of f whose counter argument is ring-equal to `at`, building from its arguments
+task replace-counted
+  take e, like expression
+  take fname, like text
+  take counter, like number
+  take at, like expression
+  take with, like replacement
+  like expression
+  mark private
+
+  sift e
+    case call
+      save new-args, make list
+      walk args
+        take arg
+        push(new-args, replace-counted(arg, fname, counter, at, with))
+      sift callee
+        case variable
+          link callee-name
+          fork test, and(is-equal(callee-name, fname), is-below(counter, new-args/length))
+            hold
+              fork test, ring-equal(get(new-args, counter), at)
+                hold
+                  back replaced-by(with, new-args)
+        miss
+          save nothing, 0
+      save copy, shallow-copy(e)
+      sift copy
+        case call
+          save copy/args, new-args
+        miss
+          save nothing, 0
+      back copy
+    case binary
+      save copy, shallow-copy(e)
+      sift copy
+        case binary
+          save copy/left, replace-counted(left, fname, counter, at, with)
+          save copy/right, replace-counted(right, fname, counter, at, with)
+        miss
+          save nothing, 0
+      back copy
+    case unary
+      save copy, shallow-copy(e)
+      sift copy
+        case unary
+          save copy/operand, replace-counted(operand, fname, counter, at, with)
+        miss
+          save nothing, 0
+      back copy
+    miss
+      back e
+
+task rational-whole
+  take value, like number
+  like rational
+  mark private
+
+  back rational-of(big-from-number(value), big-from-number(1))
+
+# a polynomial with `b` taken from `a` (or added, `sign` 1), each coefficient exactly, a zero dropped
+task combine
+  take a, like hash, like text, like rational
+  take b, like hash, like text, like rational
+  take sign, like number
+  like hash, like text, like rational
+  mark private
+
+  save out, make hash
+  walk a/keys()
+    take key
+    save out/{key}, a/get(key)
+  walk b/keys()
+    take key
+    save prev, rational-whole(0)
+    fork test, out/has(key)
+      hold
+        save prev, out/get(key)
+    save c, b/get(key)
+    save numerator, big-subtract-of(prev, c)
+    fork test, is-equal(sign, 1)
+      hold
+        save numerator, big-add-of(prev, c)
+    save next, rational-of(numerator, big-times(prev/d, c/d))
+    fork test, is-zero-rational(next)
+      hold
+        out/remove(key)
+      miss
+        save out/{key}, next
+  back out
+
+task big-add-of
+  take prev, like rational
+  take c, like rational
+  like big-integer
+  mark private
+
+  back big-add(big-multiply(prev/n, c/d), big-multiply(c/n, prev/d))
+
+task big-subtract-of
+  take prev, like rational
+  take c, like rational
+  like big-integer
+  mark private
+
+  back big-subtract(big-multiply(prev/n, c/d), big-multiply(c/n, prev/d))
+
+task big-times
+  take a, like big-integer
+  take b, like big-integer
+  like big-integer
+  mark private
+
+  back big-multiply(a, b)
+
+task is-zero-rational
+  take r, like rational
+  like boolean
+  mark private
+
+  back is-equal(big-compare(r/n, big-from-number(0)), 0)
+
+task negated
+  take p, like hash, like text, like rational
+  like hash, like text, like rational
+  mark private
+
+  save out, make hash
+  walk p/keys()
+    take key
+    save c, p/get(key)
+    save out/{key}, rational-of(big-negate(c/n), c/d)
+  back out
+
+# an expression over + - * integers and variables as an exact polynomial, none on anything else (a call left over, a
+# division, a number past 2^53 that carries no exact digits)
+task polynomial-of
+  take e, like expression
+  like maybe, like hash, like text, like rational
+  mark private
+
+  sift e
+    case integer
+      save out, make hash
+      save n, rational-whole(0)
+      fork test, is-unequal(digits, <>)
+        hold
+          save n, rational-of(make-big-integer(digits), big-from-number(1))
+        miss
+          # Number.isSafeInteger: a whole number within 2^53 - 1 either way
+          fork test, not(and(is-maximum(value, 9007199254740991), is-minimum(value, -9007199254740991)))
+            hold
+              back make none
+          save n, rational-whole(value)
+      fork test, not(is-zero-rational(n))
+        hold
+          # the constant's monomial key is the empty text
+          save constant, <>
+          save out/{constant}, n
+      back make(some, out)
+    case variable
+      save out, make hash
+      save out/{name}, rational-whole(1)
+      back make(some, out)
+    case unary
+      sift op
+        case negate
+          sift polynomial-of(operand)
+            case some
+              link inner
+              save flipped, negated(inner)
+              back make(some, flipped)
+            case none
+              back make none
+        miss
+          back make none
+    case binary
+      sift polynomial-of(left)
+        case none
+          back make none
+        case some
+          link l
+          sift polynomial-of(right)
+            case none
+              back make none
+            case some
+              link r
+              sift op
+                case times
+                  save product, multiply-polynomials(l, r)
+                  back make(some, product)
+                case plus
+                  save summed, combine(l, r, 1)
+                  back make(some, summed)
+                case minus
+                  save differed, combine(l, r, -1)
+                  back make(some, differed)
+                miss
+                  back make none
+    miss
+      back make none
+
+task fact-of
+  take polynomial, like hash, like text, like rational
+  take relation, like text
+  like fact
+  mark private
+
+  back
+    make fact
+      bind polynomial, polynomial
+      bind relation, relation
+
+# a comparison as a fact `polynomial (>= 0 | > 0 | == 0)`, or a conjunction as several
+task facts-of
+  take e, like expression
+  like maybe, like list, like fact
+  mark private
+
+  sift e
+    case binary
+      sift op
+        case both
+          sift facts-of(left)
+            case none
+              back make none
+            case some
+              link l
+              sift facts-of(right)
+                case none
+                  back make none
+                case some
+                  link r
+                  save out, make list
+                  walk l
+                    take one
+                    push(out, one)
+                  walk r
+                    take one
+                    push(out, one)
+                  back make(some, out)
+        miss
+          save nothing, 0
+      save comparison, <>
+      sift op
+        case at-least
+          save comparison, <ge>
+        case above
+          save comparison, <gt>
+        case at-most
+          save comparison, <le>
+        case below
+          save comparison, <lt>
+        case equal
+          save comparison, <eq>
+        miss
+          back make none
+      sift polynomial-of(left)
+        case none
+          back make none
+        case some
+          link l
+          sift polynomial-of(right)
+            case none
+              back make none
+            case some
+              link r
+              save out, make list
+              fork test, is-equal(comparison, <ge>)
+                hold
+                  push(out, fact-of(combine(l, r, -1), <nonnegative>))
+              fork test, is-equal(comparison, <gt>)
+                hold
+                  push(out, fact-of(combine(l, r, -1), <positive>))
+              fork test, is-equal(comparison, <le>)
+                hold
+                  push(out, fact-of(combine(r, l, -1), <nonnegative>))
+              fork test, is-equal(comparison, <lt>)
+                hold
+                  push(out, fact-of(combine(r, l, -1), <positive>))
+              fork test, is-equal(comparison, <eq>)
+                hold
+                  push(out, fact-of(combine(l, r, -1), <zero>))
+              back make(some, out)
+    miss
+      back make none
+
+# every conjunct of a goal proven from the facts, through the face's product prover
+task proves-all
+  take goal, like expression
+  take facts, like list, like fact
+  take proves
+    like task
+      take facts, like list, like fact
+      take goal, like hash, like text, like rational
+      take strict, like boolean
+      like boolean
+  like boolean
+  mark private
+
+  sift goal
+    case binary
+      sift op
+        case both
+          # in order, and the right side only when the left holds: every proof spends the face's work budget
+          fork test, not(proves-all(left, facts, proves))
+            hold
+              back false
+          back proves-all(right, facts, proves)
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  sift facts-of(goal)
+    case none
+      back false
+    case some
+      link wanted
+      fork test, is-unequal(wanted/length, 1)
+        hold
+          back false
+      save want, get(wanted, 0)
+      fork test, is-equal(want/relation, <zero>)
+        hold
+          fork test, not(proves(facts, want/polynomial, false))
+            hold
+              back false
+          back proves(facts, negated(want/polynomial), false)
+      back proves(facts, want/polynomial, is-equal(want/relation, <positive>))
+
+# does an expression read a variable
+task mentions
+  take e, like expression
+  take wanted, like text
+  like boolean
+  mark private
+
+  sift e
+    case variable
+      back is-equal(name, wanted)
+    case binary
+      back or(mentions(left, wanted), mentions(right, wanted))
+    case unary
+      back mentions(operand, wanted)
+    case call
+      walk args
+        take arg
+        fork test, mentions(arg, wanted)
+          hold
+            back true
+      back false
+    miss
+      back false
+
+task is-zero-literal
+  take x, like expression
+  like boolean
+  mark private
+
+  sift x
+    case integer
+      link literal
+      back is-equal(literal, 0)
+    miss
+      back false
+
+task is-named
+  take x, like expression
+  take wanted, like text
+  like boolean
+  mark private
+
+  sift x
+    case variable
+      back is-equal(name, wanted)
+    miss
+      back false
+
+# is a guard exactly the induction's own range, `n >= 0` (or `0 <= n`)
+task is-range-of
+  take e, like expression
+  take n, like text
+  like boolean
+  mark private
+
+  sift e
+    case binary
+      sift op
+        case at-least
+          back and(is-named(left, n), is-zero-literal(right))
+        case at-most
+          back and(is-zero-literal(left), is-named(right, n))
+        miss
+          back false
+    miss
+      back false
+
+# the first function with a usable recurrence called in the goal
+task order-function
+  take e, like expression
+  take program, like list, like statement
+  like text
+  mark private
+
+  sift e
+    case call
+      sift callee
+        case variable
+          link callee-name
+          sift recurrence-of(program, callee-name)
+            case some
+              link found
+              back callee-name
+            case none
+              save nothing, 0
+        miss
+          save nothing, 0
+      walk args
+        take arg
+        save inner, order-function(arg, program)
+        fork test, is-unequal(inner, <>)
+          hold
+            back inner
+      back <>
+    case binary
+      save inner, order-function(left, program)
+      fork test, is-unequal(inner, <>)
+        hold
+          back inner
+      back order-function(right, program)
+    miss
+      back <>
+
+task instantiated-of
+  take params, like list, like text
+  take body, like expression
+  like replacement
+  mark private
+
+  back
+    make instantiated
+      bind params, params
+      bind body, body
+
+# prove an order goal by induction on `n`, given the rule's hypotheses (its `have` guards)
+task check-fold-order
+  take program, like list, like statement
+  take goal, like expression
+  take n, like text
+  take guards, like list, like expression
+  take proves
+    like task
+      take facts, like list, like fact
+      take goal, like hash, like text, like rational
+      take strict, like boolean
+      like boolean
+  like boolean
+
+  sift goal
+    case binary
+      sift op
+        case below
+          save nothing, 0
+        case at-most
+          save nothing, 0
+        case above
+          save nothing, 0
+        case at-least
+          save nothing, 0
+        case both
+          save nothing, 0
+        miss
+          back false
+    miss
+      back false
+  save fname, order-function(goal, program)
+  fork test, is-equal(fname, <>)
+    hold
+      back false
+  sift recurrence-of(program, fname)
+    case none
+      back false
+    case some
+      link rec
+      # hypotheses: the range of n is supplied by the induction itself, and any other mention of n is refused
+      save fixed, make list
+      walk guards
+        take g
+        fork test, is-range-of(g, n)
+          hold
+            turn next
+        fork test, mentions(g, n)
+          hold
+            back false
+        sift facts-of(g)
+          case none
+            back false
+          case some
+            link these
+            walk these
+              take one
+              push(fixed, one)
+      save at-span, expression-span(goal)
+      # BASE: n := 0, f(.., 0, ..) := its zero branch
+      save zero-e, int-e(0, at-span)
+      save base, replace-counted(subst(goal, n, zero-e), fname, rec/counter, zero-e, instantiated-of(rec/params, rec/zero))
+      fork test, not(proves-all(base, fixed, proves))
+        hold
+          back false
+      # STEP: n := k + 1, f(.., k + 1, ..) := its otherwise branch, and f(.., k, ..) := S in the step and the hypothesis
+      save k, var-e(n, at-span)
+      save add-op, make plus
+      save k-plus-1, bin-e(add-op, k, int-e(1, at-span), at-span)
+      save s-var, var-e(<__induction_value>, at-span)
+      save expanded, replace-counted(subst(goal, n, k-plus-1), fname, rec/counter, k-plus-1, instantiated-of(rec/params, rec/otherwise))
+      save step, replace-counted(expanded, fname, rec/counter, k, fixed-of(s-var))
+      save hypothesis, replace-counted(goal, fname, rec/counter, k, fixed-of(s-var))
+      sift facts-of(hypothesis)
+        case none
+          back false
+        case some
+          link ih
+          save range-poly, make hash
+          save range-poly/{n}, rational-whole(1)
+          save all, make list
+          walk fixed
+            take one
+            push(all, one)
+          push(all, fact-of(range-poly, <nonnegative>))
+          walk ih
+            take one
+            push(all, one)
+          back proves-all(step, all, proves)

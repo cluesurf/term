@@ -1,0 +1,95 @@
+# Does a .tree file shelve itself? One answer for the build walk (make.ts), the test runner (test.ts) and every command
+# that walks files (files.ts), so the three cannot disagree.
+#
+# A file is shelved by a TOP-LEVEL `mark draft` line, anywhere in it (`note draft` is the old spelling and still
+# counts): the line starts with the two words, and nothing but white space follows them. An indented `mark draft`
+# belongs to the definition it sits under, not to the file.
+#
+# Ported from deck/call/code/draft.ts (self-hosting, 2026-10-06), which stays as the face its callers import. That file
+# tested `/^(mark|note) draft\s*$/m`, and this reads the same lines the same way: a line ends at a line feed, a carriage
+# return, U+2028 or U+2029, as `^` and `$` read them under `m`, and white space is every code point `\s` matches.
+
+load @term/base/list
+  find list
+  find contains
+
+load @term/base/text
+  find split
+  find starts-with
+  find substring
+  find char-code-at
+  find contains, name text-contains
+
+load @term/base/rune
+  find rune-to-text
+
+# the code points `\s` matches in a JavaScript pattern, which are the ones JavaScript's `trim` removes (kink-find.tree
+# reads them for that)
+task is-space
+  take point, like number
+  like boolean
+
+  fork test, and(is-minimum(point, 9), is-maximum(point, 13))
+    hold
+      back true
+  fork test, and(is-minimum(point, 8192), is-maximum(point, 8202))
+    hold
+      back true
+  save others, make list
+  push(others, 32)
+  push(others, 160)
+  push(others, 5760)
+  push(others, 8232)
+  push(others, 8233)
+  push(others, 8239)
+  push(others, 8287)
+  push(others, 12288)
+  push(others, 65279)
+  back contains(others, point)
+
+# is this one line the marker: a head word, ` draft`, then white space only
+task is-marker
+  take line, like text
+  like boolean
+  mark private
+
+  fork test, not(or(starts-with(line, <mark draft>), starts-with(line, <note draft>)))
+    hold
+      back false
+  walk split(substring(line, 10), <>)
+    take point
+    fork test, not(is-space(char-code-at(point, 0)))
+      hold
+        back false
+  back true
+
+task declares-draft
+  take text, like text
+  like boolean
+
+  save breaks, make list
+  push(breaks, rune-to-text(13))
+  push(breaks, rune-to-text(8232))
+  push(breaks, rune-to-text(8233))
+  walk split(text, <\n>)
+    take line
+    # a line without the word cannot be the marker, which spares splitting most of a file again
+    fork test, text-contains(line, <draft>)
+      hold
+        save pieces, make list
+        push(pieces, line)
+        walk breaks
+          take line-break
+          save next, make list
+          walk pieces
+            take piece
+            walk split(piece, line-break)
+              take part
+              push(next, part)
+          save pieces, next
+        walk pieces
+          take piece
+          fork test, is-marker(piece)
+            hold
+              back true
+  back false
