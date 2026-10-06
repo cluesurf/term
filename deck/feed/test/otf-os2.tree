@@ -179,13 +179,13 @@ task code-page-range-1-or-default
 test <a version-0 table is exactly 78 bytes, no version-1 or version-2 tail>
   want hold
     call is-equal
-      call size(call write-otf-os2-table(call version-0-table))
+      call length(call write-otf-os2-table(call version-0-table))
       code 78
 
 test <a version-2 table is exactly 96 bytes, both tails present>
   want hold
     call is-equal
-      call size(call write-otf-os2-table(call version-2-table))
+      call length(call write-otf-os2-table(call version-2-table))
       code 96
 
 test <a version-0 table reads back no code-page-range>

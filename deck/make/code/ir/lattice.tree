@@ -44,7 +44,7 @@ form layout
     like hash, like number
       like number
   # a fraction: a `number` quotient truncates, so it is a decimal
-  link locality, like decimal
+  link locality, like float
 
 form honeycomb-spec
   link centre, like number

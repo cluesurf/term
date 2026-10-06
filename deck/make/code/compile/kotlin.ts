@@ -53,7 +53,9 @@ import {
   referencedBinds,
 } from '@term/make/code/compile/bind'
 import { integerText } from '@term/make/code/compile/type-text'
-import { LIST_LENGTH_TASKS } from '@term/make/code/compile/lowered-members'
+import { listLengthTasks } from '@term/make/code/compile/lowered-members'
+
+const LIST_LENGTH_TASKS: ReadonlySet<string> = new Set(listLengthTasks())
 
 // Kotlin hard keywords: one used as an identifier (a local named `continue`, a param named `object`) is
 // backtick-escaped, in the declaration and every reference alike
@@ -587,7 +589,9 @@ const KOTLIN_PRIMITIVES: Record<string, string> = {
   boolean: 'Boolean',
   number: 'Long',
   integer: 'Long',
-  decimal: 'Double',
+  // the 64-bit float, never Kotlin's 32-bit `Float`. `decimal` was its old name and is not one here since D4: a
+  // program's own `form decimal` is that form
+  float: 'Double',
 }
 
 // the roll grouped by deck, for the generated wake chain (the same shape emitTypeScript takes)
@@ -763,7 +767,6 @@ export function emitKotlin(
         return holdsFloat(type.key, params) || holdsFloat(type.value, params)
       case 'named':
         return (
-          type.name === 'decimal' ||
           type.name === 'float' ||
           params.has(type.name) ||
           floatForms.has(type.name) ||
@@ -792,7 +795,7 @@ export function emitKotlin(
   // a key whose own `equals` keeps `-0.0` apart from `0.0`: a float, or a list of them. A record folds in its `equals`
   const foldsKey = (type: Type | undefined): boolean =>
     type?.kind === 'float' ||
-    (type?.kind === 'named' && (type.name === 'decimal' || type.name === 'float')) ||
+    (type?.kind === 'named' && type.name === 'float') ||
     (type?.kind === 'array' && foldsKey(type.element)) ||
     (type?.kind === 'named' && type.name === 'list' && foldsKey(type.args?.[0]))
   const keyOf = (type: Type | undefined): Type | undefined =>
@@ -911,7 +914,7 @@ export function emitKotlin(
           return '0L'
         }
 
-        if (type.name === 'decimal') {
+        if (type.name === 'float') {
           return '0.0'
         }
 
@@ -1000,7 +1003,7 @@ export function emitKotlin(
   const arrayKind = (t: Type | undefined): ArrayKind | undefined =>
     t?.kind === 'number' || (t?.kind === 'named' && (t.name === 'number' || t.name === 'integer'))
       ? 'Long'
-      : t?.kind === 'float' || (t?.kind === 'named' && t.name === 'decimal')
+      : t?.kind === 'float' || (t?.kind === 'named' && t.name === 'float')
         ? 'Double'
         : t?.kind === 'boolean'
           ? 'Boolean'
@@ -1662,7 +1665,7 @@ export function emitKotlin(
   // type is Long. A native call keeps the `.toLong()`, since its shim may answer an Int
   // a type a Double carries: the checker's float, or the `decimal` it was declared as
   const isDecimal = (type: Type | undefined): boolean =>
-    type?.kind === 'float' || (type?.kind === 'named' && type.name === 'decimal')
+    type?.kind === 'float' || (type?.kind === 'named' && type.name === 'float')
 
   const longOf = (node: Expression): string => {
     const number = node.type?.kind === 'number'
@@ -1838,10 +1841,9 @@ export function emitKotlin(
             return `${expr(node.args[0])}.length.toLong()`
           }
 
-          return (
-            renderBind(bind, 'kotlin', node.args.map(expr)) ??
-            bindGap(bind.name)
-          )
+          const rendered = renderBind(bind, 'kotlin', node.args.map(expr))
+
+          return rendered.form === 'some' ? rendered.value : bindGap(node.callee.name)
         }
 
         // a push onto a list of `Long` passes the value unboxed (`termPushLong`): through the generic `list_push` each
@@ -3689,7 +3691,7 @@ export function emitKotlin(
       )
       .filter(keepStatement)
       // each marked with its module, so the program can be written one file per module (compile/unit-split.ts)
-      .map(n => markUnit(n.span.file, stmt(n, 0)))
+      .map(n => markUnit(n.span.file ?? '', stmt(n, 0)))
       .filter(Boolean),
     ...kotlinFormWalk(fillSpecs, meltSpecs),
   ]
@@ -3721,7 +3723,7 @@ export function emitKotlin(
 
     if (fn) {
       uncheckedInts = true
-      body.push(markUnit(fn.span.file, stmt({ ...fn, name: `${name}-fast` }, 0)))
+      body.push(markUnit(fn.span.file ?? '', stmt({ ...fn, name: `${name}-fast` }, 0)))
       uncheckedInts = false
     }
   }
@@ -3734,7 +3736,7 @@ export function emitKotlin(
     if (fn && task) {
       reusing = { param: fn.params[task.param]!.name, builds: task.builds, keep: task.keep?.field, carriers: task.carriers }
       // with a kept field, the copy answers that field alone
-      body.push(markUnit(fn.span.file, stmt({ ...fn, name: `${name}-reuse`, ...(task.keep ? { result: task.keep.type } : {}) }, 0)))
+      body.push(markUnit(fn.span.file ?? '', stmt({ ...fn, name: `${name}-reuse`, ...(task.keep ? { result: task.keep.type } : {}) }, 0)))
       reusing = undefined
     }
   }

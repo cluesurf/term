@@ -123,11 +123,11 @@ task is-json-digit
         code 57
 
 # a digit character code (`0`-`9`) as its decimal value. `subtract` stays an integer operation (a character code
-# minus another is `like number`, exact); `to-decimal` is the explicit widening to `like decimal` (`as f64` on
+# minus another is `like number`, exact); `to-decimal` is the explicit widening to `like float` (`as f64` on
 # Rust), since Rust does not implicitly convert an `i64` to `f64` the way TypeScript's single `number` type does.
 task json-digit-value
   take code, like number
-  like decimal
+  like float
   send back
     call to-decimal
       call subtract
@@ -136,7 +136,7 @@ task json-digit-value
 
 task parse-json-number
   take cursor, like text-cursor
-  like decimal
+  like float
   save negative, false
   fork test
     hook test
@@ -663,7 +663,7 @@ task write-json-string
 # `like number` for a whole value (its own `{{}}` interpolation is a plain integer everywhere) so a round trip
 # stays byte-identical on every backend, rather than relying on each platform's own float formatting to agree.
 task number-to-json-text
-  take value, like decimal
+  take value, like float
   like text
   fork test
     hook test

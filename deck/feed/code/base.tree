@@ -833,7 +833,7 @@ task write-bytes
 # a fixed-width integer's bytes, LOW byte first: the low byte of what is left, then what is left divided by 256,
 # floored. Division, never a bit shift: `bit.tree`'s shifts are 32-bit on TypeScript and would truncate a field
 # wider than 4 bytes. `to-decimal` around the division and `to-number` around the floor because `round-down` is
-# `like decimal` in and out, and Rust does not convert an `i64` division into the `f64` it expects. `to-number`
+# `like float` in and out, and Rust does not convert an `i64` division into the `f64` it expects. `to-number`
 # truncates toward zero, but `round-down` has already floored, so the two agree here.
 #
 # No place value is ever built. It was `floor(value / 256^index) mod 256` per byte, and byte 7 of a

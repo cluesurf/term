@@ -1,0 +1,82 @@
+# THE MEMBERS A NATIVE LIST AND A NATIVE MAP ANSWER THEMSELVES, ONE TABLE (note/term/plan/backends-complete.md, step 5).
+# A `list` value is the host's array and a `hash` the host's map, and a member call on one is either a member every
+# emitter lowers (these, camelCase as a member call emits them: `xs/index-of` is `indexOf`) or a method of the Term
+# form, which the checker dispatches to (check/infer.ts `bindMemberMethod`).
+#
+# There were two tables until 2026-10-05, and they disagreed. The checker's said a list answers `reverse`, `sort`,
+# `find`, `forEach`, `entries`, `keys` and `values` itself on every backend, and no native emitter lowered one of them,
+# so `walk list, call items/reverse` was written as the host call `items.reverse()`: in place on TypeScript, where the
+# Term method copies, and a build failure on Rust, Swift and Kotlin, found in the toolchain. Now the checker leaves
+# native only what is here (compile/backend.ts `collectionCall` lowers exactly these), a member call outside it
+# dispatches to the Term method of that name, and one with no Term method is refused on a native build before
+# anything is emitted (check/lowered.tree).
+#
+# Ported from compile/lowered-members.ts (self-hosting, 2026-10-05): each table a task answering its members in the
+# order the original listed them, which a TypeScript reader makes a set of once.
+
+load @term/base/list
+  find list
+
+task lowered-list-members
+  like list, like text
+
+  save out, make list
+  push(out, <push>)
+  push(out, <pop>)
+  push(out, <at>)
+  push(out, <get>)
+  push(out, <set>)
+  push(out, <includes>)
+  push(out, <indexOf>)
+  push(out, <lastIndexOf>)
+  push(out, <concat>)
+  push(out, <slice>)
+  push(out, <toReversed>)
+  push(out, <join>)
+  push(out, <map>)
+  push(out, <filter>)
+  push(out, <some>)
+  push(out, <every>)
+  push(out, <reduce>)
+  push(out, <findIndex>)
+  push(out, <flat>)
+  push(out, <shift>)
+  push(out, <unshift>)
+  push(out, <splice>)
+  back out
+
+task lowered-map-members
+  like list, like text
+
+  save out, make list
+  push(out, <has>)
+  push(out, <get>)
+  push(out, <set>)
+  push(out, <delete>)
+  push(out, <keys>)
+  push(out, <values>)
+  back out
+
+# the one property each answers, read rather than called: a list's `length` and a map's `size`
+task lowered-list-read
+  like text
+
+  back <length>
+
+task lowered-map-read
+  like text
+
+  back <size>
+
+# THE LIST TASKS THAT ARE THE ARRAY'S OWN LENGTH: `length`, and `size` and `count`, its older names
+# (note/term/plan/decisions-2026-10.md, D2). Every emitter writes a call of one as the native length, and the interval
+# prover reads it as the list's length. Only `list_size` was known until 2026-10-05, so `length(xs)` became a function
+# call where `size(xs)` was `xs.length`, and proved nothing about an index
+task list-length-tasks
+  like list, like text
+
+  save out, make list
+  push(out, <list_length>)
+  push(out, <list_size>)
+  push(out, <list_count>)
+  back out

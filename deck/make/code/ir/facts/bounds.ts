@@ -655,7 +655,7 @@ function scalar(type: { kind?: string; name?: string } | undefined): boolean {
       type.kind === 'float' ||
       type.kind === 'boolean' ||
       type.kind === 'string' ||
-      (type.kind === 'named' && ['text', 'boolean', 'number', 'integer', 'decimal'].includes(type.name ?? '')))
+      (type.kind === 'named' && ['text', 'boolean', 'number', 'integer', 'float'].includes(type.name ?? '')))
   )
 }
 

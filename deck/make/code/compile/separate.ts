@@ -27,7 +27,7 @@ import type {
 } from '@term/make/code/compile/node'
 import { collectModules, makeParseMemo } from '@term/make/code/compile/load'
 import type { ImportScope, ParseMemo, Resolver, WalkMemo } from '@term/make/code/compile/load'
-import { compileProgram, entryWarnings, graphTemplates, milledModule } from '@term/make/code/compile/compile'
+import { awaitsOutsideTasks, compileProgram, entryWarnings, graphTemplates, milledModule } from '@term/make/code/compile/compile'
 import type { ModuleEmit } from '@term/make/code/compile/modules'
 import type { Roll } from '@term/make/code/compile/roll'
 import { nameDefs, namesUsed, stubKnown, stubProgram, surfaceHash } from '@term/make/code/compile/stub'
@@ -49,8 +49,7 @@ export type UnitExplain = {
 }
 import { contentHash, hashFields, reviveBigint, storeBigint } from '@term/make/code/compile/cache'
 import type { CompileCache } from '@term/make/code/compile/cache'
-import { awaitsOutsideTasks } from '@term/make/code/check/effects'
-import { unknownSeamOn } from '@term/make/code/check/seam'
+import { unknownSeamOn } from '@term/make/code/check/strict'
 import { checkerSwitchKey } from '@term/make/code/check/strict'
 import { checkTwins } from '@term/make/code/check/twin'
 import type { Tally } from '@term/make/code/check/holds'

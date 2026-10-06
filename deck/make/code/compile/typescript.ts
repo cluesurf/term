@@ -11,7 +11,9 @@ import type {
   ViewNode,
 } from '@term/make/code/compile/node'
 import type { Fill, RecordCopies, TextCursors } from '@term/make/code/compile/backend'
-import { LIST_LENGTH_TASKS } from '@term/make/code/compile/lowered-members'
+import { listLengthTasks } from '@term/make/code/compile/lowered-members'
+
+const LIST_LENGTH_TASKS: ReadonlySet<string> = new Set(listLengthTasks())
 import {
   recordCopies,
   redeclaredLets,
@@ -37,9 +39,12 @@ import {
   renderBind,
   bindGap,
   referencedBinds,
-  bindTarget,
+  bindTargetOf,
 } from '@term/make/code/compile/bind'
-import type { Bind } from '@term/make/code/compile/bind'
+
+// the value of a maybe a Term module answered (compile/bind.tree), or undefined for none
+const given = <T>(maybe: { form: 'some'; value: T } | { form: 'none' }): T | undefined =>
+  maybe.form === 'some' ? maybe.value : undefined
 import { armLocals } from '@term/make/code/check/arm'
 import { provenArithmetic, type Proven } from '@term/make/code/compile/proven'
 import { boundedLoops, listKey } from '@term/make/code/ir/facts/bounds'
@@ -1505,7 +1510,7 @@ function tsType(type: Type | undefined): string {
         }
 
         // `decimal` and `float` are the float's names: a `host` of a decimal literal is declared `decimal`
-        if (type.name === 'number' || type.name === 'integer' || type.name === 'decimal' || type.name === 'float') {
+        if (type.name === 'number' || type.name === 'integer' || type.name === 'float') {
           return 'number'
         }
       }
@@ -1696,7 +1701,7 @@ function tsProven(program: Statement[]): Proven {
 function makeEmitter(
   variants: Set<string>,
   hmr = false,
-  binds = new Map<string, Bind>(),
+  binds = new Map<string, Statement>(),
   env = 'node',
   // the `+`, `-` and `*` nodes proven not to overflow (compile/proven.ts): written without `__termInt`
   provenSteps: Proven = new WeakSet<Expression>(),
@@ -2028,10 +2033,10 @@ function makeEmitter(
           // each argument as an operand, grouped when compound: a template that is the argument alone (`to-decimal`'s
           // `$value`) stands where the call stood, so `1 / to-decimal(a + b)` must keep `(a + b)`
           const args = node.args.map(arg => expression(arg, 100))
-          const rendered = renderBind(bind, env, args) ?? renderBind(bind, 'javascript', args)
+          const rendered = given(renderBind(bind, env, args)) ?? given(renderBind(bind, 'javascript', args))
 
           if (rendered === undefined) {
-            return bindGap(bind.name)
+            return bindGap(node.callee.name)
           }
 
           // and the template itself grouped where it stands under an operator, unless it is one primary already: the
@@ -3803,8 +3808,8 @@ export function emitTypeScript(
   // binds actually called contribute, so an unused alternative does not pull in an import the program never references.
   for (const bind of referencedBinds(program, binds).values()) {
     const target =
-      bindTarget(bind, env) ??
-      bind.targets.find(t => t.env === 'javascript')
+      given(bindTargetOf(bind, env)) ??
+      (bind.form === 'bind' ? bind.targets.find(t => t.env === 'javascript') : undefined)
 
     for (const need of target?.imports ?? []) {
       if (need.alias) {

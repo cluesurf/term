@@ -1,0 +1,166 @@
+# A MEMBER CALL ON A LIST OR A MAP THAT NO NATIVE BACKEND LOWERS IS REFUSED BEFORE EMIT, on Rust, Swift and Kotlin
+# (note/term/plan/backends-complete.md, step 5). The emitters lower the members in compile/lowered-members.tree, and a
+# list or hash method the stdlib writes in Term is dispatched to before this runs (check/infer.ts
+# `bindMemberMethod`). What is left is a host method by name, `xs/for-each(f)` or `xs/sort()`, which JavaScript answers
+# and which every native emitter wrote as `xs.forEach(f)` for the toolchain to refuse, far from the line that asked
+# for it. On TypeScript it is the host's own method, as it always was.
+#
+# Read of the program the native emitter is handed (compile.ts, after `simplify` and view lowering), so what is
+# refused is exactly what would have been written.
+#
+# Ported from check/lowered.ts (self-hosting, 2026-10-05). The env is a text, `<>` for none, and the calls are read
+# through compile/node-reach.tree, in the original's order, with its skipped fields.
+
+load @term/base/list
+  find list
+  find join
+
+load @term/base/text
+  find index-of
+  find split
+  find substring
+
+load ../parser/diagnostic
+  find diagnostic
+  find diagnose
+  find diagnostic-input
+  find span
+
+load ../compile/node
+  find expression
+  find expression-type
+  find statement
+
+load ../compile/node-reach
+  find reach-statements
+
+load ../compile/lowered-members
+  find lowered-list-members
+  find lowered-map-members
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+# a member's name as written: `forEach` is `for-each`, every ASCII capital a dash and its small letter
+task spelled
+  take name, like text
+  like text
+  mark private
+
+  save capitals, <ABCDEFGHIJKLMNOPQRSTUVWXYZ>
+  save smalls, <abcdefghijklmnopqrstuvwxyz>
+  save out, make list
+  save chars, split(name, <>)
+  walk chars
+    take char
+    save at, index-of(capitals, char)
+    fork test, is-minimum(at, 0)
+      hold
+        push(out, <->)
+        push(out, substring(smalls, at, add(at, 1)))
+      miss
+        push(out, char)
+  back join(out, <>)
+
+# `array` or `map` for a list or a hash, the kind of the member call's receiver, else `<>`
+task receiver-kind
+  take target, like expression
+  like text
+  mark private
+
+  sift expression-type(target)
+    case some
+      link written
+      sift written
+        case array
+          back <array>
+        case map
+          back <map>
+        miss
+          back <>
+    case none
+      back <>
+
+task check-lowered-members
+  take program, like list, like statement
+  take file, like text
+  # the env being emitted for, `<>` for none
+  take env, like text
+  like list, like diagnostic
+
+  save errors, make list
+  fork test, not(or(or(is-equal(env, <rust>), is-equal(env, <swift>)), is-equal(env, <kotlin>)))
+    hold
+      back errors
+  save list-members, lowered-list-members()
+  save map-members, lowered-map-members()
+  # one refusal per site: an inlined body visited twice says it once
+  save seen, make list
+  save skip, make list
+  push(skip, <type>)
+  push(skip, <span>)
+  save reached, reach-statements(program, skip)
+  walk reached/expressions
+    take node
+    sift node
+      case call
+        sift callee
+          case member
+            save kind, receiver-kind(target)
+            save table, list-members
+            fork test, is-equal(kind, <map>)
+              hold
+                save table, map-members
+            save indexed, false
+            sift index
+              case some
+                link at
+                save indexed, true
+              case none
+                save nothing, 0
+            fork test, and(and(is-unequal(kind, <>), is-unequal(name, <>)), and(not(indexed), not(has-text(table, name))))
+              hold
+                save here, file
+                sift span/file
+                  case some
+                    link written
+                    save here, written
+                  case none
+                    save nothing, 0
+                save key, <{here}:{span/start/line}:{span/start/column}:{name}>
+                fork test, not(has-text(seen, key))
+                  hold
+                    push(seen, key)
+                    save what, <list>
+                    fork test, is-equal(kind, <map>)
+                      hold
+                        save what, <hash>
+                    save answered, make list
+                    walk table
+                      take one
+                      push(answered, spelled(one))
+                    save listed, join(answered, <, >)
+                    save shown, spelled(name)
+                    save input
+                      make diagnostic-input
+                        bind file, here
+                        bind span, span
+                        bind message, make(some, <`{shown}` is not a method of a {what} on {env}: it is the host's own on JavaScript, and no native backend lowers it>)
+                        bind hint, make(some, <a native {what} answers {listed}, and every other method is the Term form's (@term/base/{what})>)
+                    save kind-name, make not-implemented
+                    push(errors, diagnose(kind-name, input))
+          miss
+            save nothing, 0
+      miss
+        save nothing, 0
+  back errors

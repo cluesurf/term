@@ -50,7 +50,7 @@ ok(
   'polymorphic projection law reduces',
   compiles(`${PRELUDE}
 rule unwrap-wrap
-  mark x, like natural
+  seat x, like natural
   show hold
     call is-equal
       call unwrap
@@ -118,8 +118,8 @@ ok(
   'recursive polymorphic structural law reduces',
   compiles(`${STACK}
 rule depth-push
-  mark x, like natural
-  mark s, like stack
+  seat x, like natural
+  seat s, like stack
     head natural
   show hold
     call is-equal
@@ -142,8 +142,8 @@ ok(
   'false recursive polymorphic law is rejected',
   !compiles(`${STACK}
 rule depth-push-wrong
-  mark x, like natural
-  mark s, like stack
+  seat x, like natural
+  seat s, like stack
     head natural
   show hold
     call is-equal

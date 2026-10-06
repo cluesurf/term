@@ -57,8 +57,8 @@ expect(
   'the growth of the doubling sequence is proven',
   TASK + `
 rule doubling-grows-at-least-linearly
-  mark p, like integer
-  mark k, like integer
+  seat p, like integer
+  seat k, like integer
   have p-is-a-cosh
     call is-minimum
       read p
@@ -96,8 +96,8 @@ expect(
   'a bound passed by an explicit witness is proven',
   TASK + `
 rule doubling-passes-every-bound
-  mark p, like integer
-  mark m, like integer
+  seat p, like integer
+  seat m, like integer
   have p-is-at-least-two
     call is-minimum
       read p
@@ -123,8 +123,8 @@ expect(
   'a step that fails is refused',
   TASK + `
 rule control-a-step-that-fails
-  mark p, like integer
-  mark k, like integer
+  seat p, like integer
+  seat k, like integer
   have p-is-a-cosh
     call is-minimum
       read p
@@ -148,8 +148,8 @@ expect(
   'a base that fails is refused',
   TASK + `
 rule control-a-base-that-fails
-  mark p, like integer
-  mark k, like integer
+  seat p, like integer
+  seat k, like integer
   have p-is-a-cosh
     call is-minimum
       read p
@@ -183,8 +183,8 @@ expect(
   'a conjunction missing a hypothesis is refused',
   TASK + `
 rule control-growth-without-a-cosh
-  mark p, like integer
-  mark k, like integer
+  seat p, like integer
+  seat k, like integer
   have k-is-a-count
     call is-minimum
       read k
@@ -218,8 +218,8 @@ expect(
   'one past the witness is refused',
   TASK + `
 rule control-passing-one-more
-  mark p, like integer
-  mark m, like integer
+  seat p, like integer
+  seat m, like integer
   have p-is-at-least-two
     call is-minimum
       read p
@@ -245,8 +245,8 @@ expect(
   'a hypothesis about the counter is refused',
   TASK + `
 rule control-a-hypothesis-about-the-counter
-  mark p, like integer
-  mark k, like integer
+  seat p, like integer
+  seat k, like integer
   have p-is-a-cosh
     call is-minimum
       read p

@@ -38,7 +38,8 @@ task run
     like text
     path/join(<code>, <boot.tree>)
   save answer, <none>
-  mark unsafe
+  fork
+    mark unsafe
     save count
       like number
       path/join(<a>, <b>)

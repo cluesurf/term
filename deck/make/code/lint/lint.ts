@@ -77,6 +77,45 @@ function reportAll(reports: ruleCheck.RuleReport[], context: LintContext): void 
 // the line-length limit enforced by the formatter and the max-line-length lint rule (L019)
 const MAX_LINE_LENGTH = 84
 
+// line-based checks (over the raw source lines, not the AST): maximum line length and tab indentation. They cannot
+// be node rules because they are about layout, not structure.
+const LINE_RULES = [
+  {
+    code: 'L019',
+    name: 'max-line-length',
+    message: 'this line is longer than 84 characters; wrap it',
+    column: (line: string) => MAX_LINE_LENGTH,
+    hit: (line: string) => line.length > MAX_LINE_LENGTH,
+  },
+  {
+    code: 'L020',
+    name: 'no-tabs',
+    message: 'this line uses a tab; indent with two spaces',
+    column: (line: string) => line.indexOf('\t'),
+    hit: (line: string) => line.includes('\t'),
+  },
+  {
+    code: 'L029',
+    name: 'no-trailing-whitespace',
+    message: 'this line has trailing whitespace',
+    column: (line: string) => line.trimEnd().length,
+    hit: (line: string) =>
+      line.length > 0 && line.trimEnd().length !== line.length,
+  },
+] as const
+
+// EVERY lint finding the driver can report, one entry each: the AST and source rules, the line rules, and the run of
+// blank lines, which the driver reports inline. `term show kink L019` reads this, so a code printed by `term lint` can
+// always be looked up. The manifest findings (L050 to L055) need the file system and are listed beside their check,
+// in call/code/lint.ts
+export function lintCatalog(): { code: string; name: string; severity: Severity; docs: string; fixable: boolean }[] {
+  return [
+    ...RULES.map(rule => ({ code: rule.code, name: rule.name, severity: rule.severity, docs: rule.docs, fixable: rule.fixable })),
+    ...LINE_RULES.map(rule => ({ code: rule.code, name: rule.name, severity: 'warning' as const, docs: rule.message, fixable: false })),
+    { code: 'L030', name: 'no-multiple-empty-lines', severity: 'warning', docs: 'more than two consecutive blank lines', fixable: false },
+  ]
+}
+
 // the default rule set, keyed by stable code for config and suppression
 export const RULES: Rule[] = [
   portedRule('kebab-names'),
@@ -427,33 +466,6 @@ export function lint(
       enabled.forEach((rule, i) => rule.checkSource?.(parsed.tree, contexts[i]!))
     }
   }
-
-  // line-based checks (over the raw source lines, not the AST): maximum line length and tab indentation. They cannot
-  // be node rules because they are about layout, not structure.
-  const LINE_RULES = [
-    {
-      code: 'L019',
-      name: 'max-line-length',
-      message: 'this line is longer than 84 characters; wrap it',
-      column: (line: string) => MAX_LINE_LENGTH,
-      hit: (line: string) => line.length > MAX_LINE_LENGTH,
-    },
-    {
-      code: 'L020',
-      name: 'no-tabs',
-      message: 'this line uses a tab; indent with two spaces',
-      column: (line: string) => line.indexOf('\t'),
-      hit: (line: string) => line.includes('\t'),
-    },
-    {
-      code: 'L029',
-      name: 'no-trailing-whitespace',
-      message: 'this line has trailing whitespace',
-      column: (line: string) => line.trimEnd().length,
-      hit: (line: string) =>
-        line.length > 0 && line.trimEnd().length !== line.length,
-    },
-  ] as const
 
   for (const lr of LINE_RULES) {
     if (config.severity?.[lr.code] === 'off') {

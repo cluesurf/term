@@ -10,40 +10,53 @@
 // native only what is here (compile/backend.ts `collectionCall` lowers exactly these), a member call outside it
 // dispatches to the Term method of that name, and one with no Term method is refused on a native build before
 // anything is emitted (check/lowered.ts).
+//
+// As the Term port answers them (compile/lowered-members.tree): each table a task answering its members in order.
 
-export const LOWERED_LIST_MEMBERS: ReadonlySet<string> = new Set([
-  'push',
-  'pop',
-  'at',
-  'get',
-  'set',
-  'includes',
-  'indexOf',
-  'lastIndexOf',
-  'concat',
-  'slice',
-  'toReversed',
-  'join',
-  'map',
-  'filter',
-  'some',
-  'every',
-  'reduce',
-  'findIndex',
-  'flat',
-  'shift',
-  'unshift',
-  'splice',
-])
+export function loweredListMembers(): string[] {
+  return [
+    'push',
+    'pop',
+    'at',
+    'get',
+    'set',
+    'includes',
+    'indexOf',
+    'lastIndexOf',
+    'concat',
+    'slice',
+    'toReversed',
+    'join',
+    'map',
+    'filter',
+    'some',
+    'every',
+    'reduce',
+    'findIndex',
+    'flat',
+    'shift',
+    'unshift',
+    'splice',
+  ]
+}
 
-export const LOWERED_MAP_MEMBERS: ReadonlySet<string> = new Set(['has', 'get', 'set', 'delete', 'keys', 'values'])
+export function loweredMapMembers(): string[] {
+  return ['has', 'get', 'set', 'delete', 'keys', 'values']
+}
 
 // the one property each answers, read rather than called: a list's `length` and a map's `size`
-export const LOWERED_LIST_READ = 'length'
-export const LOWERED_MAP_READ = 'size'
+export function loweredListRead(): string {
+  return 'length'
+}
+
+export function loweredMapRead(): string {
+  return 'size'
+}
 
 // THE LIST TASKS THAT ARE THE ARRAY'S OWN LENGTH: `length`, and `size` and `count`, its older names
 // (note/term/plan/decisions-2026-10.md, D2). Every emitter writes a call of one as the native length, and the interval
 // prover reads it as the list's length. Only `list_size` was known until 2026-10-05, so `length(xs)` became a function
 // call where `size(xs)` was `xs.length`, and proved nothing about an index
-export const LIST_LENGTH_TASKS: ReadonlySet<string> = new Set(['list_length', 'list_size', 'list_count'])
+export function listLengthTasks(): string[] {
+  return ['list_length', 'list_size', 'list_count']
+}

@@ -62,8 +62,33 @@ import {
   nonNegativeEverywhereNvar,
   nPoly,
 } from '@term/make/code/check/cad-nvar'
+import { WIDTHS, widthRanges } from '@term/make/code/check/width-range'
 
 let modCounter = 0
+
+// the program's tasks with a width-typed result, by name (set with `holdsProgram`), and the count behind the fresh
+// atom each reading of an impure one gets. `__`, so it is never state (isStateAtom)
+let resultWidths = new Map<string, string>()
+let widthAtoms = 0
+
+// a width-typed parameter's range as facts: each bound a number holds exactly (inside 2^53), so `u64` keeps its 0 and
+// `i64` says nothing a number does not
+function widthFacts(name: string, width: string | undefined): ReturnType<typeof atLeast>[] {
+  const range = width ? WIDTHS[width] : undefined
+
+  if (!range) {
+    return []
+  }
+
+  const exact = (value: bigint): boolean => value <= 2n ** 53n - 1n && value >= -(2n ** 53n - 1n)
+  const [low, high] = range
+  const self = linear({ [name]: 1 })
+
+  return [
+    ...(exact(low) ? [atLeast(self, linear({}, Number(low)))] : []),
+    ...(exact(high) ? [atMost(self, linear({}, Number(high)))] : []),
+  ]
+}
 
 // the extremum each name computes in the program being checked: the intrinsics `max` / `min` when the program does
 // not define a task of that name, and any task whose whole body is `send back, call max (or min) a b` of its own two
@@ -188,6 +213,12 @@ function impureOutsideMasks(expr: unknown, walk: Walk): boolean {
     if (k !== undefined && Number.isInteger(k) && k >= 0 && k <= Number.MAX_SAFE_INTEGER) {
       return false
     }
+  }
+
+  // and so is a call to a task with a width-typed result: a fresh atom inside the width for each reading (toLinear), so
+  // the call itself is no reason. Its arguments still are
+  if (node.form === 'call' && node.callee.form === 'variable' && resultWidths.has(node.callee.name)) {
+    return impureOutsideMasks(node.args, walk)
   }
 
   if (node.form === 'call' && callsImpure({ ...node, args: [] }, walk.pure, walk.functions, walk.local)) {
@@ -330,9 +361,22 @@ function toLinear(
     case 'member':
     case 'call': {
       const applied = applicationKey(expr)
+      // a call to a task whose result is width-typed is inside the width (check/width-range.ts)
+      const width =
+        expr.form === 'call' && expr.callee.form === 'variable' ? resultWidths.get(expr.callee.name) : undefined
 
       if (applied !== undefined) {
+        side.push(...widthFacts(applied, width))
+
         return linear({ [applied]: 1 })
+      }
+
+      // not pure, so each reading is a value of its own: a fresh atom, never equal to another reading of the call
+      if (width !== undefined) {
+        const atom = `__width#${widthAtoms++}`
+        side.push(...widthFacts(atom, width))
+
+        return linear({ [atom]: 1 })
       }
 
       if (expr.form === 'call' && expr.callee.form === 'variable') {
@@ -618,7 +662,7 @@ function isStateAtom(key: string): boolean {
 // integer atom would be tightened as one
 let numberFields = new Map<string, Set<string>>()
 
-// the quantified FUNCTIONS of the theorem being walked: a rule's `mark x, like task ...`. A theorem holds for every
+// the quantified FUNCTIONS of the theorem being walked: a rule's `seat x, like task ...`. A theorem holds for every
 // function, so a call of one is a pure application: the same argument gives the same value, and nothing else is
 // known. Each call becomes an atom keyed by the function and its argument's canonical polynomial (applicationKey), so
 // `x(n + 1)` and `x(1 + n)` are one atom and `x(n)` and `x(n + 1)` are two.
@@ -633,7 +677,7 @@ function isFunctionType(type: Type | undefined): boolean {
   return type?.kind === 'function' || (type !== undefined && throughAlias(type, holdsAliases).type.kind === 'function')
 }
 
-// the theorem's UNIVERSAL hypotheses (`have h / mark t / <proposition>`): each true for every value of its binders
+// the theorem's UNIVERSAL hypotheses (`have h / seat t / <proposition>`): each true for every value of its binders
 let universalHypotheses: { binders: string[]; expr: Expression }[] = []
 
 // THE INTEGERS among the atoms: the number marks of the theorem being walked, and the pure tasks returning a number
@@ -939,7 +983,10 @@ function applicationVariables(key: string): Set<string> {
 // A CALL OF ANY PURE TASK is an atom too, a function of its arguments, the same value wherever they are the same: a
 // recognized recurrence (`recurrenceFacts`), or `count(b)` in a fact a `cite` brought, which was otherwise dropped
 function applicationKey(expr: Expression): string | undefined {
+  // a list's LENGTH is not an application, though `length` and `size` are pure: as one it was an atom with no sign,
+  // never forgotten when the list is written, and every `down` over `size(xs) - k` in the stdlib went unproven
   if (
+    lengthAtom(expr) !== undefined ||
     expr.form !== 'call' ||
     expr.callee.form !== 'variable' ||
     !(appliedFunctions.has(expr.callee.name) || recurrences.has(expr.callee.name) || pureTasks.has(expr.callee.name))
@@ -3578,7 +3625,7 @@ function explainRule(
     ?.find(step => step.head === 'cite')?.arg
   const formName = formMark ? (formMark.type as { name: string }).name : ''
   const hint = cited
-    ? `\`cite ${cited}\` closes a goal that is an instance of it: each side must compute to one side of ${cited}, at some values of its marks. A law that holds only in some cases needs \`fold\` on the value it splits on (/guides/proofs/start)`
+    ? `\`cite ${cited}\` closes a goal that is an instance of it: each side must compute to one side of ${cited}, at some values of its seats. A law that holds only in some cases needs \`fold\` on the value it splits on (/guides/proofs/start)`
     : formMark
       ? `a goal about \`${formMark.name}\`, ${/^[aeiou]/.test(formName) ? 'an' : 'a'} ${formName}, stops where its value is unknown. \`fold ${formMark.name}\` under the \`show\` proves it one case at a time (/guides/proofs/induction)`
       : (rule.universals?.length ?? 0) > 0 && countMark
@@ -3639,7 +3686,7 @@ function citedFacts(
 
   if (cited?.form === 'binary' && cited.op === '==') {
     return refuse(
-      'the arithmetic provers did not prove it above this one, and if the kernel proved it, this goal is not an instance of it: no one rewrite by it, at any values of its marks, makes the two sides the same',
+      'the arithmetic provers did not prove it above this one, and if the kernel proved it, this goal is not an instance of it: no one rewrite by it, at any values of its seats, makes the two sides the same',
     )
   }
 
@@ -3668,7 +3715,7 @@ function citedFacts(
 
     if (!here) {
       return refuse(
-        `its mark ${mark.name} names nothing in this rule. A cited rule's marks are read by name: give this rule a mark or a find called ${mark.name}`,
+        `its seat ${mark.name} names nothing in this rule. A cited rule's seats are read by name: give this rule a seat or a find called ${mark.name}`,
       )
     }
   }
@@ -3708,7 +3755,7 @@ function citedFacts(
     if (!linearlyProvable(hypothesis, available) && goalProvable(hypothesis, available) !== true) {
       return refuse(
         at < naturals.length
-          ? `${rule.params.filter(mark => mark.refine === 'natural')[at]!.name} >= 0, which its natural-number mark assumes, does not follow here`
+          ? `${rule.params.filter(mark => mark.refine === 'natural')[at]!.name} >= 0, which its natural-number seat assumes, does not follow here`
           : `its hypothesis ${printExpression(hypothesis)} does not follow from what is known here`,
       )
     }
@@ -4021,6 +4068,7 @@ export function checkHolds(...args: Parameters<typeof checkProgramHolds>): Diagn
     return checkProgramHolds(...args)
   } finally {
     holdsProgram = []
+    resultWidths = new Map()
     pureTasks = new Set()
     recurrences = new Map()
     holdsAliases = new Map()
@@ -4078,6 +4126,10 @@ function checkProgramHolds(
     ),
   )
   holdsProgram = program
+  // the tasks whose result is width-typed, under the switch: a call to one is a value inside the width
+  resultWidths = widthRanges()
+    ? new Map(program.flatMap(s => (s.form === 'function' && s.resultWidth ? [[s.name, s.resultWidth] as const] : [])))
+    : new Map()
   // a pure task that returns a NUMBER: arithmetic is about numbers, and `plus(a, b)` over naturals returns a form, whose
   // calls as numeric unknowns would turn a goal about forms into a wrong claim of falsity
   pureTasks = new Set(
@@ -4139,6 +4191,9 @@ function checkProgramHolds(
         ...statement.params
           .filter(p => p.refine === 'natural')
           .map(p => atLeast(linear({ [p.name]: 1 }), linear({}, 0))),
+        // and a width-typed parameter is inside its width, which every call into it owes under the switch
+        // (check/width-range.ts). A bound past 2^53 is not exact as a number and is left out: `u64` keeps its 0
+        ...(widthRanges() ? statement.params.flatMap(p => widthFacts(p.name, p.width)) : []),
         ...tables.filter(
           q => ![...q.linear.terms.keys()].some(k => shadowed.has(keyRoot(k))),
         ),
@@ -4430,7 +4485,7 @@ export type Tally = {
 }
 
 // the obligations nobody wrote, which the gate counts rather than fails
-export type Tier0 = 'index' | 'zero' | 'ends'
+export type Tier0 = 'index' | 'zero' | 'ends' | 'width'
 
 // tier-0 obligations summed over files, as a build reports them
 export type Owed = { total: number; proven: number; kinds?: Tally['kinds'] }
@@ -4440,6 +4495,7 @@ const OWED_KINDS: [Tier0, string][] = [
   ['index', 'list reads in bounds'],
   ['zero', 'divisions by something other than zero'],
   ['ends', 'walks shown to end'],
+  ['width', 'values inside their width'],
 ]
 
 // add one file's obligations into a running total
@@ -4481,6 +4537,7 @@ const OWED: Record<HoldOrigin, string> = {
   index: 'this read is not shown to be inside the list',
   zero: 'this division is not shown to be by something other than zero',
   ends: 'this walk is not shown to end (give it a `down` measure, or `mark roam` on a task meant to run forever)',
+  width: 'this value is not shown to fit the width of the parameter it is passed to (check it with `to-u8` and its kin, or bound it first)',
   given: 'a promised fact',
 }
 
@@ -5713,7 +5770,8 @@ function walkHolds(
         const tier0 =
           statement.origin === 'index' ||
           statement.origin === 'zero' ||
-          statement.origin === 'ends'
+          statement.origin === 'ends' ||
+          statement.origin === 'width'
         let ordinal = 0
 
         if (tier0 && walk.tally) {

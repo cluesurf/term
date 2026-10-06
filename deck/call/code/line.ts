@@ -24,6 +24,7 @@ import {
   callSelfUpdate,
   callSelfWash,
 } from '@term/call/code/self'
+import { callSelfSkill } from '@term/call/code/skill'
 import { callSeek } from '@term/call/code/seek'
 import { callLink, callUnlink } from '@term/call/code/link'
 import { callMake } from '@term/call/code/make'
@@ -636,7 +637,7 @@ const cli = yargs(hideBin(process.argv))
       await callBind({ root, toss: argv.toss, again: argv.again })
     },
   )
-  .command('self', 'The versions of term on this machine: list, find, load, pick, need, show, toss, wash, check, update, back', yargs =>
+  .command('self', 'The versions of term on this machine: list, find, load, pick, need, show, toss, wash, check, update, back, and skill, which teaches a coding agent its verbs', yargs =>
     yargs
       .command('list', 'Installed versions, the front, the default, and what runs here', {}, async () => {
         await callSelfList({ root })
@@ -710,6 +711,9 @@ const cli = yargs(hideBin(process.argv))
       })
       .command('back', 'Move the front back to the previous version', {}, async () => {
         await callSelfBack({ root })
+      })
+      .command('skill', "Write the skill that teaches a coding agent term's verbs into this project, at .claude/skills/term/SKILL.md", {}, argv => {
+        callSelfSkill({ root, version: readVersion(), back: argv.back as string | undefined })
       })
       .demandCommand(1, 'which self verb?'),
   )
@@ -915,16 +919,22 @@ const cli = yargs(hideBin(process.argv))
     'scan <file>',
     'Type-check a file and report diagnostics (the verifier)',
     yargs =>
-      yargs.positional('file', {
-        type: 'string',
-        description: 'The .tree file to check',
-        demandOption: true,
-      }),
+      yargs
+        .positional('file', {
+          type: 'string',
+          description: 'The .tree file to check',
+          demandOption: true,
+        })
+        .option('fix', {
+          type: 'boolean',
+          description: 'Write the sure fixes into the file and scan again. A guess is offered, never written',
+        }),
     async argv => {
       await callScan({
         root,
         file: argv.file,
         back: argv.back,
+        fix: argv.fix,
       })
     },
   )
@@ -1416,15 +1426,22 @@ const cli = yargs(hideBin(process.argv))
         .option('path', {
           type: 'boolean',
           description: 'Under each exception, one call path from every task that can raise it to the raise site',
+        })
+        .option('diff', {
+          type: 'string',
+          description:
+            'What changed in what each task can reach and raise since a roll file (term roll --json > before.json) or a git ref. A task that gained a native module is a warning, so --strict makes it a gate',
         }),
     async argv => {
       await callRoll({
         root,
         kind: argv.kind,
-        json: argv.json,
+        // `--back json` too, the spelling every agent-facing verb takes
+        json: argv.json || argv.back === 'json',
         private: argv.private,
         path: argv.path,
         host: argv.host,
+        diff: argv.diff,
       })
     },
   )
@@ -1590,15 +1607,25 @@ const cli = yargs(hideBin(process.argv))
     },
   )
   .command(
-    'show [what]',
+    'show [what] [name]',
     'Display information',
     yargs =>
-      yargs.positional('what', {
-        type: 'string',
-        description: '`mark` for this package\'s version (`code` is the old spelling), `tools` for the native toolchains; omit for the toolchain version and platform',
-      }),
+      yargs
+        .positional('what', {
+          type: 'string',
+          description:
+            '`mark` for this package\'s version (`code` is the old spelling), `tools` for the native toolchains, `kink` for what a diagnostic means, `name` for one name of the project with what surrounds it; omit for the toolchain version and platform',
+        })
+        .positional('name', {
+          type: 'string',
+          description: 'With `kink`: a diagnostic\'s name or code (type-mismatch, 0007, L019), every one when left out. With `name`: the task, form or mask to show',
+        })
+        .option('budget', {
+          type: 'number',
+          description: 'With `name`: the most tokens the answer may take, roughly four characters each (default 4000)',
+        }),
     async argv => {
-      await callShow({ root, what: argv.what, back: argv.back, version: readVersion() })
+      await callShow({ root, what: argv.what, name: argv.name, budget: argv.budget, back: argv.back, version: readVersion() })
     },
   )
   .command(

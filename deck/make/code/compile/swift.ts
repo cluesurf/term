@@ -6,7 +6,7 @@
 // needed. Generic functions emit `<T>`. Pure, browser-safe. See note/research/vibe/computation/plans/07-codegen.md.
 
 import { armLocals } from '@term/make/code/check/arm'
-import { raiseSets } from '@term/make/code/check/effects'
+import { raiseSetsOf } from '@term/make/code/check/effects'
 import { keepDocksApart } from '@term/make/code/compile/dock-apart'
 import { markUnit, unmarked } from '@term/make/code/compile/unit-split'
 import { provenIncrements } from '@term/make/code/ir/facts/range'
@@ -67,7 +67,9 @@ import {
   referencedBinds,
 } from '@term/make/code/compile/bind'
 import { integerText } from '@term/make/code/compile/type-text'
-import { LIST_LENGTH_TASKS } from '@term/make/code/compile/lowered-members'
+import { listLengthTasks } from '@term/make/code/compile/lowered-members'
+
+const LIST_LENGTH_TASKS: ReadonlySet<string> = new Set(listLengthTasks())
 
 // Swift reserved keywords. When one is used as an identifier (a function / parameter / member named `repeat`,
 // `default`, etc.) it must be backtick-escaped, in both the declaration and every reference.
@@ -795,7 +797,6 @@ function swiftKeyConformances(
         return true
       case 'named':
         return (
-          type.name === 'decimal' ||
           type.name === 'float' ||
           type.name === 'list' ||
           type.name === 'hash' ||
@@ -1077,7 +1078,9 @@ const SWIFT_PRIMITIVES: Record<string, string> = {
   boolean: 'Bool',
   number: 'Int',
   integer: 'Int',
-  decimal: 'Double',
+  // the 64-bit float, never Swift's 32-bit `Float`. `decimal` was its old name and is not one here since D4: a
+  // program's own `form decimal` is that form
+  float: 'Double',
 }
 
 // the roll grouped by deck, for the generated wake chain (the same shape emitTypeScript takes)
@@ -1581,7 +1584,7 @@ export function emitSwift(
           return '0'
         }
 
-        if (type.name === 'decimal') {
+        if (type.name === 'float') {
           return '0.0'
         }
 
@@ -1751,10 +1754,10 @@ export function emitSwift(
   // the raise sets (note/term/hive/04-reach.md): a function that can raise, through its callees too, is `throws`, a
   // call to one is `try` where the caller is itself `throws` or the call sits in a guarded body, and `try!` elsewhere
   // (a raise nothing handles ends the program, as on every backend)
-  const sets = raiseSets(program, exceptionForms)
+  const sets = raiseSetsOf(program, [...exceptionForms])
 
   for (const [name, raises] of sets.raises) {
-    if (raises.size > 0) {
+    if (raises.length > 0) {
       throwingFns.add(name)
     }
   }
@@ -2196,13 +2199,13 @@ export function emitSwift(
             return `${expr(node.args[0], bind)}.utf8.count`
           }
 
-          return (
-            renderBind(
-              found,
-              'swift',
-              node.args.map(a => expr(a, bind)),
-            ) ?? bindGap(found.name)
+          const rendered = renderBind(
+            found,
+            'swift',
+            node.args.map(a => expr(a, bind)),
           )
+
+          return rendered.form === 'some' ? rendered.value : bindGap(node.callee.name)
         }
 
         // a native map / list operation lowers to swift's collection API (a map goes through the SeedMap wrapper)
@@ -3991,7 +3994,7 @@ export function emitSwift(
       )
       .filter(keepStatement)
       // each marked with its module, so the program can be written one file per module (compile/unit-split.ts)
-      .map(n => markUnit(n.span.file, stmt(n, 0, new Map()))),
+      .map(n => markUnit(n.span.file ?? '', stmt(n, 0, new Map()))),
   ].filter(Boolean)
 
   // each task a guarded loop calls unchecked, once more with wrapping arithmetic (`aValueFast`), behind the bound the
@@ -4001,7 +4004,7 @@ export function emitSwift(
 
     if (fn) {
       uncheckedInts = true
-      body.push(markUnit(fn.span.file, stmt({ ...fn, name: `${name}-fast` }, 0, new Map())))
+      body.push(markUnit(fn.span.file ?? '', stmt({ ...fn, name: `${name}-fast` }, 0, new Map())))
       uncheckedInts = false
     }
   }
@@ -4117,7 +4120,7 @@ export function emitSwift(
 
       // in the form's own module: Swift synthesizes a conformance only in the file that declares the type, which is the
       // form's own file once the program is written one file per module (compile/unit-split.ts)
-      conformances.push(markUnit(node.span.file, `extension ${swiftName}: ${protocol}${where} {}`))
+      conformances.push(markUnit(node.span.file ?? '', `extension ${swiftName}: ${protocol}${where} {}`))
 
       // a node class (`nodeClasses`) compares and hashes by its fields, as the case it holds did, so the enum's
       // synthesized conformance means what it meant
@@ -4128,7 +4131,7 @@ export function emitSwift(
 
         conformances.push(
           markUnit(
-            node.span.file,
+            node.span.file ?? '',
             protocol === 'Equatable'
               ? `extension ${held.name}: Equatable { static func == (a: ${held.name}, b: ${held.name}) -> Bool { a === b || (${fields.map(f => `a.${f} == b.${f}`).join(' && ')}) } }`
               : `extension ${held.name}: Hashable { func hash(into hasher: inout Hasher) { ${fields.map(f => `hasher.combine(${f})`).join('; ')} } }`,

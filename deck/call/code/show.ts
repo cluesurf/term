@@ -14,11 +14,16 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { infoText } from '@term/make/code/show'
+import { showKink } from '@term/call/code/kink'
+import { showContext } from '@term/call/code/context'
 import { closeRun, field, location, openRun, printData, report, showPath } from '@term/call/code/output'
 
 export async function callShow(input: {
   root: string
   what?: string
+  // the object of `kink` (a diagnostic's name or code) and of `name` (a name in the project)
+  name?: string
+  budget?: number
   back?: string
   version: string
 }): Promise<void> {
@@ -40,10 +45,24 @@ export async function callShow(input: {
     return
   }
 
+  // what a diagnostic means, by the name or code a run printed (call/code/kink.ts)
+  if (input.what === 'kink') {
+    showKink({ root: input.root, query: input.name, json })
+
+    return
+  }
+
+  // one name of the project with what a reader needs around it, sized to a budget (call/code/context.ts)
+  if (input.what === 'name') {
+    await showContext({ root: input.root, query: input.name, json, budget: input.budget })
+
+    return
+  }
+
   if (input.what !== 'mark' && input.what !== 'code') {
     openRun({ verb: 'show', root: input.root })
     report({ glyph: 'failed', kind: 'problem', subject: `There is nothing named ${input.what} to show` })
-    closeRun({ verdict: 'Nothing shown', next: 'term show, term show mark or term show tools', failure: 'usage' })
+    closeRun({ verdict: 'Nothing shown', next: 'term show, term show mark, term show tools, term show kink or term show name', failure: 'usage' })
 
     return
   }

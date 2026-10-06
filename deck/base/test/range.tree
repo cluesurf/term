@@ -28,7 +28,7 @@ test <length equals the size of to-list>
     call is-equal
       call length
         read r
-      call size
+      call length
         call to-list
           read r
 

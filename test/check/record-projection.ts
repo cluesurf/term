@@ -67,8 +67,8 @@ ok(
   'left projection reduces',
   discharges(`${PRELUDE}
 rule project-left
-  mark a, like integer
-  mark b, like integer
+  seat a, like integer
+  seat b, like integer
   show hold
     call is-equal
       call first
@@ -85,8 +85,8 @@ ok(
   'right projection reduces',
   discharges(`${PRELUDE}
 rule project-right
-  mark a, like integer
-  mark b, like integer
+  seat a, like integer
+  seat b, like integer
   show hold
     call is-equal
       call second
@@ -103,8 +103,8 @@ ok(
   'wrong projection is rejected',
   rejected(`${PRELUDE}
 rule project-left-is-right
-  mark a, like integer
-  mark b, like integer
+  seat a, like integer
+  seat b, like integer
   show hold
     call is-equal
       call first

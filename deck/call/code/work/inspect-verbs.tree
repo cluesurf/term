@@ -75,7 +75,8 @@ task view
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  mark unsafe
+  fork
+    mark unsafe
     call view-module/callView
       make view-ask
         bind root, read root
@@ -100,7 +101,8 @@ task seek
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  mark unsafe
+  fork
+    mark unsafe
     call seek-module/callSeek
       make seek-ask
         bind root, read root
@@ -131,7 +133,8 @@ task mold
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  mark unsafe
+  fork
+    mark unsafe
     call mold-module/callMold
       make mold-ask
         bind root, read root
@@ -164,7 +167,8 @@ task boot
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  mark unsafe
+  fork
+    mark unsafe
     call boot-module/callBoot
       make boot-ask
         bind root, read root

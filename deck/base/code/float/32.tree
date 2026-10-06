@@ -8,8 +8,8 @@
 mark unstable
 
 bind f32-round
-  take value, like decimal
-  like decimal
+  take value, like float
+  like float
   case node
     text <Math.fround($value)>
   case browser
@@ -23,7 +23,7 @@ bind f32-round
 
 # the largest finite magnitude of a 32-bit float (the smallest finite is its negation)
 bind f32-maximum-value
-  like decimal
+  like float
   case node
     text <3.4028234663852886e38>
   case browser
@@ -36,9 +36,9 @@ bind f32-maximum-value
     text <Float.MAX_VALUE.toDouble()>
 
 task f32-add
-  take a, like decimal
-  take b, like decimal
-  like decimal
+  take a, like float
+  take b, like float
+  like float
   send back
     call f32-round
       call add
@@ -46,9 +46,9 @@ task f32-add
         read b
 
 task f32-subtract
-  take a, like decimal
-  take b, like decimal
-  like decimal
+  take a, like float
+  take b, like float
+  like float
   send back
     call f32-round
       call subtract
@@ -56,9 +56,9 @@ task f32-subtract
         read b
 
 task f32-multiply
-  take a, like decimal
-  take b, like decimal
-  like decimal
+  take a, like float
+  take b, like float
+  like float
   send back
     call f32-round
       call multiply
@@ -66,9 +66,9 @@ task f32-multiply
         read b
 
 task f32-divide
-  take a, like decimal
-  take b, like decimal
-  like decimal
+  take a, like float
+  take b, like float
+  like float
   send back
     call f32-round
       call divide

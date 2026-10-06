@@ -64,7 +64,7 @@ test <putting an existing key replaces its value in place>
   want hold
     call and
       call is-equal
-        call count
+        call length
           read m
         code 2
       call is-equal

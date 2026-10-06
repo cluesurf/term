@@ -20,7 +20,7 @@ load @term/base/text
 # a result of one sample, run at `size`
 task sized
   take size, like number
-  take median, like decimal
+  take median, like float
   like bench-result
 
   host samples, make list(median)

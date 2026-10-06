@@ -33,7 +33,7 @@ load ./stat
   find geometric-mean
 
 task fixed
-  take value, like decimal
+  take value, like float
   take places, like number
   like text
   send back
@@ -80,9 +80,9 @@ task kilobytes
 
 # a ratio with its interval: `1.042 [1.010-1.071]`
 task ratio-text
-  take ratio, like decimal
-  take low, like decimal
-  take high, like decimal
+  take ratio, like float
+  take low, like float
+  take high, like float
   like text
   save middle
     call fixed

@@ -76,7 +76,7 @@ test <an empty list sorts to an empty list>
   call empty/pop
   want hold
     call is-equal
-      call size
+      call length
         call sort
           read empty
           read from-numbers

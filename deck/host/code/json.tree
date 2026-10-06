@@ -229,7 +229,7 @@ task from-dynamic
 
 task is-whole
   mark private
-  take value, like decimal
+  take value, like float
   like boolean
   send back
     call is-equal

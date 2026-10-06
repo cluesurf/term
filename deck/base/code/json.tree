@@ -129,7 +129,7 @@ task is-wrong-kind
 # `null` field still answers the default
 task as-number
   take value, like dynamic
-  like decimal
+  like float
   save kind
     call json-kind
       read value
@@ -207,7 +207,7 @@ task field-text
 task field-number
   take value, like dynamic
   take key, like text
-  like decimal
+  like float
   send back
     call as-number
       call get-field
@@ -264,7 +264,7 @@ task from-text
       read value
 
 task from-number
-  take value, like decimal
+  take value, like float
   like dynamic
   send back
     call json-from-number

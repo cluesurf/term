@@ -66,7 +66,7 @@ load @term/base/hash
   find get-or-default
 
 form point
-  link x, like decimal
+  link x, like float
 
 task run
   like text
@@ -137,7 +137,7 @@ task run
   find square-root
 
 form point
-  link x, like decimal
+  link x, like float
 
 task run
   like text
@@ -158,7 +158,7 @@ task run
 
 form shape
   case circle
-    link radius, like decimal
+    link radius, like float
   case dot
 
 task run

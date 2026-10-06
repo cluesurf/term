@@ -64,7 +64,8 @@ task work
         read port
       miss
         read worker-port
-  mark unsafe
+  fork
+    mark unsafe
     save daemon
       call daemon-module/startDaemon
         make daemon-ask
@@ -88,7 +89,8 @@ task source-lines
 
   like list, like text
 
-  mark unsafe
+  fork
+    mark unsafe
     save text
       call read-file, read(file)
     send back

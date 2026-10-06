@@ -53,17 +53,17 @@ form comparison
   link baseline, like text
   link track, like text
   # medians, in milliseconds
-  link term-wall, like decimal
-  link base-wall, like decimal
-  link ratio, like decimal
-  link low, like decimal
-  link high, like decimal
+  link term-wall, like float
+  link base-wall, like float
+  link ratio, like float
+  link low, like float
+  link high, like float
   link verdict, like text
   # the instruction ratio, where both sides counted instructions. `counted` false otherwise
   link counted, like boolean
-  link instruction-ratio, like decimal
-  link instruction-low, like decimal
-  link instruction-high, like decimal
+  link instruction-ratio, like float
+  link instruction-low, like float
+  link instruction-high, like float
   # either median under 20 times the empty process's: the ratio measures process start, not the program
   link dominated, like boolean
   # the target's programs run under emulation on this machine (Rosetta on macOS): the ratio measures the emulator too

@@ -43,13 +43,13 @@ function wordOf(node: Node | undefined): string {
 
 const headOf = (group: GroupNode): string => wordOf(group.nodes[0])
 
-// the names a source declares at its top level
-export function millDeclared(source: Source): Set<string> {
+// the names a source declares at its top level, each once, in order
+export function millDeclared(source: Source): string[] {
   const parsed = parse(source)
   const names = new Set<string>()
 
   if (!parsed.ok) {
-    return names
+    return [...names]
   }
 
   for (const group of groupsOf(parsed.tree.nodes)) {
@@ -58,16 +58,26 @@ export function millDeclared(source: Source): Set<string> {
     }
   }
 
-  return names
+  return [...names]
 }
+
+// As compile/mill-check.tree answers it: resolving is the caller's IO. What each top-level `load` asks for, in order
+export function millLoadTargets(source: Source): string[] {
+  const parsed = parse(source)
+
+  return parsed.ok ? groupsOf(parsed.tree.nodes).filter(group => headOf(group) === 'load').map(group => wordOf(group.nodes[1])) : []
+}
+
+export type MillLoad = { target: string; found?: Source }
 
 export type MillProblem = { what: string; span: Span }
 
-// The four checks, as problems. A resolver that cannot be asked (none given) skips the three that need one, and
-// says nothing it cannot know.
+// The four checks, as problems. A caller that cannot resolve (`resolving` false) skips the three that need it, and
+// says nothing it cannot know. `resolved` answers `millLoadTargets`, one per target, in its order
 export function checkMillDefinition(
   source: Source,
-  resolve?: (path: string, from: string) => Source | undefined,
+  resolving: boolean,
+  resolved: MillLoad[],
 ): { parsed: boolean; problems: MillProblem[]; diagnostics: Diagnostic[] } {
   const tree = parse(source)
 
@@ -77,9 +87,10 @@ export function checkMillDefinition(
 
   const problems: MillProblem[] = []
 
-  if (resolve) {
+  if (resolving) {
     // the forms the file's loads bring in, for the `like` checks
     const known = new Set<string>()
+    let loadAt = 0
 
     for (const group of groupsOf(tree.tree.nodes)) {
       if (headOf(group) !== 'load') {
@@ -87,21 +98,14 @@ export function checkMillDefinition(
       }
 
       const target = wordOf(group.nodes[1])
-
-      let found: Source | undefined
-
-      try {
-        found = target ? resolve(target, source.file) : undefined
-      } catch {
-        found = undefined
-      }
+      const found = resolved[loadAt++]?.found
 
       if (!found) {
         problems.push({ what: `loads "${target}", which does not exist`, span: spanOfWhole(group) })
         continue
       }
 
-      const names = millDeclared(found)
+      const names = new Set(millDeclared(found))
 
       for (const child of group.nodes.slice(2)) {
         if (child.kind !== 'group' || headOf(child) !== 'find') {

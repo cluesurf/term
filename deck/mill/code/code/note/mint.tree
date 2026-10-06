@@ -32,6 +32,20 @@ mint mark-guard
       bind text, read text
       bind flow, read flow
 
+# the guarded block, `fork` / `mark unsafe` (note/mine.tree): the note the older spellings minted, with `opener` set
+mint fork-guard
+  case opener
+    site opener
+  case text
+    site text
+  case flow
+    site flow
+  hook make
+    make note
+      bind opener, read opener
+      bind text, read text
+      bind flow, read flow
+
 # a guarded block, built exactly as the annotation-shaped note it shares a head with
 mint note-guard
   case text

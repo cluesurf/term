@@ -335,7 +335,8 @@ task boot
         call bundle-path
       # a check that raises (a reply that is not JSON) is a failed run with its own status, never a crash
       save verdict, code 8
-      mark unsafe
+      fork
+        mark unsafe
         save verdict
           call check
             read first

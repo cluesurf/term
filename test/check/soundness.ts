@@ -236,7 +236,8 @@ function main(): void {
     'a hold inside a note unsafe guard is checked',
     `task f
   take n, like natural-number
-  note unsafe
+  fork
+    mark unsafe
     hold
       call is-below
         read n

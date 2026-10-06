@@ -115,7 +115,7 @@ test <shuffle keeps every item>
   want hold
     call and
       call is-equal
-        call size, read ys
+        call length, read ys
         code 4
       call is-equal
         call sum, read ys

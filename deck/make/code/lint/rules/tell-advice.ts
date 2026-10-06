@@ -15,7 +15,7 @@
 
 import type { Program, Statement } from '@term/make/code/compile/node'
 import type { LintContext, LintNode, Rule } from '@term/make/code/lint/rule'
-import { raiseSets } from '@term/make/code/check/effects'
+import { raiseSetsOf } from '@term/make/code/check/effects'
 import { exceptionForm, isGenericException } from '@term/make/code/check/extend'
 
 const EXCEPTION_FORM = exceptionForm()
@@ -113,7 +113,7 @@ function facts(context: LintContext): Facts {
     }
   }
 
-  const sets = raiseSets(program, new Set(rootOf.keys()))
+  const sets = raiseSetsOf(program, [...rootOf.keys()])
   const reachable = new Set<string>()
 
   for (const s of program) {

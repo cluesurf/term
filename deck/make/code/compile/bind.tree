@@ -1,0 +1,340 @@
+# Declarative native bindings (`bind <name>` with per-environment `case <env>` templates). A bind is a stdlib leaf: it
+# has no body to lower, so each backend renders the matching environment's native expression at the call site instead
+# of emitting a function. The verb that dispatches to a bind folds away under specialization (code/ir/simplify.ts),
+# leaving a direct bind call. See note/research/vibe/computation/plans/20-specialization-and-bind.md.
+#
+# Ported from compile/bind.ts (self-hosting, 2026-10-05), which stays as a face giving each answer its TypeScript type:
+# a statement here is a `bind` statement there.
+
+load @term/base/list
+  find list
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+  find char-code-at
+
+load ./node
+  find bind-import
+  find bind-target
+  find expression
+  find statement
+
+load ./native-env
+  find native-env
+  find env-fallback
+
+# index every declarative binding by name, for call-site rendering across a program: the last of a name, at the place
+# of its first
+task collect-binds
+  take program, like list, like statement
+  like hash, like text, like statement
+
+  save out, make hash
+  walk program
+    take one
+    sift one
+      case bind
+        save out/{name}, one
+      miss
+        save nothing, 0
+  back out
+
+# the subset of `binds` actually called somewhere in the program, in the order first called. A backend imports only
+# these: a program that calls only `digest-sha256` must not pull in `digest-md5`'s `use md5::Digest;` (which would
+# collide with `sha2::Digest`)
+form bind-uses
+  mark shared
+  link binds, like hash, like text, like statement
+  link used, like list, like text
+
+task referenced-binds
+  take program, like list, like statement
+  take binds, like hash, like text, like statement
+  like hash, like text, like statement
+
+  save uses
+    make bind-uses
+      bind binds, binds
+      bind used, make list
+  uses-in-block(uses, program)
+  save out, make hash
+  walk uses/used
+    take name
+    save out/{name}, binds/get(name)
+  back out
+
+task uses-in-maybe
+  take uses, like bind-uses
+  take given, like maybe, like expression
+  mark private
+
+  sift given
+    case some
+      link inner
+      uses-in-expression(uses, inner)
+    case none
+      save nothing, 0
+
+task uses-in-expression
+  take uses, like bind-uses
+  take node, like expression
+  mark private
+
+  sift node
+    case call
+      sift callee
+        case variable
+          fork test, uses/binds/has(name)
+            hold
+              save seen, false
+              walk uses/used
+                take one
+                fork test, is-equal(one, name)
+                  hold
+                    save seen, true
+              fork test, not(seen)
+                hold
+                  push(uses/used, name)
+        miss
+          save nothing, 0
+      uses-in-expression(uses, callee)
+      walk args
+        take arg
+        uses-in-expression(uses, arg)
+    case binary
+      uses-in-expression(uses, left)
+      uses-in-expression(uses, right)
+    case unary
+      uses-in-expression(uses, operand)
+    case array
+      walk items
+        take item
+        uses-in-expression(uses, item)
+    case map
+      walk entries
+        take entry
+        uses-in-expression(uses, entry/key)
+        uses-in-expression(uses, entry/value)
+    case record
+      walk fields
+        take field
+        uses-in-expression(uses, field/value)
+    case member
+      uses-in-expression(uses, target)
+    case await
+      uses-in-expression(uses, expr)
+    case template
+      walk parts
+        take part
+        sift part
+          case value
+            link inner
+            uses-in-expression(uses, inner)
+          miss
+            save nothing, 0
+    case closure
+      uses-in-block(uses, body)
+    case conditional
+      walk branches
+        take branch
+        uses-in-expression(uses, branch/cond)
+        uses-in-expression(uses, branch/value)
+      uses-in-maybe(uses, otherwise)
+    miss
+      save nothing, 0
+
+task uses-in-block
+  take uses, like bind-uses
+  take body, like list, like statement
+  mark private
+
+  walk body
+    take one
+    uses-in-statement(uses, one)
+
+task uses-in-statement
+  take uses, like bind-uses
+  take node, like statement
+  mark private
+
+  sift node
+    case let
+      uses-in-expression(uses, init)
+    case assign
+      uses-in-expression(uses, target)
+      uses-in-expression(uses, read(value))
+    case expression
+      uses-in-expression(uses, expr)
+    case if
+      walk branches
+        take branch
+        uses-in-expression(uses, branch/cond)
+        uses-in-block(uses, branch/body)
+      sift otherwise
+        case some
+          link other
+          uses-in-block(uses, other)
+        case none
+          save nothing, 0
+    case while
+      uses-in-expression(uses, cond)
+      uses-in-block(uses, body)
+    case match
+      uses-in-expression(uses, subject)
+      walk cases
+        take arm
+        uses-in-block(uses, arm/body)
+      sift otherwise
+        case some
+          link other
+          uses-in-block(uses, other)
+        case none
+          save nothing, 0
+    case for-each
+      uses-in-expression(uses, iterable)
+      uses-in-block(uses, body)
+    case return
+      uses-in-maybe(uses, read(value))
+    case throw
+      uses-in-expression(uses, read(value))
+    case hold
+      uses-in-expression(uses, expr)
+    case function
+      uses-in-block(uses, body)
+    miss
+      save nothing, 0
+
+# The case a bind emits for an env: the env's own, or the env it borrows from when it has none, the fallback chain in
+# order, so `ios` reaches a `swift` case the way the resolver reaches a `swift` impl. The `webview` env is a browser
+# page whose natives go over the cask bridge, so a bind with a `browser` case and no `webview` case is right for it.
+# Without this every inline bind (float's `to-decimal`, and the rest) emitted the SEED_UNSUPPORTED sentinel into a cask
+# page. An env the build does not know borrows nothing
+task bind-target-of
+  take one, like statement
+  take env, like text
+  like maybe, like bind-target
+
+  sift one
+    case bind
+      walk targets
+        take target
+        fork test, is-equal(target/env, env)
+          hold
+            back make(some, target)
+      # an env the build does not know reads as `node`, which borrows from nothing
+      save unknown, make node
+      save chain, env-fallback(from-text(env, unknown))
+      walk chain
+        take borrowed
+        save borrowed-text, to-text(borrowed)
+        walk targets
+          take target
+          fork test, is-equal(target/env, borrowed-text)
+            hold
+              back make(some, target)
+      back make none
+    miss
+      back make none
+
+# render a bind's native expression for one environment: substitute each `$param` placeholder with the already-emitted
+# argument string, in parameter order. None when the bind declares no target for this environment (the backend emits a
+# gap)
+task render-bind
+  take one, like statement
+  take env, like text
+  take args, like list, like text
+  like maybe, like text
+
+  sift bind-target-of(one, env)
+    case some
+      link target
+      save out, target/expression
+      sift one
+        case bind
+          walk params
+            take param
+            take at
+            save given, <>
+            fork test, is-below(at, args/length)
+              hold
+                save given, get(args, at)
+            save pieces, split(out, <${param/name}>)
+            save out, join(pieces, given)
+        miss
+          save nothing, 0
+      back make(some, out)
+    case none
+      back make none
+
+# the distinct imports every bind in the program needs for one environment, in first-seen order. A backend emits these
+# alongside its native-dock imports (e.g. swift `import Foundation` for `Foundation.pow`)
+task bind-imports
+  take binds, like hash, like text, like statement
+  take env, like text
+  like list, like bind-import
+
+  save seen, make list
+  save out, make list
+  walk binds/keys()
+    take name
+    sift bind-target-of(binds/get(name), env)
+      case some
+        link target
+        walk target/imports
+          take need
+          save key, <{need/module}|{read(need/alias)}>
+          save known, false
+          walk seen
+            take one
+            fork test, is-equal(one, key)
+              hold
+                save known, true
+          fork test, known
+            hold
+              turn next
+          push(seen, key)
+          push(out, need)
+      case none
+        save nothing, 0
+  back out
+
+# The gap a backend emits when a called bind has no target for the environment it is emitting: an undefined sentinel
+# identifier, so the generated source fails to compile loudly (a stdlib author forgot a backend) rather than silently
+# calling a nonexistent function. The name carries the greppable SEED_UNSUPPORTED tag and the bind it came from, every
+# UTF-16 unit but an ASCII letter or digit an underscore, as the original's `/[^A-Za-z0-9]/g` replaced them. Text here
+# is indexed by code point
+task bind-gap
+  take name, like text
+  like text
+
+  # by code point, a character past U+FFFF being two UTF-16 units and so two underscores
+  save kept, make list
+  save chars, split(name, <>)
+  walk chars
+    take char
+    fork test, is-word-char(char)
+      hold
+        push(kept, char)
+      miss
+        push(kept, <_>)
+        fork test, is-above(char-code-at(char, 0), 65535)
+          hold
+            push(kept, <_>)
+  back <SEED_UNSUPPORTED_BIND_{join(kept, <>)}>
+
+task is-word-char
+  take char, like text
+  like boolean
+  mark private
+
+  save allowed, split(<ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789>, <>)
+  walk allowed
+    take one
+    fork test, is-equal(one, char)
+      hold
+        back true
+  back false

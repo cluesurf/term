@@ -110,7 +110,7 @@ const FILL_ENTRY = `load @term/host/code/base
 
 form limit
   link burst, like number
-  link rate, like decimal
+  link rate, like float
 
 form service
   link name, like text
@@ -150,7 +150,8 @@ task fill-burst
 task fill-caught
   take input, like text
   like text
-  mark unsafe
+  fork
+    mark unsafe
     save loaded
       call fill
         call read(read input)

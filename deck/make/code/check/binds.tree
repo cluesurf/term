@@ -1,0 +1,206 @@
+# A `bind` has a case for every backend it is emitted for.
+#
+# A `bind` with only `node` and `browser` cases passed `term make`, and on Rust it emitted an undefined name,
+# `SEED_UNSUPPORTED_BIND_now_ms`, so the failure arrived at `rustc` naming nothing a reader wrote (guides:
+# language/native, 2026-10-03). Two halves:
+#
+#   emitting for an env      every bind the program calls has a case for it (or one it borrows through the fallback
+#                            chain, `ios` reaching `swift`), or the build is refused naming the bind and the env
+#   `term make`, no env      a bind written outside a `native/<env>/` file with two to four of the five backends is
+#                            an error naming the ones it leaves out. A native file's bind is for its own env, and so
+#                            is a bind with one case
+#
+# Only the file being compiled is warned about. Every call is read, wherever it is, since the emit is the program.
+#
+# Ported from check/binds.ts (self-hosting, 2026-10-05). The env is a text, `<>` for none, and the calls are read
+# through compile/node-reach.tree with the original's skipped fields.
+
+load @term/base/list
+  find list
+  find join
+
+load @term/base/text
+  find index-of
+  find substring
+
+load ../parser/diagnostic
+  find diagnostic
+  find diagnose
+  find diagnostic-input
+  find span
+
+load ../compile/node
+  find statement
+
+load ../compile/node-reach
+  find reach-statements
+
+load ../compile/bind
+  find bind-target-of
+
+form bind-checks
+  link errors, like list, like diagnostic
+  link warnings, like list, like diagnostic
+
+task backends
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, <node>)
+  push(out, <browser>)
+  push(out, <rust>)
+  push(out, <swift>)
+  push(out, <kotlin>)
+  back out
+
+# the names called anywhere in the program, a call's callee written as a bare name. A SET: its order is never read
+task called-names
+  take program, like list, like statement
+  like hash, like text, like boolean
+  mark private
+
+  save skip, make list
+  push(skip, <span>)
+  push(skip, <type>)
+  save reached, reach-statements(program, skip)
+  save out, make hash
+  walk reached/expressions
+    take one
+    sift one
+      case call
+        sift callee
+          case variable
+            fork test, is-unequal(name, <>)
+              hold
+                save out/{name}, true
+          miss
+            save nothing, 0
+      miss
+        save nothing, 0
+  back out
+
+# whether a path holds `/native/<env>/`, the env one or more lowercase ASCII letters: the original's
+# `/\/native\/[a-z]+\//`
+task is-native-file
+  take file, like text
+  like boolean
+  mark private
+
+  save from, 0
+  walk test
+    hook test, true
+    hook hold
+      save rest, substring(file, from, file/length)
+      save at, index-of(rest, </native/>)
+      fork test, is-below(at, 0)
+        hold
+          back false
+      save start, add(add(from, at), 8)
+      save end, start
+      walk test
+        hook test, and(is-below(end, file/length), is-lowercase(substring(file, end, add(end, 1))))
+        hook hold
+          save end, add(end, 1)
+      fork test, and(is-above(end, start), and(is-below(end, file/length), is-equal(substring(file, end, add(end, 1)), </>)))
+        hold
+          back true
+      save from, add(add(from, at), 1)
+  back false
+
+task is-lowercase
+  take char, like text
+  like boolean
+  mark private
+
+  back is-above(index-of(<abcdefghijklmnopqrstuvwxyz>, char), -1)
+
+task unknown-name
+  take file, like text
+  take at, like span
+  take message, like text
+  take hint, like text
+  like diagnostic
+  mark private
+
+  save input
+    make diagnostic-input
+      bind file, file
+      bind span, at
+      bind message, make(some, message)
+      bind hint, make(some, hint)
+  save kind, make unknown-name
+  back diagnose(kind, input)
+
+task check-bind-targets
+  take program, like list, like statement
+  take file, like text
+  # the env being emitted for, `<>` for `term make` with none
+  take env, like text
+  like bind-checks
+
+  save errors, make list
+  save warnings, make list
+  fork test, is-unequal(env, <>)
+    hold
+      save called, called-names(program)
+      walk program
+        take one
+        sift one
+          case bind
+            fork test, called/has(name)
+              hold
+                sift bind-target-of(one, env)
+                  case none
+                    save here, file
+                    sift span/file
+                      case some
+                        link written
+                        save here, written
+                      case none
+                        save nothing, 0
+                    push(errors, unknown-name(here, span, <`{name}` is called, and this bind has no `case {env}`, so there is nothing to emit for it on {env}>, <add `case {env}` to the bind, or call it only where a case exists>))
+                  case some
+                    link target
+                    save nothing, 0
+          miss
+            save nothing, 0
+  save native-file, is-native-file(file)
+  walk program
+    take one
+    sift one
+      case bind
+        save mine, false
+        sift span/file
+          case some
+            link written
+            save mine, is-equal(written, file)
+          case none
+            save nothing, 0
+        fork test, or(not(mine), native-file)
+          hold
+            turn next
+        save missing, make list
+        save all, backends()
+        walk all
+          take backend
+          sift bind-target-of(one, backend)
+            case none
+              push(missing, backend)
+            case some
+              link target
+              save nothing, 0
+        # an ERROR since 2026-10-05: as a warning the bind built for the backends it had, and a program calling it
+        # failed only once it was built for another, far from the bind. A bind with ONE case is written for that
+        # platform, the way a `native/<env>/` file's is; two to four cases is a bind meant to be portable that left
+        # backends out, which is what this refuses
+        fork test, and(is-above(missing/length, 0), is-below(missing/length, subtract(all/length, 1)))
+          hold
+            save listed, join(missing, <, >)
+            push(errors, unknown-name(file, span, <the bind `{name}` has no case for {listed}, so a program that calls it does not build there>, <give it a `case` for each, or move it into the `native/\<backend\>/` files of the backends that have it>))
+      miss
+        save nothing, 0
+  back
+    make bind-checks
+      bind errors, errors
+      bind warnings, warnings

@@ -23,14 +23,15 @@ function ok(name: string, holds: boolean, detail = ''): void {
   }
 }
 
-const text = 'host limit, 5.0\nhost count, 5\n\ntask over\n  take x, like decimal\n  like boolean\n  back is-above(x, limit)\n\ntask many\n  take n, like number\n  like boolean\n  back is-above(n, count)\n'
+const text = 'host limit, 5.0\nhost count, 5\n\ntask over\n  take x, like float\n  like boolean\n  back is-above(x, limit)\n\ntask many\n  take n, like number\n  like boolean\n  back is-above(n, count)\n'
 const result = compile({ file: '/gate/code/host.tree', text }, { leanOf: () => true, env: 'swift', entryPoints: ['over', 'many'] })
 
 if (!result.ok) {
   ok('the program builds', false, result.diagnostics.map(d => d.message).join(' | '))
 } else {
   const types = new Map(result.program.flatMap(n => (n.form === 'let' ? [[n.name, JSON.stringify(n.type)] as const] : [])))
-  ok('a decimal host is a decimal', types.get('limit') === '{"kind":"named","name":"decimal"}', types.get('limit'))
+  // `float`, the type word since D4 (`decimal` is refused): Swift spells it `Double`, never its 32-bit `Float`
+  ok('a decimal host is a float', types.get('limit') === '{"kind":"named","name":"float"}', types.get('limit'))
   ok('an integer host is an integer', types.get('count') === '{"kind":"named","name":"integer"}', types.get('count'))
 
   const node = compile({ file: '/gate/code/host.tree', text }, { leanOf: () => true, entryPoints: ['over', 'many'] })

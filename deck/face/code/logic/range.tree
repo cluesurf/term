@@ -19,23 +19,23 @@ load @term/base/maybe
   find maybe
 
 task make-range
-  take start, like decimal
-  like signal decimal
+  take start, like float
+  like signal float
   send back
     call make-signal
       bind value, read start
 
 # the position right now, for a `fork` or a label
 task range-value
-  take self, like signal decimal
-  like decimal
+  take self, like signal float
+  like float
   send back
     call read-signal
       bind self, read self
 
 # the position as the text a control is given (its `value` attribute), read reactively when bound
 task range-text
-  take self, like signal decimal
+  take self, like signal float
   like text
   save now
     call read-signal
@@ -44,7 +44,7 @@ task range-text
 
 # a control moved: its reported position, read as a number, becomes the range's
 task move-range
-  take self, like signal decimal
+  take self, like signal float
   take reported, like text
   save read, call read-number(read reported)
   fork case, read read

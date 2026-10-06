@@ -37,7 +37,7 @@ const ENTRY = `load @term/host/code/base
 
 form limit
   link burst, like number
-  link rate, like decimal
+  link rate, like float
 
 form service
   link name, like text

@@ -1138,7 +1138,8 @@ task answer
               call from-text
                 text <out-of-scope: {command} {refused}>
         hook miss
-          mark unsafe
+          fork
+            mark unsafe
             save reply
               call set-field
                 read reply
@@ -1177,7 +1178,8 @@ task dispatch-as
   take owner, like text
   take message, like text
   like text
-  mark unsafe
+  fork
+    mark unsafe
     send back
       call answer
         wait true

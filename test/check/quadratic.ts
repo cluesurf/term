@@ -39,7 +39,7 @@ function proven(source: string): boolean {
 ok(
   'perfect-square trinomial: x^2 + 1 >= 2x  ((x-1)^2)',
   proven(`rule square-trinomial
-  mark x, like integer
+  seat x, like integer
   show hold
     call is-minimum
       call add
@@ -58,7 +58,7 @@ ok(
 ok(
   'strictly positive quadratic: x^2 + 1 > 0',
   proven(`rule positive-quadratic
-  mark x, like integer
+  seat x, like integer
   show hold
     call is-above
       call add
@@ -76,7 +76,7 @@ ok(
 ok(
   'quadratic with positive discriminant is not proven (x^2 >= 2x)',
   !proven(`rule not-everywhere
-  mark x, like integer
+  seat x, like integer
   show hold
     call is-minimum
       call multiply
@@ -93,7 +93,7 @@ ok(
 ok(
   'downward / non-positive quadratic is not proven (x^2 <= 0)',
   !proven(`rule downward
-  mark x, like integer
+  seat x, like integer
   show hold
     call is-maximum
       call multiply
@@ -109,8 +109,8 @@ ok(
 ok(
   'bivariate sum-of-squares: a^2 + b^2 >= 2ab  ((a-b)^2)',
   proven(`rule sos-bivariate
-  mark a, like integer
-  mark b, like integer
+  seat a, like integer
+  seat b, like integer
   show hold
     call is-minimum
       call add
@@ -133,8 +133,8 @@ ok(
 ok(
   'bivariate form that is not PSD is not proven (a^2 + b^2 >= 3ab)',
   !proven(`rule sos-too-strong
-  mark a, like integer
-  mark b, like integer
+  seat a, like integer
+  seat b, like integer
   show hold
     call is-minimum
       call add
@@ -158,8 +158,8 @@ ok(
 ok(
   'degree-4 diagonal SOS: a^4 + b^4 >= 0',
   proven(`rule quartic-sos
-  mark a, like integer
-  mark b, like integer
+  seat a, like integer
+  seat b, like integer
   show hold
     call is-minimum
       call add
@@ -187,8 +187,8 @@ ok(
 ok(
   'degree-4 non-tautology is not proven (a^4 >= b^4)',
   !proven(`rule quartic-wrong
-  mark a, like integer
-  mark b, like integer
+  seat a, like integer
+  seat b, like integer
   show hold
     call is-minimum
       call multiply
@@ -215,7 +215,7 @@ ok(
 ok(
   'degree-4 perfect square: x^4 + x^2 >= 2x^3  ((x^2 - x)^2)',
   proven(`rule perfect-square-quartic
-  mark x, like integer
+  seat x, like integer
   show hold
     call is-minimum
       call add
@@ -244,7 +244,7 @@ ok(
 ok(
   'non-square quartic is not proven (x^4 >= 2x^3)',
   !proven(`rule not-a-square
-  mark x, like integer
+  seat x, like integer
   show hold
     call is-minimum
       call multiply
@@ -271,8 +271,8 @@ ok(
 ok(
   'multivariate SOS: a^4 + b^4 >= 2 a^2 b^2  ((a^2 - b^2)^2)',
   proven(`rule sos-difference
-  mark a, like integer
-  mark b, like integer
+  seat a, like integer
+  seat b, like integer
   show hold
     call is-minimum
       call add
@@ -308,8 +308,8 @@ ok(
 ok(
   'multivariate non-SOS is rejected (a^4 + b^4 >= 3 a^2 b^2)',
   !proven(`rule sos-too-strong
-  mark a, like integer
-  mark b, like integer
+  seat a, like integer
+  seat b, like integer
   show hold
     call is-minimum
       call add

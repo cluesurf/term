@@ -7,7 +7,9 @@ import type {
 import { listFree, nativeCall, scalarTasks } from '@term/make/code/ir/facts/bounds'
 import { armLocals } from '@term/make/code/check/arm'
 import { isStringMethod, hostMethod } from '@term/make/code/compile/text-methods'
-import { LIST_LENGTH_TASKS, LOWERED_LIST_MEMBERS, LOWERED_MAP_MEMBERS } from '@term/make/code/compile/lowered-members'
+import { listLengthTasks, loweredListMembers, loweredMapMembers } from '@term/make/code/compile/lowered-members'
+
+const LIST_LENGTH_TASKS: ReadonlySet<string> = new Set(listLengthTasks())
 
 // `keys` / `values` on a map type are stdlib operations that must materialize a list, not return a native iterator.
 // Each backend handles the iterator -> list conversion in its own idiom (Array.from, .cloned().collect(), Array(...),
@@ -39,8 +41,8 @@ export type CollectionOp = {
 }
 
 // the members every emitter lowers, the one table the checker reads too (compile/lowered-members.ts)
-const MAP_METHODS = LOWERED_MAP_MEMBERS
-const ARRAY_METHODS = LOWERED_LIST_MEMBERS
+const MAP_METHODS: ReadonlySet<string> = new Set(loweredMapMembers())
+const ARRAY_METHODS: ReadonlySet<string> = new Set(loweredListMembers())
 
 // the extra trait the element type needs for an array op that goes beyond `Clone`: equality (`includes` / `indexOf`)
 // or string rendering (`join`). A backend reads this to constrain the element generic of a method that uses the op.
@@ -669,7 +671,7 @@ function mentions(body: Statement[], name: string): boolean {
 // `gate` is the same filter `impl Fn` uses: a top-level synchronous task, defined once, never used as a value.
 export type Lend = 'read' | 'write'
 
-const SCALAR_NAMES = new Set(['text', 'boolean', 'number', 'integer', 'decimal'])
+const SCALAR_NAMES = new Set(['text', 'boolean', 'number', 'integer', 'float'])
 
 export function scalarType(type: Type | undefined): boolean {
   return (

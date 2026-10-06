@@ -74,8 +74,8 @@ task power-of-three
 
 # JavaScript's Math.round: the nearest whole value, a half going toward +infinity
 task round-half-up
-  take x, like decimal
-  like decimal
+  take x, like float
+  like float
 
   save floor, round-down(x)
   fork test, is-minimum(subtract(x, floor), 0.5)
@@ -85,7 +85,7 @@ task round-half-up
 
 # a WHOLE float as an exact big integer, of any size
 task whole-to-big
-  take x, like decimal
+  take x, like float
   like big-integer
 
   # an infinity has no integer: the original's `BigInt(Infinity)` refused it in these words, and halving it would never
@@ -169,7 +169,7 @@ task make-float
 
 # from a platform number: a base-3 mantissa and exponent within the precision
 task from-number
-  take value, like decimal
+  take value, like float
   take precision, like number, fall default-precision
   like ternary-float
 
@@ -186,7 +186,7 @@ task from-number
 
 task to-number
   take value, like ternary-float
-  like decimal
+  like float
 
   # the mantissa's decimal text read by the host's own float parser: correctly rounded on every backend, which is what
   # `Number(bigint)` is, and exact up to 2^53. A mantissa past that (a precision over 33 trits) rounds the same way

@@ -256,7 +256,8 @@ task parse-primary
   # that can raise is no function value on Rust (log.md)
   fork test, is-whole-number(token)
     hold
-      mark unsafe
+      fork
+        mark unsafe
         back
           make some
             bind value, constant-of(parse-integer(token))

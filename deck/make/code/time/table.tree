@@ -31,8 +31,8 @@ load ./stats
 
 # JavaScript's Math.round: the nearest whole value, a half going toward +infinity
 task round-half-up
-  take x, like decimal
-  like decimal
+  take x, like float
+  like float
 
   save floor, round-down(x)
   fork test, is-minimum(subtract(x, floor), 0.5)
@@ -63,7 +63,7 @@ task group-thousands
 
 # operations per second, rounded to a whole and grouped. NaN and the infinities are their text
 task show-ops
-  take ops, like decimal
+  take ops, like float
   like text
 
   fork test, is-equal(is-finite(ops), false)

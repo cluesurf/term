@@ -11,6 +11,7 @@ load @term/mill/code/like/mint
   find like
 
 load @term/mill/code/rule/hold/mint
+  find rule-seat
   find rule-mark
 
 load @term/mill/code/seed/mint
@@ -34,6 +35,8 @@ mint rule-def
     site take
   case like
     site like
+  case seat, mint rule-seat
+    site seat
   case mark, mint rule-mark
     site mark
   case have, mint rule-have
@@ -60,6 +63,7 @@ mint rule-def
       bind take, read take
       bind like, read like
       bind head, read head
+      bind seat, read seat
       bind mark, read mark
       bind have, read have
       bind find, read find
@@ -72,6 +76,8 @@ mint rule-def
 mint rule-have
   case name
     site name
+  case seat, mint rule-seat
+    site seat
   case mark, mint rule-mark
     site mark
   case seed
@@ -79,6 +85,7 @@ mint rule-have
   hook make
     make rule-have
       bind name, read name
+      bind seat, read seat
       bind mark, read mark
       bind seed, read seed
 

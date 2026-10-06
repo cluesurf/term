@@ -1,0 +1,362 @@
+# The app's `tell` decisions, checked. A `tell @deck/form` must name an exception this program can raise from one of
+# its own tasks or routes (a stale or misspelled entry is the failure the mesh table had), each `link` must be a prop
+# that exception declares, one exception is told once, and two told exceptions may not share a wire name.
+# See note/term/hive/06-tell.md. Pure over the program.
+#
+# Ported from check/tell.ts (self-hosting, 2026-10-05). The deck each file belongs to is handed in as data, the list
+# compile.ts already makes for check/extend.tree, where the original asked a callback; a file the list does not name is
+# read off its linked path, as compile/roll.ts reads it.
+
+load @term/base/list
+  find list
+  find join
+
+load @term/base/text
+  find last-index-of
+  find substring
+  find ends-with
+
+load ../parser/diagnostic
+  find diagnostic
+  find diagnose
+  find diagnostic-input
+  find diagnostic-name
+  find span
+
+load ../compile/node
+  find dock-route
+  find statement
+  find statement-span
+
+load ./effects
+  find raise-sets
+  find raise-sets-of
+
+load ./extend
+  find deck-name
+  find exception-form
+  find is-generic-exception
+  find linked-deck
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+# the file a statement came from, else the compile's own
+task file-of
+  take one, like statement
+  take file, like text
+  like text
+  mark private
+
+  save at, statement-span(one)
+  sift at/file
+    case some
+      link written
+      back written
+    case none
+      back file
+
+# the deck a file belongs to: as the build knows it, else read off its linked path
+task host-of
+  take decks, like list, like deck-name
+  take file, like text
+  like text
+  mark private
+
+  walk decks
+    take one
+    fork test, is-equal(one/file, file)
+      hold
+        back one/name
+  back linked-deck(file)
+
+task tell-error
+  take file, like text
+  take at, like span
+  take kind, like diagnostic-name
+  take message, like text
+  like diagnostic
+  mark private
+
+  save input
+    make diagnostic-input
+      bind file, file
+      bind span, at
+      bind message, make(some, message)
+  back diagnose(kind, input)
+
+# the names a route reaches: its calls and its methods' calls, and its children's
+task route-calls
+  take route, like dock-route
+  take into, like list, like text
+  like list, like text
+  mark private
+
+  save out, into
+  walk route/calls
+    take one-call
+    push(out, one-call/name)
+  walk route/methods
+    take method
+    walk method/calls
+      take one-call
+      push(out, one-call/name)
+  walk route/children
+    take child
+    save out, route-calls(child, out)
+  back out
+
+task check-tells
+  take program, like list, like statement
+  take file, like text
+  take decks, like list, like deck-name
+  like list, like diagnostic
+
+  save diagnostics, make list
+  save tells, make list
+  walk program
+    take one
+    take at
+    sift one
+      case tell
+        push(tells, at)
+      miss
+        save nothing, 0
+  fork test, is-equal(tells/length, 0)
+    hold
+      back diagnostics
+  # every form by name, the last of a name standing at the place of its first; and every exception form by its deck
+  # and name
+  save types, make hash
+  save exceptions, make hash
+  save marker, exception-form()
+  walk program
+    take one
+    sift one
+      case record-type
+        save types/{name}, one
+        save chained, false
+        walk read(chain)
+          take link-name
+          fork test, is-equal(link-name, marker)
+            hold
+              save chained, true
+        fork test, chained
+          hold
+            save key, <{host-of(decks, file-of(one, file))}/{name}>
+            save exceptions/{key}, one
+      miss
+        save nothing, 0
+  # A file of tells alone, compiled as its own entry, holds no task of the app, so it cannot say what the app
+  # reaches. A tell takes effect only where an entry loads it, and THAT compile is the one that judges it
+  save judges, false
+  walk program
+    take one
+    sift one
+      case function
+        fork test, is-equal(file-of(one, file), file)
+          hold
+            save judges, true
+      case dock
+        fork test, is-equal(file-of(one, file), file)
+          hold
+            save judges, true
+      miss
+        save nothing, 0
+  fork test, not(judges)
+    hold
+      back diagnostics
+  # what the app's own tasks and every route can raise: every task of the deck that tells, in whichever of its files
+  # it is, and not the standard library's, which raise everything and would make every tell look live
+  save exception-names, make list
+  walk exceptions/keys()
+    take key
+    save form-name, record-name(exceptions/get(key))
+    fork test, not(has-text(exception-names, form-name))
+      hold
+        push(exception-names, form-name)
+  save sets, raise-sets-of(program, exception-names)
+  save telling, make list
+  walk tells
+    take place
+    push(telling, host-of(decks, file-of(get(program, place), file)))
+  save reachable, make hash
+  walk program
+    take one
+    sift one
+      case function
+        fork test, has-text(telling, host-of(decks, file-of(one, file)))
+          hold
+            save reachable, add-raises(reachable, sets, name)
+      case dock
+        save names, make list
+        save names, route-calls(route, names)
+        walk names
+          take called
+          save reachable, add-raises(reachable, sets, called)
+      miss
+        save nothing, 0
+  save told, make list
+  save wire-names, make list
+  save wire-tells, make list
+  walk tells
+    take place
+    save one, get(program, place)
+    sift one
+      case tell
+        save here, file-of(one, file)
+        save stale, make stale-tell
+        save mismatch, make type-mismatch
+        fork test, not(exceptions/has(name))
+          hold
+            save bare, substring(name, add(last-index-of(name, </>), 1), name/length)
+            save candidates, make list
+            walk exceptions/keys()
+              take key
+              fork test, ends-with(key, </{bare}>)
+                hold
+                  push(candidates, key)
+            save message, <"{name}" is not an exception in this build>
+            fork test, is-above(candidates/length, 0)
+              hold
+                save message, <"{name}" is not an exception in this build. Did you mean {join(candidates, < or >)}?>
+              miss
+                fork test, and(starts-with-base(name), is-generic-exception(bare))
+                  hold
+                    save message, <"{name}" is a standard exception, but nothing in this program raises it, so this tell is stale>
+            push(diagnostics, tell-error(here, span, stale, message))
+            turn next
+        save exception, exceptions/get(name)
+        save exception-name, record-name(exception)
+        fork test, not(reachable/has(exception-name))
+          hold
+            push(diagnostics, tell-error(here, span, stale, <"{name}" is declared but nothing in this program can raise it, so this tell is stale>))
+        fork test, has-text(told, name)
+          hold
+            push(diagnostics, tell-error(here, span, mismatch, <"{name}" is told twice>))
+        save told, add-told(told, name)
+        sift note
+          case none
+            push(diagnostics, tell-error(here, span, mismatch, <"{name}" is told without a note (`note \<...\>`)>))
+          case some
+            link written
+            save nothing, 0
+        save prop-names, props-of(types, exception)
+        walk links
+          take link-name
+          fork test, not(has-text(prop-names, link-name))
+            hold
+              save listed, <>
+              fork test, is-above(prop-names/length, 0)
+                hold
+                  save listed, < (it has {join(prop-names, <, >)})>
+              push(diagnostics, tell-error(here, span, mismatch, <"{name}" has no prop "{link-name}"{listed}>))
+        save wire, exception-name
+        sift alias
+          case some
+            link written
+            save wire, written
+          case none
+            save nothing, 0
+        save other-at, -1
+        walk wire-names
+          take one-wire
+          take at
+          fork test, is-equal(one-wire, wire)
+            hold
+              save other-at, at
+        fork test, is-minimum(other-at, 0)
+          hold
+            save other, get(wire-tells, other-at)
+            push(diagnostics, tell-error(here, span, mismatch, <"{name}" and "{other}" would both be "{wire}" on the wire. Give one a `name`>))
+            set(wire-tells, other-at, name)
+          miss
+            push(wire-names, wire)
+            push(wire-tells, name)
+      miss
+        save nothing, 0
+  back diagnostics
+
+# the told names so far, with one more
+task add-told
+  take told, like list, like text
+  take name, like text
+  like list, like text
+  mark private
+
+  fork test, not(has-text(told, name))
+    hold
+      push(told, name)
+  back told
+
+task starts-with-base
+  take name, like text
+  like boolean
+  mark private
+
+  fork test, is-below(name/length, 11)
+    hold
+      back false
+  back is-equal(substring(name, 0, 11), <@term/base/>)
+
+task record-name
+  take one, like statement
+  like text
+  mark private
+
+  sift one
+    case record-type
+      back name
+    miss
+      back <>
+
+# the prop names an exception declares: its props form's fields, each once, in order
+task props-of
+  take types, like hash, like text, like statement
+  take exception, like statement
+  like list, like text
+  mark private
+
+  save out, make list
+  sift exception
+    case record-type
+      save props-name, read(props)
+      fork test, and(is-unequal(props-name, <>), types/has(props-name))
+        hold
+          sift types/get(props-name)
+            case record-type
+              walk fields
+                take field
+                fork test, not(has-text(out, field/name))
+                  hold
+                    push(out, field/name)
+            miss
+              save nothing, 0
+    miss
+      save nothing, 0
+  back out
+
+task add-raises
+  take reachable, like hash, like text, like boolean
+  take sets, like raise-sets
+  take name, like text
+  like hash, like text, like boolean
+  mark private
+
+  fork test, sets/raises/has(name)
+    hold
+      save raised, sets/raises/get(name)
+      walk raised
+        take one
+        save reachable/{one}, true
+  back reachable

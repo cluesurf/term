@@ -33,9 +33,11 @@ import { CompileCache } from '@term/make/code/compile/cache'
 import { analyze as analyzeSource } from '@term/make/code/analyze'
 import type { Finding } from '@term/make/code/lint/rule'
 import type { Diagnostic, Span } from '@term/make/code/parser/diagnostic'
+import { fixesOf, importFixes, nameIn, textFixes } from '@term/make/code/fix'
+import { entryOf } from '@term/make/code/parser/diagnostic'
 import {
   editorResolver,
-  findModuleExporting,
+  findModulesExporting,
   findProjectRoot,
   moduleCompletions,
   scanDefs,
@@ -344,40 +346,14 @@ function enclosingLoad(
   return undefined
 }
 
-// the identifier inside an LSP range (a diagnostic's range), or undefined
-function nameInRange(text: string, range: LspRange): string | undefined {
-  const line = text.split('\n')[range.start.line] ?? ''
-  const slice = line.slice(range.start.character, range.end.character)
+// the compiler's code for an unknown name, which is what an LSP diagnostic carries as its `code`
+const UNKNOWN_NAME_CODE = entryOf('unknown-name').code
 
-  return /[a-z][A-Za-z0-9-]*/.exec(slice.trim().replace(/^(?:call|read|make)\s+/, ''))?.[0]
-}
-
-// the edit that imports `name` from `importPath`: a `find` under an existing `load` of that module, else a new load
-// block prepended to the file
-function importEdit(
-  text: string,
-  importPath: string,
-  name: string,
-): { range: LspRange; newText: string } {
-  const lines = text.split('\n')
-  const at = lines.findIndex(l => l.startsWith(`load ${importPath}`))
-
-  if (at >= 0) {
-    return {
-      range: {
-        start: { line: at + 1, character: 0 },
-        end: { line: at + 1, character: 0 },
-      },
-      newText: `  find ${name}\n`,
-    }
-  }
-
+// an LSP range as the compiler's span: the same zero-based coordinates under the compiler's names
+function toSpan(range: LspRange): Span {
   return {
-    range: {
-      start: { line: 0, character: 0 },
-      end: { line: 0, character: 0 },
-    },
-    newText: `load ${importPath}\n  find ${name}\n\n`,
+    start: { line: range.start.line, column: range.start.character },
+    end: { line: range.end.line, column: range.end.character },
   }
 }
 
@@ -842,7 +818,7 @@ export class LanguageServer {
   private deckOf: DeckOf = projectDeckOf()
   // the auto-import's answer per package and name, found or not, until a `.tree` file changes on disk: the lightbulb
   // asks again every time the cursor moves onto the diagnostic
-  private readonly exporting = new Map<string, ReturnType<typeof findModuleExporting>>()
+  private readonly exporting = new Map<string, ReturnType<typeof findModulesExporting>>()
   private readonly cancelled = new Set<number | string>()
   private readonly workspace: Workspace
   private shuttingDown = false
@@ -1077,7 +1053,7 @@ export class LanguageServer {
       const found = result.ok ? result.warnings : result.diagnostics
 
       for (const d of found) {
-        const placed = this.place(d, doc, map)
+        const placed = this.place(d, doc, map, inner)
 
         if (placed) {
           diagnostics.push(placed)
@@ -1151,14 +1127,21 @@ export class LanguageServer {
   // a compiler diagnostic, placed in this document. One in this file maps through the test rewrite; one inside an
   // imported module (which is how a broken dependency fails this file's compile) is shown on the `load` that reached
   // it, naming the file and line, with the location itself as related information.
-  private place(d: Diagnostic, doc: Doc, map: Mapping): LspDiagnostic | undefined {
+  private place(d: Diagnostic, doc: Doc, map: Mapping, inner: string): LspDiagnostic | undefined {
     // the span says which module the error is IN; `file` is often the entry the compile was asked about
     const file = d.span.file || d.file
 
     if (!file || file === doc.file || file === doc.uri) {
       const lsp = toLspDiagnostic(d)
+      // the fixes `term scan` reports (make/code/fix.ts), read against the text the compiler read and placed in the
+      // author's, so a quick fix and `term scan --fix` are one change. The import search waits for a code action
+      const fixes = fixesOf(d, inner).map(fix => ({
+        title: fix.title,
+        sure: fix.sure,
+        edits: fix.edits.map(edit => ({ range: outerRange(map, toRange(edit.span)), newText: edit.text })),
+      }))
 
-      return { ...lsp, range: outerRange(map, lsp.range), data: { name: d.name } }
+      return { ...lsp, range: outerRange(map, lsp.range), data: { name: d.name, fixes } }
     }
 
     // an imported module's warning is that module's business
@@ -2712,7 +2695,14 @@ export class LanguageServer {
 
     const request = params as {
       range?: LspRange
-      context?: { diagnostics?: { range: LspRange; code?: unknown; data?: { name?: string } }[]; only?: string[] }
+      context?: {
+        diagnostics?: {
+          range: LspRange
+          code?: unknown
+          data?: { name?: string; fixes?: { title: string; sure: boolean; edits: { range: LspRange; newText: string }[] }[] }
+        }[]
+        only?: string[]
+      }
     } | null
 
     const range = request?.range
@@ -2725,48 +2715,44 @@ export class LanguageServer {
     const quickfix = !only?.length || only.some(kind => kind === 'quickfix' || kind.startsWith('quickfix.'))
 
     for (const diag of quickfix ? (request?.context?.diagnostics ?? []) : []) {
-      // the old spelling of privacy: rewrite it to the one the language reads now
-      if (diag.data?.name === 'note-private') {
+      // THE FIXES `term scan` REPORTS (make/code/fix.ts), carried on the diagnostic when it was placed: a sure one is the
+      // preferred action, which an editor applies on its own key, and a guess is offered beside it
+      // a client that keeps a diagnostic's name and drops the rest still gets what the text alone can answer
+      const carried =
+        diag.data?.fixes ??
+        (diag.data?.name
+          ? textFixes(diag.data.name, toSpan(diag.range), doc.text).map(fix => ({
+              title: fix.title,
+              sure: fix.sure,
+              edits: fix.edits.map(edit => ({ range: toRange(edit.span), newText: edit.text })),
+            }))
+          : [])
+
+      for (const fix of carried) {
         actions.push({
-          title: 'Write `mark private` (the current spelling)',
+          title: fix.title,
           kind: 'quickfix',
-          isPreferred: true,
-          edit: { changes: { [doc.uri]: [{ range: diag.range, newText: 'mark private' }] } },
+          ...(fix.sure ? { isPreferred: true } : {}),
+          edit: { changes: { [doc.uri]: fix.edits } },
         })
+      }
+
+      // auto-import: an "unknown name" modules export is offered as a `load` / `find`, one action per module. ONLY an
+      // unknown name: every diagnostic was searched for, so a line-length warning on a comment searched every package
+      // for a task named after the word under it. A diagnostic with no name is still searched, since a client may send
+      // one bare. Asked here and not when the diagnostic was placed, because the search reads every reachable module
+      // the diagnostic's name as the server placed it, else its code as a client may send it bare: the compiler's
+      // number for an unknown name, or the name itself
+      const named =
+        diag.data?.name ??
+        (diag.code === undefined ? undefined : diag.code === UNKNOWN_NAME_CODE || diag.code === 'unknown-name' ? 'unknown-name' : String(diag.code))
+
+      if (!root || (named !== undefined && named !== 'unknown-name')) {
         continue
       }
 
-      // the old spelling of metadata, `note <word>`: the diagnostic's span starts at the `note` word, so the fix
-      // replaces those four characters with `mark` and leaves the word after it as written
-      if (diag.data?.name === 'note-metadata') {
-        const start = diag.range.start
-
-        actions.push({
-          title: 'Write `mark` (metadata is `mark`, `note` is the old spelling)',
-          kind: 'quickfix',
-          isPreferred: true,
-          edit: {
-            changes: {
-              [doc.uri]: [
-                {
-                  range: { start, end: { line: start.line, character: start.character + 4 } },
-                  newText: 'mark',
-                },
-              ],
-            },
-          },
-        })
-        continue
-      }
-
-      // auto-import: an "unknown name" a linked package exports is offered as a `load` / `find`. ONLY an unknown name:
-      // every diagnostic was searched for, so a line-length warning on a comment searched every package for a task
-      // named after the word under it. A diagnostic with no code is still searched, since a client may send one bare
-      if (!root || (diag.code !== undefined && diag.code !== 'unknown-name')) {
-        continue
-      }
-
-      const name = nameInRange(doc.text, diag.range)
+      const span = toSpan(diag.range)
+      const name = nameIn(doc.text, span)
 
       if (!name || seen.has(name)) {
         continue
@@ -2777,29 +2763,23 @@ export class LanguageServer {
       const key = `${root}\0${name}`
       let found = this.exporting.get(key)
 
-      if (!this.exporting.has(key)) {
+      if (!found) {
         try {
-          found = findModuleExporting(root, name)
+          found = findModulesExporting(root, name)
         } catch {
-          found = undefined
+          found = []
         }
 
         this.exporting.set(key, found)
       }
 
-      if (!found) {
-        continue
+      for (const fix of importFixes(doc.text, span, () => found!)) {
+        actions.push({
+          title: fix.title,
+          kind: 'quickfix',
+          edit: { changes: { [doc.uri]: fix.edits.map(edit => ({ range: toRange(edit.span), newText: edit.text })) } },
+        })
       }
-
-      actions.push({
-        title: `Import ${name} from ${found.importPath}`,
-        kind: 'quickfix',
-        edit: {
-          changes: {
-            [doc.uri]: [importEdit(doc.text, found.importPath, name)],
-          },
-        },
-      })
     }
 
     // lint fixes: the findings of the last analysis (the same ones shown as diagnostics), each fixable one in range

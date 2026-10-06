@@ -48,18 +48,18 @@ load ./look-css
 form style-value
   mark tag, name kind
   case length
-    link points, like decimal
+    link points, like float
   # padding's one to four sides, in CSS order (top, right, bottom, left once expanded)
   case sides
-    link points, like list, like decimal
+    link points, like list, like float
   case color
     link hex, like text
   case number
-    link value, like decimal
+    link value, like float
   case keyword
     link text, like text
   case border
-    link points, like decimal
+    link points, like float
     link style, like text
     link hex, like text
 
@@ -109,7 +109,7 @@ form read-text
 
 form read-number
   link ok, like boolean
-  link number, like decimal
+  link number, like float
   link why, like text
 
 host rem, 16.0
@@ -117,7 +117,7 @@ host rem, 16.0
 # a text as JavaScript's `Number` reads it: NaN where it is no number
 bind host-number
   take value, like text
-  like decimal
+  like float
   case node
     text <Number($value)>
   case browser

@@ -68,7 +68,8 @@ task try-take
   take xs, like list, like chain
   take at, like number
   like text
-  mark unsafe
+  fork
+    mark unsafe
     host got
       call take-top
         read xs

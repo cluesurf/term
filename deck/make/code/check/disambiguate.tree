@@ -27,8 +27,7 @@ load @term/base/ordering
   find from-texts
 
 load @term/base/text
-  find index-of
-  find substring
+  find split
 
 load ../parser/diagnostic
   find diagnostic
@@ -249,29 +248,35 @@ form walk-state
   mark shared
   link program, like list, like statement
   link mode, like text
-  # the file of the statement being walked, and the names a local binds in it
+  # the file of the statement being walked (`<>` for none), how the original's refusal keyed it (`undefined` for none),
+  # and the names a local binds in it
   link file, like text
+  link file-key, like text
   link local, like list, like text
   link scopes, like list, like file-scope
-  # lean labels: each defined task's parameters by name, each binding's, and the forms and cases
+  # lean labels: each defined task's parameters, one entry per definition, each binding's, and the forms and cases
   link definition-names, like list, like text
   link definition-params, like list, like list, like text
   link bound-names, like list, like text
   link bound-params, like list, like list, like text
   link constructions, like list, like text
-  # a method's siblings: each method of its form by name, and the names defined at the top
+  # a method's siblings, each method of its form by its method name (the last of a name standing): the task it is, how
+  # many arguments it takes at least and at most; and the names the program's plain tasks have
   link sibling-names, like list, like text
-  link sibling-places, like list, like number
+  link sibling-targets, like list, like text
+  link sibling-required, like list, like number
+  link sibling-max, like list, like number
   link plain, like list, like text
   # a value renamed apart: its name and its new one
   link target-name, like text
   link target-renamed, like text
-  # natives apart
+  # natives apart, and the files that define each name with a task that has a body
   link natives, like list, like native-apart
   link task-names, like list, like text
   link task-files, like list, like list, like text
+  # every field name of every form and variant
   link fields, like list, like text
-  # bound by import
+  # bound by import, and the top-level values that are neither tasks nor components
   link groups, like list, like task-group
   link values, like list, like text
   link diagnostics, like list, like diagnostic
@@ -290,6 +295,7 @@ task new-walk-state
       bind program, program
       bind mode, <>
       bind file, <>
+      bind file-key, <undefined>
       bind local, make list
       bind scopes, scopes
       bind definition-names, make list
@@ -298,7 +304,9 @@ task new-walk-state
       bind bound-params, make list
       bind constructions, make list
       bind sibling-names, make list
-      bind sibling-places, make list
+      bind sibling-targets, make list
+      bind sibling-required, make list
+      bind sibling-max, make list
       bind plain, make list
       bind target-name, <>
       bind target-renamed, <>
@@ -751,9 +759,15 @@ task walk-statement
           save node/extend, make(some, extended)
         case none
           save nothing, 0
+      # an optional list, walked where it is read: handed to a call it would be written into the program
       fork test, is-above(pins/length, 0)
         hold
-          save node/pins, walk-field-values(state, pins)
+          save pins-out, make list
+          walk pins
+            take pin
+            save pin/value, walk-expression(state, pin/value)
+            push(pins-out, pin)
+          save node/pins, pins-out
     case view
       save node/body, walk-views(state, body)
     case dock
@@ -900,3 +914,1978 @@ task walk-route
     push(children-out, walk-route(state, child))
   save route/children, children-out
   back route
+
+# ---- small helpers ----
+
+task last-index-of-text
+  take values, like list, like text
+  take value, like text
+  like number
+  mark private
+
+  save found, -1
+  walk values
+    take one
+    take at
+    fork test, is-equal(one, value)
+      hold
+        save found, at
+  back found
+
+task first-index-of-text
+  take values, like list, like text
+  take value, like text
+  like number
+  mark private
+
+  walk values
+    take one
+    take at
+    fork test, is-equal(one, value)
+      hold
+        back at
+  back -1
+
+task unique-texts
+  take values, like list, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  walk values
+    take one
+    save out, add-text(out, one)
+  back out
+
+# the name a reference was written as: its import alias where it has one
+task alias-or-name
+  take alias, like text
+  take name, like text
+  like text
+  mark private
+
+  fork test, is-equal(alias, <>)
+    hold
+      back name
+  back alias
+
+# how the original keyed a refusal by file: the file, or `undefined` for none
+task file-key-of
+  take one, like statement
+  like text
+  mark private
+
+  save at, statement-span(one)
+  sift at/file
+    case some
+      link written
+      back written
+    case none
+      back <undefined>
+
+task callee-name
+  take given, like expression
+  like text
+  mark private
+
+  sift given
+    case variable
+      back name
+    miss
+      back <>
+
+task with-name
+  take given, like expression
+  take name-to, like text
+  like expression
+  mark private
+
+  sift given
+    case variable
+      save given/name, name-to
+    miss
+      save nothing, 0
+  back given
+
+task rename-callee
+  take node, like expression
+  take name-to, like text
+  like expression
+  mark private
+
+  sift node
+    case call
+      save node/callee, with-name(callee, name-to)
+    miss
+      save nothing, 0
+  back node
+
+task is-self
+  take given, like expression
+  like boolean
+  mark private
+
+  sift given
+    case variable
+      back is-equal(name, <self>)
+    miss
+      back false
+
+# a top-level statement's name: a let, a task, a form, a mask, a binding, a component, a roll, a tell, a named hold
+task name-of
+  take one, like statement
+  like text
+  mark private
+
+  sift one
+    case let
+      back name
+    case function
+      back name
+    case record-type
+      back name
+    case mask
+      back name
+    case bind
+      back name
+    case view
+      back name
+    case roll
+      back name
+    case tell
+      back name
+    case hold
+      back read(name)
+    miss
+      back <>
+
+# the statement with its name changed, for a let, a task, a binding and a component, which are the ones renamed here
+task renamed-statement
+  take one, like statement
+  take name-to, like text
+  like statement
+  mark private
+
+  sift one
+    case let
+      save one/name, name-to
+    case function
+      save one/name, name-to
+    case bind
+      save one/name, name-to
+    case view
+      save one/name, name-to
+    miss
+      save nothing, 0
+  back one
+
+task rename-at
+  take state, like walk-state
+  take place, like number
+  take name-to, like text
+  mark private
+
+  save one, renamed-statement(get(state/program, place), name-to)
+  set(state/program, place, one)
+
+# A task that DEFINES its name, rather than declaring it for something else to fill: one with a body, or the stub of
+# one compiled in another unit (compile/stub.ts gives a stub `stub-facts` only when its task had a body). An abstract
+# signature, a claim and a form's method do not
+task defines
+  take one, like statement
+  like boolean
+  mark private
+
+  sift one
+    case function
+      fork test, claim
+        hold
+          back false
+      sift method
+        case some
+          link owner
+          back false
+        case none
+          save nothing, 0
+      fork test, stub
+        hold
+          sift stub-facts
+            case some
+              link facts
+              back true
+            case none
+              back false
+      back is-above(body/length, 0)
+    miss
+      back false
+
+# how many arguments a task or a component takes at least (a component's parameters are all required) and at most
+task required-count
+  take one, like statement
+  like number
+  mark private
+
+  sift one
+    case function
+      save count, 0
+      walk params
+        take param
+        fork test, not(param/optional)
+          hold
+            save count, add(count, 1)
+      back count
+    case view
+      back params/length
+    miss
+      back 0
+
+task most-count
+  take one, like statement
+  like number
+  mark private
+
+  sift one
+    case function
+      back params/length
+    case view
+      back params/length
+    miss
+      back 0
+
+# a parameter's shape for comparing two same-arity definitions: its type's key, `<>` for none. An untyped parameter and
+# `unknown` are the same wildcard, so a per-environment shim that re-declares a task with a looser or tighter type is
+# an OVERRIDE (the last one wins), never an overload. No type's key is empty
+task shape-of
+  take one, like statement
+  like list, like text
+  mark private
+
+  save out, make list
+  sift one
+    case function
+      walk params
+        take param
+        push(out, param-shape(param/type))
+    miss
+      save nothing, 0
+  back out
+
+task param-shape
+  take given, like maybe, like type
+  like text
+  mark private
+
+  sift given
+    case some
+      link written
+      sift written
+        case unknown
+          back <>
+        miss
+          back type-key(written)
+    case none
+      back <>
+
+task differ
+  take a, like statement
+  take b, like statement
+  like boolean
+  mark private
+
+  save sa, shape-of(a)
+  save sb, shape-of(b)
+  walk sa
+    take one
+    take at
+    fork test, and(is-unequal(one, <>), is-below(at, sb/length))
+      hold
+        save other, get(sb, at)
+        fork test, and(is-unequal(other, <>), is-unequal(one, other))
+          hold
+            back true
+  back false
+
+task is-function
+  take one, like statement
+  like boolean
+  mark private
+
+  sift one
+    case function
+      back true
+    miss
+      back false
+
+task is-view
+  take one, like statement
+  like boolean
+  mark private
+
+  sift one
+    case view
+      back true
+    miss
+      back false
+
+task is-let
+  take one, like statement
+  like boolean
+  mark private
+
+  sift one
+    case let
+      back true
+    miss
+      back false
+
+task param-count
+  take one, like statement
+  like number
+  mark private
+
+  sift one
+    case function
+      back params/length
+    miss
+      back 0
+
+# the overload group under `key`, its members replaced, or added after the others
+task set-overload
+  take state, like walk-state
+  take key, like text
+  take members, like list, like text
+  mark private
+
+  walk state/overloads
+    take one
+    take at
+    fork test, is-equal(one/name, key)
+      hold
+        save one/members, members
+        set(state/overloads, at, one)
+        back
+  save made
+    make overload-group
+      bind name, key
+      bind members, members
+  push(state/overloads, made)
+
+task overload-members
+  take state, like walk-state
+  take key, like text
+  like list, like text
+  mark private
+
+  walk state/overloads
+    take one
+    fork test, is-equal(one/name, key)
+      hold
+        back one/members
+  save none-yet, make list
+  back none-yet
+
+# ---- the import scope ----
+
+task finds-for
+  take state, like walk-state
+  take file, like text
+  take name, like text
+  like maybe, like list, like text
+  mark private
+
+  sift scope-of(state/scopes, file)
+    case some
+      link own
+      back targets-of(own/finds, name)
+    case none
+      back make none
+
+task aliases-for
+  take state, like walk-state
+  take file, like text
+  take alias, like text
+  like maybe, like list, like text
+  mark private
+
+  # an optional list, walked where it is read: handed to a call it would be written into the scope
+  sift scope-of(state/scopes, file)
+    case some
+      link own
+      walk read(own/aliases)
+        take one
+        fork test, is-equal(one/name, alias)
+          hold
+            save found, one/targets
+            back make(some, found)
+      back make none
+    case none
+      back make none
+
+task plain-for
+  take state, like walk-state
+  take file, like text
+  take name, like text
+  like maybe, like list, like text
+  mark private
+
+  sift scope-of(state/scopes, file)
+    case some
+      link own
+      walk read(own/plain)
+        take one
+        fork test, is-equal(one/name, name)
+          hold
+            save found, one/targets
+            back make(some, found)
+      back make none
+    case none
+      back make none
+
+task has-plain-for
+  take state, like walk-state
+  take file, like text
+  like boolean
+  mark private
+
+  sift scope-of(state/scopes, file)
+    case some
+      link own
+      back own/has-plain
+    case none
+      back false
+
+task texts-or
+  take given, like maybe, like list, like text
+  take fallback, like maybe, like list, like text
+  like list, like text
+  mark private
+
+  sift given
+    case some
+      link these
+      back these
+    case none
+      sift fallback
+        case some
+          link those
+          back those
+        case none
+          save empty, make list
+          back empty
+
+# whether `file` reaches `home` through what `target` re-exports with `bear`, transitively
+task exports-to
+  take state, like walk-state
+  take target, like text
+  take home, like text
+  like boolean
+  mark private
+
+  save reach, new-file-set()
+  gather-exported(state/scopes, target, reach)
+  back holds-file(reach, home)
+
+# ---- the calls (nest-calls, nest-methods, siblings) ----
+
+task before-calls
+  take state, like walk-state
+  take node, like expression
+  like expression
+  mark private
+
+  fork test, is-equal(state/mode, <nest-calls>)
+    hold
+      back nest-under-task(state, node)
+  fork test, is-equal(state/mode, <nest-methods>)
+    hold
+      back nest-under-method(state, node)
+  fork test, is-equal(state/mode, <siblings>)
+    hold
+      back sibling-call(state, node)
+  back node
+
+task is-callable
+  take state, like walk-state
+  take name, like text
+  like boolean
+  mark private
+
+  back or(or(has-text(state/definition-names, name), has-text(state/bound-names, name)), has-text(state/local, name))
+
+# nest the lean labels that name no parameter (where `check-params`) and name something callable, asked in argument
+# order
+task nested-labels
+  take state, like walk-state
+  take node, like expression
+  take params, like list, like text
+  take check-params, like boolean
+  like expression
+  mark private
+
+  save chosen, make list
+  save labels, lean-labels(node)
+  walk labels
+    take one
+    fork test, and(check-params, has-text(params, one/written))
+      hold
+        turn next
+    fork test, is-callable(state, one/name)
+      hold
+        push(chosen, one/at)
+  save done, lean-calls-nested(node, chosen)
+  back done/node
+
+# A LEAN LABEL NAMING A TASK, READ AS THE NESTED CALL IT IS, before anything is renamed. Only under a call to a task the
+# program defines or binds, whose parameters are therefore known. A construction's labels are its fields, and a field
+# may share a task's name, so those are left to the checker. A call whose callee the program does not define
+# (`get`, dispatched on its receiver) is read as a method call is: a label naming a task is a call of it
+task nest-under-task
+  take state, like walk-state
+  take node, like expression
+  like expression
+  mark private
+
+  save called, <>
+  sift node
+    case call
+      save called, callee-name(callee)
+    miss
+      save nothing, 0
+  fork test, is-equal(called, <>)
+    hold
+      back node
+  save no-params, make list
+  fork test, and(not(has-text(state/definition-names, called)), not(has-text(state/bound-names, called)))
+    hold
+      fork test, has-text(state/constructions, called)
+        hold
+          back node
+      back nested-labels(state, node, no-params, false)
+  save params, make list
+  walk state/definition-names
+    take one
+    take at
+    fork test, is-equal(one, called)
+      hold
+        save these, get(state/definition-params, at)
+        walk these
+          take param
+          push(params, param)
+  walk state/bound-names
+    take one
+    take at
+    fork test, is-equal(one, called)
+      hold
+        save these, get(state/bound-params, at)
+        walk these
+          take param
+          push(params, param)
+  back nested-labels(state, node, params, true)
+
+# and a METHOD call (`below/divide(big-of(2))`), whose parameters are not known here
+task nest-under-method
+  take state, like walk-state
+  take node, like expression
+  like expression
+  mark private
+
+  save is-method, false
+  sift node
+    case call
+      sift callee
+        case member
+          save is-method, true
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  fork test, not(is-method)
+    hold
+      back node
+  save no-params, make list
+  back nested-labels(state, node, no-params, false)
+
+# inside a method of form F, a bare call that names a method of F, passes `self` first and fits that method's arity is
+# the sibling, and is rewritten to the sibling's full name, where a top-level task shadows it
+task sibling-call
+  take state, like walk-state
+  take node, like expression
+  like expression
+  mark private
+
+  save called, <>
+  save count, 0
+  save first-self, false
+  sift node
+    case call
+      save called, callee-name(callee)
+      save count, args/length
+      fork test, is-above(args/length, 0)
+        hold
+          save first-self, is-self(get(args, 0))
+    miss
+      save nothing, 0
+  fork test, is-equal(called, <>)
+    hold
+      back node
+  save at, last-index-of-text(state/sibling-names, called)
+  fork test, is-below(at, 0)
+    hold
+      back node
+  fork test, not(has-text(state/plain, called))
+    hold
+      back node
+  fork test, not(first-self)
+    hold
+      back node
+  fork test, is-below(count, get(state/sibling-required, at))
+    hold
+      back node
+  fork test, is-above(count, get(state/sibling-max, at))
+    hold
+      back node
+  back rename-callee(node, get(state/sibling-targets, at))
+
+task nest-lean-labels
+  take state, like walk-state
+  mark private
+
+  walk state/program
+    take one
+    sift one
+      case function
+        push(state/definition-names, name)
+        save these, make list
+        walk params
+          take param
+          push(these, param/name)
+        push(state/definition-params, these)
+      case bind
+        push(state/bound-names, name)
+        save these, make list
+        walk params
+          take param
+          push(these, param/name)
+        push(state/bound-params, these)
+      case record-type
+        push(state/constructions, name)
+        walk variants
+          take variant
+          push(state/constructions, variant/name)
+      miss
+        save nothing, 0
+  walk state/program
+    take top
+    take at
+    save state/local, bound-in-statement(top)
+    save state/mode, <nest-calls>
+    save called, walk-statement(state, top)
+    save state/mode, <nest-methods>
+    save methods, walk-statement(state, called)
+    set(state/program, at, methods)
+
+task bind-sibling-methods
+  take state, like walk-state
+  mark private
+
+  save plain, make list
+  save forms, make list
+  save method-names, make list
+  save targets, make list
+  save required, make list
+  save most, make list
+  walk state/program
+    take one
+    sift one
+      case function
+        sift method
+          case some
+            link owner
+            push(forms, owner/form)
+            push(method-names, owner/name)
+            push(targets, name)
+            push(required, required-count(one))
+            push(most, params/length)
+          case none
+            push(plain, name)
+      miss
+        save nothing, 0
+  save state/plain, plain
+  save state/mode, <siblings>
+  walk state/program
+    take top
+    take at
+    sift top
+      case function
+        sift method
+          case some
+            link owner
+            save sibling-names, make list
+            save sibling-targets, make list
+            save sibling-required, make list
+            save sibling-max, make list
+            walk forms
+              take form-name
+              take place
+              fork test, is-equal(form-name, owner/form)
+                hold
+                  push(sibling-names, get(method-names, place))
+                  push(sibling-targets, get(targets, place))
+                  push(sibling-required, get(required, place))
+                  push(sibling-max, get(most, place))
+            save state/sibling-names, sibling-names
+            save state/sibling-targets, sibling-targets
+            save state/sibling-required, sibling-required
+            save state/sibling-max, sibling-max
+            save top/body, walk-block(state, body)
+            set(state/program, at, top)
+          case none
+            save nothing, 0
+      miss
+        save nothing, 0
+
+# ---- the references (hosts, values, natives, imports) ----
+
+# TWO MODULES' `host` OF ONE NAME, or a `host` value and a task of one name in two files. Each file's is renamed
+# `name__host<n>`, but the entry file's keeps its name, and its own VALUE references follow; a call keeps the name,
+# which is the task's
+task bind-hosts-apart
+  take state, like walk-state
+  take entry, like text
+  mark private
+
+  save names, make list
+  save places, make list
+  walk state/program
+    take one
+    take at
+    sift one
+      case let
+        fork test, is-unequal(file-of(one), <>)
+          hold
+            save found, first-index-of-text(names, name)
+            fork test, is-below(found, 0)
+              hold
+                push(names, name)
+                save fresh, make list
+                push(fresh, at)
+                push(places, fresh)
+              miss
+                save these, get(places, found)
+                push(these, at)
+                set(places, found, these)
+      miss
+        save nothing, 0
+  save index, 0
+  save state/mode, <hosts>
+  walk names
+    take name
+    take group-at
+    save these, get(places, group-at)
+    save files, make list
+    walk these
+      take place
+      save files, add-text(files, file-of(get(state/program, place)))
+    fork test, is-below(files/length, 2)
+      hold
+        turn next
+    save sorted, sort(files, from-texts)
+    walk sorted
+      take file
+      fork test, is-equal(file, entry)
+        hold
+          turn next
+      save renamed, <{name}__host{index}>
+      save index, add(index, 1)
+      walk these
+        take place
+        fork test, is-equal(file-of(get(state/program, place)), file)
+          hold
+            rename-at(state, place, renamed)
+      save state/target-name, name
+      save state/target-renamed, renamed
+      walk state/program
+        take top
+        take at
+        fork test, is-unequal(file-of(top), file)
+          hold
+            turn next
+        set(state/program, at, host-scanned(state, top, name))
+
+# a `host` reads only its initializer: its own name is the declaration, not a local of it
+task host-scanned
+  take state, like walk-state
+  take top, like statement
+  take name, like text
+  like statement
+  mark private
+
+  sift top
+    case let
+      fork test, has-text(bound-in-expression(init), name)
+        hold
+          back top
+      save top/init, walk-expression(state, init)
+      back top
+    miss
+      fork test, has-text(bound-in-statement(top), name)
+        hold
+          back top
+      back walk-statement(state, top)
+
+# A `host` VALUE AND A TASK OF ONE NAME IN TWO FILES. The value is renamed `name__value<i>`, and every VALUE reference
+# in a file that can see it follows: the file that defines it, and any file whose `find` of the name reaches that file
+# through the `bear` chain
+task bind-values-apart
+  take state, like walk-state
+  mark private
+
+  save callable-names, make list
+  save callable-files, make list
+  walk state/program
+    take one
+    fork test, and(or(is-function(one), is-view(one)), is-unequal(file-of(one), <>))
+      hold
+        push(callable-names, name-of(one))
+        push(callable-files, file-of(one))
+  save hosts, make list
+  walk state/program
+    take one
+    take at
+    sift one
+      case let
+        save home, file-of(one)
+        fork test, is-unequal(home, <>)
+          hold
+            save elsewhere, false
+            walk callable-names
+              take callable
+              take place
+              fork test, and(is-equal(callable, name), is-unequal(get(callable-files, place), home))
+                hold
+                  save elsewhere, true
+            fork test, elsewhere
+              hold
+                push(hosts, at)
+      miss
+        save nothing, 0
+  save state/mode, <values>
+  walk hosts
+    take place
+    take i
+    save host, get(state/program, place)
+    save original, name-of(host)
+    save home, file-of(host)
+    save renamed, <{original}__value{i}>
+    rename-at(state, place, renamed)
+    save state/target-name, original
+    save state/target-renamed, renamed
+    walk state/program
+      take top
+      take at
+      save file, file-of(top)
+      fork test, or(is-equal(at, place), is-equal(file, <>))
+        hold
+          turn next
+      fork test, not(sees(state, original, home, file))
+        hold
+          turn next
+      save state/local, bound-in-statement(top)
+      set(state/program, at, walk-statement(state, top))
+
+task sees
+  take state, like walk-state
+  take original, like text
+  take home, like text
+  take file, like text
+  like boolean
+  mark private
+
+  fork test, is-equal(file, home)
+    hold
+      back true
+  sift finds-for(state, file, original)
+    case some
+      link targets
+      walk targets
+        take target
+        fork test, exports-to(state, target, home)
+          hold
+            back true
+      back false
+    case none
+      back false
+
+# A NATIVE BINDING AND A TASK OF ONE NAME. Where a binding shares its name with a task of another file, the binding is
+# renamed `name__native<n>`, and a reference follows it when its file reaches the binding rather than a task:
+#
+#   written through an alias      the binding its `find` reached, else the task
+#   in a file defining the task   the task, its own
+#   in the binding's file         the binding
+#   anywhere else                 the binding its `find` reached, the task when the find reached one, and when
+#                                 the file imported neither the one binding there is
+task bind-natives-apart
+  take state, like walk-state
+  mark private
+
+  # a task with a BODY: an abstract signature (no body, a stub, a claim) is what an env module's binding fills
+  save native-names, make list
+  save native-places, make list
+  walk state/program
+    take one
+    take at
+    save file, file-of(one)
+    fork test, is-equal(file, <>)
+      hold
+        turn next
+    fork test, or(is-view(one), and(is-function(one), defines(one)))
+      hold
+        save task-name, name-of(one)
+        save found, first-index-of-text(state/task-names, task-name)
+        fork test, is-below(found, 0)
+          hold
+            push(state/task-names, task-name)
+            save fresh, make list
+            push(fresh, file)
+            push(state/task-files, fresh)
+          miss
+            save these, get(state/task-files, found)
+            save these, add-text(these, file)
+            set(state/task-files, found, these)
+    sift one
+      case bind
+        save found, first-index-of-text(native-names, name)
+        fork test, is-below(found, 0)
+          hold
+            push(native-names, name)
+            save fresh, make list
+            push(fresh, at)
+            push(native-places, fresh)
+          miss
+            save these, get(native-places, found)
+            push(these, at)
+            set(native-places, found, these)
+      miss
+        save nothing, 0
+  walk native-names
+    take name
+    take group-at
+    save defining-at, first-index-of-text(state/task-names, name)
+    fork test, is-below(defining-at, 0)
+      hold
+        turn next
+    save defining, get(state/task-files, defining-at)
+    save places, get(native-places, group-at)
+    save apart, false
+    walk places
+      take place
+      save home, file-of(get(state/program, place))
+      walk defining
+        take other
+        fork test, is-unequal(other, home)
+          hold
+            save apart, true
+    fork test, not(apart)
+      hold
+        turn next
+    walk places
+      take place
+      save made
+        make native-apart
+          bind name, name
+          bind place, place
+          bind file, file-of(get(state/program, place))
+          bind renamed, <{name}__native{state/natives/length}>
+      push(state/natives, made)
+  fork test, is-equal(state/natives/length, 0)
+    hold
+      back
+  save state/fields, fields-of(state/program)
+  save state/mode, <natives>
+  walk state/program
+    take top
+    take at
+    save file, file-of(top)
+    fork test, is-equal(file, <>)
+      hold
+        turn next
+    save state/file, file
+    save state/local, bound-in-statement(top)
+    set(state/program, at, walk-statement(state, top))
+  walk state/natives
+    take one
+    rename-at(state, one/place, one/renamed)
+
+# the binding a reference to `name` in the walked file means, `<>` for the task
+task native-meant
+  take state, like walk-state
+  take name, like text
+  take arity, like number
+  take alias, like text
+  like text
+  mark private
+
+  save binds, make list
+  walk state/natives
+    take one
+    fork test, is-equal(one/name, name)
+      hold
+        push(binds, one)
+  fork test, is-equal(binds/length, 0)
+    hold
+      back <>
+  fork test, has-text(state/local, alias-or-name(alias, name))
+    hold
+      back <>
+  fork test, and(is-below(arity, 0), has-text(state/fields, name))
+    hold
+      back <>
+  save file, state/file
+  save aliased, make none
+  fork test, is-unequal(alias, <>)
+    hold
+      save aliased, aliases-for(state, file, alias)
+  save found-in, finds-for(state, file, name)
+  save targets, texts-or(aliased, found-in)
+  save reached, <>
+  walk binds
+    take one
+    fork test, has-text(targets, one/file)
+      hold
+        save reached, one/renamed
+        halt
+  fork test, is-unequal(alias, <>)
+    hold
+      back reached
+  save tasks-at, first-index-of-text(state/task-names, name)
+  fork test, has-text(get(state/task-files, tasks-at), file)
+    hold
+      back <>
+  walk binds
+    take one
+    fork test, is-equal(one/file, file)
+      hold
+        back one/renamed
+  fork test, is-unequal(reached, <>)
+    hold
+      back reached
+  fork test, is-above(targets/length, 0)
+    hold
+      back <>
+  fork test, is-equal(binds/length, 1)
+    hold
+      save only, get(binds, 0)
+      back only/renamed
+  back <>
+
+# every field name of every form and variant. Inside a `fork case` arm the variant's fields are locals by their own
+# names, which no binding in the tree records, so a value reference with a field's name is left as written
+task fields-of
+  take program, like list, like statement
+  like list, like text
+  mark private
+
+  save out, make list
+  walk program
+    take one
+    sift one
+      case record-type
+        walk fields
+          take field
+          push(out, field/name)
+        walk variants
+          take variant
+          walk variant/fields
+            take field
+            push(out, field/name)
+      miss
+        save nothing, 0
+  back out
+
+# TWO MODULES DEFINING ONE NAME. Every task or component with bodied definitions in two or more files is split BY FILE:
+# each file's take a name of their own (`<name>__in0_<k>`, `k` its file's place among the name's files in sorted
+# order), the entry file's keeping the name, and each reference is bound by WHAT ITS OWN FILE IMPORTED:
+#
+#   its own file's definitions, else the files its `load ... / find <name>` reached (or their `bear` chains)
+#   one such file      the reference is that file's
+#   several            the one whose definitions take the call's arity, else refused naming the files
+#   none (unimported)  the one file whose definitions take the arity, else refused with the `find` to add
+task bind-by-import
+  take state, like walk-state
+  take entry, like text
+  mark private
+
+  # every file that defines a name in any way (a task, a method, a binding, a value, a form)
+  save defined-names, make list
+  save defined-files, make list
+  save bindable, make list
+  walk state/program
+    take one
+    save file, file-of(one)
+    save names, make list
+    push(names, name-of(one))
+    sift one
+      case function
+        sift method
+          case some
+            link owner
+            push(names, owner/name)
+          case none
+            save nothing, 0
+        save bindable, add-text(bindable, name)
+      case view
+        save bindable, add-text(bindable, name)
+      miss
+        save nothing, 0
+    fork test, is-equal(file, <>)
+      hold
+        turn next
+    walk names
+      take named
+      save found, first-index-of-text(defined-names, named)
+      fork test, is-below(found, 0)
+        hold
+          push(defined-names, named)
+          save fresh, make list
+          push(fresh, file)
+          push(defined-files, fresh)
+        miss
+          save these, get(defined-files, found)
+          save these, add-text(these, file)
+          set(defined-files, found, these)
+  walk bindable
+    take name
+    save by-files, make list
+    save by-places, make list
+    walk state/program
+      take one
+      take at
+      fork test, not(or(is-function(one), is-view(one)))
+        hold
+          turn next
+      fork test, is-unequal(name-of(one), name)
+        hold
+          turn next
+      save file, file-of(one)
+      fork test, is-equal(file, <>)
+        hold
+          turn next
+      fork test, not(or(is-view(one), defines(one)))
+        hold
+          turn next
+      save found, first-index-of-text(by-files, file)
+      fork test, is-below(found, 0)
+        hold
+          push(by-files, file)
+          save fresh, make list
+          push(fresh, at)
+          push(by-places, fresh)
+        miss
+          save these, get(by-places, found)
+          push(these, at)
+          set(by-places, found, these)
+    save elsewhere, false
+    fork test, is-equal(by-files/length, 1)
+      hold
+        save defined-at, first-index-of-text(defined-names, name)
+        save definers, make list
+        fork test, is-minimum(defined-at, 0)
+          hold
+            save definers, get(defined-files, defined-at)
+        walk state/scopes
+          take scope
+          sift targets-of(scope/finds, name)
+            case some
+              link targets
+              walk targets
+                take target
+                fork test, and(not(has-text(by-files, target)), has-text(definers, target))
+                  hold
+                    save elsewhere, true
+            case none
+              save nothing, 0
+    fork test, or(is-above(by-files/length, 1), elsewhere)
+      hold
+        save sorted, sort(by-files, from-texts)
+        save file-places, make list
+        save renamed, make list
+        walk sorted
+          take file
+          take k
+          push(file-places, get(by-places, first-index-of-text(by-files, file)))
+          fork test, is-equal(file, entry)
+            hold
+              push(renamed, name)
+            miss
+              push(renamed, <{name}__in0_{k}>)
+        save group
+          make task-group
+            bind name, name
+            bind index, state/groups/length
+            bind files, sorted
+            bind file-places, file-places
+            bind renamed, renamed
+            bind elsewhere, elsewhere
+        push(state/groups, group)
+  fork test, is-equal(state/groups/length, 0)
+    hold
+      back
+  walk state/groups
+    take group
+    walk group/files
+      take file
+      take k
+      save places, get(group/file-places, k)
+      save renamed, get(group/renamed, k)
+      walk places
+        take place
+        rename-at(state, place, renamed)
+  # the top-level values that are neither tasks nor components (a `host` constant, a dock alias, a bind): a variable
+  # naming one of these is that value, not a task passed as a value
+  walk state/program
+    take one
+    sift one
+      case let
+        push(state/values, name)
+      case bind
+        push(state/values, name)
+      case native
+        push(state/values, alias)
+      miss
+        save nothing, 0
+  save state/fields, fields-of(state/program)
+  save state/mode, <imports>
+  walk state/program
+    take top
+    take at
+    save state/file, file-of(top)
+    save state/file-key, file-key-of(top)
+    save state/local, bound-in-statement(top)
+    set(state/program, at, walk-statement(state, top))
+
+task group-at
+  take state, like walk-state
+  take name, like text
+  like number
+  mark private
+
+  walk state/groups
+    take group
+    take at
+    fork test, is-equal(group/name, name)
+      hold
+        back at
+  back -1
+
+task renamed-in
+  take group, like task-group
+  take file, like text
+  like text
+  mark private
+
+  back get(group/renamed, first-index-of-text(group/files, file))
+
+task places-in
+  take group, like task-group
+  take file, like text
+  like list, like number
+  mark private
+
+  back get(group/file-places, first-index-of-text(group/files, file))
+
+# the files of a group a reference in the walked file reaches: its own, else those its imports reach. A reference
+# written through an import alias skips its own file: it named the import. A bare name reaches its PLAIN finds
+task reached-files
+  take state, like walk-state
+  take group, like task-group
+  take alias, like text
+  like list, like text
+  mark private
+
+  save file, state/file
+  save hits, make list
+  fork test, is-equal(file, <>)
+    hold
+      back hits
+  fork test, and(has-text(group/files, file), is-equal(alias, <>))
+    hold
+      push(hits, file)
+      back hits
+  save chosen, make none
+  fork test, is-unequal(alias, <>)
+    hold
+      save chosen, aliases-for(state, file, alias)
+    miss
+      fork test, has-plain-for(state, file)
+        hold
+          save plain-found, plain-for(state, file, group/name)
+          save no-targets, make list
+          save chosen, make(some, no-targets)
+          sift plain-found
+            case some
+              link these
+              save chosen, make(some, these)
+            case none
+              save nothing, 0
+  save found-in, finds-for(state, file, group/name)
+  save targets, texts-or(chosen, found-in)
+  save reach, new-file-set()
+  walk targets
+    take target
+    gather-exported(state/scopes, target, reach)
+  walk group/files
+    take one
+    fork test, holds-file(reach, one)
+      hold
+        push(hits, one)
+  back hits
+
+# what the walked file's `find` of the name asked for, reached or not
+task asked-files
+  take state, like walk-state
+  take name, like text
+  take alias, like text
+  like list, like text
+  mark private
+
+  save file, state/file
+  fork test, is-equal(file, <>)
+    hold
+      save none-asked, make list
+      back none-asked
+  save chosen, make none
+  fork test, is-unequal(alias, <>)
+    hold
+      save chosen, aliases-for(state, file, alias)
+    miss
+      save chosen, plain-for(state, file, name)
+  save found-in, finds-for(state, file, name)
+  back texts-or(chosen, found-in)
+
+# the files among `files` with a definition that takes `arity` arguments
+task taking
+  take state, like walk-state
+  take group, like task-group
+  take files, like list, like text
+  take arity, like number
+  like list, like text
+  mark private
+
+  save out, make list
+  walk files
+    take file
+    save places, places-in(group, file)
+    walk places
+      take place
+      save one, get(state/program, place)
+      fork test, and(is-minimum(arity, required-count(one)), is-maximum(arity, most-count(one)))
+        hold
+          push(out, file)
+          halt
+  back out
+
+# the name a reference with `arity` arguments (`-1`: a task passed as a value) binds to, `<>` to leave it
+task import-bound
+  take state, like walk-state
+  take name, like text
+  take arity, like number
+  take alias, like text
+  take at, like span
+  like text
+  mark private
+
+  save place, group-at(state, name)
+  fork test, is-below(place, 0)
+    hold
+      back <>
+  # an aliased reference is shadowed by a local of the name it was WRITTEN as, never of the imported one
+  fork test, has-text(state/local, alias-or-name(alias, name))
+    hold
+      back <>
+  fork test, and(is-below(arity, 0), or(has-text(state/values, name), has-text(state/fields, name)))
+    hold
+      back <>
+  save group, get(state/groups, place)
+  save imported, reached-files(state, group, alias)
+  save asked, asked-files(state, name, alias)
+  # the file imported the name from a module that defines it some OTHER way: it means that one, never this group's
+  fork test, and(is-equal(imported/length, 0), is-above(asked/length, 0))
+    hold
+      back <>
+  # a name one file defines as a task and another some other way: a reference whose file imported neither means the
+  # other, as the flat program read it
+  fork test, and(group/elsewhere, is-equal(imported/length, 0))
+    hold
+      back <>
+  save candidates, imported
+  fork test, is-equal(imported/length, 0)
+    hold
+      save candidates, group/files
+  save fit, candidates
+  fork test, is-minimum(arity, 0)
+    hold
+      save fit, taking(state, group, candidates, arity)
+  fork test, is-equal(imported/length, 1)
+    hold
+      back renamed-in(group, get(imported, 0))
+  fork test, is-equal(fit/length, 1)
+    hold
+      back renamed-in(group, get(fit, 0))
+  # nothing takes this arity: left for the checker's own arity diagnostic against what the file reaches
+  fork test, and(is-equal(fit/length, 0), is-minimum(arity, 0))
+    hold
+      back renamed-in(group, get(candidates, 0))
+  # several files take the arity at DIFFERENT parameter types: the checker picks among exactly those by the arguments'
+  # types, under a key of their own. Same types cannot be told apart that way, and are refused
+  fork test, and(is-minimum(arity, 0), is-above(fit/length, 1))
+    hold
+      fork test, typed-apart(state, group, fit)
+        hold
+          save key, <{name}__any{group/index}_{arity}>
+          save members, make list
+          walk fit
+            take file
+            save members, add-text(members, renamed-in(group, file))
+          set-overload(state, key, members)
+          save state/typed-choices, add-text(state/typed-choices, key)
+          back key
+  save among, candidates
+  fork test, is-above(fit/length, 0)
+    hold
+      save among, fit
+  refuse(state, group, at, among, is-above(imported/length, 0))
+  back <>
+
+task typed-apart
+  take state, like walk-state
+  take group, like task-group
+  take files, like list, like text
+  like boolean
+  mark private
+
+  save firsts, make list
+  walk files
+    take file
+    save places, places-in(group, file)
+    push(firsts, get(state/program, get(places, 0)))
+  walk firsts
+    take a
+    take i
+    walk firsts
+      take b
+      take j
+      fork test, and(is-above(j, i), and(and(is-function(a), is-function(b)), differ(a, b)))
+        hold
+          back true
+  back false
+
+# refuse a reference that cannot be told, once per file and name
+task refuse
+  take state, like walk-state
+  take group, like task-group
+  take at, like span
+  take among, like list, like text
+  take imported, like boolean
+  mark private
+
+  save key, <{state/file-key}\n{group/name}>
+  fork test, has-text(state/told, key)
+    hold
+      back
+  push(state/told, key)
+  save file, state/file
+  save here, <this file>
+  fork test, is-unequal(file, <>)
+    hold
+      save here, short-file(file)
+  save shorts, make list
+  walk among
+    take one
+    push(shorts, short-file(one))
+  save listed, join(shorts, <, >)
+  save name, group/name
+  save markers, make list
+  save first
+    make marker
+      bind span, at
+  push(markers, first)
+  walk among
+    take one
+    save places, places-in(group, one)
+    walk places
+      take place
+      save labeled
+        make marker
+          bind span, statement-span(get(state/program, place))
+          bind label, <a "{name}" here>
+      push(markers, labeled)
+  save message, <"{name}" is defined in {among/length} files ({listed}) and {here} imports it from none of them, so the reference cannot tell which it means>
+  save hint, <add `find {name}` under the `load` of the one {here} means. A name belongs to the module that defines it>
+  fork test, imported
+    hold
+      save message, <{here} imports "{name}" from more than one file that defines it ({listed}), so the reference cannot tell which it means>
+      # a file that finds the name from two modules already has the `find`: what tells them apart is an alias on one
+      save hint, <give one of them another name in {here}: `find {name}, name \<another\>` under its `load`>
+  save input
+    make diagnostic-input
+      bind file, file
+      bind span, at
+      bind message, make(some, message)
+      bind markers, make(some, markers)
+      bind hint, make(some, hint)
+  save kind, make duplicate-definition
+  push(state/diagnostics, diagnose(kind, input))
+
+task short-file
+  take file, like text
+  like text
+  mark private
+
+  save parts, split(file, </>)
+  save from, subtract(parts/length, 3)
+  fork test, is-below(from, 0)
+    hold
+      save from, 0
+  save kept, make list
+  walk parts
+    take part
+    take at
+    fork test, is-minimum(at, from)
+      hold
+        push(kept, part)
+  back join(kept, </>)
+
+# ---- the arity pass ----
+
+# one overloaded definition: the name it was defined under, the name it takes, the arguments it accepts, and the typed
+# group it belongs to (`<>` for none)
+form arity-range
+  link original, like text
+  link name, like text
+  link least, like number
+  link most, like number
+  link group, like text
+
+form arity-state
+  mark shared
+  link overloaded, like list, like text
+  link ranges, like list, like arity-range
+
+task mangle
+  take arity-of, like arity-state
+  take name, like text
+  take arity, like number
+  like text
+  mark private
+
+  fork test, has-text(arity-of/overloaded, name)
+    hold
+      back <{name}__{arity}>
+  back name
+
+# the definition a call with `arity` arguments targets: the one whose accepted range holds it, an exact arity winning a
+# tie; a typed same-arity group targets its first candidate until the checker re-targets it
+task target-of
+  take arity-of, like arity-state
+  take name, like text
+  take arity, like number
+  like text
+  mark private
+
+  save picked, -1
+  walk arity-of/ranges
+    take one
+    take at
+    fork test, and(is-equal(one/original, name), and(is-minimum(arity, one/least), is-maximum(arity, one/most)))
+      hold
+        fork test, is-equal(one/most, arity)
+          hold
+            save picked, at
+            halt
+        fork test, is-below(picked, 0)
+          hold
+            save picked, at
+  fork test, is-below(picked, 0)
+    hold
+      back mangle(arity-of, name, arity)
+  save pick, get(arity-of/ranges, picked)
+  fork test, is-unequal(pick/group, <>)
+    hold
+      back pick/group
+  back pick/name
+
+task arity-pass
+  take state, like walk-state
+  take entry, like text
+  mark private
+
+  # every definition of each name, after the import binding renamed the ambiguous ones apart
+  save names, make list
+  walk state/program
+    take one
+    fork test, is-function(one)
+      hold
+        save names, add-text(names, name-of(one))
+  # a name is overloaded when it is defined at more than one arity, or more than once at one arity with parameter
+  # types that differ at some position
+  save overloaded, make list
+  save typed, make list
+  walk names
+    take name
+    save same-name, make list
+    save arities, make list
+    walk state/program
+      take one
+      fork test, and(is-function(one), is-equal(name-of(one), name))
+        hold
+          push(same-name, one)
+          save count, param-count(one)
+          fork test, not(has-number(arities, count))
+            hold
+              push(arities, count)
+    fork test, is-above(arities/length, 1)
+      hold
+        save overloaded, add-text(overloaded, name)
+    walk arities
+      take arity
+      save same, make list
+      walk same-name
+        take one
+        fork test, is-equal(param-count(one), arity)
+          hold
+            push(same, one)
+      fork test, any-differ(same)
+        hold
+          save overloaded, add-text(overloaded, name)
+          save typed, add-text(typed, <{name}__{arity}>)
+  fork test, is-equal(overloaded/length, 0)
+    hold
+      back
+  save arity-of
+    make arity-state
+      bind overloaded, overloaded
+      bind ranges, make list
+  # how many definitions of each name the ENTRY file holds. One that is its file's only definition of the name keeps
+  # the name: the entry's roots and exported API are called by it. The other arities still take their suffixes
+  save owned-names, make list
+  save owned-counts, make list
+  walk state/program
+    take one
+    fork test, and(is-unequal(entry, <>), and(is-function(one), is-equal(file-of(one), entry)))
+      hold
+        save found, first-index-of-text(owned-names, name-of(one))
+        fork test, is-below(found, 0)
+          hold
+            push(owned-names, name-of(one))
+            push(owned-counts, 1)
+          miss
+            set(owned-counts, found, add(get(owned-counts, found), 1))
+  save seen-keys, make list
+  save seen-counts, make list
+  walk state/program
+    take one
+    take at
+    fork test, not(is-function(one))
+      hold
+        turn next
+    save original, name-of(one)
+    fork test, not(has-text(overloaded, original))
+      hold
+        turn next
+    save base, mangle(arity-of, original, param-count(one))
+    save group, <>
+    save owned-at, first-index-of-text(owned-names, original)
+    save owned-once, false
+    fork test, is-minimum(owned-at, 0)
+      hold
+        save owned-once, is-equal(get(owned-counts, owned-at), 1)
+    fork test, and(and(is-unequal(entry, <>), is-equal(file-of(one), entry)), and(owned-once, not(has-text(typed, base))))
+      hold
+        # the entry's one definition keeps its name; every other arity is mangled, so the names stay apart
+        save nothing, 0
+      miss
+        fork test, has-text(typed, base)
+          hold
+            save index, 0
+            save seen-at, first-index-of-text(seen-keys, base)
+            fork test, is-below(seen-at, 0)
+              hold
+                push(seen-keys, base)
+                push(seen-counts, 1)
+              miss
+                save index, get(seen-counts, seen-at)
+                set(seen-counts, seen-at, add(index, 1))
+            save typed-name, <{base}__{index}>
+            rename-at(state, at, typed-name)
+            save group, <{base}__0>
+            save members, overload-members(state, group)
+            push(members, typed-name)
+            set-overload(state, group, members)
+          miss
+            rename-at(state, at, base)
+    save renamed-one, get(state/program, at)
+    save range
+      make arity-range
+        bind original, original
+        bind name, name-of(renamed-one)
+        bind least, required-count(renamed-one)
+        bind most, param-count(renamed-one)
+        bind group, group
+    push(arity-of/ranges, range)
+  # rewrite every call to an overloaded name to the overload matching its argument count
+  walk state/program
+    take one
+    take at
+    set(state/program, at, arity-statement(arity-of, one))
+  # a typed choice the import binding made names members before this pass renamed the overloaded ones by arity: each
+  # such member stands for every definition it was renamed into
+  walk state/typed-choices
+    take key
+    save members, overload-members(state, key)
+    save remapped, make list
+    walk members
+      take member
+      save any-range, false
+      walk arity-of/ranges
+        take range
+        fork test, is-equal(range/original, member)
+          hold
+            save any-range, true
+            save remapped, add-text(remapped, range/name)
+      fork test, not(any-range)
+        hold
+          save remapped, add-text(remapped, member)
+    set-overload(state, key, remapped)
+
+task has-number
+  take values, like list, like number
+  take value, like number
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+task any-differ
+  take same, like list, like statement
+  like boolean
+  mark private
+
+  walk same
+    take a
+    take i
+    walk same
+      take b
+      take j
+      fork test, and(is-above(j, i), differ(a, b))
+        hold
+          back true
+  back false
+
+# the original's own walk for the arity rewrite, which enters fewer fields than the others: a call's callee and
+# arguments, never a member's index, a record's positional values, a contract, a view or a dock
+task arity-expression
+  take arity-of, like arity-state
+  take node, like expression
+  like expression
+  mark private
+
+  sift node
+    case call
+      save written, callee-name(callee)
+      fork test, and(is-unequal(written, <>), has-text(arity-of/overloaded, written))
+        hold
+          save node, rename-callee(node, target-of(arity-of, written, args/length))
+      sift node
+        case call
+          save node/callee, arity-expression(arity-of, callee)
+          save node/args, arity-list(arity-of, args)
+        miss
+          save nothing, 0
+    case binary
+      save node/left, arity-expression(arity-of, left)
+      save node/right, arity-expression(arity-of, right)
+    case unary
+      save node/operand, arity-expression(arity-of, operand)
+    case member
+      save node/target, arity-expression(arity-of, target)
+    case await
+      save node/expr, arity-expression(arity-of, expr)
+    case template
+      save parts-out, make list
+      walk parts
+        take part
+        sift part
+          case value
+            link inner
+            save part/value, arity-expression(arity-of, inner)
+          miss
+            save nothing, 0
+        push(parts-out, part)
+      save node/parts, parts-out
+    case array
+      save node/items, arity-list(arity-of, items)
+    case map
+      save entries-out, make list
+      walk entries
+        take entry
+        save entry/key, arity-expression(arity-of, entry/key)
+        save entry/value, arity-expression(arity-of, entry/value)
+        push(entries-out, entry)
+      save node/entries, entries-out
+    case record
+      save fields-out, make list
+      walk fields
+        take field
+        save field/value, arity-expression(arity-of, field/value)
+        push(fields-out, field)
+      save node/fields, fields-out
+    case conditional
+      save branches-out, make list
+      walk branches
+        take branch
+        save branch/cond, arity-expression(arity-of, branch/cond)
+        save branch/value, arity-expression(arity-of, branch/value)
+        push(branches-out, branch)
+      save node/branches, branches-out
+      sift otherwise
+        case some
+          link other
+          save written, arity-expression(arity-of, other)
+          save node/otherwise, make(some, written)
+        case none
+          save nothing, 0
+    case closure
+      save node/body, arity-block(arity-of, body)
+    miss
+      save nothing, 0
+  back node
+
+task arity-list
+  take arity-of, like arity-state
+  take values, like list, like expression
+  like list, like expression
+  mark private
+
+  save out, make list
+  walk values
+    take one
+    push(out, arity-expression(arity-of, one))
+  back out
+
+task arity-block
+  take arity-of, like arity-state
+  take body, like list, like statement
+  like list, like statement
+  mark private
+
+  save out, make list
+  walk body
+    take one
+    push(out, arity-statement(arity-of, one))
+  back out
+
+task arity-statement
+  take arity-of, like arity-state
+  take node, like statement
+  like statement
+  mark private
+
+  sift node
+    case let
+      save node/init, arity-expression(arity-of, init)
+    case assign
+      save node/target, arity-expression(arity-of, target)
+      save node/value, arity-expression(arity-of, read(value))
+    case expression
+      save node/expr, arity-expression(arity-of, expr)
+    case return
+      sift read(value)
+        case some
+          link given
+          save written, arity-expression(arity-of, given)
+          save node/value, make(some, written)
+        case none
+          save nothing, 0
+    case throw
+      save node/value, arity-expression(arity-of, read(value))
+    case hold
+      save node/expr, arity-expression(arity-of, expr)
+    case while
+      save node/cond, arity-expression(arity-of, cond)
+      save node/body, arity-block(arity-of, body)
+    case guard
+      save node/body, arity-block(arity-of, body)
+      sift catch
+        case some
+          link clause
+          save clause/body, arity-block(arity-of, clause/body)
+          save node/catch, make(some, clause)
+        case none
+          save nothing, 0
+    case for-each
+      save node/iterable, arity-expression(arity-of, iterable)
+      save node/body, arity-block(arity-of, body)
+    case if
+      save branches-out, make list
+      walk branches
+        take branch
+        save branch/cond, arity-expression(arity-of, branch/cond)
+        save branch/body, arity-block(arity-of, branch/body)
+        push(branches-out, branch)
+      save node/branches, branches-out
+      sift otherwise
+        case some
+          link other
+          save written, arity-block(arity-of, other)
+          save node/otherwise, make(some, written)
+        case none
+          save nothing, 0
+    case match
+      save node/subject, arity-expression(arity-of, subject)
+      save cases-out, make list
+      walk cases
+        take arm
+        save arm/body, arity-block(arity-of, arm/body)
+        push(cases-out, arm)
+      save node/cases, cases-out
+      sift otherwise
+        case some
+          link other
+          save written, arity-block(arity-of, other)
+          save node/otherwise, make(some, written)
+        case none
+          save nothing, 0
+    case function
+      save node/body, arity-block(arity-of, body)
+    miss
+      save nothing, 0
+  back node
+
+# ---- the pass ----
+
+# Returns the references it could not bind (see bind-by-import). `entry` is the file whose own definitions keep their
+# names when a name is split by file, because its roots and its exported API are called by them (`<>` for none)
+task disambiguate
+  take program, like list, like statement
+  take scopes, like list, like file-scope
+  take entry, like text
+  like disambiguated
+
+  save state, new-walk-state(program, scopes)
+  nest-lean-labels(state)
+  bind-sibling-methods(state)
+  bind-hosts-apart(state, entry)
+  bind-values-apart(state)
+  bind-natives-apart(state)
+  bind-by-import(state, entry)
+  arity-pass(state, entry)
+  back
+    make disambiguated
+      bind program, state/program
+      bind diagnostics, state/diagnostics
+      bind groups, state/overloads

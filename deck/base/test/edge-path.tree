@@ -76,7 +76,7 @@ test <relative to the same place is dot>
 test <segments drop empty runs>
   want hold
     call is-equal
-      call size
+      call length
         call path-segments, text </a//b/>
       code 2
 

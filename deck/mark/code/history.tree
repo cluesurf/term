@@ -37,16 +37,16 @@ form earlier
   # milliseconds per sample, paired by round
   link term-wall
     like list
-      like decimal
+      like float
   link base-wall
     like list
-      like decimal
+      like float
   link term-instructions
     like list
-      like decimal
+      like float
   link base-instructions
     like list
-      like decimal
+      like float
 
 # every session export in the directory, newest first, parsed
 task read-history
@@ -101,7 +101,7 @@ task values-of
   take one, like dynamic
   take metric, like text
   like list
-    like decimal
+    like float
   save out
     make list
   save measurements

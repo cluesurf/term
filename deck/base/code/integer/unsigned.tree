@@ -16,6 +16,10 @@ load @term/base/maybe
   find some
   find none
 
+load @term/base/exception
+  find shortage
+  find excess
+
 load @term/base/integer/n
   find integer
 

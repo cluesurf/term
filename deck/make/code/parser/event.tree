@@ -107,7 +107,7 @@ form event
   case read-decimal
     link text, like text
     link span, like span
-    link value, like decimal
+    link value, like float
   case read-radix
     link text, like text
     link span, like span

@@ -10,7 +10,7 @@
 //
 // Run: npx tsx test/compile/await-mark.ts
 
-import { compile } from '@term/make/code/compile/compile'
+import { compile, setAwaitOutsideTasks, awaitsOutsideTasks } from '@term/make/code/compile/compile'
 import { stdlibResolver } from '@term/make/code/resolve'
 import { withNativeEnv } from '@term/make/code/compile/native'
 import { emitRust } from '@term/make/code/compile/rust'
@@ -18,7 +18,6 @@ import { emitSwift } from '@term/make/code/compile/swift'
 import { emitKotlin } from '@term/make/code/compile/kotlin'
 import { analyze } from '@term/make/code/analyze'
 import { applyFixes } from '@term/make/code/lint/lint'
-import { setAwaitOutsideTasks, awaitsOutsideTasks } from '@term/make/code/check/effects'
 import { parse } from '@term/make/code/parser/tree'
 import { mill } from '@term/make/code/compile/mill'
 import { format } from '@term/make/code/format/format'
@@ -368,22 +367,28 @@ rule twice
 
   ok('4. ...and without it the same claim is refused, so the mark is what kept it open', !unopened.ok)
 
-  // the forms `mark` already had, told apart by FORM
-  const binder = compile({
-    file: FILE,
-    text: `
+  // a theorem's variable is a `seat` (2026-10-05), so a variable named like a metadata word cannot collide with it
+  const binderText = (word: string) => `
 rule add-zero
-  mark open, like number
+  ${word} open, like number
   show hold
     call is-equal
       call add
         read open
         code 0
       read open
-`,
-  })
+`
+  const binder = compile({ file: FILE, text: binderText('seat') })
 
-  ok('4. inside a rule, `mark open, like number` (with a `like`) is still a universal binder', binder.ok, binder.ok ? '' : binder.diagnostics.map(d => d.message).join(' | '))
+  ok('4. inside a rule, `seat open, like number` is a universal binder', binder.ok, binder.ok ? '' : binder.diagnostics.map(d => d.message).join(' | '))
+
+  const oldBinder = compile({ file: FILE, text: binderText('mark') })
+
+  ok(
+    '4. ...and `mark open, like number`, the old spelling, is refused by name rather than dropped',
+    !oldBinder.ok && oldBinder.diagnostics.some(d => d.message.includes('old spelling of a theorem')),
+    oldBinder.ok ? 'it compiled' : oldBinder.diagnostics.map(d => d.message).join(' | '),
+  )
 
   // a record's identity mills exactly as before (the same claim test/compile/retired.ts makes): a text literal is
   // not one of the metadata words, so `mine mark-note` never sees it
@@ -461,8 +466,13 @@ task risky
 
   const fixed = applyFixes(source, l053)
 
-  ok('5. ...its fix writes `mark` for each', !/^\s*note /m.test(fixed) && /^mark stable$/m.test(fixed) && /^  mark async$/m.test(fixed) && /^  mark unsafe$/m.test(fixed), fixed)
-  same('5. ...and the fixed file emits what the written one emits', build(source), build(fixed))
+  // a guard's `note unsafe` holds statements, and a block is a `fork` (2026-10-06): the fix writes `fork` / `mark unsafe`
+  ok('5. ...its fix writes `mark` for each, the guard as `fork` / `mark unsafe`', !/^\s*note /m.test(fixed) && /^mark stable$/m.test(fixed) && /^  mark async$/m.test(fixed) && /^  fork\n    mark unsafe\n    halt <bad>$/m.test(fixed), fixed)
+  const written = source
+    .replace(/^note stable$/m, 'mark stable')
+    .replace(/^  note async$/m, '  mark async')
+    .replace(/^  note unsafe$/m, '  fork\n    mark unsafe')
+  same('5. ...and the fixed file emits what the same program written by hand emits', build(written), build(fixed))
 
   // the formatter lays `mark async` out where it laid `note async`, so the rewrite moves no line
   const laid = 'task boot\n  note async\n  take x, like text\n  like text\n  log <hi>\n'

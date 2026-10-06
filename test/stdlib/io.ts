@@ -764,7 +764,7 @@ const JSON_PROG = `load @term/base/code/json
 
 task read-count
   take text, like text
-  like decimal
+  like float
   send back
     call as-number
       call get-field
@@ -784,7 +784,7 @@ task read-name
 
 task item-number
   take text, like text
-  like decimal
+  like float
   send back
     call as-number
       call get-item
@@ -809,7 +809,7 @@ task round-trip
         read text
 
 task literal-object
-  like decimal
+  like float
   send back
     call as-number
       call get-field
@@ -827,7 +827,7 @@ const JSON_DECODE = `load @term/base/code/json
 
 form person
   link name, like text
-  link age, like decimal
+  link age, like float
   link active, like boolean
 
 task decode
@@ -862,7 +862,7 @@ task name-of
 
 task age-of
   take text, like text
-  like decimal
+  like float
   save p
     call decode
       read text
@@ -887,7 +887,7 @@ const JSON_ENCODE = `load @term/base/code/json
 
 form person
   link name, like text
-  link age, like decimal
+  link age, like float
   link active, like boolean
 
 task encode
@@ -934,7 +934,7 @@ task encoded-name
       text <name>
 
 task encoded-age
-  like decimal
+  like float
   save j
     call parse
       call sample
@@ -1410,26 +1410,26 @@ const FLOAT = `load @term/base/code/float
   find power
 
 task root-of
-  like decimal
+  like float
   send back
     call square-root
       9.0
 
 task floor-of
-  like decimal
+  like float
   send back
     call round-down
       3.7
 
 task pow-of
-  like decimal
+  like float
   send back
     call power
       2.0
       3.0
 
 task div-of
-  like decimal
+  like float
   send back
     call divide
       7.0

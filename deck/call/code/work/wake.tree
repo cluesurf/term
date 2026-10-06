@@ -120,7 +120,8 @@ task wake
         node-path/basename target
   log-step <Waking {{label}}...>
 
-  mark unsafe
+  fork
+    mark unsafe
     call make-directory, read target
     fork test
       call directory-exists

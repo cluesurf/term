@@ -43,7 +43,7 @@ task describe-hit
         hook test
           call is-maximum
             read k
-            call size
+            call length
               read hit/groups
         hook step
           save part

@@ -113,7 +113,7 @@ ok(
 // 3. PROOF: the chained involution discharges (flip (flip b) = b).
 const CHAINED_PROOF = `${PRELUDE}
 rule flip-involution
-  mark b, like bit
+  seat b, like bit
   show hold
     call is-equal
       call flip, read b
@@ -127,7 +127,7 @@ ok('chained involution proof discharges', proves(CHAINED_PROOF))
 // 4. A base with no inline argument still chains: read b / link flip / link flip = flip(flip(b)).
 const CHAINED_FROM_READ = `${PRELUDE}
 rule flip-twice-from-read
-  mark b, like bit
+  seat b, like bit
   show hold
     call is-equal
       read b
@@ -142,7 +142,7 @@ ok('chain onto a bare read discharges', proves(CHAINED_FROM_READ))
 // 5. GENUINELY COMPUTED: a single link is NOT the identity, so this false claim must NOT prove.
 const FALSE_SINGLE_LINK = `${PRELUDE}
 rule one-flip-is-identity
-  mark b, like bit
+  seat b, like bit
   show hold
     call is-equal
       read b

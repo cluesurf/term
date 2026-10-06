@@ -36,7 +36,8 @@ task read-literal-pattern
     make pattern
       bind text, read source
 
-  mark unsafe
+  fork
+    mark unsafe
     parse-pattern(source)
     back
       make literal-pattern

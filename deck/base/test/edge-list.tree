@@ -85,7 +85,7 @@ task points
 test <take-first past the length takes everything>
   want hold
     call is-equal
-      call size
+      call length
         call take-first
           call three
           code 5
@@ -104,7 +104,7 @@ test <take-last past the length takes everything, never counting from the end>
 test <drop-last past the length leaves nothing>
   want hold
     call is-equal
-      call size
+      call length
         call drop-last
           call three
           code 5
@@ -113,7 +113,7 @@ test <drop-last past the length leaves nothing>
 test <drop-first past the length leaves nothing>
   want hold
     call is-equal
-      call size
+      call length
         call drop-first
           call three
           code 9
@@ -135,7 +135,7 @@ test <slice clamps a negative start to zero>
 test <slice with start past end is empty>
   want hold
     call is-equal
-      call size
+      call length
         call slice
           call three
           code 2
@@ -184,7 +184,7 @@ test <contains finds a record by an equal record>
 test <unique drops records equal to an earlier one>
   want hold
     call is-equal
-      call size
+      call length
         call unique
           call points
       code 2
@@ -299,7 +299,7 @@ test <drop from both sides keeps the middle>
 test <drop from both sides that meet leaves nothing>
   want hold
     call is-equal
-      call size
+      call length
         call drop
           call three
           code 2

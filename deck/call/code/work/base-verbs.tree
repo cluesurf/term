@@ -90,7 +90,8 @@ task base-init
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  mark unsafe
+  fork
+    mark unsafe
     call base-module/callBaseInit, make(root-ask, bind root, read root), wait true
   halt take
     take error
@@ -103,7 +104,8 @@ task base-check
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  mark unsafe
+  fork
+    mark unsafe
     call base-module/callBaseCheck, make(root-ask, bind root, read root), wait true
   halt take
     take error
@@ -118,7 +120,8 @@ task base-log
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  mark unsafe
+  fork
+    mark unsafe
     call base-module/callBaseLog
       make branch-ask, bind(root, read root), bind branch, read branch
       wait true
@@ -135,7 +138,8 @@ task base-status
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  mark unsafe
+  fork
+    mark unsafe
     call base-module/callBaseStatus
       make branch-ask, bind(root, read root), bind branch, read branch
       wait true
@@ -153,7 +157,8 @@ task base-diff
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  mark unsafe
+  fork
+    mark unsafe
     call base-module/callBaseDiff
       make diff-ask, bind(root, read root), bind(to, read to), bind from, read from
       wait true
@@ -171,7 +176,8 @@ task base-show
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  mark unsafe
+  fork
+    mark unsafe
     call base-module/callBaseShow
       make show-ask
         bind root, read root
@@ -191,7 +197,8 @@ task base-list
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  mark unsafe
+  fork
+    mark unsafe
     call base-module/callBaseList
       make commit-ask, bind(root, read root), bind commit, read commit
       wait true
@@ -210,7 +217,8 @@ task base-commit
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  mark unsafe
+  fork
+    mark unsafe
     call base-module/callBaseCommit
       make base-make-ask
         bind root, read root
@@ -231,7 +239,8 @@ task base-checkout
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  mark unsafe
+  fork
+    mark unsafe
     call base-module/callBaseCheckout
       make commit-ask, bind(root, read root), bind commit, read commit
       wait true
@@ -250,7 +259,8 @@ task base-merge
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  mark unsafe
+  fork
+    mark unsafe
     call base-module/callBaseMerge
       make merge-ask
         bind root, read root
@@ -272,7 +282,8 @@ task base-export
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  mark unsafe
+  fork
+    mark unsafe
     call base-module/callBaseExport
       make export-ask
         bind root, read root
@@ -294,7 +305,8 @@ task base-tag
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  mark unsafe
+  fork
+    mark unsafe
     call base-module/callBaseTag
       make tag-ask
         bind root, read root

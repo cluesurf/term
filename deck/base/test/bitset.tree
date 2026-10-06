@@ -82,6 +82,6 @@ test bitset-toggles-and-counts
     code 1
   want hold
     call is-equal
-      call count
+      call length
         read s
       code 1

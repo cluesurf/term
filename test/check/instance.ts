@@ -65,6 +65,7 @@ form thing
   wear comparison
     task is-equal
       take self
+      take other
       send back, true
 
 task run

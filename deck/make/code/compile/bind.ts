@@ -4,17 +4,20 @@
 // leaving a direct bind call. See note/research/vibe/computation/plans/20-specialization-and-bind.md. Pure and
 // browser-safe.
 
-import { NATIVE_ENV_FALLBACK, type NativeEnv } from '@term/make/code/compile/native'
+import { envFallback, type NativeEnv } from '@term/make/code/compile/native-env'
 import type {
   Expression,
   Statement,
 } from '@term/make/code/compile/node'
 
-export type Bind = Extract<Statement, { form: 'bind' }>
+type Bind = Extract<Statement, { form: 'bind' }>
+type Target = Bind['targets'][number]
+type Maybe<T> = { form: 'some'; value: T } | { form: 'none' }
 
-// index every declarative binding by name, for call-site rendering across a program
-export function collectBinds(program: Statement[]): Map<string, Bind> {
-  const binds = new Map<string, Bind>()
+// index every declarative binding by name, for call-site rendering across a program. As the Term port answers it
+// (compile/bind.tree): a bind is a statement, and an answer that may be absent a maybe
+export function collectBinds(program: Statement[]): Map<string, Statement> {
+  const binds = new Map<string, Statement>()
 
   for (const statement of program) {
     if (statement.form === 'bind') {
@@ -29,8 +32,8 @@ export function collectBinds(program: Statement[]): Map<string, Bind> {
 // only `digest-sha256` must not pull in `digest-md5`'s `use md5::Digest;` (which would collide with `sha2::Digest`).
 export function referencedBinds(
   program: Statement[],
-  binds: Map<string, Bind>,
-): Map<string, Bind> {
+  binds: Map<string, Statement>,
+): Map<string, Statement> {
   const used = new Set<string>()
 
   const expr = (node: Expression | undefined): void => {
@@ -160,7 +163,7 @@ export function referencedBinds(
 
   body(program)
 
-  const out = new Map<string, Bind>()
+  const out = new Map<string, Statement>()
 
   for (const name of used) {
     const bind = binds.get(name)
@@ -179,57 +182,62 @@ export function referencedBinds(
 // a browser page whose natives go over the cask bridge, so a bind with a `browser` case and no `webview` case is
 // right for it, the way `withNativeEnv` borrows the browser natives for it. Without this every inline bind (float's
 // `to-decimal`, and the rest) emitted the SEED_UNSUPPORTED sentinel into a cask page.
-export function bindTarget(bind: Bind, env: string): Bind['targets'][number] | undefined {
-  const own = bind.targets.find(candidate => candidate.env === env)
+export function bindTargetOf(one: Statement, env: string): Maybe<Target> {
+  if (one.form !== 'bind') {
+    return { form: 'none' }
+  }
+
+  const own = one.targets.find(candidate => candidate.env === env)
 
   if (own) {
-    return own
+    return { form: 'some', value: own }
   }
 
   // the fallback chain in order, so `ios` reaches a `swift` case the way the resolver reaches a `swift` impl
-  for (const borrowed of NATIVE_ENV_FALLBACK[env as NativeEnv] ?? []) {
-    const found = bind.targets.find(candidate => candidate.env === borrowed)
+  // an env the build does not know borrows nothing (compile/native-env.tree `env-fallback`)
+  for (const borrowed of envFallback(env as NativeEnv)) {
+    const found = one.targets.find(candidate => candidate.env === borrowed)
 
     if (found) {
-      return found
+      return { form: 'some', value: found }
     }
   }
 
-  return undefined
+  return { form: 'none' }
 }
 
 export function renderBind(
-  bind: Bind,
+  one: Statement,
   env: string,
   args: string[],
-): string | undefined {
-  const target = bindTarget(bind, env)
+): Maybe<string> {
+  const target = bindTargetOf(one, env)
 
-  if (!target) {
-    return undefined
+  if (target.form === 'none' || one.form !== 'bind') {
+    return { form: 'none' }
   }
 
-  let out = target.expression
-  bind.params.forEach((param, index) => {
+  let out = target.value.expression
+  one.params.forEach((param, index) => {
     out = out.split(`$${param.name}`).join(args[index] ?? '')
   })
 
-  return out
+  return { form: 'some', value: out }
 }
 
 // the distinct imports every bind in the program needs for one environment, in first-seen order. A backend emits these
 // alongside its native-dock imports (e.g. swift `import Foundation` for `Foundation.pow`).
 export function bindImports(
-  binds: Map<string, Bind>,
+  binds: Map<string, Statement>,
   env: string,
 ): { module: string; alias?: string }[] {
   const seen = new Set<string>()
   const out: { module: string; alias?: string }[] = []
 
   for (const bind of binds.values()) {
-    const target = bindTarget(bind, env)
+    const target = bindTargetOf(bind, env)
 
-    for (const need of target?.imports ?? []) {
+    for (const need of target.form === 'some' ? target.value.imports : []) {
       const key = `${need.module}|${need.alias ?? ''}`
 
       if (seen.has(key)) {

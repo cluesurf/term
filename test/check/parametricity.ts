@@ -95,13 +95,13 @@ ok(
   'free theorem: map f (append s t) == append (map f s) (map f t)',
   compiles(`${PRELUDE}
 rule map-append-natural
-  mark f
+  seat f
     like task
       take x, like nat
       like nat
-  mark s, like stack
+  seat s, like stack
     head nat
-  mark t, like stack
+  seat t, like stack
     head nat
   show hold
     call is-equal
@@ -127,13 +127,13 @@ ok(
   'swapped (false) naturality is rejected',
   !compiles(`${PRELUDE}
 rule map-append-wrong
-  mark f
+  seat f
     like task
       take x, like nat
       like nat
-  mark s, like stack
+  seat s, like stack
     head nat
-  mark t, like stack
+  seat t, like stack
     head nat
   show hold
     call is-equal

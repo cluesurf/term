@@ -1304,11 +1304,11 @@ task host-of
         back one/name
   back linked-deck(f)
 
-# the first `/link/@scope/name/` in a path, as `@scope/name`, else `@local`
+# the first `/link/@scope/name/` in a path, as `@scope/name`, else `@local` (compile/roll.ts `deckFromPath`; check/tell
+# reads it too)
 task linked-deck
   take path, like text
   like text
-  mark private
 
   save from, 0
   save size, char-count(path)

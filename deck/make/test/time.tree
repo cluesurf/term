@@ -38,7 +38,7 @@ load @term/base/text
 # a baseline side holding a mean alone, as an old saved result reads back
 task saved-side
   take name, like text
-  take mean, like decimal
+  take mean, like float
   like side
 
   back

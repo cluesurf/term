@@ -82,8 +82,8 @@ ok(
   'without the equation, the congruence goal is not provable',
   !compiles(`${PRELUDE}
 rule no-hypothesis
-  mark n, like nat
-  mark m, like nat
+  seat n, like nat
+  seat m, like nat
   show hold
     call is-equal
       call is-zero

@@ -19,7 +19,7 @@ load @term/base/text
 # one decimal digit's value, or -1 for anything that is not one
 task decimal-digit
   take letter, like text
-  like decimal
+  like float
   fork test
     hook test
       call is-equal
@@ -87,7 +87,7 @@ task decimal-digit
 task read-number
   take value, like text
   like maybe
-    head decimal
+    head float
   save total, code 0.0
   save divisor, code 1.0
   save after-point, false
@@ -453,7 +453,7 @@ task number-digits-end
 
 bind host-parse-float
   take value, like text
-  like decimal
+  like float
   case node
     text <Number($value)>
   case browser
@@ -470,7 +470,7 @@ bind host-parse-float
 # grammar is checked here, then the host reads the text, and every host rounds to the nearest float.
 task parse-float
   take value, like text
-  like decimal
+  like float
   save r
     call to-runes
       read value
@@ -687,7 +687,7 @@ task to-radix
 # round the exact binary value and break ties three ways, so `1.005` gave `1.00` on some.) A result that rounds to zero
 # has no minus. NaN and the infinities come back as their text.
 task to-fixed
-  take value, like decimal
+  take value, like float
   take places, like number
   like text
   fork test

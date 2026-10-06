@@ -1,0 +1,206 @@
+# A NATIVE PROGRAM WRITTEN ONE FILE PER TERM MODULE (note/term/plan/incremental-best-in-class.md, step 15).
+#
+# The native emitters decide representations from the whole program: Rust boxes a recursive form only when nothing
+# clones it, and every backend reads list, field and purity facts across every task. Those decisions stay whole. What
+# is cut is the output: each top-level statement's text is marked with the Term module it came from as it is emitted,
+# every pass after that carries the mark through untouched, and the result is either the one file it always was (the
+# marks removed) or one file per module beside a shared one holding the runtime and everything no module owns.
+#
+# Each file is written only when its text changed (call/code/emit.ts), so an edit to one module rewrites that module's
+# file and no other, and the toolchain's own incremental build (rustc's per-item query cache, swiftc and kotlinc per
+# file) redoes only what it holds. test/compile/native-units.ts holds the split program to the whole one on rustc,
+# swiftc and kotlinc, and the one-file rewrite.
+#
+# The mark is three private-use characters, which no emitted program holds: open (U+E000), the file, close (U+E001),
+# the text, end (U+E002).
+#
+# Ported from compile/unit-split.ts (self-hosting, 2026-10-06). A statement with no file passes the empty text, and a
+# module's file and its text are a `unit-text` where the original gave a pair.
+
+load @term/base/list
+  find list
+  find join
+
+load @term/base/text
+  find index-of
+  find split
+  find substring
+
+load @term/base/text/unicode
+  find rune-to-text
+
+task open-mark
+  like text
+  mark private
+
+  back rune-to-text(57344)
+
+task close-mark
+  like text
+  mark private
+
+  back rune-to-text(57345)
+
+task end-mark
+  like text
+  mark private
+
+  back rune-to-text(57346)
+
+# a statement's text, marked with the module it came from. Nothing is marked without a file (a statement the build
+# made, such as a runtime struct) or without text
+task mark-unit
+  take file, like text
+  take text, like text
+  like text
+
+  fork test, or(is-equal(file, <>), is-equal(text, <>))
+    hold
+      back text
+  back <{open-mark()}{file}{close-mark()}{text}{end-mark()}>
+
+# the program as one file, every mark removed: each open mark through the close that ends its file, then every end
+task unmarked
+  take text, like text
+  like text
+
+  save open, open-mark()
+  save close, close-mark()
+  fork test, is-below(index-of(text, open), 0)
+    hold
+      back text
+  save kept, make list
+  save at, 0
+  save size, text/length
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save rest, substring(text, at, size)
+      save found, index-of(rest, open)
+      fork test, is-below(found, 0)
+        hold
+          push(kept, rest)
+          halt
+      save after, substring(rest, add(found, 1), rest/length)
+      save closed, index-of(after, close)
+      fork test, is-below(closed, 0)
+        hold
+          # an open mark no close follows is no mark: kept, and the search goes on after it
+          push(kept, substring(rest, 0, add(found, 1)))
+          save at, add(add(at, found), 1)
+          turn next
+      push(kept, substring(rest, 0, found))
+      save at, add(add(add(at, found), 1), add(closed, 1))
+  save joined, join(kept, <>)
+  save pieces, split(joined, end-mark())
+  back join(pieces, <>)
+
+# one module's statements, in their order
+form unit-text
+  link file, like text
+  link text, like text
+
+form split-program
+  link shared, like text
+  link units, like list, like unit-text
+
+# the program cut by module: what no module owns, in its order, and each module's statements, in their order
+task split-units
+  take text, like text
+  like split-program
+
+  save open, open-mark()
+  save close, close-mark()
+  save end, end-mark()
+  save files, make list
+  save parts, make list
+  save shared-parts, make list
+  save at, 0
+  save size, text/length
+  walk test
+    hook test, is-below(at, size)
+    hook hold
+      save rest, substring(text, at, size)
+      save found, index-of(rest, open)
+      fork test, is-below(found, 0)
+        hold
+          push(shared-parts, rest)
+          halt
+      push(shared-parts, substring(rest, 0, found))
+      save after-open, substring(rest, found, rest/length)
+      save closed, index-of(after-open, close)
+      save after-close, substring(after-open, closed, after-open/length)
+      save ended, index-of(after-close, end)
+      save file, substring(after-open, 1, closed)
+      save body, substring(after-close, 1, ended)
+      save place, -1
+      walk files
+        take one
+        take k
+        fork test, is-equal(one, file)
+          hold
+            save place, k
+      fork test, is-below(place, 0)
+        hold
+          push(files, file)
+          save fresh, make list
+          push(fresh, body)
+          push(parts, fresh)
+        miss
+          save these, get(parts, place)
+          push(these, body)
+          set(parts, place, these)
+      save at, add(add(add(at, found), closed), add(ended, 1))
+  save units, make list
+  walk files
+    take file
+    take k
+    save these, get(parts, k)
+    save unit
+      make unit-text
+        bind file, file
+        bind text, <{join(these, <\n\n>)}\n>
+    push(units, unit)
+  back
+    make split-program
+      bind shared, closed-up(join(shared-parts, <>))
+      bind units, units
+
+# the blank lines a removed statement left between two shared parts, closed up: every run of three or more newlines is
+# two
+task closed-up
+  take text, like text
+  like text
+  mark private
+
+  save out, make list
+  save run, 0
+  save chars, split(text, <>)
+  walk chars
+    take char
+    fork test, is-equal(char, <\n>)
+      hold
+        save run, add(run, 1)
+        turn next
+    fork test, is-above(run, 0)
+      hold
+        push(out, newlines(run))
+        save run, 0
+    push(out, char)
+  fork test, is-above(run, 0)
+    hold
+      push(out, newlines(run))
+  back join(out, <>)
+
+task newlines
+  take run, like number
+  like text
+  mark private
+
+  fork test, is-minimum(run, 3)
+    hold
+      back <\n\n>
+  fork test, is-equal(run, 2)
+    hold
+      back <\n\n>
+  back <\n>

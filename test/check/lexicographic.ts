@@ -94,8 +94,8 @@ task bad
       read a
 
 rule bad-identity
-  mark x, like nat
-  mark y, like nat
+  seat x, like nat
+  seat y, like nat
   show hold
     call is-equal
       call bad

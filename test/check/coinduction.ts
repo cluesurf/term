@@ -87,7 +87,7 @@ ok(
   'stream bisimulation via funext (succ-of-zeros == ones)',
   compiles(`${PRELUDE}
 rule pointwise
-  mark n, like nat
+  seat n, like nat
   show hold
     call is-equal
       call succ-of-zeros
@@ -111,7 +111,7 @@ ok(
   'non-bisimilar streams have no pointwise proof (zeros n != ones n)',
   !compiles(`${PRELUDE}
 rule false-pointwise
-  mark n, like nat
+  seat n, like nat
   show hold
     call is-equal
       call zeros

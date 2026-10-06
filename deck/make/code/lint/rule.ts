@@ -41,7 +41,7 @@ export type Finding = {
 // answer and three rules reported nothing. Tied to the call rather than to a key, there is nothing to collide.
 export type LintMemo = {
   // exception name -> the raises reachable from it (unhandled-raise, L041)
-  raises?: Map<string, Set<string>>
+  raises?: Map<string, string[]>
   // the tell-advice rules' view of the program (L037 to L039). Shaped by that rule file, opaque here.
   tell?: unknown
   // what the rules ported to Term read (lint/rule-check.tree `lint-facts`), built from the context's sets

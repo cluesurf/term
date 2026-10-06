@@ -618,20 +618,33 @@ export function scopeAt(
   return out
 }
 
-// every call in a program, with its callee name and its arguments. Walks every statement and expression form a
-// body can hold, so a call inside `note unsafe`, a closure or a text template is found as well.
+// every call in a program, with its callee name and its arguments
 export function forEachCall(
   program: Program,
   visit: (call: Extract<Expression, { form: 'call' }>) => void,
+): void {
+  forEachExpression(program, node => {
+    if (node.form === 'call') {
+      visit(node)
+    }
+  })
+}
+
+// every expression in a program, a parent before its parts. Walks every statement and expression form a body can
+// hold, so one inside `mark unsafe`, a closure or a text template is found as well
+export function forEachExpression(
+  program: Program,
+  visit: (node: Expression) => void,
 ): void {
   const expr = (node: Expression | undefined): void => {
     if (!node) {
       return
     }
 
+    visit(node)
+
     switch (node.form) {
       case 'call':
-        visit(node)
         expr(node.callee)
         node.args.forEach(expr)
         break

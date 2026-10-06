@@ -23,7 +23,7 @@ form matrix-4
     take self
     take row, like number
     take column, like number
-    like decimal
+    like float
     send back
       call get
         read self/cells
@@ -151,7 +151,7 @@ form matrix-4
     take self
     take row, like number
     take vector, like vector-4
-    like decimal
+    like float
     send back
       call add
         call add

@@ -27,8 +27,8 @@ function compiles(source: string): boolean {
 ok(
   'add commutes under calm hold',
   compiles(`rule add-commutes
-  mark a, like integer
-  mark b, like integer
+  seat a, like integer
+  seat b, like integer
   show hold
     call is-equal
       call add
@@ -45,8 +45,8 @@ ok(
 ok(
   'linear rearrangement under calm hold',
   compiles(`rule linear-cancel
-  mark x, like integer
-  mark y, like integer
+  seat x, like integer
+  seat y, like integer
   show hold
     call is-equal
       call add
@@ -67,7 +67,7 @@ ok(
 ok(
   'false linear claim is rejected',
   !compiles(`rule false-linear
-  mark a, like integer
+  seat a, like integer
   show hold
     call is-equal
       call add

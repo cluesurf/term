@@ -25,7 +25,7 @@ function ok(name: string, cond: boolean, info = ''): void {
 
 const PROGRAM = `form face
   link name, like text
-  link scale, like decimal
+  link scale, like float
   link count, like number
 
 task make-face

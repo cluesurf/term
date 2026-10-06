@@ -197,6 +197,8 @@ form case-type
 form code-show
   link claim, list code-call
 
+form code-seat
+
 form code-mark
 
 form code-fold

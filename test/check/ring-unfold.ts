@@ -53,10 +53,10 @@ const NORM = `task norm
 function multiplicative(sign: 'subtract' | 'add'): string {
   return `${NORM}
 rule norm-is-multiplicative
-  mark a, like integer
-  mark b, like integer
-  mark c, like integer
-  mark d, like integer
+  seat a, like integer
+  seat b, like integer
+  seat c, like integer
+  seat d, like integer
   show hold
     call is-equal
       call multiply
@@ -115,8 +115,8 @@ task double-norm
         read y
 
 rule double-norm-is-twice
-  mark a, like integer
-  mark b, like integer
+  seat a, like integer
+  seat b, like integer
   show hold
     call is-equal
       call double-norm
@@ -143,7 +143,7 @@ rule double-norm-is-twice
       code 0
 
 rule loop-is-itself
-  mark a, like integer
+  seat a, like integer
   show hold
     call is-equal
       call loop
@@ -168,8 +168,8 @@ rule loop-is-itself
       read y
 
 rule monus-then-add-returns
-  mark a, like natural-number
-  mark b, like natural-number
+  seat a, like natural-number
+  seat b, like natural-number
   show hold
     call is-equal
       call add
@@ -200,10 +200,10 @@ const INTERVAL = `task interval
 function unitBoost(premise: string): string {
   return `${INTERVAL}
 rule a-unit-boost-keeps-the-interval
-  mark d, like integer
-  mark n, like integer
-  mark t, like integer
-  mark x, like integer
+  seat d, like integer
+  seat n, like integer
+  seat t, like integer
+  seat x, like integer
   have unit
     call is-equal
       call interval

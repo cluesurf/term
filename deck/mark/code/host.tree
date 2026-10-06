@@ -16,7 +16,7 @@ dock load
 
 # milliseconds since the process started, with the fraction. `clock/now` floors to whole milliseconds
 task stamp
-  like decimal
+  like float
   send back
     call perf/performance/now
 
@@ -40,7 +40,7 @@ task arch-name
 
 # the one-minute load average. 0 on Windows, which does not keep one
 task load-average
-  like decimal
+  like float
   save loads
     call os/loadavg
   send back

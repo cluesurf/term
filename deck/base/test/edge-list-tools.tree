@@ -101,7 +101,7 @@ test <zip stops at the shorter list>
   want hold
     call and
       call is-equal
-        call size, read zipped
+        call length, read zipped
         code 2
       call is-equal
         read right
@@ -143,10 +143,10 @@ test <chunk leaves a short last run>
   want hold
     call and
       call is-equal
-        call size, read runs
+        call length, read runs
         code 3
       call is-equal
-        call size
+        call length
           call get
             read runs
             code 2
@@ -155,7 +155,7 @@ test <chunk leaves a short last run>
 test <window gives one run per start>
   want hold
     call is-equal
-      call size
+      call length
         call window
           call numbers
           code 3
@@ -200,7 +200,7 @@ test <partition splits by the test>
 test <flat-map joins each item's list>
   want hold
     call is-equal
-      call size
+      call length
         call flat-map
           call numbers
           read twice

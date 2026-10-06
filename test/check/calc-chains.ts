@@ -25,9 +25,9 @@ function compiles(source: string): boolean {
 
 // two ring identities, proven as bare holds (so they register as lemmas via the normalizer)
 const LEMMAS = `rule assoc-add
-  mark a, like integer
-  mark b, like integer
-  mark c, like integer
+  seat a, like integer
+  seat b, like integer
+  seat c, like integer
   show hold
     call is-equal
       call add
@@ -42,9 +42,9 @@ const LEMMAS = `rule assoc-add
           read c
 
 rule reorder
-  mark a, like integer
-  mark b, like integer
-  mark c, like integer
+  seat a, like integer
+  seat b, like integer
+  seat c, like integer
   show hold
     call is-equal
       call add
@@ -64,9 +64,9 @@ ok(
   'cite a ring identity',
   compiles(`${LEMMAS}
 rule cite-assoc
-  mark a, like integer
-  mark b, like integer
-  mark c, like integer
+  seat a, like integer
+  seat b, like integer
+  seat c, like integer
   show hold
     call is-equal
       call add
@@ -88,9 +88,9 @@ ok(
   'link chains two ring lemmas',
   compiles(`${LEMMAS}
 rule chain
-  mark a, like integer
-  mark b, like integer
-  mark c, like integer
+  seat a, like integer
+  seat b, like integer
+  seat c, like integer
   show hold
     call is-equal
       call add
@@ -114,9 +114,9 @@ ok(
   'wrong cite is rejected',
   !compiles(`${LEMMAS}
 rule cite-wrong
-  mark a, like integer
-  mark b, like integer
-  mark c, like integer
+  seat a, like integer
+  seat b, like integer
+  seat c, like integer
   show hold
     call is-equal
       call add

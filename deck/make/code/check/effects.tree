@@ -1,0 +1,2191 @@
+# The effect checker: tracks the async effect across the program and enforces a consistent async / await discipline.
+# This is the surface-level slice of the effect system (the deeper, kernel-level treatment ties effects and mutation to
+# the `1` multiplicity / linear regions; see plans/18-type-theory-gaps.md). The rules, given the model where
+# `mark async` marks a task async and a call to one is awaited by default:
+#   1. `await` may only appear inside an async task.
+#   2. `await` may only target an asynchronous task (awaiting a synchronous one is meaningless).
+#   3. an asynchronous call in a synchronous task must be awaited or ticked (otherwise its result escapes unhandled).
+#   4. `tick` may only start an asynchronous task.
+#   5. outside every task, an asynchronous call must be ticked (`check-calls-outside-tasks`).
+# And the raise sets: the exceptions each task can raise, through its callees, which the roll reports and a
+# signature's `halt` lines bound.
+#
+# Ported from check/effects.ts (self-hosting, 2026-10-05). The switch that turned rule 5 on is the caller's now
+# (compile/compile.ts `setAwaitOutsideTasks`): Term holds no module state. The original's maps are hashes and its sets
+# lists, each list in the order its set was filled, and a set asked of on every call (the program's tasks, its async
+# tasks, its exceptions) a hash of flags. A direct raise's `via` is `<>` where the original kept `undefined`. Its two
+# reflective walks (the calls outside a task, the closures an expression makes) follow node.tree's declared field
+# order, the order compile/node-reach.tree was paired on; the rest were explicit walks and stay so.
+
+load @term/base/list
+  find list
+  find join
+  find sort
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/ordering
+  find from-texts
+
+load @term/base/text
+  find last-index-of
+  find split
+  find substring
+
+load ../parser/diagnostic
+  find diagnostic
+  find diagnose
+  find diagnostic-input
+  find span
+
+load ../compile/node
+  find dock-argument
+  find dock-call
+  find dock-route
+  find dock-send
+  find expression
+  find field-value
+  find statement
+  find statement-span
+  find type
+  find view-node
+
+load ./extend
+  find exception-form
+  find is-generic-exception
+
+# ---- small helpers ----
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+task add-text
+  take values, like list, like text
+  take value, like text
+  like list, like text
+  mark private
+
+  fork test, not(has-text(values, value))
+    hold
+      push(values, value)
+  back values
+
+task flags-of
+  take values, like list, like text
+  like hash, like text, like boolean
+  mark private
+
+  save out, make hash
+  walk values
+    take one
+    save out/{one}, true
+  back out
+
+task param-names
+  take one, like statement
+  like list, like text
+  mark private
+
+  save out, make list
+  sift one
+    case function
+      walk params
+        take param
+        push(out, param/name)
+    miss
+      save nothing, 0
+  back out
+
+# the effects a parameter's function type declares, empty for any other parameter (an optional list, walked where it
+# is read)
+task declared-effects
+  take given, like maybe, like type
+  like list, like text
+  mark private
+
+  save out, make list
+  sift given
+    case some
+      link written
+      sift written
+        case function
+          walk effects
+            take one
+            push(out, one)
+        miss
+          save nothing, 0
+    case none
+      save nothing, 0
+  back out
+
+task is-function-type
+  take given, like maybe, like type
+  like boolean
+  mark private
+
+  sift given
+    case some
+      link written
+      sift written
+        case function
+          back true
+        miss
+          back false
+    case none
+      back false
+
+# a task's name as it was written: a name defined in more than one file is split by file (`name__in<g>_<k>`,
+# check/disambiguate.tree) before this runs. The original's `/__in\d+_\d+$/`: only the last `__in` can be followed by
+# nothing but `digits_digits`
+task written-name
+  take name, like text
+  like text
+  mark private
+
+  save at, last-index-of(name, <__in>)
+  fork test, is-below(at, 0)
+    hold
+      back name
+  save rest, substring(name, add(at, 4), name/length)
+  fork test, is-digits-pair(rest)
+    hold
+      back substring(name, 0, at)
+  back name
+
+# `\d+_\d+`, the whole text, ASCII digits as `\d` reads them
+task is-digits-pair
+  take rest, like text
+  like boolean
+  mark private
+
+  save digits, split(<0123456789>, <>)
+  save before, 0
+  save after, 0
+  save seen-mark, false
+  save chars, split(rest, <>)
+  walk chars
+    take char
+    fork test, is-equal(char, <_>)
+      hold
+        fork test, seen-mark
+          hold
+            back false
+        save seen-mark, true
+        turn next
+    fork test, not(has-text(digits, char))
+      hold
+        back false
+    fork test, seen-mark
+      hold
+        save after, add(after, 1)
+      miss
+        save before, add(before, 1)
+  back and(seen-mark, and(is-above(before, 0), is-above(after, 0)))
+
+# ---- the names a body calls ----
+
+# what a body reaches beyond the functions it names: a call through a MASK method (left unresolved by dispatch because
+# the receiver is generic) counts as a call to every implementation of that method in the program, and a member call
+# on a `dock load` alias is a call into foreign code, which `native` records (04-reach.md, masks and natives)
+form call-reach
+  mark shared
+  link known, like hash, like text, like boolean
+  link implementations, like hash, like text, like list, like text
+  link natives, like hash, like text, like boolean
+  link found, like list, like text
+  link native, like boolean
+
+task new-reach
+  take known, like hash, like text, like boolean
+  like call-reach
+  mark private
+
+  back
+    make call-reach
+      bind known, known
+      bind implementations, make hash
+      bind natives, make hash
+      bind found, make list
+      bind native, false
+
+# the names of functions (within `known`) called anywhere in the body, in the order first called
+task called-names
+  take body, like list, like statement
+  take known, like hash, like text, like boolean
+  like list, like text
+  mark private
+
+  save reach, new-reach(known)
+  called-in-block(reach, body)
+  back reach/found
+
+task called-in-expression
+  take reach, like call-reach
+  take node, like expression
+  mark private
+
+  sift node
+    case call
+      sift callee
+        case variable
+          fork test, reach/known/has(name)
+            hold
+              save reach/found, add-text(reach/found, name)
+            miss
+              fork test, reach/implementations/has(name)
+                hold
+                  walk reach/implementations/get(name)
+                    take implementation
+                    save reach/found, add-text(reach/found, implementation)
+        case member
+          sift target
+            case variable
+              link aliased
+              fork test, reach/natives/has(aliased)
+                hold
+                  save reach/native, true
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
+      called-in-expression(reach, callee)
+      walk args
+        take arg
+        called-in-expression(reach, arg)
+    case binary
+      called-in-expression(reach, left)
+      called-in-expression(reach, right)
+    case unary
+      called-in-expression(reach, operand)
+    case member
+      called-in-expression(reach, target)
+    case template
+      walk parts
+        take part
+        sift part
+          case value
+            link inner
+            called-in-expression(reach, inner)
+          miss
+            save nothing, 0
+    case await
+      called-in-expression(reach, expr)
+    case array
+      walk items
+        take item
+        called-in-expression(reach, item)
+    case map
+      walk entries
+        take entry
+        called-in-expression(reach, entry/key)
+        called-in-expression(reach, entry/value)
+    case record
+      walk fields
+        take field
+        called-in-expression(reach, field/value)
+    case conditional
+      walk branches
+        take branch
+        called-in-expression(reach, branch/cond)
+        called-in-expression(reach, branch/value)
+      sift otherwise
+        case some
+          link other
+          called-in-expression(reach, other)
+        case none
+          save nothing, 0
+    miss
+      save nothing, 0
+
+task called-in-block
+  take reach, like call-reach
+  take body, like list, like statement
+  mark private
+
+  walk body
+    take one
+    called-in-statement(reach, one)
+
+task called-in-statement
+  take reach, like call-reach
+  take node, like statement
+  mark private
+
+  sift node
+    case let
+      called-in-expression(reach, init)
+    case assign
+      called-in-expression(reach, target)
+      called-in-expression(reach, read(value))
+    case expression
+      called-in-expression(reach, expr)
+    case return
+      sift read(value)
+        case some
+          link given
+          called-in-expression(reach, given)
+        case none
+          save nothing, 0
+    case throw
+      called-in-expression(reach, read(value))
+    case hold
+      called-in-expression(reach, expr)
+    case while
+      called-in-expression(reach, cond)
+      called-in-block(reach, body)
+    case guard
+      called-in-block(reach, body)
+      sift catch
+        case some
+          link clause
+          called-in-block(reach, clause/body)
+        case none
+          save nothing, 0
+    case for-each
+      called-in-expression(reach, iterable)
+      called-in-block(reach, body)
+    case if
+      walk branches
+        take branch
+        called-in-expression(reach, branch/cond)
+        called-in-block(reach, branch/body)
+      sift otherwise
+        case some
+          link other
+          called-in-block(reach, other)
+        case none
+          save nothing, 0
+    case match
+      called-in-expression(reach, subject)
+      walk cases
+        take arm
+        called-in-block(reach, arm/body)
+      sift otherwise
+        case some
+          link other
+          called-in-block(reach, other)
+        case none
+          save nothing, 0
+    miss
+      save nothing, 0
+
+# does the body contain a throw statement anywhere? A guarded body's throws are caught by its handler, so only the
+# handler's own throws escape a guard that has one
+task body-throws
+  take body, like list, like statement
+  like boolean
+  mark private
+
+  walk body
+    take node
+    sift node
+      case throw
+        back true
+      case guard
+        sift catch
+          case some
+            link clause
+            fork test, body-throws(clause/body)
+              hold
+                back true
+          case none
+            fork test, body-throws(body)
+              hold
+                back true
+      case while
+        fork test, body-throws(body)
+          hold
+            back true
+      case for-each
+        fork test, body-throws(body)
+          hold
+            back true
+      case if
+        walk branches
+          take branch
+          fork test, body-throws(branch/body)
+            hold
+              back true
+        fork test, otherwise-throws(otherwise)
+          hold
+            back true
+      case match
+        walk cases
+          take arm
+          fork test, body-throws(arm/body)
+            hold
+              back true
+        fork test, otherwise-throws(otherwise)
+          hold
+            back true
+      miss
+        save nothing, 0
+  back false
+
+task otherwise-throws
+  take given, like maybe, like list, like statement
+  like boolean
+  mark private
+
+  sift given
+    case some
+      link body
+      back body-throws(body)
+    case none
+      back false
+
+# ---- the effect rows ----
+
+# the last definition of each name, at the place of its first: what the original's map of functions held
+task function-places
+  take program, like list, like statement
+  like hash, like text, like number
+  mark private
+
+  save out, make hash
+  walk program
+    take one
+    take at
+    sift one
+      case function
+        save out/{name}, at
+      miss
+        save nothing, 0
+  back out
+
+# the inferred effect row of each function: the set of effects it may perform. `async` is the marker effect (resolved
+# at an await, so it does not propagate). `throw` propagates transitively through the call graph (a caller of a
+# throwing function may itself throw). Row polymorphism through callbacks: a function that calls an effectful callback
+# parameter inherits that callback's declared effects
+task effect-rows
+  take program, like list, like statement
+  like hash, like text, like list, like text
+
+  save places, function-places(program)
+  save names, make list
+  save known, make hash
+  walk places/keys()
+    take name
+    push(names, name)
+    save known/{name}, true
+  save rows, make hash
+  save calls, make hash
+  walk names
+    take name
+    save one, get(program, places/get(name))
+    sift one
+      case function
+        save row, make list
+        fork test, read(async)
+          hold
+            save row, add-text(row, <async>)
+        fork test, body-throws(body)
+          hold
+            save row, add-text(row, <throw>)
+        save own-params, param-names(one)
+        save called-params, called-names(body, flags-of(own-params))
+        walk params
+          take param
+          fork test, has-text(called-params, param/name)
+            hold
+              save effects-of, declared-effects(param/type)
+              walk effects-of
+                take effect
+                save row, add-text(row, effect)
+        save rows/{name}, row
+        # a call to one of its own parameters is that parameter, whose effects were added just above, never the
+        # top-level task of the same name
+        save callees, make list
+        save every, called-names(body, known)
+        walk every
+          take callee
+          fork test, not(has-text(own-params, callee))
+            hold
+              push(callees, callee)
+        save calls/{name}, callees
+      miss
+        save nothing, 0
+  # least fixed point: a function throws if it calls (transitively) a throwing function
+  save changed, true
+  walk test
+    hook test, changed
+    hook hold
+      save changed, false
+      walk names
+        take name
+        save row, rows/get(name)
+        save callees, calls/get(name)
+        walk callees
+          take callee
+          fork test, and(has-text(rows/get(callee), <throw>), not(has-text(row, <throw>)))
+            hold
+              push(row, <throw>)
+              save changed, true
+        save rows/{name}, row
+  back rows
+
+# ---- the async discipline inside tasks ----
+
+form effect-state
+  mark shared
+  link file, like text
+  link in-async, like boolean
+  link async-functions, like hash, like text, like boolean
+  link all-functions, like hash, like text, like boolean
+  link async-params, like list, like text
+  link function-params, like list, like text
+  link shadowed, like list, like text
+  link diagnostics, like list, like diagnostic
+
+task effect-error
+  take file, like text
+  take at, like span
+  take message, like text
+  like diagnostic
+  mark private
+
+  save input
+    make diagnostic-input
+      bind file, file
+      bind span, at
+      bind message, make(some, message)
+  save kind, make effect-error
+  back diagnose(kind, input)
+
+task is-async-name
+  take state, like effect-state
+  take name, like text
+  like boolean
+  mark private
+
+  back or(and(state/async-functions/has(name), not(has-text(state/shadowed, name))), has-text(state/async-params, name))
+
+task is-known-sync-name
+  take state, like effect-state
+  take name, like text
+  like boolean
+  mark private
+
+  fork test, and(state/all-functions/has(name), not(state/async-functions/has(name)))
+    hold
+      back true
+  back and(has-text(state/function-params, name), not(has-text(state/async-params, name)))
+
+# a call to an async task, not waited for, from a place that is not async
+task async-from-sync
+  take file, like text
+  take at, like span
+  take called, like text
+  like diagnostic
+  mark private
+
+  save name, written-name(called)
+  back effect-error(file, at, <"{name}" is async, and this call is in a task that is not: mark the task `mark async`, or write `tick {name}` to start it without waiting>)
+
+# `tick` on a task that is not async
+task tick-on-sync
+  take file, like text
+  take at, like span
+  take called, like text
+  like diagnostic
+  mark private
+
+  save name, written-name(called)
+  back effect-error(file, at, <`tick` starts an async task and goes on, and "{name}" is not async: call it without `tick`>)
+
+task effect-expression
+  take state, like effect-state
+  take node, like expression
+  take awaited, like boolean
+  mark private
+
+  sift node
+    case await
+      save await-at, span
+      fork test, not(state/in-async)
+        hold
+          push(state/diagnostics, effect-error(state/file, await-at, <await is only allowed inside an async task (mark this task `mark async`)>))
+      save inner, expr
+      sift inner
+        case call
+          sift callee
+            case variable
+              fork test, is-known-sync-name(state, name)
+                hold
+                  push(state/diagnostics, effect-error(state/file, await-at, <"{name}" is not async, so it cannot be awaited>))
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
+      effect-expression(state, inner, true)
+    case call
+      # `tick f(x)` (and the older `wait false`) is fire-and-forget: an async call deliberately left un-awaited, so
+      # it is exempt. Otherwise a leftover un-awaited async call in a sync context is an error only when not ticked
+      save ticked, read(background)
+      save call-at, span
+      sift callee
+        case variable
+          fork test, and(and(not(awaited), not(state/in-async)), and(not(ticked), is-async-name(state, name)))
+            hold
+              push(state/diagnostics, async-from-sync(state/file, call-at, name))
+          # `tick` on a task that is not async starts nothing: the call runs to its end before the next line
+          fork test, and(ticked, is-known-sync-name(state, name))
+            hold
+              push(state/diagnostics, tick-on-sync(state/file, call-at, name))
+        miss
+          save nothing, 0
+      effect-expression(state, callee, false)
+      walk args
+        take arg
+        effect-expression(state, arg, false)
+    case binary
+      effect-expression(state, left, false)
+      effect-expression(state, right, false)
+    case unary
+      effect-expression(state, operand, false)
+    case member
+      effect-expression(state, target, false)
+    case array
+      walk items
+        take item
+        effect-expression(state, item, false)
+    case map
+      walk entries
+        take entry
+        effect-expression(state, entry/key, false)
+        effect-expression(state, entry/value, false)
+    case record
+      walk fields
+        take field
+        effect-expression(state, field/value, false)
+    case conditional
+      walk branches
+        take branch
+        effect-expression(state, branch/cond, false)
+        effect-expression(state, branch/value, false)
+      sift otherwise
+        case some
+          link other
+          effect-expression(state, other, false)
+        case none
+          save nothing, 0
+    miss
+      save nothing, 0
+
+# a body's statements, as the original's checker visited them: a guard's bodies are not entered
+task effect-body
+  take state, like effect-state
+  take body, like list, like statement
+  mark private
+
+  walk body
+    take node
+    sift node
+      case let
+        effect-expression(state, init, false)
+      case assign
+        effect-expression(state, target, false)
+        effect-expression(state, read(value), false)
+      case expression
+        effect-expression(state, expr, false)
+      case return
+        sift read(value)
+          case some
+            link given
+            effect-expression(state, given, false)
+          case none
+            save nothing, 0
+      case throw
+        effect-expression(state, read(value), false)
+      case hold
+        effect-expression(state, expr, false)
+      case while
+        effect-expression(state, cond, false)
+        effect-body(state, body)
+      case for-each
+        effect-expression(state, iterable, false)
+        effect-body(state, body)
+      case if
+        walk branches
+          take branch
+          effect-expression(state, branch/cond, false)
+          effect-body(state, branch/body)
+        sift otherwise
+          case some
+            link other
+            effect-body(state, other)
+          case none
+            save nothing, 0
+      case match
+        effect-expression(state, subject, false)
+        walk cases
+          take arm
+          effect-body(state, arm/body)
+        sift otherwise
+          case some
+            link other
+            effect-body(state, other)
+          case none
+            save nothing, 0
+      miss
+        save nothing, 0
+
+# every let a body binds, through every nested block but a closure's: no expression holds a statement but a closure.
+# A SET: its order is never read
+task lets-in
+  take body, like list, like statement
+  take into, like list, like text
+  like list, like text
+  mark private
+
+  save out, into
+  walk body
+    take node
+    sift node
+      case let
+        save out, add-text(out, name)
+      case if
+        walk branches
+          take branch
+          save out, lets-in(branch/body, out)
+        sift otherwise
+          case some
+            link other
+            save out, lets-in(other, out)
+          case none
+            save nothing, 0
+      case while
+        save out, lets-in(body, out)
+      case for-each
+        save out, lets-in(body, out)
+      case match
+        walk cases
+          take arm
+          save out, lets-in(arm/body, out)
+        sift otherwise
+          case some
+            link other
+            save out, lets-in(other, out)
+          case none
+            save nothing, 0
+      case guard
+        save out, lets-in(body, out)
+        sift catch
+          case some
+            link clause
+            save out, lets-in(clause/body, out)
+          case none
+            save nothing, 0
+      case function
+        save out, lets-in(body, out)
+        sift stub-shape
+          case some
+            link shape
+            save single, make list
+            push(single, shape)
+            save out, lets-in(single, out)
+          case none
+            save nothing, 0
+        save stubbed, make list
+        walk stub-body
+          take inner
+          push(stubbed, inner)
+        save out, lets-in(stubbed, out)
+      miss
+        save nothing, 0
+  back out
+
+task check-effects
+  take program, like list, like statement
+  take file, like text
+  like list, like diagnostic
+
+  save state
+    make effect-state
+      bind file, file
+      bind in-async, false
+      bind async-functions, make hash
+      bind all-functions, make hash
+      bind async-params, make list
+      bind function-params, make list
+      bind shadowed, make list
+      bind diagnostics, make list
+  walk program
+    take one
+    sift one
+      case function
+        save state/all-functions/{name}, true
+        fork test, read(async)
+          hold
+            save state/async-functions/{name}, true
+      miss
+        save nothing, 0
+  walk program
+    take one
+    sift one
+      case function
+        save state/in-async, read(async)
+        # callback parameters annotated async: calling one is an async call too
+        save async-params, make list
+        save function-params, make list
+        walk params
+          take param
+          fork test, is-function-type(param/type)
+            hold
+              push(function-params, param/name)
+              save effects-of, declared-effects(param/type)
+              fork test, has-text(effects-of, <async>)
+                hold
+                  push(async-params, param/name)
+        save state/async-params, async-params
+        save state/function-params, function-params
+        # a parameter or local of a task's name shadows it, the way async resolution reads it: a call to a callback
+        # named `test` is a call to the callback, never to the stdlib's async `test`
+        save state/shadowed, lets-in(body, param-names(one))
+        effect-body(state, body)
+      miss
+        save nothing, 0
+  back state/diagnostics
+
+# ---- calls outside every task ----
+
+# AWAIT BY DEFAULT. OUTSIDE every task, in a top-level `host` or statement, in a component's body, or in a closure
+# written in either that is not itself `mark async`, nothing can wait, so an un-awaited, un-ticked call to an async
+# task is an error naming `tick`. Runs after async resolution, so a task's own body is already awaited and is not
+# walked here. A closure inside a task is the task's business; a closure outside one is walked, and is exempt only
+# when it is itself async. The caller asks only while the switch is on (compile/compile.ts `awaitsOutsideTasks`).
+form outside-state
+  mark shared
+  link owner, like text
+  link async-functions, like hash, like text, like boolean
+  # inside an async closure, where an awaited call is in place and an un-awaited one is still the pending value
+  # nobody asked for
+  link waiting, like boolean
+  # the names a closure's parameters and locals bind, which shadow a task
+  link bound, like list, like text
+  link diagnostics, like list, like diagnostic
+
+task check-calls-outside-tasks
+  take program, like list, like statement
+  take file, like text
+  like list, like diagnostic
+
+  save state
+    make outside-state
+      bind owner, file
+      bind async-functions, make hash
+      bind waiting, false
+      bind bound, make list
+      bind diagnostics, make list
+  walk program
+    take one
+    sift one
+      case function
+        fork test, read(async)
+          hold
+            save state/async-functions/{name}, true
+      miss
+        save nothing, 0
+  walk program
+    take one
+    sift one
+      case function
+        turn next
+      miss
+        save nothing, 0
+    # the module the statement came from: a merged program records it on each top-level statement's span, and an
+    # expression inside carries a position only, so a finding is placed in its own file rather than the entry's
+    save state/owner, file
+    save at, statement-span(one)
+    sift at/file
+      case some
+        link written
+        save state/owner, written
+      case none
+        save nothing, 0
+    save state/waiting, false
+    save fresh, make list
+    save state/bound, fresh
+    outside-statement(state, one)
+  back state/diagnostics
+
+task outside-call
+  take state, like outside-state
+  take name, like text
+  take at, like span
+  mark private
+
+  save shown, written-name(name)
+  save message, <"{shown}" is async, and this call is outside any task, where nothing can wait for it: move it into a task, or write `tick {shown}` to start it without waiting>
+  fork test, state/waiting
+    hold
+      save message, <"{shown}" is async, and a call to it here is not waited for: write `wait {shown}(...)` to wait, or `tick {shown}` to start it and go on>
+  save placed
+    make span
+      bind start, at/start
+      bind end, at/end
+      bind file, make(some, state/owner)
+  save input
+    make diagnostic-input
+      bind file, state/owner
+      bind span, placed
+      bind message, make(some, message)
+  save kind, make async-outside-task
+  push(state/diagnostics, diagnose(kind, input))
+
+task outside-list
+  take state, like outside-state
+  take values, like list, like expression
+  mark private
+
+  walk values
+    take one
+    outside-expression(state, one)
+
+task outside-maybe
+  take state, like outside-state
+  take given, like maybe, like expression
+  mark private
+
+  sift given
+    case some
+      link inner
+      outside-expression(state, inner)
+    case none
+      save nothing, 0
+
+task outside-block
+  take state, like outside-state
+  take body, like list, like statement
+  mark private
+
+  walk body
+    take one
+    outside-statement(state, one)
+
+# a type's expressions: a named type's value arguments. Its `result` is not entered
+task outside-type
+  take state, like outside-state
+  take given, like type
+  mark private
+
+  sift given
+    case array
+      outside-type(state, element)
+    case map
+      outside-type(state, key)
+      outside-type(state, value)
+    case named
+      walk args
+        take arg
+        outside-type(state, arg)
+      walk value-args
+        take one
+        outside-expression(state, one)
+    case function
+      walk params
+        take param
+        outside-type(state, param)
+    miss
+      save nothing, 0
+
+task outside-maybe-type
+  take state, like outside-state
+  take given, like maybe, like type
+  mark private
+
+  sift given
+    case some
+      link inner
+      outside-type(state, inner)
+    case none
+      save nothing, 0
+
+task outside-expression
+  take state, like outside-state
+  take node, like expression
+  mark private
+
+  sift node
+    case await
+      # awaited already, by `wait true` or a `wait` prefix. Its arguments are still walked, then its callee
+      save inner, expr
+      sift inner
+        case call
+          outside-list(state, args)
+          outside-expression(state, callee)
+        miss
+          outside-expression(state, inner)
+    case closure
+      save outer-bound, state/bound
+      save outer-waiting, state/waiting
+      save inner-bound, make list
+      walk outer-bound
+        take name
+        save inner-bound, add-text(inner-bound, name)
+      walk params
+        take param
+        save inner-bound, add-text(inner-bound, param/name)
+      save state/bound, inner-bound
+      save state/waiting, read(async)
+      outside-block(state, body)
+      save state/bound, outer-bound
+      save state/waiting, outer-waiting
+    case call
+      save call-at, span
+      sift callee
+        case variable
+          fork test, and(and(not(read(background)), state/async-functions/has(name)), not(has-text(state/bound, name)))
+            hold
+              outside-call(state, name, call-at)
+        miss
+          save nothing, 0
+      outside-expression(state, callee)
+      outside-list(state, args)
+      outside-maybe-type(state, into)
+    case template
+      walk parts
+        take part
+        sift part
+          case value
+            link inner
+            outside-expression(state, inner)
+          miss
+            save nothing, 0
+    case binary
+      outside-expression(state, left)
+      outside-expression(state, right)
+    case unary
+      outside-expression(state, operand)
+    case array
+      outside-list(state, items)
+    case map
+      walk entries
+        take entry
+        outside-expression(state, entry/key)
+        outside-expression(state, entry/value)
+    case record
+      walk fields
+        take field
+        outside-expression(state, field/value)
+      walk positional
+        take one
+        outside-expression(state, one)
+    case member
+      outside-expression(state, target)
+      outside-maybe(state, index)
+    case conditional
+      walk branches
+        take branch
+        outside-expression(state, branch/cond)
+        outside-expression(state, branch/value)
+      outside-maybe(state, otherwise)
+    miss
+      save nothing, 0
+
+task outside-field-values
+  take state, like outside-state
+  take values, like list, like field-value
+  mark private
+
+  walk values
+    take one
+    outside-expression(state, one/value)
+
+task outside-statement
+  take state, like outside-state
+  take node, like statement
+  mark private
+
+  sift node
+    case let
+      save state/bound, add-text(state/bound, name)
+      outside-expression(state, init)
+    case assign
+      outside-expression(state, target)
+      outside-expression(state, read(value))
+    case expression
+      outside-expression(state, expr)
+    case if
+      walk branches
+        take branch
+        outside-expression(state, branch/cond)
+        outside-block(state, branch/body)
+      sift otherwise
+        case some
+          link other
+          outside-block(state, other)
+        case none
+          save nothing, 0
+    case while
+      outside-expression(state, cond)
+      outside-block(state, body)
+      walk read(must)
+        take one
+        outside-expression(state, one)
+      outside-maybe(state, down)
+    case match
+      outside-expression(state, subject)
+      walk cases
+        take arm
+        outside-block(state, arm/body)
+      sift otherwise
+        case some
+          link other
+          outside-block(state, other)
+        case none
+          save nothing, 0
+    case for-each
+      outside-expression(state, iterable)
+      outside-block(state, body)
+      walk read(must)
+        take one
+        outside-expression(state, one)
+    case return
+      outside-maybe(state, read(value))
+    case guard
+      outside-block(state, body)
+      sift catch
+        case some
+          link clause
+          outside-block(state, clause/body)
+        case none
+          save nothing, 0
+    case throw
+      outside-expression(state, read(value))
+    case hold
+      outside-expression(state, expr)
+    case function
+      walk params
+        take param
+        outside-maybe(state, param/fallback)
+      outside-block(state, body)
+      sift stub-shape
+        case some
+          link shape
+          outside-statement(state, shape)
+        case none
+          save nothing, 0
+      walk stub-body
+        take inner
+        outside-statement(state, inner)
+      walk universals
+        take universal
+        outside-expression(state, universal/expr)
+      walk read(have)
+        take one
+        outside-expression(state, one)
+      walk read(must)
+        take one
+        outside-expression(state, one)
+      outside-maybe(state, down)
+    case record-type
+      walk fields
+        take field
+        outside-maybe(state, field/fallback)
+      walk variants
+        take variant
+        walk variant/index-values
+          take one
+          outside-expression(state, one)
+      sift alias
+        case some
+          link alias-type
+          outside-type(state, alias-type)
+        case none
+          save nothing, 0
+      sift extend
+        case some
+          link extended
+          outside-type(state, extended/base)
+          walk extended/links
+            take one
+            outside-maybe(state, one/fallback)
+          outside-field-values(state, extended/pins)
+        case none
+          save nothing, 0
+      walk pins
+        take pin
+        outside-expression(state, pin/value)
+    case view
+      outside-views(state, body)
+    case dock
+      outside-route(state, route)
+    miss
+      save nothing, 0
+
+task outside-views
+  take state, like outside-state
+  take nodes, like list, like view-node
+  mark private
+
+  walk nodes
+    take one
+    outside-view(state, one)
+
+task outside-view
+  take state, like outside-state
+  take one, like view-node
+  mark private
+
+  sift one
+    case element
+      walk attributes
+        take attribute
+        outside-expression(state, attribute/value)
+      outside-field-values(state, props)
+      outside-views(state, children)
+    case read
+      outside-expression(state, read(value))
+    case fork
+      walk branches
+        take branch
+        outside-expression(state, branch/cond)
+        outside-views(state, branch/body)
+      walk otherwise
+        take inner
+        outside-view(state, inner)
+    case walk
+      outside-expression(state, iterable)
+      outside-views(state, body)
+    case save
+      outside-expression(state, read(value))
+    case call
+      # a view's setup statement, holding its call under `value`, walked through to that call
+      outside-expression(state, read(value))
+    miss
+      save nothing, 0
+
+task outside-arguments
+  take state, like outside-state
+  take arguments, like list, like dock-argument
+  mark private
+
+  walk arguments
+    take one
+    outside-expression(state, one/value)
+
+task outside-calls
+  take state, like outside-state
+  take calls, like list, like dock-call
+  mark private
+
+  walk calls
+    take one-call
+    outside-arguments(state, one-call/args)
+
+task outside-sends
+  take state, like outside-state
+  take sends, like list, like dock-send
+  mark private
+
+  walk sends
+    take one
+    outside-maybe(state, one/value)
+
+task outside-route
+  take state, like outside-state
+  take route, like dock-route
+  mark private
+
+  walk route/methods
+    take method
+    outside-calls(state, method/calls)
+    outside-sends(state, method/sends)
+  outside-calls(state, route/calls)
+  sift route/component
+    case some
+      link component
+      outside-arguments(state, component/props)
+    case none
+      save nothing, 0
+  outside-sends(state, route/directives)
+  outside-sends(state, route/sends)
+  walk route/hooks
+    take one-hook
+    outside-calls(state, one-hook/calls)
+  walk route/children
+    take child
+    outside-route(state, child)
+
+# ---- the closures an expression makes ----
+
+# the closure literals an expression makes, outermost first: a closure inside another closure's body is found when
+# that body is scanned, so each is visited once. Through every field but `type`, `span` and `result`
+form closure-gather
+  mark shared
+  link found, like list, like expression
+
+task closures-in
+  take node, like expression
+  like list, like expression
+  mark private
+
+  save gather
+    make closure-gather
+      bind found, make list
+  closures-in-expression(gather, node)
+  back gather/found
+
+task closures-in-maybe
+  take gather, like closure-gather
+  take given, like maybe, like expression
+  mark private
+
+  sift given
+    case some
+      link inner
+      closures-in-expression(gather, inner)
+    case none
+      save nothing, 0
+
+task closures-in-type
+  take gather, like closure-gather
+  take given, like type
+  mark private
+
+  sift given
+    case array
+      closures-in-type(gather, element)
+    case map
+      closures-in-type(gather, key)
+      closures-in-type(gather, value)
+    case named
+      walk args
+        take arg
+        closures-in-type(gather, arg)
+      walk value-args
+        take one
+        closures-in-expression(gather, one)
+    case function
+      walk params
+        take param
+        closures-in-type(gather, param)
+    miss
+      save nothing, 0
+
+task closures-in-expression
+  take gather, like closure-gather
+  take node, like expression
+  mark private
+
+  sift node
+    case closure
+      push(gather/found, node)
+    case call
+      closures-in-expression(gather, callee)
+      walk args
+        take arg
+        closures-in-expression(gather, arg)
+      sift into
+        case some
+          link target-type
+          closures-in-type(gather, target-type)
+        case none
+          save nothing, 0
+    case template
+      walk parts
+        take part
+        sift part
+          case value
+            link inner
+            closures-in-expression(gather, inner)
+          miss
+            save nothing, 0
+    case binary
+      closures-in-expression(gather, left)
+      closures-in-expression(gather, right)
+    case unary
+      closures-in-expression(gather, operand)
+    case array
+      walk items
+        take item
+        closures-in-expression(gather, item)
+    case map
+      walk entries
+        take entry
+        closures-in-expression(gather, entry/key)
+        closures-in-expression(gather, entry/value)
+    case record
+      walk fields
+        take field
+        closures-in-expression(gather, field/value)
+      walk positional
+        take one
+        closures-in-expression(gather, one)
+    case member
+      closures-in-expression(gather, target)
+      closures-in-maybe(gather, index)
+    case await
+      closures-in-expression(gather, expr)
+    case conditional
+      walk branches
+        take branch
+        closures-in-expression(gather, branch/cond)
+        closures-in-expression(gather, branch/value)
+      closures-in-maybe(gather, otherwise)
+    miss
+      save nothing, 0
+
+# ---- raise sets ----
+#
+# The exceptions each function can raise: every `halt <form>` in its body outside a guarded body, plus what every
+# callee raises (least fixed point over the call graph), minus what a `mark unsafe` / `halt take` catches, plus what
+# the handler itself raises. A thrown text is `failure`. A guard with no handler catches everything. This is the raise
+# set of note/term/hive/04-reach.md, and it is what the roll reports per task and per route.
+#
+# `via` records, for each function and each exception, the callee that brought it in (`<>` for a direct raise), so a
+# reader can walk one call path from an entry point to the raise site.
+form raise-sets
+  link raises, like hash, like text, like list, like text
+  link via, like hash, like text, like hash, like text, like text
+  # the native shims: the functions that call into a `dock load` module, which raise `failure` by construction
+  link native, like list, like text
+
+form raise-state
+  mark shared
+  link exceptions, like hash, like text, like boolean
+  link reach, like call-reach
+  # the function being scanned: what its body raises directly, and the functions it calls outside a guarded body
+  link direct, like list, like text
+  link called, like list, like text
+
+task raise-sets-of
+  take program, like list, like statement
+  # the record-types that are exceptions, by name
+  take exceptions, like list, like text
+  like raise-sets
+
+  save places, function-places(program)
+  save names, make list
+  save known, make hash
+  walk places/keys()
+    take name
+    push(names, name)
+    save known/{name}, true
+  # a mask method's implementations: every `wear` / `suit` body desugars to a `<target>_<method>` function tagged with
+  # the bare method name, so a call the dispatcher left bare reaches all of them. And the `dock load` aliases: a member
+  # call on one is a call into code the compiler does not see
+  save mask-methods, make hash
+  save reach, new-reach(known)
+  walk program
+    take one
+    sift one
+      case mask
+        walk methods
+          take method-name
+          save mask-methods/{method-name}, true
+      case native
+        save is-type, false
+        sift kind
+          case some
+            link written
+            sift written
+              case type
+                save is-type, true
+              miss
+                save nothing, 0
+          case none
+            save nothing, 0
+        fork test, not(is-type)
+          hold
+            save reach/natives/{alias}, true
+      miss
+        save nothing, 0
+  walk names
+    take name
+    save one, get(program, places/get(name))
+    sift one
+      case function
+        sift method
+          case some
+            link owner
+            fork test, mask-methods/has(owner/name)
+              hold
+                save these, make list
+                fork test, reach/implementations/has(owner/name)
+                  hold
+                    save these, reach/implementations/get(owner/name)
+                save these, add-text(these, name)
+                save reach/implementations/{owner/name}, these
+          case none
+            save nothing, 0
+      miss
+        save nothing, 0
+  save state
+    make raise-state
+      bind exceptions, flags-of(exceptions)
+      bind reach, reach
+      bind direct, make list
+      bind called, make list
+  # named apart from a task's own `raises`, which the arm over a task binds
+  save raised-by, make hash
+  save via, make hash
+  save calls, make hash
+  save native-shims, make list
+  save fill-only, make hash
+  save fill-key, <fill-form>
+  save fill-only/{fill-key}, true
+  walk names
+    take name
+    save one, get(program, places/get(name))
+    sift one
+      case function
+        # a separately compiled task: the set its own unit closed over its body and callees
+        save stubbed, false
+        fork test, read(stub)
+          hold
+            sift stub-raises
+              case some
+                link stored
+                save stubbed, true
+                save known-raises, make list
+                walk stored
+                  take raised
+                  save known-raises, add-text(known-raises, raised)
+                save facts, make list
+                sift stub-facts
+                  case some
+                    link given-facts
+                    save facts, given-facts
+                  case none
+                    save nothing, 0
+                fork test, has-text(facts, <native>)
+                  hold
+                    save native-shims, add-text(native-shims, name)
+                # a task that raises `failure` once it is counted raises it here when this program counts it, as its
+                # own body's scan would (`fails`, compile/stub.ts)
+                fork test, and(state/exceptions/has(<failure>), has-text(facts, <fails>))
+                  hold
+                    save known-raises, add-text(known-raises, <failure>)
+                save raised-by/{name}, known-raises
+                save directs, make hash
+                walk known-raises
+                  take raised
+                  save directs/{raised}, <>
+                save via/{name}, directs
+                save no-calls, make list
+                save calls/{name}, no-calls
+              case none
+                save nothing, 0
+        fork test, stubbed
+          hold
+            turn next
+        save fresh-direct, make list
+        save fresh-called, make list
+        save state/direct, fresh-direct
+        save state/called, fresh-called
+        save state/reach/native, false
+        scan(state, body)
+        save direct, state/direct
+        # a task that calls into a `dock load` module is a native shim: foreign code can fail in ways nobody listed, so
+        # the runtime boundary wraps any foreign throw into `failure`, and the `halt` lines on its signature are the
+        # shim author's contract, added to the set rather than checked against it (03-exception.md, natives)
+        fork test, state/reach/native
+          hold
+            save native-shims, add-text(native-shims, name)
+            fork test, state/exceptions/has(<failure>)
+              hold
+                save direct, add-text(direct, <failure>)
+            walk raises
+              take declared
+              fork test, state/exceptions/has(declared)
+                hold
+                  save direct, add-text(direct, declared)
+        # `call fill / <data> / like <form>` raises the data package's `data-mismatch` when the value does not fit
+        save fills, called-names(body, fill-only)
+        fork test, is-above(fills/length, 0)
+          hold
+            save direct, add-text(direct, <data-mismatch>)
+        # a call to one of its own parameters is that parameter, not the task of the same name
+        save own-params, param-names(one)
+        save callees, make list
+        walk state/called
+          take callee
+          fork test, not(has-text(own-params, callee))
+            hold
+              push(callees, callee)
+        save raised-by/{name}, direct
+        save directs, make hash
+        walk direct
+          take raised
+          save directs/{raised}, <>
+        save via/{name}, directs
+        save calls/{name}, callees
+      miss
+        save nothing, 0
+  save changed, true
+  walk test
+    hook test, changed
+    hook hold
+      save changed, false
+      walk calls/keys()
+        take name
+        save set, raised-by/get(name)
+        save from, via/get(name)
+        save callees, calls/get(name)
+        walk callees
+          take callee
+          fork test, raised-by/has(callee)
+            hold
+              save theirs, raised-by/get(callee)
+              walk theirs
+                take exception
+                fork test, not(has-text(set, exception))
+                  hold
+                    push(set, exception)
+                    save from/{exception}, callee
+                    save changed, true
+        save raised-by/{name}, set
+        save via/{name}, from
+  save via, canonical-via(calls, raised-by, via)
+  back
+    make raise-sets
+      bind raises, raised-by
+      bind via, via
+      bind native, native-shims
+
+# the exceptions a body raises directly, honoring guards, and the functions it calls outside a guarded body
+task scan
+  take state, like raise-state
+  take body, like list, like statement
+  mark private
+
+  walk body
+    take node
+    sift node
+      case throw
+        save raised, read(raise)
+        save thrown, read(value)
+        fork test, is-unequal(raised, <>)
+          hold
+            save state/direct, add-text(state/direct, raised)
+          miss
+            save state/direct, add-text(state/direct, thrown-exception(state, thrown))
+      case guard
+        # no handler: the body's raises are caught and dropped
+        sift catch
+          case some
+            link clause
+            scan(state, clause/body)
+          case none
+            save nothing, 0
+      case while
+        expression-calls(state, cond)
+        scan(state, body)
+      case for-each
+        expression-calls(state, iterable)
+        scan(state, body)
+      case if
+        walk branches
+          take branch
+          expression-calls(state, branch/cond)
+          scan(state, branch/body)
+        sift otherwise
+          case some
+            link other
+            scan(state, other)
+          case none
+            save nothing, 0
+      case match
+        expression-calls(state, subject)
+        walk cases
+          take arm
+          scan(state, arm/body)
+        sift otherwise
+          case some
+            link other
+            scan(state, other)
+          case none
+            save nothing, 0
+      case let
+        expression-calls(state, init)
+      case assign
+        expression-calls(state, target)
+        expression-calls(state, read(value))
+      case expression
+        expression-calls(state, expr)
+      case return
+        sift read(value)
+          case some
+            link given
+            expression-calls(state, given)
+          case none
+            save nothing, 0
+      case hold
+        expression-calls(state, expr)
+      miss
+        save nothing, 0
+
+# what a thrown value raises: an exception constructed by name, `failure` for a text (one that interpolates too), and
+# `exception` for a re-raised value, decided where it was first raised
+task thrown-exception
+  take state, like raise-state
+  take thrown, like expression
+  like text
+  mark private
+
+  sift thrown
+    case record
+      fork test, state/exceptions/has(name)
+        hold
+          back name
+      back <exception>
+    case string
+      back <failure>
+    case template
+      back <failure>
+    miss
+      back <exception>
+
+# A CLOSURE'S RAISES ARE ITS MAKER'S. A closure's type carries no raise set, so what its body raises surfaces wherever
+# it is called: through `wait` and `gather` its raise is re-raised unchanged, and through any other call it unwinds the
+# caller. Attributing it to the task that MAKES the closure keeps the set sound for the usual shape (make the work,
+# spawn or gather it, wait in the same task) (note/term/research/beam-otp-lessons.md, design 3)
+task expression-calls
+  take state, like raise-state
+  take node, like expression
+  mark private
+
+  save fresh, make list
+  save state/reach/found, fresh
+  called-in-expression(state/reach, node)
+  walk state/reach/found
+    take name
+    save state/called, add-text(state/called, name)
+  save made, closures-in(node)
+  walk made
+    take closure
+    sift closure
+      case closure
+        scan(state, body)
+      miss
+        save nothing, 0
+
+# `via` CHOSEN BY RULE, NOT BY DISCOVERY. The fixed point recorded whichever callee brought an exception in first, which
+# depended on the order it visited the functions. The rule: a call that leaves the task's cycle and reaches the
+# exception comes first, in the order the body makes its calls; inside a cycle, the first callee strictly nearer a
+# raise. The path then never loops, and it is the same in a unit, where calls between units never form a cycle and a
+# stub calls nothing
+task canonical-via
+  take calls, like hash, like text, like list, like text
+  take raises, like hash, like text, like list, like text
+  take via, like hash, like text, like hash, like text, like text
+  like hash, like text, like hash, like text, like text
+  mark private
+
+  save component, cycles-of(calls)
+  # within each cycle, each member's distance to a raise of each exception: 0 for a direct raise or a call out of the
+  # cycle that raises it, else one more than the nearest member it calls
+  save distance, make hash
+  save members, make hash
+  walk component/keys()
+    take name
+    save group-at, component/get(name)
+    save group, make list
+    fork test, members/has(group-at)
+      hold
+        save group, members/get(group-at)
+    push(group, name)
+    save members/{group-at}, group
+  walk members/keys()
+    take group-at
+    save group, members/get(group-at)
+    walk group
+      take name
+      save own, make hash
+      save from, via/get(name)
+      save mine, raises/get(name)
+      walk mine
+        take exception
+        save direct, and(from/has(exception), is-equal(from/get(exception), <>))
+        save leaves, false
+        save callees, calls/get(name)
+        walk callees
+          take callee
+          fork test, and(is-unequal(component/get(callee), component/get(name)), raises-has(raises, callee, exception))
+            hold
+              save leaves, true
+        fork test, or(direct, leaves)
+          hold
+            save own/{exception}, 0
+      save distance/{name}, own
+    # relax inside the cycle until nothing nears
+    save moved, true
+    walk test
+      hook test, moved
+      hook hold
+        save moved, false
+        walk group
+          take name
+          save own, distance/get(name)
+          save mine, raises/get(name)
+          save callees, calls/get(name)
+          walk mine
+            take exception
+            walk callees
+              take callee
+              fork test, is-equal(component/get(callee), component/get(name))
+                hold
+                  save theirs, distance/get(callee)
+                  fork test, theirs/has(exception)
+                    hold
+                      save near, theirs/get(exception)
+                      fork test, or(not(own/has(exception)), is-above(own/get(exception), add(near, 1)))
+                        hold
+                          save own/{exception}, add(near, 1)
+                          save moved, true
+          save distance/{name}, own
+  walk calls/keys()
+    take name
+    save from, via/get(name)
+    save own, distance/get(name)
+    save callees, calls/get(name)
+    save mine, raises/get(name)
+    walk mine
+      take exception
+      # a direct raise stays direct
+      fork test, and(from/has(exception), is-equal(from/get(exception), <>))
+        hold
+          turn next
+      save chosen, <>
+      walk callees
+        take callee
+        fork test, and(is-unequal(component/get(callee), component/get(name)), raises-has(raises, callee, exception))
+          hold
+            save chosen, callee
+            halt
+      fork test, is-equal(chosen, <>)
+        hold
+          walk callees
+            take callee
+            fork test, and(is-equal(component/get(callee), component/get(name)), nearer(distance, callee, own, exception))
+              hold
+                save chosen, callee
+                halt
+      fork test, is-unequal(chosen, <>)
+        hold
+          save from/{exception}, chosen
+    save via/{name}, from
+  back via
+
+task raises-has
+  take raises, like hash, like text, like list, like text
+  take name, like text
+  take exception, like text
+  like boolean
+  mark private
+
+  fork test, raises/has(name)
+    hold
+      back has-text(raises/get(name), exception)
+  back false
+
+# whether a callee's distance to a raise of `exception` is strictly less than `own`'s, an absent one being infinite
+task nearer
+  take distance, like hash, like text, like hash, like text, like number
+  take callee, like text
+  take own, like hash, like text, like number
+  take exception, like text
+  like boolean
+  mark private
+
+  fork test, not(distance/has(callee))
+    hold
+      back false
+  save theirs, distance/get(callee)
+  fork test, not(theirs/has(exception))
+    hold
+      back false
+  fork test, not(own/has(exception))
+    hold
+      back true
+  back is-below(theirs/get(exception), own/get(exception))
+
+form tarjan
+  mark shared
+  link index, like hash, like text, like number
+  link low, like hash, like text, like number
+  link on-stack, like hash, like text, like boolean
+  link stack, like list, like text
+  link component, like hash, like text, like number
+  link counter, like number
+  link groups, like number
+  # the work stack: each entry's name, its callees still to visit, and how many it has visited
+  link work-names, like list, like text
+  link work-next, like list, like list, like text
+  link work-at, like list, like number
+
+# each function's strongly connected component over the calls, by Tarjan's algorithm, iteratively: a call chain
+# thousands deep would overflow a recursive walk
+task cycles-of
+  take calls, like hash, like text, like list, like text
+  like hash, like text, like number
+  mark private
+
+  save state
+    make tarjan
+      bind index, make hash
+      bind low, make hash
+      bind on-stack, make hash
+      bind stack, make list
+      bind component, make hash
+      bind counter, 0
+      bind groups, 0
+      bind work-names, make list
+      bind work-next, make list
+      bind work-at, make list
+  walk calls/keys()
+    take start
+    fork test, state/index/has(start)
+      hold
+        turn next
+    visit-first(state, calls, start)
+    walk test
+      hook test, is-above(state/work-names/length, 0)
+      hook hold
+        save top-at, subtract(state/work-names/length, 1)
+        save top, get(state/work-names, top-at)
+        save next, get(state/work-next, top-at)
+        save at, get(state/work-at, top-at)
+        fork test, is-below(at, next/length)
+          hold
+            save callee, get(next, at)
+            set(state/work-at, top-at, add(at, 1))
+            fork test, not(state/index/has(callee))
+              hold
+                visit-first(state, calls, callee)
+              miss
+                fork test, on-stack(state, callee)
+                  hold
+                    save state/low/{top}, smaller(state/low/get(top), state/index/get(callee))
+            turn next
+        pop(state/work-names)
+        pop(state/work-next)
+        pop(state/work-at)
+        fork test, is-above(state/work-names/length, 0)
+          hold
+            save parent, get(state/work-names, subtract(state/work-names/length, 1))
+            save state/low/{parent}, smaller(state/low/get(parent), state/low/get(top))
+        fork test, is-equal(state/low/get(top), state/index/get(top))
+          hold
+            save member, <>
+            walk test
+              hook test, is-unequal(member, top)
+              hook hold
+                save member, pop(state/stack)
+                save state/on-stack/{member}, false
+                save state/component/{member}, state/groups
+            save state/groups, add(state/groups, 1)
+  back state/component
+
+task visit-first
+  take state, like tarjan
+  take calls, like hash, like text, like list, like text
+  take name, like text
+  mark private
+
+  save state/index/{name}, state/counter
+  save state/low/{name}, state/counter
+  save state/counter, add(state/counter, 1)
+  push(state/stack, name)
+  save state/on-stack/{name}, true
+  save next, make list
+  walk calls/get(name)
+    take callee
+    fork test, calls/has(callee)
+      hold
+        push(next, callee)
+  push(state/work-names, name)
+  push(state/work-next, next)
+  push(state/work-at, 0)
+
+task on-stack
+  take state, like tarjan
+  take name, like text
+  like boolean
+  mark private
+
+  fork test, state/on-stack/has(name)
+    hold
+      back state/on-stack/get(name)
+  back false
+
+task smaller
+  take a, like number
+  take b, like number
+  like number
+  mark private
+
+  fork test, is-below(b, a)
+    hold
+      back b
+  back a
+
+# A task that declares `halt <form>` lines on its signature is held to them: every name must be an exception form, and
+# everything the body can raise (inferred, through its callees) must be among them. The declaration is a contract, so
+# a raise added deep in a callee surfaces here, at the signature that promised less. 03-exception.md.
+task check-raise-bounds
+  take program, like list, like statement
+  take file, like text
+  like list, like diagnostic
+
+  save diagnostics, make list
+  save exceptions, make list
+  save exception-names, make hash
+  save marker, exception-form()
+  walk program
+    take one
+    sift one
+      case record-type
+        # an optional list, walked where it is read: handed to a call it would be written into the program
+        save chained, false
+        walk read(chain)
+          take link-name
+          fork test, is-equal(link-name, marker)
+            hold
+              save chained, true
+        fork test, chained
+          hold
+            push(exceptions, name)
+            save exception-names/{name}, true
+      miss
+        save nothing, 0
+  save bounded, make list
+  walk program
+    take one
+    take at
+    sift one
+      case function
+        fork test, is-above(read(raises)/length, 0)
+          hold
+            push(bounded, at)
+      miss
+        save nothing, 0
+  fork test, is-equal(bounded/length, 0)
+    hold
+      back diagnostics
+  save sets, raise-sets-of(program, exceptions)
+  walk bounded
+    take place
+    save one, get(program, place)
+    sift one
+      case function
+        save declared, make list
+        walk raises
+          take raised
+          save declared, add-text(declared, raised)
+        save here, file
+        sift span/file
+          case some
+            link written
+            save here, written
+          case none
+            save nothing, 0
+        # a native shim raises `failure` whether or not it says so: foreign code fails in ways nobody listed
+        fork test, has-text(sets/native, name)
+          hold
+            save declared, add-text(declared, <failure>)
+        walk declared
+          take bound
+          fork test, not(exception-names/has(bound))
+            hold
+              push(diagnostics, bound-refusal(here, span, name, bound))
+        save beyond, make list
+        fork test, sets/raises/has(name)
+          hold
+            save mine, sets/raises/get(name)
+            walk mine
+              take raised
+              fork test, not(has-text(declared, raised))
+                hold
+                  push(beyond, raised)
+        fork test, is-above(beyond/length, 0)
+          hold
+            save sorted, sort(beyond, from-texts)
+            save chains, make list
+            walk sorted
+              take raised
+              push(chains, chain-text(sets, name, raised))
+            save listed, join(chains, <, >)
+            save first, get(sorted, 0)
+            save input
+              make diagnostic-input
+                bind file, here
+                bind span, span
+                bind message, make(some, <"{name}" can raise {listed}, which its signature does not declare>)
+                bind hint, make(some, <add "halt {first}" to the signature, or handle it in a fork marked mark unsafe, with halt take after it>)
+            save kind, make raise-bound
+            push(diagnostics, diagnose(kind, input))
+      miss
+        save nothing, 0
+  back diagnostics
+
+# a bound naming no exception form: a stdlib exception the build dropped is one nothing here raises, the bound wider
+# than the body rather than a misspelling
+task bound-refusal
+  take here, like text
+  take at, like span
+  take name, like text
+  take bound, like text
+  like diagnostic
+  mark private
+
+  save kind, make raise-bound
+  fork test, is-generic-exception(bound)
+    hold
+      save input
+        make diagnostic-input
+          bind file, here
+          bind span, at
+          bind message, make(some, <"{name}" declares "halt {bound}" on its signature, but nothing it calls raises "{bound}">)
+      back diagnose(kind, input)
+  save refused
+    make diagnostic-input
+      bind file, here
+      bind span, at
+      bind message, make(some, <"{name}" declares "halt {bound}" on its signature, but "{bound}" is not an exception form>)
+      bind hint, make(some, <a bound names a form that is like exception, or like one of the stdlib exceptions>)
+  back diagnose(kind, refused)
+
+# `e (through a > b)`: the call path `via` records from the task to the raise, at most 64 calls long
+task chain-text
+  take sets, like raise-sets
+  take name, like text
+  take raised, like text
+  like text
+  mark private
+
+  save chain, make list
+  save current, name
+  walk test
+    hook test, is-below(chain/length, 64)
+    hook hold
+      fork test, not(sets/via/has(current))
+        hold
+          halt
+      save from, sets/via/get(current)
+      fork test, not(from/has(raised))
+        hold
+          halt
+      save next, from/get(raised)
+      fork test, is-equal(next, <>)
+        hold
+          halt
+      push(chain, next)
+      save current, next
+  fork test, is-above(chain/length, 0)
+    hold
+      back <{raised} (through {join(chain, < \> >)})>
+  back raised

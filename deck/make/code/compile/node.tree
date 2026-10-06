@@ -222,7 +222,7 @@ form expression
       like maybe, like type
       need false
   case float
-    link value, like decimal
+    link value, like float
     link span, like span
     link type
       like maybe, like type
@@ -428,6 +428,8 @@ form hold-origin
   case index
   case zero
   case ends
+  # a value passed to a width-typed parameter is inside the width (check/width-range.ts, D12)
+  case width
   case given
 
 form statement-branch
@@ -493,7 +495,7 @@ form universal
   link name, like text
   link binders, like list, like text
   link expr, like expression
-  # each binder's type as written (`mark u, like a`), in the order of `binders`, so the kernel instantiates the
+  # each binder's type as written (`seat u, like a`), in the order of `binders`, so the kernel instantiates the
   # hypothesis only at terms of that type (check/elaborate.ts universalInstances)
   link types
     like list, like declared-param
@@ -769,6 +771,10 @@ form statement
     link result
       like maybe, like type
       need false
+    # `like u8` and the other width aliases on the result: a call is a value inside the width (check/width-range.ts)
+    link result-width
+      like text
+      need false
     link generics, like list, like generic-param
     link async
       like boolean
@@ -793,8 +799,10 @@ form statement
     link stub-writes
       like list, like number
       need false
+    # a maybe for the same reason as `stub-facts`: present, even empty, it is the set the owning unit closed
+    # (check/effects.tree `raise-sets`)
     link stub-raises
-      like list, like text
+      like maybe, like list, like text
       need false
     link stub-shape
       like maybe, like statement
@@ -958,15 +966,17 @@ form statement
   # the app's decision about one exception
   case tell
     link name, like text
+    # a maybe, so a note written empty is told apart from none (check/tell.tree)
     link note
-      like text
+      like maybe, like text
       need false
     link hint
       like text
       need false
     link links, like list, like text
+    # a maybe, so a `name` written empty is told apart from none
     link alias
-      like text
+      like maybe, like text
       need false
     link span, like span
 

@@ -144,7 +144,8 @@ task run
         back <late>
   save start, current-time()
   save answer, <none>
-  mark unsafe
+  fork
+    mark unsafe
     save answer
       call wait-within
         read job
@@ -203,7 +204,8 @@ task run
   call cancel
     read job
   save answer, <none>
-  mark unsafe
+  fork
+    mark unsafe
     save answer
       call wait
         read job

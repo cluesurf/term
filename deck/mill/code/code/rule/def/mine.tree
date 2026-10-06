@@ -2,7 +2,7 @@ load @term/mill/code/proof/mine
   find rule-step
 
 # The stdlib theorem form (`rule absurd` / `head a` / `take proof, like void` / `like a`, and form.tree's
-# `rule x` / `mark a, like tone` / claims) and the hive kind declaration (`roll test` / `like test-entry`).
+# `rule x` / `seat a, like tone` / claims) and the hive kind declaration (`roll test` / `like test-entry`).
 
 load @term/mill/code/head/mine
   find head
@@ -27,7 +27,7 @@ load @term/mill/code/code/note/mine
 # binders and whose body holds its goal. See note/term/law-and-proof.md.
 #
 #   rule reorder            the name, a word or a readable phrase in a text
-#     mark a, like integer  a universal binder, which becomes a parameter
+#     seat a, like integer  a universal binder, which becomes a parameter
 #     have h, <prop>        a hypothesis, which becomes a guard around the goal
 #     find x, like t        an existential witness, bound before the goal
 #     show hold <claim>     the goal; `show miss` proves it false
@@ -48,14 +48,17 @@ mine rule-def
       mine any
         # `note open` on a SIGNATURE-shaped rule leaves the claim deliberately open: counted and reported
         # by check/claim.ts rather than refused. Without this site it fell to the seed fallback unseen.
-        # `mark open` WITHOUT a `like` is the same metadata. With one it is a binder, which `mark-note`
-        # refuses (it takes nothing under its word), so `rule-mark` below gets it
+        # `mark open` is the same metadata.
         mine form, like mark-note
           site note
         mine form, like note
           site note
         mine form, like head
           site head
+        mine form, like rule-seat
+          site seat
+        # `mark a, like t`, the OLD spelling of a binder (renamed `seat` 2026-10-05). Read only so the bridge can
+        # refuse it by name: without this site it fell to the seed fallback, and the theorem lost its variable
         mine form, like rule-mark
           site mark
         mine form, like rule-have
@@ -80,8 +83,8 @@ mine rule-def
 
 # `have h, <proposition>`, and `take` as its alias: an antecedent the goal is proved under. The name is a
 # label, not a universal variable, and the proposition is what follows it: one nested child is an expression,
-# several parts on a line are a relation applied to terms. A `mark` inside a `have` binds a variable of the
-# hypothesis alone: `have regular / mark m, like integer / <proposition>` assumes the proposition FOR EVERY m,
+# several parts on a line are a relation applied to terms. A `seat` inside a `have` binds a variable of the
+# hypothesis alone: `have regular / seat m, like integer / <proposition>` assumes the proposition FOR EVERY m,
 # and the prover uses it at the terms the goal needs.
 mine rule-have
   mine term, term have
@@ -89,13 +92,15 @@ mine rule-have
       site name
     mine list
       mine any
+        mine form, like rule-seat
+          site seat
         mine form, like rule-mark
           site mark
         mine form, like seed
           site seed
 
 # `find x, like t` with a witness: binds x to it, so the goal is checked at that concrete value. This is the
-# existential to `mark`'s universal.
+# existential to `seat`'s universal.
 mine rule-find
   mine term, term find
     mine word
@@ -128,9 +133,21 @@ mine rule-base
     mine term, term true
       site flag
 
-# `mark s, like stack / head nat`: a universal binder, and the `head` beside its `like` is the type's argument,
+# `seat s, like stack / head nat`: a universal binder, and the `head` beside its `like` is the type's argument,
 # written as a sibling the way a `take`'s is. Without it the binder does not read, and the theorem loses the
-# variable it quantifies over.
+# variable it quantifies over. A seat is a place in the law that every value of its type may fill.
+mine rule-seat
+  mine term, term seat
+    mine term
+      site name
+    mine maybe
+      mine form, like like
+        site like
+    mine list
+      mine form, like head
+        site head
+
+# the old spelling, the same shape, refused by the bridge (mint-bridge.ts `refuseMarkBinders`)
 mine rule-mark
   mine term, term mark
     mine term

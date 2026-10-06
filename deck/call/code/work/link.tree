@@ -56,7 +56,8 @@ task link-register
 
   log-step <Registering current package globally...>
 
-  mark unsafe
+  fork
+    mark unsafe
     save shown
       call deck-tree/registerGlobalLink
         make register-ask, bind packageDir, read root
@@ -83,7 +84,8 @@ task link
       send back
   log-step <Linking {{deck}}...>
 
-  mark unsafe
+  fork
+    mark unsafe
     save consumed
       call deck-tree/consumeGlobalLink
         make consume-ask, bind(root, read root), bind name, read deck
@@ -123,7 +125,8 @@ task unlink
 
   log-step <Unlinking {{deck}}...>
 
-  mark unsafe
+  fork
+    mark unsafe
     call deck-tree/devUnlink
       make unlink-ask, bind(root, read root), bind name, read deck
       wait true

@@ -40,7 +40,7 @@ task sample-head-table
 test <write-otf-head-table produces exactly 54 bytes>
   want hold
     call is-equal
-      call size(call write-otf-head-table(call sample-head-table))
+      call length(call write-otf-head-table(call sample-head-table))
       code 54
 
 test <units-per-em round trips>

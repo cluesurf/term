@@ -1,0 +1,658 @@
+# A `find` names something the module it loads defines.
+#
+# `find get` from `@term/base/network/http` still compiled after the module stopped defining a `get` of its own, and
+# `wait get(url)` built and failed at run time with `ReferenceError: get is not defined` (guides:
+# applications/web/fetching, 2026-10-03). A stale import was the same as no import, with no message, and the flat
+# merge then bound the name to whatever else in the program had it.
+#
+# For each `find` in the file being compiled: the name is defined in one of the files the load resolved to, or in a
+# file one of those re-exports through `bear`. "Defined" is read two ways, either enough: a top-level statement of the
+# built program (a task, a form or one of its variants, a bind, a native alias, a mask, a view, a constant), or a
+# top-level line of the module's own source naming it (a `tree` or `fuse` template expands before the program is
+# built, so it is never a statement).
+#
+# Ported from check/finds.ts (self-hosting, 2026-10-06). Reading a module's source is the caller's IO, and the original
+# read one only when the program did not answer: the port asks for the first source it needs and does not have
+# (`wants`), the caller reads it and asks again, so the same files are read in the same order. compile.ts holds the
+# loop.
+
+load @term/base/list
+  find list
+  find get
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find char-code-at
+  find split
+  find substring
+
+load ../parser/diagnostic
+  find diagnostic
+  find diagnose
+  find diagnostic-input
+  find position
+  find span
+
+load ../compile/node
+  find statement
+  find statement-span
+
+load ../compile/import-scope
+  find file-scope
+  find scope-find
+  find scope-of
+  find targets-of
+
+# a module's source as the caller read it: its text, none where the file does not exist
+form read-source
+  link file, like text
+  link text
+    like maybe, like text
+    need false
+
+form finds-answer
+  link diagnostics, like list, like diagnostic
+  # the source the check needs next and was not handed, empty when it is done
+  link wants, like list, like text
+
+form finds-state
+  mark shared
+  link scopes, like list, like file-scope
+  link defined-files, like list, like text
+  link defined-names, like list, like list, like text
+  link sources, like list, like read-source
+  link source-files, like list, like text
+  link source-names, like list, like list, like text
+  link wanted, like text
+
+# the language's own type words, which a `find` may name and no module defines, and the kind words a `find` may lead
+# with (`find tree checked-add`, `find form size-32`), where the import scope records the kind and not the name
+task built-in
+  like list, like text
+  mark private
+
+  save out, make list
+  walk split(<tree fuse bind mask view rule text number integer float decimal boolean list hash bytes void unknown dynamic type task form>, < >)
+    take one
+    push(out, one)
+  back out
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+task add-text
+  take values, like list, like text
+  take value, like text
+  like list, like text
+  mark private
+
+  fork test, not(has-text(values, value))
+    hold
+      push(values, value)
+  back values
+
+task ends-with-text
+  take value, like text
+  take tail, like text
+  like boolean
+  mark private
+
+  fork test, is-below(value/length, tail/length)
+    hold
+      back false
+  back is-equal(substring(value, subtract(value/length, tail/length), value/length), tail)
+
+task is-digits
+  take value, like text
+  like boolean
+  mark private
+
+  fork test, is-equal(value, <>)
+    hold
+      back false
+  save digits, split(<0123456789>, <>)
+  save chars, split(value, <>)
+  walk chars
+    take char
+    fork test, not(has-text(digits, char))
+      hold
+        back false
+  back true
+
+# a name as it was written, before module scope split it by file (`__in<g>_<k>`) and named a form apart from a case
+# (`__form` before it): the original's `/(?:__form)?(?:__in\d+_\d+)?$/` removed
+task written-name
+  take name, like text
+  like text
+  mark private
+
+  save out, name
+  save chars, split(name, <>)
+  # the last `__in`, followed by `digits_digits` to the end
+  save at, -1
+  save k, 0
+  walk test
+    hook test, is-below(add(k, 3), chars/length)
+    hook hold
+      fork test, is-equal(substring(name, k, add(k, 4)), <__in>)
+        hold
+          save at, k
+      save k, add(k, 1)
+  fork test, is-minimum(at, 0)
+    hold
+      save rest, substring(name, add(at, 4), chars/length)
+      save pieces, split(rest, <_>)
+      fork test, and(is-equal(pieces/length, 2), and(is-digits(get(pieces, 0)), is-digits(get(pieces, 1))))
+        hold
+          save out, substring(name, 0, at)
+  fork test, ends-with-text(out, <__form>)
+    hold
+      save out, substring(out, 0, subtract(out/length, 6))
+  back out
+
+# a module's own name: its file's, or its directory's for a `base.tree` or `note.tree` entry
+task module-name
+  take file, like text
+  like text
+  mark private
+
+  save parts, split(file, </>)
+  save leaf, get(parts, subtract(parts/length, 1))
+  fork test, ends-with-text(leaf, <.tree>)
+    hold
+      save leaf, substring(leaf, 0, subtract(leaf/length, 5))
+  fork test, and(or(is-equal(leaf, <base>), is-equal(leaf, <note>)), is-above(parts/length, 1))
+    hold
+      back get(parts, subtract(parts/length, 2))
+  back leaf
+
+task add-defined
+  take state, like finds-state
+  take where, like text
+  take name, like text
+  mark private
+
+  fork test, or(is-equal(where, <>), is-equal(name, <>))
+    hold
+      back
+  save at, -1
+  walk state/defined-files
+    take one
+    take k
+    fork test, is-equal(one, where)
+      hold
+        save at, k
+  save names, make list
+  fork test, is-minimum(at, 0)
+    hold
+      save names, get(state/defined-names, at)
+  save names, add-text(names, name)
+  # a form or task two files define is split by file before this runs, and a form named like a case is renamed apart,
+  # so it is defined under the name it was written with too
+  save names, add-text(names, written-name(name))
+  fork test, is-minimum(at, 0)
+    hold
+      set(state/defined-names, at, names)
+    miss
+      push(state/defined-files, where)
+      push(state/defined-names, names)
+
+task file-of
+  take one, like statement
+  like text
+  mark private
+
+  save at, statement-span(one)
+  sift at/file
+    case some
+      link written
+      back written
+    case none
+      back <>
+
+# ---- a module's source, read for what is gone by the time the program is built ----
+
+# the defining heads, each followed by blank space and the name it defines
+task defining-heads
+  like list, like text
+  mark private
+
+  back split(<task form bind host tree fuse mask view rule mill suit list mesh save mine mint>, < >)
+
+# JavaScript's `\s`: the ASCII blanks, and the Unicode spaces and line and paragraph separators
+task is-blank
+  take char, like text
+  like boolean
+  mark private
+
+  save code, char-code-at(char, 0)
+  fork test, or(and(is-minimum(code, 9), is-maximum(code, 13)), is-equal(code, 32))
+    hold
+      back true
+  fork test, or(or(is-equal(code, 160), is-equal(code, 5760)), and(is-minimum(code, 8192), is-maximum(code, 8202)))
+    hold
+      back true
+  back or(or(or(is-equal(code, 8232), is-equal(code, 8233)), or(is-equal(code, 8239), is-equal(code, 8287))), or(is-equal(code, 12288), is-equal(code, 65279)))
+
+# what `.` does not cross: a line or paragraph separator, `\n` and `\r`
+task is-line-end
+  take char, like text
+  like boolean
+  mark private
+
+  save code, char-code-at(char, 0)
+  back or(or(is-equal(code, 10), is-equal(code, 13)), or(is-equal(code, 8232), is-equal(code, 8233)))
+
+# the run of characters from `at` up to blank space or a comma
+task name-from
+  take chars, like list, like text
+  take at, like number
+  like text
+  mark private
+
+  save out, make list
+  save k, at
+  walk test
+    hook test, is-below(k, chars/length)
+    hook hold
+      save char, get(chars, k)
+      fork test, or(is-blank(char), is-equal(char, <,>))
+        hold
+          halt
+      push(out, char)
+      save k, add(k, 1)
+  back join(out, <>)
+
+# `^(?:task|form|...)\s+([^\s,]+)`: a line that starts with a defining head, then blank space, then the name
+task defined-on-line
+  take line, like text
+  like text
+  mark private
+
+  save chars, split(line, <>)
+  walk defining-heads()
+    take head
+    save size, head/length
+    fork test, and(is-above(chars/length, size), is-equal(substring(line, 0, size), head))
+      hold
+        save k, size
+        walk test
+          hook test, and(is-below(k, chars/length), is-blank(get(chars, k)))
+          hook hold
+            save k, add(k, 1)
+        fork test, is-above(k, size)
+          hold
+            save name, name-from(chars, k)
+            fork test, is-unequal(name, <>)
+              hold
+                back name
+  back <>
+
+# `^\s+(?:load|find)\s.*,\s*name\s+([^\s,]+)`: an indented `load` or `find` line, and the name after the LAST
+# `, name ` on it (the `.*` is greedy)
+task alias-on-line
+  take line, like text
+  like text
+  mark private
+
+  save chars, split(line, <>)
+  save k, 0
+  walk test
+    hook test, and(is-below(k, chars/length), is-blank(get(chars, k)))
+    hook hold
+      save k, add(k, 1)
+  fork test, is-equal(k, 0)
+    hold
+      back <>
+  save rest, substring(line, k, chars/length)
+  save word-size, 0
+  fork test, or(starts-with-word(rest, <load>), starts-with-word(rest, <find>))
+    hold
+      save word-size, 4
+  fork test, is-equal(word-size, 0)
+    hold
+      back <>
+  # after the word, one blank character at least, then anything: the start of what the `.*` may cover
+  fork test, not(and(is-below(add(k, 4), chars/length), is-blank(get(chars, add(k, 4)))))
+    hold
+      back <>
+  save from, add(k, 5)
+  # the last `,` at or after `from`, before any line end the `.*` cannot cross, that a `\s*name\s+` and a name follow
+  save found, <>
+  save at, from
+  walk test
+    hook test, and(is-below(at, chars/length), not(is-line-end(get(chars, at))))
+    hook hold
+      fork test, is-equal(get(chars, at), <,>)
+        hold
+          save j, add(at, 1)
+          walk test
+            hook test, and(is-below(j, chars/length), is-blank(get(chars, j)))
+            hook hold
+              save j, add(j, 1)
+          fork test, and(is-below(add(j, 3), chars/length), is-equal(substring(line, j, add(j, 4)), <name>))
+            hold
+              save m, add(j, 4)
+              save blank-start, m
+              walk test
+                hook test, and(is-below(m, chars/length), is-blank(get(chars, m)))
+                hook hold
+                  save m, add(m, 1)
+              fork test, is-above(m, blank-start)
+                hold
+                  save name, name-from(chars, m)
+                  fork test, is-unequal(name, <>)
+                    hold
+                      save found, name
+      save at, add(at, 1)
+  back found
+
+task starts-with-word
+  take value, like text
+  take word, like text
+  like boolean
+  mark private
+
+  fork test, is-below(value/length, word/length)
+    hold
+      back false
+  back is-equal(substring(value, 0, word/length), word)
+
+# the names a module's source defines on a line of its own, and the aliases its loads and finds expose, each once
+task names-in-source
+  take text, like text
+  like list, like text
+
+  save names, make list
+  save lines, split(text, <\n>)
+  walk lines
+    take line
+    save defined, defined-on-line(line)
+    fork test, is-unequal(defined, <>)
+      hold
+        save names, add-text(names, defined)
+    save alias, alias-on-line(line)
+    fork test, is-unequal(alias, <>)
+      hold
+        save names, add-text(names, alias)
+  back names
+
+# the names a target's source holds, read once; the empty list and a want recorded where the caller has not read it
+task source-names-of
+  take state, like finds-state
+  take target, like text
+  like list, like text
+  mark private
+
+  walk state/source-files
+    take one
+    take k
+    fork test, is-equal(one, target)
+      hold
+        back get(state/source-names, k)
+  walk state/sources
+    take source
+    fork test, is-equal(source/file, target)
+      hold
+        save names, make list
+        sift source/text
+          case some
+            link written
+            save names, names-in-source(written)
+          case none
+            save nothing, 0
+        push(state/source-files, target)
+        push(state/source-names, names)
+        back names
+  fork test, is-equal(state/wanted, <>)
+    hold
+      save state/wanted, target
+  save none-read, make list
+  back none-read
+
+# a name is reachable from a file when it defines it, or a file it bears does, or a file it re-finds the name from
+task reaches
+  take state, like finds-state
+  take target, like text
+  take name, like text
+  take seen, like list, like text
+  like boolean
+  mark private
+
+  fork test, has-text(seen, target)
+    hold
+      back false
+  push(seen, target)
+  walk state/defined-files
+    take one
+    take k
+    fork test, and(is-equal(one, target), has-text(get(state/defined-names, k), name))
+      hold
+        back true
+  save from-source, source-names-of(state, target)
+  fork test, is-unequal(state/wanted, <>)
+    hold
+      back false
+  fork test, has-text(from-source, name)
+    hold
+      back true
+  sift scope-of(state/scopes, target)
+    case some
+      link entry
+      walk entry/bears
+        take borne
+        fork test, reaches(state, borne, name, seen)
+          hold
+            back true
+        fork test, is-unequal(state/wanted, <>)
+          hold
+            back false
+      sift targets-of(entry/finds, name)
+        case some
+          link founds
+          walk founds
+            take found
+            fork test, reaches(state, found, name, seen)
+              hold
+                back true
+            fork test, is-unequal(state/wanted, <>)
+              hold
+                back false
+        case none
+          save nothing, 0
+    case none
+      save nothing, 0
+  back false
+
+task check-finds
+  take program, like list, like statement
+  take file, like text
+  take scopes, like list, like file-scope
+  # the sources the caller has read so far, at the check's asking
+  take sources, like list, like read-source
+  like finds-answer
+
+  save diagnostics, make list
+  save wants, make list
+  save done
+    make finds-answer
+      bind diagnostics, diagnostics
+      bind wants, wants
+  save own-maybe, scope-of(scopes, file)
+  sift own-maybe
+    case none
+      back done
+    case some
+      link own
+      fork test, is-equal(own/finds/length, 0)
+        hold
+          back done
+  save state
+    make finds-state
+      bind scopes, scopes
+      bind defined-files, make list
+      bind defined-names, make list
+      bind sources, sources
+      bind source-files, make list
+      bind source-names, make list
+      bind wanted, <>
+  # what each file defines, from the program
+  walk program
+    take one
+    save where, file-of(one)
+    sift one
+      case record-type
+        add-defined(state, where, name)
+        walk variants
+          take variant
+          add-defined(state, where, variant/name)
+      case native
+        add-defined(state, where, alias)
+      case let
+        add-defined(state, where, name)
+      case function
+        sift method
+          case some
+            link owner
+            # a form's method is found by its bare name: `find size` from list.tree reaches `form list`'s `task size`
+            add-defined(state, where, owner/name)
+            add-defined(state, where, name)
+          case none
+            add-defined(state, where, name)
+      miss
+        add-defined(state, where, statement-name(one))
+  save words, built-in()
+  sift own-maybe
+    case some
+      link own
+      walk own/finds
+        take entry
+        save name, entry/name
+        save targets, entry/targets
+        fork test, or(has-text(words, name), is-equal(targets/length, 0))
+          hold
+            turn next
+        save reached, false
+        walk targets
+          take target
+          fork test, is-equal(module-name(target), name)
+            hold
+              save reached, true
+              halt
+          save seen, make list
+          fork test, reaches(state, target, name, seen)
+            hold
+              save reached, true
+              halt
+          fork test, is-unequal(state/wanted, <>)
+            hold
+              halt
+        fork test, is-unequal(state/wanted, <>)
+          hold
+            push(wants, state/wanted)
+            back
+              make finds-answer
+                bind diagnostics, make list
+                bind wants, wants
+        fork test, reached
+          hold
+            turn next
+        push(diagnostics, refusal(program, file, entry, targets))
+    case none
+      save nothing, 0
+  back
+    make finds-answer
+      bind diagnostics, diagnostics
+      bind wants, wants
+
+# a statement's name where it has one: a binding, a mask, a view, a roll, a tell and the rest the original read `name` off
+task statement-name
+  take one, like statement
+  like text
+  mark private
+
+  sift one
+    case bind
+      back name
+    case mask
+      back name
+    case view
+      back name
+    case roll
+      back name
+    case tell
+      back name
+    case hold
+      back read(name)
+    miss
+      back <>
+
+task refusal
+  take program, like list, like statement
+  take file, like text
+  take entry, like scope-find
+  take targets, like list, like text
+  like diagnostic
+  mark private
+
+  save at, fallback-span(program, file)
+  sift entry/at
+    case some
+      link given
+      save at, given
+    case none
+      save nothing, 0
+  save shown, make list
+  walk targets
+    take target
+    save parts, split(target, </>)
+    fork test, is-above(parts/length, 1)
+      hold
+        push(shown, <{get(parts, subtract(parts/length, 2))}/{get(parts, subtract(parts/length, 1))}>)
+      miss
+        push(shown, target)
+  save listed, join(shown, <, >)
+  save input
+    make diagnostic-input
+      bind file, file
+      bind span, at
+      bind message, make(some, <"{entry/name}" is found in {listed}, which does not define it>)
+      bind hint, make(some, <remove the `find`, or load the module that defines the name now>)
+  save kind, make unknown-name
+  back diagnose(kind, input)
+
+# where a refusal points when the scope has no position for the `find`: the first statement of the file, else the start
+# of the file
+task fallback-span
+  take program, like list, like statement
+  take file, like text
+  like span
+  mark private
+
+  walk program
+    take one
+    fork test, is-equal(file-of(one), file)
+      hold
+        back statement-span(one)
+  save origin
+    make position
+      bind line, 0
+      bind column, 0
+  back
+    make span
+      bind file, make(some, file)
+      bind start, origin
+      bind end, origin

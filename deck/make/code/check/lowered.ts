@@ -11,11 +11,14 @@
 import type { Program } from '@term/make/code/compile/node'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
-import { LOWERED_LIST_MEMBERS, LOWERED_MAP_MEMBERS } from '@term/make/code/compile/lowered-members'
+import { loweredListMembers, loweredMapMembers } from '@term/make/code/compile/lowered-members'
 
 const NATIVE = new Set(['rust', 'swift', 'kotlin'])
+const LOWERED_LIST_MEMBERS: ReadonlySet<string> = new Set(loweredListMembers())
+const LOWERED_MAP_MEMBERS: ReadonlySet<string> = new Set(loweredMapMembers())
 
-export function checkLoweredMembers(program: Program, file: string, env: string | undefined): Diagnostic[] {
+// `env` is the env being emitted for, the empty text for none (check/lowered.tree)
+export function checkLoweredMembers(program: Program, file: string, env: string): Diagnostic[] {
   if (!env || !NATIVE.has(env)) {
     return []
   }

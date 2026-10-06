@@ -39,7 +39,7 @@ task sample-hhea-table
 test <write-otf-hhea-table produces exactly 36 bytes>
   want hold
     call is-equal
-      call size(call write-otf-hhea-table(call sample-hhea-table))
+      call length(call write-otf-hhea-table(call sample-hhea-table))
       code 36
 
 test <negative descender round trips through signed int16>
@@ -83,7 +83,7 @@ task sample-maxp-table
 test <write-otf-maxp-table produces exactly 32 bytes>
   want hold
     call is-equal
-      call size(call write-otf-maxp-table(call sample-maxp-table))
+      call length(call write-otf-maxp-table(call sample-maxp-table))
       code 32
 
 test <num-glyphs round trips>

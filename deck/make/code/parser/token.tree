@@ -161,9 +161,17 @@ task tokenize
 
   save line, 0
   save column, 0
+  # the physical line being read. Every token's line is this, never a count of `newline` tokens: inside a text literal
+  # a line's break is part of the literal's text and no `newline` token is made, so a count fell one line behind for
+  # every break a literal held, and every span after it, and every compiler error, pointed that many lines too early
+  # (2026-10-06, test/parser/span-lines.ts)
+  save physical, 0
 
   walk lines
     take raw-line
+    save line, physical
+    save column, 0
+    save physical, add(physical, 1)
     save runes, to-runes(<{raw-line}\n>)
     # a cursor over the line's code points, advanced in place
     save pos, 0

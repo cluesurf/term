@@ -37,7 +37,7 @@ ok(
   'record eta: x == make pair (x.left) (x.right)',
   compiles(`${PRELUDE}
 rule pair-eta
-  mark x, like pair
+  seat x, like pair
   show hold
     call is-equal
       read x

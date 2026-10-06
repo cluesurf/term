@@ -73,7 +73,8 @@ task big
 
 task by-zero
   like text
-  mark unsafe
+  fork
+    mark unsafe
     save never, divide(make-rational(1, 2), make-rational(0, 3))
     back rational-text(never)
   halt take

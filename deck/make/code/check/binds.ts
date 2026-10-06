@@ -15,7 +15,7 @@
 import type { Program, Statement } from '@term/make/code/compile/node'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
-import { bindTarget } from '@term/make/code/compile/bind'
+import { bindTargetOf } from '@term/make/code/compile/bind'
 
 type Bind = Extract<Statement, { form: 'bind' }>
 
@@ -54,20 +54,21 @@ function calledNames(program: Program): Set<string> {
   return out
 }
 
+// `env` is the env being emitted for, the empty text for `term make` with none (check/binds.tree)
 export function checkBindTargets(
   program: Program,
   file: string,
-  env: string | undefined,
+  env: string,
 ): { errors: Diagnostic[]; warnings: Diagnostic[] } {
   const binds = program.filter((s): s is Bind => s.form === 'bind')
   const errors: Diagnostic[] = []
   const warnings: Diagnostic[] = []
 
-  if (env !== undefined) {
+  if (env !== '') {
     const called = calledNames(program)
 
     for (const bind of binds) {
-      if (called.has(bind.name) && !bindTarget(bind as never, env)) {
+      if (called.has(bind.name) && bindTargetOf(bind, env).form === 'none') {
         errors.push(
           diagnose('unknown-name', {
             file: bind.span.file ?? file,
@@ -85,7 +86,7 @@ export function checkBindTargets(
       continue
     }
 
-    const missing = BACKENDS.filter(backend => !bindTarget(bind as never, backend))
+    const missing = BACKENDS.filter(backend => bindTargetOf(bind, backend).form === 'none')
 
     // an ERROR since 2026-10-05: as a warning the bind built for the backends it had, and a program calling it failed
     // only once it was built for another, far from the bind. Every shared bind in the standard library covers all five.

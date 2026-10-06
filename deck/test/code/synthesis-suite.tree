@@ -92,7 +92,7 @@ task score
   take candidate, like expression
   take examples, like list, like list, like number
   take targets, like list, like number
-  like decimal
+  like float
 
   save hits, 0
   save at, 0

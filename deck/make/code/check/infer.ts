@@ -8,9 +8,9 @@ import type {
   Span,
 } from '@term/make/code/parser/diagnostic'
 import { armLocals } from '@term/make/code/check/arm'
-import { LOWERED_LIST_MEMBERS, LOWERED_LIST_READ, LOWERED_MAP_MEMBERS, LOWERED_MAP_READ } from '@term/make/code/compile/lowered-members'
+import { loweredListMembers, loweredListRead, loweredMapMembers, loweredMapRead } from '@term/make/code/compile/lowered-members'
 import { transparentAliases, unfoldAlias as unfoldAliasOf } from '@term/make/code/check/alias'
-import { raiseSets } from '@term/make/code/check/effects'
+import { raiseSetsOf } from '@term/make/code/check/effects'
 import { diagnose } from '@term/make/code/parser/diagnostic'
 import { isStringMethod, hostMethod } from '@term/make/code/compile/text-methods'
 import { freshType, newSubstitution, occursIn, resolveType, unifyTypes, unifyTypesAt } from '@term/make/code/check/substitution'
@@ -30,7 +30,9 @@ import {
 import type { Scheme } from '@term/make/code/check/scheme'
 import { expectType } from '@term/make/code/check/expect'
 import { typeTestOf, unknownSeam } from '@term/make/code/check/seam'
-import { inferStrict } from '@term/make/code/check/strict'
+import type { TypeTest } from '@term/make/code/check/seam'
+import { HOLE, nameSpan } from '@term/make/code/check/resolve'
+import { inferStrict, unknownSeamOn } from '@term/make/code/check/strict'
 import type {
   DeclaredSignature,
   Expression,
@@ -104,8 +106,8 @@ function instantiate(signature: Signature, sub: Substitution): Instantiated {
 // the members a native map and a native list answer THEMSELVES on every backend (camelCase, as a member call emits):
 // exactly what the emitters lower (compile/lowered-members.ts). A member call of any other `hash` or `list` method
 // dispatches to the Term method (`bindMemberMethod`). This list once named seven more no native emitter lowered
-const NATIVE_MAP_MEMBERS = new Set([...LOWERED_MAP_MEMBERS, LOWERED_MAP_READ])
-const NATIVE_LIST_MEMBERS = new Set([...LOWERED_LIST_MEMBERS, LOWERED_LIST_READ])
+const NATIVE_MAP_MEMBERS = new Set([...loweredMapMembers(), loweredMapRead()])
+const NATIVE_LIST_MEMBERS = new Set([...loweredListMembers(), loweredListRead()])
 
 // the operators a mask may stand behind, each with its mask and the task the mask declares (decisions-2026-10.md, D5)
 const ARITHMETIC_MASKS = new Map([
@@ -143,6 +145,16 @@ let profile: InferProfile | undefined
 export function setInferProfile(next: InferProfile | undefined): void {
   profile = next
 }
+
+// the result of each member a text answers itself, camelCase as a member call is written by now, typed as
+// @term/base/text declares the task over it (`char-code-at` is `like integer`, `split` a `like list, like text`)
+const TEXT: Type = { kind: 'string' }
+const TEXT_MEMBER_RESULTS = new Map<string, Type>([
+  ...['charAt', 'concat', 'padEnd', 'padStart', 'repeat', 'replace', 'replaceAll', 'slice', 'substring', 'toLowerCase', 'toString', 'toUpperCase', 'trim', 'trimEnd', 'trimStart'].map(op => [op, TEXT] as [string, Type]),
+  ...['charCodeAt', 'indexOf', 'lastIndexOf'].map(op => [op, { kind: 'number' }] as [string, Type]),
+  ...['endsWith', 'includes', 'startsWith'].map(op => [op, { kind: 'boolean' }] as [string, Type]),
+  ['split', { kind: 'array', element: TEXT }],
+])
 
 export function check(
   program: Program,
@@ -232,7 +244,7 @@ function checkProgram(
   }
   // a caught exception's raise set (the guarded body's), for the exhaustiveness of a `fork case` over it
   const caughtRaises = new Map<string, Set<string>>()
-  let programRaises: Map<string, Set<string>> | undefined
+  let programRaises: Map<string, string[]> | undefined
   // a record-type field's foreign `name <...>` (its exact native name), so the emitter uses it verbatim
   const fieldNick = new Map<string, Map<string, string>>()
   // enum variant sets (for exhaustiveness) and variant -> enum (so `make red` is typed as its enum)
@@ -383,7 +395,7 @@ function checkProgram(
       const found = expectType(sub, transparentAlias, actual, wanted, span, what, currentFile)
 
       // the two unified: an `unknown` handed on to a typed place is the seam's to refuse (check/seam.ts)
-      diagnostics.push(...(found.length > 0 ? found : unknownSeam(sub, actual, wanted, span, what, currentFile)))
+      diagnostics.push(...(found.length > 0 ? found : unknownSeam(unknownSeamOn(), sub, actual, wanted, span, what, currentFile)))
     }
   }
 
@@ -845,6 +857,10 @@ function checkProgram(
   // with the mask it is bound by). Used to discharge a bounded call whose argument is still one of the enclosing
   // generics rather than a concrete type. Compared by resolved representative, since unification may have linked it.
   let currentBounds: { variable: Type; mask: string }[] = []
+  // the generic names of the task being checked, so a hole's type reads `t` rather than an inference variable
+  let currentGenericNames = new Map<number, string>()
+  // every typed hole met, with the scope it stood in, reported after the last body (`reportHoles`)
+  const holes: { node: Expression; type: Type; env: Env; file: string; names: Map<number, string> }[] = []
 
   // whether a value is of a form that wears `mask`, or of a generic of the task being checked that is bounded by it
   function wearsArithmetic(type: Type, mask: string): boolean {
@@ -898,7 +914,16 @@ function checkProgram(
         type = dynamicType()
         break
       case 'hole':
-        type = unknownType()
+        // a TYPED HOLE the resolver found (check/resolve.ts, `HOLE`): a fresh variable, so the place it stands in
+        // decides its type, reported once every body is checked. Any other hole (a dictionary the rewrite could not
+        // supply, named `trait-<mask>`) is gradual, as it was
+        if (node.name === HOLE) {
+          type = fresh()
+          holes.push({ node, type, env: new Map(env), file: currentFile, names: currentGenericNames })
+        } else {
+          type = unknownType()
+        }
+
         break
 
       case 'variable': {
@@ -907,8 +932,10 @@ function checkProgram(
         if (local) {
           type = instantiateScheme(local)
         } else if (docksByFile.get(currentFile)?.has(node.name)) {
-          // a module this file docks: the host's own value, typed by nothing the program declares
-          type = unknownType()
+          // a module this file docks: the host's own value, typed by nothing the program declares. `dynamic`, which
+          // says it crossed a native boundary, and so does every member and call of it: an `unknown` is a value the
+          // program hides, and only that is narrowed before a typed place (the gradual seam, D1)
+          type = dynamicType()
         } else if (functions.has(node.name)) {
           // a task referenced as a first-class value: its (freshly instantiated) function type
           const signature = instantiate(functions.get(node.name)!, sub)
@@ -1376,6 +1403,9 @@ function checkProgram(
             }),
           )
           type = unknownType()
+        } else if (target.kind === 'dynamic') {
+          // a member of a host value is a host value
+          type = dynamicType()
         } else {
           type = unknownType()
         }
@@ -1718,12 +1748,16 @@ function checkProgram(
             }
 
             if (receiver.kind === 'array') {
-              if (op === 'slice' || op === 'concat' || op === 'reverse') {
+              // every member of compile/lowered-members.ts whose result the receiver alone decides. `get` and `at`
+              // read an element: they were the gradual unknown, so `table/get(i)` of a `list, number` was no number
+              if (op === 'slice' || op === 'concat' || op === 'reverse' || op === 'toReversed' || op === 'splice') {
                 nativeResult = receiver
-              } else if (op === 'pop' || op === 'shift') {
+              } else if (op === 'pop' || op === 'shift' || op === 'get' || op === 'at') {
                 nativeResult = receiver.element
-              } else if (op === 'push' || op === 'unshift' || op === 'indexOf' || op === 'lastIndexOf') {
+              } else if (op === 'push' || op === 'unshift' || op === 'indexOf' || op === 'lastIndexOf' || op === 'findIndex') {
                 nativeResult = { kind: 'number' }
+              } else if (op === 'some' || op === 'every') {
+                nativeResult = { kind: 'boolean' }
               } else if (op === 'includes') {
                 nativeResult = { kind: 'boolean' }
               } else if (op === 'join') {
@@ -1742,11 +1776,16 @@ function checkProgram(
               } else if (op === 'has' || op === 'delete') {
                 nativeResult = { kind: 'boolean' }
               }
+            } else if (receiver.kind === 'string') {
+              // a TEXT's own members, which every emitter lowers (counting code points, note/term/stdlib/semantics.md):
+              // their results are what @term/base/text declares them, where they were the gradual unknown, and each
+              // task there sending one back was a value the gradual seam had to refuse (D1)
+              nativeResult = TEXT_MEMBER_RESULTS.get(op)
             }
           }
 
           // calling a first-class function value (a local of function type, a parameter, etc.), its type read through a
-          // transparent alias: `mark v, like assignment` for `form assignment / like task / ...` is called as the task
+          // transparent alias: `seat v, like assignment` for `form assignment / like task / ...` is called as the task
           const calleeType = unfoldAlias(resolve(inferExpression(node.callee, env)))
 
           if (calleeType.kind === 'function') {
@@ -1770,6 +1809,9 @@ function checkProgram(
             }
 
             type = calleeType.result
+          } else if (calleeType.kind === 'dynamic') {
+            // a host function: what it returns is the host's too
+            type = dynamicType()
           } else if (
             calleeType.kind === 'unknown' ||
             calleeType.kind === 'variable'
@@ -1864,7 +1906,7 @@ function checkProgram(
     const at = node.branches.findIndex(branch => {
       const tested = typeTestOf(branch.cond)
 
-      return tested !== undefined && !functions.has(tested.test)
+      return tested.form === 'some' && !functions.has(tested.value.test)
     })
 
     if (at < 0) {
@@ -1879,7 +1921,8 @@ function checkProgram(
     }
 
     const first = node.branches[0]!
-    const tested = typeTestOf(first.cond)!
+    // the branch at `at` is a type test, found just above
+    const tested = (typeTestOf(first.cond) as { form: 'some'; value: TypeTest }).value
     const bound = env.get(tested.subject)
     const held = bound ? resolve(instantiateScheme(bound)) : undefined
 
@@ -2050,7 +2093,7 @@ function checkProgram(
           })
           // what the guarded body can raise: its own raises and its callees' sets, so a `fork case` over the caught
           // value is checked for exhaustiveness against exactly that
-          programRaises ??= raiseSets(program, new Set(exceptionProps.keys())).raises
+          programRaises ??= raiseSetsOf(program, [...exceptionProps.keys()]).raises
           caughtRaises.set(node.catch.name, bodyRaises(node.body, programRaises))
           checkBody(node.catch.body, inner, result)
         }
@@ -3647,6 +3690,7 @@ function checkProgram(
       variable: { kind: 'variable', id },
       mask,
     }))
+    currentGenericNames = signature.genericNames
 
     const env: Env = new Map(moduleEnv)
     // a same-arity redefinition keeps the first signature, but a merged program can still hand this body more
@@ -3890,6 +3934,8 @@ function checkProgram(
   const zonkGeneric = (type: Type, names: Map<number, string>): Type =>
     zonkGenericType(type, names, sub)
 
+  reportHoles()
+
   // final pass: record fully resolved types (cross-function constraints from call sites are now known)
   for (const statement of program) {
     currentFile = statement.span.file ?? file
@@ -3926,6 +3972,110 @@ function checkProgram(
   }
 
   return diagnostics
+
+  // whether a candidate's type unifies with a hole's, answered without keeping anything the trial bound: the
+  // substitution is restored whole, path compression and recorded origins included
+  function fitsTrial(candidate: Type, wanted: Type): boolean {
+    const bindings = new Map(sub.bindings)
+    const origin = new Map(sub.origin)
+    const next = sub.next
+    const ok = unifyTypes(sub, candidate, wanted)
+
+    sub.bindings = bindings
+    sub.origin = origin
+    sub.next = next
+
+    return ok
+  }
+
+  // a type a value may be read at says nothing about whether it fits: a variable, the gradual unknown, a host value
+  function isLoose(type: Type): boolean {
+    const held = resolve(type)
+
+    return held.kind === 'variable' || held.kind === 'unknown' || held.kind === 'dynamic'
+  }
+
+  // EACH TYPED HOLE, ONE ERROR: the type its place needs, every value in scope of that type as a fix (not sure, since
+  // several may fit and only the author knows which is meant), and the tasks of the program that return the type,
+  // named in the hint because a call needs arguments a fix cannot choose
+  function reportHoles(): void {
+    const LIMIT = 12
+    const fileOf = new Map<string, string | undefined>()
+
+    for (const statement of program) {
+      if (statement.form === 'function') {
+        fileOf.set(statement.name, statement.span.file)
+      }
+    }
+
+    for (const hole of holes) {
+      const wanted = resolve(hole.type)
+      const shown = showType(zonkGeneric(hole.type, hole.names))
+      const span = nameSpan(hole.node.span, HOLE)
+      const values: { name: string; type: string }[] = []
+      const tasks: { name: string; near: boolean }[] = []
+
+      if (!isLoose(wanted)) {
+        // innermost first: a local before a parameter before a module binding, the order the reader looks in
+        for (const [name, scheme] of [...hole.env].reverse()) {
+          if (name === HOLE || name.includes('__')) {
+            continue
+          }
+
+          const type = instantiateScheme(scheme)
+
+          if (!isLoose(type) && fitsTrial(type, hole.type)) {
+            values.push({ name, type: showType(zonkGeneric(type, hole.names)) })
+          }
+        }
+
+        for (const [name, signature] of functions) {
+          if (name.includes('__') || hole.env.has(name)) {
+            continue
+          }
+
+          const instance = instantiate(signature, sub)
+
+          if (!isLoose(instance.result) && fitsTrial(instance.result, hole.type)) {
+            tasks.push({ name, near: fileOf.get(name) === hole.file })
+          }
+        }
+
+        // the tasks of the hole's own file first, then by name, so the list reads the same on every run
+        tasks.sort((a, b) => Number(b.near) - Number(a.near) || a.name.localeCompare(b.name))
+      }
+
+      const offered = values.slice(0, LIMIT)
+      const named = tasks.slice(0, LIMIT)
+      const more = (all: number, shownCount: number): string => (all > shownCount ? `, and ${all - shownCount} more` : '')
+      const hint = isLoose(wanted)
+        ? 'nothing around the hole decides its type yet: give it a value, or use it where a type is needed and scan again'
+        : [
+            values.length
+              ? `in scope of that type: ${offered.map(v => v.name).join(', ')}${more(values.length, offered.length)}`
+              : 'nothing in scope has that type',
+            tasks.length
+              ? `Tasks that return it: ${named.map(t => t.name).join(', ')}${more(tasks.length, named.length)}`
+              : '',
+          ]
+            .filter(Boolean)
+            .join('. ')
+
+      diagnostics.push(
+        diagnose('typed-hole', {
+          file: hole.file,
+          span: hole.node.span,
+          message: isLoose(wanted) ? 'this hole can be a value of any type' : `this hole needs a value of type ${shown}`,
+          hint,
+          fixes: offered.map(value => ({
+            title: `Write "${value.name}" (${value.type})`,
+            sure: false,
+            edits: [{ span, text: value.name, was: HOLE }],
+          })),
+        }),
+      )
+    }
+  }
 
   // walk a body, replacing each expression's `type` with its fully resolved form
   function zonkBody(
@@ -4071,7 +4221,7 @@ function checkProgram(
 
 // the exceptions a guarded body can raise: its own `halt <form>`s (outside nested guards with handlers) and the raise
 // sets of the tasks it calls, so a `fork case` over the caught value can be held exhaustive
-function bodyRaises(body: Statement[], sets: Map<string, Set<string>>): Set<string> {
+function bodyRaises(body: Statement[], sets: Map<string, string[]>): Set<string> {
   const out = new Set<string>()
 
   const expr = (node: Expression): void => {

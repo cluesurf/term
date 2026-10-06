@@ -52,7 +52,8 @@ task boot
   # inside the handler, for the reason `heard` is a list
   save refused
     make list
-  mark unsafe
+  fork
+    mark unsafe
     save outside
       call read
         text <{{bundle}}/../outside.txt>

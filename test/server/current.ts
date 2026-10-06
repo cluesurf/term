@@ -331,6 +331,37 @@ const term = process.cwd()
   const metaFix = metaActions.find(a => a.title.includes('mark'))
   const metaFixed = metaFix ? applyEdits(META, metaFix.edit.changes[metaUri]!) : ''
   ok('lint: the `note-metadata` quick fix writes `mark async`', metaFixed === META.replace('note async', 'mark async'), metaFixed)
+
+  // the compiler's own fixes (make/code/fix.ts), the ones `term scan` reports, as quick fixes: a typed hole offers each
+  // value in scope of its type, none preferred, since only the author knows which one is meant
+  const HOLE = 'task total\n  take count, like number\n  take label, like text\n  like number\n\n  send back\n    call add\n      read count\n      read hole\n'
+  const holeUri = 'file:///virtual/hole.tree'
+  const holeOut = await open(server, holeUri, HOLE)
+  const holeDiagnostic = (published(holeOut, holeUri) ?? []).find(d => d.data?.name === 'typed-hole')
+  ok('fix: a typed hole is a diagnostic naming its type', holeDiagnostic?.message?.startsWith('this hole needs a value of type number') === true, JSON.stringify(published(holeOut, holeUri)))
+
+  const holeActions = (await request(server, 'textDocument/codeAction', {
+    textDocument: { uri: holeUri },
+    range: holeDiagnostic?.range,
+    context: { diagnostics: holeDiagnostic ? [holeDiagnostic] : [] },
+  })).result as { title: string; isPreferred?: boolean; edit: { changes: Record<string, { range: Range; newText: string }[]> } }[]
+  const fillCount = holeActions.find(a => a.title.startsWith('Write "count"'))
+  ok('fix: the hole is offered each value of its type, and only those', !!fillCount && !holeActions.some(a => a.title.startsWith('Write "label"')), JSON.stringify(holeActions.map(a => a.title)))
+  ok('fix: a guess is not the preferred action', !!fillCount && fillCount.isPreferred !== true)
+  ok('fix: applied, it writes the name where `hole` was', !!fillCount && applyEdits(HOLE, fillCount.edit.changes[holeUri]!).includes('      read count\n      read count\n'))
+
+  // a near spelling, the edit on the name alone
+  const TYPO = 'task greet\n  take who, like text\n  like text\n\n  send back, read whom\n'
+  const typoUri = 'file:///virtual/typo.tree'
+  const typoOut = await open(server, typoUri, TYPO)
+  const typoDiagnostic = (published(typoOut, typoUri) ?? []).find(d => d.data?.name === 'unknown-name')
+  const typoActions = (await request(server, 'textDocument/codeAction', {
+    textDocument: { uri: typoUri },
+    range: typoDiagnostic?.range,
+    context: { diagnostics: typoDiagnostic ? [typoDiagnostic] : [] },
+  })).result as { title: string; edit: { changes: Record<string, { range: Range; newText: string }[]> } }[]
+  const respell = typoActions.find(a => a.title === 'Write "who"')
+  ok('fix: a near spelling is a quick fix that writes the name', !!respell && applyEdits(TYPO, respell.edit.changes[typoUri]!) === TYPO.replace('read whom', 'read who'), JSON.stringify(typoActions.map(a => a.title)))
 }
 
 // ---- pull ----

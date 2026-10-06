@@ -1,5 +1,6 @@
-// Guards: `note unsafe` over a body with a `halt take` handler lowers to try / catch, the caught value is bound, and
-// a raise inside the body reaches the handler at run time. Run: npx tsx test/compile/guard.ts
+// Guards: a `fork` with `mark unsafe` on it, over a body, with a `halt take` handler after it, lowers to try / catch,
+// the caught value is bound, and a raise inside the body reaches the handler at run time. `mark unsafe` or `note unsafe`
+// holding the statements itself, the older spellings, is refused by name. Run: npx tsx test/compile/guard.ts
 
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -62,7 +63,8 @@ task find-it
 task lookup
   take key, like text
   like text
-  note unsafe
+  fork
+    mark unsafe
     save found
       call find-it
         read key
@@ -116,7 +118,8 @@ task find-user
 task describe
   take key, like text
   like text
-  note unsafe
+  fork
+    mark unsafe
     send back
       call find-user
         read key
@@ -156,7 +159,8 @@ form user-absence
 task find-user
   take key, like text
   like text
-  mark unsafe
+  fork
+    mark unsafe
     halt user-absence
       bind thing, read key
   halt take
@@ -167,7 +171,8 @@ task find-user
 task describe
   take key, like text
   like text
-  mark unsafe
+  fork
+    mark unsafe
     send back
       call find-user
         read key
@@ -198,6 +203,88 @@ task orphan
     !orphan.ok &&
       orphan.diagnostics.some(d => (d.message ?? '').includes('must follow')),
   )
+
+  // A BLOCK IS A `fork` (2026-10-06): `mark unsafe` and `note unsafe` holding statements were the guard's spellings, and
+  // each is refused by name, its handler with it rather than reported again as a second, orphaned mistake
+  for (const word of ['mark', 'note']) {
+    const old = compile({
+      file: 'o.tree',
+      text: `${STDLIB}
+task lookup
+  take key, like text
+  like text
+  ${word} unsafe
+    send back, read key
+  halt take
+    take problem
+    send back, read problem/note
+`,
+    })
+    const named = old.ok ? [] : old.diagnostics.filter(d => (d.message ?? '').includes('a guarded block is a `fork`'))
+
+    ok(
+      `\`${word} unsafe\` over statements is refused, naming \`fork\` / \`mark unsafe\`, once`,
+      !old.ok && named.length === 1 && !old.diagnostics.some(d => (d.message ?? '').includes('must follow')),
+      old.ok ? 'compiled' : old.diagnostics.map(d => d.message).join(' | '),
+    )
+  }
+
+  // a guard inside a guard's handler, and a lean file: the same rule in both
+  const NESTED = `${STDLIB}
+task lookup
+  take key, like text
+  like text
+  fork
+    mark unsafe
+    send back
+      call find-it-twice
+        read key
+  halt take
+    take problem
+    fork
+      mark unsafe
+      halt absence
+        bind thing, text <again>
+    halt take
+      take second
+      send back, read second/link/thing
+  send back, text <none>
+
+task find-it-twice
+  take key, like text
+  like text
+  halt absence
+    bind thing, read key
+`
+  const nested = compile({ file: 'n.tree', text: NESTED })
+  ok('a guard inside a handler compiles', nested.ok, nested.ok ? '' : nested.diagnostics.map(d => d.message).join(' | '))
+
+  if (nested.ok) {
+    const dir = mkdtempSync(join(tmpdir(), 'term-guard-nested-'))
+    const file = join(dir, 'n.mjs')
+    writeFileSync(file, transformSync(nested.typescript, { loader: 'ts', format: 'esm' }).code)
+    const mod = await import(pathToFileURL(file).href)
+    ok('the inner handler catches the inner raise', mod.lookup('zed') === 'again', String(mod.lookup('zed')))
+  }
+
+  const LEAN = `${STDLIB}
+task echo
+  take key, like text
+  like text
+  back key
+
+task lookup
+  take key, like text
+  like text
+  fork
+    mark unsafe
+    back echo(key)
+  halt take
+    take problem
+    back problem/note
+`
+  const lean = compile({ file: 'l.tree', text: LEAN }, { leanOf: () => true })
+  ok('a lean file writes the guard the same way', lean.ok && lean.typescript.includes('try {') && lean.typescript.includes('catch (problem'), lean.ok ? '' : lean.diagnostics.map(d => d.message).join(' | '))
 
   console.log(`\nguard: ${pass} pass, ${fail} fail`)
 

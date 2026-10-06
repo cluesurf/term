@@ -67,7 +67,8 @@ task prepared-for
   mark private
   take source, like text
   like prepared-pattern
-  mark unsafe
+  fork
+    mark unsafe
     send back
       call prepare(make(pattern, read(source)))
   halt take
@@ -430,7 +431,8 @@ task escape-pattern
 task is-valid-pattern
   take pattern, like text
   like boolean
-  mark unsafe
+  fork
+    mark unsafe
     call prepared-for
       read pattern
     send back, true

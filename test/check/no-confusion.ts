@@ -48,7 +48,7 @@ ok(
   'distinct tag field refutes through the record',
   compiles(`${PRELUDE}
 rule boxes-with-distinct-tags-differ
-  mark b, like bit
+  seat b, like bit
   show miss
     call is-equal
       call make-box
@@ -67,8 +67,8 @@ ok(
   'reflexive record equality still holds',
   compiles(`${PRELUDE}
 rule same-box-is-equal
-  mark a, like bit
-  mark b, like bit
+  seat a, like bit
+  seat b, like bit
   show hold
     call is-equal
       call make-box
@@ -87,9 +87,9 @@ ok(
   'neutral fields are not wrongly refuted',
   !compiles(`${PRELUDE}
 rule neutral-rest-boxes-are-not-distinct
-  mark a, like bit
-  mark b, like bit
-  mark c, like bit
+  seat a, like bit
+  seat b, like bit
+  seat c, like bit
   show miss
     call is-equal
       call make-box

@@ -10,7 +10,7 @@ dock type
 
 task get-light-level
   take device, like light-device
-  like decimal
+  like float
 
   send back
     call light/level

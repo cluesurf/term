@@ -14,6 +14,7 @@ load @term/base/maybe
   find maybe
 
 load ./diagnostic
+  find position
   find span
 
 load ./tree
@@ -140,6 +141,66 @@ task span-of-node
       back span-of-node(get(nodes, 0))
     miss
       back make none
+
+# the EXTENT a node covers, head through its last child, so a diagnostic underlines the whole construct (compile/mill-run.ts
+# `spanOfWhole`, which also answers where an AST node begins and ends). A node with nothing to say where it is answers
+# the zero span. Distinct from `span-of-node`, which is where to point a caret
+task span-of-whole
+  take one, like node
+  like span
+
+  sift one
+    case integer
+      back span
+    case decimal
+      back span
+    case radix
+      back span
+    case chunk
+      back span
+    case name
+      back first-chunk-or-zero(parts)
+    case text
+      back first-chunk-or-zero(parts)
+    case group
+      fork test, is-equal(nodes/length, 0)
+        hold
+          back zero-span()
+      save first, span-of-whole(get(nodes, 0))
+      save last, span-of-whole(get(nodes, subtract(nodes/length, 1)))
+      back
+        make span
+          bind start, first/start
+          bind end, last/end
+    miss
+      back zero-span()
+
+task zero-span
+  like span
+
+  save origin
+    make position
+      bind line, 0
+      bind column, 0
+  back
+    make span
+      bind start, origin
+      bind end, origin
+
+# the first chunk's span among a name's or a text's parts, the zero span where there is none
+task first-chunk-or-zero
+  take parts, like list, like node
+  like span
+  mark private
+
+  walk parts
+    take part
+    sift part
+      case chunk
+        back span
+      miss
+        save nothing, 0
+  back zero-span()
 
 task first-chunk-span
   take parts, like list, like node

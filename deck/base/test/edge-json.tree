@@ -17,7 +17,8 @@ task slash
 task accepts
   take text, like text
   like boolean
-  note unsafe
+  fork
+    mark unsafe
     call check-json, read text
     send back, true
   halt take
@@ -27,7 +28,8 @@ task accepts
 task why
   take text, like text
   like text
-  note unsafe
+  fork
+    mark unsafe
     call check-json, read text
     send back, text <ok>
   halt take

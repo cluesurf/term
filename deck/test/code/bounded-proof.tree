@@ -74,7 +74,8 @@ task holds
   take point, like list, like number
   like boolean
 
-  mark unsafe
+  fork
+    mark unsafe
     back call(claim, point)
   halt take
     take e

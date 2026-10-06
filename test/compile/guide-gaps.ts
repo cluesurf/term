@@ -166,7 +166,8 @@ task risky
 task guarded
   take n, like number
   like number
-  mark unsafe
+  fork
+    mark unsafe
     send back, risky(n)
   halt take
     take problem
@@ -244,7 +245,8 @@ task find-it
 
 task frames
   like number
-  mark unsafe
+  fork
+    mark unsafe
     save got, find-it(<x>)
     send back, code 0
   halt take

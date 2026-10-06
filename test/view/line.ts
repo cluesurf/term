@@ -99,8 +99,9 @@ if (json.code === 0) {
 const bad = run(['view', 'page/bad.tree'])
 
 ok('a document that does not read exits non-zero', bad.code !== 0)
-// a Problem item: the message as its subject, the line and column in its `at` field (section 12)
-ok('and says which word, with a line and column', /"task" is not part of a document[\s\S]*?\bat\s+page\/bad\.tree:2:3\b/.test(bad.out), bad.out)
+// a Problem item: the message as its subject, the line and column in its `file` field (`at` until 2026-10-05,
+// note/term/output/standard.md section 12)
+ok('and says which word, with a line and column', /"task" is not part of a document[\s\S]*?\bfile\s+page\/bad\.tree:2:3\b/.test(bad.out), bad.out)
 
 const whole = run(['view', 'page'])
 

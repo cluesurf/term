@@ -31,7 +31,8 @@ task lines
 task again
   take text, like text
   like text
-  note unsafe
+  fork
+    mark unsafe
     save value
       call parse-toml
         read text

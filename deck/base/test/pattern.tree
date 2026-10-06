@@ -558,7 +558,8 @@ task budget-outcome
     call compile-pattern(call(parse-pattern, text(<(\w+)*\1x>)))
   save runes
     call to-runes(text(<aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa>))
-  mark unsafe
+  fork
+    mark unsafe
     call back-search(read(g), call(make-scene, read(runes), false), code(0), code(100000))
     send back, text <finished>
   halt take

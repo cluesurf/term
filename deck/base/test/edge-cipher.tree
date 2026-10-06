@@ -40,7 +40,8 @@ task open-as
         text <card 4242>
       call from-text
         text <user 7>
-  mark unsafe
+  fork
+    mark unsafe
     send back
       call to-text
         call decrypt

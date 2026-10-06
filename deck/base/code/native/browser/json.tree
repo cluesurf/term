@@ -37,7 +37,7 @@ task json-get-item
 
 task json-as-number
   take value, like dynamic
-  like decimal
+  like float
   send back
     call json/as-number
       read value
@@ -101,7 +101,7 @@ task json-from-text
       read value
 
 task json-from-number
-  take value, like decimal
+  take value, like float
   like dynamic
   send back
     call json/from-number

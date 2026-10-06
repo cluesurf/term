@@ -55,7 +55,8 @@ task load
   save root, call project-root
   log-step <Installing dependencies...>
 
-  mark unsafe
+  fork
+    mark unsafe
     call deck-tree/install
       make install-ask
         bind root, read root
@@ -84,7 +85,8 @@ task save
       node-process/exit code 1
   log-step <Adding {{deck}}...>
 
-  mark unsafe
+  fork
+    mark unsafe
     call deck-tree/addDependency
       make deck-ask, bind(root, read root), bind name, read deck
       wait true
@@ -110,7 +112,8 @@ task toss
       node-process/exit code 1
   log-step <Removing {{deck}}...>
 
-  mark unsafe
+  fork
+    mark unsafe
     call deck-tree/removeDependency
       make deck-ask, bind(root, read root), bind name, read deck
       wait true

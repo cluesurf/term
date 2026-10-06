@@ -78,7 +78,7 @@ load @term/base/code/list
 
 form held-range
   note shared
-  link range, like signal decimal
+  link range, like signal float
 
 host held
   make held-range
@@ -207,13 +207,13 @@ task set-size
     bind value, read to
 
 task volume
-  like decimal
+  like float
   send back
     call range-value
       read held/range
 
 task set-volume
-  take to, like decimal
+  take to, like float
   call write-signal
     bind self, read held/range
     bind value, read to

@@ -68,7 +68,8 @@ task fails-with
   take text, like text
   like text
 
-  mark unsafe
+  fork
+    mark unsafe
     parse-code(text)
     back <>
   halt take

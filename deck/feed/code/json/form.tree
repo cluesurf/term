@@ -15,7 +15,7 @@ form json-value
   case json-string
     link value, like text
   case json-number
-    link value, like decimal
+    link value, like float
   case json-flag
     link value, like boolean
   case json-blank

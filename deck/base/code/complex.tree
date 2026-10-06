@@ -15,8 +15,8 @@ load @term/base/arithmetic
   find negation
 
 form complex
-  link real, like decimal
-  link imaginary, like decimal
+  link real, like float
+  link imaginary, like float
 
   # (a + bi) + (c + di) = (a + c) + (b + d)i
   wear addition
@@ -115,7 +115,7 @@ form complex
   # the modulus: square-root of (real^2 + imaginary^2)
   task magnitude
     take self
-    like decimal
+    like float
     send back
       call square-root
         call add
@@ -149,8 +149,8 @@ form complex
     back self/multiply(other)
 
 task make-complex
-  take real, like decimal
-  take imaginary, like decimal
+  take real, like float
+  take imaginary, like float
   like complex
   send back
     make complex

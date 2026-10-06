@@ -27,6 +27,7 @@ import type {
 } from '@term/make/code/compile/node'
 import type { Span } from '@term/make/code/parser/diagnostic'
 import { readNames } from '@term/make/code/check/facts'
+import { WIDTHS, widthRanges } from '@term/make/code/check/width-range'
 
 type Fn = Extract<Statement, { form: 'function' }>
 
@@ -301,6 +302,31 @@ const and = (left: Expression, right: Expression, span: Span): Expression => ({
   span,
 })
 
+// `low <= value <= high` for a width, owed where its guards hold, or undefined for a name that is no width. Only the
+// bounds inside 2^53 are owed: a bound past it is the number's own range (every number is an `i64`, and `u64`'s
+// top is the number's), which the provers cannot read as a literal and which says nothing a number does not
+function widthHold(value: Expression, width: string, under: Expression[], span: Span): Statement | undefined {
+  const range = WIDTHS[width]
+
+  if (!range) {
+    return undefined
+  }
+
+  const exact = (n: bigint): boolean => n <= 2n ** 53n - 1n && n >= -(2n ** 53n - 1n)
+  const bound = (n: bigint): Expression => ({ form: 'integer', value: Number(n), digits: String(n), span }) as Expression
+  const [low, high] = range
+  const parts: Expression[] = [
+    ...(exact(low) ? [{ form: 'binary', op: '>=', left: value, right: bound(low), span } as Expression] : []),
+    ...(exact(high) ? [{ form: 'binary', op: '<=', left: value, right: bound(high), span } as Expression] : []),
+  ]
+
+  if (parts.length === 0) {
+    return undefined
+  }
+
+  return hold(guarded(parts.reduce((sum, part) => and(sum, part, span)), under, span), 'width', span)
+}
+
 // an obligation that is owed only where its guards hold: `!(g1 && g2) || claim`. The prover splits the
 // disjunction, assuming the guards while it proves the claim.
 function guarded(claim: Expression, guards: Expression[], span: Span): Expression {
@@ -492,6 +518,21 @@ function obligationsIn(
 
             for (const { expr, origin } of liftedOf(callee, tasks)) {
               out.push(hold(guarded(substitute(expr, binding), under, node.span), origin, node.span))
+            }
+
+            // a value passed to a width-typed parameter is inside the width, under the switch (check/width-range.ts).
+            // A literal is refused outright by check/literals.ts and owes nothing here
+            if (widthRanges()) {
+              callee.params.forEach((param, at) => {
+                const argument = node.args[at]
+                const owed = argument && param.width && argument.form !== 'integer'
+                  ? widthHold(argument, param.width, under, argument.span)
+                  : undefined
+
+                if (owed) {
+                  out.push(owed)
+                }
+              })
             }
           }
         }
@@ -811,6 +852,17 @@ function lowerList(
         }
 
         out.push(...owedAt([statement.value], context))
+
+        // a width-typed result is owed where it is sent back, as a width-typed argument is at a call
+        // (check/width-range.ts). A literal is held to it by check/literals.ts
+        if (context.tier0 && widthRanges() && context.current.resultWidth && statement.value.form !== 'integer') {
+          const owed = widthHold(statement.value, context.current.resultWidth, [], statement.value.span)
+
+          if (owed) {
+            out.push(owed)
+          }
+        }
+
         const must = context.current.must ?? []
 
         if (must.length === 0) {

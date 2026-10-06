@@ -225,15 +225,15 @@ task quiet
 
     ok2(
       'a function that busts has the throw effect',
-      rows.get('boom')?.has('throw') === true,
+      rows.get('boom')?.includes('throw') === true,
     )
     ok2(
       'throw propagates to a caller (transitive row)',
-      rows.get('relay')?.has('throw') === true,
+      rows.get('relay')?.includes('throw') === true,
     )
     ok2(
       'a non-throwing function has no throw effect',
-      rows.get('quiet')?.has('throw') !== true,
+      rows.get('quiet')?.includes('throw') !== true,
     )
   } else {
     fail++
@@ -275,7 +275,7 @@ task quiet
 
       ok2(
         'a function calling a throwing callback inherits throw',
-        rows.get('apply-it')?.has('throw') === true,
+        rows.get('apply-it')?.includes('throw') === true,
       )
     } else {
       fail++

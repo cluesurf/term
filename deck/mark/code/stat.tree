@@ -31,15 +31,15 @@ host bootstrap-seed, code 20261002
 
 # what an interval says about a ratio
 form interval
-  link ratio, like decimal
-  link low, like decimal
-  link high, like decimal
+  link ratio, like float
+  link low, like float
+  link high, like float
   link verdict, like text
 
 # ascending order of two decimals
 task compare-decimals
-  take left, like decimal
-  take right, like decimal
+  take left, like float
+  take right, like float
   like ordering
   fork test
     hook test
@@ -60,9 +60,9 @@ task compare-decimals
 task sorted-of
   take values
     like list
-      like decimal
+      like float
   like list
-    like decimal
+    like float
   send back
     call sort
       read values
@@ -72,8 +72,8 @@ task sorted-of
 task median-sorted
   take sorted
     like list
-      like decimal
-  like decimal
+      like float
+  like float
   save n
     call length
       read sorted
@@ -116,8 +116,8 @@ task median-sorted
 task median-of
   take values
     like list
-      like decimal
-  like decimal
+      like float
+  like float
   send back
     call median-sorted
       call sorted-of
@@ -127,9 +127,9 @@ task median-of
 task rank-at
   take sorted
     like list
-      like decimal
+      like float
   take per-thousand, like number
-  like decimal
+  like float
   save at
     call divide
       call multiply
@@ -249,8 +249,8 @@ task shuffled
 
 # what an interval may be called. One that holds 1.00 is no measurable difference, never a win
 task verdict-of
-  take low, like decimal
-  take high, like decimal
+  take low, like float
+  take high, like float
   like text
   fork test
     hook test
@@ -273,10 +273,10 @@ task verdict-of
 task ratio-interval
   take term
     like list
-      like decimal
+      like float
   take base
     like list
-      like decimal
+      like float
   like interval
   save count
     call length
@@ -361,8 +361,8 @@ task ratio-interval
 task geometric-mean
   take values
     like list
-      like decimal
-  like decimal
+      like float
+  like float
   save total, code 0.0
   walk list, read values
     hook next
@@ -383,8 +383,8 @@ task geometric-mean
 task smallest
   take values
     like list
-      like decimal
-  like decimal
+      like float
+  like float
   send back
     call get
       call sorted-of
@@ -394,8 +394,8 @@ task smallest
 task largest
   take values
     like list
-      like decimal
-  like decimal
+      like float
+  like float
   save sorted
     call sorted-of
       read values
@@ -411,8 +411,8 @@ task largest
 task deviation-of
   take values
     like list
-      like decimal
-  like decimal
+      like float
+  like float
   save middle
     call median-of
       read values
@@ -436,7 +436,7 @@ task deviation-of
 task outlier-count
   take values
     like list
-      like decimal
+      like float
   like number
   save sorted
     call sorted-of
@@ -488,8 +488,8 @@ task outlier-count
 task trend-of
   take values
     like list
-      like decimal
-  like decimal
+      like float
+  like float
   save n
     call length
       read values

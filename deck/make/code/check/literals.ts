@@ -13,22 +13,11 @@
 import type { Program } from '@term/make/code/compile/node'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
-
-// the range of each width alias of `number`. `u64` stops at the 64-bit signed limit, the range a `number` has
-const WIDTHS: Record<string, [bigint, bigint]> = {
-  u8: [0n, 255n],
-  u16: [0n, 65535n],
-  u32: [0n, 4294967295n],
-  u64: [0n, 2n ** 63n - 1n],
-  i8: [-128n, 127n],
-  i16: [-32768n, 32767n],
-  i32: [-2147483648n, 2147483647n],
-  i64: [-(2n ** 63n), 2n ** 63n - 1n],
-}
+import { WIDTHS } from '@term/make/code/check/width-range'
 
 // A literal argument to a width-typed parameter is inside the width. `like u8` is a `number`, so a `u8` parameter
-// took `300` with no message (guides: types/annotations, 2026-10-03). A computed value is not checked: that needs a
-// range type, which the language does not have yet
+// took `300` with no message (guides: types/annotations, 2026-10-03). A computed value is owed the same range as a
+// tier-0 obligation when TERM_WIDTH_RANGES is on (check/width-range.ts, D12)
 function checkWidths(program: Program, file: string): Diagnostic[] {
   const widths = new Map<string, { names: string[]; widths: (string | undefined)[] }>()
 

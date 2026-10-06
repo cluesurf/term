@@ -11,12 +11,18 @@
 // top-level line of the module's own source naming it (a `tree` or `fuse` template expands before the program is
 // built, so it is never a statement).
 
-import { existsSync, readFileSync } from 'node:fs'
 import type { Program } from '@term/make/code/compile/node'
 import type { Span } from '@term/make/code/parser/diagnostic'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
-import type { ImportScope } from '@term/make/code/compile/load'
+import type { FileScope } from '@term/make/code/compile/load'
+
+// As check/finds.tree answers it: reading a module's source is the caller's IO. The check is handed the sources read
+// so far (a text, none where the file does not exist) and answers the first one it needs and was not handed, or its
+// diagnostics when it needs none. compile.ts holds the loop
+export type ReadSource = { file: string; text?: string }
+
+const WANT = Symbol('want')
 
 // the language's own type words, which a `find` may name and no module defines, and the kind words a `find` may lead
 // with (`find tree checked-add`, `find form size-32`), where the import scope records the kind and not the name
@@ -58,8 +64,35 @@ function moduleName(file: string): string {
 
 const DEFINING =/^(?:task|form|bind|host|tree|fuse|mask|view|rule|mill|suit|list|mesh|save|mine|mint)\s+([^\s,]+)/
 
-export function checkFinds(program: Program, file: string, scope: ImportScope | undefined): Diagnostic[] {
-  const own = scope?.get(file)
+export function checkFinds(
+  program: Program,
+  file: string,
+  scopes: FileScope[],
+  sources: ReadSource[],
+): { diagnostics: Diagnostic[]; wants: string[] } {
+  try {
+    return { diagnostics: findsChecked(program, file, scopes, sources), wants: [] }
+  } catch (error) {
+    if ((error as { [WANT]?: string })[WANT] !== undefined) {
+      return { diagnostics: [], wants: [(error as { [WANT]: string })[WANT]] }
+    }
+
+    throw error
+  }
+}
+
+function findsChecked(program: Program, file: string, scopes: FileScope[], sources: ReadSource[]): Diagnostic[] {
+  const scope = new Map(
+    scopes.map(one => [
+      one.file,
+      {
+        finds: new Map(one.finds.map(f => [f.name, f.targets])),
+        bears: one.bears,
+        at: new Map(one.finds.flatMap(f => (f.at ? [[f.name, f.at] as const] : []))),
+      },
+    ]),
+  )
+  const own = scope.get(file)
 
   if (!own || own.finds.size === 0) {
     return []
@@ -114,9 +147,14 @@ export function checkFinds(program: Program, file: string, scope: ImportScope | 
     }
 
     const names = new Set<string>()
+    const read = sources.find(source => source.file === target)
 
-    if (existsSync(target)) {
-      for (const line of readFileSync(target, 'utf8').split('\n')) {
+    if (!read) {
+      throw { [WANT]: target }
+    }
+
+    if (read.text !== undefined) {
+      for (const line of read.text.split('\n')) {
         const match = DEFINING.exec(line)
 
         if (match) {

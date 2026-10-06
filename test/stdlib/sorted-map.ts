@@ -1,5 +1,5 @@
 // The sorted map is a B-tree written in Term (deck/base/code/sorted-map.tree, 2026-10-05), held to a reference on
-// every backend: 6,000 seeded puts and drops over 1,000 keys, enough to split, borrow and merge nodes at several
+// every backend: 180,000 seeded puts and drops over 30,000 keys, enough to split, borrow and merge nodes at three
 // depths, answered with the length, every key in order, a lookup of each of the first hundred keys, and the least and
 // greatest. The same draws are replayed here on a JavaScript Map, which is the reference. Then the order of texts:
 // code point order, which puts an astral character after every one below it, where UTF-16 order would not.
@@ -24,8 +24,11 @@ function ok(name: string, cond: boolean, info = ''): void {
   }
 }
 
-const OPERATIONS = 6000
-const KEYS = 1000
+// sized for the tree's degree, 64 (sorted-map.tree): two thirds of the keys are held at the end, about 20,000, which
+// two levels of at most 127 keys to a node cannot hold, so the churn splits, borrows and merges at three depths. At
+// 1,000 keys, the size before the degree was measured, the tree was two levels and its middle was never exercised
+const OPERATIONS = 180000
+const KEYS = 30000
 
 const PROGRAM = `load @term/base/sorted-map
   find sorted-map

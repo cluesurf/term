@@ -1579,7 +1579,7 @@ task starts-with-two
 task is-number-literal
   take node, like expression
   take value, like number
-  take fraction-value, like decimal
+  take fraction-value, like float
   like boolean
   mark private
 
@@ -1922,11 +1922,32 @@ task note-metadata
       make span
         bind start, site/span/start
         bind end, end
+    # a guard's `note unsafe` holds statements, and a block is a `fork` since 2026-10-06: `note` becomes `fork`, a line
+    # break, and `mark` two columns in, so `note unsafe` is `fork` / `mark unsafe` and the body keeps its lines
+    save written, <mark>
+    fork test, site/guard
+      hold
+        save written, <fork\n{spaces(add(site/span/start/column, 2))}mark>
     save fix
       make put
         bind span, at
-        bind text, <mark>
+        bind text, written
     push(out, fixed-report(<`note {site/word}` is the old spelling of `mark {site/word}`: metadata is `mark`>, at, fix))
+  back out
+
+# `count` spaces, the indent a fix writes
+task spaces
+  take count, like number
+  like text
+  mark private
+
+  save out, <>
+  save at, 0
+  walk test
+    hook test, is-below(at, count)
+    hook hold
+      save out, <{out} >
+      save at, add(at, 1)
   back out
 
 # what a rule finds in the concrete tree and the source, for the rules that read those rather than the program: the

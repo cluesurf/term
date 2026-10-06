@@ -1,5 +1,5 @@
 // Quantified FUNCTIONS and UNIVERSAL hypotheses in theorems (check/holds.ts applicationKey, universalGoal,
-// universalInduction): a `mark x, like task` is a pure application, a `have h / mark t / P` holds for every t and is
+// universalInduction): a `seat x, like task` is a pure application, a `have h / seat t / P` holds for every t and is
 // instantiated at the terms the goal names, and `fold n` inducts over a goal whose recurrences are such hypotheses.
 // Every goal is decided over an ordered field. Run: npx tsx test/check/universal.ts
 //
@@ -30,11 +30,11 @@ expect(
   'a quantified function is a pure application',
   `
 rule probe-function-mark
-  mark x
+  seat x
     like task
       take n, like integer
       like integer
-  mark n, like integer
+  seat n, like integer
   have nonnegative
     call is-minimum
       call x
@@ -55,11 +55,11 @@ expect(
   'x(n) >= 0 does not give x(n + 1) >= 0',
   `
 rule probe-function-mark-false
-  mark x
+  seat x
     like task
       take n, like integer
       like integer
-  mark n, like integer
+  seat n, like integer
   have nonnegative
     call is-minimum
       call x
@@ -80,13 +80,13 @@ expect(
   'a universal hypothesis chains through two instances',
   `
 rule probe-universal-chain
-  mark x
+  seat x
     like task
       take t, like integer
       like integer
-  mark n, like integer
+  seat n, like integer
   have non-decreasing
-    mark t, like integer
+    seat t, like integer
     call is-maximum
       call x
         read t
@@ -110,13 +110,13 @@ expect(
   'and is not read backwards',
   `
 rule probe-universal-false
-  mark x
+  seat x
     like task
       take t, like integer
       like integer
-  mark n, like integer
+  seat n, like integer
   have non-decreasing
-    mark t, like integer
+    seat t, like integer
     call is-maximum
       call x
         read t
@@ -140,19 +140,19 @@ expect(
   'the limit of a Cauchy sequence of reals is a real',
   `
 rule the-limit-is-a-real
-  mark x
+  seat x
     like task
       take k, like integer
       take p, like integer
       like integer
-  mark e
+  seat e
     like task
       take t, like integer
       like integer
-  mark m, like integer
-  mark n, like integer
+  seat m, like integer
+  seat n, like integer
   have the-modulus-is-positive
-    mark t, like integer
+    seat t, like integer
     meet or
       call is-below
         read t
@@ -162,7 +162,7 @@ rule the-limit-is-a-real
           read t
         code 0
   have the-modulus-quarters
-    mark t, like integer
+    seat t, like integer
     meet or
       call is-below
         read t
@@ -177,9 +177,9 @@ rule the-limit-is-a-real
         call e
           read t
   have each-is-a-real
-    mark k, like integer
-    mark p, like integer
-    mark q, like integer
+    seat k, like integer
+    seat p, like integer
+    seat q, like integer
     meet or
       call is-below
         read k
@@ -218,9 +218,9 @@ rule the-limit-is-a-real
             call e
               read q
   have they-are-a-cauchy-sequence
-    mark k, like integer
-    mark j, like integer
-    mark p, like integer
+    seat k, like integer
+    seat j, like integer
+    seat p, like integer
     meet or
       call is-below
         read k
@@ -328,19 +328,19 @@ expect(
   'the sequence converges to its limit',
   `
 rule the-sequence-converges-to-its-limit
-  mark x
+  seat x
     like task
       take k, like integer
       take p, like integer
       like integer
-  mark e
+  seat e
     like task
       take t, like integer
       like integer
-  mark k, like integer
-  mark p, like integer
+  seat k, like integer
+  seat p, like integer
   have the-modulus-is-positive
-    mark t, like integer
+    seat t, like integer
     meet or
       call is-below
         read t
@@ -350,7 +350,7 @@ rule the-sequence-converges-to-its-limit
           read t
         code 0
   have the-modulus-quarters
-    mark t, like integer
+    seat t, like integer
     meet or
       call is-below
         read t
@@ -365,9 +365,9 @@ rule the-sequence-converges-to-its-limit
         call e
           read t
   have each-is-a-real
-    mark k, like integer
-    mark p, like integer
-    mark q, like integer
+    seat k, like integer
+    seat p, like integer
+    seat q, like integer
     meet or
       call is-below
         read k
@@ -406,9 +406,9 @@ rule the-sequence-converges-to-its-limit
             call e
               read q
   have they-are-a-cauchy-sequence
-    mark k, like integer
-    mark j, like integer
-    mark p, like integer
+    seat k, like integer
+    seat j, like integer
+    seat p, like integer
     meet or
       call is-below
         read k
@@ -512,19 +512,19 @@ expect(
   'a tighter limit is refused',
   `
 rule control-a-tighter-limit
-  mark x
+  seat x
     like task
       take k, like integer
       take p, like integer
       like integer
-  mark e
+  seat e
     like task
       take t, like integer
       like integer
-  mark m, like integer
-  mark n, like integer
+  seat m, like integer
+  seat n, like integer
   have the-modulus-is-positive
-    mark t, like integer
+    seat t, like integer
     meet or
       call is-below
         read t
@@ -534,7 +534,7 @@ rule control-a-tighter-limit
           read t
         code 0
   have the-modulus-quarters
-    mark t, like integer
+    seat t, like integer
     meet or
       call is-below
         read t
@@ -549,9 +549,9 @@ rule control-a-tighter-limit
         call e
           read t
   have each-is-a-real
-    mark k, like integer
-    mark p, like integer
-    mark q, like integer
+    seat k, like integer
+    seat p, like integer
+    seat q, like integer
     meet or
       call is-below
         read k
@@ -590,9 +590,9 @@ rule control-a-tighter-limit
             call e
               read q
   have they-are-a-cauchy-sequence
-    mark k, like integer
-    mark j, like integer
-    mark p, like integer
+    seat k, like integer
+    seat j, like integer
+    seat p, like integer
     meet or
       call is-below
         read k
@@ -675,19 +675,19 @@ expect(
   'the limit without the Cauchy hypothesis is refused',
   `
 rule control-without-cauchy
-  mark x
+  seat x
     like task
       take k, like integer
       take p, like integer
       like integer
-  mark e
+  seat e
     like task
       take t, like integer
       like integer
-  mark m, like integer
-  mark n, like integer
+  seat m, like integer
+  seat n, like integer
   have the-modulus-is-positive
-    mark t, like integer
+    seat t, like integer
     meet or
       call is-below
         read t
@@ -697,7 +697,7 @@ rule control-without-cauchy
           read t
         code 0
   have the-modulus-quarters
-    mark t, like integer
+    seat t, like integer
     meet or
       call is-below
         read t
@@ -712,9 +712,9 @@ rule control-without-cauchy
         call e
           read t
   have each-is-a-real
-    mark k, like integer
-    mark p, like integer
-    mark q, like integer
+    seat k, like integer
+    seat p, like integer
+    seat q, like integer
     meet or
       call is-below
         read k
@@ -790,19 +790,19 @@ expect(
   'a tighter convergence is refused',
   `
 rule control-a-tighter-convergence
-  mark x
+  seat x
     like task
       take k, like integer
       take p, like integer
       like integer
-  mark e
+  seat e
     like task
       take t, like integer
       like integer
-  mark k, like integer
-  mark p, like integer
+  seat k, like integer
+  seat p, like integer
   have the-modulus-is-positive
-    mark t, like integer
+    seat t, like integer
     meet or
       call is-below
         read t
@@ -812,7 +812,7 @@ rule control-a-tighter-convergence
           read t
         code 0
   have the-modulus-quarters
-    mark t, like integer
+    seat t, like integer
     meet or
       call is-below
         read t
@@ -827,9 +827,9 @@ rule control-a-tighter-convergence
         call e
           read t
   have each-is-a-real
-    mark k, like integer
-    mark p, like integer
-    mark q, like integer
+    seat k, like integer
+    seat p, like integer
+    seat q, like integer
     meet or
       call is-below
         read k
@@ -868,9 +868,9 @@ rule control-a-tighter-convergence
             call e
               read q
   have they-are-a-cauchy-sequence
-    mark k, like integer
-    mark j, like integer
-    mark p, like integer
+    seat k, like integer
+    seat j, like integer
+    seat p, like integer
     meet or
       call is-below
         read k
@@ -952,27 +952,27 @@ expect(
   'the fundamental theorem of calculus, for Riemann sums',
   `
 rule the-riemann-sums-of-a-derivative-approach-its-difference
-  mark bigf
+  seat bigf
     like task
       take a0, like integer
       like integer
-  mark f
+  seat f
     like task
       take a0, like integer
       like integer
-  mark pt
+  seat pt
     like task
       take a0, like integer
       like integer
-  mark sum
+  seat sum
     like task
       take a0, like integer
       like integer
-  mark n, like integer
-  mark w, like integer
-  mark eps, like integer
+  seat n, like integer
+  seat w, like integer
+  seat eps, like integer
   have the-points-are-evenly-spaced
-    mark i, like integer
+    seat i, like integer
     meet or
       call is-below
         read i
@@ -987,7 +987,7 @@ rule the-riemann-sums-of-a-derivative-approach-its-difference
             read i
         read w
   have bigf-has-derivative-f-at-the-mesh
-    mark i, like integer
+    seat i, like integer
     meet or
       call is-below
         read i
@@ -1037,7 +1037,7 @@ rule the-riemann-sums-of-a-derivative-approach-its-difference
         code 0
       code 0
   have the-riemann-sum-adds-a-strip
-    mark i, like integer
+    seat i, like integer
     meet or
       call is-below
         read i
@@ -1110,22 +1110,22 @@ expect(
   'the disk area sum telescopes',
   `
 rule the-disk-area-sum-telescopes
-  mark cc
+  seat cc
     like task
       take a0, like integer
       like integer
-  mark mid
+  seat mid
     like task
       take a0, like integer
       like integer
-  mark acc
+  seat acc
     like task
       take a0, like integer
       like integer
-  mark n, like integer
-  mark s, like integer
+  seat n, like integer
+  seat s, like integer
   have each-strip-is-a-difference
-    mark i, like integer
+    seat i, like integer
     meet or
       call is-below
         read i
@@ -1150,7 +1150,7 @@ rule the-disk-area-sum-telescopes
         code 0
       code 0
   have the-sum-adds-a-strip
-    mark i, like integer
+    seat i, like integer
     meet or
       call is-below
         read i
@@ -1191,20 +1191,20 @@ expect(
   'cosh has derivative sinh',
   `
 rule cosh-has-derivative-sinh
-  mark cc
+  seat cc
     like task
       take a0, like integer
       like integer
-  mark ss
+  seat ss
     like task
       take a0, like integer
       like integer
-  mark x, like integer
-  mark w, like integer
-  mark big, like integer
+  seat x, like integer
+  seat w, like integer
+  seat big, like integer
   have the-addition-formula
-    mark a, like integer
-    mark b, like integer
+    seat a, like integer
+    seat b, like integer
     call is-equal
       call cc
         call add
@@ -1222,7 +1222,7 @@ rule cosh-has-derivative-sinh
           call ss
             read b
   have cosh-near-zero
-    mark u, like integer
+    seat u, like integer
     meet or
       call is-below
         read u
@@ -1246,7 +1246,7 @@ rule cosh-has-derivative-sinh
             read u
             read u
   have sinh-near-zero
-    mark u, like integer
+    seat u, like integer
     meet or
       call is-below
         read u
@@ -1353,39 +1353,39 @@ expect(
   'area equals defect (Gauss-Bonnet)',
   `
 rule area-equals-defect
-  mark ar
+  seat ar
     like task
       take a0, like integer
       like integer
-  mark ps
+  seat ps
     like task
       take a0, like integer
       like integer
-  mark th
+  seat th
     like task
       take a0, like integer
       like integer
-  mark c
+  seat c
     like task
       take a0, like integer
       like integer
-  mark ia
+  seat ia
     like task
       take a0, like integer
       like integer
-  mark ip
+  seat ip
     like task
       take a0, like integer
       like integer
-  mark it
+  seat it
     like task
       take a0, like integer
       like integer
-  mark n, like integer
-  mark w, like integer
-  mark eps, like integer
+  seat n, like integer
+  seat w, like integer
+  seat eps, like integer
   have the-area-follows-its-increment
-    mark i, like integer
+    seat i, like integer
     meet or
       call is-below
         read i
@@ -1420,7 +1420,7 @@ rule area-equals-defect
             read eps
             read w
   have psi-follows-its-increment
-    mark i, like integer
+    seat i, like integer
     meet or
       call is-below
         read i
@@ -1455,7 +1455,7 @@ rule area-equals-defect
             read eps
             read w
   have theta-follows-its-increment
-    mark i, like integer
+    seat i, like integer
     meet or
       call is-below
         read i
@@ -1490,7 +1490,7 @@ rule area-equals-defect
             read eps
             read w
   have the-area-element
-    mark i, like integer
+    seat i, like integer
     meet or
       call is-below
         read i
@@ -1507,7 +1507,7 @@ rule area-equals-defect
           call it
             read i
   have the-turning
-    mark i, like integer
+    seat i, like integer
     meet or
       call is-below
         read i
@@ -1597,27 +1597,27 @@ expect(
   'half the tolerance is refused',
   `
 rule control-half-the-tolerance
-  mark bigf
+  seat bigf
     like task
       take a0, like integer
       like integer
-  mark f
+  seat f
     like task
       take a0, like integer
       like integer
-  mark pt
+  seat pt
     like task
       take a0, like integer
       like integer
-  mark sum
+  seat sum
     like task
       take a0, like integer
       like integer
-  mark n, like integer
-  mark w, like integer
-  mark eps, like integer
+  seat n, like integer
+  seat w, like integer
+  seat eps, like integer
   have the-points-are-evenly-spaced
-    mark i, like integer
+    seat i, like integer
     meet or
       call is-below
         read i
@@ -1632,7 +1632,7 @@ rule control-half-the-tolerance
             read i
         read w
   have bigf-has-derivative-f-at-the-mesh
-    mark i, like integer
+    seat i, like integer
     meet or
       call is-below
         read i
@@ -1682,7 +1682,7 @@ rule control-half-the-tolerance
         code 0
       code 0
   have the-riemann-sum-adds-a-strip
-    mark i, like integer
+    seat i, like integer
     meet or
       call is-below
         read i
@@ -1742,27 +1742,27 @@ expect(
   'the sum without the derivative is refused',
   `
 rule control-without-the-derivative
-  mark bigf
+  seat bigf
     like task
       take a0, like integer
       like integer
-  mark f
+  seat f
     like task
       take a0, like integer
       like integer
-  mark pt
+  seat pt
     like task
       take a0, like integer
       like integer
-  mark sum
+  seat sum
     like task
       take a0, like integer
       like integer
-  mark n, like integer
-  mark w, like integer
-  mark eps, like integer
+  seat n, like integer
+  seat w, like integer
+  seat eps, like integer
   have the-points-are-evenly-spaced
-    mark i, like integer
+    seat i, like integer
     meet or
       call is-below
         read i
@@ -1782,7 +1782,7 @@ rule control-without-the-derivative
         code 0
       code 0
   have the-riemann-sum-adds-a-strip
-    mark i, like integer
+    seat i, like integer
     meet or
       call is-below
         read i
@@ -1838,13 +1838,13 @@ expect(
   'a nonlinear hypothesis is assumed as stated, never as its negation',
   `
 rule control-a-two-sided-nonlinear-hypothesis
-  mark x
+  seat x
     like task
       take a0, like integer
       like integer
-  mark y, like integer
+  seat y, like integer
   have bounded
-    mark t, like integer
+    seat t, like integer
     meet and
       call is-maximum
         call multiply
@@ -1873,22 +1873,22 @@ expect(
   'the telescoped sum off by one is refused',
   `
 rule control-the-disk-sum-off-by-one
-  mark cc
+  seat cc
     like task
       take a0, like integer
       like integer
-  mark mid
+  seat mid
     like task
       take a0, like integer
       like integer
-  mark acc
+  seat acc
     like task
       take a0, like integer
       like integer
-  mark n, like integer
-  mark s, like integer
+  seat n, like integer
+  seat s, like integer
   have each-strip-is-a-difference
-    mark i, like integer
+    seat i, like integer
     meet or
       call is-below
         read i
@@ -1913,7 +1913,7 @@ rule control-the-disk-sum-off-by-one
         code 0
       code 0
   have the-sum-adds-a-strip
-    mark i, like integer
+    seat i, like integer
     meet or
       call is-below
         read i
@@ -1951,20 +1951,20 @@ expect(
   'cosh without the cube term is refused',
   `
 rule control-cosh-without-the-cube
-  mark cc
+  seat cc
     like task
       take a0, like integer
       like integer
-  mark ss
+  seat ss
     like task
       take a0, like integer
       like integer
-  mark x, like integer
-  mark w, like integer
-  mark big, like integer
+  seat x, like integer
+  seat w, like integer
+  seat big, like integer
   have the-addition-formula
-    mark a, like integer
-    mark b, like integer
+    seat a, like integer
+    seat b, like integer
     call is-equal
       call cc
         call add
@@ -1982,7 +1982,7 @@ rule control-cosh-without-the-cube
           call ss
             read b
   have cosh-near-zero
-    mark u, like integer
+    seat u, like integer
     meet or
       call is-below
         read u
@@ -2006,7 +2006,7 @@ rule control-cosh-without-the-cube
             read u
             read u
   have sinh-near-zero
-    mark u, like integer
+    seat u, like integer
     meet or
       call is-below
         read u
@@ -2090,39 +2090,39 @@ expect(
   'Gauss-Bonnet without the turning identity is refused',
   `
 rule control-gauss-bonnet-without-the-turning
-  mark ar
+  seat ar
     like task
       take a0, like integer
       like integer
-  mark ps
+  seat ps
     like task
       take a0, like integer
       like integer
-  mark th
+  seat th
     like task
       take a0, like integer
       like integer
-  mark c
+  seat c
     like task
       take a0, like integer
       like integer
-  mark ia
+  seat ia
     like task
       take a0, like integer
       like integer
-  mark ip
+  seat ip
     like task
       take a0, like integer
       like integer
-  mark it
+  seat it
     like task
       take a0, like integer
       like integer
-  mark n, like integer
-  mark w, like integer
-  mark eps, like integer
+  seat n, like integer
+  seat w, like integer
+  seat eps, like integer
   have the-area-follows-its-increment
-    mark i, like integer
+    seat i, like integer
     meet or
       call is-below
         read i
@@ -2157,7 +2157,7 @@ rule control-gauss-bonnet-without-the-turning
             read eps
             read w
   have psi-follows-its-increment
-    mark i, like integer
+    seat i, like integer
     meet or
       call is-below
         read i
@@ -2192,7 +2192,7 @@ rule control-gauss-bonnet-without-the-turning
             read eps
             read w
   have theta-follows-its-increment
-    mark i, like integer
+    seat i, like integer
     meet or
       call is-below
         read i
@@ -2227,7 +2227,7 @@ rule control-gauss-bonnet-without-the-turning
             read eps
             read w
   have the-area-element
-    mark i, like integer
+    seat i, like integer
     meet or
       call is-below
         read i

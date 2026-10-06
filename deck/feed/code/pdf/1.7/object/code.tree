@@ -148,7 +148,7 @@ task is-pdf-digit
 
 task pdf-digit-value
   take code, like number
-  like decimal
+  like float
   send back
     call to-decimal
       call subtract
@@ -159,7 +159,7 @@ task pdf-digit-value
 # `number-to-json-text` documents (Rust's and TypeScript's float-to-text already drop it; Swift's and Kotlin's
 # don't, so this has to be explicit to agree on every backend).
 task pdf-decimal-to-text
-  take value, like decimal
+  take value, like float
   like text
   fork test
     hook test
@@ -176,7 +176,7 @@ task pdf-decimal-to-text
 
 task parse-pdf-number
   take cursor, like text-cursor
-  like decimal
+  like float
   save negative, false
   fork test
     hook test

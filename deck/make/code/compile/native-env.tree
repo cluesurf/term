@@ -1,0 +1,308 @@
+# The platforms a native module can target, and what the build reads of each: the extension of its runtime shims, the
+# envs it borrows impls from, the `<global:X>` namespaces a program docks and where their shims live. An import already
+# under one of these is concrete, not abstract.
+#
+# Ported from compile/native.ts (self-hosting, 2026-10-05): its tables and pure helpers. The resolver wrapper
+# (`withNativeEnv`) and the runtime prelude, which read files through the callbacks they are handed, stay there and
+# read these.
+
+load @term/base/list
+  find list
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find last-index-of
+  find substring
+
+load ./node
+  find statement
+
+# the platforms, in the order the build lists them
+form native-env
+  mark text
+  case node
+  case browser
+  case cloudflare
+  # the page inside a native app cask: TypeScript in the platform WebView, reaching every native through the cask's
+  # bridge. Borrows the browser natives for everything that is pure page work. See note/term/cask/readme.md
+  case webview
+  case rust
+  case swift
+  case javascript
+  case kotlin
+  case shared
+  # a host written in pure Term, with no runtime shim: the in-memory dom tree every backend can run
+  # (deck/site/code/dom/native/memory). Never a build target of its own. It is what `swift` and `kotlin` fall back to
+  # where they have no host, so the renderer runs headless there. See note/term/app/10-native-dom.md
+  case memory
+  # the PLATFORMS, above the languages. Each compiles with its language's backend and falls back through it
+  # (`env-fallback`), so iOS and macOS share every Swift native and differ only where a module ships an `ios` or
+  # `macos` impl: the view host first. See note/term/app/11-uniform-interface.md
+  case ios
+  case macos
+  case android
+  case windows
+  case linux
+  # Compose (compose-target): the toolkit dom drawn by Compose rather than by a platform's views. `compose` is Compose
+  # Multiplatform on the desktop JVM, falling back through the toolkit and Kotlin's JVM natives; `compose-android` is
+  # Jetpack Compose, falling back through `android` first so it keeps every Android native. Each finds its own
+  # `runtime/<env>/` shim beside the toolkit dom, ahead of the Android views one (`nativePrelude`)
+  case compose
+  case compose-android, text <compose-android>
+  # a SHARED rung under the two Apple platforms: an impl here serves both, with AppKit and UIKit told apart inside its
+  # Swift runtime by `#if canImport`, the way the cask runtime does it. Never a build target of its own
+  case apple
+  # a SHARED rung under every platform with a UI toolkit of its own: an impl over the platform's views, written once in
+  # Term, with one runtime shim per language beside it (`runtime/<name>.swift`, `.kt`), picked by the target's
+  # extension. The view host lives here (deck/site/code/dom/native/toolkit). Never a build target of its own
+  case toolkit
+
+task native-envs
+  like list, like native-env
+
+  save out, make list
+  push(out, make node)
+  push(out, make browser)
+  push(out, make cloudflare)
+  push(out, make webview)
+  push(out, make rust)
+  push(out, make swift)
+  push(out, make javascript)
+  push(out, make kotlin)
+  push(out, make shared)
+  push(out, make memory)
+  push(out, make ios)
+  push(out, make macos)
+  push(out, make android)
+  push(out, make windows)
+  push(out, make linux)
+  push(out, make compose)
+  push(out, make compose-android)
+  push(out, make apple)
+  push(out, make toolkit)
+  back out
+
+# the file extension a target's native runtime source uses
+task runtime-extension
+  take env, like native-env
+  like text
+
+  sift env
+    case node
+      back <ts>
+    case browser
+      back <ts>
+    # the Cloudflare Workers target: TypeScript like node/browser, but its native runtime shims speak the Web platform
+    # (a Fetch handler + the ASSETS binding, no node http socket)
+    case cloudflare
+      back <ts>
+    case webview
+      back <ts>
+    case javascript
+      back <ts>
+    case rust
+      back <rs>
+    case swift
+      back <swift>
+    case kotlin
+      back <kt>
+    case shared
+      back <txt>
+    # pure Term, so it docks no shim. The extension is never looked up
+    case memory
+      back <tree>
+    case ios
+      back <swift>
+    case macos
+      back <swift>
+    case android
+      back <kt>
+    case windows
+      back <rs>
+    case linux
+      back <rs>
+    case compose
+      back <kt>
+    case compose-android
+      back <kt>
+    case apple
+      back <swift>
+    # its runtimes are found by the BUILD env's extension (swift for macos and ios, kt for android), never this one
+    case toolkit
+      back <txt>
+
+# A target that shares another env's native impls where it has none of its own, A CHAIN tried in order after the env's
+# own impl and before the abstract module. The Cloudflare Workers runtime is V8 with Web APIs, so it reuses the
+# `browser` native stdlib wholesale; only the few SSR seams that genuinely differ ship a `native/cloudflare` file, which
+# still wins because it is tried first
+task env-fallback
+  take env, like native-env
+  like list, like native-env
+
+  save out, make list
+  sift env
+    case cloudflare
+      push(out, make browser)
+    # the page in a cask is a browser page whose natives go over the bridge
+    case webview
+      push(out, make browser)
+    # a native backend with no view host of its own renders into the in-memory tree, so the renderer runs and can be
+    # tested there. Only the dom has a `native/memory` impl, so no stdlib module resolves any differently
+    case swift
+      push(out, make memory)
+    case kotlin
+      push(out, make memory)
+    # a platform is its language plus whatever it ships of its own. Rust renders into the memory tree too since
+    # native-dom-0020
+    case rust
+      push(out, make memory)
+    case ios
+      push(out, make apple)
+      push(out, make toolkit)
+      push(out, make swift)
+      push(out, make memory)
+    case macos
+      push(out, make apple)
+      push(out, make toolkit)
+      push(out, make swift)
+      push(out, make memory)
+    case android
+      push(out, make toolkit)
+      push(out, make kotlin)
+      push(out, make memory)
+    case windows
+      push(out, make rust)
+      push(out, make memory)
+    case linux
+      push(out, make rust)
+      push(out, make memory)
+    case compose
+      push(out, make toolkit)
+      push(out, make kotlin)
+      push(out, make memory)
+    case compose-android
+      push(out, make android)
+      push(out, make toolkit)
+      push(out, make kotlin)
+      push(out, make memory)
+    miss
+      save nothing, 0
+  back out
+
+# the envs a build for `env` reads impls from, in order: its own, then its fallback chain
+task env-chain
+  take env, like native-env
+  like list, like native-env
+
+  save out, make list
+  push(out, env)
+  save borrowed, env-fallback(env)
+  walk borrowed
+    take one
+    push(out, one)
+  back out
+
+# ---- native runtime preludes ----
+# Some compiled targets reach a capability through a small `<global:X>` runtime shim (a namespace of total functions
+# wrapping the platform library: `io`, `math`, `crypto`, `text`). That shim source is NOT in the compiler. It lives in
+# the stdlib at `native/<env>/runtime/<X>.<ext>`.
+
+# a `<global:X>` dock: the namespace name, the alias the emitted code says it by, and the module file it was docked in,
+# where its runtime shim is looked for first
+form global-dock
+  link name, like text
+  link alias, like text
+  link file
+    like maybe, like text
+    need false
+
+# the `<global:X>` docks in a program, in its order: the candidates for a runtime-shim prelude
+task global-docks
+  take program, like list, like statement
+  like list, like global-dock
+
+  save out, make list
+  walk program
+    take one
+    sift one
+      case native
+        fork test, starts-with-global(module)
+          hold
+            save docked-in, make none
+            save written-in, read(file)
+            fork test, is-unequal(written-in, <>)
+              hold
+                save docked-in, make(some, written-in)
+            # THE ALIAS IS WHAT THE EMITTED CODE SAYS. `load <global:walk>, name walk-file` puts the shim in
+            # `runtime/walk.<ext>` (the global names the FILE) and every call reads `walkFile::...` (the alias names
+            # the NAMESPACE)
+            save dock
+              make global-dock
+                bind name, substring(module, 7, module/length)
+                bind alias, alias
+                bind file, docked-in
+            push(out, dock)
+      miss
+        save nothing, 0
+  back out
+
+task starts-with-global
+  take module, like text
+  like boolean
+  mark private
+
+  fork test, is-below(module/length, 7)
+    hold
+      back false
+  back is-equal(substring(module, 0, 7), <global:>)
+
+# the distinct namespace names a program docks, in first-docked order
+task global-dock-names
+  take program, like list, like statement
+  like list, like text
+
+  save out, make list
+  save docks, global-docks(program)
+  walk docks
+    take dock
+    save seen, false
+    walk out
+      take one
+      fork test, is-equal(one, dock/name)
+        hold
+          save seen, true
+    fork test, not(seen)
+      hold
+        push(out, dock/name)
+  back out
+
+# the posix directory of a path (the resolver yields posix paths)
+task directory-of
+  take file, like text
+  like text
+
+  save at, last-index-of(file, </>)
+  fork test, is-minimum(at, 0)
+    hold
+      back substring(file, 0, at)
+  back <.>
+
+# a runtime shim lives next to the module that docks it: `<dir-of-module>/runtime/<name>.<ext>`, so a shim is found in
+# whatever package its impl lives in
+task runtime-path-for
+  take file, like text
+  take env, like native-env
+  take name, like text
+  like text
+
+  back <{directory-of(file)}/runtime/{name}.{runtime-extension(env)}>
+
+# the stdlib import path of a target's runtime shim for a namespace (the fallback when a dock has no recorded origin)
+task runtime-path
+  take env, like native-env
+  take name, like text
+  like text
+
+  back <@term/base/code/native/{to-text(env)}/runtime/{name}.{runtime-extension(env)}>

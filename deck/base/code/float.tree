@@ -18,95 +18,95 @@ load @term/base/native/{platform}/float
   find float-arc-tangent-of
 
 task square-root
-  take value, like decimal
-  like decimal
+  take value, like float
+  like float
   send back
     call float-square-root
       read value
 
 task round-down
-  take value, like decimal
-  like decimal
+  take value, like float
+  like float
   send back
     call float-floor
       read value
 
 task round-up
-  take value, like decimal
-  like decimal
+  take value, like float
+  like float
   send back
     call float-ceiling
       read value
 
 task round
-  take value, like decimal
-  like decimal
+  take value, like float
+  like float
   send back
     call float-round
       read value
 
 task power
-  take base, like decimal
-  take exponent, like decimal
-  like decimal
+  take base, like float
+  take exponent, like float
+  like float
   send back
     call float-power
       read base
       read exponent
 
 task absolute
-  take value, like decimal
-  like decimal
+  take value, like float
+  like float
   send back
     call float-absolute
       read value
 
 task sine
-  take value, like decimal
-  like decimal
+  take value, like float
+  like float
   send back
     call float-sine
       read value
 
 task cosine
-  take value, like decimal
-  like decimal
+  take value, like float
+  like float
   send back
     call float-cosine
       read value
 
 task tangent
-  take value, like decimal
-  like decimal
+  take value, like float
+  like float
   send back
     call float-tangent
       read value
 
 task arc-sine
-  take value, like decimal
-  like decimal
+  take value, like float
+  like float
   send back
     call float-arc-sine
       read value
 
 task arc-cosine
-  take value, like decimal
-  like decimal
+  take value, like float
+  like float
   send back
     call float-arc-cosine
       read value
 
 task arc-tangent
-  take value, like decimal
-  like decimal
+  take value, like float
+  like float
   send back
     call float-arc-tangent
       read value
 
 task arc-tangent-of
-  take y, like decimal
-  take x, like decimal
-  like decimal
+  take y, like float
+  take x, like float
+  like float
   send back
     call float-arc-tangent-of
       read y
@@ -115,7 +115,7 @@ task arc-tangent-of
 # an integer as a decimal, exact for every value a number holds
 bind to-decimal
   take value, like number
-  like decimal
+  like float
   case node
     text <$value>
   case browser
@@ -129,7 +129,7 @@ bind to-decimal
 
 # a decimal as an integer, the fraction dropped (toward zero)
 bind to-number
-  take value, like decimal
+  take value, like float
   like number
   case node
     text <Math.trunc($value)>
@@ -144,7 +144,7 @@ bind to-number
 
 # the circle constant, the double nearest it, as each platform names it
 bind pi
-  like decimal
+  like float
   case node
     text <Math.PI>
   case browser
@@ -158,7 +158,7 @@ bind pi
 
 # two pi
 bind tau
-  like decimal
+  like float
   case node
     text <(2 * Math.PI)>
   case browser
@@ -172,7 +172,7 @@ bind tau
 
 # Euler's number
 bind euler-number
-  like decimal
+  like float
   case node
     text <Math.E>
   case browser
@@ -186,8 +186,8 @@ bind euler-number
 
 # e raised to the value
 bind exponent
-  take value, like decimal
-  like decimal
+  take value, like float
+  like float
   case node
     text <Math.exp($value)>
   case browser
@@ -201,8 +201,8 @@ bind exponent
 
 # the natural logarithm (base e)
 bind natural-logarithm
-  take value, like decimal
-  like decimal
+  take value, like float
+  like float
   case node
     text <Math.log($value)>
   case browser
@@ -216,8 +216,8 @@ bind natural-logarithm
 
 # the base-2 logarithm
 bind logarithm-2
-  take value, like decimal
-  like decimal
+  take value, like float
+  like float
   case node
     text <Math.log2($value)>
   case browser
@@ -231,8 +231,8 @@ bind logarithm-2
 
 # the base-10 logarithm
 bind logarithm-10
-  take value, like decimal
-  like decimal
+  take value, like float
+  like float
   case node
     text <Math.log10($value)>
   case browser
@@ -246,8 +246,8 @@ bind logarithm-10
 
 # the hyperbolic sine
 bind hyperbolic-sine
-  take value, like decimal
-  like decimal
+  take value, like float
+  like float
   case node
     text <Math.sinh($value)>
   case browser
@@ -261,8 +261,8 @@ bind hyperbolic-sine
 
 # the hyperbolic cosine
 bind hyperbolic-cosine
-  take value, like decimal
-  like decimal
+  take value, like float
+  like float
   case node
     text <Math.cosh($value)>
   case browser
@@ -276,8 +276,8 @@ bind hyperbolic-cosine
 
 # the hyperbolic tangent
 bind hyperbolic-tangent
-  take value, like decimal
-  like decimal
+  take value, like float
+  like float
   case node
     text <Math.tanh($value)>
   case browser
@@ -291,8 +291,8 @@ bind hyperbolic-tangent
 
 # the value with its fraction dropped, toward zero, still a float
 bind truncate
-  take value, like decimal
-  like decimal
+  take value, like float
+  like float
   case node
     text <Math.trunc($value)>
   case browser
@@ -306,7 +306,7 @@ bind truncate
 
 # whether the value is NaN
 bind is-not-a-number
-  take value, like decimal
+  take value, like float
   like boolean
   case node
     text <Number.isNaN($value)>
@@ -321,7 +321,7 @@ bind is-not-a-number
 
 # whether the value is an infinity of either sign
 bind is-infinite
-  take value, like decimal
+  take value, like float
   like boolean
   case node
     text <($value === Infinity || $value === -Infinity)>
@@ -336,7 +336,7 @@ bind is-infinite
 
 # whether the value is neither NaN nor an infinity
 bind is-finite
-  take value, like decimal
+  take value, like float
   like boolean
   case node
     text <Number.isFinite($value)>
@@ -351,9 +351,9 @@ bind is-finite
 
 # the length of the hypotenuse of a right triangle with these legs, without the overflow of squaring them first
 bind hypotenuse
-  take x, like decimal
-  take y, like decimal
-  like decimal
+  take x, like float
+  take y, like float
+  like float
   case node
     text <Math.hypot($x, $y)>
   case browser

@@ -40,9 +40,9 @@ host significant-t, 2.0
 # what one side of the comparison knows
 form side
   link name, like text
-  link mean-ns, like decimal
+  link mean-ns, like float
   # absent in a baseline written before 2026-10-04, which is compared by the 5% rule alone
-  link std-dev-ns, like maybe decimal
+  link std-dev-ns, like maybe float
   link samples, like number
 
 # how one benchmark compares with its baseline
@@ -55,11 +55,11 @@ form verdict
 
 form comparison-entry
   link name, like text
-  link baseline-ns, like decimal
-  link current-ns, like decimal
-  link pct, like decimal
+  link baseline-ns, like float
+  link current-ns, like float
+  link pct, like float
   # Welch's t, when both sides kept their spread
-  link t, like maybe decimal
+  link t, like maybe float
   link status, like verdict
 
 form comparison
@@ -87,7 +87,7 @@ task side-of
 task welch
   take a, like side
   take b, like side
-  like maybe decimal
+  like maybe float
 
   save na, a/samples
   save nb, b/samples
@@ -181,7 +181,7 @@ task compare-results
 
 task should-fail
   take result, like comparison
-  take max-regression-pct, like decimal
+  take max-regression-pct, like float
   like boolean
 
   walk result/entries

@@ -15,11 +15,15 @@ import { markUnit, unmarked } from '@term/make/code/compile/unit-split'
 import {
   collectBinds,
   renderBind,
-  bindTarget,
+  bindTargetOf,
   bindGap,
   bindImports,
   referencedBinds,
 } from '@term/make/code/compile/bind'
+
+// the value of a maybe a Term module answered (compile/bind.tree), or undefined for none
+const given = <T>(maybe: { form: 'some'; value: T } | { form: 'none' }): T | undefined =>
+  maybe.form === 'some' ? maybe.value : undefined
 import {
   ARRAY_OP_BOUND,
   collectionCall,
@@ -60,7 +64,7 @@ import type { Lend, TextCursors } from '@term/make/code/compile/backend'
 import type { CollectionOp } from '@term/make/code/compile/backend'
 import { armLocals } from '@term/make/code/check/arm'
 import { privateForms } from '@term/make/code/compile/place'
-import { raiseSets } from '@term/make/code/check/effects'
+import { raiseSetsOf } from '@term/make/code/check/effects'
 import { provenIncrements } from '@term/make/code/ir/facts/range'
 import { provenArithmetic, type Proven } from '@term/make/code/compile/proven'
 import { boundedLoops, unsignedDivisions } from '@term/make/code/ir/facts/bounds'
@@ -69,7 +73,9 @@ import { taggedForms, tagText } from '@term/make/code/compile/tag'
 import { declaredLater, formSpec, refuseAny, specForms } from '@term/make/code/compile/backend'
 import type { FormKind, FormSpec } from '@term/make/code/compile/backend'
 import { integerText } from '@term/make/code/compile/type-text'
-import { LIST_LENGTH_TASKS } from '@term/make/code/compile/lowered-members'
+import { listLengthTasks } from '@term/make/code/compile/lowered-members'
+
+const LIST_LENGTH_TASKS: ReadonlySet<string> = new Set(listLengthTasks())
 
 // Rust reserved and reserved-for-future-use keywords that cannot be bare identifiers; a seed name colliding with
 // one is suffixed with `_`, the same convention typescript.ts's RESERVED already uses, applied uniformly
@@ -1206,8 +1212,8 @@ function emitRustPass(
     )
   }
 
-  for (const [name, raises] of raiseSets(program, exceptionForms).raises) {
-    if (raises.size > 0) {
+  for (const [name, raises] of raiseSetsOf(program, [...exceptionForms]).raises) {
+    if (raises.length > 0) {
       raising.add(name)
     }
   }
@@ -2469,11 +2475,11 @@ function emitRustPass(
 
           // a template that is a formatting macro (`panic!("defect: {}", $reason)`) takes a text literal as the
           // literal itself: Display reads a `&str`, and `.to_string()` there is clippy's to_string_in_format_args
-          const formats = /^(panic|format|print|println|eprintln|write|writeln)!\(/.test(bindTarget(bind, 'rust')?.expression ?? '')
+          const formats = /^(panic|format|print|println|eprintln|write|writeln)!\(/.test(given(bindTargetOf(bind, 'rust'))?.expression ?? '')
 
           return (
-            renderBind(bind, 'rust', node.args.map(a => (formats && a.form === 'string' ? JSON.stringify(a.value) : expr(a)))) ??
-            bindGap(bind.name)
+            given(renderBind(bind, 'rust', node.args.map(a => (formats && a.form === 'string' ? JSON.stringify(a.value) : expr(a))))) ??
+            bindGap(node.callee.name)
           )
         }
 
@@ -6182,7 +6188,7 @@ fn __term_boxed<T, F: std::future::Future<Output = T> + 'static>(work: F) -> std
     }
 
     // marked with its module now that nothing reads its start, so the program can be written one file per module
-    return markUnit(bodyFiles[index], out)
+    return markUnit(bodyFiles[index] ?? '', out)
   })
   let assembled = localBody.join('\n\n')
 

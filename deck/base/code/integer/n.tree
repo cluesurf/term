@@ -61,6 +61,34 @@ tree integer
       send back
         code {max}
 
+    # the value itself when it fits this width, and a stop with `shortage` or `excess` when it does not, where
+    # `{name}-from-number` wraps it in. Its result is `like {name}`, so a value passed through it is known to fit a
+    # `like {name}` parameter (TERM_WIDTH_RANGES, note/term/plan/decisions-2026-10.md D12)
+    task to-{name}
+      take value, like number
+      like {name}
+      fork test
+        hook test
+          call is-below
+            read value
+            code {min}
+        hook hold
+          halt shortage
+            bind thing, <{name}>
+            bind limit, code {min}
+            bind actual, read value
+      fork test
+        hook test
+          call is-above
+            read value
+            code {max}
+        hook hold
+          halt excess
+            bind thing, <{name}>
+            bind limit, code {max}
+            bind actual, read value
+      send back, read value
+
     # wrapping arithmetic: an overflowing result wraps around the width, like hardware
     task {name}-add
       take a, like number

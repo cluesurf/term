@@ -16,7 +16,7 @@ import { groupsOf } from '@term/make/code/parser/narrow'
 import { headWord, spanOfNode, wordOf } from '@term/make/code/compile/mill-run'
 
 // the heads `mine seed` reads as a construct before it tries a bare call
-export const VALUE_WORDS = new Set([
+const VALUE_WORDS = new Set([
   'call',
   'code',
   'fork',
@@ -32,19 +32,25 @@ export const VALUE_WORDS = new Set([
   'wait',
 ])
 
-export type KeywordImport = { word: string; span: Span }
+// As the Term port answers them (check/keyword-import.tree): the words as a list, each `find` a `KeywordFind`
+export function valueWords(): string[] {
+  return [...VALUE_WORDS]
+}
+
+export type KeywordFind = { word: string; span: Span }
 
 // does a parsed module define a top-level `task <word>`
 export function definesTask(parsed: ParseResult, word: string): boolean {
   return parsed.ok && groupsOf(parsed.tree.nodes).some(group => headWord(group) === 'task' && wordOf(group.nodes[1]) === word)
 }
 
-// every `find <word>` under a top-level `load` that imports one of the words with no `name`, where `isTask` says the
-// word names a task (a form named `text` is reached through `like text`, so it is not one of these), and the file
-// writes `<word>(` somewhere. `call read` over its arguments does reach the import, and the cask tests call it so,
-// so only the call shape the grammar takes as its own word is the trap
-export function keywordImports(tree: RootNode, isTask: (word: string) => boolean): KeywordImport[] {
-  const found: KeywordImport[] = []
+// every `find <word>` under a top-level `load` that imports one of the words with no `name`, where the file writes
+// `<word>(` somewhere. `call read` over its arguments does reach the import, and the cask tests call it so, so only the
+// call shape the grammar takes as its own word is the trap. The caller keeps those whose word names a task (a form
+// named `text` is reached through `like text`, so it is not one of these): the original asked that last, so the caller
+// asks it of exactly the words it did
+export function keywordCandidates(tree: RootNode): KeywordFind[] {
+  const found: KeywordFind[] = []
   const called = calledWords(tree)
 
   for (const load of groupsOf(tree.nodes)) {
@@ -62,7 +68,7 @@ export function keywordImports(tree: RootNode, isTask: (word: string) => boolean
 
       const span = spanOfNode(child)
 
-      if (word !== undefined && VALUE_WORDS.has(word) && !aliased && span && called.has(word) && isTask(word)) {
+      if (word !== undefined && VALUE_WORDS.has(word) && !aliased && span && called.has(word)) {
         found.push({ word, span })
       }
     }

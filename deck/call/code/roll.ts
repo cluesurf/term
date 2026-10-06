@@ -14,7 +14,8 @@ import { buildable, buildSession, findTreeFiles, isWholeFile, unitSlug } from '@
 import type { BuildProblem } from '@term/call/code/make'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { projectCache } from '@term/call/code/cache-store'
-import { closeRun, count, field, openRun, printData, report, reportProblems } from '@term/call/code/output'
+import { closeRun, count, field, location, openRun, outputOptions, printData, report, reportProblems } from '@term/call/code/output'
+import { addReach, diffRolls, ownHost, reachGains, rollBefore } from '@term/call/code/roll-diff'
 
 export const ROLL_KINDS = ['deck', 'exception', 'task', 'dock', 'tell', 'kind', 'supervision']
 
@@ -182,10 +183,20 @@ export async function callRoll(input: {
   private?: boolean
   host?: string
   path?: boolean
+  diff?: string
 }): Promise<void> {
   openRun({ verb: 'roll', root: input.root, facts: input.kind ? [input.kind] : [] })
 
   const { roll, failed, problems } = projectRoll(input.root)
+
+  // what each of the project's own tasks can touch, beside what it can raise (call/code/reach.ts)
+  addReach(roll, input.root)
+
+  if (input.diff !== undefined) {
+    rollDiff({ root: input.root, before: input.diff, roll, failed, problems, json: input.json === true })
+
+    return
+  }
 
   // a kind is built in, or declared by a deck of this build (`roll <name>`)
   if (input.kind && !ROLL_KINDS.includes(input.kind) && !roll.kind.some(k => k.name === input.kind)) {
@@ -256,6 +267,152 @@ export async function callRoll(input: {
           count(roll.task.length, 'tasks', 'task'),
           count(roll.dock.length, 'routes', 'route'),
         ],
+  })
+}
+
+// `--diff <before>`: the roll now against the roll at `before` (call/code/roll-diff.ts). Each task that changed what it
+// can reach or raise is an item, a gained reach a warning, so `--strict` fails a change that widened what code can do
+function rollDiff(input: { root: string; before: string; roll: Roll; failed: string[]; problems: BuildProblem[]; json: boolean }): void {
+  let failedBefore = 0
+  const before = rollBefore(input.root, input.before, at => {
+    const old = projectRoll(at)
+
+    failedBefore = old.failed.length
+
+    return old.roll
+  })
+
+  if ('error' in before) {
+    if (input.json) {
+      printData(`${JSON.stringify({ error: 'no-before', message: before.error })}\n`)
+      process.exitCode = 1
+
+      return
+    }
+
+    report({ glyph: 'failed', kind: 'problem', subject: before.error })
+    closeRun({ verdict: 'Nothing compared', next: 'term roll --json > before.json, before the change, then term roll --diff before.json' })
+
+    return
+  }
+
+  const diff = diffRolls(input.before, before.roll, input.roll, ownHost(input.root))
+  const gains = reachGains(diff)
+
+  if (input.json) {
+    printData(`${JSON.stringify(diff)}\n`)
+
+    if (gains && outputOptions().strict) {
+      process.exitCode = 1
+    }
+
+    return
+  }
+
+  const list = (items: string[]): string => items.join(', ')
+
+  for (const task of diff.tasks.added) {
+    report({
+      glyph: task.reach.length ? 'warning' : 'added',
+      kind: 'change',
+      subject: `New task ${task.name}`,
+      fields: [
+        location(task.site),
+        field('reach', task.reach.length ? list(task.reach) : 'no native module'),
+        field('raise', task.halt.length ? list(task.halt) : 'nothing'),
+      ],
+    })
+  }
+
+  for (const task of diff.tasks.changed) {
+    report({
+      glyph: task.reach.added.length ? 'warning' : 'changed',
+      kind: 'change',
+      subject: `${task.name} changed what it can do`,
+      fields: [
+        location(task.site),
+        ...(task.reach.added.length ? [field('reaches now', list(task.reach.added))] : []),
+        ...(task.reach.removed.length ? [field('reaches no longer', list(task.reach.removed))] : []),
+        ...(task.halt.added.length ? [field('raises now', list(task.halt.added))] : []),
+        ...(task.halt.removed.length ? [field('raises no longer', list(task.halt.removed))] : []),
+        ...(task.async ? [field('async', task.async.after ? 'now' : 'no longer')] : []),
+      ],
+    })
+  }
+
+  for (const task of diff.tasks.removed) {
+    report({ glyph: 'removed', kind: 'change', subject: `Task ${task.name} is gone`, fields: [location(task.site)] })
+  }
+
+  for (const name of diff.exceptions.added) {
+    report({ glyph: 'added', kind: 'change', subject: `New exception ${name}` })
+  }
+
+  for (const name of diff.exceptions.removed) {
+    report({ glyph: 'removed', kind: 'change', subject: `Exception ${name} is gone` })
+  }
+
+  for (const name of diff.routes.added) {
+    report({ glyph: 'added', kind: 'change', subject: `New route ${name}` })
+  }
+
+  for (const name of diff.routes.removed) {
+    report({ glyph: 'removed', kind: 'change', subject: `Route ${name} is gone` })
+  }
+
+  for (const route of diff.routes.changed) {
+    report({
+      glyph: 'changed',
+      kind: 'change',
+      subject: `Route ${route.name} changed what it can raise`,
+      fields: [
+        ...(route.halt.added.length ? [field('raises now', list(route.halt.added))] : []),
+        ...(route.halt.removed.length ? [field('raises no longer', list(route.halt.removed))] : []),
+      ],
+    })
+  }
+
+  // a deck the project loads, counted rather than listed: its tasks are reached through the project's own, above
+  for (const deck of diff.decks) {
+    const parts = [
+      deck.tasks.added ? `${deck.tasks.added} tasks entered the build` : '',
+      deck.tasks.removed ? `${deck.tasks.removed} tasks left it` : '',
+      deck.tasks.changed ? `${deck.tasks.changed} tasks changed what they raise` : '',
+      deck.exceptions.added ? `${deck.exceptions.added} exceptions entered` : '',
+      deck.exceptions.removed ? `${deck.exceptions.removed} exceptions left` : '',
+    ].filter(Boolean)
+
+    report({ glyph: 'changed', kind: 'change', subject: `${deck.host}: ${parts.join(', ')}` })
+  }
+
+  if (!diff.reach) {
+    report({ glyph: 'warning', verb: 'roll', subject: `${input.before} was written before tasks carried their reach, so only raises are compared` })
+  }
+
+  reportProblems(input.problems, input.root)
+
+  if (input.failed.length || failedBefore) {
+    report({
+      glyph: 'warning',
+      verb: 'roll',
+      subject: `Files that did not compile are not compared: ${input.failed.length} now, ${failedBefore} before`,
+      ...(input.failed.length ? { message: [input.failed.join(', ')] } : {}),
+    })
+  }
+
+  const changes =
+    diff.tasks.added.length + diff.tasks.changed.length + diff.tasks.removed.length +
+    diff.exceptions.added.length + diff.exceptions.removed.length +
+    diff.routes.added.length + diff.routes.removed.length + diff.routes.changed.length + diff.decks.length
+
+  closeRun({
+    verdict: changes ? `Compared with ${input.before}` : `Nothing changed since ${input.before}`,
+    counts: [
+      count(diff.tasks.added.length, 'tasks added', 'task added'),
+      count(diff.tasks.changed.length, 'tasks changed', 'task changed'),
+      count(diff.tasks.removed.length, 'tasks removed', 'task removed'),
+      count(gains, 'gained a native module', 'gained a native module'),
+    ],
   })
 }
 

@@ -1,0 +1,514 @@
+# What can be refused about a `twin` without running anything (note/term/optimize/admission.md, optimize-0006).
+#
+# A twin is another implementation of a named task that the compiler may choose in its place. Before any test or proof
+# asks whether it AGREES with the task, these ask whether it COULD: does the task exist and is it pure, does the twin
+# take the task's parameters, is it pure and does it end where the task does, are its run-time checks pure, does it
+# ask for a relaxation Term defines, and do no two twins call each other's tasks in a cycle.
+#
+# Each twin is checked as a synthetic task with the reference's parameters, appended to a copy of the program, so
+# purity and termination come from the same analyses every other task goes through (check/purity.tree,
+# check/termination.tree) rather than from a second opinion written here.
+#
+# Ported from check/twin.ts (self-hosting, 2026-10-06), which stays as the face, handing in the linear prover and the
+# test of an arm's written `binds` that check/termination.tree takes. The original's synthetic task spread the
+# reference task (`{...task, name, params, body, span}`); Term has no spread, so it carries the fields the two analyses
+# read of a task (its name, parameters, body and span, and whether it is async, a stub and with what facts and writes,
+# a claim, or meant to roam), each a value of its own, so the program is never written. The callees a body names are
+# read through compile/node-reach.tree with the original's skipped fields, `span` and `type`.
+
+load @term/base/list
+  find list
+  find contains
+  find get
+  find join
+  find sort
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/ordering
+  find ordering
+  find from-texts
+
+load ../parser/diagnostic
+  find diagnostic
+  find diagnose
+  find diagnostic-input
+  find diagnostic-name
+
+load ../compile/node
+  find expression
+  find expression-span
+  find function-param
+  find match-case
+  find statement
+  find twin
+  find type
+
+load ../compile/node-reach
+  find reach-statements
+
+load ./certificate
+  find inequality
+
+load ./purity
+  find purity
+
+load ./termination
+  find terminating-functions
+
+# the relaxations Term defines, each with its decision procedure in note/term/optimize/words.md
+task ease-words
+  like list, like text
+
+  save out, make list
+  push(out, <float-order>)
+  push(out, <float-fused>)
+  back out
+
+# the internal name a twin's body is checked under. Not a name a person can write: `:` is not a word character
+task twin-task-name
+  take given, like twin
+  like text
+
+  back <twin:{given/of}:{given/name}>
+
+task add-text
+  take values, like list, like text
+  take value, like text
+  like void
+  mark private
+
+  fork test, not(contains(values, value))
+    hold
+      push(values, value)
+
+# every task a body calls by name, in the order first called
+task callees-of
+  take body, like list, like statement
+  like list, like text
+  mark private
+
+  save skip, make list
+  push(skip, <span>)
+  push(skip, <type>)
+  save out, make list
+  save seen, reach-statements(body, skip)
+  walk seen/expressions
+    take one
+    sift one
+      case call
+        sift callee
+          case variable
+            link callee-name
+            fork test, is-unequal(callee-name, <>)
+              hold
+                add-text(out, callee-name)
+          miss
+            save nothing, 0
+      miss
+        save nothing, 0
+  back out
+
+form refusals
+  mark shared
+  link file, like text
+  link out, like list, like diagnostic
+
+task refuse
+  take into, like refusals
+  take kind, like diagnostic-name
+  take given, like twin
+  take message, like text
+  like void
+  mark private
+
+  save at-file, into/file
+  sift given/span/file
+    case some
+      link own
+      save at-file, own
+    case none
+      save nothing, 0
+  save input
+    make diagnostic-input
+      bind file, at-file
+      bind span, given/span
+      bind message, make(some, message)
+  push(into/out, diagnose(kind, input))
+
+# `a, b`, or `nothing` for none
+task listed
+  take names, like list, like text
+  like text
+  mark private
+
+  fork test, is-equal(names/length, 0)
+    hold
+      back <nothing>
+  back join(names, <, >)
+
+task task-name-of
+  take one, like statement
+  like text
+  mark private
+
+  sift one
+    case function
+      back name
+    miss
+      back <>
+
+# a task the program defines, not a form's method
+task is-plain-task
+  take one, like statement
+  like boolean
+  mark private
+
+  sift one
+    case function
+      sift method
+        case some
+          link owner
+          back false
+        case none
+          back true
+    miss
+      back false
+
+# the reference task's own fields the analyses read, under a new name, parameters, body and span. The original's
+# guard task also set its result to `boolean`, which neither analysis reads
+task synthetic
+  take reference, like statement
+  take new-name, like text
+  take extra, like list, like function-param
+  take new-body, like list, like statement
+  take at, like span
+  like statement
+  mark private
+
+  sift reference
+    case function
+      save all-params, make list
+      walk params
+        take param
+        push(all-params, param)
+      walk extra
+        take param
+        push(all-params, param)
+      save writes, make list
+      walk stub-writes
+        take one
+        push(writes, one)
+      save made
+        make function
+          bind name, new-name
+          bind params, all-params
+          bind body, new-body
+          bind generics, generics
+          bind async, async
+          bind stub, stub
+          bind stub-facts, stub-facts
+          bind stub-writes, writes
+          bind claim, claim
+          bind roam, roam
+          bind span, at
+      back made
+    miss
+      back reference
+
+# a task and every task it can reach through calls, the task first, breadth first
+task reachable
+  take bodies, like hash, like text, like list, like statement
+  take start, like text
+  like list, like text
+  mark private
+
+  save seen, make list
+  push(seen, start)
+  save queue, make list
+  push(queue, start)
+  save at, 0
+  walk test
+    hook test, is-below(at, queue/length)
+    hook hold
+      save current, get(queue, at)
+      save at, add(at, 1)
+      fork test, bodies/has(current)
+        hold
+          walk callees-of(bodies/get(current))
+            take callee
+            fork test, and(bodies/has(callee), not(contains(seen, callee)))
+              hold
+                push(seen, callee)
+                push(queue, callee)
+  back seen
+
+# the search for a cycle through twins from one start: the path walked and the names on it
+form cycle-search
+  mark shared
+  link edges, like hash, like text, like list, like text
+  link path, like list, like text
+
+task cycle-from
+  take search, like cycle-search
+  take at, like text
+  like maybe, like list, like text
+  mark private
+
+  save place, -1
+  save i, 0
+  walk search/path
+    take one
+    fork test, and(is-equal(one, at), is-below(place, 0))
+      hold
+        save place, i
+    save i, add(i, 1)
+  fork test, is-minimum(place, 0)
+    hold
+      save cycle, make list
+      save j, place
+      walk test
+        hook test, is-below(j, search/path/length)
+        hook hold
+          push(cycle, get(search/path, j))
+          save j, add(j, 1)
+      back make(some, cycle)
+  push(search/path, at)
+  walk search/edges/get-or-default(at, make list)
+    take next
+    sift cycle-from(search, next)
+      case some
+        link found
+        back make(some, found)
+      case none
+        save nothing, 0
+  search/path/pop()
+  back make none
+
+task compare-names
+  take left, like text
+  take right, like text
+  like ordering
+  mark private
+
+  back from-texts(left, right)
+
+task check-twins
+  take program, like list, like statement
+  take twins, like list, like twin
+  take file, like text
+  take proves
+    like task
+      take assumptions, like list, like inequality
+      take goal, like inequality
+      like boolean
+  take binds-given
+    like task
+      take arm, like match-case
+      like boolean
+  like list, like diagnostic
+
+  save refused
+    make refusals
+      bind file, file
+      bind out, make list
+  fork test, is-equal(twins/length, 0)
+    hold
+      back refused/out
+  save tasks, make hash
+  walk program
+    take one
+    fork test, is-plain-task(one)
+      hold
+        save task-name, task-name-of(one)
+        save tasks/{task-name}, one
+  # the twins that can be checked further, each as a synthetic task, and its guards as tasks of their own
+  save made-tasks, make list
+  save guard-names, make list
+  save guards, make hash
+  save checked, make list
+  save ease, ease-words()
+  walk twins
+    take one
+    fork test, not(tasks/has(one/of))
+      hold
+        save kind, make twin-unknown
+        refuse(refused, kind, one, <`twin {one/of}, name {one/name}`: there is no task `{one/of}` here>)
+        turn next
+    save reference, tasks/get(one/of)
+    save expected, make list
+    walk task-params(reference)
+      take param
+      push(expected, param/name)
+    fork test, is-unequal(join(expected, <,>), join(one/params, <,>))
+      hold
+        save kind, make twin-signature
+        save theirs, listed(one/params)
+        save ours, listed(expected)
+        refuse(refused, kind, one, <`{one/name}` takes {theirs}, and `{one/of}` takes {ours}>)
+        turn next
+    save ease-listed, join(ease, <, >)
+    walk one/ease
+      take word
+      fork test, not(contains(ease, word))
+        hold
+          save kind, make ease-unknown
+          refuse(refused, kind, one, <`ease {word}` is not a relaxation Term defines: {ease-listed}>)
+    # the knobs are compile-time values, bound like parameters for the checks
+    save knobs, make list
+    walk one/knobs
+      take knob
+      save knob-param
+        make function-param
+          bind name, knob/name
+          bind type, knob/type
+      push(knobs, knob-param)
+    save own-name, twin-task-name(one)
+    push(made-tasks, synthetic(reference, own-name, knobs, one/body, one/span))
+    save index, 0
+    walk one/test
+      take test
+      save guard-name, <{own-name}:test:{index}>
+      fork test, not(guards/has(guard-name))
+        hold
+          push(guard-names, guard-name)
+      save guards/{guard-name}, one
+      save test-span, expression-span(test)
+      save returned, make list
+      save back-test
+        make return
+          bind value, make(some, test)
+          bind span, test-span
+      push(returned, back-test)
+      save none-extra, make list
+      push(made-tasks, synthetic(reference, guard-name, none-extra, returned, test-span))
+      save index, add(index, 1)
+    push(checked, one)
+  fork test, is-above(checked/length, 0)
+    hold
+      save all, make list
+      walk program
+        take one
+        push(all, one)
+      walk made-tasks
+        take one
+        push(all, one)
+      save answer, purity(all)
+      save pure, answer/pure
+      save ending, terminating-functions(all, proves, binds-given)
+      save bodies, make hash
+      walk all
+        take one
+        sift one
+          case function
+            save bodies/{name}, body
+          miss
+            save nothing, 0
+      walk checked
+        take one
+        save name, twin-task-name(one)
+        fork test, not(contains(pure, one/of))
+          hold
+            save kind, make twin-of-impure
+            refuse(refused, kind, one, <`{one/of}` is not pure, so `{one/name}` would have to repeat its effects in the same order>)
+            turn next
+        fork test, and(not(one/trust), not(contains(pure, name)))
+          hold
+            save kind, make twin-impure
+            refuse(refused, kind, one, <`{one/name}` is not pure: say `mark trust` to admit it as trusted, or make it pure>)
+        # the totality checker judges a task by its OWN recursion, so a twin ends only if it and every task it can
+        # reach are each shown to end: a twin calling a task that spins forever spins forever too
+        save stuck, <>
+        save stuck-found, false
+        walk reachable(bodies, name)
+          take reached-name
+          fork test, not(contains(ending, reached-name))
+            hold
+              save stuck, reached-name
+              save stuck-found, true
+              halt
+        fork test, and(contains(ending, one/of), stuck-found)
+          hold
+            save message, <`{one/of}` is shown to end and `{one/name}` calls `{stuck}`, which is not>
+            fork test, is-equal(stuck, name)
+              hold
+                save message, <`{one/of}` is shown to end and `{one/name}` is not>
+            save kind, make twin-loops
+            refuse(refused, kind, one, message)
+      walk guard-names
+        take guard-name
+        fork test, not(contains(pure, guard-name))
+          hold
+            save one, guards/get(guard-name)
+            save kind, make guard-impure
+            refuse(refused, kind, one, <a `hook test` of `{one/name}` is not pure>)
+  # a cycle through twins: a twin of A calls B, and a twin of B calls A (directly or further round). A twin calling its
+  # OWN task is not a cycle here: it is how a twin falls back to the reference, and the selection pass never replaces a
+  # call to a task inside that task's own twins
+  save edges, make hash
+  save starts, make list
+  walk checked
+    take one
+    save out-edges, make list
+    fork test, edges/has(one/of)
+      hold
+        save out-edges, edges/get(one/of)
+      miss
+        push(starts, one/of)
+    walk callees-of(one/body)
+      take callee
+      fork test, and(is-unequal(callee, one/of), twin-of-any(twins, callee))
+        hold
+          add-text(out-edges, callee)
+    save edges/{one/of}, out-edges
+  save reported, make list
+  walk starts
+    take start
+    save search
+      make cycle-search
+        bind edges, edges
+        bind path, make list
+    sift cycle-from(search, start)
+      case some
+        link cycle
+        save key, join(sort(cycle, compare-names), <,>)
+        fork test, not(contains(reported, key))
+          hold
+            push(reported, key)
+            save first, get(cycle, 0)
+            walk checked
+              take one
+              fork test, is-equal(one/of, first)
+                hold
+                  save kind, make twin-cycle
+                  save chain, join(cycle, < -\> >)
+                  refuse(refused, kind, one, <twins of {chain} -\> {first} call each other>)
+                  halt
+      case none
+        save nothing, 0
+  back refused/out
+
+task twin-of-any
+  take twins, like list, like twin
+  take name, like text
+  like boolean
+  mark private
+
+  walk twins
+    take one
+    fork test, is-equal(one/of, name)
+      hold
+        back true
+  back false
+
+task task-params
+  take one, like statement
+  like list, like function-param
+  mark private
+
+  sift one
+    case function
+      back params
+    miss
+      back make list

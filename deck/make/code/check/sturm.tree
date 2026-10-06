@@ -223,14 +223,14 @@ task r-maximum
 # a ratio as the nearest float to each of its parts, divided, as `Number(n) / Number(d)` read it
 task r-to-decimal
   take x, like exact-ratio
-  like decimal
+  like float
   mark private
 
   back divide(host-parse-float(x/n/text()), host-parse-float(x/d/text()))
 
 # a number as `BigInt(Math.round(value))` read it
 task rounded
-  take value, like decimal
+  take value, like float
   like exact-ratio
   mark private
 
@@ -262,7 +262,7 @@ task r-coefficient
   back r-zero()
 
 task to-r-poly
-  take p, like list, like decimal
+  take p, like list, like float
   like list, like exact-ratio
   mark private
 
@@ -276,7 +276,7 @@ task to-r-poly
 # interval) refuse a polynomial that is not, rather than rounding it: a rounded coefficient is a different polynomial,
 # and a sign decided for that one is not a sign for this. proof-by-default-0034.
 task integral
-  take p, like list, like decimal
+  take p, like list, like float
   like boolean
   mark private
 
@@ -289,7 +289,7 @@ task integral
 
 # `Number.isSafeInteger`: a whole number no larger in size than 2^53 - 1 (so neither `NaN` nor an infinity)
 task is-safe-integer
-  take value, like decimal
+  take value, like float
   like boolean
   mark private
 
@@ -603,22 +603,22 @@ task r-cell-samples
 # ===== the public number interface =====
 
 task degree
-  take p, like list, like decimal
+  take p, like list, like float
   like number
 
   back subtract(to-r-poly(p)/length, 1)
 
 # exact when x is an integer; used by tests for an integer sample
 task evaluate
-  take p, like list, like decimal
-  take x, like decimal
-  like decimal
+  take p, like list, like float
+  take x, like float
+  like float
 
   back r-to-decimal(r-evaluate(to-r-poly(p), rounded(x)))
 
 task derivative
-  take p, like list, like decimal
-  like list, like decimal
+  take p, like list, like float
+  like list, like float
 
   save out, make list
   walk r-derivative(to-r-poly(p))
@@ -628,9 +628,9 @@ task derivative
 
 # the number of DISTINCT real roots of `p` in the half-open interval `(a, b]`
 task root-count-in
-  take p, like list, like decimal
-  take a, like decimal
-  take b, like decimal
+  take p, like list, like float
+  take a, like float
+  take b, like float
   like number
 
   save seq, r-sturm-sequence(to-r-poly(p))
@@ -638,7 +638,7 @@ task root-count-in
 
 # the total number of DISTINCT real roots of `p`
 task real-root-count
-  take p, like list, like decimal
+  take p, like list, like float
   like number
 
   save t, to-r-poly(p)
@@ -652,14 +652,14 @@ task real-root-count
 
 # does `p` have at least one real root?
 task has-real-root
-  take p, like list, like decimal
+  take p, like list, like float
   like boolean
 
   back is-above(real-root-count(p), 0)
 
 # does `p(x) > 0` for ALL real x? (strictly positive: no real root, positive sign)
 task positive-everywhere
-  take p, like list, like decimal
+  take p, like list, like float
   like boolean
 
   fork test, not(integral(p))
@@ -684,7 +684,7 @@ task positive-everywhere
 # the touching-zero non-negative polynomials (e.g. `(x-1)^2 (x-2)^2`) that strict positivity cannot, and rejects any
 # polynomial that dips below zero on some interval.
 task non-negative-everywhere
-  take p, like list, like decimal
+  take p, like list, like float
   like boolean
 
   fork test, not(integral(p))
@@ -715,7 +715,7 @@ task r-non-negative
 # constant sign on each cell. This is the one-dimensional CAD, exported for the multivariate lift (cad.tree): a cell of
 # the base line lifts to a stack of cells in the variable above it.
 task cell-samples
-  take p, like list, like decimal
+  take p, like list, like float
   like list, like exact-ratio
 
   back r-cell-samples(to-r-poly(p))
@@ -749,9 +749,9 @@ task rational-non-negative-everywhere
 # in `(a, b)` (an interior root would make it zero, and a sign change would make it negative) and `p` is positive at
 # the midpoint. Sound for a < b.
 task positive-on-interval
-  take p, like list, like decimal
-  take a, like decimal
-  take b, like decimal
+  take p, like list, like float
+  take a, like float
+  take b, like float
   like boolean
 
   # the interval's ends are rounded below too, so they are held to the same rule as the coefficients
@@ -873,8 +873,8 @@ task tarski-query-r
   back subtract(infinity-variations(seq, false), infinity-variations(seq, true))
 
 task tarski-query
-  take g, like list, like decimal
-  take f, like list, like decimal
+  take g, like list, like float
+  take f, like list, like float
   like number
 
   back tarski-query-r(to-r-poly(g), to-r-poly(f))
@@ -882,8 +882,8 @@ task tarski-query
 # the number of distinct real roots of `f` at which `g` is positive, negative, and zero, by combining three Tarski
 # queries: TaQ(1) = the root count, TaQ(g) = #(g>0) - #(g<0), TaQ(g^2) = #(g>0) + #(g<0). Exact, no root computation.
 task real-roots-by-sign
-  take g, like list, like decimal
-  take f, like list, like decimal
+  take g, like list, like float
+  take f, like list, like float
   like roots-by-sign
 
   save g-poly, to-r-poly(g)

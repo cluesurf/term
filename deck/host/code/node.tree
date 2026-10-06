@@ -10,7 +10,7 @@ form scan-node
   case number
     link value, like number
   case decimal
-    link value, like decimal
+    link value, like float
   case group
     link head, like text
     link kids

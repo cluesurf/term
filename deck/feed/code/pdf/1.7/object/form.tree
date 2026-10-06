@@ -11,7 +11,7 @@ form pdf-value
   case pdf-boolean
     link value, like boolean
   case pdf-number
-    link value, like decimal
+    link value, like float
   case pdf-string
     link value, like text
   case pdf-name

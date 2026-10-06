@@ -162,11 +162,11 @@ ok(
   'free theorem: length (map f s) == length s, proven by induction',
   compiles(`${CONTAINER}
 rule map-preserves-length
-  mark f
+  seat f
     like task
       take x, like nat
       like nat
-  mark s, like stack
+  seat s, like stack
     head nat
   show hold
     call is-equal
@@ -186,11 +186,11 @@ ok(
   'false shape law over higher-order map is rejected',
   !compiles(`${CONTAINER}
 rule map-collapses-wrong
-  mark f
+  seat f
     like task
       take x, like nat
       like nat
-  mark s, like stack
+  seat s, like stack
     head nat
   show hold
     call is-equal

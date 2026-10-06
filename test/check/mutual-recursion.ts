@@ -113,7 +113,7 @@ task pong
       read n
 
 rule ping-identity
-  mark x, like nat
+  seat x, like nat
   show hold
     call is-equal
       call ping

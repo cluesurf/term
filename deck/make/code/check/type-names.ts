@@ -17,8 +17,10 @@ import { diagnose } from '@term/make/code/parser/diagnostic'
 // the names the seeder reads specially, and the language's own: the same list as `PRIMITIVE_TYPE_NAMES` in
 // check/infer.ts, whose warning this refusal hardens. A type argument (`like hash, like text, like number`) stays a
 // `named` type where a parameter's own `like text` is already the primitive, so the primitives must be here too
+// `decimal` is not among them since 2026-10-06 (D4): it named the platform float, where every other language's library
+// means exact base 10 by it, so `like decimal` is refused, naming `like float`, and the word is free for a form
 const GIVEN = new Set([
-  'u8', 'u16', 'u32', 'u64', 'u128', 'i8', 'i16', 'i32', 'i64', 'i128', 'integer', 'number', 'decimal', 'float', 'f32', 'f64',
+  'u8', 'u16', 'u32', 'u64', 'u128', 'i8', 'i16', 'i32', 'i64', 'i128', 'integer', 'number', 'float', 'f32', 'f64',
   'dynamic', 'json', 'bytes', 'buffer', 'text', 'boolean', 'void', 'unknown', 'any', 'unit', 'list', 'hash', 'task',
   'string', 'natural', 'self', 'type', 'size',
 ])
@@ -101,12 +103,19 @@ export function checkTypeNames(program: Program, file: string): Diagnostic[] {
 
     seen.add(key)
     out.push(
-      diagnose('unknown-name', {
-        file,
-        span,
-        message: `the type "${name}" is not defined (${where}). A misspelled type used to be read as no type at all`,
-        hint: 'name a form, a mask, or a type parameter the task or form declares with `head`',
-      }),
+      name === 'decimal'
+        ? diagnose('unknown-name', {
+            file,
+            span,
+            message: `\`like decimal\` is the old name of \`like float\` (${where}): the platform float, which is not base 10`,
+            hint: 'write `like float`, or `like big-decimal` from @term/base/decimal for exact base 10. `pnpm term:decimal-migrate --commit` rewrites every one',
+          })
+        : diagnose('unknown-name', {
+            file,
+            span,
+            message: `the type "${name}" is not defined (${where}). A misspelled type used to be read as no type at all`,
+            hint: 'name a form, a mask, or a type parameter the task or form declares with `head`',
+          }),
     )
   }
 

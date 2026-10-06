@@ -5,7 +5,7 @@
 //   ROUND TRIP   parse(print(parse(x))) equals parse(x). `printTree` is the canonical expanded form, so a file
 //                that survives a print/parse cycle unchanged proves the printer and the parser agree about the
 //                tree. They did not: a decimal printed as `String(value)` turned `1.0` into `1`, silently
-//                changing `like decimal` to `like number`.
+//                changing `like float` to `like number`.
 //
 //   NEVER THROWS Feeding the parser a mutation of a real file must give a result, never an exception. A parser
 //                that throws cannot report where the problem is, and the caller gets a stack trace instead of a

@@ -373,7 +373,8 @@ task ring-equal
   take right, like expression
   like boolean
 
-  mark unsafe
+  fork
+    mark unsafe
     save cache, new-cache()
     back ring-equal-exact(cache, left, right)
   halt take
@@ -766,7 +767,8 @@ task ring-equal-modulo
   take hypotheses, like list, like equation
   like boolean
 
-  mark unsafe
+  fork
+    mark unsafe
     save cache, new-cache()
     back ring-equal-modulo-exact(cache, left, right, hypotheses)
   halt take
@@ -1157,7 +1159,8 @@ task non-negative-difference
   take right, like expression
   like boolean
 
-  mark unsafe
+  fork
+    mark unsafe
     save cache, new-cache()
     save l, to-poly(cache, left)
     save r, to-poly(cache, right)

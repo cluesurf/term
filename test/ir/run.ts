@@ -402,11 +402,11 @@ task f
   expectContains(
     'float field q.f - q.f is NOT folded to 0',
     `form vec
-  link f, like decimal
+  link f, like float
 
 task f
   take q, like vec
-  like decimal
+  like float
   send back
     call subtract
       read q/f
@@ -420,8 +420,8 @@ task f
   expectContains(
     'float f - f is NOT folded to 0 (NaN-safe)',
     `task f
-  take x, like decimal
-  like decimal
+  take x, like float
+  like float
   send back
     call subtract
       loan x

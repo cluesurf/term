@@ -19,7 +19,8 @@ load @term/base/code/text
 task outcome
   take command, like text
   like text
-  mark unsafe
+  fork
+    mark unsafe
     save result
       call run
         read command

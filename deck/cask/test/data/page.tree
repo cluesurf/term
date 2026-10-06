@@ -37,7 +37,8 @@ task refused-after-release
   take row, like row
   like boolean
   mark async
-  mark unsafe
+  fork
+    mark unsafe
     save again
       call field
         read row

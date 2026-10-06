@@ -15,7 +15,8 @@ load @term/base/exception
 task host-of
   take href, like text
   like text
-  mark unsafe
+  fork
+    mark unsafe
     save address, make-url(href)
     send back, host(address)
   halt take

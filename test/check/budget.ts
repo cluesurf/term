@@ -31,7 +31,7 @@ function expect(name: string, source: string, budget: string | undefined, want: 
 // a >= 2 gives a * a >= 2 a: a product of facts, so the exact search must run
 const SQUARE = `
 rule square-bound
-  mark a, like integer
+  seat a, like integer
   have a-is-at-least-two
     call is-minimum
       read a
@@ -49,7 +49,7 @@ rule square-bound
 // a >= 2 gives a + 1 >= 3: the linear prover's, with no exact search at all
 const LINEAR = `
 rule shifted-bound
-  mark a, like integer
+  seat a, like integer
   have a-is-at-least-two
     call is-minimum
       read a

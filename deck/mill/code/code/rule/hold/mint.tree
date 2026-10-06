@@ -16,6 +16,7 @@ load @term/mill/code/seed/mint
 load @term/base/lang
   find code-hold
   find code-show
+  find code-seat
   find code-mark
   find code-fold
   find code-case
@@ -45,6 +46,8 @@ mint rule-hold, like code-hold
 mint step
   case show, mint show-claim
     site show
+  case seat, mint rule-seat
+    site seat
   case mark, mint rule-mark
     site mark
   case take, mint rule-take
@@ -71,6 +74,20 @@ mint show-claim, like code-show
     make show
       bind claim, read claim
 
+mint rule-seat, like code-seat
+  case name
+    site name
+  case like
+    site like
+  case head
+    site head
+  hook make
+    make rule-seat
+      bind name, read name
+      bind like, read like
+      bind head, read head
+
+# the old spelling of `rule-seat`, minted so the bridge can refuse it by name
 mint rule-mark, like code-mark
   case name
     site name

@@ -59,6 +59,7 @@ load @term/mill/code/code/note/mine
   find note
   find mark-note
   find mark-guard
+  find fork-guard
 
 # `show <text>` is NOT listed. `compile/mill.ts` has no lowering for it, so it falls into the generic "an
 # unknown head is a call" path and becomes a call to something named `show`. Leaving it out here is what
@@ -88,6 +89,9 @@ mine flow
       site back
     mine form, like send-kind
       site send-kind
+    # the guarded block, `fork` / `mark unsafe` (note/mine.tree), before `fork`, which has no arm for it
+    mine form, like fork-guard
+      site guard
     mine form, like fork
       site fork
     mine form, like sift

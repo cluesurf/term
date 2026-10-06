@@ -10,10 +10,10 @@ load @term/base/arithmetic
   find subtraction
 
 form vector-4
-  link x, like decimal
-  link y, like decimal
-  link z, like decimal
-  link w, like decimal
+  link x, like float
+  link y, like float
+  link z, like float
+  link w, like float
 
   wear addition
     task add
@@ -80,7 +80,7 @@ form vector-4
 
   task scale
     take self
-    take factor, like decimal
+    take factor, like float
     like vector-4
     send back
       make vector-4
@@ -104,7 +104,7 @@ form vector-4
   task dot
     take self
     take other, like vector-4
-    like decimal
+    like float
     send back
       call add
         call add
@@ -125,7 +125,7 @@ form vector-4
   # the norm: `magnitude`, since a collection's `length` counts its items (note/term/plan/decisions-2026-10.md, D2)
   task magnitude
     take self
-    like decimal
+    like float
     send back
       call square-root
         call dot
@@ -135,7 +135,7 @@ form vector-4
   # the older name of `magnitude`, kept one release
   task length
     take self
-    like decimal
+    like float
     mark deprecated
     back magnitude(self)
 
@@ -167,7 +167,7 @@ form vector-4
   task distance
     take self
     take other, like vector-4
-    like decimal
+    like float
     send back
       call magnitude
         call minus
@@ -175,10 +175,10 @@ form vector-4
           read other
 
 task make-vector-4
-  take x, like decimal
-  take y, like decimal
-  take z, like decimal
-  take w, like decimal
+  take x, like float
+  take y, like float
+  take z, like float
+  take w, like float
   like vector-4
   send back
     make vector-4

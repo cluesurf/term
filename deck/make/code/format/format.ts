@@ -63,6 +63,8 @@ const DECLARATION_HEADS = new Set([
   'slot',
   'free',
   'mark',
+  // a theorem's variable, `seat a, like integer`, which was a `mark` until 2026-10-05
+  'seat',
   'like',
   'head',
 ])
@@ -78,7 +80,7 @@ const TERM_WORDS = new Set(
   `load form task host hook bind bear deck dock note save tell hold suit mask wear book kink lace cast tune view
    rule roll beam slot call head take like mark wait risk hide fold tag link case bond rein send back fork walk turn
    halt bust rest free move read make fuse loan code text term meet true false void miss fall else have must down
-   name tree seed sift tick want show calm cite seek melt test`
+   name tree seed sift tick want show calm cite seek melt test seat`
     .split(/\s+/)
     .filter(Boolean),
 )
@@ -445,6 +447,7 @@ const SIGNATURE_HEADS = new Set([
   'free',
   'like',
   'mark',
+  'seat',
   'hold',
 ])
 

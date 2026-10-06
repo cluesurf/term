@@ -533,7 +533,7 @@ export const CARDS: Card[] = [
             opening('migrate', '~/shape', '14:42:00.005', ['term 2.5.22'], { facts: ['plan only'] }),
             [
               ev({ glyph: 'added', kind: 'change', verb: 'add', subject: 'case triangle', clock: '14:42:00.010', facts: ['code/shape.tree'] }),
-              ev({ glyph: 'changed', kind: 'change', verb: 'change', subject: 'link radius', clock: '14:42:00.015', facts: ['code/shape.tree', formatChange('like number', 'like decimal', room)] }),
+              ev({ glyph: 'changed', kind: 'change', verb: 'change', subject: 'link radius', clock: '14:42:00.015', facts: ['code/shape.tree', formatChange('like number', 'like float', room)] }),
               ev({ glyph: 'removed', kind: 'change', verb: 'remove', subject: 'task legacy-area', clock: '14:42:00.020', facts: ['code/area.tree'] }),
             ],
             ev({

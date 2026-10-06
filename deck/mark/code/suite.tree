@@ -152,7 +152,7 @@ task decimals-of
       like sample
   take metric, like text
   like list
-    like decimal
+    like float
   save out
     make list
   walk list, read samples
@@ -478,7 +478,7 @@ task compare-group
   take group
     like list
       like case
-  take floor, like decimal
+  take floor, like float
   take emulated, like boolean
   like list
     like comparison

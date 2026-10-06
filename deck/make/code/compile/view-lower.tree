@@ -190,7 +190,8 @@ task empty-for
         make expression/integer
           bind value, 0
           bind span, at
-  fork test, or(is-equal(named, <decimal>), is-equal(named, <float>))
+  # `decimal` is not a float since D4: a program's own `form decimal` is that form
+  fork test, is-equal(named, <float>)
     hold
       back
         make expression/float

@@ -11,10 +11,10 @@
 form font
   link family, like text
   link sample, like text
-  link scale, like decimal
-  link heading-height, like decimal
-  link body-height, like decimal
-  link base-height, like decimal
+  link scale, like float
+  link heading-height, like float
+  link body-height, like float
+  link base-height, like float
   link source, like text
 
 # which family a script is set in, by default. `style` is the style the script defaults to (`modern`, `ancient`, ...),

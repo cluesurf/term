@@ -1,0 +1,283 @@
+# An import named like one of Term's own value words is never reached by that name, and said so nowhere.
+#
+# `load @term/base/file` / `find read` imports the file module's `read`, and `read(path)` then reads the VARIABLE
+# `path`: the grammar takes `read` as its own word before any name is bound, so the build calls nothing in the file
+# module, on all four backends, with no message (guides: applications/targets, 2026-10-03). The same holds for every
+# word `mine seed` matches ahead of a bare call (mill/code/code/seed/mine.tree): a `find move` from the file module
+# meets the `move` construct. A `name` alias is the way through, `find read, name read-file`, so the warning is on a
+# `find` of one of these words that carries none.
+#
+# Read off the concrete tree, because the alias and the word are both gone by the time the program is built.
+#
+# Ported from check/keyword-import.ts (self-hosting, 2026-10-05). The original asked a callback whether the word names
+# a task as its last condition; here `keyword-candidates` answers every `find` that meets the others, in order, and the
+# caller keeps those whose word names a task, which asks it of exactly the words the original asked it of.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load ../parser/diagnostic
+  find span
+
+load ../parser/tree
+  find node
+  find parse-result
+  find root-node
+
+load ../parser/words
+  find head-word
+  find span-of-node
+  find word-of
+
+# the heads `mine seed` reads as a construct before it tries a bare call
+task value-words
+  like list, like text
+
+  save out, make list
+  push(out, <call>)
+  push(out, <code>)
+  push(out, <fork>)
+  push(out, <loan>)
+  push(out, <make>)
+  push(out, <meet>)
+  push(out, <move>)
+  push(out, <read>)
+  push(out, <task>)
+  push(out, <term>)
+  push(out, <text>)
+  push(out, <tick>)
+  push(out, <wait>)
+  back out
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+# the top-level nodes of a parsed file
+task root-nodes
+  take tree, like root-node
+  like list, like node
+  mark private
+
+  sift tree
+    case root
+      back nodes
+
+# a group's head word, or `<>`
+task head-of
+  take group, like node
+  like text
+  mark private
+
+  sift head-word(group)
+    case some
+      link found
+      back found
+    case none
+      back <>
+
+# the word of the node at a place among `nodes`, or none past their end
+task word-at
+  take nodes, like list, like node
+  take at, like number
+  like maybe, like text
+  mark private
+
+  fork test, is-below(at, nodes/length)
+    hold
+      back word-of(get(nodes, at))
+  back make none
+
+# does a parsed module define a top-level `task <word>`
+task defines-task
+  take parsed, like parse-result
+  take word, like text
+  like boolean
+
+  fork test, not(parsed/ok)
+    hold
+      back false
+  save tops, root-nodes(parsed/tree)
+  walk tops
+    take one
+    sift one
+      case group
+        fork test, is-equal(head-of(one), <task>)
+          hold
+            sift word-at(nodes, 1)
+              case some
+                link found
+                fork test, is-equal(found, word)
+                  hold
+                    back true
+              case none
+                save nothing, 0
+      miss
+        save nothing, 0
+  back false
+
+# one such `find`: the word, and where the `find` line is. Named apart from the `keyword-import` diagnostic
+form keyword-find
+  link word, like text
+  link span, like span
+
+# every `find <word>` under a top-level `load` that imports one of the words with no `name`, where the file writes
+# `<word>(` somewhere. `call read` over its arguments does reach the import, and the cask tests call it so, so only the
+# call shape the grammar takes as its own word is the trap. The caller keeps those whose word names a task (a form
+# named `text` is reached through `like text`, so it is not one of these)
+task keyword-candidates
+  take tree, like root-node
+  like list, like keyword-find
+
+  save found, make list
+  save words, value-words()
+  save called, called-words(tree, words)
+  save tops, root-nodes(tree)
+  walk tops
+    take load
+    sift load
+      case group
+        fork test, is-unequal(head-of(load), <load>)
+          hold
+            turn next
+        walk nodes
+          take child
+          take at
+          fork test, is-equal(at, 0)
+            hold
+              turn next
+          sift child
+            case group
+              fork test, is-unequal(head-of(child), <find>)
+                hold
+                  turn next
+              save aliased, false
+              walk nodes
+                take part
+                take place
+                fork test, is-above(place, 1)
+                  hold
+                    sift part
+                      case group
+                        fork test, is-equal(head-of(part), <name>)
+                          hold
+                            save aliased, true
+                      miss
+                        save nothing, 0
+              sift word-at(nodes, 1)
+                case some
+                  link word
+                  sift span-of-node(child)
+                    case some
+                      link at-span
+                      fork test, and(and(has-text(words, word), not(aliased)), has-text(called, word))
+                        hold
+                          save candidate
+                            make keyword-find
+                              bind word, word
+                              bind span, at-span
+                          push(found, candidate)
+                    case none
+                      save nothing, 0
+                case none
+                  save nothing, 0
+            miss
+              save nothing, 0
+      miss
+        save nothing, 0
+  back found
+
+# the value words a file writes with a parenthesis straight after them, `read(`, read off the token stream as
+# compile/mint-bridge.ts reads `f()`
+form called-gather
+  mark shared
+  link words, like list, like text
+  link called, like list, like text
+
+task called-words
+  take tree, like root-node
+  take words, like list, like text
+  like list, like text
+  mark private
+
+  save gather
+    make called-gather
+      bind words, words
+      bind called, make list
+  save tops, root-nodes(tree)
+  walk tops
+    take one
+    called-in(gather, one)
+  back gather/called
+
+task called-in
+  take gather, like called-gather
+  take one, like node
+  mark private
+
+  sift one
+    case name
+      save last-follows, false
+      fork test, is-above(parts/length, 0)
+        hold
+          save last, get(parts, subtract(parts/length, 1))
+          sift last
+            case chunk
+              sift follows
+                case some
+                  link how
+                  save last-follows, true
+                case none
+                  save nothing, 0
+            miss
+              save nothing, 0
+      sift word-of(one)
+        case some
+          link word
+          fork test, and(and(has-text(gather/words, word), last-follows), not(has-text(gather/called, word)))
+            hold
+              push(gather/called, word)
+        case none
+          save nothing, 0
+      walk parts
+        take part
+        called-in-hole(gather, part)
+    case text
+      walk parts
+        take part
+        called-in-hole(gather, part)
+    case group
+      walk nodes
+        take inner
+        called-in(gather, inner)
+    miss
+      save nothing, 0
+
+task called-in-hole
+  take gather, like called-gather
+  take part, like node
+  mark private
+
+  sift part
+    case interpolation
+      sift group
+        case some
+          link held
+          called-in(gather, held)
+        case none
+          save nothing, 0
+    miss
+      save nothing, 0

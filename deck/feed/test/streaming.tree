@@ -75,7 +75,7 @@ task make-byte-source
         hook test
           call is-minimum
             read start
-            call size read bytes
+            call length read bytes
         hook hold
           send back
             make none
@@ -187,7 +187,7 @@ test <a chunk wider than the whole input yields the whole input>
 test <an empty streaming source is immediately at its end>
   want hold
     call is-equal
-      call size call streamed-round-trip(text(<>), code 4)
+      call length call streamed-round-trip(text(<>), code 4)
       code 0
 
 # read-bytes takes its whole block in one slice now, so it has to be the thing that PULLS enough to satisfy the

@@ -59,7 +59,8 @@ task boot-ids
 
   save found, make list
 
-  mark unsafe
+  fork
+    mark unsafe
     save out
       call child/execSync
         text <ps -ax -o pid=,command=>
@@ -92,7 +93,8 @@ task ids-on-port
 
   save found, make list
 
-  mark unsafe
+  fork
+    mark unsafe
     save out
       call child/execSync
         text <lsof -nP -iTCP:{{port}} -sTCP:LISTEN -t>

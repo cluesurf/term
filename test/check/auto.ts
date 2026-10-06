@@ -48,7 +48,7 @@ task plus
               read b
 
 rule plus-zero
-  mark a, like nat
+  seat a, like nat
   show hold
     call is-equal
       call plus
@@ -63,7 +63,7 @@ ok(
   'auto applies a proven lemma: succ (plus a 0) == succ a',
   compiles(`${PRELUDE}
 rule use-auto
-  mark a, like nat
+  seat a, like nat
   show hold
     call is-equal
       make succ
@@ -84,7 +84,7 @@ ok(
   'auto does not close a false goal (succ (plus a 0) == a)',
   !compiles(`${PRELUDE}
 rule use-auto-wrong
-  mark a, like nat
+  seat a, like nat
   show hold
     call is-equal
       make succ

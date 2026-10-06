@@ -77,7 +77,8 @@ task bump-code
   save chosen, parse-level level
   log-step <Bumping version...>
 
-  mark unsafe
+  fork
+    mark unsafe
     save manifest
       call deck-tree/loadManifest
         make manifest-ask, bind dir, read root

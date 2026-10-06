@@ -15,7 +15,8 @@ load @term/base/list
 task rows
   take text, like text
   like text
-  mark unsafe
+  fork
+    mark unsafe
     save read
       call parse
         read text
@@ -39,7 +40,5 @@ test <a quote left open is refused at the quote>
   want hold
     call is-equal
       call rows
-        call add
-          text <a,"b>
-          call rune-to-text, code 10
+        text <a,"b{rune-to-text(10)}>
       text <2 a quoted field is never closed>

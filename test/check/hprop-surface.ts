@@ -38,8 +38,8 @@ form truth
     link proof, like bit
 
 rule truth-irrelevant
-  mark p, like bit
-  mark q, like bit
+  seat p, like bit
+  seat q, like bit
   show hold
     call is-equal
       make hold-true

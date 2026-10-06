@@ -29,10 +29,10 @@ load ../../../logic/range
 task mount-slider
   take host, like view
   take class, like text
-  take control, like signal decimal
-  take min, like decimal
-  take max, like decimal
-  take step, like decimal
+  take control, like signal float
+  take min, like float
+  take max, like float
+  take step, like float
   take label, like text
   like view
   save control-view
@@ -85,10 +85,10 @@ task mount-slider
 view slider
   take host, like view
   take class, like text
-  take control, like signal decimal
-  take min, like decimal
-  take max, like decimal
-  take step, like decimal
+  take control, like signal float
+  take min, like float
+  take max, like float
+  take step, like float
   take
     label
     like text

@@ -65,7 +65,7 @@ form expression
   case integer
     link value, like integer-literal
   case float
-    link value, like decimal
+    link value, like float
   case boolean
     link value, like boolean
   case string

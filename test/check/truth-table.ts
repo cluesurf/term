@@ -120,9 +120,9 @@ form proof
       read ${rule === 'forward' ? 'b' : 'a'}
 
 rule provable-is-true
-  mark v, like assignment
-  mark p, like formula
-  mark d, like proof
+  seat v, like assignment
+  seat p, like formula
+  seat d, like proof
     head
       read p
   show hold, is-equal value(v, p), make yes
@@ -156,12 +156,12 @@ expect(
   'a hypothesis left undecided never sets a choice aside',
   `${LOGIC}
 rule undecided-hypothesis
-  mark x
+  seat x
     like task
       take n, like natural
       like flag
-  mark n, like natural
-  mark b, like flag
+  seat n, like natural
+  seat b, like flag
   have doubled, is-equal plus(n, n), n
   show hold, is-equal both(b, x(n)), b
   fold b
@@ -174,12 +174,12 @@ expect(
   'a hypothesis shown false sets its choice aside',
   `${LOGIC}
 rule decided-hypothesis
-  mark x
+  seat x
     like task
       take n, like natural
       like flag
-  mark n, like natural
-  mark b, like flag
+  seat n, like natural
+  seat b, like flag
   have true-at-n, is-equal x(n), make yes
   show hold, is-equal both(b, x(n)), b
   fold b
@@ -192,8 +192,8 @@ expect(
   'a law of flags needs no step',
   `${LOGIC}
 rule both-commutes
-  mark a, like flag
-  mark b, like flag
+  seat a, like flag
+  seat b, like flag
   show hold, is-equal both(a, b), both(b, a)
 `,
   'ok',
@@ -203,9 +203,9 @@ expect(
   'and a law over values the kernel cannot compute needs none either',
   `${LOGIC}
 rule arrow-of-an-arrow
-  mark v, like assignment
-  mark p, like formula
-  mark q, like formula
+  seat v, like assignment
+  seat p, like formula
+  seat q, like formula
   show hold
     is-equal
       value(v, make arrow(p, make arrow(q, p)))
@@ -218,8 +218,8 @@ expect(
   'a false law with no step is refused with the values that break it',
   `${LOGIC}
 rule both-is-implies
-  mark a, like flag
-  mark b, like flag
+  seat a, like flag
+  seat b, like flag
   show hold, is-equal both(a, b), implies(a, b)
 `,
   'this rule is FALSE where a is no',
@@ -274,10 +274,10 @@ expect(
   `${SETS}
 rule union-associates
   head a
-  mark s, like set a
-  mark t, like set a
-  mark r, like set a
-  mark x, like a
+  seat s, like set a
+  seat t, like set a
+  seat r, like set a
+  seat x, like a
   show hold, is-equal has(union(union(s, t), r), x), has(union(s, union(t, r)), x)
 `,
   'ok',
@@ -288,9 +288,9 @@ expect(
   `${SETS}
 rule union-is-the-left
   head a
-  mark s, like set a
-  mark t, like set a
-  mark x, like a
+  seat s, like set a
+  seat t, like set a
+  seat x, like a
   show hold, is-equal has(union(s, t), x), has(s, x)
 `,
   'this rule is FALSE where s(x) is no, t(x) is yes',
@@ -312,7 +312,7 @@ task empty
 
 rule empty-has-everything
   head a
-  mark x, like a
+  seat x, like a
   show hold, is-equal has(empty(), x), make yes
 `,
   'this rule is FALSE: its two sides compute to no and yes',
@@ -326,13 +326,13 @@ rule empty-has-everything
       file: 't.tree',
       text: `${LOGIC}
 rule both-is-implies
-  mark a, like flag
-  mark b, like flag
+  seat a, like flag
+  seat b, like flag
   show hold, is-equal both(a, b), implies(a, b)
 
 rule plus-commutes-unproven
-  mark m, like natural
-  mark n, like natural
+  seat m, like natural
+  seat n, like natural
   show hold, is-equal plus(m, n), plus(n, m)
 `,
     },

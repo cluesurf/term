@@ -198,8 +198,8 @@ ok(
   'general ornament law by dependent induction: forall v, length (forget v) == n',
   compiles(`${PRELUDE}
 rule recover-all
-  mark n, like nat
-  mark v, like vecnat
+  seat n, like nat
+  seat v, like vecnat
     head
       read n
   show hold
@@ -219,8 +219,8 @@ ok(
   'wrong general ornament law is rejected (length (forget v) != succ n)',
   !compiles(`${PRELUDE}
 rule recover-all-wrong
-  mark n, like nat
-  mark v, like vecnat
+  seat n, like nat
+  seat v, like vecnat
     head
       read n
   show hold

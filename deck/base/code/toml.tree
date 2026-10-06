@@ -53,7 +53,7 @@ form toml
   case toml-integer
     link value, like number
   case toml-float
-    link value, like decimal
+    link value, like float
   case toml-boolean
     link value, like boolean
   case toml-date-time
@@ -2098,7 +2098,8 @@ task read-integer
     call strip-underscores
       read text
       read at
-  mark unsafe
+  fork
+    mark unsafe
     save value
       call parse-integer
         read plain
@@ -2115,8 +2116,9 @@ task read-float
   mark private
   take text, like text
   take at, like number
-  like decimal
-  mark unsafe
+  like float
+  fork
+    mark unsafe
     save value
       call parse-float
         read text
@@ -3365,7 +3367,7 @@ task write-hex-4
 
 task write-float
   mark private
-  take value, like decimal
+  take value, like float
   like text
   save shown, text <{{value}}>
   fork test

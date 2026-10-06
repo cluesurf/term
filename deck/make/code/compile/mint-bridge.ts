@@ -2016,13 +2016,39 @@ function flowOf(bridge: Bridge, values: Minted[]): Statement[] {
       refuse(
         bridge,
         value,
-        'halt take is the handler of a note unsafe body and must follow one',
+        '`halt take` is the handler of a guarded block and must follow one: `fork` with `mark unsafe` as its first line',
       )
 
       continue
     }
 
-    // `note unsafe` over a body, with the `halt take` beside it, is ONE guarded block: the note carries the
+    // A BLOCK IS A `fork`, never a metadata word (2026-10-06). `mark unsafe` or `note unsafe` holding statements of its
+    // own was the guarded block's spelling, and is refused by the one that replaced it: the note-guard mill rules still
+    // read it, so the message can name the fix. `pnpm term:guard-migrate --commit` moved the repository
+    if (
+      isForm(value) &&
+      value.form === 'note' &&
+      wordAt(value, 'text') === 'unsafe' &&
+      wordAt(value, 'opener') === undefined &&
+      at(value, 'flow').length > 0
+    ) {
+      refuse(
+        bridge,
+        value,
+        'a guarded block is a `fork` with `mark unsafe` on it: write `fork`, then `mark unsafe` as its first line and the statements under it. `mark unsafe` no longer opens a block',
+      )
+
+      // its handler belongs to the refused block, and is not a second mistake
+      const next = values[i + 1]
+
+      if (isForm(next) && next.form === 'halt' && wordAt(next, 'mode') === 'take') {
+        i++
+      }
+
+      continue
+    }
+
+    // `fork` / `mark unsafe` over a body, with the `halt take` after it, is ONE guarded block: the note carries the
     // statements to try and the halt carries the handler and the name it binds the caught exception to.
     if (
       isForm(value) &&
@@ -3120,7 +3146,7 @@ function constantOf(bridge: Bridge, value: Form): Statement | undefined {
         : (values[0] ?? { form: 'unit' as const, span })
 
   // With no `like`, the constant's type is the one its LITERAL names: an integer literal is `integer`, a
-  // decimal `decimal`, a text `text`, a boolean `boolean`. Anything else is left to inference. A decimal was named
+  // decimal literal `float` (the type word `decimal` is refused since D4), a text `text`, a boolean `boolean`. Anything else is left to inference. A decimal was named
   // `number`, from when that was the float's name: `number` is the integer now, so `host limit, 5.0` was declared an
   // integer, and Swift, which spells a binding's declared type, refused `let limit: Int = 5.0` (time/compare's
   // `significant-percent`, 2026-10-04). TypeScript writes `number` for both and never showed it
@@ -3128,7 +3154,7 @@ function constantOf(bridge: Bridge, value: Form): Statement | undefined {
     init.form === 'integer'
       ? { kind: 'named', name: 'integer' }
       : init.form === 'float'
-        ? { kind: 'named', name: 'decimal' }
+        ? { kind: 'named', name: 'float' }
         : init.form === 'string'
           ? { kind: 'named', name: 'text' }
           : init.form === 'boolean'
@@ -3346,6 +3372,11 @@ function functionOf(bridge: Bridge, value: Form): Statement | undefined {
   const result =
     typeOf(bridge, firstAt(value, 'like')) ??
     (freed ? typeOf(bridge, firstAt(freed, 'like')) : undefined)
+  // `like u8` on the result, kept as a parameter's width is: a call to the task is a value inside it
+  // (check/width-range.ts)
+  const resultLike = firstAt(value, 'like')
+  const resultWord = resultLike ? (textOf(resultLike) ?? wordAt(resultLike, 'name')) : undefined
+  const resultWidth = resultWord !== undefined && WIDTH_WORDS.has(resultWord) ? resultWord : undefined
   // a function body is its own scope: a `save` inside it declares, whatever the enclosing body has bound
   const enclosing = bridge.declared
   const outer = bridge.bound
@@ -3451,6 +3482,7 @@ function functionOf(bridge: Bridge, value: Form): Statement | undefined {
     // `mark deprecated`: a call to it from another file warns (check/deprecated.ts)
     ...(marked(value, 'deprecated') ? { deprecated: true } : {}),
     ...(result ? { result } : {}),
+    ...(resultWidth ? { resultWidth } : {}),
     generics,
     // the bound on what this task may raise, from the leading `halt <form>` lines
     ...(raises.length > 0 ? { raises } : {}),
@@ -4272,14 +4304,33 @@ function viewOf(bridge: Bridge, value: Form): Statement[] {
   ]
 }
 
-// A `rule` is a named THEOREM or AXIOM, and it desugars to a FUNCTION: its universal `mark` binders become the
+// `mark a, like t` under a `rule` or its `have` was the theorem's variable until 2026-10-05, when it became `seat`:
+// `mark` means metadata, an identity and a version, and one word with four meanings told apart by whether a `like`
+// follows was the problem. Refused by name rather than read, so a file that still says it fails at the line instead
+// of quietly losing a variable. `pnpm term:seat-migrate --commit` rewrites a tree.
+function refuseMarkBinders(bridge: Bridge, value: Form): void {
+  for (const mark of formsAt(value, 'mark')) {
+    const name = wordAt(mark, 'name') ?? 'x'
+
+    bridge.diagnostics.push(
+      diagnose('unexpected-node', {
+        file: bridge.file,
+        span: spanOf(mark),
+        message: `\`mark ${name}\` is the old spelling of a theorem's variable. A variable of a rule is a \`seat\``,
+        hint: `write \`seat ${name}\` in its place, or run \`pnpm term:seat-migrate --commit\` over the tree`,
+      }),
+    )
+  }
+}
+
+// A `rule` is a named THEOREM or AXIOM, and it desugars to a FUNCTION: its universal `seat` binders become the
 // parameters, so the goal is checked as a law over them by the same prover stack a `hold` uses. A theorem's body
 // is the goal held under its hypotheses; an axiom's is the hypotheses and the claim bound as values, postulated
 // rather than proved. See note/term/law-and-proof.md.
 //
 // TWO SHAPES, told apart by one thing: whether the rule states a `show` goal.
 //
-//   GOAL shape       `rule r / mark a / show <claim>`            a theorem over its binders. `take` is a
+//   GOAL shape       `rule r / seat a / show <claim>`            a theorem over its binders. `take` is a
 //                    HYPOTHESIS, and the goal becomes a `hold` the prover must discharge.
 //   SIGNATURE shape  `rule r / head a / take x, like a / like a` a CLAIM: a name declared at a type, owing a
 //                    proof. `take` is a PARAMETER and `like` is the result. All six rules in the tree are
@@ -4328,35 +4379,41 @@ function ruleOf(bridge: Bridge, value: Form): Statement[] {
     return [claimed]
   }
 
-  // `mark x, like natural-number` carries the n >= 0 bound the prover needs, and the refinement is read from
+  // BASELINE-TEMP refuseMarkBinders(bridge, value)
+
+  // `seat x, like natural-number` carries the n >= 0 bound the prover needs, and the refinement is read from
   // the type's NAME: `typeOf` maps it to the plain number type and the name is gone by then.
-  const params = formsAt(value, 'mark').map(mark => {
-    const like = firstAt(mark, 'like')
-    // `mark s, like stack / head nat` quantifies over a stack OF NATS, and the argument is a sibling of the
+  const params = formsAt(value, 'mark').map(seat => {
+    const like = firstAt(seat, 'like')
+    // `seat s, like stack / head nat` quantifies over a stack OF NATS, and the argument is a sibling of the
     // `like`, the same way a task parameter's is
-    const type = withHeadArgs(bridge, typeOf(bridge, like), mark)
+    const type = withHeadArgs(bridge, typeOf(bridge, like), seat)
     const written = wordAt(like, 'name')
 
     return {
-      name: wordAt(mark, 'name') ?? '',
+      name: wordAt(seat, 'name') ?? '',
       ...(type ? { type } : {}),
       ...(written === 'natural-number' ? { refine: 'natural' as const } : {}),
     }
   })
 
-  const hypotheses = formsAt(value, 'have').map((have, at) => ({
-    name: wordAt(have, 'name') ?? `claim_${at}`,
-    expr: expressionOf(bridge, firstAt(have, 'seed')),
-    // `mark` inside a `have`: the hypothesis holds FOR EVERY value of these, so it is not a guard on the values in
-    // hand but a statement the prover instantiates (check/holds.ts universalFacts)
-    binders: formsAt(have, 'mark').map(mark => wordAt(mark, 'name') ?? ''),
-    // and each one's type, read the way a theorem's own `mark` is, so the kernel instantiates it only at terms of it
-    types: formsAt(have, 'mark').map(mark => {
-      const type = withHeadArgs(bridge, typeOf(bridge, firstAt(mark, 'like')), mark)
+  const hypotheses = formsAt(value, 'have').map((have, at) => {
+    // BASELINE-TEMP refuseMarkBinders(bridge, have)
 
-      return type ? { type } : {}
-    }),
-  }))
+    return {
+      name: wordAt(have, 'name') ?? `claim_${at}`,
+      expr: expressionOf(bridge, firstAt(have, 'seed')),
+      // `seat` inside a `have`: the hypothesis holds FOR EVERY value of these, so it is not a guard on the values in
+      // hand but a statement the prover instantiates (check/holds.ts universalFacts)
+      binders: formsAt(have, 'mark').map(seat => wordAt(seat, 'name') ?? ''),
+      // and each one's type, read the way a theorem's own `seat` is, so the kernel instantiates it only at terms of it
+      types: formsAt(have, 'mark').map(seat => {
+        const type = withHeadArgs(bridge, typeOf(bridge, firstAt(seat, 'like')), seat)
+
+        return type ? { type } : {}
+      }),
+    }
+  })
 
   const universals = hypotheses
     .filter(h => h.binders.length > 0 && h.expr)
@@ -4448,8 +4505,8 @@ function ruleOf(bridge: Bridge, value: Form): Statement[] {
       name,
       params,
       body,
-      // `head a` on a theorem: a law about every type `a`, as on a claim (`rule union-commutes / head a / mark s, like
-      // set a`). It was dropped, so the first mark naming `a` was refused as an unknown type
+      // `head a` on a theorem: a law about every type `a`, as on a claim (`rule union-commutes / head a / seat s, like
+      // set a`). It was dropped, so the first seat naming `a` was refused as an unknown type
       generics: formsAt(value, 'head').map(head => ({
         name: wordAt(head, 'name') ?? '',
       })),
@@ -5055,7 +5112,11 @@ function formOf(bridge: Bridge, value: Form): Statement[] {
       ...(textual ? { text: true } : {}),
       // `mark deprecated`: a use of the form from another file warns, as a call of a deprecated task does
       // (check/deprecated.tree). Written only when present
-      ...(formsAt(value, 'mark').some(mark => wordAt(mark, 'kind') === 'deprecated') ? { deprecated: true } : {}),
+      // (the mill reads `mark <word>` as `mark-note`, so the word arrives under `note`, as `shared`'s does)
+      ...(formsAt(value, 'mark').some(mark => wordAt(mark, 'kind') === 'deprecated') ||
+      formsAt(value, 'note').some(note => wordAt(note, 'text') === 'deprecated')
+        ? { deprecated: true }
+        : {}),
       ...(alias ? { alias } : {}),
       ...(extend ? { extend } : {}),
       functionFree:

@@ -1,7 +1,7 @@
 # Numbers and money by language on node: `Intl.NumberFormat`, over the CLDR node carries (text/format.tree)
 
 bind platform-format-number
-  take value, like decimal
+  take value, like float
   take language, like text
   take fewest, like number
   take most, like number
@@ -10,7 +10,7 @@ bind platform-format-number
     text <new Intl.NumberFormat($language, \{ minimumFractionDigits: $fewest, maximumFractionDigits: $most, roundingMode: "halfEven" \}).format($value)>
 
 bind platform-format-currency
-  take value, like decimal
+  take value, like float
   take currency, like text
   take language, like text
   like text

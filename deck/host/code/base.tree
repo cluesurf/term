@@ -55,7 +55,7 @@ form data
   case number
     link value, like number
   case decimal
-    link value, like decimal
+    link value, like float
   case flag
     link value, like boolean
   case blank

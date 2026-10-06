@@ -721,7 +721,8 @@ ok(
   'a handler sees a name its body assigned as unknown',
   proven(
     task(`  save x, code 1
-  mark unsafe
+  fork
+    mark unsafe
     save x, read n
     save out, code 0
   halt take

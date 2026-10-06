@@ -580,6 +580,36 @@ function definitionIn(file: string, name: string): ModuleExport | undefined {
   return text.includes(name) ? scanDefs(text).find(d => d.name === name) : undefined
 }
 
+// every file of a package that defines `name`, each marked ASIDE when it is not a module a program should load: a
+// platform module (`native/kotlin/text`, which a public module reaches through `{platform}`), a test file, or a shelved
+// one. In the order an import should prefer them: a public module before one aside, then the shorter path, which is the
+// package's own home for the name, then by path, so the order is the same on every run. The first file the walk met
+// was taken until 2026-10-05, which offered `join` from `native/kotlin/text`
+function definitionsIn(
+  files: { path: string; rel: string }[],
+  name: string,
+): { file: { path: string; rel: string }; def: ModuleExport; aside: boolean }[] {
+  const found: { file: { path: string; rel: string }; def: ModuleExport; aside: boolean; depth: number }[] = []
+
+  for (const file of files) {
+    const def = definitionIn(file.path, name)
+
+    if (!def) {
+      continue
+    }
+
+    const segments = file.rel.split(sep)
+    const aside =
+      segments.includes('native') || segments.includes('test') || /^(mark|note) draft\s*$/m.test(readFileSync(file.path, 'utf8'))
+
+    found.push({ file, def, aside, depth: segments.length })
+  }
+
+  return found.sort(
+    (a, b) => Number(a.aside) - Number(b.aside) || a.depth - b.depth || a.file.rel.localeCompare(b.file.rel),
+  )
+}
+
 function realOf(dir: string): string {
   try {
     return realpathSync(dir)
@@ -588,29 +618,41 @@ function realOf(dir: string): string {
   }
 }
 
-// find a linked package module that defines `name` at top level, for the auto-import code action. Searches the
-// project's `link/` packages and returns the import path to load it by (e.g. `@term/base/code/text`) plus the kind.
-// On-demand only (a code-action invocation), so a full scan is acceptable; it stops at the first match.
+// the one module an import of `name` should name first, for a caller that offers one
 export function findModuleExporting(
   root: string,
   name: string,
 ): { importPath: string; kind: ModuleExport['kind'] } | undefined {
-  // the stdlib first: it is the canonical home of a name, and it resolves without a `link/` entry
+  return findModulesExporting(root, name)[0]
+}
+
+// every module of the stdlib and the project's `link/` packages that defines `name` at top level, as the import path
+// to load it by (`@term/base/list`) and the kind, for the auto-import fix. The stdlib's first, since it is the
+// canonical home of a name and resolves without a `link/` entry, then each package in turn. A module aside (a platform
+// module, a test, a shelved file) is offered only when no public module defines the name. On demand only (a code action,
+// a scan of a file with an unknown name), so a full walk is acceptable
+export function findModulesExporting(
+  root: string,
+  name: string,
+): { importPath: string; kind: ModuleExport['kind'] }[] {
+  const found: { importPath: string; kind: ModuleExport['kind']; aside: boolean }[] = []
   const stdlib = stdlibBase()
 
   if (stdlib) {
     const files: { path: string; rel: string }[] = []
     treeFilesIn(stdlib, stdlib, files)
 
-    for (const file of files) {
-      const def = definitionIn(file.path, name)
+    for (const one of definitionsIn(files, name)) {
+      const rel = one.file.rel.replace(/\.tree$/, '').split(sep).join('/')
 
-      if (def) {
-        const rel = file.rel.replace(/\.tree$/, '').split(sep).join('/')
-
-        return { importPath: `@term/base/${shortRest(stdlib, rel, file.path)}`, kind: def.kind }
-      }
+      found.push({ importPath: `@term/base/${shortRest(stdlib, rel, one.file.path)}`, kind: one.def.kind, aside: one.aside })
     }
+  }
+
+  const publicFirst = (): { importPath: string; kind: ModuleExport['kind'] }[] => {
+    const open = found.filter(one => !one.aside)
+
+    return (open.length ? open : found).map(({ importPath, kind }) => ({ importPath, kind }))
   }
 
   const linkDir = join(root, 'link')
@@ -620,7 +662,7 @@ export function findModuleExporting(
   try {
     scopes = readdirSync(linkDir)
   } catch {
-    return undefined
+    return publicFirst()
   }
 
   // EACH PACKAGE ONCE, and only a package. On the Term root `link/` holds every package twice, under `@term` and the
@@ -659,25 +701,18 @@ export function findModuleExporting(
       const files: { path: string; rel: string }[] = []
       treeFilesIn(pkgBase, pkgBase, files)
 
-      for (const file of files) {
-        const def = definitionIn(file.path, name)
+      for (const one of definitionsIn(files, name)) {
+        const rel = one.file.rel
+          .replace(/\.tree$/, '')
+          .split(sep)
+          .join('/')
 
-        if (def) {
-          const rel = file.rel
-            .replace(/\.tree$/, '')
-            .split(sep)
-            .join('/')
-
-          return {
-            importPath: `${scope}/${pkg}/${shortRest(pkgBase, rel, file.path)}`,
-            kind: def.kind,
-          }
-        }
+        found.push({ importPath: `${scope}/${pkg}/${shortRest(pkgBase, rel, one.file.path)}`, kind: one.def.kind, aside: one.aside })
       }
     }
   }
 
-  return undefined
+  return publicFirst()
 }
 
 export function moduleExports(

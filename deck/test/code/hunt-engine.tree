@@ -52,7 +52,8 @@ task run-probe
   take input, like text
   like list, like finding
 
-  mark unsafe
+  fork
+    mark unsafe
     back call(each/check, input)
   halt take
     take e

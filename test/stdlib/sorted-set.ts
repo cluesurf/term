@@ -1,5 +1,6 @@
-// The sorted set, over the sorted map's B-tree (deck/base/code/sorted-set.tree, 2026-10-05), on every backend: 3,000
-// seeded adds and removes over 500 values against a JavaScript Set kept sorted, then its ends and its order.
+// The sorted set, over the sorted map's B-tree (deck/base/code/sorted-set.tree, 2026-10-05), on every backend: 180,000
+// seeded adds and removes over 30,000 values against a JavaScript Set kept sorted, then its ends and its order. Sized
+// for the tree's degree, 64: about 20,000 values are held at the end, three levels of nodes, where 500 was one leaf.
 // Run: npx tsx test/stdlib/sorted-set.ts   (SORTED_ONLY=typescript, rust, swift or kotlin runs one)
 
 import { mkdtempSync } from 'node:fs'
@@ -20,6 +21,9 @@ function ok(name: string, cond: boolean, info = ''): void {
     console.log(`FAIL  ${name}  ${info}`)
   }
 }
+
+const OPERATIONS = 180000
+const VALUES = 30000
 
 const PROGRAM = `load @term/base/sorted-set
   find sorted-set
@@ -44,10 +48,10 @@ task run
   save i, 0
   save removed, 0
   walk test
-    hook test, is-below(i, 3000)
+    hook test, is-below(i, ${OPERATIONS})
     hold
       save state, modulo(multiply(state, 48271), 2147483647)
-      save value, modulo(state, 500)
+      save value, modulo(state, ${VALUES})
       save state, modulo(multiply(state, 48271), 2147483647)
       fork test, is-below(modulo(state, 3), 2)
         hold
@@ -69,9 +73,9 @@ function reference(): string {
   let state = 777
   let removed = 0
 
-  for (let i = 0; i < 3000; i++) {
+  for (let i = 0; i < OPERATIONS; i++) {
     state = (state * 48271) % 2147483647
-    const value = state % 500
+    const value = state % VALUES
     state = (state * 48271) % 2147483647
 
     if (state % 3 < 2) {

@@ -1,0 +1,302 @@
+# The `mill` role: a file that DEFINES a dialect (`deck/mill/code/<dialect>/{base,mine,mint}.tree`), read as one.
+#
+# A mill definition is not a program. Its heads are `mill`, `mine` and `mint`, its `load` lines bring in other grammar
+# files and the stdlib forms a `mint ..., like <form>` builds, and nothing executes it: the toolchain reads it with
+# `readMineGrammar` / `readMintGrammar` (compile/mill-load.ts, compile/mill-run.ts) when a role's grammar is assembled
+# or baked. Milled as CODE, every `mine` and `mint` reads as a call to an undefined task and every grammar file it
+# loads is compiled as code too, which is how one open `fork/mine.tree` showed over a thousand errors in the editor.
+#
+# So this is what a mill definition owes, and the whole of it. Nothing here is a second grammar of the dialect: the
+# file must PARSE (the one parser), every `load` must RESOLVE (the caller's resolver, the build's own), every `find`
+# must name something its target declares at the top level, and every `mint <x>, like <form>` must name a form a load
+# of the file brings in. test/compile/mill-grammar.ts holds every file under deck/mill/code to the same four checks
+# through this, so the editor and the gate cannot disagree about a grammar file.
+#
+# Ported from compile/mill-check.ts (self-hosting, 2026-10-06). Resolving is the caller's IO: `mill-load-targets` names
+# what each `load` asks for, in order, the caller resolves each (the empty target to nothing, a resolver that throws to
+# nothing, as the original did) and hands the answers back to `check-mill-definition`.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load ../parser/diagnostic
+  find diagnostic
+  find diagnose
+  find diagnostic-input
+  find span
+
+load ../parser/token
+  find token-source
+
+load ../parser/tree
+  find node
+  find parse
+  find root-node
+
+load ../parser/words
+  find span-of-whole
+
+# the heads whose second word a mill definition DECLARES, so a `find` of it resolves
+task declaring-heads
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, <form>)
+  push(out, <task>)
+  push(out, <mine>)
+  push(out, <mint>)
+  push(out, <mill>)
+  push(out, <bind>)
+  push(out, <mask>)
+  push(out, <host>)
+  push(out, <tree>)
+  back out
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+# a name's chunks as written (an interpolation reads as nothing), a group's head's, else the empty text
+task word-text
+  take one, like node
+  like text
+  mark private
+
+  sift one
+    case name
+      save out, <>
+      walk parts
+        take part
+        sift part
+          case chunk
+            link written
+            save out, <{out}{written}>
+          miss
+            save nothing, 0
+      back out
+    case group
+      fork test, is-equal(nodes/length, 0)
+        hold
+          back <>
+      back word-text(get(nodes, 0))
+    miss
+      back <>
+
+# the word of the node at a place among `nodes`, the empty text past their end
+task word-at
+  take nodes, like list, like node
+  take at, like number
+  like text
+  mark private
+
+  fork test, is-below(at, nodes/length)
+    hold
+      back word-text(get(nodes, at))
+  back <>
+
+task top-nodes
+  take tree, like root-node
+  like list, like node
+  mark private
+
+  sift tree
+    case root
+      back nodes
+
+# the names a source declares at its top level, each once
+task mill-declared
+  take source, like token-source
+  like list, like text
+
+  save names, make list
+  save parsed, parse(source)
+  fork test, not(parsed/ok)
+    hold
+      back names
+  save heads, declaring-heads()
+  save tops, top-nodes(parsed/tree)
+  walk tops
+    take one
+    sift one
+      case group
+        fork test, has-text(heads, word-at(nodes, 0))
+          hold
+            save declared, word-at(nodes, 1)
+            fork test, not(has-text(names, declared))
+              hold
+                push(names, declared)
+      miss
+        save nothing, 0
+  back names
+
+# what each top-level `load` asks for, in order, the empty text for one that names nothing. None for a source that
+# does not parse
+task mill-load-targets
+  take source, like token-source
+  like list, like text
+
+  save out, make list
+  save parsed, parse(source)
+  fork test, not(parsed/ok)
+    hold
+      back out
+  save tops, top-nodes(parsed/tree)
+  walk tops
+    take one
+    sift one
+      case group
+        fork test, is-equal(word-at(nodes, 0), <load>)
+          hold
+            push(out, word-at(nodes, 1))
+      miss
+        save nothing, 0
+  back out
+
+# one `load`'s answer: what it asked for, and the source the caller's resolver found, none where it found nothing
+form mill-load
+  link target, like text
+  link found
+    like maybe, like token-source
+    need false
+
+form mill-problem
+  link what, like text
+  link span, like span
+
+form mill-checked
+  link parsed, like boolean
+  link problems, like list, like mill-problem
+  link diagnostics, like list, like diagnostic
+
+task problem
+  take what, like text
+  take at, like span
+  like mill-problem
+  mark private
+
+  back
+    make mill-problem
+      bind what, what
+      bind span, at
+
+# The four checks, as problems. A caller that cannot resolve (`resolving` false) skips the three that need it, and
+# says nothing it cannot know. `resolved` answers `mill-load-targets`, one per target, in its order
+task check-mill-definition
+  take source, like token-source
+  take resolving, like boolean
+  take resolved, like list, like mill-load
+  like mill-checked
+
+  save tree, parse(source)
+  save problems, make list
+  fork test, not(tree/ok)
+    hold
+      back
+        make mill-checked
+          bind parsed, false
+          bind problems, problems
+          bind diagnostics, tree/diagnostics
+  save tops, top-nodes(tree/tree)
+  fork test, resolving
+    hold
+      # the forms the file's loads bring in, for the `like` checks
+      save known, make list
+      save load-at, 0
+      walk tops
+        take group
+        sift group
+          case group
+            fork test, is-unequal(word-at(nodes, 0), <load>)
+              hold
+                turn next
+            save target, word-at(nodes, 1)
+            save answer, get(resolved, load-at)
+            save load-at, add(load-at, 1)
+            sift answer/found
+              case none
+                push(problems, problem(<loads "{target}", which does not exist>, span-of-whole(group)))
+              case some
+                link found
+                save names, mill-declared(found)
+                walk nodes
+                  take child
+                  take at
+                  fork test, is-below(at, 2)
+                    hold
+                      turn next
+                  sift child
+                    case group
+                      fork test, is-unequal(word-at(nodes, 0), <find>)
+                        hold
+                          turn next
+                      save name, word-at(nodes, 1)
+                      fork test, not(has-text(names, name))
+                        hold
+                          push(problems, problem(<finds "{name}" in "{target}", which declares no such thing>, span-of-whole(child)))
+                        miss
+                          fork test, not(has-text(known, name))
+                            hold
+                              push(known, name)
+                    miss
+                      save nothing, 0
+          miss
+            save nothing, 0
+      walk tops
+        take group
+        sift group
+          case group
+            fork test, is-unequal(word-at(nodes, 0), <mint>)
+              hold
+                turn next
+            # a mint NAMED `like` (the type-annotation head's own mint) reads as an empty like-group here; only a like
+            # clause with an argument names the built form
+            walk nodes
+              take child
+              sift child
+                case group
+                  fork test, is-equal(word-at(nodes, 0), <like>)
+                    hold
+                      save like-name, word-at(nodes, 1)
+                      fork test, and(is-unequal(like-name, <>), not(has-text(known, like-name)))
+                        hold
+                          push(problems, problem(<mints "like {like-name}", which no load of this file brings in>, span-of-whole(child)))
+                      halt
+                miss
+                  save nothing, 0
+          miss
+            save nothing, 0
+  save diagnostics, make list
+  walk problems
+    take one
+    save placed
+      make span
+        bind start, one/span/start
+        bind end, one/span/end
+        bind file, make(some, source/file)
+    save input
+      make diagnostic-input
+        bind file, source/file
+        bind span, placed
+        bind message, make(some, <this mill definition {one/what}>)
+        bind hint, make(some, <a mill definition loads grammar files and the stdlib forms its mints build: name one that exists>)
+    save kind, make unknown-name
+    push(diagnostics, diagnose(kind, input))
+  back
+    make mill-checked
+      bind parsed, true
+      bind problems, problems
+      bind diagnostics, diagnostics

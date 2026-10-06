@@ -307,7 +307,7 @@ task assign-var
 # a big integer as the double nearest it, as `Number(bigint)` reads one
 task number-of-big
   take big, like big-integer
-  like decimal
+  like float
 
   back parse-float(big/text())
 
@@ -324,7 +324,7 @@ task index-of-value
 # a value as a double: an integer, a float, or a text read as a number
 task number-of
   take v, like value
-  like decimal
+  like float
 
   sift v
     case integer
@@ -338,7 +338,7 @@ task number-of
 
 # the whole value of a double, as an integer value
 task integer-of-number
-  take n, like decimal
+  take n, like float
   like value
 
   back integer(whole-to-big(n))
@@ -468,8 +468,8 @@ task binary
       back compare-result(op, float-compare(af, bf))
 
 task round-toward-zero
-  take x, like decimal
-  like decimal
+  take x, like float
+  like float
 
   fork test, is-below(x, 0.0)
     hold

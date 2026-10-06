@@ -12,11 +12,11 @@ load @term/base/list
 task part-of
   take values
     like list
-      like decimal
+      like float
   take start, like number
   take end, like number
   like list
-    like decimal
+    like float
   save out
     make list
   walk size

@@ -12,7 +12,8 @@ import { parse } from '@term/make/code/parser/tree'
 import type { Node } from '@term/make/code/parser/tree'
 import type { GroupNode } from '@term/make/code/parser/narrow'
 import { parse, renderHead } from '@term/make/code/parser/tree'
-import { checkMillDefinition, millDeclared } from '@term/make/code/compile/mill-check'
+import { millDeclared } from '@term/make/code/compile/mill-check'
+import { checkMillSource } from '@term/make/code/compile/compile'
 import { projectResolver } from '@term/call/code/make'
 
 let pass = 0
@@ -156,7 +157,7 @@ const resolveSource = (target: string, from: string): { file: string; text: stri
 
 for (const file of files) {
   const text = readFileSync(file, 'utf8')
-  const checked = checkMillDefinition({ file, text }, resolveSource)
+  const checked = checkMillSource({ file, text }, resolveSource)
 
   if (!checked.parsed) {
     problems.push({ file, what: `does not parse: ${checked.diagnostics[0]?.message ?? ''}` })
@@ -174,7 +175,7 @@ for (const file of files) {
 ok(
   'the mill checker reads the declared names this gate reads',
   files.every(file => {
-    const mine = millDeclared({ file, text: readFileSync(file, 'utf8') })
+    const mine = new Set(millDeclared({ file, text: readFileSync(file, 'utf8') }))
     const gate = declared(file)
 
     return mine.size === gate.size && [...gate].every(name => mine.has(name))

@@ -31,23 +31,23 @@ load @term/base/text/number
 form bench-result
   link name, like text
   link iterations, like number
-  link min, like decimal
-  link median, like decimal
-  link mean, like decimal
-  link p95, like decimal
-  link max, like decimal
-  link ops-per-sec, like decimal
+  link min, like float
+  link median, like float
+  link mean, like float
+  link p95, like float
+  link max, like float
+  link ops-per-sec, like float
   # whether the caller gave a size, for the scaling fit
   link has-size, like boolean
   link size, like number
 
 form scaling-fit
-  link exponent, like decimal
+  link exponent, like float
   link verdict, like text
 
 task by-value
-  take left, like decimal
-  take right, like decimal
+  take left, like float
+  take right, like float
   like ordering
 
   fork test, is-below(left, right)
@@ -61,9 +61,9 @@ task by-value
 
 # the sample at quantile `q` of a sorted list: the index q * n rounded down, never past the last
 task at-quantile
-  take sorted, like list, like decimal
-  take q, like decimal
-  like decimal
+  take sorted, like list, like float
+  take q, like float
+  like float
 
   host n, sorted/length
   save index, to-number(round-down(multiply(q, to-decimal(n))))
@@ -76,7 +76,7 @@ task at-quantile
 # the statistics of one benchmark's per-iteration timings, in milliseconds
 task stats-of
   take name, like text
-  take samples, like list, like decimal
+  take samples, like list, like float
   take has-size, like boolean
   take size, like number
   like bench-result
@@ -107,8 +107,8 @@ task stats-of
       bind size, size
 
 task mean-of
-  take values, like list, like decimal
-  like decimal
+  take values, like list, like float
+  like float
 
   save sum, 0.0
   walk values

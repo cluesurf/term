@@ -252,6 +252,23 @@ test <every double holds, written stacked>
         call double
           code 1
         code 0
+
+test <a stacked and of ands holds>
+  want hold
+    call and
+      call and
+        call is-equal
+          call double
+            code 1
+          code 2
+        call is-above
+          call double
+            code 1
+          code 0
+      call is-equal
+        call double
+          code 2
+        code 4
 `,
   )
 
@@ -262,6 +279,9 @@ test <every double holds, written stacked>
 
   ok('a failing `and` names its line and the part of it that did not hold, with that part\'s two values', /line 10 did not hold, part 2 of 3: want hold, and\(.*?\), left 4, right 5/.test(flat), run.out)
   ok('and the same for a stacked `call and`, at its first part', /line 13 did not hold, part 1 of 2: want hold, left 8, right 9/.test(flat), run.out)
+  // a part that is no comparison is written under the test it belongs to: it was set one level short, outside
+  // `hook test`, and the emitted `if` had no condition, so the file did not build (base's edge tests, 2026-10-05)
+  ok('a stacked `and` whose part is itself an `and` builds, and holds', /3 tests · 1 passed · 2 failed/.test(flat) && !/A stacked and of ands/.test(flat), run.out)
 }
 
 // ---- parsers/grammars: a grammar builds and rolls as its reader, and a miss says where and what ----
@@ -601,7 +621,7 @@ view page
   writeFileSync(join(lawful, 'test/one.tree'), 'test <one>\n  want hold\n    call is-equal\n      code 1\n      code 1\n')
   writeFileSync(
     join(lawful, 'test/law.tree'),
-    'task double\n  take n, like integer\n  like integer\n  send back, multiply(n, 2)\n\nrule double-is-sum\n  mark n, like integer\n  show is-equal double(n), add(n, n)\n',
+    'task double\n  take n, like integer\n  like integer\n  send back, multiply(n, 2)\n\nrule double-is-sum\n  seat n, like integer\n  show is-equal double(n), add(n, n)\n',
   )
 
   const run = term(lawful, 'test')

@@ -52,9 +52,9 @@ ok(
   'transitive chain closes',
   compiles(`${PRELUDE}
 rule transitive-chain
-  mark x, like thing
-  mark y, like thing
-  mark z, like thing
+  seat x, like thing
+  seat y, like thing
+  seat z, like thing
   have h1
     call is-equal
       read x
@@ -76,8 +76,8 @@ ok(
   'congruence under a function',
   compiles(`${PRELUDE}
 rule congruence-step
-  mark x, like thing
-  mark y, like thing
+  seat x, like thing
+  seat y, like thing
   have h
     call is-equal
       read x
@@ -97,10 +97,10 @@ ok(
   'unrelated hypotheses do not connect',
   !compiles(`${PRELUDE}
 rule unrelated-hypotheses-do-not-connect
-  mark x, like thing
-  mark y, like thing
-  mark z, like thing
-  mark w, like thing
+  seat x, like thing
+  seat y, like thing
+  seat z, like thing
+  seat w, like thing
   have h1
     call is-equal
       read x

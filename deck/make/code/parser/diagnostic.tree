@@ -77,6 +77,23 @@ form marker
     like text
     need false
 
+# one change to the source: the text under `span` replaced by `text`, an insertion when the span is empty. `was` is
+# the text the span held when the fix was made, so a fix applied to a file that changed since is refused rather than
+# written over the wrong characters
+form edit
+  link span, like span
+  link text, like text
+  link was, like text
+
+# a change that resolves a diagnostic, as data an editor or an agent applies without reading the message. `sure` is
+# true when the fix is the one reading of what was meant (an old spelling with one current spelling), and false when
+# it is a guess among several (a near spelling, a name whose type fits a hole). `term scan --fix` applies only the sure
+# ones, and an editor offers every one as a quick fix
+form fix
+  link title, like text
+  link sure, like boolean
+  link edits, like list, like edit
+
 form diagnostic
   link code, like number
   # a lint finding's own rule code, `L023`, printed in place of `code`. Lint codes are decimal and the compiler's are
@@ -94,6 +111,11 @@ form diagnostic
     like text
     need false
   link severity, like severity
+  # the changes that would resolve it, when the compiler knows them. A maybe, so a diagnostic with none leaves the
+  # field out and every diagnostic built before fixes existed keeps its shape
+  link fixes
+    like maybe, like list, like fix
+    need false
 
 form catalog-entry
   link code, like number
@@ -112,6 +134,9 @@ form diagnostic-input
     need false
   link markers
     like maybe, like list, like marker
+    need false
+  link fixes
+    like maybe, like list, like fix
     need false
 
 task error-entry
@@ -185,6 +210,7 @@ task diagnose
       # a specific hint if given, otherwise the catalog's default fix, so every diagnostic suggests a remedy
       bind hint, text-or(input/hint, entry/fix)
       bind severity, entry/severity
+      bind fixes, input/fixes
 
 # ---- rendering ----
 
@@ -728,6 +754,7 @@ form diagnostic-name
   case builtin-shadow, text <builtin-shadow>
   case keyword-import, text <keyword-import>
   case look-tint, text <look-tint>
+  case typed-hole, text <typed-hole>
 
 # a name's catalog entry. `fix` is the default actionable hint, so every error says how to resolve it
 task entry-of
@@ -834,7 +861,7 @@ task entry-of
       back warning-entry(0x25, <`note private` is the old spelling of `mark private`>, <write `mark private`: privacy is a mark the compiler enforces, and a `note` is documentation>)
     # a call to an async task OUTSIDE every task (a top-level `host`, a component's body, a closure in either that is
     # not async), where nothing can wait for it: it hands back a pending value. `tick` says that is meant. Behind
-    # the await switch (check/effects.ts, `setAwaitOutsideTasks`). note/term/plan/await-by-default-and-mark-metadata.md
+    # the await switch (compile/compile.ts, `setAwaitOutsideTasks`). note/term/plan/await-by-default-and-mark-metadata.md
     case async-outside-task
       back error-entry(0x27, <a call to an async task outside any task, where nothing waits for it>, <move the call into a task, or write `tick` before it to start it without waiting>)
     # `note async`, `note unsafe`, `note draft` ...: metadata is `mark` since 2026-10-02, and `note <word>` is the
@@ -895,6 +922,11 @@ task entry-of
       back warning-entry(0x35, <an import named like one of Term's own words is never reached by that name>, <give it another name: `find read, name read-file`>)
     case look-tint
       back error-entry(0x32, <this tint is not a CSS color>, <give the color space its values: `tint rgb, 24, 24, 27`, or `tint hex, \<fafafa\>`>)
+    # `hole` where a value goes, and no local or definition of that name: a part of the program left to write, which
+    # the checker answers with the type the place needs and the names in scope that have it (check/infer.ts). An error,
+    # so a program with a hole never builds, and a fix per fitting name, so an editor or an agent can fill it
+    case typed-hole
+      back error-entry(0x36, <this hole is a value still to be written>, <write a value of the type named in its place. Each name in scope of that type is offered as a fix>)
 
 # every name, in catalog order, for a tool that walks them all (a text form cannot list its cases)
 task diagnostic-names
@@ -955,3 +987,4 @@ task diagnostic-names
       make builtin-shadow
       make keyword-import
       make look-tint
+      make typed-hole

@@ -179,8 +179,8 @@ task unrelated
 
 {
   const out = run(`rule mul-is-square
-  mark a, like number
-  mark b, like number
+  seat a, like number
+  seat b, like number
   show
     is-equal
       call multiply
@@ -210,7 +210,7 @@ task unrelated
       code 1
 
 rule secret-is-identity
-  mark a, like number
+  seat a, like number
   show
     is-equal
       call secret
@@ -231,7 +231,7 @@ rule secret-is-identity
 
 {
   const out = run(`rule add-zero
-  mark a, like number
+  seat a, like number
   show
     is-equal
       call add
@@ -249,8 +249,8 @@ rule secret-is-identity
 
 {
   const out = run(`rule mul-comm
-  mark a, like number
-  mark b, like number
+  seat a, like number
+  seat b, like number
   show
     is-equal
       call multiply
@@ -270,7 +270,7 @@ rule secret-is-identity
 
 {
   const out = run(`rule add-one-is-same
-  mark a, like number
+  seat a, like number
   show
     is-equal
       call add

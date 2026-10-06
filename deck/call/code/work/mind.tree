@@ -212,7 +212,8 @@ task read-index
 
   like text
 
-  mark unsafe
+  fork
+    mark unsafe
     send back
       call read-file, read(path)
   halt take

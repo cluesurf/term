@@ -39,7 +39,7 @@ function control(text: string): { code: number | null; out: string } {
 
 // false at a = 1: a >= 1 does not give a * a >= 2 a
 const FALSE_LAW = `rule square-at-least-double
-  mark a, like integer
+  seat a, like integer
   have a-is-at-least-one, is-minimum a, 1
   show hold, is-minimum multiply(a, a), multiply(2, a)
 `
@@ -53,7 +53,7 @@ ok('one refused fewer times than its header says fails, and says both counts', s
 const accepted = control(`# false on purpose, except it is not. Expected: 1.
 
 rule square-at-least-double
-  mark a, like integer
+  seat a, like integer
   have a-is-at-least-two, is-minimum a, 2
   show hold, is-minimum multiply(a, a), multiply(2, a)
 `)
@@ -62,7 +62,7 @@ ok('a control whose law the build PROVES fails: a false law would have been acce
 const typo = control(`# false on purpose. Expected: 1.
 
 rule square-at-least-double
-  mark a, like integer
+  seat a, like integer
   show hold, is-minimum multipy(a, a), multiply(2, a)
 `)
 ok('a control refused for another reason is broken, not passed', typo.code === 1 && typo.out.includes('refused for another reason'), typo.out)

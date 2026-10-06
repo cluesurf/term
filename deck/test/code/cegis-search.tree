@@ -134,7 +134,8 @@ task meets
   take inputs, like list, like number
   like boolean
 
-  mark unsafe
+  fork
+    mark unsafe
     back spec(inputs, eval-expr(candidate, inputs))
   halt take
     take e

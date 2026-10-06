@@ -208,7 +208,7 @@ ok('`cast` compiles the scaffolded app for Cloudflare', !/is not defined/.test(c
 
 ok(
   'and refuses it as no server, writing no worker entry, exit 1',
-  cast.status === 1 && /`boot` returns nothing, so the Worker would have no fetch handler/.test(castOut) && !existsSync(join(root, 'work/index.ts')),
+  cast.status === 1 && /`boot` returns no fetch handler, so the Worker would have none/.test(castOut) && !existsSync(join(root, 'work/index.ts')),
   castOut,
 )
 

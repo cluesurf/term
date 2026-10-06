@@ -4,95 +4,95 @@ dock load
   load <global:fmath>, name fmath
 
 task float-square-root
-  take value, like decimal
-  like decimal
+  take value, like float
+  like float
   send back
     call fmath/sqrt
       read value
 
 task float-floor
-  take value, like decimal
-  like decimal
+  take value, like float
+  like float
   send back
     call fmath/floor
       read value
 
 task float-ceiling
-  take value, like decimal
-  like decimal
+  take value, like float
+  like float
   send back
     call fmath/ceil
       read value
 
 task float-round
-  take value, like decimal
-  like decimal
+  take value, like float
+  like float
   send back
     call fmath/round
       read value
 
 task float-power
-  take base, like decimal
-  take exponent, like decimal
-  like decimal
+  take base, like float
+  take exponent, like float
+  like float
   send back
     call fmath/pow
       read base
       read exponent
 
 task float-absolute
-  take value, like decimal
-  like decimal
+  take value, like float
+  like float
   send back
     call fmath/abs
       read value
 
 task float-sine
-  take value, like decimal
-  like decimal
+  take value, like float
+  like float
   send back
     call fmath/sin
       read value
 
 task float-cosine
-  take value, like decimal
-  like decimal
+  take value, like float
+  like float
   send back
     call fmath/cos
       read value
 
 task float-tangent
-  take value, like decimal
-  like decimal
+  take value, like float
+  like float
   send back
     call fmath/tan
       read value
 
 task float-arc-sine
-  take value, like decimal
-  like decimal
+  take value, like float
+  like float
   send back
     call fmath/asin
       read value
 
 task float-arc-cosine
-  take value, like decimal
-  like decimal
+  take value, like float
+  like float
   send back
     call fmath/acos
       read value
 
 task float-arc-tangent
-  take value, like decimal
-  like decimal
+  take value, like float
+  like float
   send back
     call fmath/atan
       read value
 
 task float-arc-tangent-of
-  take y, like decimal
-  take x, like decimal
-  like decimal
+  take y, like float
+  take x, like float
+  like float
   send back
     call fmath/atan2
       read y

@@ -41,7 +41,8 @@ task day-of
 task time-why
   take text, like text
   like text
-  note unsafe
+  fork
+    mark unsafe
     save got
       call parse-time-of-day
         read text

@@ -53,12 +53,12 @@ form v8-profile
 form cpu-frame
   link name, like text
   link location, like text
-  link self-ms, like decimal
-  link total-ms, like decimal
+  link self-ms, like float
+  link total-ms, like float
 
 form cpu-result
   link name, like text
-  link duration-ms, like decimal
+  link duration-ms, like float
   link sample-count, like number
   link frames, like list, like cpu-frame
 
@@ -204,7 +204,7 @@ task blank-frame
 task make-frame
   take name, like text
   take location, like text
-  take ms, like decimal
+  take ms, like float
   like cpu-frame
 
   back

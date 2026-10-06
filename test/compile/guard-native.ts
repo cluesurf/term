@@ -103,7 +103,8 @@ task find-user
 task lookup
   take key, like text
   like text
-  note unsafe
+  fork
+    mark unsafe
     save found
       call find-user
         read key
@@ -124,7 +125,8 @@ task unguarded
 task describe
   take key, like text
   like text
-  note unsafe
+  fork
+    mark unsafe
     send back
       call find-user
         read key
@@ -144,7 +146,8 @@ task need-key
 task checked
   take key, like text
   like text
-  note unsafe
+  fork
+    mark unsafe
     send back
       call need-key
         read key
@@ -159,7 +162,8 @@ task checked
 task translate
   take key, like text
   like text
-  note unsafe
+  fork
+    mark unsafe
     send back
       call find-user
         read key
@@ -180,7 +184,8 @@ task translate
 task translated
   take key, like text
   like text
-  note unsafe
+  fork
+    mark unsafe
     send back
       call translate
         read key

@@ -47,6 +47,16 @@ const readRuntime = (path: string): string | undefined => {
 let pass = 0
 let fail = 0
 
+// the `form` of the exception a call raises, or `none` when it returns
+function raisedForm(run: () => unknown): string {
+  try {
+    run()
+    return 'none'
+  } catch (error) {
+    return String((error as { form?: unknown }).form)
+  }
+}
+
 function eq(name: string, got: unknown, want: unknown): void {
   if (JSON.stringify(got) === JSON.stringify(want)) {
     pass++
@@ -110,6 +120,9 @@ async function main(): Promise<void> {
   })
   eq('i8 saturating add clamps to max', i8.i8SaturatingAdd(100, 50), 127)
   eq('i8 negate of min is min (two-complement)', i8.i8Negate(-128), -128)
+  eq('to-i8 keeps -128', i8.toI8(-128), -128)
+  eq('to-i8 stops below -128 with shortage', raisedForm(() => i8.toI8(-129)), 'shortage')
+  eq('to-i8 stops past 127 with excess', raisedForm(() => i8.toI8(128)), 'excess')
 
   const i16 = await load('integer/16.tree')
   eq('i16 add wraps (32767 + 1)', i16.i16Add(32767, 1), -32768)
@@ -134,11 +147,20 @@ async function main(): Promise<void> {
   eq('u32 maximum is 4294967295', u.u32MaximumValue(), 4294967295)
   eq('u8 is-negative is always false', u.u8IsNegative(200), false)
 
+  // `to-u8` and its kin check where `-from-number` wraps (D12): the value itself, or a stop naming the width
+  eq('to-u8 keeps a value that fits', u.toU8(200), 200)
+  eq('to-u8 stops past 255 with excess', raisedForm(() => u.toU8(256)), 'excess')
+  eq('to-u8 stops below 0 with shortage', raisedForm(() => u.toU8(-1)), 'shortage')
+  eq('to-u16 keeps 65535', u.toU16(65535), 65535)
+  eq('to-u32 stops past 4294967295', raisedForm(() => u.toU32(4294967296)), 'excess')
+
   // 64-bit: the native platform integer (no masking)
   const i64 = await load('integer/64.tree')
   eq('i64 add (native)', i64.i64Add(1000000000, 2000000000), 3000000000)
   eq('i64 negate', i64.i64Negate(42), -42)
-  eq('i64 minimum bound', i64.i64MinimumValue(), -9223372036854775808)
+  // -2^63 is past 2^53, so on TypeScript the bound STOPS with `shortage` (integer/64.tree, guides: library/numbers)
+  eq('i64 minimum bound stops below 2^53', raisedForm(() => i64.i64MinimumValue()), 'shortage')
+  eq('i64 maximum bound stops past 2^53', raisedForm(() => i64.i64MaximumValue()), 'shortage')
   eq('u64 minimum is 0', i64.u64MinimumValue(), 0)
 
   // floats: f32 rounds every result to single precision; f64 is the native double

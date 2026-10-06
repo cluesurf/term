@@ -23,6 +23,7 @@ load @term/mill/code/make/mint
 
 load @term/mill/code/code/note/mint
   find note
+  find fork-guard
 
 load @term/mill/code/read/mint
   find read
@@ -72,6 +73,8 @@ mint flow
     site back
   case send-kind
     site send-kind
+  case guard, mint fork-guard
+    site guard
   case fork
     site fork
   case sift

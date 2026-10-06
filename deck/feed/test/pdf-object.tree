@@ -87,7 +87,7 @@ task pdf-string-value
 
 task pdf-number-value
   take subject, like pdf-value
-  like decimal
+  like float
   fork case, read subject
     case pdf-number
       link value

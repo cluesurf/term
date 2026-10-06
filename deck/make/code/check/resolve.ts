@@ -3,7 +3,7 @@
 // unresolved name that is not legally runtime-deferred becomes an unknown-name diagnostic. This is the hole-filling
 // pass (the part that fills name and import holes). See note/research/vibe/computation/plans/11-elaboration.md.
 
-import type { Diagnostic } from '@term/make/code/parser/diagnostic'
+import type { Diagnostic, Span } from '@term/make/code/parser/diagnostic'
 import {
   diagnose,
   nearest,
@@ -25,6 +25,20 @@ import { typeTestOf } from '@term/make/code/check/seam'
 const EXCEPTION_SHARED = ['host', 'form', 'note', 'code', 'time']
 
 export type Scope = Map<string, Binding>
+
+// the name a typed hole is written with (`back hole`, `call add(hole, 1)`): only where nothing of the name is in scope
+export const HOLE = 'hole'
+
+// the span of a name written last in an expression's span: a lean `foo` spans the word, a longhand `read foo` the
+// whole reference, and the name ends both. A span over several lines is returned whole, and an edit carries the
+// text it expects to replace, so a span that is not the name is refused when applied rather than written over
+export function nameSpan(span: Span, name: string): Span {
+  if (span.start.line !== span.end.line || span.end.column - name.length < span.start.column) {
+    return span
+  }
+
+  return { ...span, start: { line: span.end.line, column: span.end.column - name.length } }
+}
 
 // the JS intrinsics the generated bindings (bind.tree's native.tree) use to express operators, control flow, and
 // dynamic member access. They are not user definitions; the backend lowers them to real operations. Always in scope.
@@ -284,6 +298,12 @@ export function resolve(
         ) {
           // arithmetic / comparison the emitter lowers to an operator (`is-below` -> `<`). These have no definition
           // to bind to and are never imported, so the resolver must not treat them as unknown names.
+        } else if (node.name === HOLE) {
+          // a TYPED HOLE: `hole` where a value goes, and nothing of that name in scope. The checker answers it with the
+          // type the place needs and the names that have it (check/infer.ts). A local or a definition named `hole`
+          // is bound above and wins, so a program that already uses the name reads as it did
+          const hole = node as unknown as Extract<Expression, { form: 'hole' }>
+          hole.form = 'hole'
         } else {
           const suggestion = nearest(node.name, known())
           diagnostics.push(
@@ -293,6 +313,16 @@ export function resolve(
               message: `the name "${node.name}" is not defined`,
               hint: suggestion
                 ? `did you mean "${suggestion}"?`
+                : undefined,
+              // the near spelling as an edit too, a guess and so not sure: two names can be equally near
+              fixes: suggestion
+                ? [
+                    {
+                      title: `Write "${suggestion}"`,
+                      sure: false,
+                      edits: [{ span: nameSpan(node.span, node.name), text: suggestion, was: node.name }],
+                    },
+                  ]
                 : undefined,
             }),
           )
@@ -548,8 +578,8 @@ export function resolve(
           const tested = typeTestOf(branch.cond)
 
           // `is-text(value)` as a whole test, with no task of that name in scope, asks what an `unknown` holds: only
-          // its local is resolved here, and the checker rewrites the branch into a `sift` arm (check/seam.ts)
-          if (tested && !look(tested.test) && branch.cond.form === 'call') {
+          // its local is resolved here, and the checker rewrites the branch into a `sift` arm (check/seam.tree)
+          if (tested.form === 'some' && !look(tested.value.test) && branch.cond.form === 'call') {
             resolveExpression(branch.cond.args[0]!)
           } else {
             resolveExpression(branch.cond)

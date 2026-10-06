@@ -2,7 +2,7 @@
 # point order) or any task that returns an ordering. `hash` is the map to reach for when order does not matter.
 #
 # A B-TREE, written in Term, so it is the same tree on every backend: lookup, `put`, `drop`, `least` and `greatest` are
-# O(log n) with up to 31 keys to a node, `length` is O(1), and a walk is in key order. Until 2026-10-05 it was two
+# O(log n) with up to 127 keys to a node, `length` is O(1), and a walk is in key order. Until 2026-10-05 it was two
 # parallel lists, so a `put` or a `drop` moved every later entry, O(n). A native ordered map cannot stand in for it:
 # Rust's `BTreeMap` and Java's `TreeMap` order by the key type or a fixed comparator, and the order here is a Term task
 # chosen at run time (note/term/plan/decisions-2026-10.md, D8).
@@ -37,8 +37,12 @@ load @term/base/ordering
   find is-equal
   find is-greater
 
-# the least a node other than the root holds is DEGREE - 1 keys, and the most 2 * DEGREE - 1
-host degree, 16
+# the least a node other than the root holds is DEGREE - 1 keys, and the most 2 * DEGREE - 1. 64 is measured, not
+# conventional (`pnpm term:sorted-map-bench`, 2026-10-06, D8): per node, every step here is a list operation and an
+# ordering task's call, so fewer and wider nodes win until a node's own insert, linear in its width, takes over. At
+# 400,000 keys 64 beat 32 by 15% on Rust and on node, and 16 by 25%. Wider loses: 256 was the slowest on Rust there,
+# and 128 and 256 were 40 to 60% slower than 32 on node at 100,000 keys
+host degree, 64
 
 form sorted-map
   head k

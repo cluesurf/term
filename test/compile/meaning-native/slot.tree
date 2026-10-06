@@ -109,7 +109,8 @@ task try-push
   take size, like number
   take pile, like number
   like text
-  mark unsafe
+  fork
+    mark unsafe
     call push-disk
       read piles
       read size
@@ -123,7 +124,8 @@ task try-pop
   take piles, like list, like stack
   take pile, like number
   like text
-  mark unsafe
+  fork
+    mark unsafe
     host size
       call pop-disk
         read piles

@@ -465,7 +465,8 @@ task holds-at
   take value, like sample
   like boolean
 
-  mark unsafe
+  fork
+    mark unsafe
     back claim(value)
   halt take
     take e

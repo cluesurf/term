@@ -25,7 +25,7 @@ const EXCEPTION_FORM = exceptionForm()
 // caller of a throwing function may itself throw). This is effect-row inference -- the typed core of the effect
 // system; row-variable polymorphism over task-typed callbacks is the further step (it needs effect annotations on
 // those parameters).
-export function effectRows(program: Program): Map<string, Set<string>> {
+export function effectRows(program: Program): Map<string, string[]> {
   const functions = new Map<
     string,
     Extract<Statement, { form: 'function' }>
@@ -95,7 +95,8 @@ export function effectRows(program: Program): Map<string, Set<string>> {
     }
   }
 
-  return rows
+  // each row a list, in the order its effects were found (check/effects.tree)
+  return new Map([...rows].map(([name, row]) => [name, [...row]]))
 }
 
 // does the body contain a throw statement anywhere? A guarded body's throws are caught by its handler, so only
@@ -583,26 +584,13 @@ function tickOnSync(file: string, span: Span, called: string): Diagnostic {
 // cannot wait says it means the pending value.
 //
 // ON since 2026-10-03, after `pnpm term:await-migrate --commit` rewrote every such call in the repository to `tick`,
-// each file proven to emit what it emitted before. The migration compiles under both settings, which is why it is a
-// switch and not a constant. The compile cache keys on it (compile/compile.ts).
-let awaitOutsideTasks = true
-
-export function setAwaitOutsideTasks(on: boolean): void {
-  awaitOutsideTasks = on
-}
-
-export function awaitsOutsideTasks(): boolean {
-  return awaitOutsideTasks
-}
+// each file proven to emit what it emitted before. The switch is compile/compile.ts's (`setAwaitOutsideTasks`), which
+// asks this only while it is on.
 
 // Every un-awaited, un-ticked call to an async task outside a task body. Runs after async resolution, so a task's
 // own body is already awaited and is not walked here. A closure inside a task is the task's business (resolution
 // awaits inside it); a closure outside one is walked, and is exempt only when it is itself async.
 export function checkCallsOutsideTasks(program: Program, file: string): Diagnostic[] {
-  if (!awaitOutsideTasks) {
-    return []
-  }
-
   const asyncFunctions = new Set<string>()
 
   for (const statement of program) {
@@ -748,18 +736,36 @@ function closuresIn(node: Expression): Extract<Expression, { form: 'closure' }>[
 //
 // `via` records, for each function and each exception, the callee that first brought it in (undefined for a direct
 // raise), so a reader can walk one call path from an entry point to the raise site.
-export type RaiseSets = {
+type RaiseSetsWith = {
   raises: Map<string, Set<string>>
   via: Map<string, Map<string, string | undefined>>
   // the native shims: the functions that call into a `dock load` module, which raise `failure` by construction
   native: Set<string>
 }
 
-export function raiseSets(
+// the raise sets as check/effects.tree answers them: each set a list in the order it was filled, a direct raise's
+// `via` the empty text
+export type RaiseSets = {
+  raises: Map<string, string[]>
+  via: Map<string, Map<string, string>>
+  native: string[]
+}
+
+export function raiseSetsOf(program: Program, exceptions: string[]): RaiseSets {
+  const sets = raiseSetsWith(program, new Set(exceptions))
+
+  return {
+    raises: new Map([...sets.raises].map(([name, raised]) => [name, [...raised]])),
+    via: new Map([...sets.via].map(([name, from]) => [name, new Map([...from].map(([e, callee]) => [e, callee ?? '']))])),
+    native: [...sets.native],
+  }
+}
+
+function raiseSetsWith(
   program: Program,
   // the record-types that are exceptions, by name
   exceptions: Set<string>,
-): RaiseSets {
+): RaiseSetsWith {
   const functions = new Map<
     string,
     Extract<Statement, { form: 'function' }>
@@ -1178,7 +1184,7 @@ export function checkRaiseBounds(
     return diagnostics
   }
 
-  const sets = raiseSets(program, exceptions)
+  const sets = raiseSetsWith(program, exceptions)
 
   for (const s of bounded) {
     const declared = new Set(s.raises)
@@ -1234,7 +1240,7 @@ export function checkRaiseBounds(
           file: at,
           span: s.span,
           message: `"${s.name}" can raise ${chains.join(', ')}, which its signature does not declare`,
-          hint: `add "halt ${beyond[0]}" to the signature, or handle it with mark unsafe / halt take`,
+          hint: `add "halt ${beyond[0]}" to the signature, or handle it in a fork marked mark unsafe, with halt take after it`,
         }),
       )
     }

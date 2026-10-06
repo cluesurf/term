@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { projectResolver } from '@term/call/code/make'
 import { compile } from '@term/make/code/compile/compile'
-import { setUnknownSeam } from '@term/make/code/check/seam'
+import { setUnknownSeam } from '@term/make/code/check/strict'
 import { BACKENDS, runOn } from './shared/run-on'
 
 let pass = 0

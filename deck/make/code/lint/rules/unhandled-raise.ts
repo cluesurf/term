@@ -1,17 +1,18 @@
 // L041: a call to a task that can raise, outside any guard, with no `halt kink` under it. The call passes the callee's
-// exception on to the caller without saying so; `halt kink` says so, and `mark unsafe` / `halt take` handles it
+// exception on to the caller without saying so; `halt kink` says so, and a guard (`fork` / `mark unsafe`, then
+// `halt take`) handles it
 // (note/term/hive/04-reach.md, the open diagnostic; note/term/hive/11-native-exceptions.md). Advice, not an error:
 // the stdlib was written before the word existed, so the count on it is the measure of the migration, and a call
 // whose only exception is `failure` (a native shim's, which any foreign call can raise) is left alone.
 
 import type { Program, Statement, Expression } from '@term/make/code/compile/node'
 import type { LintContext, LintNode, Rule } from '@term/make/code/lint/rule'
-import { raiseSets } from '@term/make/code/check/effects'
+import { raiseSetsOf } from '@term/make/code/check/effects'
 import { exceptionForm } from '@term/make/code/check/extend'
 
 const EXCEPTION_FORM = exceptionForm()
 
-type Raises = Map<string, Set<string>>
+type Raises = Map<string, string[]>
 
 // Computed at most once per lint call, through the shared `context.memo` rather than a module-level cache.
 //
@@ -33,7 +34,7 @@ function raises(context: LintContext): Raises {
     }
   }
 
-  const sets = raiseSets(context.program, exceptions).raises
+  const sets = raiseSetsOf(context.program, [...exceptions]).raises
 
   context.memo.raises = sets
 
@@ -62,7 +63,7 @@ export const unhandledRaise: Rule = {
 
             if (named.length > 0) {
               context.report({
-                message: `"${node.callee.name}" can raise ${named.join(', ')}: handle it with mark unsafe / halt take, or pass it on with halt kink`,
+                message: `"${node.callee.name}" can raise ${named.join(', ')}: handle it in a fork marked mark unsafe, with halt take after it, or pass it on with halt kink`,
                 span: node.span,
               })
             }

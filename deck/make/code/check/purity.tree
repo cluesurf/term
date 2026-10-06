@@ -1,0 +1,1748 @@
+# Which facts survive a statement, and which tasks are pure. Shared by the kernel's command checker (elaborate.ts) and
+# the linear prover (holds.ts), so the two cannot disagree about it.
+#
+# Both provers keep path facts as expressions over NAMES (`x == 0`, `n > 0`). A surface name is not a mathematical
+# variable: `save x` gives it a new value, a branch or a loop may have done so, a closure may do so whenever it is
+# called, and a call to a task that writes through a record changes what `read b/size` means. A fact that outlives the
+# value it was about proves false things, which is what this module exists to stop. See
+# note/term/proof-by-default/semantics.md: in the pure core every assignment is a new name, so nothing is ever retracted.
+# Until the core exists, retracting is how the surface provers get the same answer.
+#
+# The second half is purity. The kernel registers every task as a constant, so two calls with equal arguments are equal
+# by construction. That is true of a pure task and false of one that reads a clock, a random source, a mutable global,
+# or the world. A goal that mentions an impure call cannot be decided by either prover, and is left outside the fragment.
+#
+# Ported from check/facts.ts (self-hosting, 2026-10-06), which stays as the face: it holds the answer per program (the
+# last few programs asked about, by identity, which Term cannot hold as module state) and tells a block, a statement and
+# an expression apart for callers that hand it any of the three. The original walked by reflection, every object once;
+# this walks compile/node-reach.tree, which skips the same fields. Every answer is a set or a yes or no, so the order of
+# the walk changes none of them. Two things the original found by stopping its walk early are found whole here: the
+# parameters an IMPURE task writes through, which no reader asks of an impure task (a stub carries them, and a dependent
+# reads them only under `clean`), and nothing else. A set the caller holds (the pure tasks, a task's locals) is handed
+# in as a test of a name, so a lookup stays a lookup.
+
+load @term/base/list
+  find list
+  find contains
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load ../compile/node
+  find expression
+  find expression-type
+  find function-param
+  find statement
+  find type
+
+load ../compile/node-reach
+  find reached
+  find reach-statements
+  find reach-expression
+
+# what a caller hands the name walks: a block, one statement, or one expression
+form subtree
+  case in-block
+    link node, like list, like statement
+  case in-statement
+    link node, like statement
+  case in-expression
+    link node, like expression
+
+# ---- the vocabularies ----
+
+# the sentinel for a write whose root could not be named: every fact is dropped
+task everything
+  like text
+
+  back <*>
+
+# the scalars no method can change in place, on any backend (`bytes` is a buffer, and can be)
+task immutable-kinds
+  like list, like text
+
+  save out, make list
+  push(out, <number>)
+  push(out, <float>)
+  push(out, <boolean>)
+  push(out, <string>)
+  push(out, <unit>)
+  back out
+
+# The STATE-FREE tasks' scalars: a native function handed only these reaches no Term value (the trust ledger names the
+# assumption)
+task scalar-kinds
+  like list, like text
+  mark private
+
+  save out, immutable-kinds()
+  push(out, <bytes>)
+  back out
+
+# the list methods that only READ the list they are called on (deck/base/code/list.tree): calling one changes no
+# length. Named, and checked against the receiver's type, so a method of the same name on anything but a list
+# still counts as reaching it. None takes a function, which could change anything.
+task read-only-list-methods
+  like list, like text
+
+  save out, make list
+  push(out, <get>)
+  push(out, <length>)
+  push(out, <size>)
+  push(out, <count>)
+  push(out, <is-empty>)
+  push(out, <slice>)
+  push(out, <copy>)
+  push(out, <index-of>)
+  push(out, <includes>)
+  push(out, <join>)
+  back out
+
+# A method call on a NATIVE list or map, by the receiver's checked type, that touches nothing the caller can see.
+#
+#   a READ (get, has, keys, includes, ...) is pure on any list or map: it changes nothing
+#   a WRITE (push, set, delete, ...) is pure only on a local this task bound to a list or map it MADE (`make list`,
+#   `make hash`, a literal) and never bound to anything else, so no other name can be holding the same one
+#
+# Anything else (a method on a form, an unknown receiver, a write to a parameter or to a local that may be one) stays
+# impure.
+task collection-reads
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, <get>)
+  push(out, <has>)
+  push(out, <keys>)
+  push(out, <values>)
+  push(out, <entries>)
+  push(out, <at>)
+  push(out, <includes>)
+  push(out, <indexOf>)
+  push(out, <lastIndexOf>)
+  push(out, <slice>)
+  push(out, <concat>)
+  push(out, <join>)
+  push(out, <map>)
+  push(out, <filter>)
+  push(out, <some>)
+  push(out, <every>)
+  push(out, <reduce>)
+  push(out, <findIndex>)
+  push(out, <find>)
+  push(out, <toReversed>)
+  push(out, <flat>)
+  push(out, <forEach>)
+  back out
+
+task collection-writes
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, <push>)
+  push(out, <pop>)
+  push(out, <set>)
+  push(out, <delete>)
+  push(out, <unshift>)
+  push(out, <shift>)
+  push(out, <splice>)
+  push(out, <clear>)
+  back out
+
+# ---- small helpers ----
+
+task add-text
+  take values, like list, like text
+  take value, like text
+  like void
+  mark private
+
+  fork test, not(contains(values, value))
+    hold
+      push(values, value)
+
+task add-number
+  take values, like list, like number
+  take value, like number
+  like void
+  mark private
+
+  fork test, not(contains(values, value))
+    hold
+      push(values, value)
+
+task flags-of
+  take values, like list, like text
+  like hash, like text, like boolean
+  mark private
+
+  save out, make hash
+  walk values
+    take one
+    save out/{one}, true
+  back out
+
+# the fields a reflective walk of the original skipped: a resolved type annotation is not code
+task skipped
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, <type>)
+  push(out, <result>)
+  push(out, <span>)
+  back out
+
+task reach-block
+  take body, like list, like statement
+  like reached
+  mark private
+
+  back reach-statements(body, skipped())
+
+task reach-part
+  take part, like subtree
+  like reached
+  mark private
+
+  sift part
+    case in-block
+      back reach-statements(node, skipped())
+    case in-statement
+      save one, make list
+      push(one, node)
+      back reach-statements(one, skipped())
+    case in-expression
+      back reach-expression(node, skipped())
+
+# a type's kind, `<>` where there is none
+task kind-of
+  take given, like maybe, like type
+  like text
+  mark private
+
+  sift given
+    case some
+      link known
+      back known/kind
+    case none
+      back <>
+
+# the kind of a list type's element, `<>` for anything but a list
+task element-kind
+  take given, like maybe, like type
+  like text
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case array
+          back element/kind
+        miss
+          back <>
+    case none
+      back <>
+
+# a native list or map, by its checked type
+task is-collection
+  take given, like maybe, like type
+  like boolean
+  mark private
+
+  sift given
+    case some
+      link known
+      sift known
+        case array
+          back true
+        case map
+          back true
+        case named
+          back or(is-equal(name, <list>), is-equal(name, <hash>))
+        miss
+          back false
+    case none
+      back false
+
+task param-names
+  take params, like list, like function-param
+  like list, like text
+  mark private
+
+  save out, make list
+  walk params
+    take param
+    push(out, param/name)
+  back out
+
+task param-index
+  take params, like list, like function-param
+  take name, like text
+  like number
+  mark private
+
+  save at, 0
+  walk params
+    take param
+    fork test, is-equal(param/name, name)
+      hold
+        back at
+    save at, add(at, 1)
+  back -1
+
+# the name an expression is, `<>` for any other expression
+task variable-name
+  take value, like expression
+  like text
+  mark private
+
+  sift value
+    case variable
+      back name
+    miss
+      back <>
+
+# ---- the names a subtree writes and reads ----
+
+# the variable a write lands in: `x` for `save x`, `b` for `save b/size` and `save b/{i}/size`. None when the target is
+# not rooted in a name, which callers treat as "anything may have changed".
+task root-name
+  take written, like expression
+  like maybe, like text
+
+  sift written
+    case member
+      back root-name(target)
+    case variable
+      back make(some, name)
+    miss
+      back make none
+
+# the root's name, or `<>` where there is none
+task root-text
+  take written, like expression
+  like text
+  mark private
+
+  sift root-name(written)
+    case some
+      link root
+      back root
+    case none
+      back <>
+
+task written-into
+  take names, like list, like text
+  take seen, like reached
+  like void
+  mark private
+
+  walk seen/statements
+    take one
+    sift one
+      case assign
+        sift root-name(target)
+          case some
+            link root
+            add-text(names, root)
+          case none
+            add-text(names, everything())
+      case let
+        add-text(names, name)
+      case for-each
+        add-text(names, item)
+        fork test, is-unequal(index, <>)
+          hold
+            add-text(names, index)
+      case function
+        walk params
+          take param
+          add-text(names, param/name)
+      case guard
+        sift catch
+          case some
+            link clause
+            add-text(names, clause/name)
+          case none
+            save nothing, 0
+      miss
+        save nothing, 0
+  walk seen/expressions
+    take one
+    sift one
+      case closure
+        walk params
+          take param
+          add-text(names, param/name)
+      miss
+        save nothing, 0
+
+# every name a subtree WRITES OR BINDS: assignment roots, `let` names (a rebinding in a loop or a shadowing in a
+# branch is a new value under the old name), loop items and indexes, a handler's caught name, a closure's or a nested
+# task's parameters. Over-approximating is sound: dropping a fact that was still true loses proving power, never truth.
+task written-names
+  take parts, like list, like subtree
+  like list, like text
+
+  save names, make list
+  walk parts
+    take part
+    written-into(names, reach-part(part))
+  back names
+
+task block-written
+  take body, like list, like statement
+  like list, like text
+
+  save names, make list
+  written-into(names, reach-block(body))
+  back names
+
+task statement-written
+  take one, like statement
+  like list, like text
+
+  save body, make list
+  push(body, one)
+  back block-written(body)
+
+# the names written inside any closure or nested task beneath a body. Such a write happens whenever the closure is
+# called, which may be at any later call, so no fact about these names is ever safe to keep. They are VOLATILE.
+task volatile-names
+  take statements, like list, like statement
+  like list, like text
+
+  save names, make list
+  save seen, reach-block(statements)
+  walk seen/statements
+    take one
+    sift one
+      case function
+        walk block-written(body)
+          take written
+          add-text(names, written)
+      miss
+        save nothing, 0
+  walk seen/expressions
+    take one
+    sift one
+      case closure
+        walk block-written(body)
+          take written
+          add-text(names, written)
+      miss
+        save nothing, 0
+  back names
+
+task read-into
+  take names, like list, like text
+  take seen, like reached
+  like void
+  mark private
+
+  walk seen/expressions
+    take one
+    sift one
+      case variable
+        add-text(names, name)
+      miss
+        save nothing, 0
+
+# the variable names a subtree reads, member roots included
+task read-names
+  take parts, like list, like subtree
+  like list, like text
+
+  save names, make list
+  walk parts
+    take part
+    read-into(names, reach-part(part))
+  back names
+
+# does a subtree read any of the names `wanted` holds (or anything at all, when it holds `everything`)
+task reads-any
+  take parts, like list, like subtree
+  take wanted
+    like task
+      take name, like text
+      like boolean
+  like boolean
+
+  fork test, wanted(everything())
+    hold
+      back true
+  walk read-names(parts)
+    take name
+    fork test, wanted(name)
+      hold
+        back true
+  back false
+
+# does a subtree read state a call can change behind a name's back: a member of a record, or a call's result
+task reads-state
+  take parts, like list, like subtree
+  like boolean
+
+  walk parts
+    take part
+    save seen, reach-part(part)
+    walk seen/expressions
+      take one
+      sift one
+        case member
+          back true
+        case call
+          back true
+        case await
+          back true
+        miss
+          save nothing, 0
+    # a view's call is a call too, as the original's walk read any object of that form
+    walk seen/views
+      take one
+      sift one
+        case call
+          back true
+        miss
+          save nothing, 0
+  back false
+
+# does a subtree call anything whose result two calls might not agree on: an impure task of the program, a function
+# value bound in scope, or a member (a dock alias, a method on a value)
+task calls-impure
+  take parts, like list, like subtree
+  take is-pure
+    like task
+      take name, like text
+      like boolean
+  take is-function
+    like task
+      take name, like text
+      like boolean
+  take is-local
+    like task
+      take name, like text
+      like boolean
+  like boolean
+
+  walk parts
+    take part
+    save seen, reach-part(part)
+    walk seen/expressions
+      take one
+      sift one
+        # an impure task named as a value, passed to a task that will call it, is an impure call made one step
+        # later. A local binding of the same name shadows the task: it is a value of its own
+        case variable
+          fork test, and(and(is-function(name), not(is-pure(name))), not(is-local(name)))
+            hold
+              back true
+        case call
+          sift callee
+            case variable
+              fork test, is-function(name)
+                hold
+                  fork test, not(is-pure(name))
+                    hold
+                      back true
+                miss
+                  fork test, is-local(name)
+                    hold
+                      back true
+            miss
+              back true
+        miss
+          save nothing, 0
+  back false
+
+# the names a task binds itself: its parameters and everything its body writes or binds
+task local-names
+  take task-statement, like statement
+  like list, like text
+
+  save names, make list
+  sift task-statement
+    case function
+      written-into(names, reach-block(body))
+      walk params
+        take param
+        add-text(names, param/name)
+    miss
+      save nothing, 0
+  back names
+
+# the names of every task in a program
+task function-names
+  take program, like list, like statement
+  like list, like text
+
+  save names, make list
+  walk program
+    take one
+    sift one
+      case function
+        add-text(names, name)
+      miss
+        save nothing, 0
+  back names
+
+# A task's only statement, when its body is one statement: what the analyses that recognize a task by its SHAPE read
+# (a list's push or pop, `max` and `min`, a one-line unfolding). A separately compiled stub has no body and carries
+# that statement as `stub-shape`
+task only-statement
+  take task-statement, like statement
+  like maybe, like statement
+
+  sift task-statement
+    case function
+      fork test, stub
+        hold
+          sift stub-shape
+            case some
+              link shape
+              back make(some, shape)
+            case none
+              back make none
+      fork test, is-equal(body/length, 1)
+        hold
+          back make(some, body/0)
+      back make none
+    miss
+      back make none
+
+# does a separately compiled task's own unit say this of it (`stub-facts`)
+task stub-says
+  take task-statement, like statement
+  take fact, like text
+  like boolean
+  mark private
+
+  sift task-statement
+    case function
+      sift stub-facts
+        case some
+          link facts
+          back contains(facts, fact)
+        case none
+          back false
+    miss
+      back false
+
+# ---- how a task binds a name ----
+
+# per name a body binds, how: every `let` and assignment of it (a `let` anywhere beneath, a nested task's or a
+# closure's included), whether each made a fresh list or map, and whether a `let` of it reads a record. Counted once
+# per body, which the original counted again per question
+form bindings
+  mark shared
+  # `let`s of the name
+  link lets, like hash, like text, like number
+  # assignments whose root is the name, through a member or not
+  link writes, like hash, like text, like number
+  # `let`s and plain assignments of the name, and whether every one made a fresh list or map
+  link bound, like hash, like text, like number
+  link spoiled, like hash, like text, like boolean
+  # a `let` of the name whose value reads a member
+  link from-state, like hash, like text, like boolean
+
+task count-up
+  take counts, like hash, like text, like number
+  take name, like text
+  like void
+  mark private
+
+  fork test, counts/has(name)
+    hold
+      save counts/{name}, add(counts/get(name), 1)
+    miss
+      save counts/{name}, 1
+
+# a fresh list or map: `make list`, `make hash`, a list or map literal
+task is-made
+  take value, like expression
+  like boolean
+  mark private
+
+  sift value
+    case array
+      back true
+    case map
+      back true
+    case record
+      back and(or(is-equal(name, <list>), is-equal(name, <hash>)), is-equal(fields/length, 0))
+    miss
+      back false
+
+task reads-member
+  take value, like expression
+  like boolean
+  mark private
+
+  save seen, reach-expression(value, skipped())
+  walk seen/expressions
+    take one
+    sift one
+      case member
+        back true
+      miss
+        save nothing, 0
+  back false
+
+task bindings-of
+  take body, like list, like statement
+  like bindings
+  mark private
+
+  save out
+    make bindings
+      bind lets, make hash
+      bind writes, make hash
+      bind bound, make hash
+      bind spoiled, make hash
+      bind from-state, make hash
+  save seen, reach-block(body)
+  walk seen/statements
+    take one
+    sift one
+      case let
+        count-up(out/lets, name)
+        count-up(out/bound, name)
+        fork test, not(is-made(init))
+          hold
+            save out/spoiled/{name}, true
+        fork test, reads-member(init)
+          hold
+            save out/from-state/{name}, true
+      case assign
+        save root, root-text(target)
+        fork test, is-unequal(root, <>)
+          hold
+            count-up(out/writes, root)
+        save plain, variable-name(target)
+        fork test, is-unequal(plain, <>)
+          hold
+            count-up(out/bound, plain)
+            fork test, not(is-made(value))
+              hold
+                save out/spoiled/{plain}, true
+      miss
+        save nothing, 0
+  back out
+
+# is every binding and assignment of `name` in the body a fresh list or map? Then the value it holds was made by this
+# task and no other name shares it
+task made-here
+  take known, like bindings
+  take name, like text
+  like boolean
+  mark private
+
+  back and(known/bound/has(name), not(known/spoiled/has(name)))
+
+# is a local name bound exactly once, never assigned, to a value that does not read a member: then the function it
+# holds is one the enclosing task made or was handed, and its purity is decided by the same walk
+task stable-local
+  take known, like bindings
+  take name, like text
+  like boolean
+  mark private
+
+  fork test, not(known/lets/has(name))
+    hold
+      back false
+  back and(and(is-equal(known/lets/get(name), 1), not(known/writes/has(name))), not(known/from-state/has(name)))
+
+# ---- purity ----
+
+# purity's whole answer: the pure tasks, the tasks with an effect beyond writing through a parameter, and the parameter
+# positions each task writes through. A separately compiled stub carries the last two (`stub-facts` `clean`,
+# `stub-writes`), so a dependent decides a caller's purity at its call sites as the merged build does
+form purity-answer
+  link pure, like list, like text
+  link impure, like list, like text
+  link writes, like hash, like text, like list, like number
+
+# each call to a task of the program, with its arguments, to decide a write through a parameter at the call site
+form call-site
+  link callee, like text
+  link args, like list, like expression
+
+form pure-state
+  mark shared
+  # the tasks of the program by name, the last of a name winning, in the order each name first appears
+  link functions, like hash, like text, like statement
+  link order, like list, like text
+  link mutable-globals, like hash, like text, like boolean
+  link impure, like hash, like text, like boolean
+  link calls, like hash, like text, like list, like text
+  link writes, like hash, like text, like list, like number
+  link sites, like hash, like text, like list, like call-site
+  link known, like hash, like text, like bindings
+
+# The pure tasks of a program. A task is IMPURE when any of these holds, and the set closes over calls:
+#
+#   it is async, or has no body (a signature, or a separate-compilation stub, whose body nothing here can see)
+#   it holds a `native` statement, or calls through a member (`call fs/read-file`, `call r/grow`), which is a dock
+#     call or a method on a value, and either may touch the world or write through a record
+#   it calls a name that is not a task of the program and is bound in its own scope (a parameter or a local holding
+#     a function value), whose purity is unknown
+#   it writes through a member of a name it did not bind itself (a parameter, `self`), which the caller can see
+#   it reads or writes a mutable module-level binding
+#   it calls an impure task
+#
+# A CLAIM (a signature-shaped `rule`) is pure by construction: it is a proposition, never run. A name that is neither
+# a task of the program nor bound in scope is an intrinsic the compiler lowers (`add`, `is-equal`), which is pure.
+task purity
+  take program, like list, like statement
+  like purity-answer
+
+  save state
+    make pure-state
+      bind functions, make hash
+      bind order, make list
+      bind mutable-globals, make hash
+      bind impure, make hash
+      bind calls, make hash
+      bind writes, make hash
+      bind sites, make hash
+      bind known, make hash
+  walk program
+    take one
+    sift one
+      case function
+        fork test, not(state/functions/has(name))
+          hold
+            push(state/order, name)
+        save state/functions/{name}, one
+      case let
+        fork test, mutable
+          hold
+            save state/mutable-globals/{name}, true
+      miss
+        save nothing, 0
+  walk state/order
+    take name
+    scan-pure(state, name, state/functions/get(name))
+  close-pure(state)
+  save pure, make list
+  save impure, make list
+  walk state/order
+    take name
+    fork test, state/impure/has(name)
+      hold
+        push(impure, name)
+      miss
+        # pure: nothing impure, and no write through a parameter, which the caller would see
+        fork test, or(is-claim(state/functions/get(name)), is-equal(state/writes/get(name)/length, 0))
+          hold
+            push(pure, name)
+  back
+    make purity-answer
+      bind pure, pure
+      bind impure, impure
+      bind writes, state/writes
+
+task is-claim
+  take one, like statement
+  like boolean
+  mark private
+
+  sift one
+    case function
+      back claim
+    miss
+      back false
+
+task scan-pure
+  take state, like pure-state
+  take task-name, like text
+  take one, like statement
+  like void
+  mark private
+
+  save state/calls/{task-name}, make list
+  save state/writes/{task-name}, make list
+  save state/sites/{task-name}, make list
+  sift one
+    case function
+      fork test, claim
+        hold
+          back
+      # a separately compiled task: what its own unit showed, with its body (`stub-facts`)
+      fork test, stub
+        hold
+          sift stub-facts
+            case some
+              link facts
+              fork test, contains(facts, <clean>)
+                hold
+                  save written, make list
+                  walk stub-writes
+                    take at
+                    add-number(written, at)
+                  save state/writes/{task-name}, written
+                miss
+                  save state/impure/{task-name}, true
+              back
+            case none
+              save nothing, 0
+      # a task that may never return (`mark roam`) is not a function: two calls need not even both answer
+      fork test, or(or(or(async, stub), roam), is-equal(body/length, 0))
+        hold
+          save state/impure/{task-name}, true
+          back
+      scan-body(state, task-name, params, body)
+    miss
+      save nothing, 0
+
+task scan-body
+  take state, like pure-state
+  take task-name, like text
+  take params, like list, like function-param
+  take statements, like list, like statement
+  like void
+  mark private
+
+  save own, block-written(statements)
+  walk params
+    take param
+    add-text(own, param/name)
+  save own-flags, flags-of(own)
+  save param-flags, flags-of(param-names(params))
+  save known, bindings-of(statements)
+  save state/known/{task-name}, known
+  save called, make list
+  save written, make list
+  save at-sites, make list
+  save dirty, false
+  save seen, reach-block(statements)
+  walk seen/statements
+    take one
+    sift one
+      case native
+        save dirty, true
+      case exit
+        save dirty, true
+      case assign
+        save root, root-text(target)
+        fork test, or(is-equal(root, <>), state/mutable-globals/has(root))
+          hold
+            save dirty, true
+          miss
+            sift target
+              case member
+                # a write through a record is visible to the caller unless this task made the record. A parameter, or
+                # a name it never bound (`self`, a global), belongs to someone else.
+                save parameter, param-index(params, root)
+                fork test, is-minimum(parameter, 0)
+                  hold
+                    # a write through a parameter: the call site decides (see `writes`)
+                    add-number(written, parameter)
+                  miss
+                    fork test, not(own-flags/has(root))
+                      hold
+                        save dirty, true
+              miss
+                save nothing, 0
+      miss
+        save nothing, 0
+  walk seen/expressions
+    take one
+    sift one
+      case call
+        sift callee
+          case variable
+            link callee-name
+            fork test, state/functions/has(callee-name)
+              hold
+                add-text(called, callee-name)
+                save site
+                  make call-site
+                    bind callee, callee-name
+                    bind args, args
+                push(at-sites, site)
+              miss
+                # PARAMETRIC: calling a function the caller passed in is as pure as what the caller passed. The task
+                # stays pure, and the use site answers for its argument (calls-impure reads a task passed as a value).
+                # A local bound ONCE, never written again, to a value that is not read out of a record: whatever it
+                # holds came from code this same walk checks (a call, a closure, a parameter)
+                fork test, not(or(param-flags/has(callee-name), stable-local(known, callee-name)))
+                  hold
+                    fork test, or(own-flags/has(callee-name), state/mutable-globals/has(callee-name))
+                      hold
+                        save dirty, true
+          miss
+            fork test, not(collection-call-is-pure(callee, params, known))
+              hold
+                # a native list or map WRITE through a parameter (`self/push` in `list_push`) is a write through
+                # that parameter, which the call site decides; anything else is impure
+                save index, collection-write-param(callee, params)
+                fork test, is-minimum(index, 0)
+                  hold
+                    add-number(written, index)
+                  miss
+                    save dirty, true
+      case variable
+        fork test, and(state/mutable-globals/has(name), not(own-flags/has(name)))
+          hold
+            save dirty, true
+        # a task named as a VALUE (passed to another task) is a dependency like a call: passing an impure one makes
+        # this task impure
+        fork test, and(state/functions/has(name), not(own-flags/has(name)))
+          hold
+            add-text(called, name)
+      miss
+        save nothing, 0
+  save state/calls/{task-name}, called
+  save state/writes/{task-name}, written
+  save state/sites/{task-name}, at-sites
+  fork test, dirty
+    hold
+      save state/impure/{task-name}, true
+
+# the parameter a native list or map write lands in, `-1` for any other call
+task collection-write-param
+  take callee, like expression
+  take params, like list, like function-param
+  like number
+  mark private
+
+  sift callee
+    case member
+      link receiver
+      link method
+      fork test, not(and(contains(collection-writes(), method), is-collection(expression-type(receiver))))
+        hold
+          back -1
+      sift receiver
+        case variable
+          back param-index(params, name)
+        miss
+          back -1
+    miss
+      back -1
+
+task collection-call-is-pure
+  take callee, like expression
+  take params, like list, like function-param
+  take known, like bindings
+  like boolean
+  mark private
+
+  sift callee
+    case member
+      link receiver
+      link method
+      fork test, not(is-collection(expression-type(receiver)))
+        hold
+          back false
+      fork test, contains(collection-reads(), method)
+        hold
+          back true
+      fork test, not(contains(collection-writes(), method))
+        hold
+          back false
+      sift receiver
+        case variable
+          back and(is-below(param-index(params, name), 0), made-here(known, name))
+        miss
+          back false
+    miss
+      back false
+
+# close over calls. A task that calls an impure one is impure. A call to a task that writes through parameter i is pure
+# here when argument i is a list or map THIS task made (`made-here`), a write through this task's own parameter when
+# argument i is that parameter, and impure otherwise. A task named as a value (in `calls` but at no site) must be pure
+# outright, as before.
+task close-pure
+  take state, like pure-state
+  like void
+  mark private
+
+  save changed, true
+  walk test
+    hook test, changed
+    hook hold
+      save changed, false
+      walk state/order
+        take name
+        fork test, or(state/impure/has(name), is-claim(state/functions/get(name)))
+          hold
+            turn next
+        save mine, state/writes/get(name)
+        save before, mine/length
+        save tainted, taints(state, name, mine)
+        save state/writes/{name}, mine
+        fork test, tainted
+          hold
+            save state/impure/{name}, true
+            save changed, true
+          miss
+            fork test, is-unequal(mine/length, before)
+              hold
+                save changed, true
+
+task taints
+  take state, like pure-state
+  take name, like text
+  take mine, like list, like number
+  like boolean
+  mark private
+
+  save params, task-params(state/functions/get(name))
+  save known, state/known/get(name)
+  save at-site, make list
+  walk state/sites/get(name)
+    take site
+    push(at-site, site/callee)
+    fork test, state/impure/has(site/callee)
+      hold
+        back true
+    walk state/writes/get(site/callee)
+      take at
+      save arg-name, <>
+      fork test, is-below(at, site/args/length)
+        hold
+          save arg-name, variable-name(get(site/args, at))
+      save own, -1
+      fork test, is-unequal(arg-name, <>)
+        hold
+          save own, param-index(params, arg-name)
+      fork test, is-minimum(own, 0)
+        hold
+          add-number(mine, own)
+        miss
+          fork test, not(and(is-unequal(arg-name, <>), made-here(known, arg-name)))
+            hold
+              back true
+  walk state/calls/get(name)
+    take callee
+    fork test, and(not(contains(at-site, callee)), or(state/impure/has(callee), is-above(state/writes/get(callee)/length, 0)))
+      hold
+        back true
+  back false
+
+task task-params
+  take one, like statement
+  like list, like function-param
+  mark private
+
+  sift one
+    case function
+      back params
+    miss
+      back make list
+
+# ---- state-free, fresh, length-keeping ----
+
+# The STATE-FREE tasks: impure, but only in ways that cannot touch a Term value it was not handed. A task is
+# state-free when it is not async (a task that waits lets other code run in between), reads and writes no mutable
+# module-level binding, writes through no record it did not make, holds no inline native code, and every call it
+# makes is to a pure task, to a state-free task with scalar arguments, or to a native module function with scalar
+# arguments. Randomness and the clock are state-free; a task that keeps a cache in a global is not.
+#
+# The last case rests on one assumption about native code, which the trust ledger names: a native function handed
+# only scalars does not reach a Term value, since it holds none and does not call back into Term.
+form program-names
+  mark shared
+  link functions, like hash, like text, like statement
+  link order, like list, like text
+  link globals, like hash, like text, like boolean
+  link mutable-globals, like hash, like text, like boolean
+
+task names-of
+  take program, like list, like statement
+  like program-names
+  mark private
+
+  save out
+    make program-names
+      bind functions, make hash
+      bind order, make list
+      bind globals, make hash
+      bind mutable-globals, make hash
+  walk program
+    take one
+    sift one
+      case function
+        fork test, not(out/functions/has(name))
+          hold
+            push(out/order, name)
+        save out/functions/{name}, one
+      case let
+        save out/globals/{name}, true
+        fork test, mutable
+          hold
+            save out/mutable-globals/{name}, true
+      miss
+        save nothing, 0
+  back out
+
+# a scalar, or one element read out of a list of scalars (holds.ts scalarValue, the same rule)
+task is-scalar
+  take value, like expression
+  like boolean
+  mark private
+
+  save scalars, scalar-kinds()
+  fork test, contains(scalars, kind-of(expression-type(value)))
+    hold
+      back true
+  sift value
+    case member
+      link list-value
+      link method
+      link slot
+      sift slot
+        case some
+          link given
+          back contains(scalars, element-kind(expression-type(list-value)))
+        case none
+          back false
+    case call
+      sift callee
+        case member
+          link list-value
+          link method
+          fork test, or(is-equal(method, <get>), is-equal(method, <at>))
+            hold
+              back contains(scalars, element-kind(expression-type(list-value)))
+          back false
+        miss
+          back false
+    miss
+      back false
+
+task all-scalar
+  take values, like list, like expression
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, not(is-scalar(one))
+      hold
+        back false
+  back true
+
+# drop any candidate that needs one that is not, until nothing changes: a greatest fixed point
+task keep-closed
+  take candidates, like hash, like text, like boolean
+  take order, like list, like text
+  take needs, like hash, like text, like list, like text
+  like list, like text
+  mark private
+
+  save changed, true
+  walk test
+    hook test, changed
+    hook hold
+      save changed, false
+      walk order
+        take name
+        fork test, candidates/get-or-default(name, false)
+          hold
+            walk needs/get(name)
+              take callee
+              fork test, not(candidates/get-or-default(callee, false))
+                hold
+                  save candidates/{name}, false
+                  save changed, true
+                  halt
+  save out, make list
+  walk order
+    take name
+    fork test, candidates/get-or-default(name, false)
+      hold
+        push(out, name)
+  back out
+
+task state-free-functions
+  take program, like list, like statement
+  take pure-list, like list, like text
+  take returning-list, like list, like text
+  like list, like text
+
+  save pure, flags-of(pure-list)
+  save returning, flags-of(returning-list)
+  save listing, names-of(program)
+  save candidates, make hash
+  save needs, make hash
+  walk listing/order
+    take name
+    save one, listing/functions/get(name)
+    # a separately compiled task is state-free when its own unit found it so, with nothing left for it to need
+    fork test, and(and(is-stub(one), stub-says(one, <state-free>)), not(pure/has(name)))
+      hold
+        save candidates/{name}, true
+        save needs/{name}, make list
+        turn next
+    fork test, or(pure/has(name), not(runs-here(one)))
+      hold
+        turn next
+    save depends, make list
+    fork test, state-free-body(one, listing, pure, returning, depends)
+      hold
+        save candidates/{name}, true
+        save needs/{name}, depends
+  back keep-closed(candidates, listing/order, needs)
+
+task is-stub
+  take one, like statement
+  like boolean
+  mark private
+
+  sift one
+    case function
+      back stub
+    miss
+      back false
+
+# a task whose body this unit has and runs: not async, not a stub, not a claim, and not empty
+task runs-here
+  take one, like statement
+  like boolean
+  mark private
+
+  sift one
+    case function
+      back not(or(or(or(async, stub), claim), is-equal(body/length, 0)))
+    miss
+      back false
+
+task state-free-body
+  take one, like statement
+  take listing, like program-names
+  take pure, like hash, like text, like boolean
+  take returning, like hash, like text, like boolean
+  take depends, like list, like text
+  like boolean
+  mark private
+
+  save own, flags-of(local-names(one))
+  save params, flags-of(param-names(task-params(one)))
+  save fresh, flags-of(fresh-in(one, returning))
+  save seen, reach-block(task-body(one))
+  walk seen/statements
+    take node
+    sift node
+      case native
+        back false
+      case assign
+        save root, root-text(target)
+        fork test, or(is-equal(root, <>), listing/mutable-globals/has(root))
+          hold
+            back false
+        sift target
+          case member
+            fork test, or(params/has(root), not(own/has(root)))
+              hold
+                back false
+          miss
+            save nothing, 0
+      miss
+        save nothing, 0
+  walk seen/expressions
+    take node
+    sift node
+      case variable
+        fork test, and(listing/mutable-globals/has(name), not(own/has(name)))
+          hold
+            back false
+      case call
+        save scalars, all-scalar(args)
+        sift callee
+          case variable
+            link callee-name
+            fork test, listing/functions/has(callee-name)
+              hold
+                fork test, not(pure/has(callee-name))
+                  hold
+                    fork test, scalars
+                      hold
+                        add-text(depends, callee-name)
+                      miss
+                        back false
+              miss
+                # a function value: whatever it closes over is unknown
+                fork test, own/has(callee-name)
+                  hold
+                    back false
+          case member
+            link receiver
+            save root, root-text(callee)
+            # a method on a value this task made can change only that value; a function of a native module (a name
+            # that is neither a local, a global nor a task) handed scalars reaches nothing. MADE means every binding of
+            # the name is a fresh list or map: `save s, read state` binds the caller's own list, and a push through
+            # `s` grows it
+            save on-own, and(is-unequal(root, <>), fresh/has(root))
+            save on-module, and(is-unequal(root, <>), and(not(own/has(root)), and(not(listing/globals/has(root)), not(listing/functions/has(root)))))
+            # a method on a value that cannot change (a number, a text), handed only scalars: `input/concat other`
+            save on-value, and(contains(immutable-kinds(), kind-of(expression-type(receiver))), scalars)
+            fork test, not(or(or(on-own, on-value), and(on-module, scalars)))
+              hold
+                back false
+          miss
+            back false
+      miss
+        save nothing, 0
+  back true
+
+task task-body
+  take one, like statement
+  like list, like statement
+  mark private
+
+  sift one
+    case function
+      back body
+    miss
+      back make list
+
+# the names a task binds ONLY to a fresh list or map it makes itself (`make list`, `make hash`, a literal), never to
+# a parameter, a field or a call's result, so a method on one can reach nothing the caller holds. `is-returning` names
+# the tasks that hand back only a list they made (returns-fresh-functions)
+task fresh-names
+  take task-statement, like statement
+  take is-returning
+    like task
+      take name, like text
+      like boolean
+  like list, like text
+
+  save fresh, make list
+  save spoiled, flags-of(param-names(task-params(task-statement)))
+  save seen, reach-block(task-body(task-statement))
+  walk seen/statements
+    take one
+    sift one
+      case let
+        fork test, made-by(init, is-returning)
+          hold
+            add-text(fresh, name)
+          miss
+            save spoiled/{name}, true
+      case assign
+        save plain, variable-name(target)
+        fork test, is-unequal(plain, <>)
+          hold
+            fork test, made-by(value, is-returning)
+              hold
+                add-text(fresh, plain)
+              miss
+                save spoiled/{plain}, true
+      case for-each
+        save spoiled/{item}, true
+      case function
+        walk params
+          take param
+          save spoiled/{param/name}, true
+      miss
+        save nothing, 0
+  walk seen/expressions
+    take one
+    sift one
+      case closure
+        walk params
+          take param
+          save spoiled/{param/name}, true
+      miss
+        save nothing, 0
+  save out, make list
+  walk fresh
+    take name
+    fork test, not(spoiled/has(name))
+      hold
+        push(out, name)
+  back out
+
+# fresh-names with the returning tasks as a hash, for the passes here
+task fresh-in
+  take task-statement, like statement
+  take returning, like hash, like text, like boolean
+  like list, like text
+  mark private
+
+  save is-returning
+    task
+      take name, like text
+      like boolean
+      back returning/has(name)
+  back fresh-names(task-statement, is-returning)
+
+# a fresh list or map, or a call to a task that hands back only a list it made
+task made-by
+  take value, like expression
+  take is-returning
+    like task
+      take name, like text
+      like boolean
+  like boolean
+  mark private
+
+  sift value
+    case array
+      back true
+    case map
+      back true
+    case call
+      sift callee
+        case variable
+          back is-returning(name)
+        miss
+          back false
+    miss
+      back false
+
+# the tasks that hand back only a list or map they made: every `send back` is a literal, a fresh name (fresh-names),
+# or a call to another such task. Each call makes a new value, so a name bound to one is fresh in its caller. A
+# greatest fixed point, so two such tasks may call each other.
+task returns-fresh-functions
+  take program, like list, like statement
+  like list, like text
+
+  save functions, make hash
+  # a separately compiled task its own unit found returns only what it made: a candidate with nothing to re-check
+  save settled, make hash
+  save order, make list
+  walk program
+    take one
+    sift one
+      case function
+        fork test, and(stub, stub-says(one, <returns-fresh>))
+          hold
+            fork test, not(settled/has(name))
+              hold
+                save settled/{name}, true
+          miss
+            fork test, not(or(or(async, stub), is-equal(body/length, 0)))
+              hold
+                fork test, not(functions/has(name))
+                  hold
+                    push(order, name)
+                save functions/{name}, one
+      miss
+        save nothing, 0
+  save candidates, make hash
+  save names, make list
+  walk order
+    take name
+    save candidates/{name}, true
+    push(names, name)
+  walk program
+    take one
+    sift one
+      case function
+        fork test, and(settled/has(name), not(candidates/has(name)))
+          hold
+            save candidates/{name}, true
+            push(names, name)
+      miss
+        save nothing, 0
+  save changed, true
+  walk test
+    hook test, changed
+    hook hold
+      save changed, false
+      walk names
+        take name
+        fork test, or(settled/has(name), not(candidates/get-or-default(name, false)))
+          hold
+            turn next
+        fork test, not(returns-only-fresh(functions/get(name), candidates))
+          hold
+            save candidates/{name}, false
+            save changed, true
+  save out, make list
+  walk names
+    take name
+    fork test, candidates/get-or-default(name, false)
+      hold
+        push(out, name)
+  back out
+
+task returns-only-fresh
+  take one, like statement
+  take candidates, like hash, like text, like boolean
+  like boolean
+  mark private
+
+  save is-candidate
+    task
+      take name, like text
+      like boolean
+      back candidates/get-or-default(name, false)
+  save fresh, flags-of(fresh-names(one, is-candidate))
+  save returns, 0
+  save seen, reach-block(task-body(one))
+  walk seen/statements
+    take node
+    sift node
+      case return
+        save returns, add(returns, 1)
+        sift read(value)
+          case some
+            link given
+            fork test, not(returns-made(given, fresh, is-candidate))
+              hold
+                back false
+          case none
+            back false
+      miss
+        save nothing, 0
+  back is-above(returns, 0)
+
+task returns-made
+  take given, like expression
+  take fresh, like hash, like text, like boolean
+  take is-candidate
+    like task
+      take name, like text
+      like boolean
+  like boolean
+  mark private
+
+  sift given
+    case array
+      back true
+    case map
+      back true
+    case variable
+      back fresh/has(name)
+    case call
+      sift callee
+        case variable
+          back is-candidate(name)
+        miss
+          back false
+    miss
+      back false
+
+# the tasks that change NO list's length, anywhere: every change they make is a `set` on a list, which owes its index
+# as a tier-0 obligation (check/contract.ts) and so lands inside the list, or a method on a list or map they made,
+# or a call to a pure, state-free or length-keeping task. A caller keeps every length fact across a call to one,
+# which is what lets `aes-add-round-key`, folding a key into a state in place, leave the state's length known.
+# A greatest fixed point: recursion between such tasks keeps lengths too, since no step of either changes one.
+task length-keeping-functions
+  take program, like list, like statement
+  take pure-list, like list, like text
+  take state-free-list, like list, like text
+  take returning-list, like list, like text
+  like list, like text
+
+  save pure, flags-of(pure-list)
+  save state-free, flags-of(state-free-list)
+  save returning, flags-of(returning-list)
+  save listing, names-of(program)
+  save candidates, make hash
+  save needs, make hash
+  walk listing/order
+    take name
+    save one, listing/functions/get(name)
+    fork test, or(or(pure/has(name), state-free/has(name)), and(is-stub(one), stub-says(one, <length-keeping>)))
+      hold
+        save candidates/{name}, true
+        save needs/{name}, make list
+        turn next
+    fork test, not(runs-here(one))
+      hold
+        turn next
+    save depends, make list
+    fork test, length-keeping-body(one, listing, pure, state-free, returning, depends)
+      hold
+        save candidates/{name}, true
+        save needs/{name}, depends
+  back keep-closed(candidates, listing/order, needs)
+
+task length-keeping-body
+  take one, like statement
+  take listing, like program-names
+  take pure, like hash, like text, like boolean
+  take state-free, like hash, like text, like boolean
+  take returning, like hash, like text, like boolean
+  take depends, like list, like text
+  like boolean
+  mark private
+
+  save own, flags-of(local-names(one))
+  save fresh, flags-of(fresh-in(one, returning))
+  save seen, reach-block(task-body(one))
+  walk seen/statements
+    take node
+    sift node
+      case native
+        back false
+      case assign
+        # a write through a member may land past the end of a list
+        sift target
+          case member
+            back false
+          miss
+            save nothing, 0
+      miss
+        save nothing, 0
+  walk seen/expressions
+    take node
+    sift node
+      case call
+        sift callee
+          case variable
+            link callee-name
+            fork test, listing/functions/has(callee-name)
+              hold
+                fork test, and(not(pure/has(callee-name)), not(state-free/has(callee-name)))
+                  hold
+                    add-text(depends, callee-name)
+              miss
+                fork test, own/has(callee-name)
+                  hold
+                    back false
+          case member
+            link receiver
+            link method
+            link slot
+            save root, root-text(callee)
+            save list-type, expression-type(receiver)
+            save on-list, and(is-equal(kind-of(list-type), <array>), is-none(slot))
+            # a `set` changes no length anywhere; a caller forgets only what it knew THROUGH a list position
+            # (holds.ts dropElementPaths)
+            save keeps, and(on-list, or(or(and(is-equal(method, <set>), is-equal(args/length, 2)), and(or(is-equal(method, <get>), is-equal(method, <at>)), is-equal(args/length, 1))), contains(read-only-list-methods(), method)))
+            # a method on a value that cannot change, handed only values that cannot change
+            save on-value, and(contains(immutable-kinds(), kind-of(list-type)), all-immutable(args))
+            fork test, not(or(or(keeps, on-value), and(is-unequal(root, <>), fresh/has(root))))
+              hold
+                back false
+          miss
+            back false
+      miss
+        save nothing, 0
+  back true
+
+task is-none
+  take given, like maybe, like expression
+  like boolean
+  mark private
+
+  sift given
+    case some
+      link value
+      back false
+    case none
+      back true
+
+task all-immutable
+  take values, like list, like expression
+  like boolean
+  mark private
+
+  save kinds, immutable-kinds()
+  walk values
+    take one
+    fork test, not(contains(kinds, kind-of(expression-type(one))))
+      hold
+        back false
+  back true

@@ -7,74 +7,18 @@
 import type { LoadHow, Resolver, Source } from '@term/make/code/compile/load'
 import type { Program } from '@term/make/code/compile/node'
 import { stdlibBase } from '@term/make/code/resolve'
+import {
+  directoryOf,
+  envChain,
+  globalDocks,
+  runtimeExtension,
+  runtimePath,
+} from '@term/make/code/compile/native-env'
+import type { NativeEnv as Env } from '@term/make/code/compile/native-env'
 
-// the platforms a native module can target; an import already under one of these is concrete, not abstract
-export const NATIVE_ENVS = [
-  'node',
-  'browser',
-  'cloudflare',
-  // the page inside a native app cask: TypeScript in the platform WebView, reaching every native through the
-  // cask's bridge. Borrows the browser natives for everything that is pure page work. See note/term/cask/readme.md
-  'webview',
-  'rust',
-  'swift',
-  'javascript',
-  'kotlin',
-  'shared',
-  // a host written in pure Term, with no runtime shim: the in-memory dom tree every backend can run
-  // (deck/site/code/dom/native/memory). Never a build target of its own. It is what `swift` and `kotlin` fall back to
-  // where they have no host, so the renderer runs headless there. See note/term/app/10-native-dom.md
-  'memory',
-  // the PLATFORMS, above the languages. Each compiles with its language's backend and falls back through it
-  // (NATIVE_ENV_FALLBACK), so iOS and macOS share every Swift native and differ only where a module ships an `ios` or
-  // `macos` impl: the view host first. See note/term/app/11-uniform-interface.md
-  'ios',
-  'macos',
-  'android',
-  'windows',
-  'linux',
-  // Compose (compose-target): the toolkit dom drawn by Compose rather than by a platform's views. `compose` is Compose
-  // Multiplatform on the desktop JVM, falling back through the toolkit and Kotlin's JVM natives; `compose-android` is
-  // Jetpack Compose, falling back through `android` first so it keeps every Android native. Each finds its own
-  // `runtime/<env>/` shim beside the toolkit dom, ahead of the Android views one (`nativePrelude`)
-  'compose',
-  'compose-android',
-  // a SHARED rung under the two Apple platforms: an impl here serves both, with AppKit and UIKit told apart inside its
-  // Swift runtime by `#if canImport`, the way the cask runtime does it. Never a build target of its own
-  'apple',
-  // a SHARED rung under every platform with a UI toolkit of its own: an impl over the platform's views, written once in
-  // Term, with one runtime shim per language beside it (`runtime/<name>.swift`, `.kt`), picked by the target's
-  // extension. The view host lives here (deck/site/code/dom/native/toolkit). Never a build target of its own
-  'toolkit',
-] as const
-export type NativeEnv = (typeof NATIVE_ENVS)[number]
-
-// the file extension a target's native runtime source uses
-export const RUNTIME_EXTENSION: Record<NativeEnv, string> = {
-  node: 'ts',
-  browser: 'ts',
-  // the Cloudflare Workers target: TypeScript like node/browser, but its native runtime
-  // shims speak the Web platform (a Fetch handler + the ASSETS binding, no node http socket)
-  cloudflare: 'ts',
-  webview: 'ts',
-  javascript: 'ts',
-  rust: 'rs',
-  swift: 'swift',
-  kotlin: 'kt',
-  shared: 'txt',
-  // pure Term, so it docks no shim. The extension is never looked up
-  memory: 'tree',
-  ios: 'swift',
-  macos: 'swift',
-  android: 'kt',
-  windows: 'rs',
-  linux: 'rs',
-  compose: 'kt',
-  'compose-android': 'kt',
-  apple: 'swift',
-  // its runtimes are found by the BUILD env's extension (swift for macos and ios, kt for android), never this one
-  toolkit: 'txt',
-}
+// the platforms a native module can target, their runtime extensions, fallback chains and docks are Term,
+// compile/native-env.tree. What stays here reads files through the callbacks it is handed
+export type NativeEnv = Env
 
 // ---- native runtime preludes ----
 // Some compiled targets reach a capability through a small `<global:X>` runtime shim (a namespace of total functions
@@ -83,61 +27,9 @@ export const RUNTIME_EXTENSION: Record<NativeEnv, string> = {
 // program docks, and for each one whose runtime file exists it returns that source. The compiler holds the convention
 // (where runtime files live, per-target extension), never the content. The build prepends the prelude before emit.
 
-// the `<global:X>` docks in a program: the namespace name plus the module file the dock lives in (so its runtime shim
-// can be found next to that module). The candidates for a runtime-shim prelude.
-export function globalDocks(
-  program: Program,
-): { name: string; alias: string; file?: string }[] {
-  const docks: { name: string; alias: string; file?: string }[] = []
-
-  for (const node of program) {
-    if (node.form === 'native' && node.module.startsWith('global:')) {
-      docks.push({
-        name: node.module.slice('global:'.length),
-        // THE ALIAS IS WHAT THE EMITTED CODE SAYS. `load <global:walk>, name walk-file` puts the shim in
-        // `runtime/walk.<ext>` (the global names the FILE) and every call reads `walkFile::...` (the alias names
-        // the NAMESPACE). The two are the same word most of the time, which is why nothing noticed until a dock
-        // had to be aliased away from a stdlib name it collided with.
-        alias: node.alias,
-        file: node.file,
-      })
-    }
-  }
-
-  return docks
-}
-
-// the distinct namespace names a program docks (kept for callers that only need names)
-export function globalDockNames(program: Program): string[] {
-  return [...new Set(globalDocks(program).map(d => d.name))]
-}
-
-// the posix directory of a path (the resolver yields posix paths; native.ts stays browser-safe, no node `path`)
-// How far up from a docking module to look for its runtime shim. Four covers
-// `native/<env>/<group>/<module>.tree` with room to spare, and stops the walk
-// well short of the filesystem root.
+// How far up from a docking module to look for its runtime shim. Four covers `native/<env>/<group>/<module>.tree`
+// with room to spare, and stops the walk well short of the filesystem root.
 const RUNTIME_SEARCH_DEPTH = 4
-
-function directoryOf(file: string): string {
-  const i = file.lastIndexOf('/')
-
-  return i >= 0 ? file.slice(0, i) : '.'
-}
-
-// a runtime shim lives next to the module that docks it: `<dir-of-module>/runtime/<name>.<ext>`. This is the primary
-// location, so a shim is found in whatever package its impl lives in (base.tree, site.tree, an app, ...).
-export function runtimePathFor(
-  file: string,
-  env: NativeEnv,
-  name: string,
-): string {
-  return `${directoryOf(file)}/runtime/${name}.${RUNTIME_EXTENSION[env]}`
-}
-
-// the stdlib import path of a target's runtime shim for a namespace (the fallback when a dock has no recorded origin)
-export function runtimePath(env: NativeEnv, name: string): string {
-  return `@term/base/code/native/${env}/runtime/${name}.${RUNTIME_EXTENSION[env]}`
-}
 
 // does the emitted source mention this dock's namespace, under any of the spellings a backend gives it? A kebab
 // alias is emitted camelCase on swift / kotlin / typescript and snake_case on rust, and the raw kebab is never an
@@ -281,8 +173,8 @@ export function nativePrelude(
           // extension (the toolkit dom's `native-view.kt` is Android's views, `runtime/compose/native-view.kt`
           // Compose's), then the shim every env of the extension shares
           candidates.push(
-            `${dir}/runtime/${env}/${name}.${RUNTIME_EXTENSION[env]}`,
-            `${dir}/runtime/${name}.${RUNTIME_EXTENSION[env]}`,
+            `${dir}/runtime/${env}/${name}.${runtimeExtension(env)}`,
+            `${dir}/runtime/${name}.${runtimeExtension(env)}`,
           )
 
           const above = directoryOf(dir)
@@ -305,7 +197,7 @@ export function nativePrelude(
 
         if (at >= 0) {
           for (const rung of envChain(env)) {
-            candidates.push(`${file.slice(0, at)}/code/native/${rung}/runtime/${name}.${RUNTIME_EXTENSION[env]}`)
+            candidates.push(`${file.slice(0, at)}/code/native/${rung}/runtime/${name}.${runtimeExtension(env)}`)
           }
         }
       }
@@ -318,7 +210,7 @@ export function nativePrelude(
 
       if (stdlib) {
         for (const rung of envChain(env)) {
-          candidates.push(`${stdlib}/code/native/${rung}/runtime/${name}.${RUNTIME_EXTENSION[env]}`)
+          candidates.push(`${stdlib}/code/native/${rung}/runtime/${name}.${runtimeExtension(env)}`)
         }
       }
 
@@ -369,39 +261,6 @@ export function nativePrelude(
   return env === 'node' || env === 'browser'
     ? `${glue}${parts.join(`\n${glue}`)}`
     : parts.join(`\n${glue}`)
-}
-
-// a target that shares another env's native impls where it has none of its own. The Cloudflare Workers runtime is V8
-// with Web APIs (String / Array / fetch / crypto), so it reuses the `browser` native stdlib wholesale; only the few
-// SSR seams that genuinely differ (the in-memory DOM, the fetch-handler transport + host) ship a `native/cloudflare`
-// file, which still wins because it is tried first. Without this every pure-JS stdlib module (text, list, ...) would
-// need a hand-written `native/cloudflare` re-export.
-// A CHAIN, tried in order after the env's own impl and before the abstract module.
-export const NATIVE_ENV_FALLBACK: Partial<Record<NativeEnv, NativeEnv[]>> = {
-  cloudflare: ['browser'],
-  // the page in a cask is a browser page whose natives go over the bridge; the DOM, text, list and the rest are the
-  // browser's own
-  webview: ['browser'],
-  // a native backend with no view host of its own renders into the in-memory tree, so the renderer runs and can be
-  // tested there. Only the dom has a `native/memory` impl, so no stdlib module resolves any differently
-  swift: ['memory'],
-  kotlin: ['memory'],
-  // a platform is its language plus whatever it ships of its own. Rust renders into the memory tree too since
-  // native-dom-0020: `mark shared` lowers to an `Rc<RefCell<..>>` handle there, and render-native holds all three
-  // renderer programs on Rust to the HTML the other backends print
-  rust: ['memory'],
-  ios: ['apple', 'toolkit', 'swift', 'memory'],
-  macos: ['apple', 'toolkit', 'swift', 'memory'],
-  android: ['toolkit', 'kotlin', 'memory'],
-  windows: ['rust', 'memory'],
-  linux: ['rust', 'memory'],
-  compose: ['toolkit', 'kotlin', 'memory'],
-  'compose-android': ['android', 'toolkit', 'kotlin', 'memory'],
-}
-
-// the envs a build for `env` reads impls from, in order: its own, then its fallback chain
-export function envChain(env: NativeEnv): NativeEnv[] {
-  return [env, ...(NATIVE_ENV_FALLBACK[env] ?? [])]
 }
 
 // wrap a resolver so that abstract native imports resolve to the chosen platform's implementation. The env-specific

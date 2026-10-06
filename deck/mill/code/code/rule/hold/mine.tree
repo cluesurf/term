@@ -17,6 +17,9 @@ mine step
   mine any
     mine form, like show-claim
       site show
+    mine form, like seat
+      site seat
+    # the old spelling of `seat`, read only so it is refused by name rather than dropped
     mine form, like mark
       site mark
     mine form, like take
@@ -40,6 +43,13 @@ mine show-claim
   mine term, term show
     mine form, like call
       site claim
+
+mine seat
+  mine term, term seat
+    mine term
+      site name
+    mine form, like like
+      site like
 
 mine mark
   mine term, term mark

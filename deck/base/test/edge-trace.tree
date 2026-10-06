@@ -14,7 +14,7 @@ test <a captured stack has frames, one line each>
   want hold
     call and
       call is-above
-        call size
+        call length
           read frames
         code 0
       call is-above

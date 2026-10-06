@@ -82,7 +82,7 @@ ok(
   'fold over a polymorphic datatype works',
   compiles(`${PRELUDE}
 rule length-refl
-  mark s, like stack
+  seat s, like stack
     head nat
   show hold
     call is-equal
@@ -99,7 +99,7 @@ ok(
   'polymorphic recursive function reduces',
   compiles(`${PRELUDE}
 rule append-empty
-  mark t, like stack
+  seat t, like stack
     head nat
   show hold
     call is-equal
@@ -134,9 +134,9 @@ task plus
               read b
 
 rule length-append
-  mark s, like stack
+  seat s, like stack
     head nat
-  mark t, like stack
+  seat t, like stack
     head nat
   show hold
     call is-equal
@@ -220,14 +220,14 @@ task join
 const leanCompiles = (source: string): boolean => compile({ file: 'p.tree', text: source }, { leanOf: () => true }).ok
 
 const MARKS = `  head a
-  mark r
+  seat r
     like task
       take x, like a
       take y, like a
       like flag
-  mark x, like a
-  mark p, like path a
-  mark q, like path a
+  seat x, like a
+  seat p, like path a
+  seat q, like path a
 `
 
 ok(
@@ -235,9 +235,9 @@ ok(
   leanCompiles(`${PATHS}
 rule join-finishes
   head a
-  mark x, like a
-  mark p, like path a
-  mark q, like path a
+  seat x, like a
+  seat p, like path a
+  seat q, like path a
   show hold, is-equal finish(x, join(p, q)), finish(finish(x, p), q)
   fold p
 `),

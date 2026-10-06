@@ -99,7 +99,8 @@ load ../code/base
 
 test <fill refuses a value that does not fit, naming the path>
   save refused, text <>
-  note unsafe
+  fork
+    mark unsafe
     call fill(call(read(text <host a\n  list b\n    1, \<x\>\n>)), call(read(text <host a\n  list b\n    \<number\>\n>)))
   halt take
     take problem
@@ -111,7 +112,8 @@ test <fill refuses a value that does not fit, naming the path>
 
 test <text that is not data is a defect naming the rule>
   save rule, text <>
-  note unsafe
+  fork
+    mark unsafe
     call read(text <host x, 1, 2\n>)
   halt take
     take problem

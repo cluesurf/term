@@ -28,18 +28,18 @@ function expect(name: string, source: string, want: string): void {
 }
 
 // x(0) = 0 and x(t + 1) = x(t) + 2 for every t: then x(n) = 2 n for every count n. It needs induction
-const RECURRENCE = `  mark x
+const RECURRENCE = `  seat x
     like task
       take t, like integer
       like integer
-  mark n, like integer
+  seat n, like integer
   have starts-at-zero
     call is-equal
       call x
         code 0
       code 0
   have steps-by-two
-    mark t, like integer
+    seat t, like integer
     call is-equal
       call x
         call add
@@ -99,7 +99,7 @@ ${RECURRENCE}${COUNT}${AT_LEAST_N}`,
 // citation that skipped the hypothesis would prove a false statement from a >= 1
 const SQUARE = `
 rule square-bound
-  mark a, like integer
+  seat a, like integer
   have a-is-at-least-two
     call is-minimum
       read a
@@ -129,7 +129,7 @@ expect(
   'a hypothesis that does not hold here refuses the citation (a >= 1 does not give a * a >= 2 a)',
   `${SQUARE}
 rule false-square
-  mark a, like integer
+  seat a, like integer
   have a-is-at-least-one
     call is-minimum
       read a
@@ -142,7 +142,7 @@ expect(
   'control: where the hypothesis holds the citation is accepted (a >= 3)',
   `${SQUARE}
 rule true-square
-  mark a, like integer
+  seat a, like integer
   have a-is-at-least-three
     call is-minimum
       read a
@@ -155,7 +155,7 @@ expect(
   'a rule proven BELOW cannot be cited, so no rule can rest on itself',
   `
 rule true-square
-  mark a, like integer
+  seat a, like integer
   have a-is-at-least-three
     call is-minimum
       read a
@@ -168,7 +168,7 @@ expect(
   'a rule that FAILED cannot be cited',
   `
 rule square-bound
-  mark a, like integer
+  seat a, like integer
   show hold
     call is-minimum
       call multiply
@@ -179,7 +179,7 @@ rule square-bound
         read a
 
 rule uses-it
-  mark a, like integer
+  seat a, like integer
 ${SQUARE_GOAL}`,
   'cite square-bound: it is not a rule proven above',
 )
@@ -188,7 +188,7 @@ expect(
   "the cited rule's marks are read by name: a rule without an `a` cannot cite it",
   `${SQUARE}
 rule other-name
-  mark b, like integer
+  seat b, like integer
   have b-is-at-least-three
     call is-minimum
       read b
@@ -199,14 +199,14 @@ rule other-name
       code 3
   cite square-bound
 `,
-  'its mark a names nothing in this rule',
+  'its seat a names nothing in this rule',
 )
 
 expect(
   'a find names the instance: p = a + 1 with a >= 1, so p >= 2 and p * p >= 2 p',
-  `${SQUARE.replaceAll('read a', 'read p').replace('mark a,', 'mark p,')}
+  `${SQUARE.replaceAll('read a', 'read p').replace('seat a,', 'seat p,')}
 rule shifted
-  mark a, like integer
+  seat a, like integer
   have a-is-at-least-one
     call is-minimum
       read a
@@ -232,7 +232,7 @@ rule shifted
 // gives `a >= 1` only over the integers (a = 1/2 is a rational counterexample), so that rule is `integer`
 const TIGHTEN = `
 rule positive-is-one
-  mark a, like integer
+  seat a, like integer
   have a-is-positive
     call is-above
       read a
@@ -245,13 +245,13 @@ rule positive-is-one
 
 const FIELD_RULE = (cited: string, goal: string): string => `
 rule field-rule
-  mark a, like integer
-  mark x
+  seat a, like integer
+  seat x
     like task
       take t, like integer
       like integer
   have flat
-    mark t, like integer
+    seat t, like integer
     call is-equal
       call x
         read t
@@ -289,9 +289,9 @@ expect(
 // u v w w < 0. Classified `integer` it would be refused here
 const PASCH = `
 rule pasch
-  mark u, like integer
-  mark v, like integer
-  mark w, like integer
+  seat u, like integer
+  seat v, like integer
+  seat w, like integer
   have crosses
     call is-below
       call multiply
@@ -335,15 +335,15 @@ expect(
   'a disjunction proven by a case split is field-valid, and a rule with universal hypotheses proves a disjunction too',
   `${PASCH}
 rule field-pasch
-  mark u, like integer
-  mark v, like integer
-  mark w, like integer
-  mark x
+  seat u, like integer
+  seat v, like integer
+  seat w, like integer
+  seat x
     like task
       take t, like integer
       like integer
   have flat
-    mark t, like integer
+    seat t, like integer
     call is-equal
       call x
         read t
@@ -410,7 +410,7 @@ expect(
   'a cite of a name that is no rule is refused, under an inequality too',
   `
 rule shifted
-  mark a, like integer
+  seat a, like integer
   have a-is-at-least-two
     call is-minimum
       read a
@@ -434,7 +434,7 @@ rule shifted
   find square-bound
 
 rule uses-the-square
-  mark a, like integer
+  seat a, like integer
   have a-is-at-least
     call is-minimum
       read a

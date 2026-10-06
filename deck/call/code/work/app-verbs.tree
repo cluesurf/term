@@ -72,7 +72,8 @@ task test
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  mark unsafe
+  fork
+    mark unsafe
     call test-module/callTest
       make test-ask
         bind root, read root
@@ -94,7 +95,8 @@ task walk
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  mark unsafe
+  fork
+    mark unsafe
     call walk-module/callWalk, make(root-ask, bind root, read root), wait true
   halt take
     take error
@@ -124,7 +126,8 @@ task cast
     hold
       log-fail <Unknown cast target: {{chosen}}. The one target is cloudflare.>
       node-process/exit code 1
-  mark unsafe
+  fork
+    mark unsafe
     call cast-module/callCast
       make cast-ask
         bind root, read root
@@ -149,7 +152,8 @@ task host
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  mark unsafe
+  fork
+    mark unsafe
     call host-module/callHost
       make host-ask
         bind root, read root
@@ -206,7 +210,8 @@ task bind
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  mark unsafe
+  fork
+    mark unsafe
     call bind-module/callBind
       make bind-ask
         bind root, read root
@@ -225,7 +230,8 @@ task self-check
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  mark unsafe
+  fork
+    mark unsafe
     call self-module/callSelfCheck, make(root-ask, bind root, read root), wait true
   halt take
     take error
@@ -239,7 +245,8 @@ task self-update
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  mark unsafe
+  fork
+    mark unsafe
     call self-module/callSelfUpdate, make(root-ask, bind root, read root), wait true
   halt take
     take error
@@ -253,7 +260,8 @@ task self-back
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  mark unsafe
+  fork
+    mark unsafe
     call self-module/callSelfBack, make(root-ask, bind root, read root), wait true
   halt take
     take error
@@ -267,7 +275,8 @@ task self-list
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  mark unsafe
+  fork
+    mark unsafe
     call self-module/callSelfList, make(root-ask, bind root, read root), wait true
   halt take
     take error
@@ -284,7 +293,8 @@ task self-find
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  mark unsafe
+  fork
+    mark unsafe
     call self-module/callSelfFind
       make self-find-ask
         bind root, read root
@@ -305,7 +315,8 @@ task self-load
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  mark unsafe
+  fork
+    mark unsafe
     call self-module/callSelfLoad
       make self-range-ask
         bind root, read root
@@ -325,7 +336,8 @@ task self-pick
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  mark unsafe
+  fork
+    mark unsafe
     call self-module/callSelfPick
       make self-range-ask
         bind root, read root
@@ -346,7 +358,8 @@ task self-need
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  mark unsafe
+  fork
+    mark unsafe
     call self-module/callSelfNeed
       make self-need-ask
         bind root, read root
@@ -367,7 +380,8 @@ task self-show
   save root, call project-root
   # a `+range` before `self` is handed over by the dispatcher (need-run.ts), never by argv
   save flag, variable <TERM_NEED_FLAG>
-  mark unsafe
+  fork
+    mark unsafe
     call self-module/callSelfShow
       make self-show-ask
         bind root, read root
@@ -387,7 +401,8 @@ task self-toss
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  mark unsafe
+  fork
+    mark unsafe
     call self-module/callSelfToss
       make self-toss-ask
         bind root, read root
@@ -408,7 +423,8 @@ task self-wash
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  mark unsafe
+  fork
+    mark unsafe
     call self-module/callSelfWash
       make self-wash-ask
         bind root, read root
@@ -429,7 +445,8 @@ task show
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  mark unsafe
+  fork
+    mark unsafe
     call line-module/callShow, make(root-ask, bind root, read root), wait true
   halt take
     take error
@@ -443,7 +460,8 @@ task fill
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  mark unsafe
+  fork
+    mark unsafe
     call line-module/callFill, make(root-ask, bind root, read root), wait true
   halt take
     take error

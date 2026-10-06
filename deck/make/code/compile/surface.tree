@@ -111,8 +111,9 @@ task primitive-of
   fork test, one-of(name, <size u8 u16 u32 u64 u128 i8 i16 i32 i64 i128 natural-number integer number native-number native-bigint>)
     hold
       back make number
-  # floating point: `decimal` / `float` and the sized floats are the distinct float type
-  fork test, one-of(name, <decimal float f32 f64>)
+  # floating point: `float` and the sized floats are the distinct float type. `decimal` was a fourth name for it until
+  # D4 and is refused now (check/type-names.ts), so it means exact base 10 only, the `decimal` module's
+  fork test, one-of(name, <float f32 f64>)
     hold
       back make float
   # the host's dynamic value (the opaque result of json parse)

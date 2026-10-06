@@ -1,0 +1,518 @@
+# Refinement-type verification: layer 2 of the type system (see note/research/vibe/computation/plans/04-typecheck.md).
+# Refinements are linear constraints over integers (n >= 0, i < len, ...). A `hold` clause becomes a verification
+# condition: do the assumptions imply the goal? It is discharged with a sound, self-contained linear-arithmetic
+# decision procedure (Fourier-Motzkin elimination), so no external SMT solver and it runs in the browser.
+#
+# Ported from check/refine.ts (self-hosting, 2026-10-06), which stays as the face: it holds the satisfiability memo and
+# the count of answers whose certificate did not replay, both module state, and asks this for everything else. A
+# constraint is check/certificate.tree's `inequality`, the same shape the original's was, every coefficient a double as
+# the original's numbers were, so the elimination grows and rounds them as it did. Every order the original's maps and
+# sorts gave is kept: a hash keeps the order its keys were first set in, and a constraint deduplicated keeps the place
+# of the first and the value of the last, which decide the elimination order. Names sort as JavaScript's `<` sorts them,
+# by UTF-16 unit (`utf16-order`), where Term text is read by code point.
+
+load @term/base/list
+  find list
+  find get
+  find join
+  find sort
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/ordering
+  find ordering
+
+load @term/base/text
+  find split
+  find char-code-at
+
+load @term/base/float
+  find round
+  find round-down
+  find absolute
+
+load ./certificate
+  find linear
+  find inequality
+  find refutation
+  find check-refutation
+
+# ---- linear expression builders ----
+
+task scale
+  take a, like linear
+  take k, like float
+  like linear
+  mark private
+
+  save terms, make hash
+  walk a/terms/keys()
+    take v
+    save terms/{v}, multiply(a/terms/get(v), k)
+  back
+    make linear
+      bind terms, terms
+      bind constant, multiply(a/constant, k)
+
+task plus
+  take a, like linear
+  take b, like linear
+  like linear
+  mark private
+
+  save terms, make hash
+  walk a/terms/keys()
+    take v
+    save terms/{v}, a/terms/get(v)
+  walk b/terms/keys()
+    take v
+    save before, 0.0
+    fork test, terms/has(v)
+      hold
+        save before, terms/get(v)
+    save terms/{v}, add(before, b/terms/get(v))
+  back
+    make linear
+      bind terms, terms
+      bind constant, add(a/constant, b/constant)
+
+# ---- public comparison builders (each an inequality in `<= 0` / `< 0` form) ----
+
+# a <= b   ->   a - b <= 0
+task at-most
+  take a, like linear
+  take b, like linear
+  like inequality
+
+  back
+    make inequality
+      bind linear, plus(a, scale(b, -1.0))
+      bind strict, false
+
+# a < b    ->   a - b < 0
+task below
+  take a, like linear
+  take b, like linear
+  like inequality
+
+  back
+    make inequality
+      bind linear, plus(a, scale(b, -1.0))
+      bind strict, true
+
+# a >= b   ->   b - a <= 0
+task at-least
+  take a, like linear
+  take b, like linear
+  like inequality
+
+  back at-most(b, a)
+
+# a > b    ->   b - a < 0
+task above
+  take a, like linear
+  take b, like linear
+  like inequality
+
+  back below(b, a)
+
+# negate a constraint (for refutation): not(l <= 0) is l > 0 i.e. -l < 0; not(l < 0) is l >= 0 i.e. -l <= 0
+task negate
+  take given, like inequality
+  like inequality
+  mark private
+
+  back
+    make inequality
+      bind linear, scale(given/linear, -1.0)
+      bind strict, not(given/strict)
+
+# the variables a system still holds, in the order first seen
+task variables
+  take system, like list, like inequality
+  like list, like text
+  mark private
+
+  save seen, make hash
+  save out, make list
+  walk system
+    take one
+    walk one/linear/terms/keys()
+      take v
+      fork test, and(is-above(absolute(one/linear/terms/get(v)), 0.000000000001), not(seen/has(v)))
+        hold
+          save seen/{v}, true
+          push(out, v)
+  back out
+
+task coefficient
+  take one, like inequality
+  take v, like text
+  like float
+  mark private
+
+  fork test, one/linear/terms/has(v)
+    hold
+      back one/linear/terms/get(v)
+  back 0.0
+
+# the gcd of two numbers' roundings, as the original's `while (b)` read it: NaN stops it as 0 does
+task whole-gcd
+  take first, like float
+  take second, like float
+  like float
+  mark private
+
+  save a, absolute(round(first))
+  save b, absolute(round(second))
+  walk test
+    hook test, and(is-unequal(b, 0.0), is-equal(b, b))
+    hook hold
+      save next, modulo(a, b)
+      save a, b
+      save b, next
+  back a
+
+# JavaScript's `<` on texts: by UTF-16 unit. Text here is read by code point, and the two orders differ only where a
+# character past U+FFFF (two units, the first below U+E000) meets one from U+E000 to U+FFFF
+task unit-key
+  take point, like number
+  like number
+  mark private
+
+  fork test, and(is-minimum(point, 57344), is-maximum(point, 65535))
+    hold
+      back add(point, 2097152)
+  back point
+
+task utf16-before
+  take left, like text
+  take right, like text
+  like boolean
+  mark private
+
+  save a, split(left, <>)
+  save b, split(right, <>)
+  save at, 0
+  walk test
+    hook test, and(is-below(at, a/length), is-below(at, b/length))
+    hook hold
+      save x, unit-key(char-code-at(get(a, at), 0))
+      save y, unit-key(char-code-at(get(b, at), 0))
+      fork test, is-unequal(x, y)
+        hold
+          back is-below(x, y)
+      save at, add(at, 1)
+  back is-below(a/length, b/length)
+
+# the original's comparator `(a, b) => (a < b ? -1 : 1)`, which never answers equal
+task utf16-order
+  take left, like text
+  take right, like text
+  like ordering
+  mark private
+
+  fork test, utf16-before(left, right)
+    hold
+      back make less
+  back make greater
+
+# a hash's keys sorted as the original sorted its entries
+task sorted-names
+  take terms, like hash, like text, like float
+  like list, like text
+  mark private
+
+  back sort(terms/keys(), utf16-order)
+
+# what a constraint normalizes to: a tautology to drop, a contradiction, or the constraint and its key
+form norm
+  case tautology
+  case contradiction
+  case kept
+    link ineq, like inequality
+    link key, like text
+
+# Canonicalize a constraint for deduplication: drop ~zero terms, and gcd-reduce the integer coefficients together with
+# the constant. Constraints are integer-valued here because Fourier-Motzkin combines them with integer multipliers, so
+# rounding is exact.
+#
+# OMEGA-style INTEGER TIGHTENING (Presburger completeness). The constraint is `Sigma + k (op) 0`, i.e. `Sigma <= b`
+# with `b = -k` (non-strict) or `b = -k - 1` (strict, since the variables are integers). Every coefficient is an
+# integer, so `Sigma` is always a multiple of `g = gcd(coefficients)`; therefore `Sigma <= b` is EXACTLY
+# `Sigma <= g * floor(b / g)`. Tightening the bound this way and dividing through by `g` turns the constraint into the
+# strongest integer-equivalent form, which is what lets the prover decide divisibility (`2x = 3` becomes `x <= 1 AND
+# x >= 2`, a contradiction, where Fourier-Motzkin over the rationals would accept `x = 1.5`). All constraints become
+# non-strict.
+task normalize
+  take given, like inequality
+  like norm
+  mark private
+
+  save rounded, make hash
+  save names, make list
+  walk given/linear/terms/keys()
+    take v
+    save r, round(given/linear/terms/get(v))
+    fork test, is-unequal(r, 0.0)
+      hold
+        save rounded/{v}, r
+        push(names, v)
+  save k, round(given/linear/constant)
+  fork test, is-equal(names/length, 0)
+    hold
+      # a pure constant constraint: `k <= 0` (or `k < 0` if strict) is decidable immediately
+      save holds, is-maximum(k, 0.0)
+      fork test, given/strict
+        hold
+          save holds, is-below(k, 0.0)
+      fork test, holds
+        hold
+          back make tautology
+      back make contradiction
+  save g, 0.0
+  walk names
+    take v
+    save g, whole-gcd(g, rounded/get(v))
+  save bound, subtract(0.0, k)
+  fork test, given/strict
+    hold
+      save bound, subtract(subtract(0.0, k), 1.0)
+  save tightened, round-down(divide(bound, g))
+  save terms, make hash
+  walk names
+    take v
+    save terms/{v}, divide(rounded/get(v), g)
+  save constant, subtract(0.0, tightened)
+  save parts, make list
+  walk sorted-names(terms)
+    take v
+    save c, terms/get(v)
+    push(parts, <{v}:{c}>)
+  save joined, join(parts, <,>)
+  save made
+    make inequality
+      bind linear
+        make linear
+          bind terms, terms
+          bind constant, constant
+      bind strict, false
+  save found
+    make kept
+      bind ineq, made
+      bind key, <{joined}|{constant}|\<=>
+  back found
+
+# normalize, dedup, and detect a contradiction in a constraint set: the canonical constraints, or none if the set is
+# already unsatisfiable (a pure-constant `false`). Tautologies are dropped. A key seen twice keeps its first place and
+# its last constraint, as a JavaScript map does. This curbs the Fourier-Motzkin blowup: each elimination step otherwise
+# multiplies the row count, and duplicate rows pile up fast.
+task reduce-system
+  take ineqs, like list, like inequality
+  like maybe, like list, like inequality
+
+  save seen, make hash
+  save order, make list
+  walk ineqs
+    take one
+    sift normalize(one)
+      case contradiction
+        back make none
+      case tautology
+        turn next
+      case kept
+        fork test, not(seen/has(key))
+          hold
+            push(order, key)
+        save seen/{key}, ineq
+  save out, make list
+  walk order
+    take key
+    push(out, seen/get(key))
+  back make(some, out)
+
+# eliminate one variable by Fourier-Motzkin: combine each positive-coefficient row with each negative one. The result
+# is reduced (normalized and deduped) by the caller.
+task eliminate
+  take ineqs, like list, like inequality
+  take v, like text
+  like list, like inequality
+  mark private
+
+  save positive, make list
+  save negative, make list
+  save out, make list
+  walk ineqs
+    take one
+    save c, coefficient(one, v)
+    fork test, is-above(c, 0.000000000001)
+      hold
+        push(positive, one)
+      miss
+        fork test, is-below(c, -0.000000000001)
+          hold
+            push(negative, one)
+          miss
+            push(out, one)
+  walk positive
+    take p
+    save cp, coefficient(p, v)
+    walk negative
+      take n
+      save cn, coefficient(n, v)
+      # (-cn) * p + (cp) * n  cancels v (both multipliers positive)
+      save combined
+        make inequality
+          bind linear, plus(scale(p/linear, subtract(0.0, cn)), scale(n/linear, cp))
+          bind strict, or(p/strict, n/strict)
+      push(out, combined)
+  back out
+
+# integer tightening: the program variables are integers, so a strict `l < 0` is exactly `l + 1 <= 0`. Tightening up
+# front makes the procedure integer-sound (it proves n > 0 => n >= 1, which is false over the rationals)
+task tighten-strict
+  take ineqs, like list, like inequality
+  like list, like inequality
+
+  save out, make list
+  walk ineqs
+    take one
+    fork test, one/strict
+      hold
+        save moved
+          make inequality
+            bind linear
+              make linear
+                bind terms, one/linear/terms
+                bind constant, add(one/linear/constant, 1.0)
+            bind strict, false
+        push(out, moved)
+      miss
+        push(out, one)
+  back out
+
+# a canonical key for a reduced constraint
+task canon-key
+  take one, like inequality
+  like text
+  mark private
+
+  save parts, make list
+  walk sorted-names(one/linear/terms)
+    take v
+    save c, one/linear/terms/get(v)
+    fork test, is-above(absolute(c), 0.000000001)
+      hold
+        save whole, round(c)
+        push(parts, <{v}:{whole}>)
+  save joined, join(parts, <,>)
+  save constant, round(one/linear/constant)
+  save op, <\<=>
+  fork test, one/strict
+    hold
+      save op, <\<>
+  back <{joined}|{constant}|{op}>
+
+# the satisfiability memo's key for a reduced system: two systems that normalize to the same constraints share it
+task system-key
+  take system, like list, like inequality
+  like text
+
+  save keys, make list
+  walk system
+    take one
+    push(keys, canon-key(one))
+  back join(sort(keys, utf16-order), <;>)
+
+# Is a REDUCED system unsatisfiable? Eliminate one variable per round, always the cheapest, until none remain (every
+# constraint is pure-constant). Each round removes exactly one variable, so this ends in (number of variables) rounds.
+#
+# Elimination order: prefer a variable whose coefficient is +/-1 in EVERY constraint, since eliminating one is
+# integer-EXACT (the combination introduces no scaling, so no divisibility is lost). Eliminating a variable with a
+# coefficient above 1 takes the rational "real shadow", which drops the integer information (`2x = y` would lose
+# `2 | y`). So unit variables go first; among ties, and among non-unit variables, the cheapest (its positive count
+# times its negative count) keeps the row count down, the first of equals winning.
+task decide
+  take reduced, like list, like inequality
+  like boolean
+
+  save system, reduced
+  save vars, variables(system)
+  walk test
+    hook test, is-above(vars/length, 0)
+    hook hold
+      save best, <>
+      save best-unit, 0
+      save best-cost, 0
+      save first, true
+      walk vars
+        take v
+        save pos, 0
+        save neg, 0
+        save unit, true
+        walk system
+          take one
+          save c, coefficient(one, v)
+          fork test, is-above(c, 0.000000000001)
+            hold
+              save pos, add(pos, 1)
+            miss
+              fork test, is-below(c, -0.000000000001)
+                hold
+                  save neg, add(neg, 1)
+          fork test, and(is-above(absolute(c), 0.000000000001), is-above(absolute(subtract(absolute(c), 1.0)), 0.000000001))
+            hold
+              save unit, false
+        save key-unit, 1
+        fork test, unit
+          hold
+            save key-unit, 0
+        save cost, multiply(pos, neg)
+        fork test, or(first, or(is-below(key-unit, best-unit), and(is-equal(key-unit, best-unit), is-below(cost, best-cost))))
+          hold
+            save best, v
+            save best-unit, key-unit
+            save best-cost, cost
+            save first, false
+      sift reduce-system(eliminate(system, best))
+        # elimination exposed a contradiction
+        case none
+          back true
+        case some
+          link next
+          save system, next
+      save vars, variables(system)
+  # every remaining constraint is pure-constant; a positive constant is a contradiction
+  walk system
+    take one
+    fork test, is-above(one/linear/constant, 0.000000001)
+      hold
+        back true
+  back false
+
+# the system whose unsatisfiability proves the goal: the assumptions and the goal's negation
+task refutable
+  take assumptions, like list, like inequality
+  take goal, like inequality
+  like list, like inequality
+
+  save out, make list
+  walk assumptions
+    take one
+    push(out, one)
+  push(out, negate(goal))
+  back out
+
+# the refutation the search stands for, REBUILT as a derivation (check/certificate.tree) and replayed by a checker that
+# shares nothing with the search. Only a refutation that replays counts, so the trusted part of the linear prover is
+# the checker, not the search. proof-by-default-0022
+task certified
+  take system, like list, like inequality
+  like boolean
+
+  save derivation, refutation(system)
+  fork test, not(derivation/found)
+    hold
+      back false
+  back check-refutation(system, derivation/step)

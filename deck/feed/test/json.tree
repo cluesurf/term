@@ -8,7 +8,8 @@ load ../code/json/code
 task read-or-refuse
   take input, like text
   like text
-  mark unsafe
+  fork
+    mark unsafe
     send back, write-json(read-json(input))
   halt take
     take problem

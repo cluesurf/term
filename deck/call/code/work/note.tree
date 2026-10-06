@@ -46,7 +46,8 @@ task note
 
   # the project root is READ, not taken: a hook has no `root` argument to pass
   save root, call project-root
-  mark unsafe
+  fork
+    mark unsafe
     save manifest
       call deck-tree/loadManifest
         make manifest-ask, bind dir, read root

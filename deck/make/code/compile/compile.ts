@@ -9,7 +9,7 @@ import { diagnose } from '@term/make/code/parser/diagnostic'
 import { parse } from '@term/make/code/parser/tree'
 import { groupsOf } from '@term/make/code/parser/narrow'
 import { noteMetadataSites } from '@term/make/code/check/note-metadata'
-import { definesTask, keywordImports } from '@term/make/code/check/keyword-import'
+import { definesTask, keywordCandidates } from '@term/make/code/check/keyword-import'
 import {
   expandTemplates,
   collectTemplates,
@@ -17,7 +17,8 @@ import {
 import type { Template, TemplateProblem } from '@term/make/code/compile/template'
 import { mill } from '@term/make/code/compile/mill'
 import { checkView, lowerView } from '@term/make/code/compile/view'
-import { checkMillDefinition } from '@term/make/code/compile/mill-check'
+import { checkMillDefinition, millLoadTargets } from '@term/make/code/compile/mill-check'
+import type { MillLoad } from '@term/make/code/compile/mill-check'
 import { resolve } from '@term/make/code/check/resolve'
 import { citedRules } from '@term/make/code/check/cite-roots'
 import { check } from '@term/make/code/check/infer'
@@ -49,6 +50,8 @@ import { checkConstants } from '@term/make/code/check/constants'
 import { checkBindTargets } from '@term/make/code/check/binds'
 import { checkBodilessCalls } from '@term/make/code/check/bodiless'
 import { checkFinds } from '@term/make/code/check/finds'
+import type { ReadSource } from '@term/make/code/check/finds'
+import { existsSync, readFileSync } from 'node:fs'
 import { checkDuplicateTasks } from '@term/make/code/check/duplicates'
 import { warnDeprecated } from '@term/make/code/check/deprecated'
 import { checkLostWrites, warnLostCollectionWrites } from '@term/make/code/check/lost-writes'
@@ -62,9 +65,10 @@ import { elaborateReport } from '@term/make/code/check/elaborate'
 import { checkHolds } from '@term/make/code/check/holds'
 import type { Tally } from '@term/make/code/check/holds'
 import { checkTraits } from '@term/make/code/check/traits'
-import { awaitsOutsideTasks, checkCallsOutsideTasks, checkEffects } from '@term/make/code/check/effects'
-import { unknownSeamOn } from '@term/make/code/check/seam'
+import { checkCallsOutsideTasks, checkEffects } from '@term/make/code/check/effects'
+import { unknownSeamOn } from '@term/make/code/check/strict'
 import { inferStrict } from '@term/make/code/check/strict'
+import { widthRanges } from '@term/make/code/check/width-range'
 import {
   checkClaims,
   fillClaims,
@@ -85,6 +89,66 @@ import {
   hasContracts,
   lowerContracts,
 } from '@term/make/code/check/contract'
+
+// AWAIT BY DEFAULT, outside every task: an un-awaited, un-ticked call to an async task there is refused, naming `tick`
+// (check/effects.tree `check-calls-outside-tasks`). ON since 2026-10-03, after `pnpm term:await-migrate --commit`
+// rewrote every such call in the repository to `tick`, each file proven to emit what it emitted before. The migration
+// compiles under both settings, which is why it is a switch and not a constant, and the compile cache keys on it. It
+// lived in check/effects.ts until that module became Term, which holds no module state
+let awaitOutsideTasks = true
+
+// EVERY `find` NAMES SOMETHING ITS MODULE DEFINES (check/finds.tree), with each module source it needs read here,
+// which is IO: the check asks for the first source the program does not answer for and it has not been handed, and
+// this reads it (none for a file that does not exist) and asks again, so the files read are the ones it needs, in
+// the order it needs them
+function staleFindsOf(program: Program, file: string, scope: ImportScope | undefined): Diagnostic[] {
+  const scopes = scopeList(scope)
+  const sources: ReadSource[] = []
+
+  for (;;) {
+    const answer = checkFinds(program, file, scopes, sources)
+
+    if (answer.wants.length === 0) {
+      return answer.diagnostics
+    }
+
+    for (const want of answer.wants) {
+      sources.push(existsSync(want) ? { file: want, text: readFileSync(want, 'utf8') } : { file: want })
+    }
+  }
+}
+
+// A MILL DEFINITION HELD TO WHAT IT OWES (compile/mill-check.tree), with its loads resolved here, which is IO: each
+// `load` the file writes, in order, through the build's resolver. An empty target and a resolver that throws find
+// nothing, and without a resolver the three checks that need one are skipped. test/compile/mill-grammar.ts calls this
+export function checkMillSource(
+  source: Source,
+  resolve?: (path: string, from: string) => Source | undefined,
+): ReturnType<typeof checkMillDefinition> {
+  const resolved: MillLoad[] = resolve
+    ? millLoadTargets(source).map(target => {
+        let found: Source | undefined
+
+        try {
+          found = target ? resolve(target, source.file) : undefined
+        } catch {
+          found = undefined
+        }
+
+        return found ? { target, found } : { target }
+      })
+    : []
+
+  return checkMillDefinition(source, resolve !== undefined, resolved)
+}
+
+export function setAwaitOutsideTasks(on: boolean): void {
+  awaitOutsideTasks = on
+}
+
+export function awaitsOutsideTasks(): boolean {
+  return awaitOutsideTasks
+}
 
 // the deck the build knows each file by, for every file the privacy checks may ask about: the compile's own, each
 // statement's and each file in the import scope
@@ -112,8 +176,8 @@ function deckHomes(
   return out
 }
 
-// the deck each file of a program belongs to, by name, as form extension takes it (check/extend.tree): the compile's
-// own file and every statement's, which is every file a raise's `host` is read from
+// the deck each file of a program belongs to, by name, as form extension and the tell check take it (check/extend.tree,
+// check/tell.tree): the compile's own file and every statement's, which is every file a raise's `host` is read from
 function deckNames(
   program: Program,
   file: string,
@@ -187,7 +251,7 @@ import { emitTypeScript } from '@term/make/code/compile/typescript'
 import { emitModules } from '@term/make/code/compile/modules'
 import type { ModuleEmit } from '@term/make/code/compile/modules'
 import { collectModules, makeParseMemo, scopeList } from '@term/make/code/compile/load'
-import type { ImportScope, ParseMemo, WalkMemo } from '@term/make/code/compile/load'
+import type { ImportScope, ParseMemo, Source, WalkMemo } from '@term/make/code/compile/load'
 import type { Resolver } from '@term/make/code/compile/load'
 import { hashText } from '@term/make/code/term/hash'
 import type { CompileCache } from '@term/make/code/compile/cache'
@@ -392,7 +456,7 @@ export function compile(
   // toolchain reads as a grammar and nothing runs. Held to what such a file owes (compile/mill-check.ts) and never
   // milled as code, which read every rule as a call to an undefined task and compiled every grammar file it loads.
   if (role === 'mill') {
-    const checked = checkMillDefinition(source, options?.resolve)
+    const checked = checkMillSource(source, options?.resolve)
 
     return checked.diagnostics.length > 0
       ? { ok: false, diagnostics: checked.diagnostics }
@@ -455,11 +519,13 @@ export function compile(
     (options?.env ? `|env:${options.env}` : '') +
     (treeShake ? '|shake' : '') +
     // the await switch decides whether an un-ticked async call outside a task is refused, so a result cached under
-    // one setting is not an answer under the other (check/effects.ts, `setAwaitOutsideTasks`)
+    // one setting is not an answer under the other (`setAwaitOutsideTasks`, below)
     (awaitsOutsideTasks() ? '|await-outside' : '') +
     // and so do the gradual seam and the strict inference switch (check/seam.ts, check/strict.ts)
     (unknownSeamOn() ? '|seam' : '') +
     (inferStrict() ? '|strict' : '') +
+    // and the width ranges, which add a tier-0 obligation at every width site (check/width-range.ts)
+    (widthRanges() ? '|widths' : '') +
     (options?.roll ? '|roll' : '') +
     // a different choice of implementation is a different program
     (options?.twins && Object.keys(options.twins).length ? `|twins:${JSON.stringify(options.twins)}` : '') +
@@ -683,15 +749,15 @@ export function entryWarnings(
     // that name in a module the entry loads: `find text` for `like text` imports a form, which is reached. Read
     // off the modules' trees, because the program has already dropped a task nothing reaches
     .concat(
-      keywordImports(entryTree.tree, word =>
-        sources.some(unit => unit.file !== source.file && definesTask(parsed(unit), word)),
-      ).map(site =>
-        diagnose('keyword-import', {
-          file: source.file,
-          span: { ...site.span, file: source.file },
-          message: `\`find ${site.word}\` is never reached by that name: \`${site.word}(...)\` is Term's own word, read before any import`,
-        }),
-      ),
+      keywordCandidates(entryTree.tree)
+        .filter(site => sources.some(unit => unit.file !== source.file && definesTask(parsed(unit), site.word)))
+        .map(site =>
+          diagnose('keyword-import', {
+            file: source.file,
+            span: { ...site.span, file: source.file },
+            message: `\`find ${site.word}\` is never reached by that name: \`${site.word}(...)\` is Term's own word, read before any import`,
+          }),
+        ),
     )
 }
 
@@ -885,7 +951,7 @@ export function compileProgram(
 
   // a shared bind has a case for every backend, or the build stops at the bind (check/binds.ts). Whether a called bind
   // has a case for the backend being emitted is asked again of the program actually emitted (call/code/emit.ts)
-  const bindChecks = checkBindTargets(program, file, undefined)
+  const bindChecks = checkBindTargets(program, file, '')
 
   if (bindChecks.errors.length) {
     return { ok: false, diagnostics: bindChecks.errors }
@@ -910,7 +976,7 @@ export function compileProgram(
   }
 
   // every `find` names something the module it loads defines, before overloads rename anything (check/finds.ts)
-  const staleFinds = checkFinds(program, file, scope)
+  const staleFinds = staleFindsOf(program, file, scope)
 
   if (staleFinds.length && !describesHost) {
     return { ok: false, diagnostics: staleFinds }
@@ -1136,10 +1202,10 @@ export function compileProgram(
 
   // effect checking: async / await discipline (the surface slice of the effect system)
   // and outside every task, where nothing can wait, a call to an async task is `tick`ed or refused (behind the
-  // switch until the repository is migrated: check/effects.ts, `setAwaitOutsideTasks`)
+  // switch, `setAwaitOutsideTasks`)
   const effectDiagnostics = [
     ...checkEffects(program, file),
-    ...checkCallsOutsideTasks(program, file),
+    ...(awaitOutsideTasks ? checkCallsOutsideTasks(program, file) : []),
     ...checkAsyncArguments(program, file),
   ]
 
@@ -1274,7 +1340,7 @@ export function compileProgram(
   ].map(d => (d.span.file !== undefined && d.span.file !== d.file ? { ...d, file: d.span.file } : d))
 
   // the app's `tell` decisions: each must name an exception the program can raise, with props it declares
-  const tellDiagnostics = checkTells(program, file, deckOf)
+  const tellDiagnostics = checkTells(program, file, deckNames(program, file, deckOf))
 
   if (tellDiagnostics.length) {
     return { ok: false, diagnostics: tellDiagnostics }
@@ -1433,7 +1499,7 @@ export function compileProgram(
 
   // a member call on a list or a map that no native backend lowers, refused on Rust, Swift and Kotlin before anything is
   // emitted, where it used to be written as a host call for the toolchain to refuse (check/lowered.ts)
-  const unlowered = checkLoweredMembers(loweredProgram, file, env)
+  const unlowered = checkLoweredMembers(loweredProgram, file, env ?? '')
 
   if (unlowered.length) {
     return { ok: false, diagnostics: unlowered }

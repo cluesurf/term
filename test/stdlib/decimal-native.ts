@@ -65,7 +65,8 @@ load @term/base/list
 
 task by-zero
   like text
-  mark unsafe
+  fork
+    mark unsafe
     save never, decimal-divide(make-big-decimal(<1>), make-big-decimal(<0>), 2, make(half-even))
     back text(never)
   halt take

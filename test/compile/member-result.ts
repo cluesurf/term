@@ -80,12 +80,12 @@ if (!built.ok) {
 {
   const typed = `form side
   link name, like text
-  link mean, like decimal
+  link mean, like float
 
 task mean-of
   take sides, like list, like side
   take name, like text
-  like decimal
+  like float
   save by-name, make hash
   walk list, read sides
     hook next

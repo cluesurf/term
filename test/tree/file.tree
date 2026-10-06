@@ -13,7 +13,8 @@ load @term/base/exception
 task read-or-why
   take path, like text
   like text
-  mark unsafe
+  fork
+    mark unsafe
     save text
       call read
         read path

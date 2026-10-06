@@ -132,7 +132,10 @@ function guard(
       const checked =
         rows.length === 1 && rows[0]!.from === line
           ? guard([`want hold, ${rows[0]!.text}`], [line], false, { at: at + 1, of: parts.length })
-          : guard(['want hold', ...rows.map(row => `  ${row.text}`)], [line, ...rows.map(row => row.from)], false, { at: at + 1, of: parts.length })
+          : // a written `want` stands at two and its condition at four, which `guard` moves under `hook test` at six;
+            // a part's rows come dedented to nothing, so they are set at four like the condition they were part of. At
+            // two, a stacked `and`'s parts landed outside `hook test`, and the emitted `if` lost its test
+            guard(['  want hold', ...rows.map(row => `    ${row.text}`)], [line, ...rows.map(row => row.from)], false, { at: at + 1, of: parts.length })
       lines.push(...checked.lines)
       from.push(...checked.from)
     })

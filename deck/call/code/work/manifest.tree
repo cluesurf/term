@@ -135,7 +135,8 @@ task manifest-value-of
 
   like text
 
-  mark unsafe
+  fork
+    mark unsafe
     send back
       call manifest-value
         call read-file, read(file)

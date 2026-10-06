@@ -21,7 +21,8 @@ load @term/base/bytes
   find from-text
   find to-base64
   find from-base64
-  find count
+  # bytes' own `length`, named apart from a list's, which this file also reads
+  find length, name byte-length
 
 load @term/base/text
   find split
@@ -155,7 +156,7 @@ task verify-password
           read parts
           code 2
       read iterations
-      call count
+      call byte-length
         read expected
       wait true
   send back

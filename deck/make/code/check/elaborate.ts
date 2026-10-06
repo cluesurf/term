@@ -1029,7 +1029,7 @@ export function elaborateReport(
     program.flatMap(s => (s.form === 'function' && s.theorem ? [s.name] : [])),
   )
   // named, proven UNIVERSAL equational lemmas, stored as rewrite rules: `binderCount` leading universal binders (the
-  // rule's `mark`s), and `lhs`/`rhs` quoted at that depth so their `var`s are the universal holes. Used by `fold ...`
+  // rule's `seat`s), and `lhs`/`rhs` quoted at that depth so their `var`s are the universal holes. Used by `fold ...`
   // with `cite <lemma>` children: each cited lemma is instantiated by first-order matching against the goal and fed in
   // as a ground hypothesis, so a proof can chain previously proven lemmas (e.g. commutativity over `n + 0 = n`).
   const lemmaRules = new Map<
@@ -5943,13 +5943,13 @@ export function elaborateReport(
     }
   }
 
-  // record a discharged named equation as a citable rewrite rule (its `mark` binders are the universal holes). Stores
+  // record a discharged named equation as a citable rewrite rule (its `seat` binders are the universal holes). Stores
   // both the structural rule (for `fold ... / cite`) and the string form (for the exact-match `cite`/`turn`/`link`).
   // the `have` guards of a rule, read off the shape the mill lowers a rule to (mint-bridge.ts): its body is witness
   // `let`s, then a chain of single-branch `if`s, one per `have`, each holding only the next, with the `hold` innermost.
   // Nothing on such a chain can write a name, so every guard is a fact at the hold. Null when the hold is not inside
   // that shape, so no other code's conditions are ever read as hypotheses.
-  // whether the hold is the goal of a theorem with universal hypotheses (`have h / mark t / ...`): the hold checker
+  // whether the hold is the goal of a theorem with universal hypotheses (`have h / seat t / ...`): the hold checker
   // proves those, induction included (holds.ts universalGoal, universalInduction), and this pass leaves them to it
   // the theorem whose goal this hold is, by the shape the mill builds (its `have` guards around the goal)
   function enclosingTheorem(program: Program, hold: Statement): Extract<Statement, { form: 'function' }> | undefined {
@@ -5988,8 +5988,8 @@ export function elaborateReport(
     }
   }
 
-  // THE UNIVERSAL HYPOTHESES OF A THEOREM, at the goal's own terms (math-foundations-0004). `have symmetric / mark u,
-  // like a / mark v, like a / is-equal r(u, v), r(v, u)` holds for every u and v, so it holds at every pair of the
+  // THE UNIVERSAL HYPOTHESES OF A THEOREM, at the goal's own terms (math-foundations-0004). `have symmetric / seat u,
+  // like a / seat v, like a / is-equal r(u, v), r(v, u)` holds for every u and v, so it holds at every pair of the
   // terms of type `a` that the goal and the path's guards name. Each such instance is an equation true on this path,
   // and the truth table, the rewriting by `have` equations and the ring all use it as they use a guard. Sound: a term
   // is a candidate for a binder only when the kernel types it at the binder's declared type, and an instance only when
@@ -6132,6 +6132,14 @@ export function elaborateReport(
 
   // `fold n` on a number in a theorem about functions: one of its marks is a function (directly or through an alias),
   // or its goal applies a task that takes one (`total(identity, n)`, a sum of a task passed by name)
+  // a comparison, or a conjunction of comparisons: what checkFoldOrder inducts over
+  function isOrderGoal(e: Expression): boolean {
+    return (
+      e.form === 'binary' &&
+      (['<', '<=', '>', '>='].includes(e.op) || (e.op === '&&' && isOrderGoal(e.left) && isOrderGoal(e.right)))
+    )
+  }
+
   function numberFoldOverFunctions(program: Program, hold: Extract<Statement, { form: 'hold' }>): boolean {
     const fn = enclosingTheorem(program, hold)
     const counter = fn?.params.find(p => p.name === hold.proof?.[0]?.arg)
@@ -6455,8 +6463,11 @@ export function elaborateReport(
     // a theorem with universal hypotheses is the hold checker's, its inductions too, and so is an induction on a number
     // in a theorem about a function (`total(f, n)` by `fold n`): the hold checker reads the summed task's equations
     // as such hypotheses (check/holds.ts `recurrenceFacts`), and the kernel's own induction has no use for `f`
+    // An ORDER goal stays here: induct.ts checkFoldOrder proves an inequality over a recursive task, which the hold
+    // checker's equations do not, and handing it over left test/check/fold-order.ts unproven
     if (
       statement.proof?.[0]?.head === 'fold' &&
+      !isOrderGoal(goal) &&
       (inUniversalTheorem(program, statement) || numberFoldOverFunctions(program, statement))
     ) {
       return
@@ -6886,7 +6897,7 @@ export function elaborateReport(
               file,
               span: statement.span,
               message: found.sides
-                ? `this rule is FALSE: its two sides compute to ${found.sides[0]} and ${found.sides[1]}, whatever its marks are`
+                ? `this rule is FALSE: its two sides compute to ${found.sides[0]} and ${found.sides[1]}, whatever its seats are`
                 : `this rule is FALSE where ${found.text}`,
               hint: 'no proof step makes a false law true. Change the statement, and check the values named above by hand',
             }),

@@ -1,0 +1,747 @@
+# The selection pass (note/term/optimize/pipeline.md, optimize-0008): put a CHOSEN implementation of a task behind
+# every call to it, for one target. A choice is the reference, a twin's label, or a size check that splits two choices.
+# It comes from a pin (`bake.json`, optimize-0014) or from the caller of compile(); with none, nothing here runs and
+# every build is the reference, which is always correct.
+#
+# What it writes, as ordinary Term that every backend already emits:
+#
+#   <task>-twin-<label>   each chosen twin, as a task with the reference's parameters, result, generics and raise bound
+#   <task>-chosen         the dispatch: the choice, with a twin's `hook test` checked at run time and the reference
+#                         taken when it fails, and a size check as a branch on a list's length
+#
+# and every call to <task> outside the reference, its twins and the dispatch now calls <task>-chosen. A twin calling
+# its own task reaches the REFERENCE, never itself, which is how a twin falls back for the inputs it does not handle.
+#
+# It runs BEFORE names are bound and types checked, so the twins and the dispatch are checked like any task.
+#
+# Refused, with the reason, rather than guessed at: a twin whose `have` would have to be proven at each call site (the
+# prover is not consulted here yet), a twin that needs a relaxation the caller must grant (`ease`), and a twin with
+# knobs (a `tour` chooses those, optimize-0026). A chosen twin must also be eligible on this target (`mark platform`).
+#
+# Ported from ir/twin.ts (self-hosting, 2026-10-06), which stays as the face: it reads the TypeScript shape of a choice
+# (`'reference'`, `{ use }`, `{ check: 'size', ... }`) into `twin-choice`, and writes the program it is handed back
+# from what this answers. Every copy the original made with `structuredClone` is compile/node-rewrite.tree's
+# `copy-program`, and the reference's signature leaves out its contract (`have`, `must`, `down`) as the original's
+# destructuring did: a field already absent is never written, so on TypeScript it stays absent, and natively, where
+# absent and empty are one, it is emptied. Calls are redirected through compile/node-reach.tree with the original's
+# two skipped fields, `span` and `type`.
+
+load @term/base/list
+  find list
+  find contains
+  find get
+  find join
+
+load @term/base/maybe
+  find maybe
+
+load ../parser/diagnostic
+  find diagnostic
+  find diagnose
+  find diagnostic-input
+  find position
+  find span
+
+load ../compile/node
+  find boolean-type
+  find expression
+  find function-param
+  find statement
+  find statement-branch
+  find twin
+  find type
+
+load ../compile/node-reach
+  find reach-statements
+
+load ../compile/node-rewrite
+  find copy-program
+
+# one task's choice for this target
+form twin-choice
+  # the task as written
+  case reference
+  # a twin, by label
+  case use
+    link label, like text
+  # the first choice below `below` items in the named list parameter, the second from there on
+  case size
+    link of, like text
+    link below, like number
+    link small, like twin-choice
+    link large, like twin-choice
+
+# a task's choice, in the order the caller's record lists them
+form task-choice
+  link task, like text
+  link choice, like twin-choice
+
+# what the pass answers: the program with what it added and redirected, and its refusals
+form selected
+  link program, like list, like statement
+  link diagnostics, like list, like diagnostic
+
+task twin-task
+  take task, like text
+  take label, like text
+  like text
+
+  back <{task}-twin-{label}>
+
+task chosen-task
+  take task, like text
+  like text
+
+  back <{task}-chosen>
+
+task guard-task
+  take task, like text
+  take label, like text
+  like text
+
+  back <{task}-guard-{label}>
+
+task add-text
+  take values, like list, like text
+  take value, like text
+  like void
+  mark private
+
+  fork test, not(contains(values, value))
+    hold
+      push(values, value)
+
+# the program's tasks by name, the last of a name winning, form methods left out
+task tasks-of
+  take program, like list, like statement
+  like hash, like text, like statement
+  mark private
+
+  save out, make hash
+  walk program
+    take one
+    sift one
+      case function
+        sift method
+          case some
+            link owner
+            turn next
+          case none
+            save out/{name}, one
+      miss
+        save nothing, 0
+  back out
+
+# a copy of a task without its contract, as the original's `const { have, must, down, ...signature } = reference` and
+# `structuredClone(signature)`: on TypeScript the three keys are gone. Natively a value is already a copy, and an
+# absent field is an empty one, so `keys-absent` says the caller must empty them
+bind strip-contract
+  take value, like statement
+  like statement
+  case node
+    text <((\{ have, must, down, ...rest \}) =\> structuredClone(rest))($value)>
+  case browser
+    text <((\{ have, must, down, ...rest \}) =\> structuredClone(rest))($value)>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+# a task with no raise bound, as the original's `raises: undefined`
+bind strip-raises
+  take value, like statement
+  like statement
+  case node
+    text <(\{ ...$value, raises: undefined \})>
+  case browser
+    text <(\{ ...$value, raises: undefined \})>
+  case rust
+    text <$value>
+  case swift
+    text <$value>
+  case kotlin
+    text <$value>
+
+# does a field left out stay out (TypeScript), rather than read as empty (natively)
+bind keys-absent
+  like boolean
+  case node
+    text <true>
+  case browser
+    text <true>
+  case rust
+    text <false>
+  case swift
+    text <false>
+  case kotlin
+    text <false>
+
+# a copy of the reference task, every field but its contract
+task signature-of
+  take reference, like statement
+  like statement
+  mark private
+
+  save copied, strip-contract(reference)
+  fork test, keys-absent()
+    hold
+      back copied
+  sift copied
+    case function
+      save copied/have, make list
+      save copied/must, make list
+      save copied/down, make none
+    miss
+      save nothing, 0
+  back copied
+
+# the signature under a new name, body and span
+task named-copy
+  take reference, like statement
+  take new-name, like text
+  take new-body, like list, like statement
+  take at, like span
+  like statement
+  mark private
+
+  save made, signature-of(reference)
+  sift made
+    case function
+      save made/name, new-name
+      save made/body, new-body
+      save made/span, at
+    miss
+      save nothing, 0
+  back made
+
+# an expression copied, as the original's `structuredClone`
+task copy-expression
+  take value, like expression
+  take at, like span
+  like expression
+  mark private
+
+  save one, make list
+  save holder
+    make statement/expression
+      bind expr, value
+      bind span, at
+  push(one, holder)
+  sift get(copy-program(one), 0)
+    case expression
+      back expr
+    miss
+      back value
+
+task conjunction
+  take values, like list, like expression
+  take at, like span
+  like expression
+  mark private
+
+  save all, get(values, 0)
+  save i, 1
+  walk test
+    hook test, is-below(i, values/length)
+    hook hold
+      save all
+        make binary
+          bind op, make both
+          bind left, all
+          bind right, get(values, i)
+          bind span, at
+      save i, add(i, 1)
+  back all
+
+# every twin of the program as a plain task beside its reference, with its `hook test`s as one boolean task, and no call
+# redirected: what admission (deck/test/code/twin-diff.ts) calls to compare a twin with its task on chosen inputs. A
+# twin with knobs is left out (a `tour` instantiates those). Answers the program and the twins it exposed
+form exposed
+  link program, like list, like statement
+  link twins, like list, like twin
+
+task expose-twins
+  take program, like list, like statement
+  take twins, like list, like twin
+  like exposed
+
+  save tasks, tasks-of(program)
+  save shown, make list
+  walk twins
+    take one
+    fork test, or(not(tasks/has(one/of)), is-above(one/knobs/length, 0))
+      hold
+        turn next
+    save reference, tasks/get(one/of)
+    save at, one/span
+    # the twin's conditions, `have` and `hook test` alike: admission compares only where both hold
+    save conditions, make list
+    walk one/have
+      take condition
+      push(conditions, copy-expression(condition, at))
+    walk one/test
+      take condition
+      push(conditions, copy-expression(condition, at))
+    save all
+      make expression/boolean
+        bind value, true
+        bind span, at
+    fork test, is-above(conditions/length, 0)
+      hold
+        save all, conjunction(conditions, at)
+    push(program, named-copy(reference, twin-task(one/of, one/name), copy-program(one/body), at))
+    save returned, make list
+    save back-all
+      make return
+        bind value, make(some, all)
+        bind span, at
+    push(returned, back-all)
+    save named, named-copy(reference, guard-task(one/of, one/name), returned, at)
+    save result-type, boolean-type()
+    sift named
+      case function
+        save named/result, make(some, result-type)
+      miss
+        save nothing, 0
+    save guard, strip-raises(named)
+    fork test, not(keys-absent())
+      hold
+        sift guard
+          case function
+            save guard/raises, make list
+          miss
+            save nothing, 0
+    push(program, guard)
+    push(shown, one)
+  back
+    make exposed
+      bind program, program
+      bind twins, shown
+
+# the targets a twin's `mark platform, name <x>` can name, and the build environments each covers
+task platform-envs
+  take platform, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  fork test, is-equal(platform, <typescript>)
+    hold
+      push(out, <node>)
+      push(out, <browser>)
+      push(out, <cloudflare>)
+      push(out, <webview>)
+      push(out, <javascript>)
+      push(out, <typescript>)
+      back out
+  push(out, platform)
+  back out
+
+# `env` is the empty text for no env, which is TypeScript
+task eligible-on
+  take given, like twin
+  take env, like text
+  like boolean
+  mark private
+
+  fork test, is-equal(given/platform/length, 0)
+    hold
+      back true
+  save target, env
+  fork test, is-equal(env, <>)
+    hold
+      save target, <typescript>
+  walk given/platform
+    take platform
+    fork test, contains(platform-envs(platform), target)
+      hold
+        back true
+  back false
+
+task labels-of
+  take choice, like twin-choice
+  like list, like text
+  mark private
+
+  save out, make list
+  sift choice
+    case reference
+      back out
+    case use
+      push(out, label)
+    case size
+      walk labels-of(small)
+        take one
+        push(out, one)
+      walk labels-of(large)
+        take one
+        push(out, one)
+  back out
+
+# a size check names a list parameter of the task: each one, in order
+task sizes-of
+  take choice, like twin-choice
+  like list, like text
+  mark private
+
+  save out, make list
+  sift choice
+    case size
+      push(out, of)
+      walk sizes-of(small)
+        take one
+        push(out, one)
+      walk sizes-of(large)
+        take one
+        push(out, one)
+    miss
+      save nothing, 0
+  back out
+
+form refusals
+  mark shared
+  link file, like text
+  link out, like list, like diagnostic
+
+task refuse
+  take into, like refusals
+  take at, like span
+  take message, like text
+  like void
+  mark private
+
+  save at-file, into/file
+  sift at/file
+    case some
+      link own
+      save at-file, own
+    case none
+      save nothing, 0
+  save input
+    make diagnostic-input
+      bind file, at-file
+      bind span, at
+      bind message, make(some, message)
+  save kind, make twin-choice
+  push(into/out, diagnose(kind, input))
+
+task zero-span
+  take file, like text
+  like span
+  mark private
+
+  save start
+    make position
+      bind line, 0
+      bind column, 0
+  save end
+    make position
+      bind line, 0
+      bind column, 0
+  back
+    make span
+      bind start, start
+      bind end, end
+      bind file, make(some, file)
+
+task find-twin
+  take twins, like list, like twin
+  take task, like text
+  take label, like text
+  like maybe, like twin
+  mark private
+
+  walk twins
+    take one
+    fork test, and(is-equal(one/of, task), is-equal(one/name, label))
+      hold
+        back make(some, one)
+  back make none
+
+task params-of
+  take reference, like statement
+  like list, like function-param
+  mark private
+
+  sift reference
+    case function
+      back params
+    miss
+      back make list
+
+task span-of
+  take reference, like statement
+  like span
+  mark private
+
+  sift reference
+    case function
+      back span
+    miss
+      back zero-span(<>)
+
+# the dispatch's pieces, over the reference's parameters and span
+form dispatch
+  link task, like text
+  link params, like list, like function-param
+  link at, like span
+  link used, like hash, like text, like twin
+
+task variable-of
+  take name, like text
+  take at, like span
+  like expression
+  mark private
+
+  back
+    make expression/variable
+      bind name, name
+      bind span, at
+
+task returning
+  take plan, like dispatch
+  take name, like text
+  like list, like statement
+  mark private
+
+  save args, make list
+  walk plan/params
+    take param
+    push(args, variable-of(param/name, plan/at))
+  save called
+    make expression/call
+      bind callee, variable-of(name, plan/at)
+      bind args, args
+      bind span, plan/at
+  save out, make list
+  save sent
+    make return
+      bind value, make(some, called)
+      bind span, plan/at
+  push(out, sent)
+  back out
+
+task branch-of
+  take cond, like expression
+  take body, like list, like statement
+  take otherwise, like list, like statement
+  take at, like span
+  like list, like statement
+  mark private
+
+  save branches, make list
+  save branch
+    make statement-branch
+      bind cond, cond
+      bind body, body
+  push(branches, branch)
+  save out, make list
+  save made
+    make if
+      bind branches, branches
+      bind otherwise, make(some, otherwise)
+      bind span, at
+  push(out, made)
+  back out
+
+# the statements that compute the choice and return it
+task body-of
+  take plan, like dispatch
+  take choice, like twin-choice
+  like list, like statement
+  mark private
+
+  sift choice
+    case reference
+      back returning(plan, plan/task)
+    case use
+      save chosen, plan/used/get(label)
+      save twin-name, twin-task(plan/task, label)
+      fork test, is-equal(chosen/test/length, 0)
+        hold
+          back returning(plan, twin-name)
+      # every `hook test` holds, or the reference answers
+      save tests, make list
+      walk chosen/test
+        take test
+        push(tests, copy-expression(test, plan/at))
+      back branch-of(conjunction(tests, plan/at), returning(plan, twin-name), returning(plan, plan/task), plan/at)
+    case size
+      save length
+        make member
+          bind target, variable-of(of, plan/at)
+          bind name, <length>
+          bind span, plan/at
+      save bound
+        make expression/integer
+          bind value, below
+          bind span, plan/at
+      save cond
+        make binary
+          bind op, make below
+          bind left, length
+          bind right, bound
+          bind span, plan/at
+      back branch-of(cond, body-of(plan, small), body-of(plan, large), plan/at)
+
+# a redirect: every call to `from` becomes a call to `to`, except in the tasks named in `keep`
+form redirect
+  link from, like text
+  link to, like text
+  link keep, like list, like text
+
+task redirect-in
+  take one, like statement
+  take from, like text
+  take to, like text
+  like void
+  mark private
+
+  save skip, make list
+  push(skip, <span>)
+  push(skip, <type>)
+  save single, make list
+  push(single, one)
+  save seen, reach-statements(single, skip)
+  walk seen/expressions
+    take node
+    sift node
+      case call
+        sift callee
+          case variable
+            link callee-name
+            fork test, is-equal(callee-name, from)
+              hold
+                save callee/name, to
+          miss
+            save nothing, 0
+      miss
+        save nothing, 0
+
+task apply-twins
+  take program, like list, like statement
+  take twins, like list, like twin
+  take choices, like list, like task-choice
+  take env, like text
+  take file, like text
+  like selected
+
+  save refused
+    make refusals
+      bind file, file
+      bind out, make list
+  save tasks, tasks-of(program)
+  save added, make list
+  save redirects, make list
+  walk choices
+    take entry
+    save task, entry/task
+    fork test, not(tasks/has(task))
+      hold
+        refuse(refused, zero-span(file), <a choice names `{task}`, and there is no such task>)
+        turn next
+    save reference, tasks/get(task)
+    save used, make hash
+    save used-labels, make list
+    save bad, false
+    save labels, make list
+    walk labels-of(entry/choice)
+      take label
+      add-text(labels, label)
+    walk labels
+      take label
+      sift find-twin(twins, task, label)
+        case none
+          refuse(refused, span-of(reference), <a choice for `{task}` names the twin `{label}`, and `{task}` has none of that name>)
+          save bad, true
+        case some
+          link found
+          fork test, not(eligible-on(found, env))
+            hold
+              save target, env
+              fork test, is-equal(env, <>)
+                hold
+                  save target, <typescript>
+              save platforms, join(found/platform, <, >)
+              refuse(refused, found/span, <`{task}/{label}` is not eligible on {target} (`mark platform` names {platforms})>)
+              save bad, true
+              turn next
+          fork test, is-above(found/have/length, 0)
+            hold
+              refuse(refused, found/span, <`{task}/{label}` has a `have`, which must be proven at each call site, and the selection pass does not consult the prover yet: write the condition as a `hook test` to have it checked at run time>)
+              save bad, true
+              turn next
+          fork test, is-above(found/ease/length, 0)
+            hold
+              save eases, join(found/ease, <, >)
+              refuse(refused, found/span, <`{task}/{label}` needs `ease {eases}`, which only the calling task can grant, and the selection pass does not read grants yet>)
+              save bad, true
+              turn next
+          fork test, is-above(found/knobs/length, 0)
+            hold
+              refuse(refused, found/span, <`{task}/{label}` has knobs, which a `tour` chooses (optimize-0026)>)
+              save bad, true
+              turn next
+          fork test, not(used/has(label))
+            hold
+              push(used-labels, label)
+          save used/{label}, found
+    save names, make list
+    walk params-of(reference)
+      take param
+      push(names, param/name)
+    walk sizes-of(entry/choice)
+      take param
+      fork test, not(contains(names, param))
+        hold
+          refuse(refused, span-of(reference), <a size check for `{task}` reads `{param}`, which is not one of its parameters>)
+          save bad, true
+    fork test, bad
+      hold
+        turn next
+    save plan
+      make dispatch
+        bind task, task
+        bind params, params-of(reference)
+        bind at, span-of(reference)
+        bind used, used
+    # the twins as tasks: the reference's signature, the twin's body, no contract of their own
+    walk used-labels
+      take label
+      save chosen, used/get(label)
+      push(added, named-copy(reference, twin-task(task, label), copy-program(chosen/body), chosen/span))
+    push(added, named-copy(reference, chosen-task(task), body-of(plan, entry/choice), span-of(reference)))
+    # every call to the task now goes through the dispatch, except inside the reference, its twins and the dispatch
+    save keep, make list
+    push(keep, task)
+    push(keep, chosen-task(task))
+    walk used-labels
+      take label
+      push(keep, twin-task(task, label))
+    save made
+      make redirect
+        bind from, task
+        bind to, chosen-task(task)
+        bind keep, keep
+    push(redirects, made)
+  walk added
+    take one
+    push(program, one)
+  walk redirects
+    take one
+    walk program
+      take statement
+      sift statement
+        case function
+          fork test, contains(one/keep, name)
+            hold
+              turn next
+        miss
+          save nothing, 0
+      redirect-in(statement, one/from, one/to)
+  back
+    make selected
+      bind program, program
+      bind diagnostics, refused/out

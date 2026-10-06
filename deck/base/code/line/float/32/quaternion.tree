@@ -12,10 +12,10 @@ load @term/base/arithmetic
   find multiplication
 
 form quaternion
-  link x, like decimal
-  link y, like decimal
-  link z, like decimal
-  link w, like decimal
+  link x, like float
+  link y, like float
+  link z, like float
+  link w, like float
 
   # the Hamilton product: `multiply(p, q)`, as on two numbers (note/term/plan/decisions-2026-10.md, D5)
   wear multiplication
@@ -121,7 +121,7 @@ form quaternion
   task dot
     take self
     take other, like quaternion
-    like decimal
+    like float
     send back
       call add
         call add
@@ -142,7 +142,7 @@ form quaternion
   # the norm: `magnitude`, since a collection's `length` counts its items (note/term/plan/decisions-2026-10.md, D2)
   task magnitude
     take self
-    like decimal
+    like float
     send back
       call square-root
         call dot
@@ -152,7 +152,7 @@ form quaternion
   # the older name of `magnitude`, kept one release
   task length
     take self
-    like decimal
+    like float
     mark deprecated
     back magnitude(self)
 
@@ -185,7 +185,7 @@ form quaternion
   task slerp
     take self
     take other, like quaternion
-    take t, like decimal
+    take t, like float
     like quaternion
     save cosom
       call dot
@@ -296,10 +296,10 @@ form quaternion
 
 # build a rotation quaternion from a (normalized) axis and an angle in radians (gl-matrix quat.setAxisAngle)
 task from-axis-angle
-  take axis-x, like decimal
-  take axis-y, like decimal
-  take axis-z, like decimal
-  take angle, like decimal
+  take axis-x, like float
+  take axis-y, like float
+  take axis-z, like float
+  take angle, like float
   like quaternion
   save half
     call multiply
@@ -327,10 +327,10 @@ task from-axis-angle
           read half
 
 task make-quaternion
-  take x, like decimal
-  take y, like decimal
-  take z, like decimal
-  take w, like decimal
+  take x, like float
+  take y, like float
+  take z, like float
+  take w, like float
   like quaternion
   send back
     make quaternion

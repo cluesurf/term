@@ -33,13 +33,13 @@ const HEAD = `load @cluesurf/form/code/number/integer
 function conditional(leftTail: string, rightTail: string): string {
   return `${HEAD}
 rule conditional
-  mark a, like integer
-  mark b, like integer
-  mark c, like integer
-  mark d, like integer
-  mark e, like integer
-  mark f, like integer
-  mark g, like integer
+  seat a, like integer
+  seat b, like integer
+  seat c, like integer
+  seat d, like integer
+  seat e, like integer
+  seat f, like integer
+  seat g, like integer
   have h
     call is-equal
       call multiply

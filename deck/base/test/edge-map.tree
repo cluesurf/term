@@ -208,7 +208,7 @@ test <entries come back in key order>
   want hold
     call and
       call is-equal
-        call size
+        call length
           read all
         code 2
       call is-equal

@@ -70,7 +70,8 @@ task fail-now
 # an arm over a caught exception binds every shared field, \`time\` among them
 task caught-up
   like number
-  mark unsafe
+  fork
+    mark unsafe
     send back, call fail-now
   halt take
     take problem

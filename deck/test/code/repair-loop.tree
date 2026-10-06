@@ -108,7 +108,8 @@ task accepts
   take point, like list, like number
   like boolean
 
-  mark unsafe
+  fork
+    mark unsafe
     back spec-holds(gap/spec, point, eval-expr(candidate, point))
   halt take
     take e

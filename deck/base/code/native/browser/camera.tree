@@ -3,8 +3,8 @@ task set-flash-mode
   # The flash setting of the capture device.
 
 task take-photo
-  take image-height, like decimal
-  take image-width, like decimal
+  take image-height, like float
+  take image-width, like float
   take red-eye-reduction, like boolean
     base true
 

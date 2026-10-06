@@ -112,7 +112,7 @@ form node
       like maybe, like list, like comment
       need false
   case decimal
-    link value, like decimal
+    link value, like float
     # the literal as written: `1.0` is not `String(1)`
     link text, like text
     link span, like span
@@ -180,7 +180,7 @@ form draft
   link span, like span
   link follows, like maybe, like follows
   link whole, like number
-  link fraction, like decimal
+  link fraction, like float
   link radix, like number
 
 # a nesting frame: the nodes open on the current line, and the node each level of indentation stands under
@@ -1258,7 +1258,7 @@ task render-head
     case integer
       back <{value}>
     # the text AS WRITTEN, not the value: `1.0` printed as a number is `1`, which re-reads as an INTEGER and silently
-    # changes the type (`like decimal` becomes `like number`, and Rust then refuses to multiply a float by an
+    # changes the type (`like float` becomes `like number`, and Rust then refuses to multiply a float by an
     # integer). `radix` prints its text for the same reason.
     case decimal
       back read(text)

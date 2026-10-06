@@ -22,7 +22,8 @@ load @term/base/timezone
 task zone-why
   take zone, like text
   like text
-  note unsafe
+  fork
+    mark unsafe
     call offset-minutes
       code 0
       read zone
@@ -78,7 +79,8 @@ test <a zone the database does not name is refused>
 task why
   take text, like text
   like text
-  note unsafe
+  fork
+    mark unsafe
     call parse, read text
     send back, text <ok>
   halt take

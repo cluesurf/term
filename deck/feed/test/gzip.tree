@@ -122,7 +122,7 @@ test <read-gzip reads the two compressed-data bytes>
     call read-gzip(call minimal-gzip-bytes)
   want hold
     call is-equal
-      call size(read file/compressed-data)
+      call length(read file/compressed-data)
       code 2
 
 test <read-gzip reads the trailer crc32, little-endian>

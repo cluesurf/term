@@ -18,7 +18,7 @@ import {
   stateFreeFunctions,
 } from '@term/make/code/check/facts'
 import { terminatingFunctions } from '@term/make/code/check/totality'
-import { raiseSets } from '@term/make/code/check/effects'
+import { raiseSetsOf } from '@term/make/code/check/effects'
 import { provenRules } from '@term/make/code/check/holds'
 import { exceptionForm } from '@term/make/code/check/extend'
 
@@ -41,7 +41,7 @@ export type StubKnown = {
   native: Set<string>
   // the tasks that raise `failure` once `failure` is counted: a unit counts it only when it holds the form, so a task
   // reaching a native shim through another unit lost it there, and a program that does count it lost it with it
-  // (check/effects.ts `raiseSets`, task/term/roll-units.ts)
+  // (check/effects.tree `raise-sets-of`, task/term/roll-units.ts)
   fails: Set<string>
   // each rule the arithmetic provers proved in this unit, and how: over every ordered field, or with integer reasoning.
   // A dependent citing the rule reads it (check/holds.ts `citedFacts`), since a field-wide rule may cite only another
@@ -58,9 +58,9 @@ export function stubKnown(program: Program): StubKnown {
     }
   }
 
-  const sets = raiseSets(program, exceptions)
-  const counted = raiseSets(program, new Set([...exceptions, 'failure']))
-  const fails = new Set([...counted.raises].flatMap(([name, raised]) => (raised.has('failure') ? [name] : [])))
+  const sets = raiseSetsOf(program, [...exceptions])
+  const counted = raiseSetsOf(program, [...new Set([...exceptions, 'failure'])])
+  const fails = new Set([...counted.raises].flatMap(([name, raised]) => (raised.includes('failure') ? [name] : [])))
   const clean = new Set<string>()
 
   for (const s of program) {
@@ -76,8 +76,8 @@ export function stubKnown(program: Program): StubKnown {
     lengthKeeping: lengthKeepingFunctions(program),
     returnsFresh: returnsFreshFunctions(program),
     ends: terminatingFunctions(program),
-    raises: sets.raises,
-    native: sets.native,
+    raises: new Map([...sets.raises].map(([name, raised]) => [name, new Set(raised)])),
+    native: new Set(sets.native),
     fails,
     // the proof pass of this unit ran just before (compile/separate.ts calls this after compiling the unit), so its
     // record is this unit's

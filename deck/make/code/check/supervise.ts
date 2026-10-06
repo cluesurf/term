@@ -14,7 +14,7 @@
 import type { Expression, Program, Statement } from '@term/make/code/compile/node'
 import { diagnose } from '@term/make/code/parser/diagnostic'
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
-import { raiseSets } from '@term/make/code/check/effects'
+import { raiseSetsOf } from '@term/make/code/check/effects'
 
 type Record = Extract<Expression, { form: 'record' }>
 type Closure = Extract<Expression, { form: 'closure' }>
@@ -103,11 +103,11 @@ export function checkSupervision(program: Program, file: string): Diagnostic[] {
       span: work.span,
     }) as Extract<Statement, { form: 'function' }>,
   )
-  const sets = raiseSets([...program, ...probes], exceptions)
+  const sets = raiseSetsOf([...program, ...probes], [...exceptions])
   const diagnostics: Diagnostic[] = []
 
   workers.forEach(({ record }, i) => {
-    if ((sets.raises.get(probes[i]!.name)?.size ?? 0) > 0) {
+    if ((sets.raises.get(probes[i]!.name)?.length ?? 0) > 0) {
       return
     }
 

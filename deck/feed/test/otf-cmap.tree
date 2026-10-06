@@ -154,7 +154,7 @@ task cmap-bytes
 test <cmap-bytes is 40 bytes long, sanity-checking the fixture itself>
   want hold
     call is-equal
-      call size(call cmap-bytes)
+      call length(call cmap-bytes)
       code 40
 
 test <read-otf-cmap-table reads one encoding record>
@@ -162,7 +162,7 @@ test <read-otf-cmap-table reads one encoding record>
     call read-otf-cmap-table(call make-cursor(call cmap-bytes))
   want hold
     call is-equal
-      call size(read table/records)
+      call length(read table/records)
       code 1
 
 test <the encoding record's platform-id and encoding-id round trip>
@@ -199,7 +199,7 @@ test <mine-at seeks to the subtable at the offset relative to the cmap table's o
       code 0
   want hold
     call is-equal
-      call size(call format-12-groups(read record/subtable))
+      call length(call format-12-groups(read record/subtable))
       code 1
 
 test <the format-12 group's char codes and start-glyph-id all read correctly>
@@ -315,5 +315,5 @@ test <a format-4 subtable's end-code sentinel and segment count are correct>
       code 0
   want hold
     call is-equal
-      call size(call format-4-segments(read record/subtable))
+      call length(call format-4-segments(read record/subtable))
       code 1

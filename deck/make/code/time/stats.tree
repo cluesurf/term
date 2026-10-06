@@ -26,20 +26,20 @@ load @term/base/text/number
 form benchmark-result
   link name, like text
   link iterations, like number
-  link mean-ns, like decimal
-  link median-ns, like decimal
-  link std-dev-ns, like decimal
-  link min-ns, like decimal
-  link max-ns, like decimal
-  link ops-per-sec, like decimal
+  link mean-ns, like float
+  link median-ns, like float
+  link std-dev-ns, like float
+  link min-ns, like float
+  link max-ns, like float
+  link ops-per-sec, like float
   # coefficient of variation: std-dev / mean, a unitless noise measure
-  link cv, like decimal
-  link timings-ns, like list, like decimal
+  link cv, like float
+  link timings-ns, like list, like float
 
 # ascending, as `(a, b) => a - b` sorts a sample
 task compare-samples
-  take left, like decimal
-  take right, like decimal
+  take left, like float
+  take right, like float
   like ordering
 
   fork test, is-below(left, right)
@@ -52,7 +52,7 @@ task compare-samples
 
 task compute-stats
   take name, like text
-  take timings, like list, like decimal
+  take timings, like list, like float
   like benchmark-result
 
   save sorted, sort(timings, compare-samples)
@@ -117,7 +117,7 @@ task compute-stats
 
 # human-readable duration from nanoseconds
 task format-duration
-  take ns, like decimal
+  take ns, like float
   like text
 
   fork test, is-below(ns, 1000.0)

@@ -26,7 +26,7 @@ function ok(name: string, good: boolean, detail: string[]): void {
 
 {
   const out = said(`rule doubling-is-adding-one
-  mark n, like integer
+  seat n, like integer
   show hold, is-equal multiply(2, n), add(n, 1)
 `)
 
@@ -39,7 +39,7 @@ function ok(name: string, good: boolean, detail: string[]): void {
 
 {
   const out = said(`rule square-at-least-double
-  mark n, like integer
+  seat n, like integer
   have n-is-at-least-one, is-minimum n, 1
   show hold, is-minimum multiply(n, n), multiply(2, n)
 `)
@@ -53,7 +53,7 @@ function ok(name: string, good: boolean, detail: string[]): void {
 
 {
   const out = said(`rule square-at-least-double
-  mark n, like integer
+  seat n, like integer
   have n-is-at-least-two, is-minimum n, 2
   show hold, is-minimum multiply(n, n), multiply(2, n)
 `)
@@ -64,7 +64,7 @@ function ok(name: string, good: boolean, detail: string[]): void {
 // false, but only past the values searched: no FALSE, the ordinary message, with the goal and hypothesis printed
 {
   const out = said(`rule bounded-square
-  mark n, like integer
+  seat n, like integer
   have n-is-at-least-ten, is-minimum n, 10
   show hold, is-maximum multiply(n, n), 100
 `)
@@ -86,7 +86,7 @@ function ok(name: string, good: boolean, detail: string[]): void {
   back multiply(n, 2)
 
 rule double-is-one-more
-  mark n, like integer
+  seat n, like integer
   show is-equal double(n), add(n, 1)
 `)
 
@@ -100,11 +100,11 @@ rule double-is-one-more
 // a mark that is a FUNCTION has no small values to try: described, never called false
 {
   const out = said(`rule function-mark
-  mark x
+  seat x
     like task
       take n, like integer
       like integer
-  mark n, like integer
+  seat n, like integer
   show hold, is-minimum x(n), 0
 `)
 

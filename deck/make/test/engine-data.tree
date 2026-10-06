@@ -111,9 +111,9 @@ task three-to-39
   back big-multiply(big-multiply(thirteen, thirteen), thirteen)
 
 task close-to
-  take got, like decimal
-  take want, like decimal
-  take within, like decimal
+  take got, like float
+  take want, like float
+  take within, like float
   like boolean
 
   back is-below(absolute(subtract(got, want)), within)
@@ -169,7 +169,8 @@ task greek
 task overflows
   like boolean
 
-  mark unsafe
+  fork
+    mark unsafe
     host fixed, make-integer(big(10000000000), <tri8>)
     back false
   halt take

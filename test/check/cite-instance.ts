@@ -5,7 +5,7 @@
 //      values of its marks, makes the two sides the same (check/elaborate.ts `instanceOf`, judge.ts `normalTerm`). A
 //      goal that is not an instance, or is false, is refused.
 //   2. a case's fields may be `slot`s, filled by position: `make conjunction(p, q)` (check/extend.ts `fillVariant`).
-//   3. a form that aliases a task type is called as the task, in the checker and the kernel (`mark v, like assignment`).
+//   3. a form that aliases a task type is called as the task, in the checker and the kernel (`seat v, like assignment`).
 //   4. separately compiled, a rule may run a task and cite a rule of a THEORY in another file (a file that states rules),
 //      because the theory's stubs carry those bodies (compile/stub.ts `stubBody`). A file with no rules carries none.
 //
@@ -68,13 +68,13 @@ task flip
       back make yes
 
 rule both-commutes
-  mark a, like flag
-  mark b, like flag
+  seat a, like flag
+  seat b, like flag
   show hold, is-equal both(a, b), both(b, a)
   fold a, b
 
 rule flip-twice
-  mark a, like flag
+  seat a, like flag
   show hold, is-equal flip(flip(a)), a
   fold a
 `
@@ -106,8 +106,8 @@ expect(
   'an instance at constructed values is proven',
   `${FLAG}${PAIR}
 rule conjoin-swapped
-  mark x, like flag
-  mark y, like flag
+  seat x, like flag
+  seat y, like flag
   show hold, is-equal conjoin(make two(x, y)), conjoin(make two(y, x))
   cite both-commutes
 `,
@@ -118,8 +118,8 @@ expect(
   'an instance at a call whose value is not known is proven',
   `${FLAG}${PAIR}
 rule both-of-a-call
-  mark x, like pair
-  mark y, like flag
+  seat x, like pair
+  seat y, like flag
   show hold, is-equal both(conjoin(x), y), both(y, conjoin(x))
   cite both-commutes
 `,
@@ -130,8 +130,8 @@ expect(
   'an instance deep inside a side is proven (flip twice, under both)',
   `${FLAG}${PAIR}
 rule flip-twice-inside
-  mark x, like pair
-  mark y, like flag
+  seat x, like pair
+  seat y, like flag
   show hold, is-equal both(flip(flip(conjoin(x))), y), both(conjoin(x), y)
   cite flip-twice
 `,
@@ -142,7 +142,7 @@ expect(
   'a TRUE goal that is not an instance of the cited rule is refused',
   `${FLAG}
 rule both-is-idempotent
-  mark a, like flag
+  seat a, like flag
   show hold, is-equal both(a, a), a
   cite both-commutes
 `,
@@ -153,7 +153,7 @@ expect(
   'a FALSE goal citing a rule is refused',
   `${FLAG}
 rule flip-is-identity
-  mark a, like flag
+  seat a, like flag
   show hold, is-equal flip(a), a
   cite flip-twice
 `,
@@ -164,8 +164,8 @@ expect(
   'one rewrite only: a goal needing the rule twice is refused',
   `${FLAG}
 rule four-flips
-  mark a, like flag
-  mark b, like flag
+  seat a, like flag
+  seat b, like flag
   show hold, is-equal both(flip(flip(a)), flip(flip(b))), both(a, b)
   cite flip-twice
 `,
@@ -178,7 +178,7 @@ expect(
   'a case with slots is built by position, and its rule computes',
   `${FLAG}${PAIR}
 rule conjoin-of-yes
-  mark x, like flag
+  seat x, like flag
   show hold
     is-equal
       conjoin
@@ -227,9 +227,9 @@ expect(
   'a mark typed by a task alias is called, and the kernel proves an instance at its values',
   `${FLAG}${PAIR}
 rule both-of-an-assignment
-  mark v, like assignment
-  mark y, like integer
-  mark z, like integer
+  seat v, like assignment
+  seat y, like integer
+  seat z, like integer
   show hold, is-equal both(v(y), v(z)), both(v(z), v(y))
   cite both-commutes
 `,
@@ -240,9 +240,9 @@ expect(
   'and a goal about it that is no instance is refused',
   `${FLAG}${PAIR}
 rule both-of-an-assignment-wrongly
-  mark v, like assignment
-  mark y, like integer
-  mark z, like integer
+  seat v, like assignment
+  seat y, like integer
+  seat z, like integer
   show hold, is-equal both(v(y), v(z)), both(v(y), v(y))
   cite both-commutes
 `,
@@ -259,7 +259,7 @@ const USE = `load ./theory
   find flip-twice
 
 rule computes-across-files
-  mark a, like flag
+  seat a, like flag
   show hold
     is-equal
       both
@@ -268,8 +268,8 @@ rule computes-across-files
       a
 
 rule cites-across-files
-  mark a, like flag
-  mark b, like flag
+  seat a, like flag
+  seat b, like flag
   show hold, is-equal both(flip(flip(a)), b), both(a, b)
   cite flip-twice
 `
@@ -281,7 +281,7 @@ const USE_FALSE = `load ./theory
   find flip-twice
 
 rule false-across-files
-  mark a, like flag
+  seat a, like flag
   show hold, is-equal flip(a), a
   cite flip-twice
 `
@@ -316,7 +316,7 @@ const plain = separately(
   find both
 
 rule computes-across-files
-  mark a, like flag
+  seat a, like flag
   show hold
     is-equal
       both

@@ -82,8 +82,8 @@ task determinant
 expect(
   'THE LATENT UNSOUNDNESS: dot(u, v) == dot(u, u), the callee\'s own names, stays refused',
   `rule dangling
-  mark u, like vector-two
-  mark v, like vector-two
+  seat u, like vector-two
+  seat v, like vector-two
   show hold, is-equal dot(u, v), dot(u, u)`,
   'refused',
 )
@@ -91,8 +91,8 @@ expect(
 expect(
   'and renamed: dot(p, q) == dot(q, q) stays refused',
   `rule dangling-renamed
-  mark p, like vector-two
-  mark q, like vector-two
+  seat p, like vector-two
+  seat q, like vector-two
   show hold, is-equal dot(p, q), dot(q, q)`,
   'refused',
 )
@@ -100,8 +100,8 @@ expect(
 expect(
   'dot is symmetric, on the fields',
   `rule dot-is-symmetric
-  mark u, like vector-two
-  mark v, like vector-two
+  seat u, like vector-two
+  seat v, like vector-two
   show hold, is-equal dot(u, v), dot(v, u)`,
   'ok',
 )
@@ -109,7 +109,7 @@ expect(
 expect(
   'a vector is the construction of its fields (record eta): v + 0 = v',
   `rule origin-is-identity
-  mark v, like vector-two
+  seat v, like vector-two
   show hold, is-equal sum(v, origin()), v`,
   'ok',
 )
@@ -117,7 +117,7 @@ expect(
 expect(
   'but v + v = v is refused',
   `rule doubled-is-itself
-  mark v, like vector-two
+  seat v, like vector-two
   show hold, is-equal sum(v, v), v`,
   'refused',
 )
@@ -125,9 +125,9 @@ expect(
 expect(
   'two constructions are equal field by field: the product associates',
   `rule product-associates
-  mark m, like matrix-two
-  mark n, like matrix-two
-  mark p, like matrix-two
+  seat m, like matrix-two
+  seat n, like matrix-two
+  seat p, like matrix-two
   show hold, is-equal product(product(m, n), p), product(m, product(n, p))`,
   'ok',
 )
@@ -135,8 +135,8 @@ expect(
 expect(
   'and the product does not commute',
   `rule product-commutes
-  mark m, like matrix-two
-  mark n, like matrix-two
+  seat m, like matrix-two
+  seat n, like matrix-two
   show hold, is-equal product(m, n), product(n, m)`,
   'refused',
 )
@@ -144,8 +144,8 @@ expect(
 expect(
   'the determinant is multiplicative',
   `rule determinant-of-a-product
-  mark m, like matrix-two
-  mark n, like matrix-two
+  seat m, like matrix-two
+  seat n, like matrix-two
   show hold, is-equal determinant(product(m, n)), multiply(determinant(m), determinant(n))`,
   'ok',
 )
@@ -153,8 +153,8 @@ expect(
 expect(
   'an inequality through the definitions: Cauchy-Schwarz',
   `rule cauchy-schwarz
-  mark u, like vector-two
-  mark v, like vector-two
+  seat u, like vector-two
+  seat v, like vector-two
   show hold, is-maximum multiply(dot(u, v), dot(u, v)), multiply(dot(u, u), dot(v, v))`,
   'ok',
 )
@@ -162,8 +162,8 @@ expect(
 expect(
   'and reversed, refused',
   `rule cauchy-schwarz-reversed
-  mark u, like vector-two
-  mark v, like vector-two
+  seat u, like vector-two
+  seat v, like vector-two
   show hold, is-minimum multiply(dot(u, v), dot(u, v)), multiply(dot(u, u), dot(v, v))`,
   'refused',
 )
@@ -186,15 +186,15 @@ expect(
   back f(x)
 
 rule every-two-functions-agree
-  mark g
+  seat g
     like task
       take x, like integer
       like integer
-  mark h
+  seat h
     like task
       take x, like integer
       like integer
-  mark a, like integer
+  seat a, like integer
   show hold, is-equal apply(g, a), apply(h, a)
 `,
     },

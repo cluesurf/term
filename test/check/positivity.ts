@@ -39,7 +39,7 @@ function compiles(source: string): boolean {
 ok(
   'square is non-negative: x * x >= 0',
   compiles(`rule square-nonneg
-  mark x, like integer
+  seat x, like integer
   show hold
     call is-minimum
       call multiply
@@ -54,8 +54,8 @@ ok(
 ok(
   'sum of squares is non-negative: x*x + y*y >= 0',
   compiles(`rule sum-of-squares-nonneg
-  mark x, like integer
-  mark y, like integer
+  seat x, like integer
+  seat y, like integer
   show hold
     call is-minimum
       call add
@@ -75,7 +75,7 @@ ok(
 ok(
   'square is not strictly positive: x * x > 0 is rejected',
   !compiles(`rule square-positive-wrong
-  mark x, like integer
+  seat x, like integer
   show hold
     call is-above
       call multiply
@@ -91,8 +91,8 @@ ok(
 ok(
   'non-square product is not certified: x * y >= 0 is rejected',
   !compiles(`rule product-nonneg-wrong
-  mark x, like integer
-  mark y, like integer
+  seat x, like integer
+  seat y, like integer
   show hold
     call is-minimum
       call multiply

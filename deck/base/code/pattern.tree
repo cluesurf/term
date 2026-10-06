@@ -864,7 +864,8 @@ task escape-pattern
 task is-valid-pattern
   take value, like text
   like boolean
-  mark unsafe
+  fork
+    mark unsafe
     call parse-pattern(read(value))
     send back, true
   halt take

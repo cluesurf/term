@@ -48,8 +48,8 @@ load @term/base/integer/big
 
 # a linear expression: each variable's coefficient, and the constant
 form linear
-  link terms, like hash, like text, like decimal
-  link constant, like decimal
+  link terms, like hash, like text, like float
+  link constant, like float
 
 # a constraint: linear <= 0 (or strictly < 0)
 form inequality
@@ -57,8 +57,8 @@ form inequality
   link strict, like boolean
 
 form row
-  link terms, like hash, like text, like decimal
-  link constant, like decimal
+  link terms, like hash, like text, like float
+  link constant, like float
 
 # how a row was obtained
 form step
@@ -70,13 +70,13 @@ form step
   case sum
     link first, like step
     link second, like step
-    link a, like decimal
-    link b, like decimal
+    link a, like float
+    link b, like float
   # the row divided by g, a positive integer dividing every coefficient, with the bound rounded down (a Chvátal-Gomory
   # cut, exact because the variables are integers)
   case cut
     link of, like step
-    link g, like decimal
+    link g, like float
 
 # what the search answers: whether it found a refutation, and its derivation when it did (an input at -1 when not)
 form found
@@ -84,21 +84,21 @@ form found
   link step, like step
 
 task is-whole
-  take value, like decimal
+  take value, like float
   like boolean
   mark private
 
   back and(is-finite(value), is-equal(truncate(value), value))
 
 task is-safe
-  take value, like decimal
+  take value, like float
   like boolean
   mark private
 
   back and(is-whole(value), is-maximum(absolute(value), 9007199254740991.0))
 
 task all-safe
-  take terms, like hash, like text, like decimal
+  take terms, like hash, like text, like float
   like boolean
   mark private
 
@@ -111,7 +111,7 @@ task all-safe
 
 # how many variables a row has
 task term-count
-  take terms, like hash, like text, like decimal
+  take terms, like hash, like text, like float
   like number
   mark private
 
@@ -119,8 +119,8 @@ task term-count
   back names/length
 
 task copy-terms
-  take terms, like hash, like text, like decimal
-  like hash, like text, like decimal
+  take terms, like hash, like text, like float
+  like hash, like text, like float
   mark private
 
   save out, make hash
@@ -131,11 +131,11 @@ task copy-terms
 
 # a·first + b·second over the coefficients, the zeros dropped
 task combine
-  take first, like hash, like text, like decimal
-  take a, like decimal
-  take second, like hash, like text, like decimal
-  take b, like decimal
-  like hash, like text, like decimal
+  take first, like hash, like text, like float
+  take a, like float
+  take second, like hash, like text, like float
+  take b, like float
+  like hash, like text, like float
   mark private
 
   save terms, make hash
@@ -310,9 +310,9 @@ task row-key
   back <{joined}|{constant}>
 
 task gcd
-  take first, like decimal
-  take second, like decimal
-  like decimal
+  take first, like float
+  take second, like float
+  like float
   mark private
 
   save a, absolute(first)
@@ -359,7 +359,7 @@ task normalize
 task coefficient
   take one, like tracked
   take v, like text
-  like decimal
+  like float
   mark private
 
   fork test, one/row/terms/has(v)

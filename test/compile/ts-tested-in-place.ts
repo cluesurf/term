@@ -47,7 +47,8 @@ task climb
       read y
       call next
         read x
-  mark unsafe
+  fork
+    mark unsafe
     save x
       call add
         read x

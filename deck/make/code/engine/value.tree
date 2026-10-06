@@ -126,7 +126,7 @@ task integer-of
   back integer(big-from-number(value))
 
 task float
-  take value, like decimal
+  take value, like float
   like value
 
   back

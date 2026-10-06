@@ -51,6 +51,8 @@ form note-site
   link word, like text
   # the `note` word itself, which a fix replaces with `mark`
   link span, like span
+  # `note unsafe` holding statements: the old guarded block, which a fix writes as `fork` / `mark unsafe` (2026-10-06)
+  link guard, like boolean
 
 form wait-site
   # the callee's name as written (`fetch-page`, `fs-promise/read-file`)
@@ -189,6 +191,7 @@ task metadata-of
             make note-site
               bind word, word
               bind span, at
+              bind guard, and(is-equal(word, <unsafe>), is-above(rest/length, 0))
           back make(some, site)
         miss
           back make none
@@ -301,6 +304,7 @@ task realign-notes
       make note-site
         bind word, site/word
         bind span, moved
+        bind guard, site/guard
     push(out, one)
   back out
 

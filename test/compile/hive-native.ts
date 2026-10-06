@@ -101,7 +101,8 @@ task check-hive
     call size
       call hive-roll
         text <exception>
-  note unsafe
+  fork
+    mark unsafe
     save found
       call find-user
         text <zed>

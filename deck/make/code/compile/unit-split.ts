@@ -18,8 +18,8 @@ const CLOSE = ''
 const END = ''
 
 // a statement's text, marked with the module it came from. Nothing is marked without a file (a statement the build
-// made, such as a runtime struct) or without text
-export function markUnit(file: string | undefined, text: string): string {
+// made, such as a runtime struct, passes the empty text) or without text. As compile/unit-split.tree answers it
+export function markUnit(file: string, text: string): string {
   return file && text ? `${OPEN}${file}${CLOSE}${text}${END}` : text
 }
 
@@ -29,7 +29,7 @@ export function unmarked(text: string): string {
 }
 
 // the program cut by module: what no module owns, in its order, and each module's statements, in their order
-export function splitUnits(text: string): { shared: string; units: [string, string][] } {
+export function splitUnits(text: string): { shared: string; units: { file: string; text: string }[] } {
   const units = new Map<string, string[]>()
   let shared = ''
   let at = 0
@@ -52,5 +52,5 @@ export function splitUnits(text: string): { shared: string; units: [string, stri
   }
 
   // the blank lines a removed statement left between two shared parts, closed up
-  return { shared: shared.replace(/\n{3,}/g, '\n\n'), units: [...units].map(([file, parts]) => [file, `${parts.join('\n\n')}\n`]) }
+  return { shared: shared.replace(/\n{3,}/g, '\n\n'), units: [...units].map(([file, parts]) => ({ file, text: `${parts.join('\n\n')}\n` })) }
 }

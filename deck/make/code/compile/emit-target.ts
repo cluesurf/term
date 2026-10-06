@@ -67,7 +67,7 @@ export function emitTargetUnits(input: {
   switch (input.target) {
     case 'rust': {
       const { shared, units } = splitUnits(`${prelude}\n${emitRust(input.program, { units: true })}`)
-      const named = units.map(([file, text]) => [`u_${unitName(file)}.rs`, text] as const)
+      const named = units.map(({ file, text }) => [`u_${unitName(file)}.rs`, text] as const)
       const main = `${shared.trimEnd()}\n\n${named.map(([name]) => `include!("${name}");`).join('\n')}\n`
 
       return { main: 'main.rs', files: [['main.rs', main], ...named] }
@@ -76,13 +76,13 @@ export function emitTargetUnits(input: {
       const { shared, units } = splitUnits(`${prelude}\n${emitSwift(input.program, { units: true })}`)
       const imports = importLines(shared, /^import .+$/gm)
 
-      return { main: 'Term.swift', files: [['Term.swift', shared], ...units.map(([file, text]) => [`U_${unitName(file)}.swift`, `${imports}${text}`] as [string, string])] }
+      return { main: 'Term.swift', files: [['Term.swift', shared], ...units.map(({ file, text }) => [`U_${unitName(file)}.swift`, `${imports}${text}`] as [string, string])] }
     }
     case 'kotlin': {
       const { shared, units } = splitUnits(hoistKotlinImports(`${prelude}\n${emitKotlin(input.program, { units: true })}`))
       const imports = importLines(shared, /^(package|import) .+$/gm)
 
-      return { main: 'Term.kt', files: [['Term.kt', shared], ...units.map(([file, text]) => [`U_${unitName(file)}.kt`, `${imports}${text}`] as [string, string])] }
+      return { main: 'Term.kt', files: [['Term.kt', shared], ...units.map(({ file, text }) => [`U_${unitName(file)}.kt`, `${imports}${text}`] as [string, string])] }
     }
   }
 }

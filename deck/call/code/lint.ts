@@ -87,6 +87,15 @@ function applyEdits(text: string, edits: TextEdit[]): string {
 
 const MANIFEST_CODES = { 'manifest-code-version': 'L050', 'manifest-bear': 'L051' } as const
 
+// the four above as catalog entries, for `term show kink`, which lists them beside the driver's (make/code/lint/lint.ts
+// `lintCatalog`). Kept here, next to the checks, so a new one is added in one place
+export const MANIFEST_CATALOG: { code: string; name: string; severity: 'warning'; docs: string; fixable: boolean }[] = [
+  { code: 'L050', name: 'manifest-code-version', severity: 'warning', docs: "a manifest's `code <version>` (or a link's `code <range>`) is the old spelling of `mark`", fixable: true },
+  { code: 'L051', name: 'manifest-bear', severity: 'warning', docs: "a manifest's `bear ./dir` is the old spelling of the code root, `code ./dir`", fixable: true },
+  { code: 'L052', name: 'ambiguous-load', severity: 'warning', docs: "a package path names a file in the package's code root AND one in its package root. The code root wins, and `base <dir>` under the load picks the package root", fixable: false },
+  { code: 'L055', name: 'manifest-inert', severity: 'warning', docs: 'a manifest field no tool reads, which looks like it chooses something and chooses nothing', fixable: false },
+]
+
 // L055 manifest-inert: a manifest field the grammar accepts and the writer keeps, which no tool reads. `test ./test`
 // looked like it chose where `term test` looks, and it chooses nothing: it finds tests in `code/` and `test/` whatever
 // the line says (guides: packages/manifest, 2026-10-04). A nested `deck ./path` is the same. No `--fix`, because the

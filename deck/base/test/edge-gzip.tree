@@ -21,7 +21,8 @@ load @term/base/text
 task why
   take hex, like text
   like text
-  note unsafe
+  fork
+    mark unsafe
     save got
       call gunzip
         call from-hex
@@ -104,7 +105,7 @@ test <the bytes gzip writes are the same everywhere, and shorter for repetition>
   want hold
     call and
       call is-below
-        call count
+        call length
           read packed
         code 40
       call starts-with

@@ -45,7 +45,7 @@ task seed-state
 # the next draw, in [0, 1), the state stepped
 task next-random
   take state, like list, like number
-  like decimal
+  like float
 
   host stepped, low-32(add(get(state, 0), 1831565813))
   state/set(0, stepped)

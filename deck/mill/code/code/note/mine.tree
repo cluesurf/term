@@ -23,10 +23,10 @@ mine note
 # metadata.md, section 4).
 #
 # TOLD APART FROM THE OTHER `mark`s BY FORM. The word list is closed, so `mark private` (privacy, read by
-# `mine mark`), `mark tag, name kind`, `mark <uuid>` (a text literal, a record's identity) and a rule's binder
-# `mark a, like tone` never reach it. A `mark` WITH a `like` is a binder: the rule that lists both tries this
-# one first, and this rule takes nothing under the word, so a `like` child fails it and the binder rule gets
-# the line.
+# `mine mark`), `mark tag, name kind`, `mark <uuid>` (a text literal, a record's identity) and a twin's knob
+# `mark tile, like number` never reach it. This rule takes nothing under the word, so a `like` child fails it.
+# A rule's binder is a `seat` (2026-10-05), and its old spelling `mark a, like tone` falls past this rule to
+# `rule-mark`, which the bridge refuses by name.
 # `mark feature, name x` and `mark platform, name x` keep their `name` and are read by `mine mark`.
 mine mark-note
   mine term, term mark
@@ -53,13 +53,34 @@ mine mark-note
         site text
 
 # `mark unsafe` OVER STATEMENTS: the guarded block, the same as `note-guard` below. A rule of its own because
-# `mine mark-note` takes nothing under the word, which is what keeps a binder's `like` out of it
+# `mine mark-note` takes nothing under the word, which is what keeps a knob's `like` out of it
 mine mark-guard
   mine term, term mark
     mine term, term unsafe
       site text
     mine form, like flow
       site flow
+    mine list
+      mine form, like flow
+        site flow
+
+# THE GUARDED BLOCK IS A `fork`, and `mark unsafe` is metadata ON it, its first line (2026-10-06):
+#
+#   fork
+#     mark unsafe
+#     save answer, fetch(url)
+#   halt take
+#     take problem
+#
+# A block is a fork, and a metadata word never opens one. The statements after the mark are tried, and the `halt
+# take` after the fork is the handler, as it was. It mints the `note` the older spellings did, with `opener`, the
+# word `fork`, so the bridge refuses a `mark unsafe` or `note unsafe` that holds statements of its own and names this
+mine fork-guard
+  mine term, term fork
+    site opener
+    mine term, term mark
+      mine term, term unsafe
+        site text
     mine list
       mine form, like flow
         site flow

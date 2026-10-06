@@ -6,17 +6,24 @@
 import type { Diagnostic } from '@term/make/code/parser/diagnostic'
 import { diagnose } from '@term/make/code/parser/diagnostic'
 import type { Program, Statement } from '@term/make/code/compile/node'
-import { raiseSets } from '@term/make/code/check/effects'
+import { raiseSetsOf } from '@term/make/code/check/effects'
 import { exceptionForm, isGenericException } from '@term/make/code/check/extend'
 
 const EXCEPTION_FORM = exceptionForm()
 import { deckFromPath } from '@term/make/code/compile/roll'
 
+// `decks`: the deck each file belongs to by name, as compile.ts makes it for check/extend (check/tell.tree)
 export function checkTells(
   program: Program,
   file: string,
-  deckOf?: (file: string) => { name: string; root: string } | undefined,
+  decks: { file: string; name: string }[],
 ): Diagnostic[] {
+  const named = new Map(decks.map(d => [d.file, d.name]))
+  const deckOf = (one: string): { name: string } | undefined => {
+    const name = named.get(one)
+
+    return name === undefined ? undefined : { name }
+  }
   const tells = program.filter(
     (s): s is Extract<Statement, { form: 'tell' }> => s.form === 'tell',
   )
@@ -56,7 +63,7 @@ export function checkTells(
 
   // what the app's own tasks and every route can raise: every task of the deck that tells, in whichever of its files
   // it is, and not the standard library's, which raise everything and would make every tell look live
-  const sets = raiseSets(program, new Set([...exceptions.values()].map(e => e.name)))
+  const sets = raiseSetsOf(program, [...new Set([...exceptions.values()].map(e => e.name))])
   const reachable = new Set<string>()
   const telling = new Set(tells.map(hostOf))
 

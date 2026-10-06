@@ -76,7 +76,8 @@ test <an http request nobody answers times out>
       text <>
       wait true
   save outcome, text <answered>
-  note unsafe
+  fork
+    mark unsafe
     call fetch
       text <http://127.0.0.1:47925/>
       bind timeout, code 300

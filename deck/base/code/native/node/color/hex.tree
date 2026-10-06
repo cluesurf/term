@@ -14,8 +14,7 @@ task rgb-to-hex
         read red
         read green
         read blue
-  send back
-    call add
-      text <#>
-      call bytes/to-string
-        text <hex>
+  save digits
+    call bytes/to-string
+      text <hex>
+  send back, text <#{digits}>

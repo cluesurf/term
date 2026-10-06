@@ -64,7 +64,12 @@ task spell
     case map
       back chain(<hash>, two-types(key, value))
     case named
-      back chain(name, args)
+      # an optional list, walked where it is read and never handed to a call, which would write it into the type
+      save solved-args, make list
+      walk args
+        take one
+        push(solved-args, one)
+      back chain(name, solved-args)
     case function
       save written, make list
       walk params
@@ -75,7 +80,11 @@ task spell
             push(written, <({shown})>)
           miss
             push(written, shown)
-      back <task({join(written, <, >)}) -\> {spell(result)}{effects-text(effects)}>
+      save marks, make list
+      walk effects
+        take one
+        push(marks, one)
+      back <task({join(written, <, >)}) -\> {spell(result)}{effects-text(marks)}>
     case variable
       back <unknown>
     miss
@@ -181,12 +190,21 @@ task type-key
     case map
       back <map\<{type-key(key)}, {type-key(value)}\>>
     case named
-      fork test, is-equal(args/length, 0)
+      # optional lists, each walked where it is read: handed to a call it would be written into the type
+      save given-args, make list
+      walk args
+        take one
+        push(given-args, one)
+      fork test, is-equal(given-args/length, 0)
         hold
           back name
-      back <{name}\<{keys-of(args)}\>>
+      back <{name}\<{keys-of(given-args)}\>>
     case function
-      back <({keys-of(params)}) -\> {type-key(result)}{effects-text(effects)}>
+      save marks, make list
+      walk effects
+        take one
+        push(marks, one)
+      back <({keys-of(params)}) -\> {type-key(result)}{effects-text(marks)}>
     case variable
       back <?{id}>
 
@@ -287,7 +305,16 @@ task type-equal
           fork test, or(is-above(value-args/length, 0), is-above(other-values/length, 0))
             hold
               back false
-          back type-lists-equal(args, other-args)
+          # optional lists, each walked where it is read: handed to a call it would be written into the type
+          save these, make list
+          walk args
+            take one
+            push(these, one)
+          save those, make list
+          walk other-args
+            take one
+            push(those, one)
+          back type-lists-equal(these, those)
         miss
           back false
     case function
@@ -297,7 +324,24 @@ task type-equal
           link other-result
           link other-effects
           link other-names
-          back and(and(type-lists-equal(params, other-params), type-equal(result, other-result)), and(texts-equal(effects, other-effects), texts-equal(param-names, other-names)))
+          # optional lists, each walked where it is read: handed to a call it would be written into the type
+          save marks, make list
+          walk effects
+            take one
+            push(marks, one)
+          save other-marks, make list
+          walk other-effects
+            take one
+            push(other-marks, one)
+          save names, make list
+          walk param-names
+            take one
+            push(names, one)
+          save more-names, make list
+          walk other-names
+            take one
+            push(more-names, one)
+          back and(and(type-lists-equal(params, other-params), type-equal(result, other-result)), and(texts-equal(marks, other-marks), texts-equal(names, more-names)))
         miss
           back false
     case variable

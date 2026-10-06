@@ -19,7 +19,8 @@ task text-or-why
   take input, like text
   take key, like text
   like text
-  mark unsafe
+  fork
+    mark unsafe
     save got
       call field-text
         call parse
@@ -40,7 +41,8 @@ task number-or-why
   take input, like text
   take key, like text
   like text
-  mark unsafe
+  fork
+    mark unsafe
     save got
       call field-number
         call parse

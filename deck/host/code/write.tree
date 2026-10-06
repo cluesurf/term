@@ -589,7 +589,7 @@ task number-text
 # a decimal that happens to be whole keeps a `.0`, so it reads back as a decimal
 task decimal-text
   mark private
-  take value, like decimal
+  take value, like float
   like text
   save shown
     call stringify(call from-number(read value))

@@ -24,11 +24,11 @@ test <a list of lists built by pushing>
   want hold
     call and
       call is-equal
-        call size
+        call length
           read rows
         code 2
       call is-equal
-        call size
+        call length
           call get
             read rows
             code 0

@@ -160,7 +160,7 @@ task round-hex
 
 // json/code.tree's read-json/write-json, a real stress test beyond hex: recursive descent through a tagged
 // union (json-value's 6 cases) rather than a flat loop, the one dialect with a form that refers to itself
-// through a list, and the one with a real `like decimal` accumulator (feedback_term_decimal_vs_number_no_implicit_conversion).
+// through a list, and the one with a real `like float` accumulator (feedback_term_decimal_vs_number_no_implicit_conversion).
 // Fixtures: deck/feed/test/json.tree's own, compact (write-json always produces no spaces).
 const JSON_SUITE: Suite = {
   id: 'json',
@@ -683,7 +683,7 @@ task round-otf-cmap
 }
 
 // deck/feed/test/pdf-object.tree's own fixtures: a dictionary (the number-vs-reference lookahead does not fire),
-// an array of two indirect references (it does, twice), and a negative decimal (the same `like decimal`
+// an array of two indirect references (it does, twice), and a negative decimal (the same `like float`
 // accumulator shape json's own number parser needed — see feedback_term_decimal_vs_number_no_implicit_
 // conversion).
 const PDF_OBJECT: Suite = {

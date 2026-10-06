@@ -147,7 +147,8 @@ task ratio
 
 task run
   like text
-  mark unsafe
+  fork
+    mark unsafe
     save never, ratio(make-rational(1, 2), make-rational(0, 3))
     back rational-text(never)
   halt take

@@ -29,7 +29,7 @@ function compiles(source: string): boolean {
 ok(
   'n + 1 != 0 for a natural n (strict separation above)',
   compiles(`rule succ-not-zero
-  mark n, like natural-number
+  seat n, like natural-number
   show hold
     call is-unequal
       call add
@@ -44,7 +44,7 @@ ok(
 ok(
   'n != n + 1 for any integer n (strict separation below)',
   compiles(`rule self-not-successor
-  mark n, like integer
+  seat n, like integer
   show hold
     call is-unequal
       read n
@@ -60,7 +60,7 @@ ok(
 ok(
   'non-tautological disequality is rejected (n != 0 for a natural n)',
   !compiles(`rule maybe-zero
-  mark n, like natural-number
+  seat n, like natural-number
   show hold
     call is-unequal
       read n
@@ -73,7 +73,7 @@ ok(
 ok(
   'integer n + 1 != 0 is rejected (n could be -1)',
   !compiles(`rule succ-not-zero-int
-  mark n, like integer
+  seat n, like integer
   show hold
     call is-unequal
       call add
@@ -90,8 +90,8 @@ ok(
 ok(
   'gcd test: 2a + 4b != 3 (no integer solution, gcd 2 does not divide 3)',
   compiles(`rule gcd-refutes
-  mark a, like integer
-  mark b, like integer
+  seat a, like integer
+  seat b, like integer
   show hold
     call is-unequal
       call add
@@ -111,8 +111,8 @@ ok(
 ok(
   'gcd test soundness: 2a + 4b != 6 is rejected (a = 1, b = 1 is a solution)',
   !compiles(`rule gcd-allows
-  mark a, like integer
-  mark b, like integer
+  seat a, like integer
+  seat b, like integer
   show hold
     call is-unequal
       call add

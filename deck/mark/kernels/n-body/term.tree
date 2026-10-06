@@ -16,13 +16,13 @@ load @term/base/text
 # it changes, the way the Rust entry keeps a [Planet; 5] of plain structs. 64-bit floats, printed to 9 decimals.
 
 form body
-  link x, like decimal
-  link y, like decimal
-  link z, like decimal
-  link vx, like decimal
-  link vy, like decimal
-  link vz, like decimal
-  link mass, like decimal
+  link x, like float
+  link y, like float
+  link z, like float
+  link vx, like float
+  link vy, like float
+  link vz, like float
+  link mass, like float
 
 # the body at an index, through the list's typed `get`: a bare `read bodies/{i}` reaches Rust untyped, so arithmetic
 # on its fields is emitted as integer arithmetic, and returning it as a body emits a downcast a Body does not have
@@ -38,7 +38,7 @@ task body-at
       read i
 
 task solar-mass
-  like decimal
+  like float
   send back
     call multiply
       call multiply
@@ -47,18 +47,18 @@ task solar-mass
       code 3.141592653589793
 
 task days-per-year
-  like decimal
+  like float
   send back, code 365.24
 
 # a planet from its position, its velocity per day and its mass in suns
 task planet
-  take x, like decimal
-  take y, like decimal
-  take z, like decimal
-  take vx, like decimal
-  take vy, like decimal
-  take vz, like decimal
-  take mass, like decimal
+  take x, like float
+  take y, like float
+  take z, like float
+  take vx, like float
+  take vy, like float
+  take vz, like float
+  take mass, like float
   like body
   send back
     make body
@@ -144,7 +144,7 @@ task energy
   take bodies
     like list
       like body
-  like decimal
+  like float
   save e, code 0.0
   save count, code 5
   walk size
@@ -227,7 +227,7 @@ task advance
   take bodies
     like list
       like body
-  take dt, like decimal
+  take dt, like float
   save count, code 5
   walk size
     bind base, code 0
@@ -373,7 +373,7 @@ task advance
 
 # x to 9 decimals: |x| times 10^9, rounded to the nearest whole, laid out, with the sign
 task fixed-9
-  take x, like decimal
+  take x, like float
   like text
   save sign, text <>
   save magnitude, read x

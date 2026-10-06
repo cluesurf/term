@@ -133,9 +133,9 @@ task compose
 {
   const out = accepted(`${MATRICES}
 rule compose-is-associative
-  mark m, like square
-  mark n, like square
-  mark p, like square
+  seat m, like square
+  seat n, like square
+  seat p, like square
   show hold
     call is-equal
       call compose
@@ -156,8 +156,8 @@ rule compose-is-associative
 {
   const out = accepted(`${MATRICES}
 rule compose-is-commutative
-  mark m, like square
-  mark n, like square
+  seat m, like square
+  seat n, like square
   show hold
     call is-equal
       call compose

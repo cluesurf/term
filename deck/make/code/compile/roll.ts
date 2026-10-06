@@ -8,7 +8,7 @@ import type {
   Program,
   Statement,
 } from '@term/make/code/compile/node'
-import { raiseSets } from '@term/make/code/check/effects'
+import { raiseSetsOf } from '@term/make/code/check/effects'
 import { exceptionForm, isGenericException } from '@term/make/code/check/extend'
 
 const EXCEPTION_FORM = exceptionForm()
@@ -133,7 +133,7 @@ export function buildRoll(
   // `failure` always: a native shim raises it by construction, and the program holds its form only when the closure
   // kept it, so without it one task's raises changed with whichever entry built the roll (task/term/roll-cover.ts
   // found `float-floor` raising in some entries' rolls and not in others, 2026-10-05)
-  const sets = raiseSets(program, new Set([...exceptions, 'failure']))
+  const sets = raiseSetsOf(program, [...new Set([...exceptions, 'failure'])])
 
   const roll: Roll = {
     deck: [],
@@ -244,9 +244,10 @@ export function buildRoll(
     let at = name
 
     while (chain.length < 64) {
+      // a direct raise is recorded as the empty text
       const next = sets.via.get(at)?.get(exception)
 
-      if (next === undefined) {
+      if (!next) {
         break
       }
 

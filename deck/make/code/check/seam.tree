@@ -1,0 +1,215 @@
+# THE GRADUAL SEAM. Whether an `unknown` may flow into a place that wants a type of its own, as TypeScript's `any` does
+# (the switch off), or must be narrowed first by a `sift` over its type, as TypeScript's `unknown` must (on). Off until
+# the repository is moved and the decision is made (note/term/plan/decisions-2026-10.md, D1), and on for a census with
+# TERM_UNKNOWN_SEAM=1. A `dynamic`, the FFI's `any`, flows both ways either way. test/compile/unknown-narrow.ts.
+#
+# Ported from check/seam.ts (self-hosting, 2026-10-06). The switch is module state, which Term holds none of: it lives
+# in check/strict.ts beside the strict inference switch, and the checker hands it to `unknown-seam`.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/text
+  find split
+  find substring
+
+load ../parser/diagnostic
+  find diagnostic
+  find diagnose
+  find diagnostic-input
+  find span
+
+load ../compile/node
+  find expression
+  find type
+
+load ../compile/type-text
+  find show-type
+
+load ./substitution
+  find resolve-type
+  find substitution
+
+# the types an arm of a `sift` over an `unknown` can name, which every backend can tell apart in its dynamic value
+task narrowable
+  like list, like text
+
+  save out, make list
+  push(out, <number>)
+  push(out, <float>)
+  push(out, <text>)
+  push(out, <boolean>)
+  back out
+
+# THE TESTS THAT NARROW AN `unknown` in the branch they guard, each to the `sift` arm it is the same as:
+# `fork test, is-text(value)` is `sift value / case text` (check/infer.ts `narrowsUnknown`). They have no definition: the
+# resolver lets one through only as a branch's whole test of one local (check/resolve.ts), and the checker rewrites it
+# there, or refuses it
+form type-test
+  link test, like text
+  link label, like text
+  link subject, like text
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false
+
+# a name as written, an overload's arity or type suffix removed: the original's `/__\d+(__\d+)?$/`
+task written-test
+  take name, like text
+  like text
+  mark private
+
+  save one-cut, digits-cut(name, name/length)
+  fork test, is-below(one-cut, 0)
+    hold
+      back name
+  # the leftmost match is the longer one where it exists: `__d__d` at the end
+  save two-cut, digits-cut(name, one-cut)
+  fork test, is-minimum(two-cut, 0)
+    hold
+      back substring(name, 0, two-cut)
+  back substring(name, 0, one-cut)
+
+# where `__` and a run of digits ending at `end` begin, or -1 where the text does not end so there
+task digits-cut
+  take name, like text
+  take end, like number
+  like number
+  mark private
+
+  save digits, split(<0123456789>, <>)
+  save at, end
+  walk test
+    hook test, and(is-above(at, 0), has-text(digits, substring(name, subtract(at, 1), at)))
+    hook hold
+      save at, subtract(at, 1)
+  fork test, is-equal(at, end)
+    hold
+      back -1
+  fork test, and(is-minimum(at, 2), is-equal(substring(name, subtract(at, 2), at), <__>))
+    hold
+      back subtract(at, 2)
+  back -1
+
+# a branch test that is one of them applied to one local, `is-text(value)`, by its name and the local's
+task type-test-of
+  take cond, like expression
+  like maybe, like type-test
+
+  sift cond
+    case call
+      fork test, is-unequal(args/length, 1)
+        hold
+          back make none
+      save callee-name, <>
+      sift callee
+        case variable
+          save callee-name, name
+        miss
+          back make none
+      save subject-name, <>
+      save subject, get(args, 0)
+      sift subject
+        case variable
+          save subject-name, name
+        miss
+          back make none
+      # an overload renamed by arity or type keeps its written name before the suffix (check/disambiguate.tree)
+      save test-name, written-test(callee-name)
+      walk narrowable()
+        take one
+        fork test, is-equal(test-name, <is-{one}>)
+          hold
+            save found
+              make type-test
+                bind test, test-name
+                bind label, one
+                bind subject, subject-name
+            back make(some, found)
+      back make none
+    miss
+      back make none
+
+# a type a value of its own goes into: not the gradual pair, and not a variable still being solved
+task typed
+  take given, like type
+  like boolean
+  mark private
+
+  sift given
+    case unknown
+      back false
+    case dynamic
+      back false
+    case variable
+      back false
+    miss
+      back true
+
+task is-unknown
+  take given, like type
+  like boolean
+  mark private
+
+  sift given
+    case unknown
+      back true
+    miss
+      back false
+
+# the refusal of an `unknown` handed to a typed place, when the seam is `on` and the two sides already unified
+task unknown-seam
+  take on, like boolean
+  take sub, like substitution
+  take actual, like type
+  take wanted, like type
+  take at, like span
+  take what, like text
+  take file, like text
+  like list, like diagnostic
+
+  save out, make list
+  fork test, not(on)
+    hold
+      back out
+  fork test, not(is-unknown(resolve-type(sub, actual)))
+    hold
+      back out
+  save resolved, resolve-type(sub, wanted)
+  fork test, not(typed(resolved))
+    hold
+      back out
+  save shown, show-type(resolved)
+  save article, <a>
+  fork test, is-above(shown/length, 0)
+    hold
+      fork test, has-text(split(<aeiou>, <>), substring(shown, 0, 1))
+        hold
+          save article, <an>
+  save hint, <{article} {shown} cannot be told apart inside an unknown on every backend: take `like {shown}` where the value is made, or give it a form with a case per kind it can be>
+  fork test, has-text(narrowable(), shown)
+    hold
+      save hint, <test what it holds: `sift value` with a `case {shown}` arm, inside which it is {article} {shown}, and a `miss`>
+  save input
+    make diagnostic-input
+      bind file, file
+      bind span, at
+      bind message, make(some, <{what}: an unknown value where {article} {shown} is wanted. An unknown can hold any value, so it is narrowed first, by a `sift` over its type>)
+      bind hint, make(some, hint)
+  save kind, make type-mismatch
+  push(out, diagnose(kind, input))
+  back out

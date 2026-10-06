@@ -1,0 +1,233 @@
+# Supervision trees checked before they run (deck/base/code/supervisor.tree, note/term/research/beam-otp-lessons.md
+# design 4). OTP validates a supervisor's flags when it starts and documents the rest. Most of that is structural in
+# Term already: a strategy and a restart type are variant forms, so a wrong one cannot be written, a nested supervisor
+# has no shutdown to get wrong, and `make-supervisor` owes `intensity >= 0` and `period > 0` to the prover at every
+# call. What is left needs the raise sets, and lives here:
+#
+#   a `transient` worker restarts only when its work raises, so one whose work can raise NOTHING never restarts. OTP
+#   runs it and never says so. Here the build refuses it.
+#
+# Reads every `make worker` the program builds whose `restart` is `make transient` and whose `work` is a task literal.
+# A work given by name rather than written in place is not judged, since what it raises is the named task's set and a
+# worker built from a parameter can be anything.
+#
+# Ported from check/supervise.ts (self-hosting, 2026-10-05). Its record walk is compile/node-reach.tree's, in the
+# original's order, with its skipped fields.
+
+load @term/base/list
+  find list
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load ../parser/diagnostic
+  find diagnostic
+  find diagnose
+  find diagnostic-input
+  find span
+
+load ../compile/node
+  find expression
+  find field-value
+  find statement
+
+load ../compile/node-reach
+  find reach-statements
+
+load ./effects
+  find raise-sets-of
+
+# the value of a construction's field by name, the first of the name
+task field-of
+  take fields, like list, like field-value
+  take name, like text
+  like maybe, like expression
+  mark private
+
+  walk fields
+    take one
+    fork test, is-equal(one/name, name)
+      hold
+        save found, one/value
+        back make(some, found)
+  back make none
+
+# whether a construction's field holds a construction of `want`
+task field-makes
+  take fields, like list, like field-value
+  take field-name, like text
+  take want, like text
+  like boolean
+  mark private
+
+  sift field-of(fields, field-name)
+    case some
+      link given
+      sift given
+        # the construction's own name, which the arm binds
+        case record
+          back is-equal(name, want)
+        miss
+          back false
+    case none
+      back false
+
+form worker-site
+  link record, like expression
+  link body, like list, like statement
+  link at, like span
+
+task check-supervision
+  take program, like list, like statement
+  take file, like text
+  like list, like diagnostic
+
+  save diagnostics, make list
+  # only a program that has the stdlib supervisor's own worker variant: a `worker` of some other form is not this
+  save supervised, false
+  walk program
+    take one
+    sift one
+      case record-type
+        fork test, is-equal(name, <child>)
+          hold
+            walk variants
+              take variant
+              fork test, is-equal(variant/name, <worker>)
+                hold
+                  save supervised, true
+      miss
+        save nothing, 0
+  fork test, not(supervised)
+    hold
+      back diagnostics
+  # every construction under every task's body, in the order a walk of it meets them
+  save skip, make list
+  push(skip, <type>)
+  push(skip, <span>)
+  save workers, make list
+  walk program
+    take one
+    sift one
+      case function
+        save reached, reach-statements(body, skip)
+        walk reached/expressions
+          take node
+          sift node
+            case record
+              fork test, and(is-equal(name, <worker>), field-makes(fields, <restart>, <transient>))
+                hold
+                  sift field-of(fields, <work>)
+                    case some
+                      link work
+                      sift work
+                        case closure
+                          save site
+                            make worker-site
+                              bind record, node
+                              bind body, body
+                              bind at, span
+                          push(workers, site)
+                        miss
+                          save nothing, 0
+                    case none
+                      save nothing, 0
+            miss
+              save nothing, 0
+      miss
+        save nothing, 0
+  fork test, is-equal(workers/length, 0)
+    hold
+      back diagnostics
+  # each work's raise set: the closure's body as a task of its own, so its direct raises and its callees' are read by
+  # the same fixed point every other raise set is
+  save exceptions, make list
+  walk program
+    take one
+    sift one
+      case record-type
+        save chained, false
+        walk read(chain)
+          take link-name
+          fork test, is-equal(link-name, <exception>)
+            hold
+              save chained, true
+        fork test, and(chained, not(has-text(exceptions, name)))
+          hold
+            push(exceptions, name)
+      miss
+        save nothing, 0
+  save probed, make list
+  walk program
+    take one
+    push(probed, one)
+  walk workers
+    take worker
+    take i
+    save no-params, make list
+    save no-generics, make list
+    save probe
+      make statement/function
+        bind name, <__supervised-work-{i}>
+        bind params, no-params
+        bind body, worker/body
+        bind generics, no-generics
+        bind span, worker/at
+    push(probed, probe)
+  save sets, raise-sets-of(probed, exceptions)
+  walk workers
+    take worker
+    take i
+    save probe-name, <__supervised-work-{i}>
+    fork test, sets/raises/has(probe-name)
+      hold
+        save raised, sets/raises/get(probe-name)
+        fork test, is-above(raised/length, 0)
+          hold
+            turn next
+    save record, worker/record
+    sift record
+      case record
+        save label, <this>
+        sift field-of(fields, <name>)
+          case some
+            link given
+            sift given
+              case string
+                link written
+                save label, <"{written}">
+              miss
+                save nothing, 0
+          case none
+            save nothing, 0
+        save here, file
+        sift span/file
+          case some
+            link written
+            save here, written
+          case none
+            save nothing, 0
+        save input
+          make diagnostic-input
+            bind file, here
+            bind span, span
+            bind message, make(some, <the transient worker {label} can raise nothing, so it is never restarted: a transient worker restarts only when its work raises>)
+        save kind, make dead-restart
+        push(diagnostics, diagnose(kind, input))
+      miss
+        save nothing, 0
+  back diagnostics
+
+task has-text
+  take values, like list, like text
+  take value, like text
+  like boolean
+  mark private
+
+  walk values
+    take one
+    fork test, is-equal(one, value)
+      hold
+        back true
+  back false

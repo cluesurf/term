@@ -1,0 +1,1544 @@
+# Totality: the two checks that keep the logic sound once definitions become proof-relevant.
+#
+# 1. Strict positivity (hard error). A datatype may not refer to itself in a negative position (to the left of an
+#    arrow) within its own fields. Negative occurrences let you build a non-terminating loop and thus a proof of
+#    falsehood, so they are rejected outright. See note/research/vibe/computation/plans/18-type-theory-gaps.md.
+# 2. Termination (warning). A recursive function should decrease some argument on every self-call, so it cannot spin
+#    forever. The structural / numeric-descent fragment is verified; recursion that cannot be shown to end is flagged
+#    (a warning today, because functions are still opaque postulates to the kernel; it becomes a hard error once
+#    functions are made transparent / usable as proofs).
+#
+# Ported from check/totality.ts (self-hosting, 2026-10-06), which stays as the face, so this module has a name of its
+# own. Three things come in from it: the
+# linear prover (`proves`, check/refine.ts, whose memo and count of uncertified answers are module state, so the
+# prover is asked exactly what and when the original asked it), whether a match arm WROTE its `binds` (an arm a
+# rewrite gave an empty list reads no variant's fields, where an arm with none does, and Term reads an absent list as
+# empty), and the guard that turns a failed termination pass into no warnings. The original handed each walk a callback
+# per call and kept the walk's own map of members, which a later rebinding in the same body still changes; here every
+# call is recorded with the frame it was made in (`call-at`), a shared record whose members change the same way, and
+# filtered afterwards in the order it was visited.
+
+load @term/base/list
+  find list
+  find contains
+  find get
+
+load @term/base/maybe
+  find maybe
+
+load @term/base/float
+  find to-decimal
+
+load @term/base/rune
+  find rune-to-text
+
+load ../parser/diagnostic
+  find diagnostic
+  find diagnose
+  find diagnostic-input
+  find span
+
+load ../compile/node
+  find expression
+  find expression-span
+  find match-case
+  find statement
+  find statement-span
+  find type
+
+load ./certificate
+  find linear
+  find inequality
+
+load ./eliminate
+  find at-least
+
+load ./purity
+  find block-written
+  find statement-written
+  find local-names
+  find everything
+
+form totality-report
+  link errors, like list, like diagnostic
+  link warnings, like list, like diagnostic
+
+# ---- strict positivity ----
+
+# does `name` occur in `given` at a negative position, given the current polarity? Positive (true) is fine; negative
+# (false) is the violation. Function parameters flip polarity; array elements and results keep it.
+task negative-occurrence
+  take name, like text
+  take given, like type
+  take positive, like boolean
+  like boolean
+  mark private
+
+  sift given
+    case named
+      link type-name
+      back and(is-equal(type-name, name), not(positive))
+    case array
+      back negative-occurrence(name, element, positive)
+    case function
+      # a parameter is contravariant (its polarity flips); the result keeps the current polarity
+      walk params
+        take param
+        fork test, negative-occurrence(name, param, not(positive))
+          hold
+            back true
+      back negative-occurrence(name, result, positive)
+    miss
+      back false
+
+task positivity-errors
+  take program, like list, like statement
+  take file, like text
+  like list, like diagnostic
+
+  save errors, make list
+  walk program
+    take one
+    sift one
+      case record-type
+        save record-name, name
+        save record-span, span
+        save fields-names, make list
+        save fields-types, make list
+        walk fields
+          take field
+          push(fields-names, field/name)
+          push(fields-types, field/type)
+        walk variants
+          take variant
+          walk variant/fields
+            take field
+            push(fields-names, field/name)
+            push(fields-types, field/type)
+        save at, 0
+        walk fields-types
+          take field-type
+          fork test, negative-occurrence(record-name, field-type, true)
+            hold
+              save field-name, get(fields-names, at)
+              save input
+                make diagnostic-input
+                  bind file, file
+                  bind span, record-span
+                  bind message, make(some, <"{record-name}" occurs in a non-positive position in field "{field-name}">)
+              save kind, make non-positive
+              push(errors, diagnose(kind, input))
+          save at, add(at, 1)
+      miss
+        save nothing, 0
+  back errors
+
+# ---- linear facts, for numeric descent ----
+
+task one-variable
+  take name, like text
+  like linear
+  mark private
+
+  save terms, make hash
+  save terms/{name}, 1.0
+  back
+    make linear
+      bind terms, terms
+      bind constant, 0.0
+
+task constant-only
+  take value, like float
+  like linear
+  mark private
+
+  back
+    make linear
+      bind terms, make hash
+      bind constant, value
+
+# a linear expression with `c` added to its constant, its terms shared as the original's spread shared them
+task shifted
+  take given, like linear
+  take c, like float
+  like linear
+  mark private
+
+  back
+    make linear
+      bind terms, given/terms
+      bind constant, add(given/constant, c)
+
+# a linear expression over variables and integer literals, or none
+task linear-of
+  take e, like expression
+  like maybe, like linear
+  mark private
+
+  sift e
+    case variable
+      save single, one-variable(name)
+      back make(some, single)
+    case integer
+      save fixed, constant-only(to-decimal(value))
+      back make(some, fixed)
+    case unary
+      sift op
+        case negate
+          sift linear-of(operand)
+            case some
+              link inner
+              save terms, make hash
+              walk inner/terms/keys()
+                take k
+                save terms/{k}, multiply(-1.0, inner/terms/get(k))
+              save negated
+                make linear
+                  bind terms, terms
+                  bind constant, multiply(-1.0, inner/constant)
+              back make(some, negated)
+            case none
+              back make none
+        miss
+          back make none
+    case binary
+      save left-found, linear-of(left)
+      save right-found, linear-of(right)
+      sift left-found
+        case some
+          link l
+          sift right-found
+            case some
+              link r
+              back linear-binary(op, l, r)
+            case none
+              back make none
+        case none
+          back make none
+    miss
+      back make none
+
+task linear-binary
+  take op, like binary-op
+  take l, like linear
+  take r, like linear
+  like maybe, like linear
+  mark private
+
+  save sign, 0.0
+  sift op
+    case plus
+      save sign, 1.0
+    case minus
+      save sign, -1.0
+    case times
+      save l-size, l/terms/keys()
+      save r-size, r/terms/keys()
+      fork test, or(is-equal(l-size/length, 0), is-equal(r-size/length, 0))
+        hold
+          save k, r/constant
+          save v, l
+          fork test, is-equal(l-size/length, 0)
+            hold
+              save k, l/constant
+              save v, r
+          save terms, make hash
+          walk v/terms/keys()
+            take name
+            save terms/{name}, multiply(k, v/terms/get(name))
+          save scaled
+            make linear
+              bind terms, terms
+              bind constant, multiply(k, v/constant)
+          back make(some, scaled)
+      back make none
+    miss
+      back make none
+  save terms, make hash
+  walk l/terms/keys()
+    take k
+    save terms/{k}, l/terms/get(k)
+  walk r/terms/keys()
+    take k
+    save before, 0.0
+    fork test, terms/has(k)
+      hold
+        save before, terms/get(k)
+    save terms/{k}, add(before, multiply(sign, r/terms/get(k)))
+  save summed
+    make linear
+      bind terms, terms
+      bind constant, add(l/constant, multiply(sign, r/constant))
+  back make(some, summed)
+
+# the comparison a binary condition makes, as its symbol, flipped when it is negated: `<>` when it makes none
+task comparison
+  take op, like binary-op
+  take negated, like boolean
+  like text
+  mark private
+
+  save plain, <>
+  save flipped, <>
+  sift op
+    case below
+      save plain, <\<>
+      save flipped, <\>=>
+    case at-most
+      save plain, <\<=>
+      save flipped, <\>>
+    case above
+      save plain, <\>>
+      save flipped, <\<=>
+    case at-least
+      save plain, <\>=>
+      save flipped, <\<>
+    case equal
+      save plain, <==>
+      save flipped, <!=>
+    case unequal
+      save plain, <!=>
+      save flipped, <==>
+    miss
+      save nothing, 0
+  fork test, negated
+    hold
+      back flipped
+  back plain
+
+task is-op
+  take op, like binary-op
+  take symbol, like text
+  like boolean
+  mark private
+
+  sift op
+    case both
+      back is-equal(symbol, <&&>)
+    case either
+      back is-equal(symbol, <||>)
+    case unequal
+      back is-equal(symbol, <!=>)
+    case equal
+      back is-equal(symbol, <==>)
+    miss
+      back false
+
+task push-all
+  take into, like list, like inequality
+  take from, like list, like inequality
+  like void
+  mark private
+
+  walk from
+    take one
+    push(into, one)
+
+# what a condition says, or its negation says, as linear facts. A condition it cannot read says nothing
+task condition-facts
+  take cond, like expression
+  take negated, like boolean
+  like list, like inequality
+  mark private
+
+  save out, make list
+  sift cond
+    case unary
+      sift op
+        case not
+          back condition-facts(operand, not(negated))
+        miss
+          back out
+    case binary
+      fork test, or(and(is-op(op, <&&>), not(negated)), and(is-op(op, <||>), negated))
+        hold
+          push-all(out, condition-facts(left, negated))
+          push-all(out, condition-facts(right, negated))
+          back out
+      sift linear-of(left)
+        case some
+          link l
+          sift linear-of(right)
+            case some
+              link r
+              # integers: a strict comparison is a non-strict one shifted by 1
+              save symbol, comparison(op, negated)
+              fork test, is-equal(symbol, <\>=>)
+                hold
+                  push(out, at-least(l, r))
+              fork test, is-equal(symbol, <\>>)
+                hold
+                  push(out, at-least(l, shifted(r, 1.0)))
+              fork test, is-equal(symbol, <\<=>)
+                hold
+                  push(out, at-least(r, l))
+              fork test, is-equal(symbol, <\<>)
+                hold
+                  push(out, at-least(r, shifted(l, 1.0)))
+              fork test, is-equal(symbol, <==>)
+                hold
+                  push(out, at-least(l, r))
+                  push(out, at-least(r, l))
+              back out
+            case none
+              back out
+        case none
+          back out
+    miss
+      back out
+
+task guard-facts
+  take guards, like list, like expression
+  like list, like inequality
+  mark private
+
+  save out, make list
+  walk guards
+    take g
+    push-all(out, condition-facts(g, false))
+  back out
+
+# A DISEQUALITY BESIDE A BOUND IS A TIGHTER BOUND, over the integers: `n != 0` where `n >= 0` is known gives `n >= 1`.
+# It is how the `miss` arm of `n == 0` on a natural number reads, the commonest recursion in the library (every sum of
+# number/sum.tree), whose `n - 1` was not seen to descend. A disequality says nothing by itself, so it is only read
+# against a bound the facts already prove at its constant
+task sharpened
+  take facts, like list, like inequality
+  take guards, like list, like expression
+  take proves
+    like task
+      take assumptions, like list, like inequality
+      take goal, like inequality
+      like boolean
+  like list, like inequality
+  mark private
+
+  save out, make list
+  push-all(out, facts)
+  walk guards
+    take guard
+    sift differs-of(guard)
+      case some
+        link differs
+        sift differs
+          case binary
+            sift linear-of(left)
+              case some
+                link l
+                sift linear-of(right)
+                  case some
+                    link r
+                    fork test, proves(out, at-least(l, r))
+                      hold
+                        push(out, at-least(l, shifted(r, 1.0)))
+                      miss
+                        fork test, proves(out, at-least(r, l))
+                          hold
+                            push(out, at-least(r, shifted(l, 1.0)))
+                  case none
+                    turn next
+              case none
+                turn next
+          miss
+            turn next
+      case none
+        turn next
+  back out
+
+# the disequality a guard states: `a != b`, or `!(a == b)`
+task differs-of
+  take guard, like expression
+  like maybe, like expression
+  mark private
+
+  sift guard
+    case binary
+      fork test, is-op(op, <!=>)
+        hold
+          back make(some, guard)
+      back make none
+    case unary
+      sift op
+        case not
+          sift operand
+            case binary
+              fork test, is-op(op, <==>)
+                hold
+                  back make(some, operand)
+              back make none
+            miss
+              back make none
+        miss
+          back make none
+    miss
+      back make none
+
+# `n >= 0` for each natural-number parameter: the bound its type promises, which a descent on it may use
+task natural-guards
+  take one, like statement
+  like list, like expression
+  mark private
+
+  save out, make list
+  sift one
+    case function
+      save at-span, span
+      walk params
+        take param
+        sift param/refine
+          case some
+            link refinement
+            save left
+              make variable
+                bind name, param/name
+                bind span, at-span
+            save right
+              make integer
+                bind value, 0
+                bind span, at-span
+            save bound
+              make binary
+                bind op, make at-least
+                bind left, left
+                bind right, right
+                bind span, at-span
+            push(out, bound)
+          case none
+            turn next
+    miss
+      save nothing, 0
+  back out
+
+# ---- termination ----
+
+# the frame a walk of one body keeps: the field-origin context (which variables are destructured fields of which
+# subject) and the conditions known true on the path. A call is recorded with its frame, so a rebinding later in the
+# same body changes what the call's members say, as the original's one live map did
+form frame
+  mark shared
+  link members, like hash, like text, like text
+  link path, like list, like expression
+
+form call-at
+  link callee, like text
+  link args, like list, like expression
+  link frame, like frame
+  link guards, like list, like expression
+
+form walked
+  mark shared
+  link calls, like list, like call-at
+  link values, like list, like text
+  link variant-fields, like hash, like text, like list, like text
+
+task copy-members
+  take members, like hash, like text, like text
+  like hash, like text, like text
+  mark private
+
+  save out, make hash
+  walk members/keys()
+    take k
+    save out/{k}, members/get(k)
+  back out
+
+task members-without
+  take members, like hash, like text, like text
+  take names, like list, like text
+  like hash, like text, like text
+  mark private
+
+  save out, copy-members(members)
+  walk names
+    take name
+    out/remove(name)
+  back out
+
+task joined
+  take first, like list, like expression
+  take second, like list, like expression
+  like list, like expression
+  mark private
+
+  save out, make list
+  walk first
+    take one
+    push(out, one)
+  walk second
+    take one
+    push(out, one)
+  back out
+
+task one-of
+  take value, like expression
+  like list, like expression
+  mark private
+
+  save out, make list
+  push(out, value)
+  back out
+
+# does an expression read the name?
+task mentions
+  take e, like expression
+  take wanted, like text
+  like boolean
+  mark private
+
+  sift e
+    case variable
+      link read-name
+      back is-equal(read-name, wanted)
+    case binary
+      back or(mentions(left, wanted), mentions(right, wanted))
+    case unary
+      back mentions(operand, wanted)
+    case call
+      fork test, mentions(callee, wanted)
+        hold
+          back true
+      walk args
+        take arg
+        fork test, mentions(arg, wanted)
+          hold
+            back true
+      back false
+    case member
+      back mentions(target, wanted)
+    miss
+      back true
+
+# the guards that still speak of the same values once `names` are rebound
+task without
+  take guards, like list, like expression
+  take names, like list, like text
+  like list, like expression
+  mark private
+
+  fork test, is-equal(names/length, 0)
+    hold
+      back guards
+  save out, make list
+  walk guards
+    take g
+    save kept, true
+    walk names
+      take name
+      fork test, mentions(g, name)
+        hold
+          save kept, false
+          halt
+    fork test, kept
+      hold
+        push(out, g)
+  back out
+
+task negation
+  take cond, like expression
+  like expression
+  mark private
+
+  back
+    make unary
+      bind op, make not
+      bind operand, cond
+      bind span, expression-span(cond)
+
+# a body that always leaves (returns or raises) at its end
+task exits
+  take body, like list, like statement
+  like boolean
+  mark private
+
+  fork test, is-equal(body/length, 0)
+    hold
+      back false
+  sift get(body, subtract(body/length, 1))
+    case return
+      back true
+    case throw
+      back true
+    case exit
+      back true
+    miss
+      back false
+
+task forget
+  take frame, like frame
+  take names, like list, like text
+  like void
+  mark private
+
+  walk names
+    take name
+    frame/members/remove(name)
+  save frame/path, without(frame/path, names)
+
+# Walk a statement body, recording every call with a variable callee and every name read as a VALUE. A NAME IS A
+# VALUE ONLY UNTIL IT IS REBOUND: a `save`, an assignment, a closure's or a walk's parameter, or a field of a match on
+# something other than a plain variable gives a name a new value, so from there on it is no longer the field it was,
+# and no guard about its old value holds. Each walk keeps its own copy of both, so a rebinding is seen by what follows
+# it and by the bodies nested in it, and never by a sibling.
+task walk-calls
+  take out, like walked
+  take body, like list, like statement
+  take members, like hash, like text, like text
+  take guards, like list, like expression
+  take binds-given
+    like task
+      take arm, like match-case
+      like boolean
+  like void
+  mark private
+
+  save frame
+    make frame
+      bind members, copy-members(members)
+      bind path, guards
+  walk body
+    take one
+    visit-statement(out, frame, one, binds-given)
+
+task visit-expression
+  take out, like walked
+  take frame, like frame
+  take node, like expression
+  take at, like list, like expression
+  take binds-given
+    like task
+      take arm, like match-case
+      like boolean
+  like void
+  mark private
+
+  sift node
+    case variable
+      push(out/values, name)
+    case call
+      # a named callee is a call, not a value: reading it as a value would count every call twice
+      sift callee
+        case variable
+          link callee-name
+          save made
+            make call-at
+              bind callee, callee-name
+              bind args, args
+              bind frame, frame
+              bind guards, at
+          push(out/calls, made)
+        miss
+          visit-expression(out, frame, callee, at, binds-given)
+      walk args
+        take arg
+        visit-expression(out, frame, arg, at, binds-given)
+    case binary
+      visit-expression(out, frame, left, at, binds-given)
+      visit-expression(out, frame, right, at, binds-given)
+    case unary
+      visit-expression(out, frame, operand, at, binds-given)
+    case member
+      visit-expression(out, frame, target, at, binds-given)
+    case await
+      visit-expression(out, frame, expr, at, binds-given)
+    case template
+      walk parts
+        take part
+        sift part
+          case value
+            link inner
+            visit-expression(out, frame, inner, at, binds-given)
+          case chunk
+            turn next
+    case array
+      walk items
+        take item
+        visit-expression(out, frame, item, at, binds-given)
+    case map
+      walk entries
+        take entry
+        visit-expression(out, frame, entry/key, at, binds-given)
+        visit-expression(out, frame, entry/value, at, binds-given)
+    case record
+      walk fields
+        take field
+        visit-expression(out, frame, field/value, at, binds-given)
+    case conditional
+      # a branch's value is reached when its condition holds and every earlier one failed
+      save failed, make list
+      walk branches
+        take branch
+        visit-expression(out, frame, branch/cond, joined(at, failed), binds-given)
+        visit-expression(out, frame, branch/value, joined(joined(at, failed), one-of(branch/cond)), binds-given)
+        push(failed, negation(branch/cond))
+      sift otherwise
+        case some
+          link last
+          visit-expression(out, frame, last, joined(at, failed), binds-given)
+        case none
+          save nothing, 0
+    case closure
+      # a self-call inside an inline function value is still a recursion. Its body is walked with the SAME members,
+      # less the names its own parameters rebind. A closure may run long after the path that made it, so it carries no
+      # guard
+      save names, make list
+      walk params
+        take param
+        push(names, param/name)
+      save unguarded, make list
+      walk-calls(out, body, members-without(frame/members, names), unguarded, binds-given)
+    miss
+      save nothing, 0
+
+task visit-statement
+  take out, like walked
+  take frame, like frame
+  take node, like statement
+  take binds-given
+    like task
+      take arm, like match-case
+      like boolean
+  like void
+  mark private
+
+  sift node
+    case let
+      visit-expression(out, frame, init, frame/path, binds-given)
+      save bound, make list
+      push(bound, name)
+      forget(frame, bound)
+    case assign
+      visit-expression(out, frame, target, frame/path, binds-given)
+      visit-expression(out, frame, read(value), frame/path, binds-given)
+      forget(frame, statement-written(node))
+    case expression
+      visit-expression(out, frame, expr, frame/path, binds-given)
+    case return
+      sift read(value)
+        case some
+          link given
+          visit-expression(out, frame, given, frame/path, binds-given)
+        case none
+          save nothing, 0
+    case throw
+      visit-expression(out, frame, read(value), frame/path, binds-given)
+    case hold
+      visit-expression(out, frame, expr, frame/path, binds-given)
+    case while
+      # a later turn sees what an earlier one wrote, so neither a member nor a guard about a name the loop writes holds
+      # inside it, beyond the condition each turn tests
+      save written, block-written(body)
+      visit-expression(out, frame, cond, without(frame/path, written), binds-given)
+      walk-calls(out, body, members-without(frame/members, written), joined(without(frame/path, written), one-of(cond)), binds-given)
+      forget(frame, written)
+    case guard
+      walk-calls(out, body, frame/members, frame/path, binds-given)
+      sift catch
+        case some
+          link clause
+          save caught, make list
+          push(caught, clause/name)
+          walk-calls(out, clause/body, members-without(frame/members, caught), without(frame/path, caught), binds-given)
+        case none
+          save nothing, 0
+      forget(frame, statement-written(node))
+    case for-each
+      visit-expression(out, frame, iterable, frame/path, binds-given)
+      save bound, make list
+      push(bound, item)
+      fork test, is-unequal(index, <>)
+        hold
+          push(bound, index)
+      walk block-written(body)
+        take written
+        push(bound, written)
+      walk-calls(out, body, members-without(frame/members, bound), without(frame/path, bound), binds-given)
+      forget(frame, block-written(body))
+    case if
+      save failed, make list
+      walk branches
+        take branch
+        visit-expression(out, frame, branch/cond, joined(frame/path, failed), binds-given)
+        walk-calls(out, branch/body, frame/members, joined(joined(frame/path, failed), one-of(branch/cond)), binds-given)
+        push(failed, negation(branch/cond))
+      sift otherwise
+        case some
+          link last
+          walk-calls(out, last, frame/members, joined(frame/path, failed), binds-given)
+        case none
+          save nothing, 0
+      # what a branch wrote is a new value after the `if`
+      forget(frame, statement-written(node))
+      # AN EARLY RETURN: past an `if` whose first branches all leave, none of their conditions held. (Only a leading
+      # run: past a branch that does not leave, a later one's condition may have held after all)
+      walk branches
+        take branch
+        fork test, not(exits(branch/body))
+          hold
+            halt
+        save frame/path, joined(frame/path, one-of(negation(branch/cond)))
+    case match
+      visit-expression(out, frame, subject, frame/path, binds-given)
+      # if the match is on a plain variable, the matched fields of each branch are members of that variable
+      save subject-name, <>
+      sift subject
+        case variable
+          link matched
+          save subject-name, matched
+        miss
+          save nothing, 0
+      walk cases
+        take arm
+        save fields, make list
+        fork test, binds-given(arm)
+          hold
+            walk arm/binds
+              take bound-name
+              push(fields, bound-name)
+          miss
+            fork test, out/variant-fields/has(arm/label)
+              hold
+                save fields, out/variant-fields/get(arm/label)
+        # the fields are bound afresh in the branch: members of the subject when it is a plain variable, and of
+        # nothing a parameter is when it is not (a field of `g(x)` named `prior` is not the `prior` of an outer match)
+        save branch-members, members-without(frame/members, fields)
+        fork test, is-unequal(subject-name, <>)
+          hold
+            walk fields
+              take field-name
+              save branch-members/{field-name}, subject-name
+        walk-calls(out, arm/body, branch-members, without(frame/path, fields), binds-given)
+      sift otherwise
+        case some
+          link last
+          walk-calls(out, last, frame/members, frame/path, binds-given)
+        case none
+          save nothing, 0
+      forget(frame, statement-written(node))
+    miss
+      save nothing, 0
+
+# is `arg` a strictly smaller value than the parameter `param`? Structural (a member of the parameter, including a
+# variable bound by matching the parameter, transitively, and a function-typed FIELD of it applied, the W-type and
+# accessibility child) or numeric descent above a floor that must hold on the path to the call:
+#   n - c   (c > 0)   needs n - c >= 0, so n is a natural number that falls by at least 1 each step
+#   n / k   (k > 1)   needs n >= 1, so n at least halves each step and stops below 1
+#   n % k   (k >= 1)  needs n >= k, so the result, below k, is below n
+task strictly-decreases
+  take arg, like expression
+  take param, like text
+  take members, like hash, like text, like text
+  take guards, like list, like expression
+  take proves
+    like task
+      take assumptions, like list, like inequality
+      take goal, like inequality
+      like boolean
+  like boolean
+  mark private
+
+  sift arg
+    case variable
+      fork test, member-of-param(members, name, param)
+        hold
+          back true
+    case member
+      sift target
+        case variable
+          link target-name
+          back is-equal(target-name, param)
+        miss
+          back false
+    case call
+      sift callee
+        case variable
+          link callee-name
+          fork test, member-of-param(members, callee-name, param)
+            hold
+              back true
+        miss
+          save nothing, 0
+    case binary
+      sift left
+        case variable
+          link left-name
+          fork test, is-unequal(left-name, param)
+            hold
+              back false
+          sift right
+            case integer
+              link by-value
+              save by, to-decimal(by-value)
+              save n, one-variable(param)
+              save facts, sharpened(guard-facts(guards), guards, proves)
+              sift op
+                case minus
+                  fork test, is-above(by, 0.0)
+                    hold
+                      back proves(facts, at-least(n, constant-only(by)))
+                case divide
+                  fork test, is-above(by, 1.0)
+                    hold
+                      back proves(facts, at-least(n, constant-only(1.0)))
+                case remainder
+                  fork test, is-minimum(by, 1.0)
+                    hold
+                      back proves(facts, at-least(n, constant-only(by)))
+                miss
+                  save nothing, 0
+            miss
+              save nothing, 0
+        miss
+          save nothing, 0
+    miss
+      save nothing, 0
+  back false
+
+# does following `start` up the field-origin context reach `param`? A visited set guards against cycles
+task member-of-param
+  take members, like hash, like text, like text
+  take start, like text
+  take param, like text
+  like boolean
+  mark private
+
+  save seen, make hash
+  save current, start
+  walk test
+    hook test, not(seen/has(current))
+    hook hold
+      save seen/{current}, true
+      fork test, not(members/has(current))
+        hold
+          back false
+      save current, members/get(current)
+      fork test, is-equal(current, param)
+        hold
+          back true
+  back false
+
+# a task's parameter names, with every one the body REBINDS replaced by a name nothing can match. A rebound parameter
+# is a different value under the same name, so neither `n - 1` nor a field of `n` is smaller than what the task was
+# called with: `save n, n + 5` then `call f(n - 1)` grows. Such a position carries no descent
+task steady-params
+  take one, like statement
+  like list, like text
+  mark private
+
+  save out, make list
+  sift one
+    case function
+      save written, block-written(body)
+      save rebound, <{rune-to-text(0)}rebound>
+      walk params
+        take param
+        fork test, or(contains(written, param/name), contains(written, everything()))
+          hold
+            push(out, rebound)
+          miss
+            push(out, param/name)
+    miss
+      save nothing, 0
+  back out
+
+task param-count
+  take one, like statement
+  like number
+  mark private
+
+  sift one
+    case function
+      back params/length
+    miss
+      back 0
+
+task body-of
+  take one, like statement
+  like list, like statement
+  mark private
+
+  sift one
+    case function
+      back body
+    miss
+      back make list
+
+# LEXICOGRAPHIC termination (the foetus criterion): a recursive function terminates if its argument positions can be
+# ordered so that on every self-call the tuple strictly decreases lexicographically. Greedy: repeatedly pick a position
+# that is `<`-or-`=` on every remaining call and `<` on at least one; the calls where it is `=` continue with the
+# remaining positions. Each call's position is classified as the original classified it, as often and in its order,
+# since each classification may ask the prover
+task classify
+  take call, like call-at
+  take p, like number
+  take param-names, like list, like text
+  take proves
+    like task
+      take assumptions, like list, like inequality
+      take goal, like inequality
+      like boolean
+  like text
+  mark private
+
+  fork test, or(is-minimum(p, param-names/length), is-minimum(p, call/args/length))
+    hold
+      back <?>
+  save arg, get(call/args, p)
+  save param, get(param-names, p)
+  fork test, strictly-decreases(arg, param, call/frame/members, call/guards, proves)
+    hold
+      back <\<>
+  # the argument is the parameter passed UNCHANGED (a non-increase at this position)
+  sift arg
+    case variable
+      link arg-name
+      fork test, is-equal(arg-name, param)
+        hold
+          back <=>
+    miss
+      save nothing, 0
+  back <?>
+
+task lexicographically-descends
+  take calls, like list, like call-at
+  take param-names, like list, like text
+  take proves
+    like task
+      take assumptions, like list, like inequality
+      take goal, like inequality
+      like boolean
+  like boolean
+  mark private
+
+  fork test, is-equal(calls/length, 0)
+    hold
+      back false
+  save remaining, make list
+  save index, 0
+  walk calls
+    take call
+    push(remaining, index)
+    save index, add(index, 1)
+  save used, make hash
+  walk test
+    hook test, is-above(remaining/length, 0)
+    hook hold
+      save chosen, -1
+      save p, 0
+      walk test
+        hook test, is-below(p, param-names/length)
+        hook hold
+          fork test, not(used/has(p))
+            hold
+              save no-unknown, true
+              walk remaining
+                take ci
+                fork test, is-equal(classify(get(calls, ci), p, param-names, proves), <?>)
+                  hold
+                    save no-unknown, false
+                    halt
+              save some-strict, false
+              walk remaining
+                take ci
+                fork test, is-equal(classify(get(calls, ci), p, param-names, proves), <\<>)
+                  hold
+                    save some-strict, true
+                    halt
+              fork test, and(no-unknown, some-strict)
+                hold
+                  save chosen, p
+                  halt
+          save p, add(p, 1)
+      fork test, is-equal(chosen, -1)
+        hold
+          back false
+      save used/{chosen}, true
+      save kept, make list
+      walk remaining
+        take ci
+        fork test, is-unequal(classify(get(calls, ci), chosen, param-names, proves), <\<>)
+          hold
+            push(kept, ci)
+      save remaining, kept
+  back true
+
+# the verdict per task, in the order each name first appears: a function is terminating if it is non-recursive, or its
+# direct recursion strictly decreases some argument on every self-call, or its mutual-recursion group descends at one
+# fixed position on every call within it
+form verdicts
+  link names, like list, like text
+  link ends, like hash, like text, like boolean
+  # the calls each task's body makes, in the order made, for the warning's reason
+  link self-calls, like hash, like text, like number
+
+form program-calls
+  mark shared
+  link functions, like hash, like text, like statement
+  link order, like list, like text
+  link edges, like hash, like text, like list, like text
+  link value-edges, like hash, like text, like list, like text
+  link walks, like hash, like text, like walked
+
+task add-text
+  take values, like list, like text
+  take value, like text
+  like void
+  mark private
+
+  fork test, not(contains(values, value))
+    hold
+      push(values, value)
+
+# every task `from` can reach through calls and values, the original's depth-first order kept
+task reaches
+  take known, like program-calls
+  take from, like text
+  like list, like text
+  mark private
+
+  save seen, make hash
+  save out, make list
+  save stack, make list
+  walk known/edges/get-or-default(from, make list)
+    take one
+    push(stack, one)
+  walk test
+    hook test, is-above(stack/length, 0)
+    hook hold
+      save next, stack/pop()
+      fork test, not(seen/has(next))
+        hold
+          save seen/{next}, true
+          push(out, next)
+          walk known/edges/get-or-default(next, make list)
+            take further
+            push(stack, further)
+  back out
+
+# the mutual-recursion group of `name`: every function mutually reachable with it, `name` first
+task scc-of
+  take known, like program-calls
+  take name, like text
+  like list, like text
+  mark private
+
+  save out, make list
+  push(out, name)
+  walk reaches(known, name)
+    take other
+    fork test, and(is-unequal(other, name), contains(reaches(known, other), name))
+      hold
+        add-text(out, other)
+  back out
+
+task calls-to
+  take found, like walked
+  take targets, like list, like text
+  like list, like call-at
+  mark private
+
+  save out, make list
+  walk found/calls
+    take call
+    fork test, contains(targets, call/callee)
+      hold
+        push(out, call)
+  back out
+
+task termination-verdict
+  take program, like list, like statement
+  take proves
+    like task
+      take assumptions, like list, like inequality
+      take goal, like inequality
+      like boolean
+  take binds-given
+    like task
+      take arm, like match-case
+      like boolean
+  like verdicts
+
+  save known
+    make program-calls
+      bind functions, make hash
+      bind order, make list
+      bind edges, make hash
+      bind value-edges, make hash
+      bind walks, make hash
+  save variant-fields, make hash
+  walk program
+    take one
+    sift one
+      case function
+        fork test, not(known/functions/has(name))
+          hold
+            push(known/order, name)
+        save known/functions/{name}, one
+      case record-type
+        walk variants
+          take variant
+          save field-names, make list
+          walk variant/fields
+            take field
+            push(field-names, field/name)
+          save variant-fields/{variant/name}, field-names
+      miss
+        save nothing, 0
+  # each task's calls and the tasks it reads as a VALUE (`read f`, handed on or saved, not called by name). Such a task
+  # may be called with any argument, so no descent can be shown for it: a recursion through one is not verified
+  walk known/order
+    take name
+    save one, known/functions/get(name)
+    save found
+      make walked
+        bind calls, make list
+        bind values, make list
+        bind variant-fields, variant-fields
+    save no-members, make hash
+    save no-guards, make list
+    walk-calls(found, body-of(one), no-members, no-guards, binds-given)
+    save known/walks/{name}, found
+    save locals, local-names(one)
+    save values, make list
+    walk found/values
+      take value
+      fork test, and(known/functions/has(value), not(contains(locals, value)))
+        hold
+          add-text(values, value)
+    save edges, make list
+    walk found/calls
+      take call
+      fork test, known/functions/has(call/callee)
+        hold
+          add-text(edges, call/callee)
+    walk values
+      take value
+      add-text(edges, value)
+    save known/value-edges/{name}, values
+    save known/edges/{name}, edges
+  save ends, make hash
+  save self-calls, make hash
+  walk known/order
+    take name
+    save one, known/functions/get(name)
+    save found, known/walks/get(name)
+    save own, make list
+    push(own, name)
+    save self, calls-to(found, own)
+    save self-calls/{name}, self/length
+    save ends/{name}, verdict-of(known, name, one, self, proves)
+  back
+    make verdicts
+      bind names, known/order
+      bind ends, ends
+      bind self-calls, self-calls
+
+task stub-ends
+  take one, like statement
+  like maybe, like boolean
+  mark private
+
+  sift one
+    case function
+      fork test, stub
+        hold
+          sift stub-facts
+            case some
+              link facts
+              save judged, contains(facts, <ends>)
+              back make(some, judged)
+            case none
+              back make none
+      back make none
+    miss
+      back make none
+
+task verdict-of
+  take known, like program-calls
+  take name, like text
+  take one, like statement
+  take self, like list, like call-at
+  take proves
+    like task
+      take assumptions, like list, like inequality
+      take goal, like inequality
+      like boolean
+  like boolean
+  mark private
+
+  # a separately compiled task: its own unit, which had the body, judged it (`stub-facts`)
+  sift stub-ends(one)
+    case some
+      link judged
+      back judged
+    case none
+      save nothing, 0
+  # not recursive: trivially terminating
+  fork test, not(contains(reaches(known, name), name))
+    hold
+      back true
+  # a recursion through a task read as a value: some member of the group reads a member as a value, so a call may
+  # reach it with any argument. Not verified, whatever the named calls do
+  save group, scc-of(known, name)
+  walk group
+    take member
+    walk known/value-edges/get-or-default(member, make list)
+      take target
+      fork test, contains(group, target)
+        hold
+          back false
+  # DIRECT recursion: some single argument position strictly decreases on every SELF-call
+  save param-names, steady-params(one)
+  save positions, make hash
+  save p, 0
+  walk param-names
+    take param
+    save positions/{p}, true
+    save p, add(p, 1)
+  save bounds, natural-guards(one)
+  walk self
+    take call
+    save decreasing, make hash
+    save i, 0
+    walk test
+      hook test, and(is-below(i, param-names/length), is-below(i, call/args/length))
+      hook hold
+        fork test, strictly-decreases(get(call/args, i), get(param-names, i), call/frame/members, joined(bounds, call/guards), proves)
+          hold
+            save decreasing/{i}, true
+        save i, add(i, 1)
+    save kept, make hash
+    walk positions/keys()
+      take position
+      fork test, decreasing/has(position)
+        hold
+          save kept/{position}, true
+    save positions, kept
+  fork test, is-above(self/length, 0)
+    hold
+      save position-keys, positions/keys()
+      fork test, or(is-above(position-keys/length, 0), lexicographically-descends(self, param-names, proves))
+        hold
+          back true
+  save scc, scc-of(known, name)
+  # direct recursion that does not descend: not verified
+  fork test, is-equal(scc/length, 1)
+    hold
+      back false
+  # MUTUAL recursion: there is a FIXED argument position p such that EVERY call within the group passes, at p, a strict
+  # structural subterm of the CALLER's position-p argument. Then the size at p strictly decreases on every step of the
+  # cycle, a well-founded measure. A position where one call GROWS is rejected, which rules out the size-constant loops
+  save group-calls, make list
+  save caller-params, make list
+  walk scc
+    take member
+    save member-params, steady-params(known/functions/get(member))
+    walk calls-to(known/walks/get(member), scc)
+      take call
+      push(group-calls, call)
+      push(caller-params, member-params)
+  save max-arity, 0
+  walk scc
+    take member
+    save arity, param-count(known/functions/get(member))
+    fork test, or(is-equal(max-arity, 0), is-above(arity, max-arity))
+      hold
+        save max-arity, arity
+  save p, 0
+  walk test
+    hook test, is-below(p, max-arity)
+    hook hold
+      save every, true
+      save k, 0
+      walk group-calls
+        take call
+        save params, get(caller-params, k)
+        save k, add(k, 1)
+        fork test, not(and(is-below(p, params/length), is-below(p, call/args/length)))
+          hold
+            save every, false
+            halt
+        fork test, not(strictly-decreases(get(call/args, p), get(params, p), call/frame/members, call/guards, proves))
+          hold
+            save every, false
+            halt
+      fork test, and(is-above(group-calls/length, 0), every)
+        hold
+          back true
+      save p, add(p, 1)
+  back false
+
+# the functions whose termination is verified (used to gate transparent definitions in the elaborator)
+task terminating-functions
+  take program, like list, like statement
+  take proves
+    like task
+      take assumptions, like list, like inequality
+      take goal, like inequality
+      like boolean
+  take binds-given
+    like task
+      take arm, like match-case
+      like boolean
+  like list, like text
+
+  save verdict, termination-verdict(program, proves, binds-given)
+  save out, make list
+  walk verdict/names
+    take name
+    fork test, verdict/ends/get(name)
+      hold
+        push(out, name)
+  back out
+
+task termination-warnings
+  take program, like list, like statement
+  take file, like text
+  take proves
+    like task
+      take assumptions, like list, like inequality
+      take goal, like inequality
+      like boolean
+  take binds-given
+    like task
+      take arm, like match-case
+      like boolean
+  like list, like diagnostic
+
+  save verdict, termination-verdict(program, proves, binds-given)
+  save by-name, make hash
+  walk program
+    take one
+    sift one
+      case function
+        save by-name/{name}, one
+      miss
+        save nothing, 0
+  save warnings, make list
+  walk verdict/names
+    take name
+    fork test, verdict/ends/get(name)
+      hold
+        turn next
+    save one, by-name/get(name)
+    save at-span, statement-span(one)
+    # each module reports its own. A task merged in from another file carries that file's span
+    sift at-span/file
+      case some
+        link from
+        fork test, is-unequal(from, file)
+          hold
+            turn next
+      case none
+        save nothing, 0
+    save reason, <"{name}" calls itself without an argument that provably decreases>
+    fork test, is-equal(verdict/self-calls/get(name), 0)
+      hold
+        save reason, <"{name}" is part of a mutual-recursion cycle whose termination is not verified>
+    save input
+      make diagnostic-input
+        bind file, file
+        bind span, at-span
+        bind message, make(some, reason)
+    save kind, make non-terminating
+    push(warnings, diagnose(kind, input))
+  back warnings

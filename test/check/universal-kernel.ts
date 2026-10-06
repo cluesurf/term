@@ -66,12 +66,12 @@ expect(
 rule other-type
   head a
   head b
-  mark r, like relation a
-  mark p, like relation b
-  mark x, like a
-  mark y, like b
+  seat r, like relation a
+  seat p, like relation b
+  seat x, like a
+  seat y, like b
   have p-is-reflexive
-    mark u, like b
+    seat u, like b
     is-equal p(u, u), make yes
   show hold, is-equal r(x, x), make yes
 `,
@@ -83,14 +83,14 @@ expect(
   `
 rule unrelated
   head a
-  mark f
+  seat f
     like task
       take x, like a
       like a
-  mark x, like a
-  mark y, like a
-  mark z, like a
-  mark w, like a
+  seat x, like a
+  seat y, like a
+  seat z, like a
+  seat w, like a
   have first, is-equal f(x), y
   have second, is-equal f(z), w
   show hold, is-equal y, w
@@ -103,13 +103,13 @@ expect(
   `${FLAG}
 rule symmetry-alone
   head a
-  mark r, like relation a
-  mark x, like a
-  mark y, like a
-  mark z, like a
+  seat r, like relation a
+  seat x, like a
+  seat y, like a
+  seat z, like a
   have symmetric
-    mark u, like a
-    mark v, like a
+    seat u, like a
+    seat v, like a
     is-equal r(u, v), r(v, u)
   have first, is-equal r(x, y), make yes
   have second, is-equal r(y, z), make yes
@@ -124,12 +124,12 @@ expect(
   `${FLAG}
 rule symmetric-twice
   head a
-  mark r, like relation a
-  mark x, like a
-  mark y, like a
+  seat r, like relation a
+  seat x, like a
+  seat y, like a
   have symmetric
-    mark u, like a
-    mark v, like a
+    seat u, like a
+    seat v, like a
     is-equal r(u, v), r(v, u)
   have related, is-equal r(x, y), make yes
   show hold, is-equal r(y, x), make yes
@@ -142,14 +142,14 @@ expect(
   `${FLAG}
 rule transitive-chain
   head a
-  mark r, like relation a
-  mark x, like a
-  mark y, like a
-  mark z, like a
+  seat r, like relation a
+  seat x, like a
+  seat y, like a
+  seat z, like a
   have transitive
-    mark u, like a
-    mark v, like a
-    mark w, like a
+    seat u, like a
+    seat v, like a
+    seat w, like a
     is-equal implies(both(r(u, v), r(v, w)), r(u, w)), make yes
   have first, is-equal r(x, y), make yes
   have second, is-equal r(y, z), make yes
@@ -163,19 +163,19 @@ expect(
   `${FLAG}
 rule overlapping
   head a
-  mark r, like relation a
-  mark x, like a
-  mark y, like a
-  mark z, like a
-  mark w, like a
+  seat r, like relation a
+  seat x, like a
+  seat y, like a
+  seat z, like a
+  seat w, like a
   have symmetric
-    mark u, like a
-    mark v, like a
+    seat u, like a
+    seat v, like a
     is-equal r(u, v), r(v, u)
   have transitive
-    mark u, like a
-    mark v, like a
-    mark t, like a
+    seat u, like a
+    seat v, like a
+    seat t, like a
     is-equal implies(both(r(u, v), r(v, t)), r(u, t)), make yes
   have z-with-x, is-equal r(x, z), make yes
   have z-with-y, is-equal r(y, z), make yes
@@ -189,15 +189,15 @@ expect(
   `${FLAG}
 rule overlapping-without-symmetry
   head a
-  mark r, like relation a
-  mark x, like a
-  mark y, like a
-  mark z, like a
-  mark w, like a
+  seat r, like relation a
+  seat x, like a
+  seat y, like a
+  seat z, like a
+  seat w, like a
   have transitive
-    mark u, like a
-    mark v, like a
-    mark t, like a
+    seat u, like a
+    seat v, like a
+    seat t, like a
     is-equal implies(both(r(u, v), r(v, t)), r(u, t)), make yes
   have z-with-x, is-equal r(x, z), make yes
   have z-with-y, is-equal r(y, z), make yes
@@ -206,11 +206,11 @@ rule overlapping-without-symmetry
   'invalid-proof',
 )
 
-const FUNCTIONS = `  mark f
+const FUNCTIONS = `  seat f
     like task
       take x, like a
       like b
-  mark g
+  seat g
     like task
       take y, like b
       like a
@@ -222,10 +222,10 @@ expect(
 rule injective
   head a
   head b
-${FUNCTIONS}  mark x, like a
-  mark y, like a
-  have g-undoes-f
-    mark u, like a
+${FUNCTIONS}  seat x, like a
+  seat y, like a
+  haveg-undoes-f
+    seat u, like a
     is-equal g(f(u)), u
   have same-image, is-equal f(x), f(y)
   show hold, is-equal x, y
@@ -239,10 +239,10 @@ expect(
 rule not-injective
   head a
   head b
-${FUNCTIONS}  mark x, like a
-  mark y, like a
-  have f-undoes-g
-    mark v, like b
+${FUNCTIONS}  seat x, like a
+  seat y, like a
+  havef-undoes-g
+    seat v, like b
     is-equal f(g(v)), v
   have same-image, is-equal f(x), f(y)
   show hold, is-equal x, y
@@ -256,9 +256,9 @@ expect(
 rule surjective
   head a
   head b
-${FUNCTIONS}  mark z, like b
+${FUNCTIONS}  seat z, like b
   have f-undoes-g
-    mark v, like b
+    seat v, like b
     is-equal f(g(v)), v
   find x, g(z)
   show hold, is-equal f(x), z
@@ -272,9 +272,9 @@ expect(
 rule not-surjective
   head a
   head b
-${FUNCTIONS}  mark z, like b
+${FUNCTIONS}  seat z, like b
   have g-undoes-f
-    mark u, like a
+    seat u, like a
     is-equal g(f(u)), u
   find x, g(z)
   show hold, is-equal f(x), z
@@ -286,13 +286,13 @@ expect(
   'a universal over numbers stays the hold checker’s, and still proves',
   `
 rule numbers
-  mark x
+  seat x
     like task
       take t, like integer
       like integer
-  mark n, like integer
+  seat n, like integer
   have non-decreasing
-    mark t, like integer
+    seat t, like integer
     is-maximum x(t), x(add(t, 1))
   show hold, is-maximum x(n), x(add(n, 2))
 `,
